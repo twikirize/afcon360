@@ -8,6 +8,7 @@ from flask_login import login_required, current_user
 from datetime import date
 from app.events import events_bp
 from app.events.services import EventService, SoldOutException
+from app.events.permissions import _is_event_owner
 from app.events.models import Event, EventRegistration, TicketType, Waitlist
 from app.events.permissions import (
     is_system_admin,
@@ -24,6 +25,7 @@ from app.events.permissions import (
     can_delete_event,
     can_hard_delete_event,
 )
+from app.auth.context import ContextType, active_context_or_platform_required
 from app.events.constants import EventStatus, BookingType, MAX_INLINE_GROUP_SIZE
 from app.auth.decorators import require_moderator, require_fresh_user
 
@@ -147,8 +149,10 @@ def landing(identifier=None):
     if not context.get('event_found'):
         return render_template('events/public/not_found.html', event_slug=identifier), 404
     
-    # Get properties for accommodation (existing functionality)
-    properties = search_properties(city=context['event_city'])
+    # Past events keep their public details, but do not need live accommodation
+    # inventory or booking suggestions.
+    is_past_event = context.get('event_is_expired', False)
+    properties = [] if is_past_event else search_properties(city=context['event_city'])
     
     # Get start time from metadata
     start_time = context['event_metadata'].get('start_time', '00:00:00')
@@ -158,6 +162,7 @@ def landing(identifier=None):
         'events/public/landing.html',
         **context,  # Unpacks event_name, event_description, ticket_types, etc.
         properties=properties,
+        is_past_event=is_past_event,
         context_type=BookingContextType.EVENT.value,
         context_id=context['event_slug'],
         context_metadata={
@@ -283,12 +288,27 @@ def my_registrations():
 
 @events_bp.route("/organizer/dashboard/<identifier>")
 @login_required
+@active_context_or_platform_required(ContextType.EVENT)
 def organizer_dashboard(identifier):
     """Specific Event Organizer Dashboard"""
     event = EventService.get_event(identifier)
-    if not event or event.get('organizer_id') != current_user.id:
+
+    event_model = EventService.get_event_model(identifier)
+
+    if not event_model or not _is_event_owner(current_user, event_model):
         flash('Unauthorized access', 'danger')
         return redirect(url_for('events.my_events'))
+
+    from app.auth.context import get_active_context
+
+    active_context = get_active_context(current_user)
+    event_public_id = str(event.get("public_id") or identifier)
+    if active_context.type is not ContextType.PLATFORM and (
+        active_context.type is not ContextType.EVENT
+        or active_context.public_id != event_public_id
+    ):
+        flash('Select this event context before opening its operational dashboard.', 'warning')
+        return redirect(url_for('user.dashboard'))
 
     stats = EventService.get_event_stats(identifier)
     registrations = EventService.get_registrations_by_event(identifier)
@@ -354,22 +374,34 @@ def create_event():
     else:
         # Handle form data
         data = request.form.to_dict()
-        # Handle registration_required checkbox
-        data['registration_required'] = 'registration_required' in request.form
-        # Handle ticket tiers for form data
-        tier_names = request.form.getlist('tier_name[]')
-        tier_prices = request.form.getlist('tier_price[]')
-        tier_capacities = request.form.getlist('tier_capacity[]')
+    
+    # Phase 4 Legacy Observability: Log if `organizer_id` is passed by the client.
+    if 'organizer_id' in data:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"LEGACY API USAGE: Client passed 'organizer_id' to create_event endpoint. "
+            f"User ID: {current_user.id}, IP: {request.remote_addr}, User Agent: {request.user_agent}"
+        )
 
-        if tier_names and tier_names[0]:  # At least one tier is provided
-            data['ticket_tiers'] = []
-            for i in range(len(tier_names)):
-                if tier_names[i]:  # Only add if name is not empty
-                    data['ticket_tiers'].append({
-                        'name': tier_names[i],
-                        'price': float(tier_prices[i]) if i < len(tier_prices) and tier_prices[i] else 0.0,
-                        'capacity': int(tier_capacities[i]) if i < len(tier_capacities) and tier_capacities[i] else None
-                    })
+    # Event creation includes registration by default; free events receive a Free Entry tier.
+    data['registration_required'] = True
+    # Handle ticket tiers for form data
+    tier_names = request.form.getlist('tier_name[]')
+    tier_prices = request.form.getlist('tier_price[]')
+    tier_capacities = request.form.getlist('tier_capacity[]')
+
+    if tier_names and tier_names[0]:  # At least one tier is provided
+        data['ticket_tiers'] = []
+        for i in range(len(tier_names)):
+            if tier_names[i]:  # Only add if name is not empty
+                data['ticket_tiers'].append({
+                    'name': tier_names[i],
+                    'price': float(tier_prices[i]) if i < len(tier_prices) and tier_prices[i] else 0.0,
+                    'capacity': int(tier_capacities[i]) if i < len(tier_capacities) and tier_capacities[i] else None
+                })
+
+    data.setdefault('registration_required', True)
 
     print(f"ðŸ”¥ Received data: {data}")
 
@@ -415,7 +447,10 @@ def create_event():
 def edit_event(identifier):
     """Edit event page"""
     event = EventService.get_event(identifier)
-    if not event or (event.get('organizer_id') != current_user.id and not is_system_admin(current_user)):
+
+    event_model = EventService.get_event_model(identifier)
+
+    if not event_model or not (_is_event_owner(current_user, event_model) or is_system_admin(current_user)):
         flash('Unauthorized', 'danger')
         return redirect(url_for('events.my_events'))
 
@@ -424,6 +459,13 @@ def edit_event(identifier):
 
     try:
         data = request.get_json()
+        if 'organizer_id' in data:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"LEGACY API USAGE: Client passed 'organizer_id' to edit_event endpoint. "
+                f"User ID: {current_user.id}, IP: {request.remote_addr}, User Agent: {request.user_agent}"
+            )
         success, error = EventService.update_event(identifier, data, current_user.id)
         if not success:
             return jsonify({'success': False, 'error': error}), 400
@@ -447,8 +489,9 @@ def scanner(identifier):
         if not user or not user.is_authenticated:
             return False
 
-        # Event organizers can always check in
-        if event_data.get('organizer_id') == user.id:
+        # Event owners/operators can always check in
+        event_model = EventService.get_event_model(event_data.get('slug'))
+        if event_model and _is_event_owner(user, event_model):
             return True
 
         # System admins can check in
@@ -490,7 +533,10 @@ def scanner(identifier):
 def event_analytics(identifier):
     """Detailed event analytics for organizers"""
     event = EventService.get_event(identifier)
-    if not event or event.get('organizer_id') != current_user.id:
+
+    event_model = EventService.get_event_model(identifier)
+
+    if not event_model or not _is_event_owner(current_user, event_model):
         flash('Unauthorized access', 'danger')
         return redirect(url_for('events.my_events'))
 
@@ -527,7 +573,10 @@ def event_analytics(identifier):
 def export_attendees(identifier):
     """Export attendee list as CSV"""
     event = EventService.get_event(identifier)
-    if not event or event.get('organizer_id') != current_user.id:
+
+    event_model = EventService.get_event_model(identifier)
+
+    if not event_model or not _is_event_owner(current_user, event_model):
         flash('Unauthorized', 'danger')
         return redirect(url_for('events.my_events'))
 
@@ -598,6 +647,13 @@ def register(identifier):
         
         if not json_context.get('event_found'):
             return render_template('events/public/not_found.html', event_slug=identifier), 404
+
+        if not json_context.get('can_register'):
+            return render_template(
+                'events/attendee/registration_unavailable.html',
+                event=context['event'],
+                event_data=json_context,
+            )
         
         user_data = {
             'full_name': getattr(current_user, 'username', current_user.email),
@@ -610,12 +666,20 @@ def register(identifier):
         return render_template('events/attendee/register.html',
                                event=context['event'] if context.get('event_found') else None,
                                event_data=json_context,
-                               user_data=user_data)
+                               user_data=user_data,
+                               user_registered=json_context.get('user_registered', False),
+                               registration_closed=json_context.get('event_is_expired', False))
     
     # POST handling
     event_model = EventModel.query.filter_by(slug=identifier).first()
     if not event_model:
         return render_template('events/public/not_found.html', event_slug=identifier), 404
+
+    if EventService.is_event_expired(event_model):
+        return jsonify({
+            'success': False,
+            'error': 'Event registration closed. This event has already ended.'
+        }), 410
     
     # Create view_model for POST handling
     view_model = EventRegistrationViewModel(event_model, current_user)
@@ -631,6 +695,12 @@ def register(identifier):
                 data['ticket_type_id'] = int(data['ticket_type_id'])
             elif 'ticket_type_id' in data and (not data['ticket_type_id'] or not event_model.ticket_types):
                 data['ticket_type_id'] = None
+
+        gate_error = EventService._registration_gate_error(
+            event_model, data.get('ticket_type_id')
+        )
+        if gate_error:
+            return jsonify({'success': False, 'error': gate_error}), 410
         
         # NEW: Get booking type and attendee info
         booking_type = data.get('booking_type', BookingType.SELF.value)
@@ -638,6 +708,17 @@ def register(identifier):
         # Validate booking_type at route boundary
         if not BookingType.is_valid(booking_type):
             return jsonify({'success': False, 'error': f'Invalid booking_type: {booking_type}'}), 400
+
+        if booking_type == BookingType.SELF.value:
+            existing_self_registration = EventRegistration.query.filter_by(
+                event_id=event_model.id,
+                user_id=current_user.id
+            ).first()
+            if existing_self_registration:
+                return jsonify({
+                    'success': False,
+                    'error': 'You are already registered for this event'
+                }), 409
         
         # Single group_booking_id generation site (Phase 0.4)
         group_booking_id = None
@@ -1072,7 +1153,9 @@ def event_attendees(identifier):
         return render_template('events/public/not_found.html', event_slug=identifier), 404
 
     # Check if user is organizer or system admin
-    if event.get('organizer_id') != current_user.id and not is_system_admin(current_user):
+    event_model = EventService.get_event_model(identifier)
+
+    if not event_model or not (_is_event_owner(current_user, event_model) or is_system_admin(current_user)):
         flash('You do not have permission to view attendees', 'danger')
         return redirect(url_for('events.landing', identifier=identifier))
 
@@ -1192,7 +1275,7 @@ def api_checkin_stats(event_slug):
         return jsonify({'success': False, 'error': 'Event not found'}), 404
 
     # Permission check: only organizer or system admin
-    if event.organizer_id != current_user.id and not is_system_admin(current_user):
+    if not (_is_event_owner(current_user, event) or is_system_admin(current_user)):
         return jsonify({'success': False, 'error': 'Forbidden'}), 403
 
     from app.events.models import EventRegistration
@@ -1972,7 +2055,10 @@ def add_ticket_type(identifier):
     if not event:
         return jsonify({'success': False, 'error': 'Event not found'}), 404
 
-    if event.get('organizer_id') != current_user.id:
+    event_model = EventService.get_event_model(identifier)
+
+
+    if not event_model or not _is_event_owner(current_user, event_model):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
     try:
@@ -2000,7 +2086,9 @@ def assign_service_to_attendee_route(identifier):
         return jsonify({'success': False, 'error': 'Event not found'}), 404
 
     # Check if user is organizer or system admin
-    if event.get('organizer_id') != current_user.id and not is_system_admin(current_user):
+    event_model = EventService.get_event_model(identifier)
+
+    if not event_model or not (_is_event_owner(current_user, event_model) or is_system_admin(current_user)):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
     data = request.get_json()
@@ -2040,7 +2128,9 @@ def get_event_assignments(identifier):
         return jsonify({'success': False, 'error': 'Event not found'}), 404
 
     # Check if user is organizer or system admin
-    if event.get('organizer_id') != current_user.id and not is_system_admin(current_user):
+    event_model = EventService.get_event_model(identifier)
+
+    if not event_model or not (_is_event_owner(current_user, event_model) or is_system_admin(current_user)):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
     assignments = EventService.get_event_assignments(identifier)
@@ -2125,7 +2215,9 @@ def event_staff(identifier):
         return render_template('events/public/not_found.html', event_slug=identifier), 404
 
     # Check permission
-    if event.get('organizer_id') != current_user.id and not is_system_admin(current_user):
+    event_model = EventService.get_event_model(identifier)
+
+    if not event_model or not (_is_event_owner(current_user, event_model) or is_system_admin(current_user)):
         flash('Only event organizers can manage staff', 'danger')
         return redirect(url_for('events.landing', identifier=identifier))
 
@@ -2151,7 +2243,7 @@ def remove_staff(staff_id):
         return jsonify({'success': False, 'error': 'Event not found'}), 404
 
     # Check permission - use the is_system_admin function defined at the top of the file
-    if event.organizer_id != current_user.id and not is_system_admin(current_user):
+    if not (_is_event_owner(current_user, event) or is_system_admin(current_user)):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
     try:
@@ -2428,7 +2520,9 @@ def contact_organizer(event_id):
         )
         from app.notifications.channel_handlers.email import EmailHandler
 
-        organizer = db.session.get(User, event.organizer_id) if event.organizer_id else None
+        # Determine the primary contact
+        contact_user_id = event.current_owner_id if event.current_owner_type == 'individual' else (event.original_creator_id or event.organizer_id)
+        organizer = db.session.get(User, contact_user_id) if contact_user_id else None
         if organizer and organizer.email:
             organizer_html = render_template('email/organizer_message.html',
                 event_name=event.name,
@@ -2491,7 +2585,7 @@ def mark_message_read(message_id):
             return jsonify({'success': False, 'error': 'Message not found'}), 404
         
         # Verify user is the event organizer
-        if message.event.organizer_id != current_user.id:
+        if not _is_event_owner(current_user, message.event):
             return jsonify({'success': False, 'error': 'Unauthorized'}), 403
         
         message.status = 'read'
@@ -2509,8 +2603,14 @@ def organizer_messages():
     """View messages from attendees (organizer only)"""
     from app.events.models import OrganizerMessage, Event
     
+    from sqlalchemy import or_, and_
+    from app.events.models import EventRole
     messages = OrganizerMessage.query.join(Event)\
-        .filter(Event.organizer_id == current_user.id)\
+        .outerjoin(EventRole, Event.id == EventRole.event_id)\
+        .filter(or_(
+            and_(Event.current_owner_type == 'individual', Event.current_owner_id == current_user.id),
+            EventRole.user_id == current_user.id
+        ))\
         .order_by(OrganizerMessage.created_at.desc())\
         .all()
     

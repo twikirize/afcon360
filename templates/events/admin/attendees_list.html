@@ -3,7 +3,13 @@
 {% block title %}Attendees - {{ event.name }}{% endblock %}
 
 {% block content %}
-<div class="container py-4">
+<div class="container py-4" id="guestCoordination"
+     data-properties-url="{{ url_for('events.event_assignment.check_available_properties', event_ref=event.public_id) }}"
+     data-drivers-url="{{ url_for('events.event_assignment.check_available_drivers', event_ref=event.public_id) }}"
+     data-accommodation-url="{{ url_for('events.event_assignment.assign_accommodation', event_ref=event.public_id) }}"
+     data-transport-url="{{ url_for('events.event_assignment.assign_transport', event_ref=event.public_id) }}"
+     data-coordination-url="{{ url_for('events.event_assignment.coordination_dashboard', event_ref=event.public_id) }}">
+    <input type="hidden" id="csrfToken" value="{{ csrf_token() }}">
     <div class="row mb-4">
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center">
@@ -15,11 +21,11 @@
                     <p class="lead">Manage event attendees and assign accommodation/transport</p>
                 </div>
                 <div>
-                    <a href="{{ url_for('event_assignment.assignment_dashboard', event_id=event.id) }}"
+                    <a href="{{ url_for('events.event_assignment.assignment_dashboard', event_ref=event.public_id) }}"
                        class="btn btn-outline-primary">
                         <i class="fas fa-arrow-left"></i> Back to Dashboard
                     </a>
-                    <a href="{{ url_for('event_assignment.export_assignments', event_id=event.id) }}"
+                    <a href="{{ url_for('events.event_assignment.export_assignments', event_ref=event.public_id) }}"
                        class="btn btn-outline-success ms-2">
                         <i class="fas fa-download"></i> Export CSV
                     </a>
@@ -94,8 +100,7 @@
                         {% for reg in attendees.items %}
                         {% set assignment = assignment_map.get(reg.id) %}
                         <tr class="attendee-row"
-                            data-registration-id="{{ reg.id }}"
-                            data-user-id="{{ reg.user_id }}"
+                            data-registration-ref="{{ reg.registration_ref }}"
                             data-name="{{ reg.full_name }}"
                             data-email="{{ reg.email }}">
                             <td>{{ loop.index + (attendees.page - 1) * attendees.per_page }}</td>
@@ -142,22 +147,32 @@
                                             class="btn btn-outline-primary assign-accommodation-btn"
                                             data-bs-toggle="modal"
                                             data-bs-target="#accommodationModal"
-                                            data-registration-id="{{ reg.id }}"
-                                            data-user-id="{{ reg.user_id }}"
+                                            data-registration-ref="{{ reg.registration_ref }}"
                                             data-name="{{ reg.full_name }}"
-                                            {% if assignment and assignment.accommodation_booking_id %}disabled{% endif %}>
-                                        <i class="fas fa-bed"></i> Accommodation
+                                            >
+                                        <i class="fas fa-bed"></i> {% if assignment and assignment.accommodation_booking_id %}Reassign{% else %}Accommodation{% endif %}
                                     </button>
+                                    {% if assignment and assignment.accommodation_booking_id %}
+                                    <button type="button" class="btn btn-outline-danger cancel-coordination-btn"
+                                            data-registration-ref="{{ reg.registration_ref }}" data-capability="accommodation">
+                                        <i class="fas fa-times"></i> Cancel
+                                    </button>
+                                    {% endif %}
                                     <button type="button"
                                             class="btn btn-outline-info assign-transport-btn"
                                             data-bs-toggle="modal"
                                             data-bs-target="#transportModal"
-                                            data-registration-id="{{ reg.id }}"
-                                            data-user-id="{{ reg.user_id }}"
+                                            data-registration-ref="{{ reg.registration_ref }}"
                                             data-name="{{ reg.full_name }}"
-                                            {% if assignment and assignment.transport_booking_id %}disabled{% endif %}>
-                                        <i class="fas fa-bus"></i> Transport
+                                            >
+                                        <i class="fas fa-bus"></i> {% if assignment and assignment.transport_booking_id %}Reassign{% else %}Transport{% endif %}
                                     </button>
+                                    {% if assignment and assignment.transport_booking_id %}
+                                    <button type="button" class="btn btn-outline-danger cancel-coordination-btn"
+                                            data-registration-ref="{{ reg.registration_ref }}" data-capability="transport">
+                                        <i class="fas fa-times"></i> Cancel
+                                    </button>
+                                    {% endif %}
                                 </div>
                             </td>
                         </tr>
@@ -180,7 +195,7 @@
                     {% for page_num in attendees.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
                         {% if page_num %}
                             <li class="page-item {% if page_num == attendees.page %}active{% endif %}">
-                                <a class="page-link" href="{{ url_for('event_assignment.list_attendees', event_id=event.id, page=page_num, search=search, filter=filter_type) }}">
+                                <a class="page-link" href="{{ url_for('events.event_assignment.list_attendees', event_ref=event.public_id, page=page_num, search=search, filter=filter_type) }}">
                                     {{ page_num }}
                                 </a>
                             </li>
@@ -228,13 +243,13 @@
                                value="{{ event.end_date.strftime('%Y-%m-%d') if event.end_date else '' }}">
                     </div>
                 </div>
-                <div id="accommodationLoading" class="text-center py-3" style="display:none;">
+                <div id="accommodationLoading" class="text-center py-3" hidden>
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
                     <p class="mt-2">Assigning accommodation...</p>
                 </div>
-                <div id="accommodationResult" class="alert" style="display:none;"></div>
+                <div id="accommodationResult" class="alert" hidden></div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -268,18 +283,21 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Available Drivers</label>
-                    <div id="availableDriversInfo" class="text-muted">
+                    <select class="form-select" id="transportBookingSelect" disabled>
+                        <option value="">Loading event transport bookings...</option>
+                    </select>
+                    <div id="availableDriversInfo" class="text-muted mt-2">
                         <div class="spinner-border spinner-border-sm" role="status"></div>
                         Checking availability...
                     </div>
                 </div>
-                <div id="transportLoading" class="text-center py-3" style="display:none;">
+                <div id="transportLoading" class="text-center py-3" hidden>
                     <div class="spinner-border text-info" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
                     <p class="mt-2">Assigning transport...</p>
                 </div>
-                <div id="transportResult" class="alert" style="display:none;"></div>
+                <div id="transportResult" class="alert" hidden></div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -293,7 +311,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">if (false) {
 // ============================================================================
 // ACCOMMODATION ASSIGNMENT
 // ============================================================================
@@ -304,7 +322,7 @@ let currentTransportRegId = null;
 // Open accommodation modal
 document.querySelectorAll('.assign-accommodation-btn').forEach(btn => {
     btn.addEventListener('click', function() {
-        currentAccommodationRegId = this.dataset.registrationId;
+        currentAccommodationRegId = this.dataset.registrationRef;
         document.getElementById('accommodationAttendeeName').value = this.dataset.name;
         document.getElementById('accommodationResult').style.display = 'none';
         document.getElementById('confirmAccommodationBtn').disabled = false;
@@ -319,15 +337,15 @@ async function loadAvailableProperties() {
     select.disabled = true;
 
     try {
-        const response = await fetch('{{ url_for("event_assignment.check_available_properties", event_id=event.id) }}');
+        const response = await fetch('{{ url_for("events.event_assignment.check_available_properties", event_ref=event.public_id) }}');
         const data = await response.json();
 
         if (data.success && data.properties.length > 0) {
             select.innerHTML = '<option value="">-- Select Property --</option>';
             data.properties.forEach(prop => {
                 const option = document.createElement('option');
-                option.value = prop.id;
-                option.textContent = `${prop.title} - $${prop.price_per_night}/night (${prop.bedrooms} bed, ${prop.max_guests} guests)`;
+                option.value = prop.booking_ref;
+                option.textContent = `${prop.title} - ${prop.remaining_capacity} guest place(s)`;
                 select.appendChild(option);
             });
             select.disabled = false;
@@ -364,17 +382,15 @@ document.getElementById('confirmAccommodationBtn').addEventListener('click', asy
     result.style.display = 'none';
 
     try {
-        const response = await fetch('{{ url_for("event_assignment.assign_accommodation", event_id=event.id) }}', {
+        const response = await fetch('{{ url_for("events.event_assignment.assign_accommodation", event_ref=event.public_id) }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': (document.querySelector('meta[name="csrf-token"]') || {}).content || ''
             },
             body: JSON.stringify({
-                attendee_id: currentAccommodationRegId,
-                property_id: parseInt(propertyId),
-                check_in: checkIn,
-                check_out: checkOut
+                registration_ref: currentAccommodationRegId,
+                booking_ref: propertyId
             })
         });
 
@@ -412,7 +428,7 @@ document.getElementById('confirmAccommodationBtn').addEventListener('click', asy
 // Open transport modal
 document.querySelectorAll('.assign-transport-btn').forEach(btn => {
     btn.addEventListener('click', function() {
-        currentTransportRegId = this.dataset.registrationId;
+        currentTransportRegId = this.dataset.registrationRef;
         document.getElementById('transportAttendeeName').value = this.dataset.name;
         document.getElementById('transportResult').style.display = 'none';
         document.getElementById('confirmTransportBtn').disabled = false;
@@ -425,7 +441,7 @@ async function checkDriverAvailability() {
     const info = document.getElementById('availableDriversInfo');
 
     try {
-        const response = await fetch('{{ url_for("event_assignment.check_available_drivers", event_id=event.id) }}');
+        const response = await fetch('{{ url_for("events.event_assignment.check_available_drivers", event_ref=event.public_id) }}');
         const data = await response.json();
 
         if (data.success) {
@@ -434,7 +450,7 @@ async function checkDriverAvailability() {
                 if (data.drivers && data.drivers.length > 0) {
                     html += '<ul class="mt-2 mb-0 small">';
                     data.drivers.forEach(d => {
-                        html += `<li>Driver #${d.id} - Rating: ${d.rating} - Vehicle: ${d.vehicle}</li>`;
+                        html += `<li>Driver ${d.driver_ref || 'assigned'} - Vehicle: ${d.vehicle}</li>`;
                     });
                     html += '</ul>';
                 }
@@ -469,15 +485,15 @@ document.getElementById('confirmTransportBtn').addEventListener('click', async f
     result.style.display = 'none';
 
     try {
-        const response = await fetch('{{ url_for("event_assignment.assign_transport", event_id=event.id) }}', {
+        const response = await fetch('{{ url_for("events.event_assignment.assign_transport", event_ref=event.public_id) }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': (document.querySelector('meta[name="csrf-token"]') || {}).content || ''
             },
             body: JSON.stringify({
-                attendee_id: currentTransportRegId,
-                pickup_time: pickupTime
+                registration_ref: currentTransportRegId,
+                booking_ref: document.getElementById('transportBookingSelect')?.value
             })
         });
 
@@ -508,5 +524,6 @@ document.getElementById('confirmTransportBtn').addEventListener('click', async f
         btn.disabled = false;
     }
 });
-</script>
+}</script>
+<script src="{{ url_for('static', filename='js/modules/events/guest-coordination.js') }}"></script>
 {% endblock %}

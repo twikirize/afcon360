@@ -90,6 +90,8 @@ class PropertyBookingPolicy(BaseModel):
     # Options: full_name, phone, email, id_document_type, id_document_number, date_of_birth, nationality
 
     # Age restrictions
+    available_request_options = Column(JSON, default=list, server_default="[]", nullable=False)
+    # Host-declared structured options; free text remains available to guests.
     minimum_age = Column(Integer, nullable=True)  # Minimum age to book
     maximum_age = Column(Integer, nullable=True)  # Maximum age (for senior-only properties)
 

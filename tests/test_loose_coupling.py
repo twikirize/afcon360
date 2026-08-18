@@ -10,7 +10,8 @@ import os
 # Add the app directory to the path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask
+from app import create_app
+from app.config import TestingConfig
 from app.events.services import EventService
 from app.events.models import Event
 from app.extensions import db
@@ -23,19 +24,9 @@ def test_events_module_independence():
     """
     print("Testing Events module independence...")
 
-    # Create a minimal Flask app for testing
-    app = Flask(__name__)
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['SECRET_KEY'] = 'test-key'
-
-    # Initialize extensions
-    db.init_app(app)
+    app = create_app(config_object=TestingConfig)
 
     with app.app_context():
-        # Create all tables
-        db.create_all()
-
         # Test 1: Check if Events module can be imported without Transport/Accommodation
         print("[OK] Events module imports successfully")
 

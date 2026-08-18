@@ -65,6 +65,10 @@ def _resolve_event_org_id(event) -> int | None:
 
 def _resolve_organiser_id(event) -> int | None:
     """Return the organiser user id from either a model instance or a dict."""
+    import logging
+    import warnings
+    warnings.warn('organizer_id fallback usage is DEPRECATED (Phase 4 Step 5)', DeprecationWarning, stacklevel=2)
+    logging.getLogger(__name__).warning('LEGACY PERMISSION FALLBACK: _resolve_organiser_id called. Phase 4 Deprecation.')
     if hasattr(event, 'organizer_id'):
         return event.organizer_id
     if hasattr(event, 'get'):
@@ -94,10 +98,28 @@ def _resolve_status(event) -> EventStatus | None:
 
 
 def _is_event_owner(user, event) -> bool:
-    """True if this user is the current owner OR organiser of the event."""
-    if _resolve_organiser_id(event) == user.id:
-        return True
+    """Return whether ``user`` is the canonical owner of ``event``.
+
+    ``organizer_id`` is consulted only for records that do not expose an
+    explicit current owner.  This preserves legacy-record compatibility
+    without allowing a stale organizer value to override a transfer.
+    """
     if hasattr(event, 'is_owned_by_user') and event.is_owned_by_user(user.id):
+        return True
+
+    if hasattr(event, 'current_owner_type'):
+        owner_type = event.current_owner_type
+        owner_id = event.current_owner_id
+    elif hasattr(event, 'get'):
+        owner_type = event.get('current_owner_type')
+        owner_id = event.get('current_owner_id')
+    else:
+        owner_type = owner_id = None
+
+    if owner_type is not None or owner_id is not None:
+        return False
+
+    if _resolve_organiser_id(event) == user.id:
         return True
     return False
 
@@ -186,28 +208,54 @@ def resolve_user_roles(user, event) -> set[str]:
     if not user or not user.is_authenticated:
         return roles
 
+    active_context = None
+    try:
+        from flask import has_request_context
+        if has_request_context():
+            from app.auth.context import get_active_context
+            active_context = get_active_context(user)
+    except ImportError:
+        pass
+
+    ctx_type = active_context.type.value if active_context else None
+    ctx_id = active_context.id if active_context else None
+
     # Platform roles (order matters - most powerful first)
-    if has_global_role(user, 'owner'):
-        roles.add('owner')
-    if has_global_role(user, 'super_admin'):
-        roles.add('super_admin')
-    if has_global_role(user, 'admin'):
-        roles.add('admin')
-    if has_global_role(user, 'event_manager'):
-        roles.add('event_manager')
+    if ctx_type is None or ctx_type == "platform":
+        if has_global_role(user, 'owner'):
+            roles.add('owner')
+        if has_global_role(user, 'super_admin'):
+            roles.add('super_admin')
+        if has_global_role(user, 'admin'):
+            roles.add('admin')
+        if has_global_role(user, 'event_manager'):
+            roles.add('event_manager')
 
     if event:
         # Organiser of this specific event
-        if _is_event_owner(user, event):
-            roles.add('organiser')
+        if ctx_type is None or ctx_type == "personal":
+            if _is_event_owner(user, event):
+                roles.add('organiser')
 
         # Org-level roles for the event's owning organisation
         org_id = _resolve_event_org_id(event)
         if org_id:
-            if has_org_role(user, org_id, 'org_owner'):
-                roles.add('org_owner')
-            if has_org_role(user, org_id, 'org_admin'):
-                roles.add('org_admin')
+            allow_org = True
+            if ctx_type == "organisation":
+                from app.identity.models.organisation import Organisation
+                org = Organisation.query.get(org_id)
+                if not org or org.org_id != ctx_id:
+                    allow_org = False
+            elif ctx_type is not None:
+                # Strict Context Boundary: If acting personally or on another platform,
+                # you do not implicitly get your org permissions here.
+                allow_org = False
+            
+            if allow_org:
+                if has_org_role(user, org_id, 'org_owner'):
+                    roles.add('org_owner')
+                if has_org_role(user, org_id, 'org_admin'):
+                    roles.add('org_admin')
 
         # Event-level staff roles
         event_id = getattr(event, 'id', None) or (
@@ -221,7 +269,17 @@ def resolve_user_roles(user, event) -> set[str]:
                 is_active=True,
             ).first()
             if staff:
-                roles.add(staff.role)   # e.g. 'co_organizer', 'steward'
+                allow_staff = True
+                if staff.organisation_id:
+                    if ctx_type == "organisation":
+                        from app.identity.models.organisation import Organisation
+                        org = Organisation.query.get(staff.organisation_id)
+                        if not org or org.org_id != ctx_id:
+                            allow_staff = False
+                    else:
+                        allow_staff = False
+                if allow_staff:
+                    roles.add(staff.role)   # e.g. 'co_organizer', 'steward'
 
     return roles
 
@@ -246,6 +304,32 @@ def can_manage_event(user, event) -> Tuple[bool, str]:
         if _is_org_member_of_event(user, event, 'org_owner', 'org_admin'):
             return True, ''
     return False, 'Not authorized to manage this event'
+
+
+def can_view_coordination(user, event) -> Tuple[bool, str]:
+    """View confirmed attendees and live coordination state."""
+    if not user or not user.is_authenticated:
+        return False, 'Not authenticated'
+    if is_event_manager(user) or is_system_admin(user):
+        return True, ''
+    if event and (_is_event_owner(user, event) or
+                  _is_org_member_of_event(user, event, 'org_owner', 'org_admin')):
+        return True, ''
+    if event and 'co_organizer' in resolve_user_roles(user, event):
+        return True, ''
+    return False, 'Not authorized to view event coordination'
+
+
+def can_assign_accommodation(user, event) -> Tuple[bool, str]:
+    return can_view_coordination(user, event)
+
+
+def can_assign_transport(user, event) -> Tuple[bool, str]:
+    return can_view_coordination(user, event)
+
+
+def can_cancel_assignment(user, event) -> Tuple[bool, str]:
+    return can_view_coordination(user, event)
 
 
 def can_approve_event(user, event) -> Tuple[bool, str]:

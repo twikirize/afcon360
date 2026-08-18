@@ -236,10 +236,10 @@
             </div>
             <div class="col-md-4 text-md-end">
                 <div class="d-flex gap-2 justify-content-md-end mt-3 mt-md-0">
-                    <button class="btn btn-light quick-action-btn" onclick="window.location.href='{{ url_for('org.settings', org_id=org.id) }}'">
+                    <button class="btn btn-light quick-action-btn" onclick="window.location.href='{{ url_for('org.settings', org_id=org.org_id) }}'">
                         <i class="bi bi-gear me-2"></i> Settings
                     </button>
-                    <button class="btn btn-light quick-action-btn" onclick="window.location.href='{{ url_for('org.members', org_id=org.id) }}'">
+                    <button class="btn btn-light quick-action-btn" onclick="window.location.href='{{ url_for('org.members', org_id=org.org_id) }}'">
                         <i class="bi bi-people me-2"></i> Members
                     </button>
                 </div>
@@ -307,6 +307,46 @@
         </div>
     </div>
 
+    <section class="card border-0 shadow-sm mb-4" aria-labelledby="workspace-context-heading">
+        <div class="card-body">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                <div>
+                    <p class="text-uppercase small text-muted mb-1">Organisation context</p>
+                    <h2 id="workspace-context-heading" class="h4 mb-2">Operating as {{ org.legal_name }}</h2>
+                    <p class="mb-0 text-muted">
+                        <strong>Role / authority:</strong> {{ organisation_role_label }}
+                    </p>
+                </div>
+                <span class="badge text-bg-light border">One user · one identity</span>
+            </div>
+            <div class="row g-3 mt-2" aria-label="Organisation workspace areas">
+                <div class="col-12 col-md-6">
+                    <div class="border rounded-3 h-100 p-3">
+                        <h3 class="h6 mb-2"><i class="bi bi-gear-wide-connected me-2"></i>Operations</h3>
+                        <p class="small text-muted mb-3">Work on resources owned by this organisation.</p>
+                        <div class="d-flex flex-wrap gap-2">
+                            {% if stats.can_create_events and 'events' in accessible_modules %}
+                            <a class="btn btn-sm btn-outline-success" href="{{ url_for('org.events', org_id=org.org_id) }}">Events</a>
+                            {% endif %}
+                            {% if stats.can_manage_accommodation and 'accommodation' in accessible_modules %}
+                            <a class="btn btn-sm btn-outline-info" href="{{ url_for('org.accommodation', org_id=org.org_id) }}">Properties</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% if stats.can_manage_accommodation and 'accommodation' in accessible_modules %}
+                <div class="col-12 col-md-6">
+                    <div class="border rounded-3 h-100 p-3">
+                        <h3 class="h6 mb-2"><i class="bi bi-calendar-check me-2"></i>Bookings</h3>
+                        <p class="small text-muted mb-3">Review bookings for this organisation’s properties.</p>
+                        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('org.bookings', org_id=org.org_id) }}">View bookings</a>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
     <!-- Module Access Grid -->
     <div class="row mb-4">
         <div class="col-12">
@@ -328,7 +368,7 @@
                     </div>
                     <h5 class="card-title mb-2">Staff Management</h5>
                     <p class="card-text text-muted small mb-3">Manage team members, roles, and permissions</p>
-                    <button class="btn btn-primary btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.members', org_id=org.id) }}'">
+                    <button class="btn btn-primary btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.members', org_id=org.org_id) }}'">
                         Manage Staff
                     </button>
                 </div>
@@ -346,7 +386,7 @@
                     </div>
                     <h5 class="card-title mb-2">Events</h5>
                     <p class="card-text text-muted small mb-3">Create and manage events, conferences, and meetings</p>
-                    <button class="btn btn-success btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.events', org_id=org.id) }}'">
+                    <button class="btn btn-success btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.events', org_id=org.org_id) }}'">
                         Manage Events
                     </button>
                 </div>
@@ -364,7 +404,7 @@
                     </div>
                     <h5 class="card-title mb-2">Accommodation</h5>
                     <p class="card-text text-muted small mb-3">Manage properties, rooms, and bookings</p>
-                    <button class="btn btn-info btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.accommodation', org_id=org.id) }}'">
+                    <button class="btn btn-info btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.accommodation', org_id=org.org_id) }}'">
                         Manage Properties
                     </button>
                 </div>
@@ -382,7 +422,7 @@
                     </div>
                     <h5 class="card-title mb-2">Transport</h5>
                     <p class="card-text text-muted small mb-3">Manage fleet, scheduling, and logistics</p>
-                    <button class="btn btn-warning btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.transport', org_id=org.id) }}'">
+                    <button class="btn btn-warning btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.transport', org_id=org.org_id) }}'">
                         Manage Fleet
                     </button>
                 </div>
@@ -400,7 +440,7 @@
                     </div>
                     <h5 class="card-title mb-2">Tourism</h5>
                     <p class="card-text text-muted small mb-3">Manage tours, packages, and attractions</p>
-                    <button class="btn btn-secondary btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.tourism', org_id=org.id) }}'">
+                    <button class="btn btn-secondary btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.tourism', org_id=org.org_id) }}'">
                         Manage Tours
                     </button>
                 </div>
@@ -418,7 +458,7 @@
                     </div>
                     <h5 class="card-title mb-2">Wallet</h5>
                     <p class="card-text text-muted small mb-3">Manage finances, payments, and transactions</p>
-                    <button class="btn btn-dark btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.wallet', org_id=org.id) }}'">
+                    <button class="btn btn-dark btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.wallet', org_id=org.org_id) }}'">
                         Manage Wallet
                     </button>
                 </div>
@@ -436,7 +476,7 @@
                     </div>
                     <h5 class="card-title mb-2">Reports</h5>
                     <p class="card-text text-muted small mb-3">View analytics, insights, and performance metrics</p>
-                    <button class="btn btn-success btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.reports', org_id=org.id) }}'">
+                    <button class="btn btn-success btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.reports', org_id=org.org_id) }}'">
                         View Reports
                     </button>
                 </div>
@@ -454,7 +494,7 @@
                     </div>
                     <h5 class="card-title mb-2">Settings</h5>
                     <p class="card-text text-muted small mb-3">Configure organization preferences and policies</p>
-                    <button class="btn btn-primary btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.settings', org_id=org.id) }}'">
+                    <button class="btn btn-primary btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.settings', org_id=org.org_id) }}'">
                         Manage Settings
                     </button>
                 </div>
@@ -681,31 +721,31 @@ function openQuickActions() {
 }
 
 function createNewEvent() {
-    window.location.href = '{{ url_for("org.events", org_id=org.id) }}';
+    window.location.href = '{{ url_for("org.events", org_id=org.org_id) }}';
 }
 
 function inviteNewMember() {
-    window.location.href = '{{ url_for("org.members", org_id=org.id) }}';
+    window.location.href = '{{ url_for("org.members", org_id=org.org_id) }}';
 }
 
 function viewTransactions() {
-    window.location.href = '{{ url_for("org.wallet", org_id=org.id) }}';
+    window.location.href = '{{ url_for("org.wallet", org_id=org.org_id) }}';
 }
 
 function downloadReport() {
-    window.location.href = '{{ url_for("org.reports", org_id=org.id) }}';
+    window.location.href = '{{ url_for("org.reports", org_id=org.org_id) }}';
 }
 
 function uploadDocuments() {
-    window.location.href = '{{ url_for("org.settings", org_id=org.id) }}';
+    window.location.href = '{{ url_for("org.settings", org_id=org.org_id) }}';
 }
 
 function addFunds() {
-    window.location.href = '{{ url_for("org.wallet", org_id=org.id) }}';
+    window.location.href = '{{ url_for("org.wallet", org_id=org.org_id) }}';
 }
 
 function generateReport() {
-    window.location.href = '{{ url_for("org.reports", org_id=org.id) }}';
+    window.location.href = '{{ url_for("org.reports", org_id=org.org_id) }}';
 }
 
 // Add smooth scrolling and animations

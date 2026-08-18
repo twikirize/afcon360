@@ -265,7 +265,7 @@ class WalletStatusService:
                  "feature": WalletFeature.SEND_MONEY},
                 {"name": "Withdraw Funds", "url": "wallet.withdraw", "icon": "fa-arrow-up",
                  "feature": WalletFeature.WITHDRAW_MONEY},
-                {"name": "Transaction History", "url": "wallet.wallet_transactions", "icon": "fa-list",
+                {"name": "Transaction History", "url": "wallet.transactions", "icon": "fa-list",
                  "feature": WalletFeature.VIEW_TRANSACTIONS},
                 {"name": "FX Rates", "url": "wallet.fx_rates", "icon": "fa-exchange-alt",
                  "feature": WalletFeature.VIEW_FX_RATES},

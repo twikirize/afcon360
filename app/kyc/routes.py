@@ -162,8 +162,13 @@ def index():
                            kyc_info=kyc_info,
                            records=records,
                            tier_requirements=TIER_INFO,
+                           next_tier_requirements=kyc_info.get("next_tier_requirements_labels", []),
+                           next_tier_name=kyc_info.get("next_tier_name"),
+                           missing_requirements=kyc_info.get("missing_requirements_labels", []),
+                           fulfillment_percentage=kyc_info.get("fulfillment_percentage", 0),
                            kyc_stage=state["stage"],
                            overall_status=state["status"],
+                           verification_message=state["message"],
                            in_org_context=in_org_context,
                            show_individual=show_individual,
                            show_organization=show_organization)

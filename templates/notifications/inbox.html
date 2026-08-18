@@ -52,10 +52,9 @@
       {% for day_label, items in grouped %}
         <div class="afc-inbox__day">{{ day_label }}</div>
         {% for n in items %}
-          <a class="afc-row{% if not n.is_read %} is-unread{% endif %}"
+          <div class="afc-row{% if not n.is_read %} is-unread{% endif %}"
              id="notif-{{ n.id }}"
              {% if focus_id and n.id == focus_id %}data-focus="1"{% endif %}
-             href="{{ n.link if n.link else url_for('communication_pages.notification_detail', notification_id=n.public_id if n.public_id is defined else n.id) }}"
              data-module="{{ n.module }}">
             <span class="afc-row__mod" style="--mod:{{ n.module_color }}">
               <i class="bi {{ n.module_icon }}"></i>
@@ -71,7 +70,13 @@
                 <span class="afc-row__time">{{ n.created_at.strftime('%I:%M %p') if n.created_at else '' }}</span>
               </span>
             </span>
-          </a>
+            <span class="afc-row__actions" aria-label="Notification actions">
+              <a class="afc-action" href="{{ n.link if n.link else url_for('communication_pages.notification_detail', notification_id=n.public_id if n.public_id is defined else n.id) }}" aria-label="Open notification"><i class="bi bi-box-arrow-up-right"></i></a>
+              <button class="afc-action js-notification-read" data-id="{{ n.id }}" data-read="{{ 'false' if n.is_read else 'true' }}" aria-label="{{ 'Mark unread' if n.is_read else 'Mark read' }}"><i class="bi bi-{{ 'envelope' if n.is_read else 'envelope-open' }}"></i></button>
+              <button class="afc-action js-notification-important{% if n.is_important %} is-important{% endif %}" data-id="{{ n.id }}" data-important="{{ 'false' if n.is_important else 'true' }}" aria-label="{{ 'Remove important' if n.is_important else 'Mark important' }}"><i class="bi bi-star{{ '-fill' if n.is_important else '' }}"></i></button>
+              <button class="afc-action js-notification-delete" data-id="{{ n.id }}" aria-label="Delete notification"><i class="bi bi-trash"></i></button>
+            </span>
+          </div>
         {% endfor %}
       {% endfor %}
     {% endif %}
@@ -111,5 +116,32 @@
   border-radius:4px;font-weight:700;color:var(--mod);
   background:color-mix(in srgb,var(--mod) 18%,transparent)}
 .afc-row__time{font-size:.7rem;opacity:.5}
+.afc-row__actions{display:flex;align-items:center;gap:4px;margin-left:auto;flex:0 0 auto}
+.afc-action{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;border:0;background:transparent;color:inherit;border-radius:8px;cursor:pointer;text-decoration:none}
+.afc-action:hover{background:rgba(255,255,255,.1)}
+.afc-action.is-important{color:#d4af37}
+@media (max-width:600px){.afc-row{align-items:flex-start}.afc-row__actions{flex-wrap:wrap;max-width:96px}.afc-action{min-width:44px}}
 </style>
+<script{% if csp_nonce %} nonce="{{ csp_nonce }}"{% endif %}>
+document.addEventListener('click', async function (event) {
+  const button = event.target.closest('.js-notification-read, .js-notification-important, .js-notification-delete');
+  if (!button) return;
+  event.preventDefault();
+  const id = button.dataset.id;
+  let url = '/api/notifications/' + id;
+  let options = {method: 'POST', headers: {'Content-Type': 'application/json'}};
+  if (button.classList.contains('js-notification-read')) {
+    url += button.dataset.read === 'true' ? '/read' : '/unread';
+  } else if (button.classList.contains('js-notification-important')) {
+    url += '/important';
+    options.body = JSON.stringify({is_important: button.dataset.important === 'true'});
+  } else {
+    options.method = 'DELETE';
+  }
+  const csrf = document.querySelector('meta[name="csrf-token"]');
+  if (csrf) options.headers['X-CSRFToken'] = csrf.content;
+  const response = await fetch(url, options);
+  if (response.ok) window.location.reload();
+});
+</script>
 {% endblock %}

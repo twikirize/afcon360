@@ -6,9 +6,11 @@ including their driver rosters, fleet stats, and verification status.
 """
 from flask import request
 from flask_restful import Resource
+from sqlalchemy import update
 from app.extensions import db
 from app.transport.models import (
-    OrganisationTransportProfile, DriverProfile, Vehicle, ComplianceStatus
+    OrganisationTransportProfile, DriverProfile, Vehicle, ComplianceStatus,
+    organisation_drivers,
 )
 from app.auth.decorators import admin_required
 from app.transport.utils.helpers import paginate, filter_query, sort_query
@@ -295,17 +297,14 @@ class OrganisationDriversResource(Resource):
             }, 409
 
         try:
-            # Insert directly into the association table
-            db.engine.execute(
-                "INSERT INTO organisation_drivers "
-                "(organisation_id, driver_id, role, is_active, joined_at) "
-                "VALUES (:org_id, :driver_id, :role, true, :now)",
-                {
-                    "org_id": org.id,
-                    "driver_id": driver_id,
-                    "role": data.get("role", "driver"),
-                    "now": datetime.now(timezone.utc),
-                }
+            db.session.execute(
+                organisation_drivers.insert().values(
+                    organisation_id=org.id,
+                    driver_id=driver.id,
+                    role=data.get("role", "driver"),
+                    is_active=True,
+                    joined_at=datetime.now(timezone.utc),
+                )
             )
             db.session.commit()
             logger.info(f"Driver {driver_id} added to organisation {org_id}")
@@ -329,14 +328,14 @@ class OrganisationDriversResource(Resource):
             return {"success": False, "error": "driver_id required in request body"}, 400
 
         try:
-            db.engine.execute(
-                "UPDATE organisation_drivers SET is_active = false, left_at = :now "
-                "WHERE organisation_id = :org_id AND driver_id = :driver_id",
-                {
-                    "org_id": org.id,
-                    "driver_id": driver_id,
-                    "now": datetime.now(timezone.utc),
-                }
+            db.session.execute(
+                update(organisation_drivers)
+                .where(
+                    organisation_drivers.c.organisation_id == org.id,
+                    organisation_drivers.c.driver_id == driver_id,
+                    organisation_drivers.c.is_active.is_(True),
+                )
+                .values(is_active=False, left_at=datetime.now(timezone.utc))
             )
             db.session.commit()
             logger.info(f"Driver {driver_id} removed from organisation {org_id}")

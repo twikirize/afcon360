@@ -104,6 +104,10 @@ def make_celery(app=None):
             "task": "accommodation.expire_unapproved_bookings",
             "schedule": 3600.0,  # every 1 hour
         },
+        "accommodation-detect-no-shows": {
+            "task": "accommodation.detect_no_shows",
+            "schedule": 3600.0,  # every 1 hour
+        },
         "notifications-schedule-reminders": {
             "task": "notifications.schedule_reminders",
             "schedule": 60.0,  # every 60 seconds

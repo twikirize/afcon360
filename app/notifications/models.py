@@ -29,6 +29,9 @@ class NotificationType(str, enum.Enum):
     BOOKING_THIRD_PARTY = "third_party_booking"
     BOOKING_CANCELLED = "booking_cancelled"
     REVIEW_RECEIVED = "review_received"
+    ACCOMMODATION_COMPLAINT_OPENED = "accommodation_complaint_opened"
+    BOOKING_EXPIRED = "booking_expired"
+    BOOKING_NO_SHOW = "booking_no_show"
 
     # Auth
     VERIFICATION_EMAIL = "verification_email"
@@ -195,7 +198,9 @@ class Notification(BaseModel):
             "type IN ("
             "'property_submitted','property_approved','property_rejected',"
             "'property_changes_requested','property_suspended','property_reinstated',"
-            "'property_archived','property_restored','booking_confirmed','booking_cancelled',"
+            "'property_archived','property_restored','booking_confirmed','booking_pending',"
+            "'third_party_booking','booking_cancelled','accommodation_complaint_opened',"
+            "'booking_expired','booking_no_show',"
             "'review_received','verification_email','password_reset','login_alert',"
             "'booking_update','driver_assigned','event_registered','event_reminder',"
             "'deposit_confirmed','withdrawal_completed','transaction_completed','payment_received',"
@@ -232,11 +237,13 @@ class Notification(BaseModel):
     parent_id = Column(BigInteger, db.ForeignKey('notifications.id'), nullable=True)
     is_read = Column(Boolean, default=False)
     read_at = Column(DateTime, nullable=True)
+    is_important = Column(Boolean, default=False, nullable=False, index=True, server_default='false')
     error_message = Column(Text, nullable=True)
     link = Column(String(512), nullable=True)  # Deep link for in-app navigation
     # Dead-letter tracking
     dead_letter = Column(Boolean, default=False)
     last_attempt_at = Column(DateTime, nullable=True)
+
 
     # Relationships
     user = relationship('User', foreign_keys=[user_id], lazy='noload')
@@ -247,6 +254,12 @@ class Notification(BaseModel):
         self.is_read = True
         self.read_at = datetime.now(timezone.utc)
         self.status = NotificationStatus.READ
+
+    def mark_unread(self):
+        self.is_read = False
+        self.read_at = None
+        if self.status == NotificationStatus.READ:
+            self.status = NotificationStatus.DELIVERED
 
     def mark_sent(self):
         self.status = NotificationStatus.SENT

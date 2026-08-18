@@ -121,10 +121,20 @@ class EventMetricsService:
 
     @staticmethod
     def get_organizer_metrics(organizer_id: int, days: int = 30) -> Dict:
-        """Get metrics for all events organized by a user"""
+        """Get metrics for all events operated or owned by a user"""
         try:
-            # Get all events by this organizer
-            events = Event.query.filter_by(organizer_id=organizer_id).all()
+            from sqlalchemy import or_, and_
+            from app.events.models import EventRole
+            
+            # Get all events where user is owner or has an EventRole
+            events = Event.query.outerjoin(
+                EventRole, Event.id == EventRole.event_id
+            ).filter(
+                or_(
+                    and_(Event.current_owner_type == 'individual', Event.current_owner_id == organizer_id),
+                    EventRole.user_id == organizer_id
+                )
+            ).all()
             event_ids = [event.id for event in events]
 
             if not event_ids:
@@ -163,7 +173,7 @@ class EventMetricsService:
                     "event_id": event.id,
                     "event_name": event.name,
                     "slug": event.slug,
-                    "status": event.status.value if event.status else None,
+                    "status": event.status.value if hasattr(event.status, 'value') else event.status,
                     "registrations": reg_count,
                     "revenue": float(revenue),
                     "start_date": event.start_date.isoformat() if event.start_date else None

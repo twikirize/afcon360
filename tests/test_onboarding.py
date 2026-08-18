@@ -4,6 +4,7 @@ Run with: pytest tests/test_onboarding.py -v
 """
 import pytest
 from app import create_app
+from app.config import TestingConfig
 from app.extensions import db
 from app.identity.models.user import User, UserRole
 from app.identity.models.roles_permission import Role
@@ -12,7 +13,7 @@ from app.profile.models import UserProfile, get_profile_by_user
 
 @pytest.fixture
 def app():
-    app = create_app()
+    app = create_app(config_object=TestingConfig)
     app.config["TESTING"] = True
     app.config["WTF_CSRF_ENABLED"] = False
     with app.app_context():

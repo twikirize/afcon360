@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 from flask import request, g
 from flask_login import current_user
-from sqlalchemy import text
+from sqlalchemy import literal, select
 
 from app.extensions import db
 from app.admin.owner.models import OwnerAuditLog
@@ -121,8 +121,7 @@ def get_system_health() -> dict:
     try:
         start = time.time()
         with db.engine.connect() as conn:
-            conn.execute(text('SELECT 1'))
-            conn.commit()  # Explicit commit for raw connection
+            conn.execute(select(literal(1)))
         latency = round((time.time() - start) * 1000, 2)
 
         health['database'] = {

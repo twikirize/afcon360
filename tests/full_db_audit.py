@@ -1,9 +1,11 @@
 # full_db_study.py
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import MetaData, create_engine, func, inspect, select
 import os
 
-# Use your actual MySQL connection string
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///dev.db")
+# Use the dedicated PostgreSQL test connection.
+DATABASE_URL = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("Set TEST_DATABASE_URL to a PostgreSQL database before running this audit")
 
 engine = create_engine(DATABASE_URL)
 insp = inspect(engine)
@@ -47,9 +49,13 @@ def study_database():
             print("Indexes: None")
 
         # Row count
+        table_object = MetaData().tables.get(table)
+        if table_object is None:
+            metadata = MetaData()
+            metadata.reflect(bind=engine, only=[table])
+            table_object = metadata.tables[table]
         with engine.connect() as conn:
-            result = conn.execute(text(f"SELECT COUNT(*) FROM {table}"))
-            count = result.scalar()
+            count = conn.scalar(select(func.count()).select_from(table_object))
             print(f"Row count: {count}")
 
         print("\n")

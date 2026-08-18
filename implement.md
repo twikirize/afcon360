@@ -1,1207 +1,1386 @@
-﻿Now let's move to Phase 3: Community Host Registration.
+﻿AFCON360 — Event Host Guest Allocation, Accommodation & Transport Integration
+Role
 
-Phase 3: Community Host Registration - Complete Implementation
-What This Phase Does
-Community hosts can:
+You are the implementation agent working directly inside the existing AFCON360 Flask application in PyCharm.
 
-Register to offer accommodation for a specific event (free or paid)
+Do not build this as a standalone feature or a parallel subsystem.
 
-Event organizer approves/rejects applications
+Your job is to inspect the existing AFCON360 architecture, understand the current Events, Accommodation, Transport, Identity/Auth, Booking, and Notification implementations, and then implement a complete cross-module workflow that connects them through the existing domain models and ownership rules.
 
-Approved hosts appear in the organizer's inventory for assignment
+The target outcome is:
 
-File 1: app/events/routes_community_hosts.py (NEW)
-python
-# app/events/routes_community_hosts.py
-"""
-Community Host Registration Routes
-- Hosts can register to offer accommodation for events
-- Organizers can approve/reject applications
-"""
+An authorized Event Owner/Host can view the attendees registered for an event and coordinate their accommodation and transport using the existing AFCON360 accommodation inventory/bookings and transport providers/drivers.
 
-from flask import render_template, request, jsonify, flash, redirect, url_for
-from flask_login import login_required, current_user
-from app.events import events_bp
-from app.events.services import EventService
-from app.events.models import Event
-from app.accommodation.models.property import Property, AccommodationPropertyType, AccommodationPropertyStatus
-from app.extensions import db
-from app.auth.decorators import require_role
-import logging
+The feature must be implemented end-to-end:
 
-logger = logging.getLogger(__name__)
+database → models → services → routes → authorization → validation → templates → static assets → notifications → tests → migrations
 
+Do not stop at adding UI fields or database tables.
 
-@events_bp.route("/<slug>/community-hosts/register", methods=['GET', 'POST'])
-@login_required
-def community_host_register(slug):
-    """
-    Community host registration page.
-    Hosts offer free or paid accommodation for an event.
-    """
-    event = EventService.get_event_model(slug)
-    if not event:
-        flash('Event not found', 'danger')
-        return redirect(url_for('events.list'))
-    
-    # Check if user is already a community host for this event
-    existing_host = Property.query.filter(
-        Property.owner_user_id == current_user.id,
-        Property.property_type == AccommodationPropertyType.COMMUNITY_HOST,
-        Property.event_metadata['event_id'].astext == str(event.id)
-    ).first()
-    
-    if existing_host:
-        flash('You have already registered as a community host for this event.', 'info')
-        return redirect(url_for('events.landing', identifier=slug))
-    
-    if request.method == 'GET':
-        return render_template('events/community_host/register.html', event=event)
-    
-    # POST: Handle registration
-    try:
-        data = request.form
-        
-        # Validate required fields
-        required = ['title', 'address_line1', 'city', 'max_guests']
-        for field in required:
-            if not data.get(field):
-                flash(f'Missing required field: {field}', 'danger')
-                return redirect(url_for('events.community_host_register', slug=slug))
-        
-        # Create property as COMMUNITY_HOST
-        from slugify import slugify
-        base_slug = slugify(data['title'])
-        unique_slug = base_slug
-        counter = 1
-        while Property.query.filter_by(slug=unique_slug).first():
-            unique_slug = f"{base_slug}-{counter}"
-            counter += 1
-        
-        is_free = data.get('is_free') == 'on' or data.get('price_per_night') == '0'
-        price = 0 if is_free else float(data.get('price_per_night', 0))
-        
-        property = Property(
-            owner_user_id=current_user.id,
-            owner_org_id=None,
-            title=data['title'],
-            slug=unique_slug,
-            description=data.get('description', ''),
-            summary=data.get('summary', '')[:500],
-            property_type=AccommodationPropertyType.COMMUNITY_HOST,
-            address_line1=data['address_line1'],
-            address_line2=data.get('address_line2'),
-            city=data['city'],
-            state=data.get('state'),
-            country=data.get('country', 'UG'),
-            postal_code=data.get('postal_code'),
-            latitude=data.get('latitude', type=float) if data.get('latitude') else None,
-            longitude=data.get('longitude', type=float) if data.get('longitude') else None,
-            max_guests=int(data['max_guests']),
-            bedrooms=int(data.get('bedrooms', 1)),
-            beds=int(data.get('beds', 1)),
-            bathrooms=float(data.get('bathrooms', 1)),
-            base_price_per_night=price,
-            currency=data.get('currency', 'USD'),
-            min_stay_nights=int(data.get('min_stay_nights', 1)),
-            max_stay_nights=int(data.get('max_stay_nights')) if data.get('max_stay_nights') else None,
-            check_in_time=data.get('check_in_time', '14:00'),
-            check_out_time=data.get('check_out_time', '11:00'),
-            house_rules=data.get('house_rules'),
-            main_image=data.get('main_image'),
-            gallery=data.get('gallery_urls', '').split('\n') if data.get('gallery_urls') else [],
-            is_active=False,  # Needs organizer approval
-            is_verified=False,
-            status=AccommodationPropertyStatus.PENDING_REVIEW,
-            event_metadata={
-                'event_id': event.id,
-                'event_slug': event.slug,
-                'event_name': event.name,
-                'registration_status': 'pending',  # pending, approved, rejected
-                'registered_at': db.func.now(),
-                'is_free': is_free
-            }
-        )
-        
-        db.session.add(property)
-        db.session.commit()
-        
-        flash('Your community host registration has been submitted. The event organizer will review and approve it.', 'success')
-        return redirect(url_for('events.landing', identifier=slug))
-        
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Community host registration error: {e}")
-        flash(f'Registration failed: {str(e)}', 'danger')
-        return redirect(url_for('events.community_host_register', slug=slug))
+1. Core Business Scenario
 
+AFCON360 allows an authorized person to create/manage an event as an:
 
-@events_bp.route("/<slug>/community-hosts")
-@login_required
-def community_hosts_list(slug):
-    """
-    Organizer view: List all community host applications for an event.
-    """
-    event = EventService.get_event_model(slug)
-    if not event:
-        flash('Event not found', 'danger')
-        return redirect(url_for('events.my_events'))
-    
-    # Check permission: organizer or admin
-    if event.organizer_id != current_user.id and not current_user.has_global_role('admin'):
-        flash('You do not have permission to manage community hosts', 'danger')
-        return redirect(url_for('events.landing', identifier=slug))
-    
-    return render_template('events/organizer/community_hosts.html', event=event)
+Event Owner
+Event Host / authorized event representative
 
+The event can receive a list of registered attendees.
 
-@events_bp.route("/api/<slug>/community-hosts")
-@login_required
-def api_community_hosts_list(slug):
-    """
-    API: Get all community host applications for an event.
-    """
-    event = EventService.get_event_model(slug)
-    if not event or (event.organizer_id != current_user.id and not current_user.has_global_role('admin')):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    
-    # Find all community hosts with event_metadata for this event
-    # Using JSON query for PostgreSQL
-    from sqlalchemy import cast, String
-    from sqlalchemy.sql import text
-    
-    hosts = Property.query.filter(
-        Property.property_type == AccommodationPropertyType.COMMUNITY_HOST,
-        Property.event_metadata['event_id'].astext == str(event.id)
-    ).order_by(Property.created_at.desc()).all()
-    
-    hosts_data = []
-    for host in hosts:
-        metadata = host.event_metadata or {}
-        hosts_data.append({
-            'id': host.id,
-            'title': host.title,
-            'description': host.description[:200] if host.description else '',
-            'address': host.address_line1,
-            'city': host.city,
-            'max_guests': host.max_guests,
-            'price_per_night': float(host.base_price_per_night) if host.base_price_per_night else 0,
-            'is_free': host.base_price_per_night == 0,
-            'host_name': host.owner_display_name,
-            'host_email': host.owner_user.email if host.owner_user else None,
-            'host_phone': host.owner_user.phone if host.owner_user else None,
-            'main_image': host.main_image,
-            'status': metadata.get('registration_status', 'pending'),
-            'registered_at': metadata.get('registered_at'),
-            'approved_at': metadata.get('approved_at'),
-            'rejected_at': metadata.get('rejected_at'),
-            'rejection_reason': metadata.get('rejection_reason'),
-            'created_at': host.created_at.isoformat() if host.created_at else None
-        })
-    
-    return jsonify({'success': True, 'hosts': hosts_data})
+Example:
 
+An event has 100 registered attendees.
 
-@events_bp.route("/api/<slug>/community-hosts/<int:host_id>/approve", methods=['POST'])
-@login_required
-def api_community_host_approve(slug, host_id):
-    """
-    Organizer approves a community host application.
-    """
-    event = EventService.get_event_model(slug)
-    if not event or (event.organizer_id != current_user.id and not current_user.has_global_role('admin')):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    
-    host = Property.query.get_or_404(host_id)
-    
-    # Verify this host belongs to this event
-    metadata = host.event_metadata or {}
-    if metadata.get('event_id') != event.id:
-        return jsonify({'success': False, 'error': 'Host not registered for this event'}), 400
-    
-    try:
-        # Update host status
-        host.status = AccommodationPropertyStatus.ACTIVE
-        host.is_active = True
-        host.is_verified = True
-        
-        # Update metadata
-        metadata['registration_status'] = 'approved'
-        metadata['approved_at'] = db.func.now()
-        metadata['approved_by'] = current_user.id
-        host.event_metadata = metadata
-        
-        db.session.commit()
-        
-        # TODO: Send email notification to host
-        
-        logger.info(f"Community host {host.id} approved for event {event.slug} by user {current_user.id}")
-        
-        return jsonify({'success': True, 'message': 'Host approved successfully'})
-        
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Error approving host: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+The event host must be able to:
 
+Open the event.
+View all registered attendees.
+See their registration status and relevant identity information.
+Select one or more attendees.
+Assign accommodation to them.
+Use accommodation already booked/reserved by the event, including:
+rooms from the same hotel,
+rooms from multiple hotels,
+different room types,
+different dates where permitted.
+Assign an individual guest to a specific accommodation unit/room or accommodation allocation.
+Assign transport to attendees using the existing AFCON360 transport ecosystem.
+Select from available/approved transport providers, vehicles, and/or drivers according to the existing transport rules.
+Track who has been assigned, who remains unassigned, and what remains available.
+Notify the relevant people through the existing notification system.
+Maintain a complete audit trail of who made each assignment.
 
-@events_bp.route("/api/<slug>/community-hosts/<int:host_id>/reject", methods=['POST'])
-@login_required
-def api_community_host_reject(slug, host_id):
-    """
-    Organizer rejects a community host application.
-    """
-    event = EventService.get_event_model(slug)
-    if not event or (event.organizer_id != current_user.id and not current_user.has_global_role('admin')):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    
-    host = Property.query.get_or_404(host_id)
-    
-    # Verify this host belongs to this event
-    metadata = host.event_metadata or {}
-    if metadata.get('event_id') != event.id:
-        return jsonify({'success': False, 'error': 'Host not registered for this event'}), 400
-    
-    data = request.get_json()
-    reason = data.get('reason', 'No reason provided')
-    
-    try:
-        # Update host status
-        host.status = AccommodationPropertyStatus.REJECTED
-        host.is_active = False
-        
-        # Update metadata
-        metadata['registration_status'] = 'rejected'
-        metadata['rejected_at'] = db.func.now()
-        metadata['rejected_by'] = current_user.id
-        metadata['rejection_reason'] = reason
-        host.event_metadata = metadata
-        
-        db.session.commit()
-        
-        # TODO: Send email notification to host
-        
-        logger.info(f"Community host {host.id} rejected for event {event.slug} by user {current_user.id}")
-        
-        return jsonify({'success': True, 'message': 'Host rejected'})
-        
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Error rejecting host: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+The system must therefore become a coordination layer over the existing domain capabilities, not a replacement for them.
 
+2. Critical Architectural Principle
 
-@events_bp.route("/api/<slug>/community-hosts/<int:host_id>/delete", methods=['DELETE'])
-@login_required
-def api_community_host_delete(slug, host_id):
-    """
-    Organizer deletes a community host application (soft delete).
-    """
-    event = EventService.get_event_model(slug)
-    if not event or (event.organizer_id != current_user.id and not current_user.has_global_role('admin')):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    
-    host = Property.query.get_or_404(host_id)
-    
-    # Verify this host belongs to this event
-    metadata = host.event_metadata or {}
-    if metadata.get('event_id') != event.id:
-        return jsonify({'success': False, 'error': 'Host not registered for this event'}), 400
-    
-    try:
-        host.soft_delete()
-        db.session.commit()
-        
-        logger.info(f"Community host {host.id} deleted for event {event.slug} by user {current_user.id}")
-        
-        return jsonify({'success': True, 'message': 'Host deleted'})
-        
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Error deleting host: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-File 2: templates/events/community_host/register.html (NEW)
-html
-{# templates/events/community_host/register.html #}
-{% extends "base.html" %}
+Follow the existing AFCON360 domain ownership rules.
 
-{% block title %}Offer Community Hosting - {{ event.name }}{% endblock %}
+Accommodation owns accommodation capacity
 
-{% block content %}
-<div class="container py-4">
-    <div class="row justify-content-center">
-        <div class="col-md-8">
-            <div class="card shadow-sm">
-                <div class="card-header bg-white">
-                    <h4 class="mb-0">
-                        <i class="fas fa-hand-holding-heart text-primary me-2"></i>
-                        Offer Community Hosting
-                    </h4>
-                    <p class="text-muted mb-0 small">For: {{ event.name }} · {{ event.city }}, {{ event.country }}</p>
-                </div>
-                <div class="card-body">
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle me-2"></i>
-                        <strong>What is Community Hosting?</strong><br>
-                        Community hosts are local residents who offer accommodation to event attendees out of goodwill.
-                        You can offer free stays or set a symbolic price. All hosts are reviewed and approved by event organizers.
-                    </div>
-                    
-                    <form method="POST" id="hostForm">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        
-                        <!-- Basic Info -->
-                        <h5 class="mb-3">Property Information</h5>
-                        <div class="row mb-3">
-                            <div class="col-12">
-                                <label class="form-label fw-bold">Listing Title *</label>
-                                <input type="text" name="title" class="form-control" required 
-                                       placeholder="e.g., Cozy Room in Kampala, Near Stadium">
-                                <div class="form-text">Give your space a descriptive name</div>
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-12">
-                                <label class="form-label">Short Summary</label>
-                                <input type="text" name="summary" class="form-control" maxlength="500"
-                                       placeholder="Brief description of your space (max 500 chars)">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-12">
-                                <label class="form-label">Full Description *</label>
-                                <textarea name="description" class="form-control" rows="4" required
-                                          placeholder="Describe your space, amenities, neighborhood, etc."></textarea>
-                            </div>
-                        </div>
-                        
-                        <!-- Location -->
-                        <h5 class="mb-3 mt-4">Location</h5>
-                        <div class="row mb-3">
-                            <div class="col-md-8">
-                                <label class="form-label fw-bold">Address Line 1 *</label>
-                                <input type="text" name="address_line1" class="form-control" required>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label fw-bold">Address Line 2</label>
-                                <input type="text" name="address_line2" class="form-control">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label class="form-label fw-bold">City *</label>
-                                <input type="text" name="city" class="form-control" required>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label">State/Region</label>
-                                <input type="text" name="state" class="form-control">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label fw-bold">Country *</label>
-                                <select name="country" class="form-select" required>
-                                    <option value="UG">Uganda</option>
-                                    <option value="KE">Kenya</option>
-                                    <option value="TZ">Tanzania</option>
-                                </select>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Postal Code</label>
-                                <input type="text" name="postal_code" class="form-control">
-                            </div>
-                        </div>
-                        
-                        <!-- Capacity -->
-                        <h5 class="mb-3 mt-4">Guest Capacity</h5>
-                        <div class="row mb-3">
-                            <div class="col-md-3">
-                                <label class="form-label fw-bold">Max Guests *</label>
-                                <input type="number" name="max_guests" class="form-control" min="1" max="20" value="2" required>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label">Bedrooms</label>
-                                <input type="number" name="bedrooms" class="form-control" min="0" max="10" value="1">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label">Beds</label>
-                                <input type="number" name="beds" class="form-control" min="0" max="20" value="1">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label">Bathrooms</label>
-                                <input type="number" name="bathrooms" class="form-control" step="0.5" min="0" max="10" value="1">
-                            </div>
-                        </div>
-                        
-                        <!-- Pricing -->
-                        <h5 class="mb-3 mt-4">Pricing</h5>
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <div class="form-check mb-2">
-                                    <input type="checkbox" name="is_free" class="form-check-input" id="isFreeCheck" onchange="togglePrice()">
-                                    <label class="form-check-label fw-bold" for="isFreeCheck">
-                                        ❤️ This is a FREE offering (no charge)
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-md-6" id="priceField">
-                                <label class="form-label fw-bold">Price per night</label>
-                                <div class="input-group">
-                                    <span class="input-group-text">$</span>
-                                    <input type="number" name="price_per_night" class="form-control" step="1" min="0" value="0">
-                                    <span class="input-group-text">USD</span>
-                                </div>
-                                <div class="form-text">You can set a symbolic price (e.g., $20) to cover utilities</div>
-                            </div>
-                        </div>
-                        
-                        <!-- Stay Requirements -->
-                        <h5 class="mb-3 mt-4">Stay Requirements</h5>
-                        <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label class="form-label fw-bold">Minimum nights</label>
-                                <input type="number" name="min_stay_nights" class="form-control" min="1" max="30" value="1">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Maximum nights</label>
-                                <input type="number" name="max_stay_nights" class="form-control" min="1" max="90" placeholder="Optional">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Check-in time</label>
-                                <input type="text" name="check_in_time" class="form-control" placeholder="e.g., 14:00">
-                            </div>
-                        </div>
-                        
-                        <!-- House Rules -->
-                        <h5 class="mb-3 mt-4">House Rules</h5>
-                        <div class="row mb-3">
-                            <div class="col-12">
-                                <textarea name="house_rules" class="form-control" rows="3"
-                                          placeholder="e.g., No smoking, Quiet hours after 10pm, No pets, etc."></textarea>
-                            </div>
-                        </div>
-                        
-                        <!-- Photos -->
-                        <h5 class="mb-3 mt-4">Photos</h5>
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Main Photo URL</label>
-                                <input type="url" name="main_image" class="form-control" placeholder="https://...">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Gallery URLs (one per line)</label>
-                                <textarea name="gallery_urls" class="form-control" rows="3" 
-                                          placeholder="https://...&#10;https://..."></textarea>
-                            </div>
-                        </div>
-                        
-                        <!-- Terms -->
-                        <div class="alert alert-warning mt-4">
-                            <div class="form-check">
-                                <input type="checkbox" class="form-check-input" id="termsCheck" required>
-                                <label class="form-check-label" for="termsCheck">
-                                    I confirm that I am offering accommodation in good faith for event attendees.
-                                    I understand that my listing will be reviewed by the event organizer before being published.
-                                </label>
-                            </div>
-                        </div>
-                        
-                        <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
-                            <a href="{{ url_for('events.landing', identifier=event.slug) }}" class="btn btn-outline-secondary me-md-2">
-                                Cancel
-                            </a>
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-paper-plane"></i> Submit Registration
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+The Accommodation Service owns capacity, room inventory, room availability, room types, units, and accommodation booking state.
 
-<script>
-function togglePrice() {
-    const isFree = document.getElementById('isFreeCheck').checked;
-    const priceField = document.getElementById('priceField');
-    const priceInput = document.querySelector('input[name="price_per_night"]');
-    
-    if (isFree) {
-        priceField.style.opacity = '0.5';
-        priceInput.disabled = true;
-        priceInput.value = '0';
-    } else {
-        priceField.style.opacity = '1';
-        priceInput.disabled = false;
-    }
+The Event module may request or coordinate accommodation allocation.
+
+The Event module must never invent, duplicate, or directly manipulate accommodation capacity.
+
+Do NOT create something like:
+
+EventGuest.room_count
+Event.room_inventory
+EventBooking.total_rooms
+
+as a second source of truth.
+
+Instead, connect Event participants to the existing accommodation booking/allocation structures.
+
+The existing accommodation domain remains authoritative.
+
+3. Existing Accommodation Architecture Must Be Reused
+
+Before modifying anything, inspect the current Accommodation implementation.
+
+You previously established the following architectural layers:
+
+LAYER 1
+Inventory
+    ↓
+How many rooms/units exist?
+    ✅ Accommodation owns this
+
+LAYER 2
+Occupancy
+    ↓
+How many people can those rooms accommodate?
+    ✅ Accommodation owns this
+
+LAYER 3
+Booking / Reservation
+    ↓
+Which inventory is committed for which dates?
+    ✅ Accommodation owns this
+
+Your new feature must build on these existing layers.
+
+Do not bypass them.
+
+The Event module should effectively say:
+
+"For attendee X, allocate/associate an existing valid accommodation booking/allocation."
+
+It should not say:
+
+"Event X has 100 rooms."
+
+unless that information already comes from a real accommodation booking/reservation.
+
+4. Event Guest Concept
+
+Inspect the existing event registration/attendee implementation.
+
+Determine the existing entity representing:
+
+event registration
+event attendee
+participant
+guest
+ticket holder
+registration record
+
+Reuse that entity where possible.
+
+Do not create a duplicate guest identity table unless the existing architecture genuinely requires it.
+
+The system should distinguish between:
+
+User
+    ↓
+Event Registration / Attendee
+    ↓
+Accommodation Assignment
+    ↓
+Transport Assignment
+
+An attendee may exist as an event participant even when they have:
+
+no accommodation assignment,
+no transport assignment,
+only accommodation,
+only transport,
+both accommodation and transport.
+5. Booking Ownership Must Be Respected
+
+Continue using the booking ownership principles already established in AFCON360.
+
+Do not confuse:
+
+User
+Creator
+Booking Owner
+Guest
+
+The Event Host is not automatically the accommodation guest.
+
+For example:
+
+Event Owner
+     ↓
+Organizes event
+     ↓
+Registers attendees
+     ↓
+Coordinates accommodation
+     ↓
+Accommodation booking belongs to appropriate Booking Owner
+     ↓
+Individual attendees become Guests / occupants
+
+Implement the relationship without changing the legal meaning of the existing booking ownership model.
+
+6. Recommended Domain Relationship
+
+Design the integration around an explicit assignment/coordination entity.
+
+For example, conceptually:
+
+Event
+   |
+   +---- EventAttendee
+            |
+            +---- AccommodationAssignment
+            |
+            +---- TransportAssignment
+
+The exact model names must follow the existing project conventions.
+
+Do not blindly create these exact names if equivalent models already exist.
+
+The assignment entity should preserve references to the authoritative domain objects.
+
+For accommodation, for example:
+
+event_attendee
+    ↓
+accommodation_assignment
+    ↓
+accommodation_booking / booking / allocation
+    ↓
+property
+    ↓
+room_type
+    ↓
+room/unit
+
+For transport:
+
+event_attendee
+    ↓
+transport_assignment
+    ↓
+transport booking / trip / vehicle / driver
+
+Use the actual existing AFCON360 model structure.
+
+7. Accommodation Assignment Requirements
+
+The Event Host must be able to see the accommodation resources that are legitimately available to the event.
+
+Examples:
+
+Event Booking
+    Hotel A
+        Room 101
+        Room 102
+        Room 103
+
+    Hotel B
+        Room 201
+        Room 202
+
+    Hotel C
+        Room 301
+
+The Event Host should be able to assign:
+
+Attendee A → Hotel A / Room 101
+Attendee B → Hotel A / Room 102
+Attendee C → Hotel B / Room 201
+Attendee D → Hotel C / Room 301
+
+The implementation must support multiple hotels.
+
+It must also support more than one room/unit per booking where the existing accommodation booking model permits it.
+
+8. Capacity and Occupancy Validation
+
+This is critical.
+
+When assigning a guest to accommodation, validate against the real accommodation data.
+
+Never simply check:
+
+if room:
+    assign()
+
+Validate at minimum:
+
+booking exists,
+booking is valid,
+booking belongs to or is authorized for the event coordination context,
+room/unit exists,
+room/unit belongs to the correct property,
+room/unit is not already fully occupied,
+guest assignment does not exceed allowed occupancy,
+date range is compatible,
+room status permits assignment,
+booking/allocation has sufficient remaining capacity,
+duplicate assignment is prevented.
+
+Where the accommodation system already calculates occupancy/availability, reuse that service instead of duplicating its calculations.
+
+9. Do Not Break Accommodation Availability Logic
+
+The previous accommodation work established that inventory and occupancy must be treated separately.
+
+Therefore:
+
+Inventory
+≠
+Occupancy
+≠
+Event Guest Assignment
+
+An event assignment must consume/affect the appropriate existing occupancy/allocation mechanism.
+
+Do not introduce hard-coded values such as:
+
+RoomType.total_units = 1
+
+or assume one unit per room type.
+
+Do not introduce event-specific shortcuts that bypass real room availability.
+
+10. Group Accommodation Allocation
+
+The Event Host should also be able to manage a bulk allocation workflow.
+
+Example:
+
+100 Event Attendees
+
+Hotel A → 40 available guest capacity
+Hotel B → 35 available guest capacity
+Hotel C → 25 available guest capacity
+
+The interface should allow the host to allocate attendees across those properties.
+
+However, the allocation must still be validated against the real accommodation inventory and occupancy rules.
+
+Provide useful views such as:
+
+Assigned:      72
+Unassigned:    28
+
+Hotel A:       35 / 40
+Hotel B:       25 / 35
+Hotel C:       12 / 25
+
+These values must come from live authoritative data.
+
+11. Guest-Level Accommodation Detail
+
+For each attendee, provide a clear status.
+
+Example:
+
+Guest	Accommodation	Room	Status
+John Doe	Hotel A	101	Assigned
+Mary Doe	Hotel B	204	Assigned
+Peter Doe	—	—	Unassigned
+
+The user should be able to open an attendee and see:
+
+Attendee
+Name
+Registration number
+Contact
+Event
+Registration status
+
+Accommodation
+Property
+Room type
+Room/unit
+Check-in
+Check-out
+Assignment status
+
+Transport
+Vehicle
+Driver
+Pickup
+Drop-off
+Assignment status
+12. Transport Integration
+
+The same event attendee should be assignable to transport.
+
+Reuse the existing AFCON360 Transport module.
+
+Do not create a second driver database.
+
+The Event Host should be able to select from drivers/vehicles/providers that the transport system already recognizes as:
+
+registered,
+approved,
+active,
+available,
+eligible for the requested transport.
+
+The exact eligibility rules must come from the existing transport implementation.
+
+13. Transport Assignment Example
+
+Example:
+
+Attendee A
+    ↓
+Transport Assignment
+    ↓
+Vehicle UAA 123A
+    ↓
+Driver John
+    ↓
+Pickup: Entebbe Airport
+    ↓
+Drop-off: Hotel A
+
+Another attendee could be assigned to:
+
+Vehicle UBB 456B
+Driver Peter
+Pickup: Hotel B
+Drop-off: Event Venue
+
+Support the existing transport concepts rather than inventing new ones.
+
+14. Driver and Vehicle Availability
+
+Before assignment, validate:
+
+driver exists,
+driver is approved,
+driver is active,
+driver is available,
+vehicle exists,
+vehicle is active,
+vehicle is approved where required,
+vehicle capacity is sufficient,
+date/time does not conflict,
+assignment does not exceed capacity,
+the attendee is not double-booked for conflicting transport,
+existing transport constraints are respected.
+
+Do not allow an event host to assign an unavailable or unauthorized driver simply because the driver exists in the database.
+
+15. Event Host Authorization
+
+This feature must be permission-controlled.
+
+An arbitrary authenticated user must NOT be able to manipulate attendee accommodation or transportation.
+
+Determine the project's existing authorization approach and reuse it.
+
+Possible authorization chain:
+
+Authenticated User
+      ↓
+Event membership / ownership
+      ↓
+Event Owner / Host permission
+      ↓
+Assignment permission
+      ↓
+Accommodation / Transport operation
+
+Support the existing AFCON360 roles/permissions rather than creating an unrelated permission framework.
+
+At minimum, distinguish:
+
+Can view attendees
+Can assign accommodation
+Can assign transport
+Can change assignments
+Can cancel assignments
+
+where practical.
+
+16. Database Design
+
+First inspect the existing SQLAlchemy models and relationships.
+
+Then design the minimum number of new fields/tables required.
+
+Potential concepts include:
+
+EventAttendee
+AccommodationAssignment
+TransportAssignment
+
+but reuse equivalent existing models where possible.
+
+Every relationship must have:
+
+proper foreign keys,
+indexes where appropriate,
+uniqueness rules,
+check constraints where appropriate,
+cascade behavior explicitly considered,
+created/updated timestamps where project conventions use them,
+audit information where required.
+
+Do not use free-text fields for relationships that should be foreign keys.
+
+For example, avoid:
+
+hotel_name
+room_number
+driver_name
+vehicle_registration
+
+when the actual entities already exist.
+
+17. Prevent Duplicate Assignments
+
+The database must help enforce domain integrity.
+
+Examples:
+
+An attendee should not have two active accommodation assignments for the same stay.
+
+A room/unit should not be assigned beyond its permitted occupancy.
+
+A driver should not receive conflicting assignments when the transport domain prohibits it.
+
+A vehicle should not be oversubscribed.
+
+Use database-level uniqueness/check constraints where appropriate and application-level validation where the rule requires more complex logic.
+
+18. Transaction Safety
+
+Accommodation and transport assignments are operationally important.
+
+Use proper database transactions.
+
+A request such as:
+
+Assign attendee → room
+
+must either:
+
+succeed completely
+
+or
+
+fail without leaving partial state
+
+Use the project's existing SQLAlchemy transaction pattern.
+
+Handle race conditions where two authorized users try to assign the same remaining capacity at the same time.
+
+Do not assume frontend checks are sufficient.
+
+19. Services Layer
+
+Do not put complex assignment logic directly into Flask routes.
+
+Create/reuse domain services.
+
+Conceptually:
+
+AccommodationAssignmentService
+TransportAssignmentService
+EventGuestCoordinationService
+
+Use the existing service architecture if one already exists.
+
+The Event service should coordinate domains but must not take ownership away from Accommodation or Transport.
+
+For example:
+
+EventGuestCoordinationService
+        |
+        +---- Accommodation service
+        |
+        +---- Transport service
+
+not:
+
+Event module directly manipulates all accommodation tables
+20. Routes
+
+Inspect the existing event blueprint and add routes according to its existing conventions.
+
+Possible route structure:
+
+/events/<event_id>/attendees
+/events/<event_id>/attendees/<attendee_id>
+
+/events/<event_id>/attendees/<attendee_id>/accommodation
+/events/<event_id>/attendees/<attendee_id>/transport
+
+/events/<event_id>/accommodation
+/events/<event_id>/transport
+
+These are examples only.
+
+Use the existing project's URL structure and blueprint organization.
+
+Support:
+
+GET views
+POST assignment actions
+PUT/PATCH where project architecture uses APIs
+DELETE/cancel where appropriate
+
+Do not duplicate API and HTML logic unnecessarily.
+
+21. Templates
+
+Implement complete templates using the existing AFCON360 design system.
+
+Do not create visually disconnected pages.
+
+The Event Host should have an attendee management page containing:
+
+EVENT
+────────────────────────────────
+
+Event Name
+Event Date
+Venue
+
+ATTENDEES
+
+Total: 100
+Assigned Accommodation: 72
+Unassigned Accommodation: 28
+Transport Assigned: 64
+Transport Unassigned: 36
+
+Then a table/grid:
+
+[ ] Guest
+    Registration
+    Accommodation
+    Transport
+    Status
+    Actions
+
+Provide useful filters:
+
+All
+Accommodation Assigned
+Accommodation Unassigned
+Transport Assigned
+Transport Unassigned
+Both Assigned
+Needs Attention
+22. Accommodation Assignment UI
+
+Provide a dedicated assignment interface.
+
+The host should be able to select:
+
+Guest
+    ↓
+Property
+    ↓
+Booking / allocation
+    ↓
+Room type
+    ↓
+Room/unit
+
+Show real-time availability information.
+
+For example:
+
+Hotel A
+3 rooms available
+8 remaining guest capacity
+
+Hotel B
+1 room available
+2 remaining guest capacity
+
+Hotel C
+5 rooms available
+11 remaining guest capacity
+
+Do not display stale or fabricated availability values.
+
+23. Transport Assignment UI
+
+Provide a similar flow:
+
+Guest
+    ↓
+Transport date/time
+    ↓
+Available provider
+    ↓
+Available driver
+    ↓
+Available vehicle
+    ↓
+Pickup
+    ↓
+Drop-off
+
+Only show eligible options according to transport rules.
+
+24. Bulk Assignment
+
+Support efficient management of large events.
+
+For 100+ attendees, do not force the host to repeat unnecessarily expensive operations.
+
+Allow:
+
+multi-select attendees,
+bulk accommodation assignment where appropriate,
+bulk transport assignment where appropriate,
+filtering,
+search,
+sorting,
+pagination.
+
+However, bulk operations must individually validate capacity and eligibility.
+
+One invalid guest should not silently corrupt the remaining assignments.
+
+Return clear success/failure results.
+
+Example:
+
+Successfully assigned: 18
+
+Failed: 2
+
+Guest A
+Reason: Room capacity exceeded
+
+Guest B
+Reason: Transport vehicle unavailable
+25. Notifications
+
+Integrate with the existing AFCON360 Unified Notification & Communication Platform.
+
+Do not create another notification mechanism.
+
+When an accommodation assignment is created or changed, trigger the appropriate existing notification workflow.
+
+When transport is assigned, notify the appropriate party where the current notification architecture supports it.
+
+Potential recipients include:
+
+Guest
+Booking Owner
+Event Host
+Transport Driver
+Property / accommodation operator
+
+Do not assume every recipient should receive every notification.
+
+Use the existing notification preferences, templates, channels, and event framework.
+
+26. Audit Trail
+
+Every assignment/change should be auditable.
+
+Record enough information to answer:
+
+Who assigned this guest?
+When?
+What was assigned?
+What was the previous assignment?
+What was the new assignment?
+Why was it changed, if reason capture exists?
+
+Use the existing AFCON360 audit/event logging architecture where available.
+
+Do not build a completely separate audit subsystem unless absolutely necessary.
+
+27. Status Model
+
+Avoid using random strings throughout the application.
+
+Use the existing project conventions for statuses.
+
+Conceptually, accommodation assignment may have:
+
+UNASSIGNED
+ASSIGNED
+CANCELLED
+REASSIGNING
+
+Transport may have:
+
+UNASSIGNED
+ASSIGNED
+CANCELLED
+COMPLETED
+
+Use project enums/constants where appropriate.
+
+28. Security
+
+Treat all assignment endpoints as protected operations.
+
+Validate:
+
+authentication,
+authorization,
+event ownership/host role,
+CSRF for browser form operations where applicable,
+object-level access,
+input validation,
+rate limiting where appropriate,
+safe error handling.
+
+Never trust:
+
+event_id
+attendee_id
+room_id
+booking_id
+driver_id
+vehicle_id
+
+supplied by the browser.
+
+Always confirm that the object belongs to the permitted domain/context.
+
+For example, an event host must not be able to modify:
+
+another event's attendee
+another property's booking
+another company's driver
+
+merely by changing an ID in the URL.
+
+29. Module Independence
+
+Respect AFCON360's modular architecture.
+
+If Accommodation or Transport is disabled, the rest of AFCON360 must continue functioning according to the existing module-toggle architecture.
+
+The Event module should degrade gracefully.
+
+For example:
+
+Accommodation disabled
+    ↓
+Event still works
+    ↓
+Guest registration still works
+    ↓
+Accommodation assignment UI reports:
+"Accommodation service is currently unavailable."
+
+Do not cause application-wide startup or runtime failures because a dependent module is disabled.
+
+Likewise:
+
+Transport disabled
+    ↓
+Event still works
+    ↓
+Transport assignment becomes unavailable
+
+Use the existing centralized module settings/configuration and database-backed source-of-truth mechanisms.
+
+30. Notifications and Disabled Services
+
+Do not enqueue jobs against unavailable modules blindly.
+
+Check the existing module service state before invoking dependent functionality.
+
+For example:
+
+Accommodation assignment
+        ↓
+Check Accommodation module
+        ↓
+Enabled?
+   ├── Yes → perform operation
+   └── No  → return controlled unavailable state
+31. Database Migration
+
+Create proper Alembic migration(s).
+
+Do not modify production schema manually.
+
+The migration must:
+
+create required tables,
+add indexes,
+add foreign keys,
+add uniqueness constraints,
+add check constraints where necessary,
+handle existing data safely,
+be reversible where the project's migration policy requires it.
+
+Run:
+
+upgrade
+downgrade
+upgrade
+
+in a safe test environment.
+
+32. Existing Data Compatibility
+
+Inspect the current production/development schema before changing it.
+
+Do not assume the database is empty.
+
+Identify:
+
+existing events,
+attendees,
+accommodation bookings,
+room/unit records,
+transport records,
+users,
+roles,
+permissions.
+
+The feature must not break existing records.
+
+33. API / JSON Endpoints
+
+If AFCON360 already exposes JSON APIs for its modules, implement the integration consistently.
+
+Possible responses should include structured information such as:
+
+{
+  "success": true,
+  "assignment_id": "...",
+  "attendee_id": "...",
+  "status": "assigned"
 }
-</script>
 
-<style>
-.form-label {
-    font-size: 14px;
-}
-</style>
-{% endblock %}
-File 3: templates/events/organizer/community_hosts.html (NEW)
-html
-{# templates/events/organizer/community_hosts.html #}
-{% extends "base.html" %}
+For failures:
 
-{% block title %}Community Hosts - {{ event.name }}{% endblock %}
-
-{% block content %}
-<div class="container-fluid py-4">
-    <div class="row mb-4 align-items-center">
-        <div class="col">
-            <h1>
-                <i class="fas fa-hand-holding-heart text-primary me-2"></i>
-                Community Hosts
-            </h1>
-            <p class="text-muted mb-0">
-                {{ event.name }} · Manage community host applications
-            </p>
-        </div>
-        <div class="col text-end">
-            <a href="{{ url_for('events.organizer_dashboard', identifier=event.slug) }}" class="btn btn-outline-secondary">
-                <i class="fas fa-arrow-left"></i> Back to Dashboard
-            </a>
-        </div>
-    </div>
-
-    <!-- Stats -->
-    <div class="row mb-4 g-3">
-        <div class="col-md-3">
-            <div class="card text-white bg-primary">
-                <div class="card-body">
-                    <h3 class="mb-0" id="totalCount">0</h3>
-                    <p class="mb-0">Total Applications</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-white bg-warning">
-                <div class="card-body">
-                    <h3 class="mb-0" id="pendingCount">0</h3>
-                    <p class="mb-0">Pending Review</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-white bg-success">
-                <div class="card-body">
-                    <h3 class="mb-0" id="approvedCount">0</h3>
-                    <p class="mb-0">Approved</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-white bg-danger">
-                <div class="card-body">
-                    <h3 class="mb-0" id="rejectedCount">0</h3>
-                    <p class="mb-0">Rejected</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Host List -->
-    <div class="card shadow-sm">
-        <div class="card-header bg-white">
-            <h5 class="mb-0">Host Applications</h5>
-        </div>
-        <div class="card-body p-0">
-            <div id="hostsList" class="list-group list-group-flush">
-                <div class="text-center p-4">
-                    <div class="spinner-border text-primary"></div>
-                    <p class="mt-2">Loading hosts...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Approval Modal -->
-<div class="modal fade" id="approveModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Approve Community Host</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>Approve <strong id="approveHostName"></strong> as a community host for this event?</p>
-                <p class="text-muted small">Approved hosts will appear in your accommodation inventory and can be assigned to attendees.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-success" onclick="confirmApprove()">Approve</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Reject Modal -->
-<div class="modal fade" id="rejectModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Reject Community Host</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>Reject <strong id="rejectHostName"></strong>'s application?</p>
-                <div class="mb-3">
-                    <label class="form-label">Reason (optional)</label>
-                    <textarea id="rejectReason" class="form-control" rows="3" placeholder="Explain why this application is being rejected..."></textarea>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-danger" onclick="confirmReject()">Reject</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<style>
-.host-card {
-    transition: all 0.2s;
-}
-.host-card:hover {
-    background-color: #f8f9fa;
-}
-.status-badge {
-    font-size: 11px;
-    padding: 4px 10px;
-    border-radius: 20px;
-}
-.status-pending {
-    background-color: #ffc107;
-    color: #333;
-}
-.status-approved {
-    background-color: #28a745;
-    color: white;
-}
-.status-rejected {
-    background-color: #dc3545;
-    color: white;
-}
-.host-avatar {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    background-color: #e9ecef;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-}
-</style>
-
-<script>
-let currentEventSlug = '{{ event.slug }}';
-let hosts = [];
-let selectedHostId = null;
-let selectedHostName = null;
-
-async function loadHosts() {
-    try {
-        const response = await fetch(`/events/api/${currentEventSlug}/community-hosts`);
-        const data = await response.json();
-        if (data.success) {
-            hosts = data.hosts;
-            renderHosts();
-            updateStats();
-        }
-    } catch (error) {
-        console.error('Error loading hosts:', error);
-        document.getElementById('hostsList').innerHTML = `
-            <div class="text-center p-4 text-danger">
-                <i class="fas fa-exclamation-triangle fa-2x"></i>
-                <p>Error loading hosts</p>
-            </div>
-        `;
-    }
+{
+  "success": false,
+  "error": "ROOM_CAPACITY_EXCEEDED",
+  "message": "The selected room has no remaining guest capacity."
 }
 
-function renderHosts() {
-    const container = document.getElementById('hostsList');
-    
-    if (hosts.length === 0) {
-        container.innerHTML = `
-            <div class="text-center p-4 text-muted">
-                <i class="fas fa-info-circle fa-2x"></i>
-                <p>No community host applications yet.</p>
-                <small>Share the registration link with community members who want to offer accommodation.</small>
-            </div>
-        `;
-        return;
-    }
-    
-    container.innerHTML = hosts.map(host => `
-        <div class="list-group-item host-card p-3">
-            <div class="row align-items-center">
-                <div class="col-auto">
-                    <div class="host-avatar">
-                        ${host.main_image ? 
-                            `<img src="${host.main_image}" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover;">` :
-                            '<i class="fas fa-user-friends"></i>'
-                        }
-                    </div>
-                </div>
-                <div class="col">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
-                            <h5 class="mb-1">${escapeHtml(host.title)}</h5>
-                            <div class="small text-muted">
-                                <i class="fas fa-user"></i> ${escapeHtml(host.host_name)} · 
-                                <i class="fas fa-map-marker-alt"></i> ${escapeHtml(host.city)}
-                            </div>
-                            <div class="mt-1">
-                                <span class="badge ${host.is_free ? 'bg-success' : 'bg-primary'}">
-                                    ${host.is_free ? 'FREE' : `$${host.price_per_night}/night`}
-                                </span>
-                                <span class="badge bg-secondary">${host.max_guests} guests</span>
-                            </div>
-                            ${host.description ? `<div class="small text-muted mt-1">${escapeHtml(host.description)}</div>` : ''}
-                        </div>
-                        <div class="text-end">
-                            <span class="status-badge status-${host.status}">
-                                ${host.status === 'pending' ? '⏳ Pending' : host.status === 'approved' ? '✓ Approved' : '✗ Rejected'}
-                            </span>
-                            ${host.status === 'pending' ? `
-                                <div class="mt-2">
-                                    <button class="btn btn-sm btn-success me-1" onclick="showApproveModal(${host.id}, '${escapeHtml(host.title)}')">
-                                        <i class="fas fa-check"></i> Approve
-                                    </button>
-                                    <button class="btn btn-sm btn-danger" onclick="showRejectModal(${host.id}, '${escapeHtml(host.title)}')">
-                                        <i class="fas fa-times"></i> Reject
-                                    </button>
-                                </div>
-                            ` : ''}
-                            ${host.status === 'approved' ? `
-                                <div class="small text-muted mt-2">
-                                    Approved on ${host.approved_at ? new Date(host.approved_at).toLocaleDateString() : 'recently'}
-                                </div>
-                            ` : ''}
-                            ${host.status === 'rejected' && host.rejection_reason ? `
-                                <div class="small text-danger mt-2">
-                                    Reason: ${escapeHtml(host.rejection_reason)}
-                                </div>
-                            ` : ''}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `).join('');
-}
-
-function updateStats() {
-    const total = hosts.length;
-    const pending = hosts.filter(h => h.status === 'pending').length;
-    const approved = hosts.filter(h => h.status === 'approved').length;
-    const rejected = hosts.filter(h => h.status === 'rejected').length;
-    
-    document.getElementById('totalCount').innerText = total;
-    document.getElementById('pendingCount').innerText = pending;
-    document.getElementById('approvedCount').innerText = approved;
-    document.getElementById('rejectedCount').innerText = rejected;
-}
-
-function showApproveModal(hostId, hostName) {
-    selectedHostId = hostId;
-    selectedHostName = hostName;
-    document.getElementById('approveHostName').innerText = hostName;
-    new bootstrap.Modal(document.getElementById('approveModal')).show();
-}
-
-function confirmApprove() {
-    const modal = bootstrap.Modal.getInstance(document.getElementById('approveModal'));
-    modal.hide();
-    
-    fetch(`/events/api/${currentEventSlug}/community-hosts/${selectedHostId}/approve`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            loadHosts();
-            alert('✓ Host approved successfully');
-        } else {
-            alert('Error: ' + data.error);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Network error');
-    });
-}
-
-function showRejectModal(hostId, hostName) {
-    selectedHostId = hostId;
-    selectedHostName = hostName;
-    document.getElementById('rejectHostName').innerText = hostName;
-    document.getElementById('rejectReason').value = '';
-    new bootstrap.Modal(document.getElementById('rejectModal')).show();
-}
-
-function confirmReject() {
-    const reason = document.getElementById('rejectReason').value;
-    const modal = bootstrap.Modal.getInstance(document.getElementById('rejectModal'));
-    modal.hide();
-    
-    fetch(`/events/api/${currentEventSlug}/community-hosts/${selectedHostId}/reject`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
-        },
-        body: JSON.stringify({ reason: reason })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            loadHosts();
-            alert('Host rejected');
-        } else {
-            alert('Error: ' + data.error);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Network error');
-    });
-}
-
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    loadHosts();
-});
-</script>
-{% endblock %}
-Step 4: Add Navigation Links
-Add to organizer dashboard - already have "Manage Accommodation", add "Community Hosts":
-
-html
-<div class="col-6">
-    <a href="{{ url_for('events.community_hosts_list', slug=event.slug) }}" 
-       class="card text-center text-decoration-none p-3 hover-shadow-sm border">
-        <i class="fas fa-hand-holding-heart fa-2x mb-2 text-success"></i>
-        <div class="small fw-bold text-dark">Community Hosts</div>
-    </a>
-</div>
-Add to event landing page (for hosts to register):
-
-html
-{% if current_user.is_authenticated %}
-<div class="mt-4 p-3 bg-light rounded">
-    <h5><i class="fas fa-hand-holding-heart"></i> Community Hosting</h5>
-    <p>Offer free or paid accommodation to event attendees.</p>
-    <a href="{{ url_for('events.community_host_register', slug=event.slug) }}" class="btn btn-outline-success">
-        Register as Community Host
-    </a>
-</div>
-{% endif %}
-Phase 4: Attendee "My Accommodation" Page (Coming Next)
-After Phase 3 is complete, Phase 4 will show attendees their assigned accommodation.
-
-Summary for Codium
-Send this prompt:
-
-text
-Implement Phase 3: Community Host Registration for the AFCON360 platform.
-
-Create these 3 new files:
-
-1. app/events/routes_community_hosts.py - [PASTE FULL CODE ABOVE]
-
-2. templates/events/community_host/register.html - [PASTE FULL CODE ABOVE]
-
-3. templates/events/organizer/community_hosts.html - [PASTE FULL CODE ABOVE]
-
-Add navigation links to:
-- templates/events/organizer/organizer_dashboard.html - Add "Community Hosts" card
-- templates/events/public/landing.html - Add "Register as Community Host" button for authenticated users
-
-DO NOT delete or modify any existing Phase 1 or Phase 2 files.
-
-After implementation, run: flask db upgrade (no new migration needed - community_host_id already exists)
-
-markdown
-# AFCON360 - Complete System Context for Codium
-
-## 🎯 PROJECT VISION
-
-AFCON360 is a unified platform for AFCON 2027 happening across Uganda, Kenya, and Tanzania. It allows travelers to book accommodation, arrange transport, and manage event tickets all in one place.
-
-**The Bigger Vision:** After AFCON 2027, this platform will expand across Africa and globally, becoming a super-app for major events (World Cup, Olympics, pilgrimages, crusades).
-
-**Unique Differentiator:** Community Hosts - people who offer free or low-cost accommodation out of goodwill (church members hosting pilgrims, locals hosting event attendees).
-
----
-
-## 🏗️ SYSTEM ARCHITECTURE
-┌─────────────────────────────────────────────────────────────┐
-│ PRESENTATION LAYER │
-│ Templates: accommodation/, events/, wallet/, transport/ │
-└─────────────────────────────────────────────────────────────┘
-│
-┌─────────────────────────────────────────────────────────────┐
-│ APPLICATION LAYER │
-│ Routes: accommodation/routes.py, events/routes.py │
-│ Routes: events/routes_accommodation.py (Phase 2) │
-│ Routes: events/routes_community_hosts.py (Phase 3) │
-└─────────────────────────────────────────────────────────────┘
-│
-┌─────────────────────────────────────────────────────────────┐
-│ SERVICE LAYER │
-│ BookingService, AvailabilityService, EventService │
-│ search_service, pricing_service, host_service │
-└─────────────────────────────────────────────────────────────┘
-│
-┌─────────────────────────────────────────────────────────────┐
-│ DATA LAYER │
-│ Models: Property, AccommodationBooking, Event, │
-│ EventRegistration, EventAssignment │
-└─────────────────────────────────────────────────────────────┘
-
-text
-
----
-
-## 📁 CRITICAL FILES (DO NOT DELETE)
-
-### Accommodation Module
-| File | Purpose |
-|------|---------|
-| `app/accommodation/models/property.py` | Property types (HOTEL, INDIVIDUAL, COMMUNITY_HOST) |
-| `app/accommodation/models/booking.py` | Booking with event_id, context_type |
-| `app/accommodation/services/search_service.py` | Public search (EXCLUDES community hosts) |
-| `app/accommodation/routes/explore_routes.py` | Phase 1 - Map-first search |
-| `templates/accommodation/explore.html` | Phase 1 - Map UI |
-
-### Events Module
-| File | Purpose |
-|------|---------|
-| `app/events/models.py` | Event, EventRegistration, EventAssignment |
-| `app/events/services.py` | Event CRUD, registration, assignment |
-| `app/events/routes.py` | Event landing, organizer dashboard |
-| `app/events/routes_accommodation.py` | Phase 2 - Organizer assignment UI |
-| `app/events/routes_community_hosts.py` | Phase 3 - Host registration/approval |
-
-### Templates
-| File | Purpose |
-|------|---------|
-| `templates/accommodation/explore.html` | Public map search |
-| `templates/events/organizer/accommodation_manage.html` | Organizer assigns attendees |
-| `templates/events/organizer/community_hosts.html` | Organizer approves hosts |
-| `templates/events/community_host/register.html` | Hosts offer accommodation |
-
----
-
-## 🔑 KEY ENUMS & CONSTANTS
-
-### AccommodationPropertyType (property.py)
-```python
-ENTIRE_PLACE = "entire_place"    # Airbnb-style, shown in public search
-PRIVATE_ROOM = "private_room"    # Shown in public search
-SHARED_ROOM = "shared_room"      # Shown in public search
-HOTEL_ROOM = "hotel_room"        # Shown in public search
-COMMUNITY_HOST = "community_host" # NOT shown in public search! Event-only
-BookingContextType (booking.py)
-python
-NONE = "none"      # Standalone booking (public)
-EVENT = "event"    # Booked for an event
-GROUP = "group"    # Group booking
-ORGANIZER = "organizer"  # Organizer booking on behalf
-ASSIGNED = "assigned"    # Assigned to attendee
-EventStatus (constants.py)
-python
-DRAFT → PENDING_APPROVAL → APPROVED → PUBLISHED → COMPLETED → ARCHIVED
-                                    ↓
-                              SUSPENDED, PAUSED, CANCELLED
-🔄 COMPLETE WORKFLOWS
-Workflow 1: Public User Books Accommodation
-text
-User → /accommodation/explore → Search (map) → Select property → Checkout → Booking created (event_id=NULL)
-Workflow 2: Event Organizer Manages Accommodation (Phase 2)
-text
-Organizer → Event dashboard → "Manage Accommodation"
-         → See attendees needing accommodation
-         → See available inventory (hotel rooms + approved community hosts)
-         → Select attendee → Select inventory → Assign
-         → EventAssignment created with accommodation_booking_id or community_host_id
-Workflow 3: Community Host Registration (Phase 3)
-text
-Host → Event landing page → "Register as Community Host"
-     → Fill form (title, address, capacity, price: free or paid)
-     → Property created with type=COMMUNITY_HOST, status=PENDING_REVIEW
-     → Organizer → "Community Hosts" page → Approve/Reject
-     → Upon approval: status=ACTIVE, appears in organizer's inventory
-Workflow 4: Standalone Accommodation Search (Phase 1)
-text
-User → /accommodation/explore → Map view → Filter by type (HOTEL, INDIVIDUAL only)
-     → COMMUNITY_HOST properties are EXCLUDED from all public search results
-⚡ CRITICAL RULES FOR CODIUM
-Rule 1: NEVER Delete Existing Code
-Always add new code, never delete existing functionality
-
-When modifying a file, use ADDITIVE changes only
-
-Rule 2: Community Hosts Are NEVER Public
-In search_service.py, always filter out COMMUNITY_HOST
-
-In explore_routes.py, exclude community hosts from API results
-
-Community hosts appear ONLY in event organizer views
-
-Rule 3: Use Existing Patterns
-Follow the same error handling pattern (try/except with db.rollback)
-
-Follow the same permission checks (event.organizer_id == current_user.id)
-
-Follow the same JSON response format ({'success': True/False, ...})
-
-Rule 4: Maintain Loose Coupling
-Events module does NOT directly import accommodation models (uses signals)
-
-Accommodation module can have optional event_id fields (nullable)
-
-Use try/except ImportError when importing cross-module
-
-Rule 5: Always Include CSRF Protection
-html
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-javascript
-headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content }
-Rule 6: Database Migrations
-After adding columns, inform user to run:
-
-bash
-flask db migrate -m "Description of change"
-flask db upgrade
-📋 PHASE STATUS
-Phase	Feature	Status	Files
-1	Map-first public search	✅ COMPLETE	explore_routes.py, explore.html
-2	Organizer accommodation management	✅ COMPLETE	routes_accommodation.py, accommodation_manage.html
-3	Community host registration	⏳ IN PROGRESS	routes_community_hosts.py, register.html, community_hosts.html
-4	Attendee "My Accommodation" page	❌ NOT STARTED	assignment_routes.py, my_accommodation.html
-🚀 HOW TO USE THIS DOCUMENT
-When asking Codium to implement a new feature:
-
-Reference this document: "Refer to CONTEXT_FOR_CODIUM.md"
-
-Specify which Phase you're working on
-
-List the specific files to create/modify
-
-State any special rules
-
-Example prompt:
-
-text
-Refer to CONTEXT_FOR_CODIUM.md. Implement Phase 4: Attendee "My Accommodation" page.
-
-Create:
-- app/accommodation/routes/assignment_routes.py
-- templates/accommodation/guest/my_accommodation.html
-
-Rules: Show assigned accommodation (hotel or community host), include host contact info for community hosts.
-🔗 USEFUL ENDPOINTS
-Endpoint	Purpose
-/accommodation/explore	Public map search
-/events/<slug>/accommodation	Organizer assignment UI
-/events/<slug>/community-hosts	Organizer host approval
-/events/<slug>/community-hosts/register	Host registration form
-/accommodation/my-accommodation	Attendee view (Phase 4)
-📝 NOTES FOR CODIUM
-You are helping build a production system for AFCON 2027
-
-The system must handle high traffic (50,000+ concurrent users)
-
-Community hosting is the unique differentiator from Airbnb/Booking.com
-
-Always prioritize data integrity over convenience
-
-Never hard-delete records (use soft delete with is_deleted flag)
-
-Always add audit logging for sensitive actions
-
-Last Updated: May 20, 2026
-Version: 1.0
-Maintainer: AFCON360 Development Team
-
-text
-
----
-
-## How to Use This with Codium
-
-Now, whenever you give Codium a task, **reference this context file**:
-
-### Example Prompt for Phase 4:
-Refer to CONTEXT_FOR_CODIUM.md (in project root).
-
-Implement Phase 4: Attendee "My Accommodation" page.
-
-WHAT THIS DOES:
-Attendees can see what accommodation they've been assigned to (hotel or community host).
-
-CREATE THESE FILES:
-
-app/accommodation/routes/assignment_routes.py
-
-GET /accommodation/my-accommodation - render page
-
-GET /api/accommodation/my-accommodation - JSON endpoint
-
-templates/accommodation/guest/my_accommodation.html
-
-Show assigned hotel or community host
-
-For community host: show host name, contact info, address
-
-For hotel: show hotel name, room number (if available), check-in instructions
-
-Include map link for location
-
-MODIFY THESE FILES (ADDITIVE ONLY):
-
-app/accommodation/init.py - register new blueprint
-
-templates/base.html - add "My Accommodation" link in user menu (if authenticated)
-
-RULES:
-
-Use existing EventAssignment model
-
-Query assignments where attendee_id = current_user.id
-
-JOIN with Property and AccommodationBooking as needed
-
-DO NOT delete any existing code
-
-DO NOT modify Phase 1, 2, or 3 files except to add links
-
-After implementation, tell me to test at /accommodation/my-accommodation
-
-text
-
----
-
-**This context file will keep Codium aligned with your vision.** Save it to your project root and reference it in every prompt. 🎯
+Use the project's existing response conventions.
+
+Do not introduce a second response format.
+
+34. Frontend JavaScript / Static Assets
+
+Inspect the current event/accommodation static architecture.
+
+Implement JavaScript only where required for:
+
+filtering,
+dynamic selection,
+availability refresh,
+bulk assignment,
+modal/dialog handling,
+confirmation,
+asynchronous assignment requests.
+
+Keep business logic on the backend.
+
+The browser must never be the authority for:
+
+room capacity,
+availability,
+driver availability,
+vehicle capacity,
+authorization.
+35. Testing Requirements
+
+Do not consider this feature complete until automated tests exist.
+
+At minimum test:
+
+Event authorization
+authorized Event Owner can manage attendees,
+unauthorized user cannot,
+host from another event cannot access the event's attendees.
+Accommodation
+valid room assignment succeeds,
+invalid room fails,
+room capacity is enforced,
+duplicate assignment is prevented,
+wrong booking/event context is rejected,
+multiple hotels work,
+reassignment works,
+cancellation works.
+Transport
+valid driver/vehicle assignment succeeds,
+unapproved driver fails,
+unavailable vehicle fails,
+capacity is enforced,
+conflicting assignment is rejected.
+Integration
+accommodation assignment appears on attendee record,
+transport assignment appears on attendee record,
+event dashboard counts update correctly,
+notifications are triggered correctly,
+audit record is created.
+Module states
+Event works with Accommodation disabled,
+Event works with Transport disabled,
+disabled services do not crash the application.
+36. Static Analysis and Code Quality
+
+Run the project's normal:
+
+tests
+lint
+type checks
+migration checks
+
+where available.
+
+Check for:
+
+circular imports,
+N+1 queries,
+missing indexes,
+missing eager loading,
+transaction problems,
+authorization bypasses,
+inconsistent naming,
+duplicated service logic,
+dead code.
+37. Performance
+
+The event host may manage:
+
+100
+500
+1,000+
+
+attendees.
+
+Do not load all related hotel, room, driver, vehicle, and booking objects blindly for every attendee.
+
+Use appropriate:
+
+joins,
+eager loading,
+pagination,
+filtering,
+indexed queries.
+
+Avoid N+1 query patterns.
+
+38. User Experience
+
+The host should be able to understand immediately:
+
+How many attendees are registered?
+How many have accommodation?
+How many still need rooms?
+How many have transport?
+How many still need transport?
+What hotels are being used?
+Which rooms are assigned?
+Which drivers are assigned?
+What requires attention?
+
+Make the feature operationally useful, not merely technically connected.
+
+39. Example End-to-End Workflow
+
+Implement this scenario successfully.
+
+Step 1 — Create Event
+Event:
+AFCON Executive Conference
+
+Host:
+John Doe
+Step 2 — Register Attendees
+100 attendees registered
+Step 3 — Accommodation
+
+Existing accommodation bookings include:
+
+Hotel A
+40 rooms
+
+Hotel B
+35 rooms
+
+Hotel C
+25 rooms
+
+The host can use the existing legitimate accommodation booking/allocation records.
+
+Step 4 — Assign Guests
+
+Example:
+
+Guest 001 → Hotel A / Room 101
+Guest 002 → Hotel A / Room 102
+Guest 003 → Hotel B / Room 201
+Guest 004 → Hotel C / Room 301
+Step 5 — Validate
+
+The system checks:
+
+room exists
+booking valid
+dates valid
+capacity available
+not already occupied beyond limit
+event host authorized
+Step 6 — Transport
+
+The host assigns:
+
+Guest 001
+→ Driver John
+→ Vehicle UAA 123A
+→ Pickup Entebbe Airport
+→ Drop-off Hotel A
+Step 7 — Notification
+
+The appropriate existing notification workflows are triggered.
+
+Step 8 — Dashboard
+
+The event now shows:
+
+Attendees                100
+Accommodation Assigned    96
+Accommodation Pending      4
+Transport Assigned        82
+Transport Pending         18
+
+These figures must be calculated from actual assignments.
+
+40. Important: Do Not Invent Architecture
+
+Before writing code:
+
+Inspect the existing Events module.
+Inspect the Accommodation module.
+Inspect the Transport module.
+Inspect Identity/Auth/roles.
+Inspect Notification services.
+Inspect existing booking ownership models.
+Inspect existing database constraints.
+Inspect module enable/disable architecture.
+Inspect existing templates and static assets.
+Identify existing services that can be reused.
+
+Then produce a concise implementation map.
+
+Do not immediately start creating models.
+
+41. Required Investigation Before Modification
+
+Search the project for concepts such as:
+
+Event
+EventHost
+EventOwner
+EventRegistration
+Attendee
+Guest
+Booking
+Reservation
+Accommodation
+RoomType
+Room
+Unit
+Occupancy
+Property
+Transport
+Driver
+Vehicle
+Trip
+Assignment
+Notification
+Permission
+Role
+Audit
+Module
+Settings
+
+Also inspect:
+
+app/
+models/
+services/
+events/
+accommodation/
+transport/
+templates/
+static/
+migrations/
+tests/
+
+Use the actual repository structure rather than assuming these exact paths exist.
+
+42. Deliverables
+
+When implementation is complete, provide a technical summary containing:
+
+A. Files changed
+
+List every created/modified file.
+
+B. Database changes
+
+Explain:
+
+new tables,
+new columns,
+constraints,
+indexes,
+foreign keys,
+migrations.
+C. Domain relationships
+
+Show:
+
+Event
+ ↓
+Attendee
+ ↓
+Accommodation Assignment
+ ↓
+Existing Accommodation Booking / Allocation
+
+and:
+
+Event
+ ↓
+Attendee
+ ↓
+Transport Assignment
+ ↓
+Existing Transport Booking / Driver / Vehicle
+D. Routes
+
+List all new/changed routes.
+
+E. Templates
+
+List all new/changed templates.
+
+F. Services
+
+List all new/changed services.
+
+G. Authorization
+
+Explain who can perform each operation.
+
+H. Notifications
+
+Explain what events trigger notifications.
+
+I. Tests
+
+List the tests added and their results.
+
+J. Migration
+
+State the migration revision and whether upgrade/downgrade was tested.
+
+43. Implementation Rules
+
+Follow these rules strictly:
+
+DO NOT create a parallel accommodation system.
+
+DO NOT create a parallel transport system.
+
+DO NOT duplicate users, drivers, vehicles, rooms, or bookings.
+
+DO NOT store room capacity independently inside Event.
+
+DO NOT bypass accommodation availability/occupancy logic.
+
+DO NOT bypass transport eligibility/availability logic.
+
+DO NOT allow unauthorized event hosts to manipulate unrelated bookings.
+
+DO NOT put complex business logic directly into Flask routes.
+
+DO NOT trust browser-supplied IDs.
+
+DO NOT rely only on frontend validation.
+
+DO NOT break the app when Accommodation or Transport is disabled.
+
+DO NOT hard-code availability.
+
+DO NOT skip migrations.
+
+DO NOT skip tests.
+
+DO NOT overwrite or silently redesign existing domain logic.
+
+Instead:
+
+REUSE existing domain models.
+
+REUSE existing services.
+
+REUSE existing authorization.
+
+REUSE existing notifications.
+
+REUSE existing booking ownership.
+
+REUSE existing module enable/disable architecture.
+
+ADD only the missing integration layer.
+
+KEEP each domain authoritative over its own data.
+44. Final Architectural Goal
+
+The resulting AFCON360 architecture should conceptually look like:
+
+                         AFCON360
+                            |
+                     +------+------+
+                     |             |
+                   EVENTS        OTHER MODULES
+                     |
+              Event Owner / Host
+                     |
+              Event Attendees
+                     |
+          +----------+-----------+
+          |                      |
+          v                      v
+  Accommodation             Transport
+  Coordination              Coordination
+          |                      |
+          v                      v
+ Existing Accommodation     Existing Transport
+ Booking/Inventory/         Provider/Driver/
+ Occupancy/Units            Vehicle/Trip logic
+          |                      |
+          +----------+-----------+
+                     |
+                 Notifications
+                     |
+                   Audit
+
+The key architectural principle is:
+
+Events coordinates people; Accommodation owns accommodation; Transport owns transport; Identity owns identity; Notifications owns communication; each domain remains the authoritative source for its own data.
+
+Implement the missing connections between these domains so that an Event Host can operationally manage the entire attendee journey without creating a second source of truth.
+
+45. Execution Mode
+
+Work incrementally and safely.
+
+Phase 1
+
+Inspect and map the existing implementation.
+
+Phase 2
+
+Design the integration and identify the minimum schema changes.
+
+Phase 3
+
+Implement models and migration.
+
+Phase 4
+
+Implement domain services.
+
+Phase 5
+
+Implement authorization.
+
+Phase 6
+
+Implement routes/API endpoints.
+
+Phase 7
+
+Implement templates and static behavior.
+
+Phase 8
+
+Integrate notifications and audit logging.
+
+Phase 9
+
+Add automated tests.
+
+Phase 10
+
+Run the application and test the complete workflow end-to-end.
+
+At every phase, preserve existing functionality.
+
+Before modifying an existing model or service, explain briefly why the change is required and reuse the existing pattern whenever possible.
+
+Do not make speculative architectural rewrites.
+
+The objective is a production-quality AFCON360 Event Host Guest Coordination workflow fully integrated with the existing Accommodation and Transport systems.
+
+#=================================
+

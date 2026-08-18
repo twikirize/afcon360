@@ -130,6 +130,11 @@ class Event(BaseModel):
         UniqueConstraint("slug",            name="uq_event_slug"),
         CheckConstraint("end_date >= start_date",
                         name="ck_event_end_after_start"),
+        CheckConstraint(
+            "registration_opens_at IS NULL OR registration_closes_at IS NULL "
+            "OR registration_closes_at > registration_opens_at",
+            name="ck_event_registration_window_order",
+        ),
         CheckConstraint("max_capacity >= 0",
                         name="ck_event_max_capacity_non_negative"),
         CheckConstraint(
@@ -157,6 +162,8 @@ class Event(BaseModel):
     max_capacity          = Column(Integer,      default=0, nullable=False)
     registration_required = Column(Boolean,      default=False)
     registration_fee      = Column(Numeric(10, 2), default=0, nullable=False)
+    registration_opens_at = Column(DateTime(timezone=True), nullable=True)
+    registration_closes_at = Column(DateTime(timezone=True), nullable=True)
     currency              = Column(String(3),    default="USD")
     featured              = Column(Boolean,      default=False)
     website               = Column(String(500))
@@ -284,6 +291,11 @@ class Event(BaseModel):
     # ── Constructor ────────────────────────────────────────────────────────
 
     def __init__(self, **kwargs):
+        if 'organizer_id' in kwargs and kwargs.get('current_owner_id') is None:
+            import logging
+            import warnings
+            warnings.warn('Event constructor organizer_id parameter is DEPRECATED (Phase 4 Step 5)', DeprecationWarning, stacklevel=2)
+            logging.getLogger(__name__).warning('LEGACY CONSTRUCTOR FALLBACK: Event initialized with organizer_id. Phase 4 Deprecation.')
         super().__init__(**kwargs)
         self._ensure_public_id()
         self._set_default_owner()

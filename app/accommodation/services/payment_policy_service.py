@@ -54,36 +54,25 @@ class PaymentPolicyService:
         ).all()
 
         method_ids = [pm.wallet_method_id for pm in enabled_methods]
-        # Always include all globally enabled methods so hosts can discover
-        # and select methods not yet linked to the property
-        all_enabled = PaymentMethodConfig.query.filter(
-            PaymentMethodConfig.is_enabled == True,
-            PaymentMethodConfig.is_active == True,
-        ).all()
-        all_enabled_ids = [m.id for m in all_enabled]
-        # Merge: include all globally enabled methods that are either
-        # explicitly linked OR the policy allows cash
-        if not method_ids:
-            payment_methods = all_enabled
-        else:
-            # Include linked methods plus all globally enabled methods
-            # so hosts/guests can see all available options
-            payment_methods = PaymentMethodConfig.query.filter(
-                PaymentMethodConfig.id.in_(all_enabled_ids),
-            ).all()
+        payment_methods = PaymentMethodConfig.query.filter(
+            PaymentMethodConfig.id.in_(method_ids),
+            PaymentMethodConfig.is_enabled.is_(True),
+            PaymentMethodConfig.is_active.is_(True),
+        ).all() if method_ids else []
+
+        from app.accommodation.models.property import Property
+        property_obj = db.session.get(Property, property_id)
+        property_currency = (getattr(property_obj, 'currency', None) or 'USD').upper()
+        policy_timings = {
+            'pay_now': policy.allow_pay_now,
+            'pay_on_arrival': policy.allow_pay_on_arrival,
+            'deposit': policy.allow_deposit_payment,
+            'invoice': True,
+        }
 
         # Build options
         options = {
-            'payment_methods': [
-                {
-                    'id': m.id,
-                    'method_id': m.method_id,
-                    'display_name': m.display_name,
-                    'method_type': m.method_type,
-                    'icon': PaymentPolicyService._get_icon(m.method_type),
-                }
-                for m in payment_methods
-            ],
+            'payment_methods': [],
             'allowed_methods': [m.method_id for m in payment_methods],
             'timing': {
                 'pay_now': policy.allow_pay_now,
@@ -91,19 +80,7 @@ class PaymentPolicyService:
                 'deposit': policy.allow_deposit_payment,
                 'deposit_percentage': float(policy.deposit_percentage) if policy.deposit_percentage else 0,
             },
-            'allowed_timings': [
-                key for key, enabled in {
-                    'pay_now': policy.allow_pay_now,
-                    'pay_on_arrival': policy.allow_pay_on_arrival,
-                    'deposit': policy.allow_deposit_payment,
-                }.items() if enabled
-            ],
-            'method_timing_map': {
-                'pay_now': ['wallet', 'card', 'mobile_money'],
-                'deposit': ['wallet', 'card', 'mobile_money'],
-                'pay_on_arrival': ['cash'],
-                'invoice': ['invoice'],
-            },
+            'allowed_timings': [key for key, enabled in policy_timings.items() if enabled],
             'cancellation': {
                 'policy': policy.cancellation_policy,
                 'free_cancel_hours': policy.free_cancel_hours,
@@ -115,6 +92,28 @@ class PaymentPolicyService:
                 'minimum_age': policy.minimum_age,
             }
         }
+
+        for method in payment_methods:
+            linked = next((pm for pm in enabled_methods if pm.wallet_method_id == method.id), None)
+            currency = (getattr(linked, 'preferred_currency', None) or property_currency).upper()
+            supported = method.supported_currencies or []
+            if supported and currency not in {str(item).upper() for item in supported}:
+                currency = property_currency
+            method_timings = [timing for timing in (method.allowed_timings or []) if policy_timings.get(timing, False)]
+            options['payment_methods'].append({
+                'id': method.id,
+                'method_id': method.method_id,
+                'display_name': method.display_name,
+                'method_type': method.method_type,
+                'currency': currency,
+                'allowed_timings': method_timings,
+                'transaction_fee': float(method.transaction_fee or 0),
+                'min_amount': float(method.min_amount or 0),
+                'max_amount': float(method.max_amount or 0),
+                'icon': PaymentPolicyService._get_icon(method.method_type),
+            })
+
+        options['allowed_methods'] = [m['method_id'] for m in options['payment_methods']]
 
         # Enforce platform-wide booking policy overrides
         platform_override = PlatformBookingPolicyOverride.query.first()

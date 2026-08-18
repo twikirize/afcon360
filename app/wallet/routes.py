@@ -680,7 +680,7 @@ def wallet_create():
         return redirect(url_for('wallet.wallet_create_page'))
 
 
-@wallet_bp.route('/deposit')
+@wallet_bp.route('/deposit', endpoint='deposit')
 @login_required
 @require_deposit_access
 def deposit_page():
@@ -706,17 +706,17 @@ def deposit_form():
         
         if not amount:
             flash('Amount is required', 'danger')
-            return redirect(url_for('wallet.deposit_page'))
+            return redirect(url_for('wallet.deposit'))
         
         try:
             amount = Decimal(amount)
         except:
             flash('Invalid amount', 'danger')
-            return redirect(url_for('wallet.deposit_page'))
+            return redirect(url_for('wallet.deposit'))
         
         if amount <= 0:
             flash('Amount must be greater than zero', 'danger')
-            return redirect(url_for('wallet.deposit_page'))
+            return redirect(url_for('wallet.deposit'))
         
         # Get existing account (do NOT auto-create)
         account = get_account(current_user.id, currency)
@@ -739,7 +739,7 @@ def deposit_form():
         
     except LimitExceededError as e:
         flash(f'Deposit limit exceeded: {str(e)}', 'danger')
-        return redirect(url_for('wallet.deposit_page'))
+        return redirect(url_for('wallet.deposit'))
     except Exception as e:
         from app.utils.error_handler import log_error_to_audit
         log_error_to_audit(
@@ -749,14 +749,14 @@ def deposit_form():
             context={"component": "deposit_processing"}
         )
         flash('Unable to process deposit. Please try again later.', 'warning')
-        return redirect(url_for('wallet.deposit_page'))
+        return redirect(url_for('wallet.deposit'))
 
 
 # =============================================================================
 # SEND / TRANSFER ROUTES
 # =============================================================================
 
-@wallet_bp.route('/send')
+@wallet_bp.route('/send', endpoint='send')
 @login_required
 @require_send_access
 def send_page():
@@ -791,25 +791,25 @@ def send_funds():
         
         if not receiver_id or not amount:
             flash('Receiver ID and amount are required', 'danger')
-            return redirect(url_for('wallet.send_page'))
+            return redirect(url_for('wallet.send'))
         
         try:
             amount = Decimal(amount)
             agent_fee = Decimal(agent_fee) if agent_fee else Decimal('0')
         except:
             flash('Invalid amount', 'danger')
-            return redirect(url_for('wallet.send_page'))
+            return redirect(url_for('wallet.send'))
         
         if amount <= 0:
             flash('Amount must be greater than zero', 'danger')
-            return redirect(url_for('wallet.send_page'))
+            return redirect(url_for('wallet.send'))
         
         # KYC limit check before processing
         from app.wallet.services.kyc_limit_service import KYCLimitService
         kyc_check = KYCLimitService.check_transaction_allowed(current_user.id, amount, 'send', currency)
         if not kyc_check['allowed']:
             flash(kyc_check.get('reason', 'Transaction not permitted for your KYC level.'), 'warning')
-            return redirect(url_for('wallet.send_page'))
+            return redirect(url_for('wallet.send'))
         
         # Get sender account (do NOT auto-create)
         sender_account = get_account(current_user.id, currency)
@@ -825,7 +825,7 @@ def send_funds():
         
         if not receiver:
             flash('Receiver not found', 'danger')
-            return redirect(url_for('wallet.send_page'))
+            return redirect(url_for('wallet.send'))
         
         # Check if receiver has an account (do NOT auto-create)
         receiver_account = get_account(receiver.id, currency)
@@ -835,7 +835,7 @@ def send_funds():
                 f"Transfer attempt to user {receiver_id} without wallet account "
                 f"by sender {current_user.id}"
             )
-            return redirect(url_for('wallet.send_page'))
+            return redirect(url_for('wallet.send'))
         
         # Get pin from form (optional) and call service.transfer using internal user ids
         pin = request.form.get('pin')
@@ -858,10 +858,10 @@ def send_funds():
         
     except InsufficientBalanceError:
         flash('Insufficient balance', 'danger')
-        return redirect(url_for('wallet.send_page'))
+        return redirect(url_for('wallet.send'))
     except LimitExceededError as e:
         flash(f'Limit exceeded: {str(e)}', 'danger')
-        return redirect(url_for('wallet.send_page'))
+        return redirect(url_for('wallet.send'))
     except Exception as e:
         from app.utils.error_handler import log_error_to_audit
         log_error_to_audit(
@@ -871,7 +871,7 @@ def send_funds():
             context={"component": "send_funds"}
         )
         flash('Unable to send funds. Please try again later.', 'warning')
-        return redirect(url_for('wallet.send_page'))
+        return redirect(url_for('wallet.send'))
 
 
 # =============================================================================
@@ -905,24 +905,24 @@ def withdraw_funds():
         
         if not amount:
             flash('Amount is required', 'danger')
-            return redirect(url_for('wallet.withdraw_page'))
+            return redirect(url_for('wallet.withdraw'))
         
         try:
             amount = Decimal(amount)
         except:
             flash('Invalid amount', 'danger')
-            return redirect(url_for('wallet.withdraw_page'))
+            return redirect(url_for('wallet.withdraw'))
         
         if amount <= 0:
             flash('Amount must be greater than zero', 'danger')
-            return redirect(url_for('wallet.withdraw_page'))
+            return redirect(url_for('wallet.withdraw'))
         
         # KYC limit check before processing
         from app.wallet.services.kyc_limit_service import KYCLimitService
         kyc_check = KYCLimitService.check_transaction_allowed(current_user.id, amount, 'withdraw', currency)
         if not kyc_check['allowed']:
             flash(kyc_check.get('reason', 'Withdrawal not permitted for your KYC level.'), 'warning')
-            return redirect(url_for('wallet.withdraw_page'))
+            return redirect(url_for('wallet.withdraw'))
         
         # Get existing account (do NOT auto-create)
         account = get_account(current_user.id, currency)
@@ -945,10 +945,10 @@ def withdraw_funds():
         
     except InsufficientBalanceError:
         flash('Insufficient balance', 'danger')
-        return redirect(url_for('wallet.withdraw_page'))
+        return redirect(url_for('wallet.withdraw'))
     except LimitExceededError as e:
         flash(f'Withdrawal limit exceeded: {str(e)}', 'danger')
-        return redirect(url_for('wallet.withdraw_page'))
+        return redirect(url_for('wallet.withdraw'))
     except Exception as e:
         from app.utils.error_handler import log_error_to_audit
         log_error_to_audit(
@@ -958,14 +958,14 @@ def withdraw_funds():
             context={"component": "withdraw_processing"}
         )
         flash('Unable to process withdrawal. Please try again later.', 'warning')
-        return redirect(url_for('wallet.withdraw_page'))
+        return redirect(url_for('wallet.withdraw'))
 
 
 # =============================================================================
 # TRANSACTIONS ROUTES
 # =============================================================================
 
-@wallet_bp.route('/transactions')
+@wallet_bp.route('/transactions', endpoint='transactions')
 @login_required
 def wallet_transactions():
     """View all transactions"""

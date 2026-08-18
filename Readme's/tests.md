@@ -1,4 +1,11 @@
 ﻿
+## Current PostgreSQL test contract
+
+All current pytest execution must use a dedicated, migrated PostgreSQL
+database configured with `TEST_DATABASE_URL`. The shared fixture fails fast on
+wrong-dialect connections, unavailable databases, or stale required tables.
+SQLite, handwritten SQL strings, and test-time schema creation/repair are not
+supported; see `docs/POSTGRES_TESTING_CONTRACT.md`.
 >> Transport API utilities - Safe resource registration
 >> """
 >> import logging
@@ -4856,6 +4863,7 @@ tests/test_current.py::test_basic PASSED                                        
 
 =============================================================================== 4 passed in 1.34s =============================================================================== 
 (.venv) PS C:\Users\ADMIN\Desktop\afcon360_app>
+
 
 
 

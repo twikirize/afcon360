@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Guest Registration - AFCON360{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-12 col-lg-7">
+      {% if not link %}
+      <div class="alert alert-warning">This guest registration link is invalid or has expired.</div>
+      {% elif registered %}
+      <div class="card border-success shadow-sm">
+        <div class="card-body text-center p-4">
+          <i class="fas fa-check-circle text-success fs-1 mb-3"></i>
+          <h1 class="h4">You’re registered</h1>
+          <p class="mb-0">Your details have been added to the guest list. Your host will see any request you submitted.</p>
+        </div>
+      </div>
+      {% else %}
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <h1 class="h4">Join the guest list</h1>
+          <p class="text-muted">{{ booking.accommodation_property.title if booking and booking.accommodation_property else 'Accommodation booking' }}</p>
+          <div class="alert alert-info py-2">{{ link.registrants_count }} of {{ link.max_registrants }} spots filled · {{ link.spots_remaining }} remaining</div>
+          {% if full %}
+          <div class="alert alert-success mb-0">This guest list is full. You’re all set!</div>
+          {% else %}
+          {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+          <form method="post" novalidate>
+            {{ roster_form.hidden_tag() }}
+            <div class="mb-3">{{ roster_form.guest_name.label(class="form-label") }}{{ roster_form.guest_name(class="form-control", autocomplete="name") }}</div>
+            <div class="mb-3">{{ roster_form.guest_email.label(class="form-label") }}{{ roster_form.guest_email(class="form-control", autocomplete="email") }}</div>
+            <div class="row">
+              <div class="col-sm-4 mb-3">{{ roster_form.guest_phone_country_code.label(class="form-label") }}{{ roster_form.guest_phone_country_code(class="form-control", placeholder="+256") }}</div>
+              <div class="col-sm-8 mb-3">{{ roster_form.guest_phone_national.label(class="form-label") }}{{ roster_form.guest_phone_national(class="form-control", autocomplete="tel-national") }}</div>
+            </div>
+            <div class="mb-3">{{ roster_form.id_document_type.label(class="form-label") }}{{ roster_form.id_document_type(class="form-select") }}</div>
+            {{ request_form.hidden_tag() }}
+            <div class="mb-3">{{ request_form.special_requests.label(class="form-label", text="Special request (optional)") }}{{ request_form.special_requests(class="form-control", rows="3", maxlength="4000") }}<small class="text-muted">Not guaranteed — your host will confirm.</small></div>
+            <button class="btn btn-primary w-100" type="submit">Join guest list</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

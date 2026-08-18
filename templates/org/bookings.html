@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}{{ org.legal_name }} — Bookings{% endblock %}
+
+{% block content %}
+<main class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div>
+            <p class="text-muted mb-1">{{ org.legal_name }}</p>
+            <h1 class="h3 mb-0">Property bookings</h1>
+        </div>
+        <a class="btn btn-outline-primary" href="{{ url_for('org.accommodation', org_id=org.org_id) }}">Back to properties</a>
+    </div>
+    {% if bookings %}
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead><tr><th>Reference</th><th>Property</th><th>Dates</th><th>Status</th></tr></thead>
+            <tbody>
+            {% for booking in bookings %}
+            <tr>
+                <td>{{ booking.booking_reference }}</td>
+                <td>{{ booking.accommodation_property.title }}</td>
+                <td>{{ booking.check_in }} — {{ booking.check_out }}</td>
+                <td>{{ booking.status }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}<p class="text-muted">No bookings are available for this organisation's properties.</p>{% endif %}
+</main>
+{% endblock %}

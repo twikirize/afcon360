@@ -30,6 +30,63 @@ class PricingService:
         return Decimal(str(value or 0))
 
     @staticmethod
+    def calculate_modification_price(
+            booking,
+            new_check_in: date,
+            new_check_out: date,
+    ) -> Dict[str, Decimal]:
+        """
+        Recalculate the total price for a booking after a date modification.
+
+        Uses the booking's existing nightly_rate, cleaning_fee, service_fee,
+        and taxes (i.e. the rate structure captured at booking time). Only the
+        nightly component changes with the number of nights; the flat fees are
+        applied once per stay.
+
+        Args:
+            booking:         An AccommodationBooking instance.
+            new_check_in:    New check-in date.
+            new_check_out:   New check-out date.
+
+        Returns:
+            Dict with keys: nights, new_total, old_total, delta_amount,
+            refund_amount, amount_owed, breakdown.
+        """
+        from app.utils.money import money as _money
+
+        nights = (new_check_out - new_check_in).days
+        if nights < 0:
+            raise ValueError("Check-out must be after check-in")
+
+        nightly_rate = _money(booking.nightly_rate)
+        cleaning_fee = _money(booking.cleaning_fee)
+        service_fee = _money(booking.service_fee)
+        taxes = _money(booking.taxes)
+
+        new_subtotal = _money(nightly_rate * nights)
+        new_taxes = taxes  # taxes are flat per stay
+        new_total = _money(new_subtotal + cleaning_fee + service_fee + new_taxes)
+
+        old_total = _money(booking.total_amount)
+        old_amount_paid = _money(booking.amount_paid)
+
+        delta = _money(new_total - old_total)
+        refund_amount = _money(-delta) if delta < 0 else _money(0)
+        amount_owed = _money(delta) if delta > 0 else _money(0)
+
+        return {
+            "nights": nights,
+            "new_subtotal": new_subtotal,
+            "new_total": new_total,
+            "old_total": old_total,
+            "delta_amount": delta,
+            "refund_amount": refund_amount,
+            "amount_owed": amount_owed,
+            "old_amount_paid": old_amount_paid,
+            "currency": booking.currency or "USD",
+        }
+
+    @staticmethod
     def calculate_total(
             property: Property,
             check_in: date,

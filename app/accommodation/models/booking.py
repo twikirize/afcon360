@@ -100,6 +100,7 @@ class AccommodationBooking(BaseModel):
         Index("idx_booking_created_at", "created_at"),
         CheckConstraint("check_out > check_in", name="ck_valid_dates"),
         CheckConstraint("num_guests >= 1", name="ck_guests_positive"),
+        CheckConstraint("rooms_requested >= 1", name="ck_rooms_requested_positive"),
         CheckConstraint("num_nights >= 1", name="ck_nights_positive"),
         CheckConstraint("total_amount >= 0", name="ck_total_amount_positive"),
         CheckConstraint("security_deposit_amount >= 0", name="ck_security_deposit_positive"),
@@ -133,6 +134,8 @@ class AccommodationBooking(BaseModel):
     check_out = Column(Date, nullable=False)
     num_nights = Column(Integer, nullable=False)
     num_guests = Column(Integer, nullable=False, default=1)
+    # Group bookings reserve one quantity atomically; room assignment is deferred.
+    rooms_requested = Column(Integer, nullable=False, default=1, server_default="1")
 
     # -------------------------------
     # Pricing Snapshot
@@ -179,8 +182,10 @@ class AccommodationBooking(BaseModel):
     # -------------------------------
     # Guest Snapshot
     # -------------------------------
-    guest_name = Column(String(255), nullable=False)
-    guest_email = Column(String(255), nullable=False)
+    # Legacy mirrors are optional because third-party and group bookings may
+    # collect the guest roster after payment via the claim-link flow.
+    guest_name = Column(String(255), nullable=True)
+    guest_email = Column(String(255), nullable=True)
     guest_phone = Column(String(50), nullable=True)
     special_requests = Column(Text, nullable=True)
     host_message = Column(Text, nullable=True)
@@ -308,6 +313,8 @@ class AccommodationBooking(BaseModel):
     review = relationship("Review", back_populates="booking", uselist=False)
     room_assignments = relationship("RoomBooking", back_populates="booking", cascade="all, delete-orphan")
     guest_registrations = relationship("GuestRegistration", back_populates="booking", cascade="all, delete-orphan")
+    special_requests_list = relationship("BookingSpecialRequest", back_populates="booking", cascade="all, delete-orphan")
+    registration_link = relationship("BookingRegistrationLink", back_populates="booking", uselist=False, cascade="all, delete-orphan")
 
     # ==========================================
     # PROPERTIES

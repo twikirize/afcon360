@@ -48,16 +48,17 @@
                             <div class="col-md-2">
                                 {% set status_class = {
                                     'pending': 'warning',
+                                    'pending_approval': 'warning',
                                     'confirmed': 'success',
                                     'checked_in': 'info',
                                     'checked_out': 'secondary',
                                     'cancelled': 'danger',
                                     'refunded': 'dark'
                                 } %}
-                                <span class="badge bg-{{ status_class.get(booking.status.value, 'secondary') }} px-3 py-2">
-                                    {{ booking.status.value|replace('_', ' ')|title }}
+                                <span class="badge bg-{{ status_class.get(booking.status, 'secondary') }} px-3 py-2">
+                                    {{ booking.status|replace('_', ' ')|title }}
                                 </span>
-                                {% if booking.status.value in ['confirmed', 'pending_approval'] %}
+                                {% if booking.status in ['confirmed', 'pending_approval'] %}
 {% set reg_count = booking.guest_registrations | length %}
 {% set reg_completed = booking.guest_registrations | selectattr('status', 'in', ['completed', 'skipped']) | list | length %}
 {% if reg_count > 0 %}
@@ -96,7 +97,7 @@
                                    class="btn btn-sm btn-outline-primary mb-2">
                                     View Details
                                 </a>
-                                {% if booking.status.value in ['pending', 'confirmed'] %}
+                                {% if booking.status in ['pending', 'confirmed', 'pending_approval'] %}
                                 <button type="button" class="btn btn-sm btn-outline-danger"
                                         data-bs-toggle="modal" data-bs-target="#cancelModal{{ booking.id }}">
                                     Cancel
@@ -107,7 +108,7 @@
                     </div>
 
                     <!-- Cancel Modal -->
-                    {% if booking.status.value in ['pending', 'confirmed'] %}
+                    {% if booking.status in ['pending', 'confirmed', 'pending_approval'] %}
                     <div class="modal fade" id="cancelModal{{ booking.id }}" tabindex="-1">
                         <div class="modal-dialog">
                             <div class="modal-content">

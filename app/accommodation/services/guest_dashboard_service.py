@@ -78,6 +78,20 @@ class GuestDashboardService:
         current_stay = next((e for e in enriched if e["is_current"]), None)
         upcoming = [e for e in enriched if e["is_upcoming"]]
         past = [e for e in enriched if e["is_past"]]
+        cancelled_bookings = [
+            e for e in past
+            if e["booking"].status in (
+                AccommodationBookingStatus.CANCELLED.value,
+                AccommodationBookingStatus.REFUNDED.value,
+            )
+        ]
+        completed_history = [
+            e for e in past
+            if e["booking"].status not in (
+                AccommodationBookingStatus.CANCELLED.value,
+                AccommodationBookingStatus.REFUNDED.value,
+            )
+        ]
         payments_due = [e for e in enriched if e["can_pay"]]
         ready_to_review = [e for e in enriched if e["can_review"]]
 
@@ -119,6 +133,8 @@ class GuestDashboardService:
             "current_stay": current_stay,
             "upcoming": upcoming,
             "past": past,
+            "completed_history": completed_history,
+            "cancelled_bookings": cancelled_bookings,
             "payments_due": payments_due,
             "ready_to_review": ready_to_review,
             "complaints": all_complaints,
@@ -137,7 +153,15 @@ class GuestDashboardService:
             and not is_current
             and (booking.check_out >= today or status == AccommodationBookingStatus.PENDING_APPROVAL.value)
         )
-        is_past = status in cls.HISTORY_STATUSES
+        is_past = (
+            status in cls.HISTORY_STATUSES
+            or (
+                status in cls.ACTIVE_STATUSES
+                and not is_current
+                and booking.check_out < today
+                and status != AccommodationBookingStatus.PENDING_APPROVAL.value
+            )
+        )
 
         # Payment due when there is an outstanding amount and the booking is active.
         amount_due = Decimal("0.00")

@@ -1126,7 +1126,7 @@ security_deposit_amount = Column(Numeric(10, 2), default=0, server_default='0')
 
 ---
 
-## 23. Today's Implementation � 2026-08-04
+## 23. Today's Implementation � 2026-08-04
 
 ### 23.1 Change Summary
 
@@ -1135,21 +1135,23 @@ security_deposit_amount = Column(Numeric(10, 2), default=0, server_default='0')
 | 1 | pp/accommodation/models/booking.py | Added ooking_owner_id, owner_claimed_at, owner_email, claim_token_hash columns | Booking Owner identity model (D-003, D-004) for third-party bookings |
 | 2 | pp/accommodation/models/booking.py | Updated is_ready_for_checkin to check PropertyBookingPolicy.require_guest_identity | Full Guest Manifest enforcement at check-in gate (D-005, D-007) |
 | 3 | pp/accommodation/models/booking.py | Updated ll_required_guests_registered to query GuestRegistration table properly | Guest Manifest enforcement uses real registration data, not stub logic |
-| 4 | pp/accommodation/models/booking_policy.py | Added equired_registration_fields JSON column (default []) | Host-configurable registration fields (D-024) |
+| 4 | pp/accommodation/models/booking_policy.py | Added 
+equired_registration_fields JSON column (default []) | Host-configurable registration fields (D-024) |
 | 5 | pp/accommodation/models/guest_registration.py | Added date_of_birth and 
 ationality columns | Support for host-configurable registration fields |
 | 6 | pp/accommodation/services/booking_service.py | Added ooking_owner_id, owner_email, claim_token_hash parameters to create_booking() | Persist Booking Owner data at creation time |
 | 7 | pp/accommodation/services/booking_service.py | Added generate_claim_token() and claim_booking() static methods | Owner claiming flow for third-party bookings (D-003, D-004) |
 | 8 | pp/accommodation/services/booking_service.py | Updated cancel_booking() authority check to include ooking_owner_id | Authority enforcement: Owner > Creator (D-004) |
 | 9 | pp/accommodation/services/booking_service.py | Added with_for_update() locking on InventoryBlock/BlockedDate rows before availability check | Concurrency-safe booking for last room (D-022) |
-| 10 | pp/accommodation/routes.py | Added guest_claim_booking route (/guest/booking/claim/<token>) | Owner claiming flow � login/registration page for third-party bookings |
+| 10 | pp/accommodation/routes.py | Added guest_claim_booking route (/guest/booking/claim/<token>) | Owner claiming flow � login/registration page for third-party bookings |
 | 11 | pp/accommodation/routes.py | Updated checkout to set ooking_owner_id, owner_email, and generate claim token for third-party bookings | Third-party booking creation with Owner identity |
 | 12 | pp/accommodation/routes.py | Updated checkout to send owner claim invite email after booking creation | Email notification to Owner for third-party bookings |
-| 13 | pp/accommodation/routes.py | Updated host_booking_policy POST to save equired_registration_fields from form | Persist host-configured registration field requirements |
+| 13 | pp/accommodation/routes.py | Updated host_booking_policy POST to save 
+equired_registration_fields from form | Persist host-configured registration field requirements |
 | 14 | pp/accommodation/routes.py | Updated guest_register route to validate host-configured required fields | Enforce registration field requirements at guest registration |
 | 15 | pp/tasks/accommodation_reminders.py | Added 72h registration reminder, 24h final warning, and deadline enforcement task | Registration deadline reminders (D-005) |
 | 16 | pp/tasks/accommodation_reminders.py | Updated _send_notification to use ooking_owner_id as recipient | Reminders go to Owner, not just the booker |
-| 17 | 	emplates/accommodation/guest/claim_booking.html | New template � owner claim page with login/registration options | Frontend for third-party booking ownership transfer |
+| 17 | 	emplates/accommodation/guest/claim_booking.html | New template � owner claim page with login/registration options | Frontend for third-party booking ownership transfer |
 | 18 | 	emplates/accommodation/guest/register.html | Added date_of_birth and 
 ationality form fields | Support for host-configurable registration fields |
 | 19 | 	emplates/accommodation/host/booking_policy.html | Added Guest Registration Requirements section with checkboxes for each field | Host UI for configuring required registration fields |
@@ -1158,37 +1160,39 @@ ationality form fields | Support for host-configurable registration fields |
 
 ---
 
-## 24. Frontend & Dashboard Enforcement � 2026-08-04
+## 24. Frontend & Dashboard Enforcement � 2026-08-04
 
 ### 24.1 Change Summary
 
 | # | File | Change | Purpose |
 |---|------|--------|---------|
 | 1 | 	ests/test_accommodation_booking.py | Replaced RoomHold.query.get() with db.session.get(RoomHold, hold_id) (2 occurrences) | Fix LegacyAPIWarning in test file |
-| 2 | 	emplates/accommodation/guest/my_bookings.html | Added owner banner for third-party bookings and guest registration progress badges | Guest dashboard � know who the owner is, see manifest status |
-| 3 | 	emplates/accommodation/guest/register.html | Added dynamic required fields with asterisks, registration deadline display, overdue warning | Guest dashboard � host-configured field enforcement |
-| 4 | 	emplates/accommodation/host/booking_detail.html | Added Guest Manifest section with registration progress, check-in readiness gate, override button, and Booking Owner info panel | Host dashboard � manifest enforcement, override, ownership visibility |
-| 5 | 	emplates/accommodation/host/bookings.html | Added Registration Status filter (complete/incomplete) and Guests Registered column | Host dashboard � registration status filtering |
-| 6 | 	emplates/accommodation/admin/bookings.html | Added Owner column, Claimed status column, and quick-filter widgets for unclaimed bookings and readiness issues | Admin dashboard � ownership and manifest visibility |
-| 7 | 	emplates/accommodation/admin/booking_detail.html | New template � full booking detail with Owner info, Guest Manifest table, check-in readiness gate, override button, and audit log | Admin dashboard � complete booking visibility |
+| 2 | 	emplates/accommodation/guest/my_bookings.html | Added owner banner for third-party bookings and guest registration progress badges | Guest dashboard � know who the owner is, see manifest status |
+| 3 | 	emplates/accommodation/guest/register.html | Added dynamic required fields with asterisks, registration deadline display, overdue warning | Guest dashboard � host-configured field enforcement |
+| 4 | 	emplates/accommodation/host/booking_detail.html | Added Guest Manifest section with registration progress, check-in readiness gate, override button, and Booking Owner info panel | Host dashboard � manifest enforcement, override, ownership visibility |
+| 5 | 	emplates/accommodation/host/bookings.html | Added Registration Status filter (complete/incomplete) and Guests Registered column | Host dashboard � registration status filtering |
+| 6 | 	emplates/accommodation/admin/bookings.html | Added Owner column, Claimed status column, and quick-filter widgets for unclaimed bookings and readiness issues | Admin dashboard � ownership and manifest visibility |
+| 7 | 	emplates/accommodation/admin/booking_detail.html | New template � full booking detail with Owner info, Guest Manifest table, check-in readiness gate, override button, and audit log | Admin dashboard � complete booking visibility |
 | 8 | pp/accommodation/routes.py | Added dmin_booking_detail route with role-based access | Route for admin booking detail page |
-| 9 | pp/accommodation/routes.py | Updated host_bookings route to support eg_status filter | Host booking list registration filtering |
-| 10 | pp/accommodation/routes.py | Updated guest_register route to pass equired_fields to template | Dynamic required field rendering in registration form |
+| 9 | pp/accommodation/routes.py | Updated host_bookings route to support 
+eg_status filter | Host booking list registration filtering |
+| 10 | pp/accommodation/routes.py | Updated guest_register route to pass 
+equired_fields to template | Dynamic required field rendering in registration form |
 | 10 | app/accommodation/routes.py | Updated guest_register route to pass property_policy and today | Guest registration with dynamic fields |
 | 11 | app/accommodation/routes.py | Updated host_bookings route to support reg_status filter | Host booking list registration filtering |
 
 ---
 
-### 24.2 Dashboard Widgets � Super Admin, Owner & Accommodation Admin
+### 24.2 Dashboard Widgets � Super Admin, Owner & Accommodation Admin
 
 | # | File | Change | Purpose |
 |---|------|--------|---------|
-| 1 | app/admin/routes.py | Added accommodation stats queries (unclaimed_count, readiness_issues_count) to super_dashboard route | Super admin dashboard � accommodation visibility |
-| 2 | app/admin/route_modules/accommodation_admin.py | Added unclaimed_count and readiness_issues_count to accommodation_admin_dashboard route | Accommodation admin dashboard � widget data |
-| 3 | app/admin/owner/routes.py | Added accommodation stats queries (unclaimed_count, readiness_issues_count) to owner dashboard route | Owner dashboard � accommodation visibility |
-| 4 | templates/super_admin_dashboard.html | Added Accommodation Overview card with unclaimed bookings, readiness issues, total bookings, active properties widgets | Super admin dashboard � accommodation widgets |
-| 5 | templates/owner/dashboard.html | Added Unclaimed Bookings and Check-in Blockers stat cards with links to admin bookings | Owner dashboard � accommodation widgets |
-| 6 | templates/admin/accommodation_admin_dashboard.html | Added Unclaimed Bookings and Check-in Blockers stat cards | Accommodation admin dashboard � widgets |
+| 1 | app/admin/routes.py | Added accommodation stats queries (unclaimed_count, readiness_issues_count) to super_dashboard route | Super admin dashboard � accommodation visibility |
+| 2 | app/admin/route_modules/accommodation_admin.py | Added unclaimed_count and readiness_issues_count to accommodation_admin_dashboard route | Accommodation admin dashboard � widget data |
+| 3 | app/admin/owner/routes.py | Added accommodation stats queries (unclaimed_count, readiness_issues_count) to owner dashboard route | Owner dashboard � accommodation visibility |
+| 4 | templates/super_admin_dashboard.html | Added Accommodation Overview card with unclaimed bookings, readiness issues, total bookings, active properties widgets | Super admin dashboard � accommodation widgets |
+| 5 | templates/owner/dashboard.html | Added Unclaimed Bookings and Check-in Blockers stat cards with links to admin bookings | Owner dashboard � accommodation widgets |
+| 6 | templates/admin/accommodation_admin_dashboard.html | Added Unclaimed Bookings and Check-in Blockers stat cards | Accommodation admin dashboard � widgets |
 
 ---
 
@@ -1215,3 +1219,329 @@ flask db migrate -m "add date_of_birth nationality to guest_registrations"
 - All modified Python files pass py_compile verification
 - App factory imports successfully with all blueprints registered
 - Dashboard widgets render with |default(0) fallbacks for missing data
+
+---
+
+## 27. Seamless Booking Specification — Continued Implementation (2026-08-12)
+
+### 27.1 Files changed
+
+- `app/accommodation/models/booking.py` — made legacy `guest_name` and `guest_email` nullable so third-party and group bookings can defer identity collection.
+- `app/wallet/models/payment_method.py` — added `allowed_timings` and seeded defaults for wallet and cash methods. This is an intentional cross-module schema change requested by the specification.
+- `app/accommodation/models/property_payment_method.py` — added nullable `preferred_currency`, falling back to the property currency.
+- `app/accommodation/services/payment_policy_service.py` — removed the global-method fallback and hardcoded method-type timing map; responses now include only enabled property-linked methods with per-method currency, timing, fee, and amount limits.
+- `app/accommodation/services/booking_service.py` — made legacy guest arguments optional and stores canonical `primary_guest_*` values in both snapshots when available.
+- `app/accommodation/routes.py` — added `GET /accommodation/api/checkout/payment-options`, removed the third-party upfront identity gate, corrected unknown-owner claim setup, and validates the selected timing against the selected method.
+- `app/accommodation/booking_forms.py` — added `StayPartyForm`, `PaymentSelectionForm`, `GuestRosterEntryForm`, and `SpecialRequestsForm` for checkout/roster validation boundaries.
+
+### 27.2 Behavior changed
+
+Third-party and group checkout no longer requires a guest name or email before a hold/payment attempt. If identity is unknown, the booking remains owned by the booker until the existing single-use claim flow is completed; a supplied known guest account is still linked as the primary guest.
+
+Payment options are now property-scoped. A cash method cannot be submitted with `deposit` or `pay_now` unless its persisted `allowed_timings` explicitly contains that timing, and a property-linked method's preferred currency is returned with the option.
+
+### 27.3 Migration needed
+
+**Yes — proposed only; no migration commands were run.** Before deployment, inspect the single Alembic head and ask Alembic to generate/review a migration for:
+
+```powershell
+flask db heads
+flask db migrate -m "support seamless accommodation payment capabilities"
+flask db upgrade
+```
+
+The migration must backfill existing `payment_method_configs.allowed_timings` rows by method semantics (`wallet/card/mobile_money` → `pay_now,deposit`; `cash` → `pay_on_arrival`; `invoice` → `invoice`) and leave `preferred_currency` null so it falls back safely. Verify existing booking rows before applying the nullable change and verify the generated migration is reversible.
+
+### 27.4 Verification and manual steps
+
+- Run `python -m py_compile app/accommodation/booking_forms.py app/accommodation/models/booking.py app/accommodation/models/property_payment_method.py app/accommodation/services/payment_policy_service.py app/accommodation/services/booking_service.py app/accommodation/routes.py app/wallet/models/payment_method.py`.
+- Run the affected accommodation test suite after the migration is applied; include nullable third-party/group identity and cash-timing negative cases.
+- Rebuild the checkout UI around the new `payment-options` response and add the deferred roster page before considering the visual three-step flow complete.
+- Confirm no existing row is copied into `booking_owner_id` for an unknown third-party guest; the claim token must be the only ownership transfer mechanism.
+
+### 27.5 Concerns and follow-up recommendations
+
+- `templates/accommodation/guest/checkout.html` is still the legacy four-step identity-first template and was deliberately not rewritten in this continuation because its POST handler is a large compatibility path; the API and server-side guards are ready for the template migration.
+- The requested path `app/accommodation/forms/booking_forms.py` conflicts with the existing `app/accommodation/forms.py` module on this filesystem. The equivalent isolated module is `app/accommodation/booking_forms.py`; converting `forms.py` into a package would be a separate compatibility refactor.
+- `GuestRosterEntryForm` exists, but a dedicated `guest_roster.html` route/template was not added in this continuation. The existing registration/claim routes remain the current deferred-identity surface.
+- Existing database rows need a real backfill for `allowed_timings`; model defaults only apply to newly constructed ORM objects and do not repair persisted rows.
+- `RoomHold` remains a hard dependency for fully unit-aware group booking, as already documented in the specification; this continuation did not alter availability-engine semantics.
+
+### 27.6 Verification result
+
+- `py_compile` passed for all changed Python modules.
+- `from app import create_app` completed successfully and printed `APP_IMPORT_OK`.
+- All four new form classes imported successfully.
+- `tests/test_accommodation_booking.py` was attempted but all 26 tests errored during fixture setup because the test database lacks the pre-existing `users.email_verified_at` column. This is database migration drift; the suite must be rerun after the test schema is brought up to the current model state.
+
+---
+
+## 28. Seamless Booking Addendum 1 (2026-08-12)
+
+### 28.1 Files changed
+
+- `app/accommodation/models/special_request.py` — added `BookingSpecialRequest`, a single source of truth for request text, source, lifecycle status, guest attribution, and host response metadata.
+- `app/accommodation/models/booking_registration_link.py` — added one hash-backed, capped, multi-use link per booking with expiry and live capacity properties.
+- `app/accommodation/models/booking.py` — added booking relationships for centralized requests and the shared registration link.
+- `app/accommodation/models/booking_policy.py` — added host-configurable `available_request_options` JSON.
+- `app/accommodation/services/special_request_service.py` — added the only write/read service for all request touchpoints.
+- `app/accommodation/services/booking_registration_link_service.py` — added secure token generation and hash lookup.
+- `app/accommodation/routes.py` — added shared link creation, public `/r/<token>` registration, dashboard request submission, host option persistence, confirmation data, and checkout/self-registration central request writes.
+- `templates/accommodation/guest/checkout.html` — moved the optional request field to the final review step with the deferred-add note.
+- `templates/accommodation/guest/confirmation.html` — added prominent request and shared-link cards.
+- `templates/accommodation/guest/registration_link.html` — added the public capped registration form.
+- `templates/accommodation/guest/add_request.html` — added authenticated request form.
+- `templates/accommodation/guest/register.html` — added optional request capture to the existing self-registration form.
+- `templates/accommodation/host/booking_policy.html` — added host request-option checkboxes.
+- `static/MOBILE_OPTIMIZATION.md` — updated the file tree and per-file change log for all frontend changes.
+
+### 28.2 Behavior changed
+
+Requests from checkout, confirmation/dashboard, and guest self-registration now enter one merged table through `SpecialRequestService`. Group bookings and third-party bookings without a known guest receive a single shareable, capped registration link; each public submission creates its own roster row and can attach an optional request.
+
+### 28.3 Migration needed
+
+**Yes — proposed only; no migration commands were run.** Review the Alembic head first, then generate and inspect a migration for the two new tables and `property_booking_policies.available_request_options`:
+
+```powershell
+flask db heads
+flask db migrate -m "add seamless booking requests and shared registration links"
+flask db upgrade
+```
+
+The migration must be reversible and reviewed before application. Existing `special_requests` text remains untouched for backward compatibility; no data migration is required.
+
+### 28.4 Concerns and recommendations
+
+- Shared-link raw tokens are intentionally available only at creation/confirmation time; only SHA-256 hashes are persisted. A later dashboard view needs a secure token-delivery mechanism if the original confirmation session is gone.
+- Public POST capacity checks now lock the registration-link row; the migration and production database must preserve row-lock semantics for concurrent submissions.
+- The current affected test database is already behind the `User` model (`users.email_verified_at` is missing), so accommodation tests remain blocked until schema drift is corrected.
+- The new models and the earlier payment capability fields require migrations before runtime use; model defaults do not backfill existing rows.
+
+### 28.5 Verification
+
+- Python compilation and app-factory import are rerun after this addendum.
+- Template syntax is checked by loading the Flask application and rendering the new templates with minimal contexts where possible.
+- The affected pytest module remains expected to fail at fixture setup until the existing test schema migration drift is resolved.
+
+---
+
+## 29. Seamless Booking Addendum 2 (2026-08-12)
+
+### 29.1 Files changed
+
+- `app/accommodation/models/guest_registration.py` — added active/inactive slot state, placeholders, replacement links, removal metadata, and bulk batch IDs; rows are never hard-deleted.
+- `app/accommodation/models/booking_registration_link.py` — capacity now counts only active registrations, so removal immediately reopens the same shared link.
+- `app/accommodation/services/registration_service.py` — canonical create/remove/replace/bulk persistence path with capacity and incomplete-row handling.
+- `app/accommodation/services/bulk_registration_service.py` — validates CSV/XLSX headers, enforces remaining capacity, and returns batch/failed-row summaries.
+- `app/accommodation/services/registration_permission_service.py` — authorizes booker, booking owner, host, privileged accommodation roles, and the canonical delegation scope.
+- `app/auth/delegation.py` — registered the accommodation-management scope and made the existing in-memory delegation store shared across service instances.
+- `app/accommodation/routes.py` — added roster view, bulk upload, placeholder, removal, replacement, and delegation endpoints; shared-link registration now uses `RegistrationService`.
+- `templates/accommodation/guest/guest_roster.html` — added responsive roster/history, bulk upload, active capacity, and D-day visibility UI.
+- `static/MOBILE_OPTIMIZATION.md` — documented the new frontend file and responsive behavior.
+
+### 29.2 Behavior changed
+
+Guest rows now behave as auditable slots. Removing a self-registered guest marks the row inactive, records actor/time/reason, optionally notifies the guest, and reopens capacity; a replacement points to the removed row through `replaces_registration_id`. Placeholders and incomplete bulk rows remain visible instead of being silently discarded, and the roster reports seats that may be completed at check-in.
+
+Bookers and authorized delegates can use the same booking roster for manual placeholders, CSV/XLSX bulk imports, removal, and replacement. Delegation uses the existing `DelegationService` with the new `accommodation_registration_management` scope; no separate permission table was introduced.
+
+### 29.3 Migration needed
+
+**Yes — proposed only; no migration commands were run.** Review Alembic heads and generate/inspect a migration for the additive guest-registration columns and indexes:
+
+```powershell
+flask db heads
+flask db migrate -m "add auditable accommodation registration slots"
+flask db upgrade
+```
+
+The migration must backfill existing rows with `is_active=true` and `is_placeholder=false`, preserve existing registration sources, and be reviewed for a reversible downgrade. Existing shared-link and special-request migrations from Addendum 1 remain required.
+
+### 29.4 Concerns and recommendations
+
+- The existing delegation implementation is in-memory, so delegations do not survive process restarts or multiple workers. Replace that implementation with a persisted delegation model before production-scale HR workflows; this session did not invent a parallel store.
+- XLSX parsing requires `openpyxl` to be installed in every runtime/worker image. CSV remains dependency-light.
+- Bulk failures are returned in the JSON summary; a follow-up download endpoint/UI can serialize `failed` rows for correction.
+- Guest notifications are best-effort and do not roll back a compliant removal if the notification provider is unavailable.
+- Existing test-database drift (`users.email_verified_at` missing) remains unrelated and can block full accommodation pytest setup.
+
+### 29.5 Verification
+
+- Added focused service/model tests for active-capacity counting, removal metadata, bulk parsing, and permission ownership.
+- Run `py_compile`, app-factory import, route-map checks, and all affected Jinja template loads after the final edits.
+
+---
+
+## 30. Migration metadata safety correction (2026-08-12)
+
+### 30.1 Source changes
+
+- `app/accommodation/models/booking_registration_link.py` — removed the redundant column-level `unique=True` from `booking_id`; the named `uq_registration_link_booking` constraint is now the sole booking uniqueness declaration and named the new booking foreign key.
+- `app/accommodation/models/special_request.py` — named all new booking, guest-registration, requester, and responder foreign keys so Alembic can generate deterministic upgrade and downgrade operations.
+- `app/accommodation/models/guest_registration.py` — named the new replacement-registration and removal-actor foreign keys.
+
+### 30.2 Reason and regeneration procedure
+
+The unapplied generated revision contained duplicate uniqueness on the registration-link booking key and unnamed foreign keys, which could produce downgrade operations using `drop_constraint(None, ...)`. The Python metadata is corrected without editing the migration; remove only the unapplied revision and regenerate it:
+
+```powershell
+Remove-Item .\migrations\versions\9fc019cd2da5_add_seamless_booking_registration_and_.py
+& .venv\Scripts\python.exe -m flask db migrate -m "add_seamless_booking_registration_and_request_features"
+```
+
+Review the regenerated revision before running `flask db upgrade`. It should contain exactly one `uq_registration_link_booking`, explicit names for all new foreign keys, and no `create_foreign_key(None, ...)` or `drop_constraint(None, type_='foreignkey')` for these changes.
+
+### 30.3 Verification
+
+- `py_compile` passed for the corrected accommodation models.
+- SQLAlchemy metadata assertions passed for uniqueness and all new foreign-key names.
+- The existing migration was not edited or upgraded.
+
+---
+
+## 31. Checkout alignment with seamless booking (2026-08-12)
+
+### 31.1 Files changed
+
+- `templates/accommodation/guest/checkout.html` — aligned the live form with the documented three-step flow, moved the optional special-request capture to review, exposed all server-approved payment methods, and attached each method's currency and timing capabilities.
+- `static/js/modules/accommodation/checkout.js` — removed reliance on legacy timing inference during active behavior, renders timing choices from the selected method's `allowed_timings`, updates the review currency, clamps stale wizard state, and submits one authoritative group guest count.
+- `static/MOBILE_OPTIMIZATION.md` — updated the checkout file tree and change log to describe the current three-step implementation.
+
+### 31.2 Behavior changed
+
+Checkout now follows `Your Trip → Payment → Review & Confirm`. Payment timing is selected only from the chosen method's configured capabilities, so configured card, mobile-money, invoice, cash, wallet, and future methods are not hidden by a client-side allow-list. Special requests remain optional and non-blocking, and group room assignment remains deferred while the required booking guest count is submitted reliably.
+
+### 31.3 Migration needed
+
+**No.** These are template and JavaScript changes only; the database migration already applied for the seamless-booking models and payment capabilities remains current.
+
+### 31.4 Verification and concerns
+
+- JavaScript syntax, Jinja template loading, and the checkout route field contract should be checked before user acceptance testing.
+- Third-party deferred identity remains limited by the current `guest_checkout()` POST handler: it reads `primary_guest_name`, `primary_guest_email`, and `primary_guest_phone` directly. The checkout therefore does not advertise a deferred-details toggle until that backend path is explicitly implemented.
+
+---
+
+## 32. Date-range and availability guard (2026-08-12)
+
+### 32.1 Files changed
+
+- `templates/accommodation/guest/detail.html` — wired the availability form to the existing JavaScript, disables check-out until check-in is selected, and sets the native check-out minimum to the following day.
+- `app/accommodation/services/availability_service.py` — rejects empty and reverse ranges before inventory lookup; the cascade returns a structured validation error.
+- `app/accommodation/routes.py` — the property detail check now uses room-type availability with guest-capacity rules instead of checking only whether any room exists.
+- `tests/test_accommodation_date_range_rules.py` — added regression coverage for equal and reverse date ranges.
+- `static/MOBILE_OPTIMIZATION.md` — documented the date-picker and room-capacity UI behavior.
+
+### 32.2 Behavior changed
+
+Check-out cannot be selected before a valid check-in and must be at least one day later. Invalid ranges are rejected in the browser, live availability API, property detail flow, shared availability service, and booking service; database-backed inventory remains authoritative and the frontend only reflects its result.
+
+The property detail page now evaluates the selected room type against both available inventory and guest capacity, preventing an oversized group from appearing bookable merely because one room remains.
+
+### 32.3 Migration needed
+
+**No.** This change modifies validation, availability calculation, JavaScript, tests, and documentation only; no schema metadata changed.
+
+### 32.4 Verification and concerns
+
+- Focused regression and capacity tests: `4 passed`.
+- Python compilation and `git diff --check` passed.
+- Full accommodation tests may still be affected by the pre-existing test database drift documented elsewhere in this report (`users.email_verified_at` missing).
+- Production pages should be hard-refreshed after deployment so the updated inline date-picker logic is loaded.
+
+---
+
+## 33. Checkout date and payment capability correction (2026-08-12)
+
+### 33.1 Files changed
+
+- `app/wallet/models/payment_method.py` — repairs missing timing capabilities on existing built-in Wallet/Cash rows without overwriting explicit administrator configuration; fresh defaults already carry the same values.
+- `templates/accommodation/guest/detail.html` — synchronizes check-in/check-out validation on both `input` and `change` events.
+- `static/MOBILE_OPTIMIZATION.md` — records the immediate date-control synchronization behavior.
+- `tests/test_payment_method_capabilities.py` — guards the built-in timing contract.
+
+### 33.2 Behavior changed
+
+Checkout now receives Wallet timings (`pay_now`, `deposit`) and Cash timing (`pay_on_arrival`) when legacy rows have an empty JSON capability value. The repair is deliberately limited to built-in methods and does not replace non-empty custom capabilities.
+
+The check-out date minimum is synchronized as soon as the browser commits the check-in value, rather than waiting for an additional focus change.
+
+### 33.3 Migration needed
+
+**No schema migration.** The existing database required an idempotent capability-data repair through `PaymentMethodConfig.initialize_defaults()`; no table metadata changed.
+
+### 33.4 Verification and concerns
+
+- Property `2` now returns Wallet `pay_now/deposit` and Cash `pay_on_arrival` through `PaymentPolicyService`.
+- The idempotent repair utility is available as `& .venv\Scripts\python.exe .\scripts\seed_payment_methods.py`; it repairs only empty built-in Wallet/Cash capability values.
+- A browser hard refresh is required to load the updated detail-page script.
+
+---
+
+## 34. Checkout group quantity and notification consistency (2026-08-12)
+
+### 34.1 Files changed
+
+- `app/accommodation/models/booking.py` — stores the requested room quantity on one booking and enforces a positive value.
+- `app/accommodation/routes.py` — reads `num_guests_group`, validates the requested room quantity against database-backed room-type availability, prices and holds all requested rooms atomically, and removes the obsolete per-room redirect.
+- `app/accommodation/services/booking_service.py` — accepts and persists `rooms_requested`.
+- `app/accommodation/services/host_service.py` — counts reserved room quantities, treating legacy null quantities as one.
+- `templates/accommodation/guest/checkout.html` — keeps room assignment deferred and submits one group guest count plus total rooms.
+- `templates/accommodation/guest/detail.html` — binds the checkout minimum to the selected check-in date.
+- `app/notifications/models.py` and `app/accommodation/routes.py` — align `booking_pending` with the notification constraint and mark booking notifications as accommodation notifications.
+- `tests/test_accommodation_checkout_processes.py` — covers multi-room pricing, notification vocabulary, and the deferred room-assignment checkout contract.
+
+### 34.2 Behavior changed
+
+Group checkout now represents one booking for the full party. Selecting five guests and two rooms carries `num_guests=5` into pricing, capacity validation, hold creation, and the persisted booking; it no longer creates a “room 1 of 2” continuation or asks the guest to choose a room number.
+
+The selected room type must have enough units for the requested room quantity and guest capacity for the complete stay. Check-out is enabled immediately after check-in input and its native minimum is synchronized to the selected date.
+
+### 34.3 Migration needed
+
+**Yes.** `AccommodationBooking.rooms_requested` is new schema metadata, and the notification check constraint must include `booking_pending` and `third_party_booking`. Generate and review a migration manually:
+
+```powershell
+& .venv\Scripts\python.exe -m flask db migrate -m "add_group_room_quantity_and_booking_notification_types"
+& .venv\Scripts\python.exe -m flask db upgrade
+```
+
+Do not run these commands automatically. The generated migration should add `rooms_requested` with a safe default of `1` and update `ck_notifications_type` without dropping unrelated notification types.
+
+### 34.4 Verification and concerns
+
+- Focused checkout, date-range, capacity, and payment tests should be run together after the migration.
+- Existing booking rows must be backfilled as `rooms_requested=1` if the generated migration does not provide a server default.
+- The original `booking_pending` error is a database constraint mismatch; code alignment alone cannot repair an already-upgraded PostgreSQL constraint until this migration is applied.
+
+---
+
+## 35. PostgreSQL aborted-transaction recovery on property detail (2026-08-12)
+
+### 35.1 Files changed
+
+- `app/accommodation/routes.py` — resets failed read transactions at the start of `guest_detail`, retries lazy room-type loading after rollback, and rolls back availability exceptions before rendering.
+- `app/__init__.py` — rolls back before writing the database audit record in the global exception handler.
+- `tests/test_accommodation_transaction_recovery.py` — regression checks the recovery ordering.
+
+### 35.2 Root cause and behavior changed
+
+The `accommodation_room_types` query in the reported traceback was a secondary failure. PostgreSQL had already marked the request transaction as failed, so SQLAlchemy's lazy relationship load produced `InFailedSqlTransaction`; the same failed session then prevented the error handler from reliably writing its audit record.
+
+The property detail page now starts from a clean read transaction, recovers and retries room-type loading once, and safely renders without room-type defaults if the database remains unavailable. The database remains the source of truth; this change only prevents a failed transaction from masking the original database error.
+
+### 35.3 Migration needed
+
+**No.** No schema or model metadata changed.
+
+### 35.4 Verification
+
+- Focused regression, checkout, date-range, and capacity tests: `9 passed`.
+- Python compilation passed.
+- Application factory passed and registered `1004` URL rules.
+- `git diff --check` passed for the files changed in this fix.
+
+### 35.5 Operational note
+
+The supplied log starts at the secondary `InFailedSqlTransaction`; the original database statement that first aborted the transaction is not included. The new rollback and retry path prevents that secondary failure, while the exception log now preserves the original failure for diagnosis if it recurs.

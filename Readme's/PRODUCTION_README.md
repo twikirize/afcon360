@@ -92,7 +92,7 @@ Last updated: March 2026
 
 ### 1. Assign yourself owner role
 - [ ] Run `flask db upgrade` then `flask seed-all`
-- [ ] Write `flask assign-owner <username>` CLI command so you never need raw SQL
+- [ ] Write `flask assign-owner <username>` CLI command backed by the role models so operators never need handwritten SQL
 - [ ] Verify login redirects you to super_dashboard not index
 
 ### 2. Audit hooks in services.py

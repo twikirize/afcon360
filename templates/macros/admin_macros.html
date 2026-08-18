@@ -267,7 +267,8 @@
 @media(min-width:769px){ .aa-mobile-toggle { display:none; } }
 </style>
 
-{# ── Sidebar HTML ── #}
+{# ── Shell + Sidebar HTML ── #}
+<div class="aa-shell">
 <aside class="aa-sidebar" id="aaSidebar">
   <div class="aa-sidebar-brand">
     <div class="brand-icon"><i class="bi bi-house-heart-fill"></i></div>
@@ -331,6 +332,10 @@
 <button class="aa-mobile-toggle" id="aaMobileToggle" aria-label="Toggle menu">
   <i class="bi bi-list"></i>
 </button>
+
+  {{ caller() }}
+</div>
+
 <script>
 document.getElementById('aaMobileToggle').addEventListener('click', function(){
   document.getElementById('aaSidebar').classList.toggle('open');
@@ -350,22 +355,24 @@ document.getElementById('aaMobileToggle').addEventListener('click', function(){
 {% endwith %}
 {% endmacro %}
 
-{% macro pagination(obj, endpoint, **kwargs) %}
+{% macro pagination(obj, endpoint) %}
+{% from 'utils.html' import request_args %}
+{% set preserved = request_args(exclude='page') %}
 {% if obj.pages > 1 %}
 <div class="aa-pagination">
-  <a href="{{ url_for(endpoint, page=obj.prev_num, **kwargs) if obj.has_prev else '#' }}"
+  <a href="{{ url_for(endpoint, page=obj.prev_num, **preserved) if obj.has_prev else '#' }}"
      class="aa-page-btn {{ 'disabled' if not obj.has_prev }}">
     <i class="bi bi-chevron-left"></i>
   </a>
   {% for p in obj.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
     {% if p %}
-    <a href="{{ url_for(endpoint, page=p, **kwargs) }}"
+    <a href="{{ url_for(endpoint, page=p, **preserved) }}"
        class="aa-page-btn {{ 'active' if p == obj.page }}">{{ p }}</a>
     {% else %}
     <span class="aa-page-btn disabled">…</span>
     {% endif %}
   {% endfor %}
-  <a href="{{ url_for(endpoint, page=obj.next_num, **kwargs) if obj.has_next else '#' }}"
+  <a href="{{ url_for(endpoint, page=obj.next_num, **preserved) if obj.has_next else '#' }}"
      class="aa-page-btn {{ 'disabled' if not obj.has_next }}">
     <i class="bi bi-chevron-right"></i>
   </a>

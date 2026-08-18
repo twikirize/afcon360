@@ -14,6 +14,8 @@ from app.extensions import db
 from app.accommodation.models.booking import AccommodationBooking, AccommodationBookingStatus
 from app.accommodation.models.guest_registration import GuestRegistration
 from app.accommodation.models.availability import RoomHold
+from app.models.system_config import SystemConfig
+from app.accommodation.state_machine.booking_states import BookingStateMachine
 
 
 @shared_task(name="accommodation.send_registration_reminders")
@@ -200,6 +202,59 @@ def expire_unapproved_bookings():
         except Exception as e:
             db.session.rollback()
             print(f"Failed to expire booking {booking.id}: {e}")
+
+
+@shared_task(name="accommodation.detect_no_shows")
+def detect_no_shows():
+    """
+    Auto-detect no-shows: a CONFIRMED booking whose check-in date has passed
+    by more than the configured grace window and that was never checked in.
+
+    This closes the gap where confirmed bookings are never moved to NO_SHOW,
+    leaving stale bookings able to prompt guests for actions (e.g. special
+    requests) and blocking inventory reporting.
+
+    Idempotent: bookings already in a terminal state are excluded by the query,
+    and the state machine refuses invalid transitions.
+    """
+    now = datetime.now(timezone.utc)
+    grace_hours = int(SystemConfig.get("accommodation_no_show_grace_hours", 24))
+    cutoff_date = (now - timedelta(hours=grace_hours)).date()
+
+    candidates = AccommodationBooking.query.filter(
+        AccommodationBooking.status == AccommodationBookingStatus.CONFIRMED.value,
+        AccommodationBooking.check_in < cutoff_date,
+        AccommodationBooking.is_checked_in == False,  # noqa: E712
+    ).all()
+
+    processed = 0
+    for booking in candidates:
+        try:
+            BookingStateMachine.transition(
+                booking,
+                AccommodationBookingStatus.NO_SHOW,
+                changed_by_user_id=None,
+                reason="Auto no-show detection (check-in window lapsed)",
+                trigger="system_no_show",
+                ip_address="system",
+                user_agent="system",
+            )
+            booking.cancelled_at = now
+            booking.cancellation_reason = "No-show (auto-detected)"
+            db.session.commit()
+            processed += 1
+
+            _send_notification(
+                booking,
+                "booking_no_show",
+                "Booking marked as no-show",
+                f"Booking {booking.booking_reference} was marked as a no-show because check-in was not completed in time.",
+            )
+        except Exception as e:
+            db.session.rollback()
+            print(f"Failed to mark no-show for booking {booking.id}: {e}")
+
+    return processed
 
 
 def _is_fully_registered(booking_id: int) -> bool:

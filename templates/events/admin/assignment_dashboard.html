@@ -95,7 +95,7 @@
                     <p class="card-text">
                         {{ stats.pending_accommodation }} attendees still need accommodation
                     </p>
-                    <a href="{{ url_for('event_assignment.list_attendees', event_id=event.id) }}?filter=accommodation"
+                    <a href="{{ url_for('events.event_assignment.list_attendees', event_ref=event.public_id) }}?filter=accommodation"
                        class="btn btn-primary">
                         <i class="fas fa-bed"></i> Assign Accommodation
                     </a>
@@ -111,7 +111,7 @@
                     <p class="card-text">
                         {{ stats.pending_transport }} attendees still need transport
                     </p>
-                    <a href="{{ url_for('event_assignment.list_attendees', event_id=event.id) }}?filter=transport"
+                    <a href="{{ url_for('events.event_assignment.list_attendees', event_ref=event.public_id) }}?filter=transport"
                        class="btn btn-info">
                         <i class="fas fa-shuttle-van"></i> Assign Transport
                     </a>
@@ -124,7 +124,7 @@
     <div class="card">
         <div class="card-header bg-white d-flex justify-content-between align-items-center">
             <h5 class="mb-0"><i class="fas fa-history"></i> Recent Assignments</h5>
-            <a href="{{ url_for('event_assignment.list_attendees', event_id=event.id) }}"
+            <a href="{{ url_for('events.event_assignment.list_attendees', event_ref=event.public_id) }}"
                class="btn btn-sm btn-outline-secondary">
                 View All Attendees
             </a>

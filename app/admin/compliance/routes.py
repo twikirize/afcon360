@@ -122,11 +122,24 @@ def kyc_queue():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     status = request.args.get('status', 'pending')
+    search = request.args.get('search', '').strip()
     
     query = KycRecord.query
     
     if status != 'all':
         query = query.filter_by(status=status)
+
+    if search:
+        from app.identity.models.user import User
+        search_pattern = f"%{search}%"
+        query = query.join(KycRecord.user).filter(
+            db.or_(
+                User.username.ilike(search_pattern),
+                User.email.ilike(search_pattern),
+                User.public_id.ilike(search_pattern),
+                KycRecord.reference_code.ilike(search_pattern),
+            )
+        )
     
     kyc_records = query.order_by(
         KycRecord.created_at.desc()
@@ -659,12 +672,16 @@ def organisations():
                           title="Organisation Queue")
 
 
-@compliance_bp.route('/organisation/<int:org_id>')
+@compliance_bp.route('/organisation/<string:org_id>')
 @login_required
 @require_role('compliance_officer', 'admin', 'super_admin', 'owner')
 def view_org(org_id):
     """View organisation details"""
-    org = Organisation.query.get_or_404(org_id)
+    org = Organisation.query.filter_by(public_id=str(org_id), is_deleted=False).first()
+    if not org and str(org_id).isdigit():
+        org = Organisation.query.filter_by(id=int(org_id), is_deleted=False).first()
+    if not org:
+        abort(404)
     kyb_documents = OrganisationKYBDocument.query.filter_by(
         organisation_id=org.id,
         is_deleted=False,

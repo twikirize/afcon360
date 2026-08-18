@@ -326,7 +326,25 @@
 
                 <!-- SMS Routing -->
                 <div class="mt-4 p-4" style="background: #f8fafc; border-radius: 8px;">
-                    <h6 class="mb-3">SMS Routing Strategy</h6>
+                    <h6 class="mb-3">Phone Verification OTP Delivery</h6>
+                    <div class="alert alert-info">
+                        Choose where phone-verification codes are delivered. Email is the safe default while SMS credentials are being configured.
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label" for="phone_verification_transport">Delivery channel</label>
+                        <select class="form-control" id="phone_verification_transport" name="phone_verification_transport">
+                            <option value="email" {% if config.get_phone_verification_transport() == 'email' %}selected{% endif %}>
+                                Email (temporary fallback)
+                            </option>
+                            <option value="sms" {% if config.get_phone_verification_transport() == 'sms' %}selected{% endif %}>
+                                SMS (configured provider)
+                            </option>
+                        </select>
+                        <small class="text-muted">
+                            This takes effect for the next code request. If SMS is selected without working provider credentials, delivery fails safely and the OTP is invalidated.
+                        </small>
+                    </div>
+                    <h6 class="mb-3">SMS Provider Routing Strategy</h6>
                     <div class="mb-3">
                         <label class="form-label">Provider Preference</label>
                         <select class="form-control" name="sms_provider_preference">

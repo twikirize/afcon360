@@ -39,6 +39,18 @@
                             </div>
                         </div>
 
+                        <h5 class="mb-3">Guest Special Requests</h5>
+                        <div class="mb-4">
+                            <p class="text-muted small">Offer common requests as quick-select options. Guests can always write something else, but it is not guaranteed.</p>
+                            {% for option in [('late_checkout', 'Late checkout'), ('extra_bedding', 'Extra bedding'), ('early_checkin', 'Early check-in')] %}
+                            <div class="form-check form-check-inline">
+                                <input type="checkbox" name="available_request_options" value="{{ option[0] }}" id="request_{{ option[0] }}" class="form-check-input"
+                                       {{ 'checked' if option[0] in ((policy.available_request_options or [])|map(attribute='type')|list) else '' }}>
+                                <label class="form-check-label" for="request_{{ option[0] }}">{{ option[1] }}</label>
+                            </div>
+                            {% endfor %}
+                        </div>
+
                         <!-- Payment Guarantee -->
                         <h5 class="mb-3">Payment Guarantee</h5>
                         <div class="mb-4">

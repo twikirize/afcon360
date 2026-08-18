@@ -14,7 +14,7 @@ import uuid
 import logging
 from functools import wraps
 from flask import current_app, request
-from sqlalchemy import or_, and_, func, text, case
+from sqlalchemy import or_, and_, func, case
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import joinedload, load_only
 

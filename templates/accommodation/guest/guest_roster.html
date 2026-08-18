@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Guest Roster - AFCON360{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h1 class="h4 mb-1">Guest roster</h1>
+      <p class="text-muted mb-0">{{ booking.booking_reference }} · {{ active_count }} of {{ booking.num_guests }} registered</p>
+    </div>
+    <span class="badge bg-info">{{ booking.num_guests - active_count }} may complete at check-in</span>
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <h2 class="h6">Bulk registration</h2>
+      <p class="small text-muted">Upload CSV or XLSX with columns: name, email, phone, id_document_type, id_document_number.</p>
+      <form method="post" enctype="multipart/form-data" action="{{ url_for('accommodation.bulk_registration_upload', booking_id=booking.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="input-group"><input class="form-control" type="file" name="file" accept=".csv,.xlsx" required><button class="btn btn-primary" type="submit">Upload roster</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h2 class="h6">Current seats and history</h2>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead><tr><th>Name</th><th>Status</th><th>Source</th><th>Actions</th></tr></thead>
+          <tbody>
+          {% for registration in registrations %}
+            <tr class="{% if not registration.is_active %}text-muted{% endif %}">
+              <td>{{ registration.guest_name }}{% if registration.is_placeholder %} <span class="badge bg-secondary">TBD</span>{% endif %}</td>
+              <td>{% if registration.is_active %}{{ registration.status }}{% else %}removed{% endif %}</td>
+              <td>{{ registration.registration_source or '—' }}</td>
+              <td>
+                {% if registration.is_active %}
+                <form method="post" action="{{ url_for('accommodation.remove_registration', booking_id=booking.id, registration_id=registration.id) }}" class="d-inline">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="removed_reason" value="Roster reassignment">
+                  <button class="btn btn-sm btn-outline-danger" type="submit">Remove</button>
+                </form>
+                {% else %}<small>Reason: {{ registration.removed_reason }}</small>{% endif %}
+              </td>
+            </tr>
+          {% else %}<tr><td colspan="4" class="text-muted">No registrations yet.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

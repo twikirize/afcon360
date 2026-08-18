@@ -8,10 +8,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from datetime import datetime
 import unittest
+import uuid
 from unittest.mock import patch, MagicMock
 from decimal import Decimal
-from flask import Flask
-from sqlalchemy import event
+from app import create_app
+from app.config import TestingConfig
 from app.extensions import db
 from app.kyc.models import KycRecord
 from app.identity.models.user import User
@@ -20,54 +21,43 @@ from app.events.services import EventService
 import app.identity.individuals.individual_verification        # IndividualVerification
 import app.fan.models
 
-# Note: SQLite BIGINT auto-increment is now handled by app/models/base.py
-# No need for custom event listeners
-
 class TestPaymentFlow(unittest.TestCase):
     """Test payment integration with wallet"""
 
     def setUp(self):
         """Set up test environment"""
-        self.app = Flask(__name__)
-        self.app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-        self.app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-        self.app.config['TESTING'] = True
-
-        db.init_app(self.app)
+        self.app = create_app(config_object=TestingConfig)
 
         with self.app.app_context():
-            db.create_all()
-
             # Create test user
-            self.test_user = User(email='payment@example.com', username='paymentuser', password_hash='pbkdf2:sha256:test')
+            suffix = uuid.uuid4().hex[:8]
+            self.test_user = User(
+                email=f'payment_{suffix}@example.com',
+                username=f'paymentuser_{suffix}',
+                password_hash='pbkdf2:sha256:test',
+            )
             db.session.add(self.test_user)
-            # Flush to generate ID without committing
             db.session.flush()
-            try:
-                db.session.commit()
-            except Exception as e:
-                db.session.rollback()
-                # Workaround for SQLite ID generation
-                self.test_user.id = 1
-                db.session.add(self.test_user)
-                db.session.flush()
-                db.session.commit()
+            db.session.commit()
+            self.user_id = self.test_user.id
+            self.slug_suffix = uuid.uuid4().hex[:8]
 
     def tearDown(self):
         """Clean up after tests"""
         with self.app.app_context():
             db.session.remove()
-            db.drop_all()
+            db.session.rollback()
 
     def test_free_registration_no_payment(self):
         """Test free registration doesn't require payment"""
         with self.app.app_context():
             # Create free event
             event = Event(
-                slug='free-event',
+                slug=f'free-event-{self.slug_suffix}',
                 name='Free Event',
                 city='Kampala',
-                organizer_id=self.test_user.id,
+                organizer_id=self.user_id,
+                current_owner_type="individual", current_owner_id=self.user_id,
                 status='active',
                 currency='USD'
             )
@@ -93,9 +83,9 @@ class TestPaymentFlow(unittest.TestCase):
                 'ticket_type_id': ticket.id
             }
 
-            with patch('app.events.services.SIGNALS_AVAILABLE', False):
+            with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
                 registration, qr_code, error = EventService.register_for_event_with_payment(
-                    'free-event', self.test_user.id, registration_data
+                    f'free-event-{self.slug_suffix}', self.user_id, registration_data
                 )
 
             self.assertIsNone(error)
@@ -114,10 +104,11 @@ class TestPaymentFlow(unittest.TestCase):
         with self.app.app_context():
             # Create paid event
             event = Event(
-                slug='paid-event',
+                slug=f'paid-event-{self.slug_suffix}',
                 name='Paid Event',
                 city='Kampala',
-                organizer_id=self.test_user.id,
+                organizer_id=self.user_id,
+                current_owner_type="individual", current_owner_id=self.user_id,
                 status='active',
                 currency='USD'
             )
@@ -136,11 +127,11 @@ class TestPaymentFlow(unittest.TestCase):
 
             # Mock successful wallet payment
             mock_wallet_service = MagicMock()
-            mock_wallet_service.debit.return_value = (
-                True,
-                {'transaction_id': 'wallet_txn_12345'},
-                None
-            )
+            mock_wallet_service.account_repo.get_by_user_id.return_value = MagicMock(id='account-123')
+            mock_wallet_service.withdraw.return_value = {
+                'status': 'success',
+                'transaction_id': 'wallet_txn_12345',
+            }
 
             registration_data = {
                 'full_name': 'Paying User',
@@ -150,20 +141,20 @@ class TestPaymentFlow(unittest.TestCase):
                 'ticket_type_id': ticket.id
             }
 
-            with patch('app.events.services.WalletService', return_value=mock_wallet_service):
-                with patch('app.events.services.SIGNALS_AVAILABLE', False):
+            with patch('app.events.services._legacy.WalletService', return_value=mock_wallet_service):
+                with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
                     registration, qr_code, error = EventService.register_for_event_with_payment(
-                        'paid-event', self.test_user.id, registration_data
+                        f'paid-event-{self.slug_suffix}', self.user_id, registration_data
                     )
 
-            # Verify wallet was called correctly
-            mock_wallet_service.debit.assert_called_once()
-            call_args = mock_wallet_service.debit.call_args
+            # Verify the production withdrawal contract was called correctly.
+            mock_wallet_service.withdraw.assert_called_once()
+            call_args = mock_wallet_service.withdraw.call_args
 
-            self.assertEqual(call_args[1]['user_id'], self.test_user.id)
-            self.assertEqual(call_args[1]['amount'], Decimal('50.00'))
-            self.assertEqual(call_args[1]['currency'], 'USD')
-            self.assertIn('EVT-REG-paid-event', call_args[1]['reference'])
+            self.assertEqual(call_args.kwargs['account_id'], 'account-123')
+            self.assertEqual(call_args.kwargs['amount'], Decimal('50.00'))
+            self.assertEqual(call_args.kwargs['currency'], 'USD')
+            self.assertIn('EVT-REG-paid-event', call_args.kwargs['client_request_id'])
 
             # Verify registration
             self.assertIsNone(error)
@@ -182,10 +173,11 @@ class TestPaymentFlow(unittest.TestCase):
         with self.app.app_context():
             # Create paid event
             event = Event(
-                slug='expensive-event',
+                slug=f'expensive-event-{self.slug_suffix}',
                 name='Expensive Event',
                 city='Kampala',
-                organizer_id=self.test_user.id,
+                organizer_id=self.user_id,
+                current_owner_type="individual", current_owner_id=self.user_id,
                 status='active',
                 currency='USD'
             )
@@ -204,11 +196,11 @@ class TestPaymentFlow(unittest.TestCase):
 
             # Mock wallet with insufficient funds
             mock_wallet_service = MagicMock()
-            mock_wallet_service.debit.return_value = (
-                False,
-                None,
-                'Insufficient balance. Available: 100.00 USD, Required: 1000.00 USD'
-            )
+            mock_wallet_service.account_repo.get_by_user_id.return_value = MagicMock(id='account-456')
+            mock_wallet_service.withdraw.return_value = {
+                'status': 'failed',
+                'error': 'Insufficient balance. Available: 100.00 USD, Required: 1000.00 USD',
+            }
 
             registration_data = {
                 'full_name': 'Broke User',
@@ -218,10 +210,10 @@ class TestPaymentFlow(unittest.TestCase):
                 'ticket_type_id': ticket.id
             }
 
-            with patch('app.events.services.WalletService', return_value=mock_wallet_service):
-                with patch('app.events.services.SIGNALS_AVAILABLE', False):
+            with patch('app.events.services._legacy.WalletService', return_value=mock_wallet_service):
+                with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
                     registration, qr_code, error = EventService.register_for_event_with_payment(
-                        'expensive-event', self.test_user.id, registration_data
+                        f'expensive-event-{self.slug_suffix}', self.user_id, registration_data
                     )
 
             # Verify error
@@ -238,10 +230,11 @@ class TestPaymentFlow(unittest.TestCase):
         with self.app.app_context():
             # Create paid event
             event = Event(
-                slug='wallet-down-event',
+                slug=f'wallet-down-event-{self.slug_suffix}',
                 name='Wallet Down Event',
                 city='Kampala',
-                organizer_id=self.test_user.id,
+                organizer_id=self.user_id,
+                current_owner_type="individual", current_owner_id=self.user_id,
                 status='active',
                 currency='USD'
             )
@@ -267,10 +260,10 @@ class TestPaymentFlow(unittest.TestCase):
                 'ticket_type_id': ticket.id
             }
 
-            with patch('app.events.services.WalletService', None):
-                with patch('app.events.services.SIGNALS_AVAILABLE', False):
+            with patch('app.events.services._legacy.WalletService', None):
+                with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
                     registration, qr_code, error = EventService.register_for_event_with_payment(
-                        'wallet-down-event', self.test_user.id, registration_data
+                        f'wallet-down-event-{self.slug_suffix}', self.user_id, registration_data
                     )
 
             # Should get service unavailable error

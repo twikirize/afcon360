@@ -1,6 +1,8 @@
 ﻿from app import create_app
 from app.events.constants import EventStatus
 from app.events.models import Event
+from app.config import TestingConfig
+from app.extensions import db
 
 print("=== COMPARING MODEL VS ENUM ===\n")
 
@@ -16,11 +18,14 @@ else:
     print(f"\nModel type: {col.type}")
     
 # Check the actual database column type
-from sqlalchemy import inspect, text
-inspector = inspect(db.engine)
-events_cols = inspector.get_columns('events')
-for col_info in events_cols:
-    if col_info['name'] == 'status':
-        print(f"\nDatabase status type: {col_info['type']}")
-        print(f"Database nullable: {col_info['nullable']}")
-        print(f"Database default: {col_info.get('default')}")
+from sqlalchemy import inspect
+
+app = create_app(config_object=TestingConfig)
+with app.app_context():
+    inspector = inspect(db.engine)
+    events_cols = inspector.get_columns('events')
+    for col_info in events_cols:
+        if col_info['name'] == 'status':
+            print(f"\nDatabase status type: {col_info['type']}")
+            print(f"Database nullable: {col_info['nullable']}")
+            print(f"Database default: {col_info.get('default')}")

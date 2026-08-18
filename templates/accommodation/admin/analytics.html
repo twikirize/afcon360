@@ -3,10 +3,7 @@
 {% block title %}Accommodation Analytics — AFCON360{% endblock %}
 
 {% block content %}
-{{ admin_sidebar('analytics') }}
-
-<div class="aa-shell">
-  {# sidebar rendered above as macro #}
+{% call admin_sidebar('analytics') %}
   <main class="aa-main">
 
     {# ── Breadcrumb + Title ── #}
@@ -161,7 +158,7 @@
     </div>
 
   </main>
-</div>
+{% endcall %}
 {% endblock %}
 
 {% block module_scripts %}

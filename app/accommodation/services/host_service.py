@@ -1392,7 +1392,7 @@ class HostService:
         bookings = (
             AccommodationBooking.query.filter(
                 AccommodationBooking.property_id == property_id,
-                AccommodationBooking.check_out >= start_date,
+                AccommodationBooking.check_out > start_date,
                 AccommodationBooking.check_in <= end_date,
                 AccommodationBooking.status.in_(ACTIVE_BOOKING_STATUSES),
             )
@@ -1416,7 +1416,7 @@ class HostService:
                 InventoryBlock.query.filter(
                     InventoryBlock.room_type_id.in_(room_type_ids),
                     InventoryBlock.date_range_start <= end_date,
-                    InventoryBlock.date_range_end >= start_date,
+                    InventoryBlock.date_range_end > start_date,
                 )
                 .all()
             )
@@ -1450,15 +1450,17 @@ class HostService:
             if room_types:
                 total_available = 0
                 for rt in room_types:
-                    day_bookings_count = sum(
-                        1 for b in bookings 
+                    day_booked_units = sum(
+                        int(b.rooms_requested or 1) for b in bookings
                         if b.room_type_id == rt.id and b.check_in <= cursor < b.check_out
                     )
                     day_blocks = sum(
                         ib.units_blocked for ib in inventory_blocks
-                        if ib.room_type_id == rt.id and ib.date_range_start <= cursor <= ib.date_range_end
+                        if ib.room_type_id == rt.id
+                        and ib.date_range_start <= cursor < ib.date_range_end
+                        and ib.reason != 'booked'
                     )
-                    total_available += max(0, rt.total_units - day_bookings_count - day_blocks)
+                    total_available += max(0, int(rt.total_units or 0) - day_booked_units - day_blocks)
                 
                 if total_available <= 0:
                     day_bookings = [b for b in bookings if b.check_in <= cursor < b.check_out]
@@ -1466,7 +1468,7 @@ class HostService:
                         day_info["status"] = "booked"
                     else:
                         day_info["status"] = "blocked"
-                        blocks_on_day = [ib for ib in inventory_blocks if ib.date_range_start <= cursor <= ib.date_range_end]
+                        blocks_on_day = [ib for ib in inventory_blocks if ib.date_range_start <= cursor < ib.date_range_end]
                         if blocks_on_day:
                             day_info["blocked_reason"] = blocks_on_day[0].reason if blocks_on_day[0].reason else "Inventory Block"
                         else:
@@ -1554,9 +1556,12 @@ class HostService:
         if not room_type:
             return 0
         
-        # Count confirmed bookings overlapping the date range
+        # Count reserved units overlapping the date range. Legacy rows without
+        # rooms_requested represent one room and remain backward compatible.
         # A booking overlaps if: check_in < check_out AND check_out > check_in
-        bookings_query = db.session.query(func.count(AccommodationBooking.id)).filter(
+        bookings_query = db.session.query(
+            func.coalesce(func.sum(func.coalesce(AccommodationBooking.rooms_requested, 1)), 0)
+        ).filter(
             AccommodationBooking.room_type_id == room_type_id,
             AccommodationBooking.status.in_(ACTIVE_BOOKING_STATUSES),
             AccommodationBooking.check_in < check_out,
@@ -1565,28 +1570,27 @@ class HostService:
         if exclude_booking_id:
             bookings_query = bookings_query.filter(AccommodationBooking.id != exclude_booking_id)
             
-        booked = bookings_query.scalar() or 0
+        booked = int(bookings_query.scalar() or 0)
         
-        # Sum blocked units from inventory blocks overlapping the date range
-        blocked = (
+        # Sum blocked units from inventory blocks overlapping the date range.
+        # Exclude blocks with reason='booked' — those are duplicates of confirmed
+        # bookings and must not be counted alongside AccommodationBooking.rooms_requested.
+        blocked = int(
             db.session.query(func.coalesce(func.sum(InventoryBlock.units_blocked), 0))
             .filter(
                 InventoryBlock.room_type_id == room_type_id,
                 InventoryBlock.date_range_start < check_out,
                 InventoryBlock.date_range_end > check_in,
+                InventoryBlock.reason != 'booked',
             )
             .scalar()
         ) or 0
         
-        return room_type.total_units - booked - blocked
+        available = int(room_type.total_units or 0) - booked - blocked
+        return max(0, available)
 
     @staticmethod
     def sync_room_type_inventory(property_id: int) -> None:
-        room_types = RoomType.query.filter_by(property_id=property_id).all()
-
-        for rt in room_types:
-            count = Room.query.filter_by(property_id=property_id, room_type_id=rt.id).count()
-            rt.total_units = count
-
-        db.session.commit()
+        """Preserve configured sellable capacity; physical rooms are separate metadata."""
+        return None
 

@@ -1,0 +1,10 @@
+{% macro request_args(exclude='') %}
+{% set excluded = exclude if exclude is string else exclude|join(',') %}
+{% set result = {} %}
+{% for key, value in request.args.items() %}
+  {% if key not in excluded.split(',') and value %}
+    {% set _ = result.update({key: value}) %}
+  {% endif %}
+{% endfor %}
+{{ result }}
+{% endmacro %}

@@ -12,8 +12,15 @@
 templates/
 ├── base.html                         ← UPDATED (banner classes, mobile-utilities link)
 ├── events/
-│   └── attendee/
-│       └── attendee_dashboard.html   ← UPDATED (inline styles removed, stacked mobile)
+│   ├── attendee/
+│   │   ├── attendee_dashboard.html   ← UPDATED (inline styles removed, stacked mobile)
+│   │   └── register.html              ← UPDATED (ticket selection and expiry/duplicate guards)
+│   │   └── registration_unavailable.html ← NEW (state-aware expired, pending, closed, and sold-out view)
+│   └── public/
+│       ├── landing.html               ← UPDATED (countdown and expired state)
+│       └── list.html                  ← UPDATED (favorite toggle state restoration)
+│   └── admin/
+│       └── attendees_list.html        ← UPDATED (public booking-reference coordination flow)
 ├── accommodation/
 │   ├── admin/
 │   │   ├── properties.html          ← UPDATED (moderation workflow buttons, status badges, responsive action cells)
@@ -26,9 +33,13 @@ templates/
 │   │   ├── dashboard.html           ← UPDATED (added payment settings widget linking to booking policy per property)
 │   │   └── guest/
 │   │       ├── claim_booking.html   ← NEW (owner claiming page for third-party bookings with login/registration options)
-│   │       ├── checkout.html        ← UPDATED (moved inline styles to external CSS, added selection cards, validation feedback, responsive grids; removed inline onclick handlers, added data-* attributes for event delegation; wizard step state persisted via sessionStorage)
+│   │       ├── checkout.html        ← UPDATED (current three-step seamless flow, server-driven payment methods/timings, optional review-stage requests, responsive selection cards)
+│   │       ├── confirmation.html    ← UPDATED (booking management, payment identity, cancel/date-request controls)
 │   │       ├── detail.html          ← UPDATED (added live AJAX availability checking on date/guest change; added live_availability_results container; submit button disabled when no availability; partial availability suggestions)
-│   │       └── register.html        ← UPDATED (added date_of_birth and nationality form fields for host-configurable registration; dynamic required fields with asterisks; registration deadline display)
+│   │       ├── register.html        ← UPDATED (added date_of_birth, nationality, and optional request fields)
+│   │       ├── add_request.html     ← NEW (authenticated optional request form)
+│   │       ├── registration_link.html ← NEW (public capped guest registration form)
+│   │       └── guest_roster.html    ← NEW (responsive delegated roster and upload controls)
 │   ├── moderate.html                ← UPDATED (matched global AFCON360 light theme, removed inline styles, added table scroll wrappers)
 │   ├── moderate_property.html       ← UPDATED (matched global AFCON360 light theme, removed all inline layout styles, added photo grid classes)
 │   └── moderate_review.html         ← UPDATED (matched global AFCON360 light theme, removed inline styles, hidden/visible toggle via CSS class)
@@ -40,6 +51,18 @@ templates/
 └── admin/
     ├── accommodation_admin_dashboard.html ← UPDATED (added Unclaimed Bookings and Check-in Blockers widgets)
     └── super_dashboard.html          ← UPDATED (mobile drawer + JS)
+
+static/
+├── css/modules/user/shell.css             ← UPDATED (canonical context switcher and responsive shell)
+├── js/modules/user/dashboard-shell.js     ← NEW (CSP-safe pane and context controller)
+└── js/modules/events/guest-coordination.js ← NEW (CSP-safe event assignment controller)
+
+templates/user/base_user_dashboard.html    ← UPDATED (canonical dashboard shell and descriptor-driven switcher)
+templates/user/user_dashboard.html         ← UPDATED (dashboard behavior moved to external JavaScript)
+templates/org/dashboard.html                ← UPDATED (public organization workspace navigation)
+templates/org/events.html                   ← NEW (organization event listing)
+templates/org/accommodation.html            ← NEW (organization property listing)
+templates/org/bookings.html                 ← NEW (organization property-booking listing)
 ```
 
 ```
@@ -53,12 +76,67 @@ templates/
 
 ## 2. Change Log by File
 
+### `templates/notifications/inbox.html` — **UPDATED**
+- Added mobile-friendly per-notification controls for mark read/unread, mark/unmark important, open, and soft-delete actions.
+
 ### `templates/owner/backups.html` — **NEW**
 - Owner database backup & restore management UI. Mobile-first: `clamp()`-based fluid padding/typography, `repeat(auto-fit, minmax(...))` responsive card grids, full-width stacked table rows with `data-label` headers on ≤640px, 44px-min touch targets on all buttons, restore confirmation modal.
 - CSRF-protected forms (`{{ csrf_token() }}`). No inline layout styles; all layout via scoped `<style>` using the mobile utility patterns.
 
 ### `templates/owner/danger_zone.html` — **UPDATED**
 - Added a "Database Backups & Restore" card in the Settings Management section linking to `admin.owner.owner_backup.backups`.
+
+### `templates/events/admin/attendees_list.html` — **UPDATED**
+- Uses public event and booking references, CSRF-protected external coordination requests, and backend-provided reserved-resource availability.
+- Removed inline layout visibility styles and moved interaction behavior to `static/js/modules/events/guest-coordination.js`.
+
+### `templates/events/attendee/registration_unavailable.html` — **NEW**
+- Added a mobile-first state-specific page for events whose registration is not open, has ended, is sold out, or has expired; it renders the server-provided database snapshot and never displays a registration form.
+
+### `templates/events/organizer/create.html` — **UPDATED**
+- Added UTC registration opening/deadline fields and an explicit registration-required control so organizers can configure the availability state.
+
+### `templates/events/organizer/edit.html` — **UPDATED**
+- Added UTC registration opening/deadline fields for maintaining an event's availability window.
+
+### `static/css/modules/events/registration-availability.css` — **NEW**
+- Added external responsive styles for the unavailable-registration page, including fluid spacing, responsive facts/ticket grids, and 44px back-link touch target.
+
+### `templates/events/public/landing.html` — **UPDATED**
+- Past events now show an `Event Ended` status and recap while hiding registration, community-host, accommodation, ticket-availability, countdown, and seat-remaining prompts.
+
+### `static/css/modules/events/public-past-event.css` — **NEW**
+- Added mobile-first styles for the past-event status badge, conclusion message, and registration recap statistics.
+
+### `static/js/modules/user/dashboard-shell.js` — **UPDATED**
+- Added browser-console diagnostics for context switch requests, successful selections, redirects, and failures.
+- Context navigation now uses explicit browser assignment after a successful JSON response.
+
+### `static/js/modules/user/user-dashboard.js` — **NEW**
+- Provides CSP-safe dashboard tabs and registration cancellation behavior.
+
+### `templates/user/base_user_dashboard.html` — **UPDATED**
+- Owns the canonical dashboard shell directly; the duplicate shell inheritance was removed.
+- Wrapped the shell in the parent `content` block so Jinja renders it on `/user/dashboard`.
+
+### `templates/user/user_dashboard.html` — **UPDATED**
+- Removed inline executable JavaScript and moved dashboard behavior to the external controller.
+
+### `templates/org/dashboard.html` — **UPDATED**
+- Organisation workspace navigation now uses the public `org_id` boundary and links to organisation operations.
+- Added a responsive context summary showing the selected organisation role plus separate Operations and Bookings areas.
+
+### `templates/org/events.html` — **ADDED**
+- Responsive organisation event listing with a mobile-safe table wrapper.
+
+### `templates/org/accommodation.html` — **ADDED**
+- Responsive organisation property listing and booking navigation.
+
+### `templates/org/bookings.html` — **ADDED**
+- Responsive property-booking listing scoped to the selected organisation.
+
+### `static/js/modules/events/guest-coordination.js` — **NEW**
+- Provides mobile-safe accommodation and transport assignment modal behavior without inline executable scripts; all authorization, capacity, eligibility, and module-state decisions remain server-side.
 
 ### `static/css/global/mobile-utilities.css` — **NEW**
 - Added shared helpers: `.touch-target` (44×44px min), `.stack-mobile`, `.hide-mobile`, `.show-mobile`, `.scroll-x-mobile`, `.safe-bottom`, `.safe-top`, fluid typography helpers (`text-fluid-sm/base/lg/xl`), `.contain-mobile`.
@@ -82,6 +160,7 @@ templates/
 
 ### `templates/base.html` — **UPDATED**
 - Added `<link rel="stylesheet" href="{{ url_for('static', filename='css/global/mobile-utilities.css') }}">`.
+- Shared organisation navigation now uses the canonical public context identifier and a CSRF-protected POST form to return to Personal context.
 - **Profile-incomplete banner:** Removed inline `style=` block, replaced with `class="banner-incomplete"` and `style="--banner-offset: 0px;"`.
 - **Impersonation banner:** Removed inline `style=` block, replaced with `class="banner-impersonation"`, added semantic classes `.banner-icon`, `.banner-title`, `.banner-timer`, `.btn-banner-exit`, `.btn-banner-restrict`.
 - **Responsive stacking:** Added `@media (max-width: 768px)` rules in `style.css` for `.banner-incomplete .container-fluid .row` and `.banner-impersonation .container-fluid .row` to stack columns vertically with centered text.
@@ -101,7 +180,12 @@ templates/
 - **Preserved:** All brand colors, no color/theme changes.
 
 ### `templates/accommodation/guest/checkout.html` — **UPDATED**
-- Converted from single-page form to 4-step wizard: Guest Details → Special Requests → Payment → Review & Confirm.
+- Uses the current three-step flow: Your Trip → Payment → Review & Confirm.
+- Renders every payment method returned by the property policy and carries each method's currency and `allowed_timings` capability into the form.
+- Adds an early party-size capacity warning before the payment step, while retaining server-side validation.
+- Keeps special requests optional at the end of review with an explicit note that they can be added after confirmation.
+- Preserves the backend contract, including one authoritative `num_guests` field and deferred room assignment for group bookings.
+- Group checkout submits total rooms and total guests separately; room-number selection is deferred and the full quantity is priced/reserved atomically.
 - Extracted inline `<style>` wizard styles to `static/css/modules/accommodation/checkout.css`.
 - Replaced inline `style="display: none;"` on `#thirdPartySection` and `#groupSection` with CSS class `.hidden-section`.
 - Removed inline `<script>` block and moved all interactive logic to `static/js/modules/accommodation/checkout.js`.
@@ -109,6 +193,37 @@ templates/
 - Wizard step indicator uses `.step-indicator`, `.step`, `.step-number`, `.step-label`, `.wizard-step`, `.btn-wizard` classes.
 - **Mobile:** Step labels shrink at ≤480px; grids remain responsive.
 - **Preserved:** All form fields, hidden inputs, Bootstrap layout classes, and brand colors.
+
+### `templates/accommodation/guest/confirmation.html` — **UPDATED**
+- Added a prominent, non-blocking special-request card and shared group registration-link card with a copy action.
+- Added same-page date amendment and cancellation controls for authorized booking participants, with CSRF-protected forms and mobile-friendly wrapping.
+- Displays the module payment reference separately from the wallet transaction ID, including a clear unpaid state.
+- Replaced the inline registration-link copy handler with CSP-safe `data-*` behavior.
+- Renders cancelled/refunded reservations as inactive, with cancellation timing/reason/refund details and no booking-pass or guest-registration actions.
+
+### `templates/accommodation/guest/_dashboard_content.html` — **UPDATED**
+- Separates completed stay history from cancelled/refunded reservations so cancelled bookings never appear as active or completed stays.
+- Keeps a mobile-friendly details link for cancelled reservations without offering check-in, payment, amendment, review, or complaint actions.
+- Uses the CSP-safe `data-confirm` pattern for cancellation, payment, check-in, and check-out confirmations instead of inline event handlers.
+
+### `templates/accommodation/guest/dashboard.html` — **UPDATED**
+- Loads the external accommodation confirmation behavior so dashboard cancellation forms retain confirmation prompts without inline JavaScript.
+
+### `templates/accommodation/guest/my_bookings.html` — **UPDATED**
+- Renders booking statuses as stored strings and includes `pending_approval` in the cancellable states.
+
+### `static/js/modules/accommodation/confirmation.js` — **NEW**
+- Provides external CSP-compatible registration-link copying and cancellation confirmation behavior.
+- Uses event listeners and `data-*` attributes only; no inline event handlers.
+
+### `templates/accommodation/guest/registration_link.html` — **NEW**
+- Added a mobile-first public guest registration form with capacity progress, CSRF protection, and optional special requests.
+
+### `templates/accommodation/guest/add_request.html` and `register.html` — **UPDATED**
+- Added authenticated request submission controls and optional request capture during guest self-registration.
+
+### `templates/accommodation/guest/guest_roster.html` — **NEW**
+- Added a responsive active/history roster view with bulk CSV/XLSX upload, removal controls, and D-day registration visibility.
 
 ### `static/css/modules/accommodation/checkout.css` — **UPDATED**
 - Added wizard styles: `.step-indicator`, `.step`, `.step-number`, `.step-label`, `.wizard-step`, `.btn-wizard`.
@@ -120,6 +235,9 @@ templates/
 ### `static/js/modules/accommodation/checkout.js` — **UPDATED**
 - Wrapped all code in an IIFE to eliminate global scope pollution; no global functions remain.
 - Replaced all inline `onclick` handlers with event delegation using `data-*` attributes (`data-booking-type`, `data-next-step`, `data-prev-step`, `data-method-id`, `data-timing-value`, `data-validate`).
+- Validates guest count against the selected room capacity before allowing navigation to payment or form submission.
+- Updated payment behavior to render timing cards from the selected method's `data-allowed-timings` JSON and synchronize the selected method currency in the review summary.
+- Clamped restored wizard state to the current three-step flow and mirrors the group guest count into the single backend `num_guests` field before submission.
 - Added `sessionStorage` persistence for wizard step state: `showStep()` saves the current step; `DOMContentLoaded` restores it on page reload; step is cleared on successful form submission.
 - Implements wizard navigation: `showStep()`, `nextStep()`, `prevStep()`, `validateAndNext()`.
 - Implements selection handlers: `selectBookingType()`, `selectPaymentMethod()`, `selectTiming()`.
@@ -131,10 +249,22 @@ templates/
 ### `templates/accommodation/guest/detail.html` — **UPDATED**
 - Added live AJAX availability checking: calls `/accommodation/api/availability` on date/guest change.
 - Added `live_availability_results` container with real-time feedback (available units, partial availability, blocked dates, alternatives).
+- Keeps checkout enabled immediately after check-in selection, clears stale invalid dates, and constrains check-in to before the selected checkout date.
+- Uses separate `availability-form` and `booking-form` identifiers so the date picker always targets the correct form.
+- Removes inline event handlers and leaves only the CSP-nonce-protected JSON-LD block; page behavior is loaded from the external accommodation detail module.
 - Submit button disabled when no availability found.
 - Shows Tier 0/1/2 cascade results (exact match, same-property alternatives, nearby properties).
 - Shows partial availability messaging ("Booked until X, available from Y").
+- The booking form now has a stable form identifier, disables check-out until check-in is selected, and enforces a minimum one-night stay in the native date picker.
+- Date inputs also synchronize on the native `input` event so the check-out control becomes usable as soon as check-in selection is committed, without requiring an extra focus change.
+- Selected-room availability uses the database-backed room-capacity result, not only an "any room available" count.
+- The native check-out minimum is bound to the selected check-in date so a same-day stay is rejected before availability submission.
 - **Preserved:** Existing date validation, room type selection, and price breakdown rendering.
+
+### `static/js/modules/accommodation/detail.js` — **UPDATED**
+- Owns the accommodation date-picker controller, including immediate check-out enablement, one-night minimum enforcement, invalid-date clearing, and live availability requests.
+- Reads the property ID from the availability form's `data-property-id` attribute instead of embedding Jinja expressions in executable JavaScript.
+- Uses event listeners for gallery, room selection, reserve scrolling, date changes, and availability submission so the page is compatible with the application's CSP.
 
 ### `static/css/modules/user/dashboard.css` — **UPDATED**
 - `.greeting-text`: `font-size: clamp(1.25rem, 4vw, 2rem)` (was fixed `24px`).
@@ -260,6 +390,7 @@ templates/
 - Added Owner column (booking owner or booker), Claimed status badge (Yes/No), and Guests Registered badge count.
 - Added quick-filter widgets for unclaimed bookings and readiness issues at the top of the list.
 - Mobile-responsive table with horizontal scroll wrapper for small viewports.
+- Fixed `None` guest name rendering: changed `bk.guest_name | truncate(22)` to `(bk.guest_name or 'Guest') | truncate(22)` to prevent 500 errors when guest_name is NULL.
 
 ### `templates/owner/dashboard.html` — **UPDATED**
 - Added Unclaimed Bookings and Check-in Blockers stat cards with links to accommodation admin bookings.
@@ -451,6 +582,9 @@ static/
 ### Change Log by File
 
 #### `templates/kyc/index.html` — **UPDATED**
+- KYC next-level requirements now avoid repeating completed phone verification and identify individual TIN as optional by default.
+- Added an applicant-facing case summary showing current tier, decision status, safe rejection feedback, outstanding requirements, completion percentage, and the next review steps.
+- Preserved the existing progress tracker and upload/continue actions; sensitive risk, screening, provider, and reviewer fields remain restricted to compliance screens.
 - Replaced the static "Verification Progress" placeholder with a 3-step CSS progress tracker: **Submitted → Processing → Verified**.
 - Each step renders a circle, label, and sub-status (Pending / In Review / Approved, plus Rejected and Start states).
 - The active step gets a pulsing ring; completed steps are filled with brand color; rejected shows a red X.
@@ -468,6 +602,8 @@ static/
 - Added `.kyc-progress-tracker` to the print-hide block.
 
 ### Verification Checklist
+- [x] Requirements and status summary use fluid text and existing responsive panel primitives.
+- [x] Applicant view excludes internal risk scores, raw provider responses, screening outcomes, and reviewer identifiers.
 - [x] Steps use `flex: 1` with no fixed width → no overflow at 320px.
 - [x] Step circles/labels scale down at ≤768px and ≤480px.
 - [x] Touch targets (circles) remain ≥28px on small screens.
@@ -477,6 +613,36 @@ static/
 **Migration needed?** No  
 **Manual steps:** Restart Flask server; visit `/kyc/` to see the tracker. Submitting a National ID (status `manual_review`/`pending`) advances to Processing; approval advances to Verified.  
 **Risks/conflicts:** Purely presentational. `kyc.index` route now passes two extra template variables (`kyc_stage`, `overall_status`); no other template consumes them. No schema, color, or branding changes.
+
+---
+
+## 8A. Unified KYC and Profile Progress (2026-08-14)
+
+### Change Log by File
+
+#### `templates/profile/account.html` — **UPDATED**
+- Labels the displayed percentage as authoritative KYC progress rather than generic profile completion.
+- Clarifies that nickname, biography, team, avatar, and similar optional profile fields do not affect regulatory verification.
+- Links users to `/kyc/` for requirements and next steps instead of duplicating the KYC workflow.
+
+#### `templates/user/settings_pane.html` — **UPDATED**
+- Uses the canonical KYC progress value and labels it as KYC progress rather than generic fulfillment.
+
+#### `templates/user/user_dashboard.html` — **UPDATED**
+- Displays the same canonical KYC fulfillment value and next-tier requirements as the settings pane.
+
+#### `app/profile/routes.py` — **UPDATED**
+- Keeps account context explicitly free of a competing profile percentage; the compliance calculator remains the sole source for KYC progress.
+
+### Verification Checklist
+- [x] Optional profile fields are not presented as KYC requirements.
+- [x] Account and KYC views use the same `calculate_kyc_tier` progress value.
+- [x] KYC requirements remain available through a single canonical link.
+- [x] No schema or migration changes.
+
+**Migration needed?** No
+**Manual steps:** Restart Flask and refresh `/profile/account` and `/kyc/`.
+**Risks/conflicts:** Existing profile editing and public-profile fields remain unchanged; only progress terminology and navigation were clarified.
 
 ---
 
@@ -732,3 +898,303 @@ templates/
 4. Visit `/verify-phone` to test the email-based phone verification flow.
 
 **Risks/conflicts:** No schema changes. This is a temporary routing change — when Twilio/SMS is configured, revert `send_phone_verification` and `verify_phone` to use `SMSService`. Existing `SMSService` code is untouched. No colors, branding, or desktop layout altered.
+
+---
+
+### Accommodation property photo gallery fix (2026-08-12) — UPDATED
+
+#### File Tree — What Was Touched
+```
+app/accommodation/models/property.py             ← UPDATED (canonical gallery fallback)
+templates/accommodation/home.html                ← UPDATED (canonical cover image)
+templates/accommodation/home_pane.html           ← UPDATED (canonical cover image)
+templates/accommodation/guest/detail.html        ← UPDATED (all-photo modal)
+static/css/modules/accommodation/detail.css      ← UPDATED (responsive modal)
+static/js/modules/accommodation/detail.js        ← UPDATED (modal controls)
+```
+
+#### What Changed
+- Guest detail pages now open every property photo in an accessible modal when “Show all photos” is clicked; thumbnails can also update the hero image.
+- Accommodation home cards and the dashboard pane now use `gallery_images`, so uploaded unified-media photos render instead of only the legacy `main_image` field.
+- Legacy properties retain compatibility because `gallery_images` includes `main_image` when no unified media or gallery URLs are available.
+
+#### Responsive Change Log
+- `detail.css`: Modal uses fluid width, responsive image grid, safe mobile padding, and a 44px close target; the page remains usable on narrow screens.
+
+#### Verification Checklist
+- [x] All stored property photos are represented in the detail photo viewer.
+- [x] Home and pane cards use the canonical gallery source.
+- [x] Modal closes via backdrop, close button, or Escape.
+- [x] No schema or migration changes.
+
+**Migration needed?** No
+**Manual steps:** Restart Flask so updated templates and static assets are loaded; hard-refresh the browser if cached CSS/JS remains.
+**Risks/conflicts:** No database changes. Existing legacy image fields remain supported; the modal only affects the guest property gallery.
+
+---
+
+### Categorized property media management (2026-08-12) — NEW
+
+#### File Tree — What Was Touched
+```
+app/media/service.py                         ← UPDATED (category metadata)
+app/media/routes.py                          ← UPDATED (authorization and reorder API)
+app/accommodation/routes.py                  ← UPDATED (guest gallery metadata)
+app/accommodation/services/media_service.py ← UPDATED (category wrapper)
+templates/components/media_upload.html       ← UPDATED (category selector)
+templates/accommodation/guest/detail.html    ← UPDATED (category labels)
+static/js/global/media-manager.js             ← UPDATED (category and order controls)
+static/css/modules/accommodation/detail.css  ← UPDATED (responsive labels)
+tests/test_accommodation_home.py             ← UPDATED (regression coverage)
+```
+
+#### What Changed
+- Hosts can classify new property photos as exterior, living area, bedroom, bathroom/toilet, kitchen, amenity, or other while using the existing secure media uploader.
+- Category metadata is stored in the existing JSON processing metadata field, so no schema migration is required; legacy photos continue to render as `other`.
+- Property owners and authorized accommodation administrators are checked before accommodation media upload, YouTube submission, direct upload confirmation, status polling, cover selection, deletion, or reordering.
+- Hosts can move gallery images earlier or later, and the saved `display_order` is used when the gallery is loaded.
+- Guest galleries show the category label when categorized media is available and ignore pending or failed records until a real original URL is ready.
+- Direct uploads now validate the same category allowlist as streamed uploads, and the browser reports confirmation failures instead of showing an unconfirmed image as successful.
+- Selecting a thumbnail in “Show all photos” opens a one-photo lightbox with previous/next controls, a position counter, keyboard navigation, Escape closing, and touch swiping.
+
+#### Responsive Change Log
+- The category selector remains fluid and the modal category labels use compact text without adding fixed-width layout constraints.
+
+#### Verification Checklist
+- [x] Categories are accepted by streamed and direct uploads.
+- [x] Cover selection and deletion remain available.
+- [x] Gallery order persists through the existing `display_order` column.
+- [x] Legacy gallery URLs remain supported.
+- [x] Individual photos can be viewed sequentially from the all-photos gallery on desktop and mobile.
+- [x] No schema or migration changes.
+
+**Migration needed?** No
+**Manual steps:** Restart Flask and hard-refresh the host editor assets; choose a category before uploading each batch. Existing images can be re-uploaded or left as `Other`.
+**Risks/conflicts:** Room-type-specific galleries are not yet separate entities; these categories classify property-level photos only. The generic media API keeps its existing behavior for non-accommodation modules.
+
+---
+
+### Accommodation analytics sidebar overlap fix (2026-08-13) — UPDATED
+
+#### File Tree — What Was Touched
+```
+templates/macros/admin_macros.html          ← UPDATED (admin_sidebar macro now wraps shell + sidebar)
+templates/accommodation/admin/analytics.html ← UPDATED (uses {% call %} to inject main into shell)
+```
+
+#### What Changed
+- Root cause: the `admin_sidebar` macro rendered the `<aside class="aa-sidebar">` as a **sibling before** `<div class="aa-shell">`. The flex container `.aa-shell { display:flex }` only wrapped `<main class="aa-main">`, so the sticky sidebar (`position:sticky; top:0; height:100vh`) overlapped the right-hand content instead of sitting beside it.
+- `admin_sidebar` macro now opens `<div class="aa-shell">`, renders the sidebar `<aside>` and the mobile toggle button, then yields `{{ caller() }}`, and closes the shell.
+- `analytics.html` switched from `{{ admin_sidebar('analytics') }}` + a separate `<div class="aa-shell"><main>…</main></div>` to `{% call admin_sidebar('analytics') %}<main class="aa-main">…</main>{% endcall %}`.
+- Sidebar is now a proper flex child of `.aa-shell`, so the left pane no longer covers items on the right pane on desktop or tablet. Mobile fixed/overlay behavior (`position:fixed; transform:translateX(-100%)`) is unchanged.
+
+#### Responsive Change Log
+- No visual/color changes; purely structural so the existing flex + sticky layout works as designed.
+- `.aa-sidebar` and `.aa-main` remain inside `.aa-shell`; `flex-shrink:0` on the sidebar and `flex:1; min-width:0` on main preserve the two-column split down to the 768px breakpoint.
+- `@media(max-width:768px)` fixed-drawer behavior preserved: sidebar becomes `position:fixed` overlay, main padding reduced to `1rem`.
+
+#### Verification Checklist
+- [x] Sidebar is a direct child of `.aa-shell` (flex layout resolves correctly).
+- [x] Sticky sidebar no longer overlaps main content on desktop/tablet.
+- [x] Mobile drawer (`.aa-mobile-toggle`, `position:fixed`) still functions.
+- [x] No color/branding or schema changes.
+- [x] `static/MOBILE_OPTIMIZATION.md` updated.
+
+**Migration needed?** No
+**Manual steps:** Restart Flask; log in as an accommodation admin and visit `/accommodation/admin/analytics` to confirm the sidebar sits to the left with no overlap.
+**Risks/conflicts:** Only `analytics.html` uses `admin_sidebar`; no other templates affected. No schema, route, or model changes.
+
+---
+
+### CSP-safe accommodation date picker (2026-08-14) — UPDATED
+
+#### File Tree — What Was Touched
+```
+AGENTS.md                                      ← UPDATED (CSP JavaScript rules)
+README.md                                      ← UPDATED (CSP JavaScript rules)
+templates/accommodation/guest/detail.html     ← UPDATED (external controller and form targets)
+static/js/modules/accommodation/detail.js     ← UPDATED (date and availability controller)
+tests/test_accommodation_checkout_processes.py ← UPDATED (CSP/date-picker regression coverage)
+```
+
+#### Verification Checklist
+- [x] Check-out becomes enabled immediately after a valid check-in date is selected.
+- [x] Same-day and earlier check-out dates are rejected by the native picker and submit validation.
+- [x] Page behavior is external JavaScript; no inline event handlers remain.
+- [x] JSON-LD carries the per-request CSP nonce.
+- [x] No schema or migration changes.
+
+---
+
+### Booking confirmation management (2026-08-14) — UPDATED
+
+#### File Tree — What Was Touched
+```
+app/accommodation/routes.py                         ← UPDATED (payment-event backfill and confirmation returns)
+templates/accommodation/guest/confirmation.html   ← UPDATED (date requests, cancellation, payment reference)
+static/js/modules/accommodation/confirmation.js   ← NEW (copy and cancel-confirmation handlers)
+tests/test_accommodation_checkout_processes.py     ← UPDATED (confirmation regression coverage)
+```
+
+#### What Changed
+- Authorized booking participants can request date changes or cancel directly from the confirmation page; cancellation and amendment responses return to that booking when submitted there.
+- Confirmation now displays the module payment reference even when payment is still pending, while keeping the wallet transaction ID separate.
+- Copy and cancellation confirmation behavior uses the external CSP-safe module rather than inline event handlers.
+
+#### Verification Checklist
+- [x] Date-request and cancellation controls are CSRF-protected and mobile-wrapping.
+- [x] Pending bookings display a registered payment reference.
+- [x] No schema or migration changes.
+- [x] Focused accommodation tests pass.
+- [x] Cancelled bookings have a dedicated inactive history presentation.
+
+---
+
+### Event registration and ticketing workflow (2026-08-14) — UPDATED
+
+#### File Tree — What Was Touched
+```
+app/events/__init__.py                         ← UPDATED (favorite API export)
+app/events/api.py                              ← NEW (favorite toggle endpoint)
+app/events/routes.py                           ← UPDATED (registration default)
+app/events/services.py                         ← UPDATED (free-tier fallback and capacity validation)
+templates/events/attendee/register.html        ← UPDATED (ticket selection inside form)
+templates/events/public/list.html               ← UPDATED (favorite toggle state restoration)
+tests/test_events_user_workflows.py            ← NEW (favorite, registration, ticket regressions)
+```
+
+#### What Changed
+- Event creation now aligns with the visible free/ticketed event workflow by enabling registration and creating the required Free Entry tier for free events.
+- Favorite toggling is exposed through the API route used by the public events page, with user-scoped persistence and public event identifiers.
+- Optional ticket capacity is stored as `0` (the model’s unlimited value) instead of producing a 400 response, while negative capacities remain rejected.
+- The registration form submits the selected ticket tier so the server can create a complete registration record.
+- Favorite buttons restore their original icon after both successful and failed requests and display API error messages correctly.
+
+#### Verification Checklist
+- [x] Favorite API route is registered at `/api/events/<public_id>/toggle-favorite`.
+- [x] Free registration has a ticket-tier fallback for legacy events without an active tier.
+- [x] Optional ticket capacity is normalized safely.
+- [x] No schema or migration changes.
+- [x] Focused event workflow tests pass.
+
+**Migration needed?** No
+**Manual steps:** Restart Flask and hard-refresh event pages so the updated route and registration template are loaded.
+**Risks/conflicts:** Existing paid events without active ticket tiers remain blocked rather than being silently converted to free registration.
+
+### Event expiry and registration availability (2026-08-15) — UPDATED
+
+#### File Tree — What Was Touched
+```
+app/events/routes.py                           ← UPDATED (expired and duplicate self-registration guards)
+app/events/services.py                         ← UPDATED (inclusive event expiry predicate and context state)
+templates/events/attendee/register.html        ← UPDATED (closed state and duplicate self-registration prompt)
+templates/events/public/landing.html           ← UPDATED (countdown and expired registration state)
+tests/test_events_user_workflows.py            ← UPDATED (expiry and UI contract coverage)
+```
+
+#### What Changed
+- Expired events remain visible with an `Event Ended` badge and recap; registration, ticket, community-host, accommodation, countdown, and seat-remaining prompts are removed while the date-only end date remains active through that calendar day.
+- Registration GET/POST paths reject expired events before capacity or payment handling, while self-registration duplicates are rejected without preventing third-party or group registrations.
+- The authenticated registration form displays a clear duplicate-self prompt and prevents accidental submission; the landing page shows an upcoming/live experience only while registration is available and switches to a past-event recap after expiry.
+
+#### Verification Checklist
+- [x] Expiry and inclusive end-date behavior are covered by focused event workflow tests.
+- [x] Expired pages hide the registration form and show a mobile-safe closed state.
+- [x] No schema or migration changes.
+
+**Migration needed?** No
+**Manual steps:** Restart Flask and hard-refresh event pages to load the updated templates and route behavior.
+**Risks/conflicts:** Browser countdowns use the visitor’s local clock for presentation; server-side date checks remain authoritative.
+
+### Event guest coordination workflow (2026-08-14) — UPDATED
+
+#### File Tree — What Was Touched
+```
+app/events/permissions.py                          ← UPDATED (event-scoped coordination permissions)
+app/events/assignment.py                           ← UPDATED (canonical dashboard, resource, assignment, cancel, and bulk routes)
+app/events/routes_accommodation.py                 ← UPDATED (legacy compatibility wrappers)
+app/events/services/__init__.py                    ← UPDATED (legacy service compatibility exports)
+app/events/services/guest_coordination_service.py ← NEW (coordination service contract)
+app/notifications/events/registry.py              ← UPDATED (assignment lifecycle events)
+app/notifications/events/policy.py                ← UPDATED (assignment notification policies)
+templates/events/admin/attendees_list.html        ← UPDATED (public refs, CSRF, responsive assignment controls)
+static/js/modules/events/guest-coordination.js    ← NEW (CSP-safe assignment interactions)
+tests/test_guest_coordination_contract.py         ← NEW (contract and negative-case coverage)
+```
+
+#### What Changed
+- Added event-scoped view, accommodation, transport, and cancellation permission checks for event owners, organization administrators, event managers, system administrators, and active `co_organizer` staff.
+- Added a coordination service using existing `EventRegistration` and `EventAssignment` records, with pagination, stable error codes, event-scoped booking validation, capacity checks, rollback, reassignment, cancellation, and per-attendee bulk results.
+- Accommodation and Transport remain authoritative: the Event layer accepts only event-scoped existing booking references and validates owning-domain dates, status, driver, vehicle, and capacity.
+- Assignment lifecycle events are staged through the existing transactional outbox before commit and are covered by notification policies for assigned, changed, and cancelled states.
+- Existing Event service imports and legacy accommodation URLs remain compatible through service-delegating wrappers; attendee template data attributes no longer expose raw database IDs.
+
+#### Verification Checklist
+- [x] Existing Event service and coordination imports compile successfully.
+- [x] Coordination template uses CSRF-protected public references and external Event JavaScript.
+- [x] Browser assignment payloads use registration and booking references rather than internal database IDs.
+- [x] Disabled Accommodation/Transport modules return controlled unavailable responses.
+- [x] Focused coordination and notification tests pass; application startup and template parsing pass.
+- [x] No schema or migration files were created or changed.
+
+**Migration needed?** No — current changes reuse existing models and columns.
+**Manual steps:** Restart Flask and review the coordination routes with a confirmed registration, event-scoped booking, and authorized event host.
+**Risks/conflicts:** Existing repository Event tests have a fixture-scope mismatch and the full suite has an unrelated missing `RoomType` import; these were not changed by this workflow.
+
+---
+
+### Unified identity context switcher (2026-08-14) — UPDATED
+
+#### File Tree — What Was Touched
+```
+templates/shell/dashboard_shell.html           ← UPDATED (one normalized Operating as control)
+templates/user/base_user_dashboard.html        ← UPDATED (delegates to shared shell)
+static/js/modules/user/dashboard-shell.js      ← NEW (external pane and context-switch behavior)
+static/css/modules/user/shell.css              ← UPDATED (responsive context menu and touch targets)
+```
+
+#### What Changed
+- The shell renders only resolver-provided `active_context` and `available_contexts` descriptors; it no longer reconstructs organisation choices or duplicated role links from ORM objects.
+- Context selection uses one external controller, sends `POST` JSON with the server CSRF token, and reloads after a successful server response without changing the login identity.
+- Inline shell styles and executable script behavior were removed; pane navigation, history, mobile drawer behavior, and retry behavior remain available through the external controller.
+- The switcher uses fluid sizing, a constrained mobile-safe panel, 44px minimum interactive targets, and safe-area-aware content padding.
+
+#### Verification Checklist
+- [x] No inline executable script remains in `templates/shell/dashboard_shell.html`.
+- [x] Context options contain only public IDs and validated roles supplied by the resolver.
+- [x] Context POST includes CSRF and same-origin credentials.
+- [x] Responsive shell rules cover phones, tablets, touch targets, and dropdown overflow.
+- [x] No schema or migration changes.
+
+**Migration needed?** No
+**Manual steps:** Restart Flask and hard-refresh the dashboard so the external shell controller and stylesheet are loaded.
+**Risks/conflicts:** Existing pane responses that depend on dynamically re-executed inline scripts retain the prior compatibility behavior; further pane-by-pane CSP cleanup remains incremental work.
+
+---
+
+### Owner phone OTP delivery setting (2026-08-14) — UPDATED
+
+#### File Tree — What Was Touched
+```
+templates/admin/owner/auth_settings.html       ← UPDATED (email/SMS delivery selector and mobile-safe helper text)
+templates/auth/verify_phone.html                ← UPDATED (active delivery channel message and CSP nonce)
+```
+
+#### What Changed
+- Added an owner-visible phone-verification delivery selector with email as the safe default and SMS as the configured-provider option.
+- Kept the control in the existing responsive authentication settings layout with form labels, readable helper text, and no new fixed-width layout constraints.
+
+#### Verification Checklist
+- [x] Selector is available from the owner Authentication Settings page.
+- [x] Selection is submitted through the existing CSRF-protected form.
+- [x] No new fixed-width or minimum-width layout was added.
+- [x] No schema or migration changes.
+
+**Migration needed?** No
+**Manual steps:** Restart Flask and hard-refresh the owner Authentication Settings and phone verification pages.
+**Risks/conflicts:** SMS requests fail closed until a provider is enabled and its credentials pass a real delivery test.
+---
+<!-- End of mobile optimization changelog. -->
+<!-- Keep this marker as the final non-empty line. -->
+<!-- End of file. -->
+

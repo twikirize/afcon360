@@ -34,6 +34,7 @@ try:
     booking_cancelled = signal('booking-cancelled')
     booking_checked_in = signal('booking-checked-in')
     booking_checked_out = signal('booking-checked-out')
+    booking_dates_modified = signal('booking-dates-modified')
     event_registered = signal('event-registered')
     event_reminder = signal('event-reminder')
     transport_booking_created = signal('transport-booking-created')
@@ -50,7 +51,8 @@ except ImportError:
     user_signed_up = kyc_submitted = kyc_approved = kyc_rejected = _s
     wallet_created = wallet_transaction = _s
     property_submitted = property_approved = property_rejected = property_suspended = _s
-    booking_created = booking_confirmed = booking_cancelled = _s
+    booking_created =     booking_confirmed = booking_cancelled = _s
     booking_checked_in = booking_checked_out = _s
+    booking_dates_modified = _s
     event_registered = event_reminder = _s
     transport_booking_created = transport_driver_assigned = message_sent = _s

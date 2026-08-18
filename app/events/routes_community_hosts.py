@@ -3,6 +3,7 @@
 
 from flask import render_template, request, jsonify, flash, redirect, url_for
 from flask_login import login_required, current_user
+from app.events.permissions import _is_event_owner
 from decimal import Decimal
 from datetime import datetime, timezone
 
@@ -159,7 +160,7 @@ def community_hosts_list(slug):
         return redirect(url_for('events.my_events'))
     
     # Check permission: organizer or admin
-    if event.organizer_id != current_user.id and not current_user.has_global_role('admin'):
+    if not (_is_event_owner(current_user, event) or current_user.has_global_role('admin')):
         flash('You do not have permission to manage community hosts', 'danger')
         return redirect(url_for('events.landing', identifier=slug))
     
@@ -173,7 +174,7 @@ def api_community_hosts_list(slug):
     API: Get all community host applications for an event.
     """
     event = EventService.get_event_model(slug)
-    if not event or (event.organizer_id != current_user.id and not current_user.has_global_role('admin')):
+    if not event or not (_is_event_owner(current_user, event) or current_user.has_global_role('admin')):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
     # Get host registrations for this event
@@ -216,7 +217,7 @@ def api_community_host_approve(slug, registration_id):
     Organizer approves a community host application.
     """
     event = EventService.get_event_model(slug)
-    if not event or (event.organizer_id != current_user.id and not current_user.has_global_role('admin')):
+    if not event or not (_is_event_owner(current_user, event) or current_user.has_global_role('admin')):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
     registration = EventHostRegistration.query.get_or_404(registration_id)
@@ -257,7 +258,7 @@ def api_community_host_reject(slug, registration_id):
     Organizer rejects a community host application.
     """
     event = EventService.get_event_model(slug)
-    if not event or (event.organizer_id != current_user.id and not current_user.has_global_role('admin')):
+    if not event or not (_is_event_owner(current_user, event) or current_user.has_global_role('admin')):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
     registration = EventHostRegistration.query.get_or_404(registration_id)
@@ -293,7 +294,7 @@ def api_community_host_delete(slug, registration_id):
     Organizer deletes a community host application (soft delete).
     """
     event = EventService.get_event_model(slug)
-    if not event or (event.organizer_id != current_user.id and not current_user.has_global_role('admin')):
+    if not event or not (_is_event_owner(current_user, event) or current_user.has_global_role('admin')):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
     registration = EventHostRegistration.query.get_or_404(registration_id)

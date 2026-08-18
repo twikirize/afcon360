@@ -38,6 +38,20 @@
 
                         <div class="row">
                             <div class="col-md-6 mb-3">
+                                <label class="form-label">Registration Opens (UTC)</label>
+                                <input type="datetime-local" name="registration_opens_at" class="form-control"
+                                       value="{{ event.registration_opens_at[:16] if event.registration_opens_at else '' }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Registration Deadline (UTC)</label>
+                                <input type="datetime-local" name="registration_closes_at" class="form-control"
+                                       value="{{ event.registration_closes_at[:16] if event.registration_closes_at else '' }}">
+                                <small class="text-muted">Without a deadline, registration closes at the start of the event.</small>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
                                 <label class="form-label">Start Date</label>
                                 <input type="date" name="start_date" class="form-control" value="{{ event.start_date[:10] if event.start_date else '' }}">
                             </div>

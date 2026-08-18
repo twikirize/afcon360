@@ -21,7 +21,7 @@
         <i class="fas fa-search"></i>
         <input type="text" class="search-input" placeholder="Search transactions...">
       </div>
-      <select class="form-control" style="width:auto;" onchange="location.href='{{ safe_url('wallet.wallet_transactions') }}?type=' + this.value">
+      <select class="form-control" style="width:auto;" onchange="location.href='{{ url_for('wallet.transactions') }}?type=' + this.value">
         <option value="">All Types</option>
         <option value="DEPOSIT" {% if request.args.get('type') == 'DEPOSIT' %}selected{% endif %}>Deposits</option>
         <option value="WITHDRAWAL" {% if request.args.get('type') == 'WITHDRAWAL' %}selected{% endif %}>Withdrawals</option>

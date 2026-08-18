@@ -1,6 +1,6 @@
 ﻿"""
-Pytest configuration - Asserts test database is already set up
-Run: python scripts/setup_test_db_schema.py before running tests
+Pytest configuration - asserts the dedicated PostgreSQL test database is
+already prepared by the reviewed Alembic migration workflow.
 """
 import pytest
 import os
@@ -10,16 +10,18 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 os.environ['FLASK_ENV'] = 'testing'
 
 from app.config import TestingConfig
+from tests.postgres_contract import assert_migrated_postgres_database
 
 def pytest_configure(config):
-    """Register custom markers"""
+    """Keep pytest configuration intentionally database-contract focused."""
     config.addinivalue_line(
-        "markers", "skip_db_check: skip database table check for unit tests"
+        'markers',
+        'no_database: source/configuration contract check that does not access the database',
     )
 
 @pytest.fixture(scope='session')
 def app():
-    """Create application for testing - assumes test database is ready"""
+    """Create the application against the migrated PostgreSQL test database."""
     from app import create_app
 
     app = create_app(config_object=TestingConfig)
@@ -27,59 +29,38 @@ def app():
     app.config['WTF_CSRF_ENABLED'] = False
     app.config['RATELIMIT_ENABLED'] = False
 
-    # Optionally skip the DB table check for lightweight unit tests
-    skip_db_check = os.getenv('SKIP_TEST_DB_CHECK', '') == '1'
+    with app.app_context():
+        from app.extensions import db
 
-    if skip_db_check:
-        print("⚠️ SKIPPING test DB table check due to SKIP_TEST_DB_CHECK=1")
-        yield app
-    else:
-        # Verify test database has tables
-        with app.app_context():
-            from app.extensions import db
-            from sqlalchemy import inspect
+        table_count = assert_migrated_postgres_database(db.engine)
+        print(f"PostgreSQL test database ready with {table_count} tables")
 
-            inspector = inspect(db.engine)
-            tables = inspector.get_table_names()
+        if os.getenv('SEED_TEST_DB', '') == '1':
+            from app.identity.models.roles_permission import get_or_create_role
+            from app.identity.models.user import User, UserRole
 
-            if not tables:
-                raise RuntimeError(
-                    "Test database has no tables! "
-                    "Run: python scripts/setup_test_db_schema.py"
+            owner_role = get_or_create_role('owner', level=1)
+            get_or_create_role('admin', level=3)
+            admin_email = os.getenv('TEST_ADMIN_EMAIL', 'test_admin@example.com')
+            admin = User.query.filter_by(email=admin_email).first()
+            if not admin:
+                admin = User(
+                    username='test_admin',
+                    email=admin_email,
+                    is_verified=True,
+                    is_active=True,
                 )
+                admin.set_password(os.getenv('TEST_ADMIN_PASSWORD', 'Password123!'))
+                db.session.add(admin)
+                db.session.flush()
 
-            print(f"✅ Test database ready with {len(tables)} tables")
-            # Optional: seed the test database with minimal users/roles for integration runs
-            if os.getenv('SEED_TEST_DB', '') == '1':
-                try:
-                    from app.identity.models.roles_permission import get_or_create_role
-                    from app.identity.models.user import User, UserRole
-                    # Ensure owner and admin roles exist
-                    owner_role = get_or_create_role('owner', level=1)
-                    admin_role = get_or_create_role('admin', level=3)
+            if not any(getattr(ur, 'role_id', None) == owner_role.id for ur in admin.roles):
+                db.session.add(UserRole(user_id=admin.id, role_id=owner_role.id))
 
-                    # Create a test admin user if missing
-                    admin_email = os.getenv('TEST_ADMIN_EMAIL', 'test_admin@example.com')
-                    admin = User.query.filter_by(email=admin_email).first()
-                    if not admin:
-                        admin = User(username='test_admin', email=admin_email, is_verified=True, is_active=True)
-                        # set a default password unless overridden
-                        admin.set_password(os.getenv('TEST_ADMIN_PASSWORD', 'Password123!'))
-                        db.session.add(admin)
-                        db.session.flush()
+            db.session.commit()
+            print(f"Seeded test admin {admin_email} with owner role")
 
-                    # Assign owner role to the admin user if not already assigned
-                    if not any(getattr(ur, 'role_id', None) == owner_role.id for ur in admin.roles):
-                        user_role = UserRole(user_id=admin.id, role_id=owner_role.id)
-                        db.session.add(user_role)
-
-                    db.session.commit()
-                    print(f"✅ Seeded test admin {admin_email} with owner role")
-                except Exception as e:
-                    # Don't fail the test runner if seeding fails - log and continue
-                    print(f"⚠️ Failed to seed test DB: {e}")
-
-            yield app
+        yield app
 
 @pytest.fixture(scope='session')
 def client(app):
@@ -92,24 +73,18 @@ def db_session(app):
         yield db.session
         db.session.remove()
 
+
+
 @pytest.fixture(scope='session')
 def test_db(db_session):
     """Alias for db_session for backward compatibility with tests using test_db"""
     yield db_session
 
 @pytest.fixture(autouse=True)
-def clean_db(db_session):
+def clean_db(request):
+    if request.node.get_closest_marker('no_database'):
+        yield
+        return
+    db_session = request.getfixturevalue('db_session')
     yield
     db_session.rollback()
-
-# Skip problematic test modules
-collect_ignore = [
-    "test_event_workflow.py",
-    "test_payment_flow.py",
-    "test_registration_flow.py",
-    "test_loose_coupling.py",
-    "test_kyc_compliance.py",
-    "test_events.py",
-    "test_event.py",
-    "wallet/test_ledger_concurrency.py",
-]

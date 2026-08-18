@@ -886,7 +886,7 @@
         <a href="/" class="topbar-icon-btn" data-tip="Home">
           <i class="fas fa-home"></i>
         </a>
-        <a href="{{ safe_url('wallet.wallet_transactions') }}" class="topbar-icon-btn" data-tip="Transactions">
+        <a href="{{ url_for('wallet.transactions') }}" class="topbar-icon-btn" data-tip="Transactions">
           <i class="fas fa-list"></i>
         </a>
         <a href="{{ safe_url('wallet.wallet_settings') }}" class="topbar-icon-btn" data-tip="Settings">

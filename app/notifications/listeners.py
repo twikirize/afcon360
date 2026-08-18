@@ -34,8 +34,9 @@ def register_notification_listeners():
             property_suspended,
             booking_confirmed,
             booking_cancelled,
-            booking_checked_in,
-            booking_checked_out,
+        booking_checked_in,
+        booking_checked_out,
+        booking_dates_modified,
             event_registered,
             event_reminder,
             transport_booking_created,
@@ -195,6 +196,19 @@ def register_notification_listeners():
         except Exception as e:
             logger.error(f"booking checked-out notification failed: {e}")
 
+    @booking_dates_modified.connect
+    def _on_booking_dates_modified(sender, **kwargs):
+        try:
+            booking = kwargs.get('booking')
+            adjustment = kwargs.get('adjustment')
+            notify_guest = kwargs.get('notify_guest', False)
+            if booking:
+                NotificationService.notify_booking_dates_modified(
+                    booking, adjustment, notify_guest=notify_guest
+                )
+        except Exception as e:
+            logger.error(f"booking dates modified notification failed: {e}")
+
     # ---------------------------------------------------------------
     # Events
     # ---------------------------------------------------------------
@@ -279,6 +293,7 @@ def register_notification_listeners():
         _on_wallet_created, _on_wallet_tx, _on_property_submitted, _on_property_approved,
         _on_property_rejected, _on_property_suspended, _on_booking_confirmed,
         _on_booking_cancelled, _on_booking_checked_in, _on_booking_checked_out,
+        _on_booking_dates_modified,
         _on_event_registered, _on_events_event_registered, _on_event_reminder,
         _on_transport_booking, _on_driver_assigned, _on_message_sent,
     ])

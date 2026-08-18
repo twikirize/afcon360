@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}{{ org.legal_name }} — Properties{% endblock %}
+
+{% block content %}
+<main class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div>
+            <p class="text-muted mb-1">{{ org.legal_name }}</p>
+            <h1 class="h3 mb-0">Organisation properties</h1>
+        </div>
+        <a class="btn btn-outline-primary" href="{{ url_for('org.org_dashboard', org_id=org.org_id) }}">Back to workspace</a>
+    </div>
+    <p><a href="{{ url_for('org.bookings', org_id=org.org_id) }}">View property bookings</a></p>
+    {% if accommodations %}
+    <div class="row g-3">
+        {% for property in accommodations %}
+        <div class="col-12 col-md-6 col-xl-4">
+            <article class="card h-100">
+                <div class="card-body">
+                    <h2 class="h5">{{ property.title }}</h2>
+                    <p class="text-muted mb-1">{{ property.city }}, {{ property.country }}</p>
+                    <p class="mb-0">{{ property.status }}</p>
+                </div>
+            </article>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}<p class="text-muted">No properties are listed for this organisation yet.</p>{% endif %}
+</main>
+{% endblock %}

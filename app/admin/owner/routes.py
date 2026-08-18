@@ -1591,7 +1591,20 @@ def kyc_tier_management():
         tier_counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
 
         for user in users:
-            kyc_info = calculate_kyc_tier(user.id)
+            try:
+                kyc_info = calculate_kyc_tier(user.id)
+            except Exception:
+                # A malformed or legacy verification record must not make the
+                # complete owner compliance queue unavailable.
+                logger.exception("KYC tier calculation failed for user %s", user.public_id)
+                kyc_info = {
+                    'tier': 0,
+                    'tier_name': 'Unregistered',
+                    'tier_description': 'KYC status requires review.',
+                    'verification_status': 'error',
+                    'missing_requirements': [],
+                    'fulfillment_percentage': 0,
+                }
             tier_counts[kyc_info['tier']] += 1
             user_kyc_info.append({
                 'user': user,
@@ -1609,12 +1622,17 @@ def kyc_tier_management():
 
         # Get pending manual reviews
         from app.audit.forensic_audit import ForensicAuditService
-        pending_reviews = ForensicAuditService.get_pending_reviews(
-            entity_type="kyc",
-            limit=50
-        )
+        try:
+            pending_reviews = ForensicAuditService.get_pending_reviews(
+                entity_type="kyc",
+                limit=50
+            )
+        except Exception:
+            # Audit storage is supplementary; it must not block KYC access.
+            logger.exception("Unable to load pending KYC reviews")
+            pending_reviews = []
 
-        return render_template('owner/kyc_tiers.html',
+        return render_template('admin/owner/kyc_tiers.html',
                                user_kyc_info=user_kyc_info,
                                tier_counts=tier_counts,
                                tier_requirements=TIER_REQUIREMENTS,
@@ -2050,6 +2068,13 @@ def auth_settings():
     if request.method == 'POST':
         # Update configuration
         try:
+            previous_phone_transport = config.get_phone_verification_transport()
+            phone_transport = request.form.get(
+                'phone_verification_transport',
+                previous_phone_transport,
+            ).strip().lower()
+            config.set_phone_verification_transport(phone_transport)
+
             # Service enable/disable toggles
             config.google_oauth_enabled = request.form.get('google_oauth_enabled') == 'on'
             config.sendgrid_enabled = request.form.get('sendgrid_enabled') == 'on'
@@ -2094,9 +2119,23 @@ def auth_settings():
             
             db.session.commit()
             
-            log_owner_action('update_auth_settings', current_user.id, 
-                           {'changes': 'Authentication settings updated'})
-            flash('Authentication settings updated successfully!', 'success')
+            log_owner_action(
+                'update_auth_settings',
+                current_user.id,
+                {
+                    'changes': 'Authentication settings updated',
+                    'phone_verification_transport_from': previous_phone_transport,
+                    'phone_verification_transport_to': phone_transport,
+                },
+            )
+            if phone_transport == 'sms':
+                provider = config.get_sms_provider_for_phone('+256')
+                if provider:
+                    flash(f'Authentication settings updated. Phone OTP delivery is set to SMS via {provider}.', 'success')
+                else:
+                    flash('Settings saved, but SMS is not ready. Configure and test an SMS provider before using SMS verification.', 'warning')
+            else:
+                flash('Authentication settings updated. Phone OTP delivery is set to email.', 'success')
             
         except Exception as e:
             db.session.rollback()

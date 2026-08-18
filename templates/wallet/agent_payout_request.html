@@ -29,7 +29,7 @@
         </div>
 
         <form method="POST" action="{{ safe_url('wallet.agent_payout_request') }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           
           <div class="form-group">
             <label class="form-label">Amount (UGX)</label>

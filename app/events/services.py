@@ -9,9 +9,11 @@ from datetime import datetime, timezone, timedelta, date
 from typing import List, Dict, Optional, Tuple, Any
 import logging
 import re
+import json
 import qrcode
 import functools
 import hashlib
+import time
 from io import BytesIO
 import base64
 import secrets
@@ -19,7 +21,7 @@ from flask import url_for, current_app
 from app.extensions import db, redis_client
 # REMOVED: import app.events.models  <-- THIS CAUSED CIRCULAR IMPORT
 from app.admin.models import ContentFlag
-from app.events.constants import EventStatus, BookingType
+from app.events.constants import EventStatus, BookingType, RegistrationAvailability
 from app.events.trust_service import EventTrustService, TrustLevel
 from app.events.attendee_accounts import find_or_create_attendee_user
 
@@ -116,6 +118,230 @@ class SoldOutException(Exception):
 class EventService:
     """Event management with database persistence"""
 
+    @staticmethod
+    def is_event_expired(event, today: Optional[date] = None) -> bool:
+        """Return whether an event ended before the supplied calendar day.
+
+        Event dates are date-only values, so the configured ``end_date`` is
+        inclusive and registration closes at the start of the next day.
+        """
+        if not event or not event.end_date:
+            return False
+        end_date = event.end_date.date() if isinstance(event.end_date, datetime) else event.end_date
+        return end_date < (today or date.today())
+
+    @staticmethod
+    def _as_utc(value: Optional[datetime]) -> Optional[datetime]:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    @classmethod
+    def _registration_close_at(cls, event) -> Optional[datetime]:
+        close_at = cls._as_utc(getattr(event, "registration_closes_at", None))
+        if close_at:
+            return close_at
+        if event.start_date:
+            return datetime.combine(event.start_date, datetime.min.time(), tzinfo=timezone.utc)
+        return None
+
+    @staticmethod
+    def _parse_datetime(value) -> Optional[datetime]:
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            return EventService._as_utc(value)
+        try:
+            return EventService._as_utc(datetime.fromisoformat(str(value).replace("Z", "+00:00")))
+        except (TypeError, ValueError):
+            raise ValueError("Registration times must use ISO-8601 format.")
+
+    @staticmethod
+    def _parse_bool(value, default: bool = False) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    @classmethod
+    def _availability_message(cls, state: str, reason: str = None,
+                              opens_at: Optional[datetime] = None,
+                              closes_at: Optional[datetime] = None) -> str:
+        if state == RegistrationAvailability.EXPIRED.value:
+            return "This event has ended. Registration and ticket purchases are closed."
+        if state == RegistrationAvailability.NOT_OPEN.value:
+            if opens_at:
+                return f"Registration opens on {opens_at.strftime('%Y-%m-%d %H:%M UTC')}."
+            return "Registration is not open yet."
+        if state == RegistrationAvailability.SOLD_OUT.value:
+            return "All available registration places or ticket tiers are sold out."
+        if reason == "registration_deadline":
+            return "The registration and ticket-purchase deadline has passed."
+        if reason == "not_required":
+            return "Registration is not required for this event."
+        if reason == "not_published":
+            return "Registration is not available for this event yet."
+        return "Registration is currently unavailable."
+
+    @staticmethod
+    def _is_public_registration_status(status: str) -> bool:
+        # ``active`` is retained for events created before EventStatus was
+        # consolidated; new events use ``published``.
+        return status in {EventStatus.PUBLISHED.value, "active"}
+
+    @staticmethod
+    def _registration_cache_key(event) -> str:
+        identifier = (
+            getattr(event, "public_id", None)
+            or getattr(event, "slug", None)
+            or getattr(event, "id", None)
+        )
+        return f"events:registration-availability:{identifier}"
+
+    @classmethod
+    def get_registration_availability(cls, event, now: Optional[datetime] = None,
+                                      use_cache: bool = True) -> Dict[str, Any]:
+        """Return the public availability snapshot for an event.
+
+        Redis is used only for presentation.  Passing ``use_cache=False`` is
+        required by mutation paths so capacity and deadlines are re-read from
+        the database immediately before creating a registration.
+        """
+        now = cls._as_utc(now or datetime.now(timezone.utc))
+        cache_key = cls._registration_cache_key(event)
+        if use_cache and redis_client:
+            try:
+                cached = redis_client.get(cache_key)
+                if cached:
+                    if isinstance(cached, bytes):
+                        cached = cached.decode("utf-8")
+                    return json.loads(cached)
+            except Exception as exc:
+                logger.debug("Event availability cache read failed: %s", exc)
+
+        event_end = event.end_date
+        expired = bool(event_end and event_end < now.date())
+        event_phase = "upcoming"
+        if event_end and event_end >= now.date():
+            event_phase = "live" if event.start_date and event.start_date <= now.date() else "upcoming"
+
+        opens_at = cls._as_utc(getattr(event, "registration_opens_at", None))
+        closes_at = cls._registration_close_at(event)
+        total_statuses = ("confirmed", "checked_in")
+        Registration = cls._get_registration_class()
+        total_regs = Registration.query.filter(
+            Registration.event_id == event.id,
+            Registration.status.in_(total_statuses),
+        ).count()
+        event_remaining = None
+        event_sold_out = False
+        if event.max_capacity and event.max_capacity > 0:
+            event_remaining = max(0, event.max_capacity - total_regs)
+            event_sold_out = event_remaining == 0
+
+        tickets = []
+        active_tickets = []
+        has_future_ticket = False
+        has_open_ticket = False
+        for ticket in event.ticket_types:
+            if not ticket.is_active:
+                continue
+            ticket_count = Registration.query.filter(
+                Registration.ticket_type_id == ticket.id,
+                Registration.status.in_(total_statuses),
+            ).count()
+            remaining = max(0, ticket.capacity - ticket_count) if ticket.capacity else None
+            sold_out = remaining == 0 if remaining is not None else False
+            ticket_opens = cls._as_utc(ticket.available_from)
+            ticket_closes = cls._as_utc(ticket.available_until)
+            in_window = (not ticket_opens or now >= ticket_opens) and (
+                not ticket_closes or now < ticket_closes
+            )
+            if ticket_opens and now < ticket_opens:
+                has_future_ticket = True
+            if in_window and not sold_out:
+                has_open_ticket = True
+            active_tickets.append(ticket)
+            tickets.append({
+                "id": ticket.id,
+                "name": ticket.name,
+                "description": ticket.description or "",
+                "price": float(ticket.price or 0),
+                "currency": event.currency,
+                "capacity": ticket.capacity,
+                "registration_count": ticket_count,
+                "remaining": remaining,
+                "is_sold_out": sold_out,
+                "is_active": ticket.is_active,
+                "available_from": ticket_opens.isoformat() if ticket_opens else None,
+                "available_until": ticket_closes.isoformat() if ticket_closes else None,
+                "is_available_now": in_window and not sold_out,
+            })
+
+        reason = None
+        if expired:
+            state = RegistrationAvailability.EXPIRED.value
+        elif not cls._is_public_registration_status(event.status):
+            state, reason = RegistrationAvailability.CLOSED.value, "not_published"
+        elif not event.registration_required and not active_tickets:
+            state, reason = RegistrationAvailability.CLOSED.value, "not_required"
+        elif opens_at and now < opens_at:
+            state = RegistrationAvailability.NOT_OPEN.value
+        elif closes_at and now >= closes_at:
+            state, reason = RegistrationAvailability.CLOSED.value, "registration_deadline"
+        elif event_sold_out or (active_tickets and not has_open_ticket and not has_future_ticket):
+            state, reason = RegistrationAvailability.SOLD_OUT.value, "capacity"
+        elif active_tickets and not has_open_ticket:
+            state = RegistrationAvailability.NOT_OPEN.value if has_future_ticket else RegistrationAvailability.CLOSED.value
+        else:
+            state = RegistrationAvailability.OPEN.value
+
+        snapshot = {
+            "state": state,
+            "event_phase": event_phase if not expired else "expired",
+            "reason": reason,
+            "message": cls._availability_message(state, reason, opens_at, closes_at),
+            "opens_at": opens_at.isoformat() if opens_at else None,
+            "closes_at": closes_at.isoformat() if closes_at else None,
+            "total_registrations": total_regs,
+            "remaining_capacity": event_remaining,
+            "is_sold_out": event_sold_out,
+            "ticket_types": tickets,
+        }
+        if use_cache and redis_client:
+            try:
+                ttl = int(current_app.config.get("EVENT_AVAILABILITY_CACHE_TTL", 30))
+                redis_client.set(cache_key, json.dumps(snapshot), ex=max(1, ttl))
+            except Exception as exc:
+                logger.debug("Event availability cache write failed: %s", exc)
+        return snapshot
+
+    @staticmethod
+    def invalidate_registration_availability(event) -> None:
+        if not redis_client or not event:
+            return
+        try:
+            redis_client.delete(EventService._registration_cache_key(event))
+        except Exception as exc:
+            logger.debug("Event availability cache invalidation failed: %s", exc)
+
+    @classmethod
+    def _registration_gate_error(cls, event, ticket_type_id=None) -> Optional[str]:
+        snapshot = cls.get_registration_availability(event, use_cache=False)
+        if snapshot["state"] != RegistrationAvailability.OPEN.value:
+            return snapshot["message"]
+        if ticket_type_id:
+            ticket = next(
+                (item for item in snapshot["ticket_types"] if item["id"] == ticket_type_id),
+                None,
+            )
+            if not ticket or not ticket["is_available_now"]:
+                return "The selected ticket type is not currently available."
+        return None
+
     # Helper to import models only when needed (avoids circular import)
     @staticmethod
     def _get_event_model_class():
@@ -185,7 +411,7 @@ class EventService:
             query = query.filter_by(status=sanitized_status)
         else:
             query = query.filter_by(status=EventStatus.PUBLISHED)
-        events = query.order_by(Event.start_date).all()
+        events = query.order_by(Event.created_at.desc(), Event.id.desc()).all()
         return [cls._event_to_dict(event) for event in events]
 
     @classmethod
@@ -193,6 +419,40 @@ class EventService:
         Event = cls._get_event_model_class()
         event = Event.query.filter_by(slug=event_id).first()
         return cls._event_to_dict(event) if event else None
+
+    @classmethod
+    def toggle_favorite(cls, public_id: str, user_id: int) -> Tuple[Optional[bool], int, Optional[str]]:
+        """Toggle an event in the user's existing dashboard favorites list."""
+        Event = cls._get_event_model_class()
+        event = Event.query.filter_by(public_id=public_id, is_deleted=False).first()
+        if not event:
+            return None, 0, "Event not found"
+
+        from app.admin.models import UserDashboardConfig
+
+        config = UserDashboardConfig.query.filter_by(user_id=user_id).first()
+        if not config:
+            config = UserDashboardConfig(user_id=user_id, featured_items=[])
+            db.session.add(config)
+        elif config.is_deleted:
+            config.restore()
+
+        favorites = config.featured_items if isinstance(config.featured_items, list) else []
+        marker = f"event:{event.public_id}"
+        if marker in favorites:
+            favorites.remove(marker)
+            favorited = False
+        else:
+            favorites.append(marker)
+            favorited = True
+
+        config.featured_items = favorites
+        db.session.commit()
+        favorite_count = sum(
+            1 for item in favorites
+            if isinstance(item, str) and item.startswith("event:")
+        )
+        return favorited, favorite_count, None
 
     @classmethod
     def change_event_status(cls, event_id: str, new_status: str, user_id: int,
@@ -258,8 +518,8 @@ class EventService:
             if not has_global_permission(user, "content.moderate"):
                 return False, "You do not have permission to suspend or delete events"
         elif new_status == EventStatus.PUBLISHED:
-            is_organizer = (event.organizer_id == user_id)
-            if not (has_global_permission(user, "events.approve") or is_organizer):
+            is_owner = _is_event_owner(user, event)
+            if not (has_global_permission(user, "events.approve") or is_owner):
                 return False, "You do not have permission to publish this event"
 
         if new_status == EventStatus.PUBLISHED:
@@ -326,11 +586,6 @@ class EventService:
                 slug = f"{original_slug}-{counter}"
                 counter += 1
 
-            if creator_type == 'organization':
-                organizer_id = organization_id
-            else:
-                organizer_id = user_id
-
             from app.events.settings_model import EventSettings
             evt_settings = EventSettings.get()
 
@@ -368,17 +623,28 @@ class EventService:
                 approved_at = datetime.now(timezone.utc)
                 approved_by_id = user_id
 
+            registration_required = cls._parse_bool(
+                data.get("registration_required"), default=True
+            )
             event = Event(
                 slug=slug, name=data["name"], description=data.get("description", ""),
                 category=data.get("category", "other"), city=data["city"], country=data.get("country", "Uganda"),
                 venue=data.get("venue", ""),
                 start_date=datetime.strptime(data["start_date"], "%Y-%m-%d").date() if data.get("start_date") else None,
                 end_date=datetime.strptime(data["end_date"], "%Y-%m-%d").date() if data.get("end_date") else None,
-                registration_required=data.get("registration_required", False),
-                currency=data.get("currency", "USD"), organizer_id=organizer_id,
+                registration_required=registration_required,
+                registration_opens_at=cls._parse_datetime(data.get("registration_opens_at")),
+                registration_closes_at=cls._parse_datetime(data.get("registration_closes_at")),
+                currency=data.get("currency", "USD"),
                 website=data.get("website"), contact_email=data.get("contact_email"),
                 contact_phone=data.get("contact_phone"), event_metadata=data.get("metadata", {}),
                 status=status, created_by_type=creator_type,
+                organizer_id=user_id,
+                created_by_entity_id=(
+                    0 if creator_type == 'system'
+                    else organization_id if creator_type == 'organization'
+                    else user_id
+                ),
                 organization_id=organization_id if creator_type == 'organization' else None,
                 is_system_event=(creator_type == 'system'), original_creator_id=user_id,
                 current_owner_type=creator_type,
@@ -393,7 +659,7 @@ class EventService:
             if status == EventStatus.PUBLISHED:
                 _assert_no_open_flags(event.id)
 
-            if data.get("registration_required"):
+            if registration_required:
                 event_type = data.get("event_type", "free")
                 if event_type == "free":
                     ticket = TicketType(event_id=event.id, name="Free Entry", description="Free admission", price=0, capacity=0, is_active=True)
@@ -444,11 +710,14 @@ class EventService:
 
     @classmethod
     def update_event(cls, event_id: str, data: Dict, user_id: int) -> Tuple[bool, Optional[str]]:
+        from app.identity.models.user import User
+        from app.events.permissions import _is_event_owner
         Event = cls._get_event_model_class()
         event = Event.query.filter_by(slug=event_id).first()
         if not event:
             return False, "Event not found"
-        if event.organizer_id != user_id:
+        user = db.session.get(User, user_id)
+        if not user or not _is_event_owner(user, event):
             return False, "Unauthorized"
         try:
             for key, value in data.items():
@@ -464,6 +733,12 @@ class EventService:
                     event.start_date = datetime.strptime(value, "%Y-%m-%d").date()
                 elif key == "end_date" and value:
                     event.end_date = datetime.strptime(value, "%Y-%m-%d").date()
+                elif key == "registration_opens_at":
+                    event.registration_opens_at = cls._parse_datetime(value)
+                elif key == "registration_closes_at":
+                    event.registration_closes_at = cls._parse_datetime(value)
+                elif key == "registration_required":
+                    event.registration_required = cls._parse_bool(value)
                 elif key == "website":
                     event.website = value
                 elif key == "contact_email":
@@ -471,6 +746,112 @@ class EventService:
                 elif key == "contact_phone":
                     event.contact_phone = value
             event.updated_at = datetime.now(timezone.utc)
+            db.session.commit()
+            cls.invalidate_registration_availability(event)
+            return True, None
+        except Exception as e:
+            db.session.rollback()
+            return False, str(e)
+
+    @classmethod
+    def request_event_transfer(
+        cls, 
+        event_slug: str, 
+        requester_id: int, 
+        to_owner_type: str, 
+        to_owner_id: int, 
+        reason: str = None
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Initiates a formal request to transfer ownership of an event.
+        Must be approved by the target or an administrator to take effect.
+        """
+        Event = cls._get_event_model_class()
+        from app.events.models import EventTransferRequest, TransferStatus, OwnerType
+        
+        event = Event.query.filter_by(slug=event_slug).first()
+        if not event:
+            return False, "Event not found"
+
+        # Verify authority to transfer (must be current owner or super admin)
+        from app.events.permissions import _is_event_owner
+        from app.identity.models.user import User
+        requester = User.query.get(requester_id)
+        
+        if not requester or not (_is_event_owner(requester, event) or requester.is_super_admin()):
+            return False, "Unauthorized to transfer event ownership"
+
+        if to_owner_type not in [OwnerType.INDIVIDUAL.value, OwnerType.ORGANIZATION.value]:
+            return False, "Invalid target owner type"
+
+        try:
+            req = EventTransferRequest(
+                event_id=event.id,
+                from_user_id=event.current_owner_id if event.current_owner_type == OwnerType.INDIVIDUAL else None,
+                from_organization_id=event.current_owner_id if event.current_owner_type == OwnerType.ORGANIZATION else None,
+                to_user_id=to_owner_id if to_owner_type == OwnerType.INDIVIDUAL else None,
+                to_organization_id=to_owner_id if to_owner_type == OwnerType.ORGANIZATION else None,
+                requested_by_id=requester_id,
+                reason=reason,
+                status=TransferStatus.PENDING.value
+            )
+            db.session.add(req)
+            db.session.commit()
+            return True, None
+        except Exception as e:
+            db.session.rollback()
+            return False, str(e)
+
+    @classmethod
+    def approve_event_transfer(
+        cls, 
+        request_id: int, 
+        approver_id: int
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Approves an EventTransferRequest, mutates the event's current_owner,
+        and records the transition in EventTransferLog.
+        """
+        from app.events.models import EventTransferRequest, EventTransferLog, TransferStatus, OwnerType
+        Event = cls._get_event_model_class()
+        from app.identity.models.user import User
+
+        req = EventTransferRequest.query.get(request_id)
+        if not req or req.status != TransferStatus.PENDING.value:
+            return False, "Transfer request not found or not pending"
+
+        event = Event.query.get(req.event_id)
+        if not event:
+            return False, "Event no longer exists"
+
+        approver = User.query.get(approver_id)
+        if not approver:
+            return False, "Approver not found"
+
+        # In a real system, verify if approver has the right to accept (e.g. is target owner or admin)
+        # For hardening, we explicitly ensure the change is atomic and logged.
+        
+        to_owner_type = OwnerType.INDIVIDUAL if req.to_user_id else OwnerType.ORGANIZATION
+        to_owner_id = req.to_user_id if req.to_user_id else req.to_organization_id
+
+        try:
+            req.approve(approver_id)
+
+            log_entry = EventTransferLog(
+                event_id=event.id,
+                from_owner_type=event.current_owner_type,
+                from_owner_id=event.current_owner_id,
+                to_owner_type=to_owner_type,
+                to_owner_id=to_owner_id,
+                transferred_by_id=approver_id,
+                extra_data={"request_id": req.id, "reason": req.reason}
+            )
+            db.session.add(log_entry)
+
+            event.current_owner_type = to_owner_type
+            event.current_owner_id = to_owner_id
+            event.updated_at = datetime.now(timezone.utc)
+
             db.session.commit()
             return True, None
         except Exception as e:
@@ -484,7 +865,8 @@ class EventService:
         event = Event.query.filter_by(slug=event_id).first()
         if not event:
             return False, "Event not found"
-        if event.organizer_id != user_id:
+        user = db.session.get(User, user_id)
+        if not user or not _is_event_owner(user, event):
             return False, "Unauthorized"
         registrations = Registration.query.filter_by(event_id=event.id).count()
         if registrations > 0:
@@ -500,7 +882,15 @@ class EventService:
     @classmethod
     def get_events_by_organizer(cls, organizer_id: int) -> List[Dict]:
         Event = cls._get_event_model_class()
-        events = Event.query.filter_by(organizer_id=organizer_id).order_by(Event.created_at.desc()).all()
+        from sqlalchemy import or_, and_
+        events = Event.query.outerjoin(
+            EventRole, Event.id == EventRole.event_id
+        ).filter(
+            or_(
+                and_(Event.current_owner_type == 'individual', Event.current_owner_id == organizer_id),
+                EventRole.user_id == organizer_id
+            )
+        ).order_by(Event.created_at.desc()).all()
         return [cls._event_to_dict(event) for event in events]
 
     @classmethod
@@ -592,6 +982,10 @@ class EventService:
             "updated_at": event.updated_at.isoformat() if event.updated_at else None,
             "max_capacity": event.max_capacity, "registration_required": event.registration_required,
             "registration_fee": float(event.registration_fee) if event.registration_fee else 0,
+            "registration_opens_at": cls._as_utc(getattr(event, "registration_opens_at", None)).isoformat()
+            if getattr(event, "registration_opens_at", None) else None,
+            "registration_closes_at": cls._as_utc(getattr(event, "registration_closes_at", None)).isoformat()
+            if getattr(event, "registration_closes_at", None) else None,
             "currency": event.currency, "status": sanitized_status, "featured": event.featured,
             "organizer_id": event.organizer_id, "website": website,
             "contact_email": event.contact_email, "contact_phone": event.contact_phone,
@@ -709,7 +1103,7 @@ class EventService:
     @classmethod
     @with_transaction(isolation_level="REPEATABLE_READ")
     def register_for_event_optimistic(cls, identifier: str, user_id: int, data: Dict,
-                                      idempotency_key: str = None, max_retries: int = 3,
+                                      idempotency_key: str = None, max_retries: int = 5,
                                       booking_type: str = BookingType.SELF.value,
                                       attendee_user_id: int = None,
                                       group_booking_id: str = None,
@@ -750,12 +1144,11 @@ class EventService:
                 if not event:
                     return None, None, "Event not found"
 
-                from datetime import date
-                if event.end_date and event.end_date < date.today():
-                    logger.warning(f"Registration blocked: event {identifier} ended on {event.end_date}")
-                    return None, None, "Event registration closed. This event has already ended."
-
                 ticket_type_id = data.get("ticket_type_id")
+                gate_error = cls._registration_gate_error(event, ticket_type_id)
+                if gate_error:
+                    logger.warning("Registration blocked for %s: %s", identifier, gate_error)
+                    return None, None, gate_error
                 ticket_type = None
 
                 if ticket_type_id:
@@ -765,7 +1158,22 @@ class EventService:
                 else:
                     ticket_type = TicketType.query.filter_by(event_id=event.id, is_active=True).order_by(TicketType.price.asc()).first()
                     if not ticket_type:
-                        return None, None, "No active ticket types available for this event."
+                        has_paid_tier = any(
+                            ticket.price and ticket.price > 0
+                            for ticket in event.ticket_types
+                        )
+                        if has_paid_tier or event.registration_fee:
+                            return None, None, "No active ticket types available for this event."
+                        ticket_type = TicketType(
+                            event_id=event.id,
+                            name="Free Entry",
+                            description="Free admission",
+                            price=0,
+                            capacity=0,
+                            is_active=True,
+                        )
+                        db.session.add(ticket_type)
+                        db.session.flush()
 
                 discount_amount = Decimal("0.00")
                 discount_code = data.get("discount_code")
@@ -779,6 +1187,30 @@ class EventService:
                 ticket_price = Decimal(str(ticket_type.price))
                 final_price = max(ticket_price - discount_amount, Decimal("0.00"))
 
+                actual_attendee_id = attendee_user_id or user_id
+                check_user_id = user_id
+                if booking_type == BookingType.THIRD_PARTY.value:
+                    check_user_id = attendee_user_id if attendee_user_id else user_id
+                elif booking_type == BookingType.GROUP.value:
+                    check_user_id = None
+
+                if check_user_id:
+                    existing = Registration.query.filter_by(
+                        event_id=event.id,
+                        user_id=check_user_id
+                    ).first()
+                    if existing:
+                        if booking_type == BookingType.THIRD_PARTY.value:
+                            attendee_name = data.get("full_name")
+                            attendee_email = data.get("email")
+                            return None, None, f"The attendee ({attendee_name or attendee_email}) is already registered for this event"
+                        return None, None, "You are already registered for this event"
+
+                if event.max_capacity > 0:
+                    event_count = db.session.query(func.count(Registration.id)).filter_by(event_id=event.id).scalar()
+                    if event_count >= event.max_capacity:
+                        raise SoldOutException("The event has reached full capacity")
+
                 if ticket_type.capacity and ticket_type.capacity > 0:
                     updated = db.session.query(TicketType).filter(
                         and_(TicketType.id == ticket_type.id,
@@ -791,35 +1223,6 @@ class EventService:
                         raise SoldOutException(f"Ticket tier '{ticket_type.name}' is sold out")
                 else:
                     db.session.query(TicketType).filter(TicketType.id == ticket_type.id).update({'version': TicketType.version + 1})
-
-                if event.max_capacity > 0:
-                    event_count = db.session.query(func.count(Registration.id)).filter_by(event_id=event.id).scalar()
-                    if event_count >= event.max_capacity:
-                        raise SoldOutException("The event has reached full capacity")
-
-                # Determine who we're checking for
-                actual_attendee_id = attendee_user_id or user_id
-                check_user_id = user_id  # default to booker/attendee
-
-                if booking_type == BookingType.THIRD_PARTY.value:
-                    # For third-party, check if the ATTENDEE is already registered
-                    check_user_id = attendee_user_id if attendee_user_id else user_id
-                elif booking_type == BookingType.GROUP.value:
-                    # For group, we'll check each attendee separately in the caller
-                    check_user_id = None  # Skip check here, handle in caller
-
-                if check_user_id:
-                    existing = Registration.query.filter_by(
-                        event_id=event.id,
-                        user_id=check_user_id
-                    ).first()
-                    if existing:
-                        if booking_type == BookingType.THIRD_PARTY.value:
-                            attendee_email = data.get("email")
-                            attendee_name = data.get("full_name")
-                            return None, None, f"The attendee ({attendee_name or attendee_email}) is already registered for this event"
-                        else:
-                            return None, None, "You are already registered for this event"
 
                 reg_count = db.session.query(func.count(Registration.id)).filter_by(event_id=event.id).scalar() or 0
                 sequence = reg_count + 1
@@ -850,6 +1253,7 @@ class EventService:
 
                 logger.info(f"User {user_id} registered attendee {actual_attendee_id}: {registration.registration_ref} (sequence {sequence})")
                 db.session.commit()
+                cls.invalidate_registration_availability(event)
 
                 return cls._registration_to_dict(registration), qr_code, None
 
@@ -857,9 +1261,15 @@ class EventService:
                 raise e
             except Exception as e:
                 logger.warning(f"Registration attempt {attempt + 1} failed: {e}")
+                # A PostgreSQL serialization failure aborts the current
+                # transaction.  Roll it back before the retry can issue SQL;
+                # otherwise every subsequent attempt fails with
+                # InFailedSqlTransaction.
+                db.session.rollback()
                 if attempt == max_retries - 1:
                     logger.error(f"Max retries exceeded for registration: {e}")
                     return None, None, "Registration failed after multiple attempts. Please try again."
+                time.sleep(0.1 * (2 ** attempt))
 
         return None, None, "Registration failed"
 
@@ -932,12 +1342,11 @@ class EventService:
                 if not event:
                     return None, None, "Event not found"
 
-                from datetime import date
-                if event.end_date and event.end_date < date.today():
-                    logger.warning(f"Payment registration blocked: event {identifier} ended on {event.end_date}")
-                    return None, None, "Event registration closed. This event has already ended."
-
                 ticket_type_id = data.get("ticket_type_id")
+                gate_error = cls._registration_gate_error(event, ticket_type_id)
+                if gate_error:
+                    logger.warning("Payment registration blocked for %s: %s", identifier, gate_error)
+                    return None, None, gate_error
                 ticket_type = None
 
                 if ticket_type_id:
@@ -1024,6 +1433,7 @@ class EventService:
                 qr_code = cls._generate_qr_code(registration.qr_token, registration.registration_ref)
 
                 logger.info(f"User {user_id} registered for {identifier} with payment {payment_status}")
+                cls.invalidate_registration_availability(event)
 
                 if SIGNALS_AVAILABLE:
                     try:
@@ -1053,7 +1463,7 @@ class EventService:
         payload, provided_sig = parts[0], parts[1]
 
         key = os.environ.get('QR_SECRET_KEY', 'dev-secret-change-in-production').encode()
-        expected_sig = hmac.new(key, payload.encode(), hashlib.sha256).hexdigest()[:16]
+        expected_sig = hmac.new(key, payload.encode(), hashlib.sha256).hexdigest()[:24]
 
         if not hmac.compare_digest(provided_sig, expected_sig):
             return False, "Invalid or tampered QR code", None
@@ -1287,12 +1697,21 @@ class EventService:
     @classmethod
     def get_events_managed_by_user(cls, user_id: int) -> List[Dict]:
         from app.identity.models.user import User
+        from app.events.permissions import _is_event_owner
         Event = cls._get_event_model_class()
         user = db.session.get(User, user_id)
         if not user:
             return []
         events = []
-        user_events = Event.query.filter_by(organizer_id=user_id).all()
+        from sqlalchemy import or_, and_
+        user_events = Event.query.outerjoin(
+            EventRole, Event.id == EventRole.event_id
+        ).filter(
+            or_(
+                and_(Event.current_owner_type == 'individual', Event.current_owner_id == user_id),
+                EventRole.user_id == user_id
+            )
+        ).all()
         events.extend(user_events)
         for membership in user.organisations:
             if user.has_org_role(membership.organisation_id, "org_owner", "org_admin"):
@@ -1306,13 +1725,23 @@ class EventService:
         event = cls.get_event_model(identifier)
         if not event:
             return None, "Event not found"
-        if event.organizer_id != user_id:
+        user = db.session.get(User, user_id)
+        if not user or not _is_event_owner(user, event):
             return None, "Unauthorized"
         try:
             TicketType = cls._get_ticket_type_class()
+            name = str(data.get("name") or "").strip()
+            if not name:
+                return None, "Ticket tier name is required"
+
+            capacity_value = data.get("capacity")
+            capacity = 0 if capacity_value in (None, "") else int(capacity_value)
+            if capacity < 0:
+                return None, "Capacity cannot be negative"
+
             ticket_type = TicketType(
-                event_id=event.id, name=data["name"], description=data.get("description"),
-                price=data.get("price", 0), capacity=data.get("capacity"),
+                event_id=event.id, name=name, description=data.get("description"),
+                price=data.get("price") or 0, capacity=capacity,
                 available_from=datetime.strptime(data["available_from"], "%Y-%m-%dT%H:%M") if data.get("available_from") else None,
                 available_until=datetime.strptime(data["available_until"], "%Y-%m-%dT%H:%M") if data.get("available_until") else None,
                 is_active=data.get("is_active", True)
@@ -1329,7 +1758,15 @@ class EventService:
         managed_events = cls.get_events_managed_by_user(user_id)
         Event = cls._get_event_model_class()
         Registration = cls._get_registration_class()
-        event_models = Event.query.filter_by(organizer_id=user_id).all()
+        from sqlalchemy import or_, and_
+        event_models = Event.query.outerjoin(
+            EventRole, Event.id == EventRole.event_id
+        ).filter(
+            or_(
+                and_(Event.current_owner_type == 'individual', Event.current_owner_id == user_id),
+                EventRole.user_id == user_id
+            )
+        ).all()
         total_registrations = 0
         total_revenue = 0.0
         active_events_list = []
@@ -1459,6 +1896,10 @@ class EventService:
                 if not event:
                     return None, None, "Event not found"
                 ticket_type_id = data.get("ticket_type_id")
+                gate_error = cls._registration_gate_error(event, ticket_type_id)
+                if gate_error:
+                    logger.warning("Registration blocked for %s: %s", identifier, gate_error)
+                    return None, None, gate_error
                 ticket_type = None
                 if ticket_type_id:
                     ticket_type = TicketType.query.with_for_update().filter_by(id=ticket_type_id, event_id=event.id).first()
@@ -1467,28 +1908,30 @@ class EventService:
                 else:
                     ticket_type = TicketType.query.with_for_update().filter_by(event_id=event.id, is_active=True).order_by(TicketType.price.asc()).first()
                     if not ticket_type:
-                        return None, None, "No active ticket types available for this event."
-                if ticket_type.capacity > 0:
-                    if ticket_type.available_seats is None:
-                        current_count = db.session.query(func.count(Registration.id)).filter_by(ticket_type_id=ticket_type.id).scalar()
-                        ticket_type.available_seats = max(0, ticket_type.capacity - current_count)
-                    if ticket_type.available_seats <= 0:
-                        raise SoldOutException(f"Ticket tier '{ticket_type.name}' is sold out")
-                    ticket_type.available_seats -= 1
-                
-                # Determine who we're checking for
+                        has_paid_tier = any(
+                            ticket.price and ticket.price > 0
+                            for ticket in event.ticket_types
+                        )
+                        if has_paid_tier or event.registration_fee:
+                            return None, None, "No active ticket types available for this event."
+                        ticket_type = TicketType(
+                            event_id=event.id,
+                            name="Free Entry",
+                            description="Free admission",
+                            price=0,
+                            capacity=0,
+                            is_active=True,
+                        )
+                        db.session.add(ticket_type)
+                        db.session.flush()
+                # Determine who we're checking for before changing capacity.
                 actual_attendee_id = attendee_user_id or user_id
-                check_user_id = user_id  # default to booker/attendee
-
+                check_user_id = user_id
                 if booking_type == BookingType.THIRD_PARTY.value:
-                    # For third-party, check if the ATTENDEE is already registered
                     check_user_id = attendee_user_id if attendee_user_id else user_id
                 elif booking_type == BookingType.GROUP.value:
-                    # For group, we'll check each attendee separately in the caller
-                    check_user_id = None  # Skip check here, handle in caller
+                    check_user_id = None
 
-                # Prevent duplicates: DB has uniques on (event_id,user_id) and (event_id,email)
-                # We pre-check here to return friendly messages
                 if check_user_id:
                     existing = Registration.query.filter_by(
                         event_id=event.id,
@@ -1496,13 +1939,11 @@ class EventService:
                     ).first()
                     if existing:
                         if booking_type == BookingType.THIRD_PARTY.value:
-                            attendee_email = data.get("email")
                             attendee_name = data.get("full_name")
+                            attendee_email = data.get("email")
                             return None, None, f"The attendee ({attendee_name or attendee_email}) is already registered for this event"
-                        else:
-                            return None, None, "You are already registered for this event"
+                        return None, None, "You are already registered for this event"
 
-                # Also check by email for third_party/non-user flows
                 email_val = (data.get("email") or "").strip().lower()
                 if email_val:
                     existing_email = Registration.query.filter_by(
@@ -1513,8 +1954,15 @@ class EventService:
                         if booking_type == BookingType.THIRD_PARTY.value:
                             attendee_name = data.get("full_name")
                             return None, None, f"The attendee ({attendee_name or email_val}) is already registered for this event"
-                        else:
-                            return None, None, "You are already registered for this event"
+                        return None, None, "You are already registered for this event"
+
+                if ticket_type.capacity > 0:
+                    if ticket_type.available_seats is None:
+                        current_count = db.session.query(func.count(Registration.id)).filter_by(ticket_type_id=ticket_type.id).scalar()
+                        ticket_type.available_seats = max(0, ticket_type.capacity - current_count)
+                    if ticket_type.available_seats <= 0:
+                        raise SoldOutException(f"Ticket tier '{ticket_type.name}' is sold out")
+                    ticket_type.available_seats -= 1
 
                 count = db.session.query(func.count(Registration.id)).filter_by(event_id=event.id).scalar()
                 sequence = (count if count else 0) + 1
@@ -1768,47 +2216,39 @@ class EventService:
                 ticket_type.available_seats = (ticket_type.available_seats or 0) + 1
                 ticket_type.version = (ticket_type.version or 0) + 1
         db.session.commit()
+        cls.invalidate_registration_availability(event)
         logger.info(f"Registration {registration_ref} cancelled by user {user_id}")
         return True, None
 
     @classmethod
-    def build_event_context_json(cls, event_slug: str, user_id: Optional[int] = None) -> Dict[str, Any]:
-        from decimal import Decimal
+    def build_event_context_json(cls, event_slug: str, user_id: Optional[int] = None,
+                                today: Optional[date] = None) -> Dict[str, Any]:
         event = cls.get_event_model(event_slug)
         if not event:
             return {'event_found': False, 'event_slug': event_slug}
+        calculation_now = (
+            datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
+            if today else datetime.now(timezone.utc)
+        )
+        availability = cls.get_registration_availability(
+            event, now=calculation_now, use_cache=today is None
+        )
         Registration = cls._get_registration_class()
-        total_regs = Registration.query.filter_by(event_id=event.id, status='confirmed').count()
         user_registered = False
         user_registration_ref = None
         if user_id:
-            user_reg = Registration.query.filter_by(event_id=event.id, user_id=user_id, status='confirmed').first()
-            if user_reg:
+            user_reg = Registration.query.filter_by(event_id=event.id, user_id=user_id).first()
+            if user_reg and user_reg.status != 'cancelled':
                 user_registered = True
                 user_registration_ref = user_reg.registration_ref
-        remaining = None
-        is_sold_out = False
-        if event.max_capacity and event.max_capacity > 0:
-            remaining = event.max_capacity - total_regs
-            is_sold_out = remaining <= 0
-        ticket_types = []
         is_free_event = True
         min_price = 0
-        for tt in event.ticket_types:
-            if not tt.is_active:
-                continue
-            tt_regs = len([r for r in tt.registrations if r.status == 'confirmed'])
-            tt_remaining = tt.capacity - tt_regs if tt.capacity else None
-            price = float(tt.price)
+        for ticket in availability['ticket_types']:
+            price = ticket['price']
             if price > 0:
                 is_free_event = False
                 if min_price == 0 or price < min_price:
                     min_price = price
-            ticket_types.append({
-                'id': tt.id, 'name': tt.name, 'description': tt.description or '', 'price': price,
-                'currency': event.currency, 'capacity': tt.capacity, 'remaining': tt_remaining,
-                'is_sold_out': tt_remaining == 0 if tt_remaining is not None else False, 'is_active': tt.is_active,
-            })
         return {
             'event_found': True, 'event_slug': event.slug, 'event_name': event.name,
             'event_description': event.description or '', 'event_category': event.category,
@@ -1818,11 +2258,21 @@ class EventService:
             'event_currency': event.currency, 'event_status': event.status if event.status else None,
             'event_featured': event.featured, 'event_metadata': event.event_metadata or {},
             'contact_email': event.contact_email, 'contact_phone': event.contact_phone, 'website': event.website,
-            'max_capacity': event.max_capacity or 0, 'total_registrations': total_regs,
-            'remaining_capacity': remaining, 'is_sold_out': is_sold_out,
+            'max_capacity': event.max_capacity or 0,
+            'total_registrations': availability['total_registrations'],
+            'remaining_capacity': availability['remaining_capacity'],
+            'is_sold_out': availability['is_sold_out'],
             'user_registered': user_registered, 'user_registration_ref': user_registration_ref,
-            'can_register': event.status == EventStatus.PUBLISHED.value and not is_sold_out,
-            'ticket_types': ticket_types, 'is_free_event': is_free_event, 'min_price': min_price,
+            'event_is_expired': availability['state'] == RegistrationAvailability.EXPIRED.value,
+            'registration_availability': availability['state'],
+            'registration_reason': availability['reason'],
+            'registration_message': availability['message'],
+            'event_phase': availability['event_phase'],
+            'registration_opens_at': availability['opens_at'],
+            'registration_closes_at': availability['closes_at'],
+            'can_register': availability['state'] == RegistrationAvailability.OPEN.value,
+            'ticket_types': availability['ticket_types'],
+            'is_free_event': is_free_event, 'min_price': min_price,
         }
 
     @classmethod
@@ -1838,6 +2288,8 @@ class EventService:
             currency=context['event_currency'], status=context['event_status'], featured=context['event_featured'],
             website=context['website'], contact_email=context['contact_email'], contact_phone=context['contact_phone'],
             metadata=context['event_metadata'], max_capacity=context['max_capacity'], ticket_types=context['ticket_types'],
+            registration_opens_at=context['registration_opens_at'],
+            registration_closes_at=context['registration_closes_at'],
         )
         return context
 

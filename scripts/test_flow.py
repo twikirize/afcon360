@@ -27,8 +27,10 @@ except ImportError:
 
 # ── App imports ───────────────────────────────────────────────────────────────
 from app import create_app
+from app.config import TestingConfig
 from app.extensions import db
 from app.identity.models.user import User
+from tests.postgres_contract import assert_migrated_postgres_database
 
 try:
     from app.auth.kyc_compliance import (
@@ -146,7 +148,7 @@ def test_kyc_flow() -> bool:
         pass
 
     # App must be created FIRST; config updates come immediately after.
-    app = create_app()
+    app = create_app(config_object=TestingConfig)
     app.config.update({
         "TESTING":              True,
         "DEBUG":                True,
@@ -165,6 +167,7 @@ def test_kyc_flow() -> bool:
     overall = True  # accumulates pass/fail - pytest fails if this returns False
 
     with app.app_context():
+        assert_migrated_postgres_database(db.engine)
         with app.test_client() as client:
 
             print(f"\n{BLUE}{'='*60}{RESET}")

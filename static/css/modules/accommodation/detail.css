@@ -18,9 +18,49 @@
     box-shadow: 0 2px 8px rgba(0,0,0,0.12);
 }
 .gallery-all-btn:hover { background: #f5f5f5; }
+
+.photo-modal[hidden] { display: none; }
+.photo-modal { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center;
+    justify-content: center; padding: 24px; }
+.photo-modal-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.78); }
+.photo-modal-panel { position: relative; z-index: 1; width: min(100%, 1000px); max-height: 90vh;
+    overflow: auto; background: #fff; border-radius: 12px; padding: 20px; }
+.photo-modal-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.photo-modal-header h2 { margin: 0; font-size: 1.25rem; }
+.photo-modal-close { min-width: 44px; min-height: 44px; border: 0; background: transparent;
+    font-size: 30px; line-height: 1; cursor: pointer; }
+.photo-modal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.photo-modal-image { padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+.photo-modal-image img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; }
+.photo-modal-category { display: block; padding: 6px 2px 0; color: #555; font-size: .85rem; text-align: left; }
+.photo-modal-open { overflow: hidden; }
+.photo-lightbox[hidden] { display: none; }
+.photo-lightbox { position: fixed; inset: 0; z-index: 2; display: flex; align-items: center;
+    justify-content: center; background: rgba(0, 0, 0, .94); color: #fff; }
+.photo-lightbox-backdrop { position: absolute; inset: 0; }
+.photo-lightbox-panel { position: relative; z-index: 1; width: min(100%, 1200px); height: 100%;
+    display: flex; flex-direction: column; justify-content: center; padding: 24px; }
+.photo-lightbox-header { display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-bottom: 12px; font-weight: 600; }
+.photo-lightbox-stage { display: flex; align-items: center; justify-content: center; gap: 16px; min-height: 0; }
+.photo-lightbox-image { max-width: calc(100% - 112px); max-height: 78vh; object-fit: contain;
+    outline: none; }
+.photo-lightbox-nav { min-width: 48px; min-height: 48px; border: 1px solid rgba(255,255,255,.5);
+    border-radius: 50%; background: rgba(255,255,255,.12); color: #fff; font-size: 24px; cursor: pointer; }
+.photo-lightbox-nav:hover { background: rgba(255,255,255,.25); }
+.media-category-picker { display: flex; align-items: center; gap: 10px; max-width: 360px; margin: 12px 0; }
+.media-category-picker span { font-weight: 600; white-space: nowrap; }
+.media-item-category { display: block; color: #666; text-transform: capitalize; }
 @media(max-width:768px) {
     .detail-gallery { grid-template-columns: 1fr; }
     .gallery-thumbs-grid { display: none; }
+    .photo-modal { padding: 12px; }
+    .photo-modal-panel { padding: 14px; }
+    .photo-modal-grid { grid-template-columns: 1fr; }
+    .photo-lightbox-panel { padding: 12px; }
+    .photo-lightbox-stage { gap: 8px; }
+    .photo-lightbox-image { max-width: calc(100% - 88px); max-height: 72vh; }
+    .photo-lightbox-nav { min-width: 40px; min-height: 44px; }
 }
 
 /* Sticky bar */

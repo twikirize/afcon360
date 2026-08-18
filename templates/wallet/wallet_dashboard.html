@@ -77,7 +77,7 @@
       <a href="{{ safe_url('wallet.withdraw') }}" class="btn btn-danger">
         <i class="fas fa-arrow-up"></i> Withdraw
       </a>
-      <a href="{{ safe_url('wallet.wallet_transactions') }}" class="btn btn-outline">
+      <a href="{{ url_for('wallet.transactions') }}" class="btn btn-outline">
         <i class="fas fa-list"></i> History
       </a>
       <a href="{{ safe_url('wallet.fx_rates') }}" class="btn btn-ghost">
@@ -94,7 +94,7 @@
       <i class="fas fa-clock-rotate-left panel-title-icon blue"></i>
       Recent Transactions
     </div>
-    <a href="{{ safe_url('wallet.wallet_transactions') }}" class="btn btn-ghost btn-sm">
+    <a href="{{ url_for('wallet.transactions') }}" class="btn btn-ghost btn-sm">
       View All <i class="fas fa-arrow-right"></i>
     </a>
   </div>

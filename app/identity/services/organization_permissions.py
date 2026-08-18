@@ -29,10 +29,12 @@ class OrganizationPermissionService:
         if not membership:
             return False
         
-        # Get permissions for user's role
-        role_permissions = get_role_permissions(membership.role)
-        
-        return permission in role_permissions
+        # New organisation memberships resolve permissions from OrgUserRole
+        # assignments. Keep the legacy role fallback for older records.
+        if hasattr(membership, 'has_permission'):
+            return membership.has_permission(permission)
+        role = getattr(membership, 'role', None)
+        return permission in get_role_permissions(role) if role else False
     
     @staticmethod
     def has_any_permission(user: User, organization: Organisation, permissions: List[str]) -> bool:
@@ -63,7 +65,10 @@ class OrganizationPermissionService:
         if not membership:
             return set()
         
-        return set(get_role_permissions(membership.role))
+        if hasattr(membership, 'effective_permissions'):
+            return set(membership.effective_permissions)
+        role = getattr(membership, 'role', None)
+        return set(get_role_permissions(role)) if role else set()
     
     @staticmethod
     def get_user_role(user: User, organization: Organisation) -> Optional[OrganizationRole]:
@@ -78,7 +83,17 @@ class OrganizationPermissionService:
         if not membership:
             return None
         
-        return membership.role
+        legacy_role = getattr(membership, 'role', None)
+        if legacy_role:
+            return legacy_role
+        for assigned_role in getattr(membership, 'roles', ()):
+            role_name = getattr(getattr(assigned_role, 'role', None), 'name', None)
+            if role_name:
+                try:
+                    return OrganizationRole(role_name)
+                except ValueError:
+                    continue
+        return None
     
     @staticmethod
     def can_manage_staff(user: User, organization: Organisation) -> bool:

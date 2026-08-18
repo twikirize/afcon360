@@ -15,7 +15,7 @@ from decimal import Decimal
 
 from flask import current_app, request, g
 from flask_login import current_user
-from sqlalchemy import or_, and_, func, text
+from sqlalchemy import or_, and_, func
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
 from app.extensions import db, cache, redis_client, limiter

@@ -157,3 +157,79 @@ org.events                                                            GET       
 
 
 You can deploy with confidence! 🎉
+
+## Event Host Guest Coordination Contract
+
+This section is the behavioral specification for the cross-module coordination
+layer implemented by `GuestCoordinationService`; the Event module coordinates
+attendees but does not own accommodation inventory or transport eligibility.
+
+### Entities, inputs, outputs, and invariants
+
+| Entity/state | Authority and invariant |
+|---|---|
+| `Event` | Events owns event scope and its host/organizer authorization. |
+| `EventRegistration` | Events owns attendee membership; only `confirmed` registrations may be assigned. |
+| `EventAssignment` | Events owns the link and audit actor; one active row per event/attendee. |
+| Accommodation booking | Accommodation owns status, dates, property, room capacity, and occupancy. It must belong to the event context. |
+| Transport booking | Transport owns status, driver, vehicle, time, and capacity. It must belong to the event and carry eligible resources. |
+| Public references | Routes, JSON, templates, notifications, and exports use `public_id`, `registration_ref`, or booking references; internal IDs remain persistence-only. |
+
+Assignment input is `(event_ref, registration_ref, booking_ref, actor)` and the
+output is a stable assignment reference plus capability/status. Browser values
+are always re-resolved and revalidated server-side.
+
+### State transitions
+
+| Current capability state | Operation | Result |
+|---|---|---|
+| absent | assign valid resource | `assigned`, notification and audit event staged in the same transaction |
+| assigned | assign a different valid resource | `changed`, previous and new booking references recorded |
+| assigned | cancel | capability becomes unassigned; the other capability is preserved |
+| any | invalid scope, status, capacity, date, eligibility, authorization, or disabled module | no state change and transaction rollback |
+
+An assignment succeeds only when the resource is in an assignable state, the
+booking is event-scoped, dates cover the event, and the locked resource has
+remaining capacity. Repeated assignment to the same resource is idempotent.
+
+### Authority boundaries and failure contract
+
+Authenticated event owners, authorized hosts, co-organizers, event managers,
+and platform administrators may view; assign or cancel permissions are checked
+by the corresponding Event permission predicate. Accommodation operators remain
+authoritative for accommodation capacity and Transport remains authoritative for
+driver/vehicle eligibility. Attendees and other users may observe only what the
+existing notification/access policy permits; they cannot initiate coordination.
+
+Failures return a structured `success: false` response with a stable code such
+as `BOOKING_EVENT_MISMATCH`, `ACCOMMODATION_CAPACITY_EXCEEDED`,
+`DRIVER_NOT_APPROVED`, or `ACCOMMODATION_UNAVAILABLE`. No cross-module booking
+is created by the coordination layer, and notification/audit staging cannot
+commit without the assignment change.
+
+## Public Event Landing Ticket Availability Contract
+
+The public landing context is the presentation contract for
+`templates/events/public/landing.html`, built by
+`EventService.build_event_context_json()`.
+
+### Entities, inputs, outputs, and invariants
+
+| Entity/state | Contract |
+|---|---|
+| `Event` | Supplies the event scope, publication state, and aggregate capacity. |
+| Active `TicketType` | Produces one presentation record containing `registration_count`, `capacity`, `remaining`, and `is_sold_out`. |
+| `EventRegistration` | Only registrations with status `confirmed` consume public ticket and event capacity. Pending, cancelled, and expired registrations do not. |
+
+For each active ticket type, `registration_count` is a non-negative integer and
+`remaining = capacity - registration_count` when capacity is finite; unlimited
+capacity is represented by `remaining = None`. The landing page must receive
+these fields even when the count is zero.
+
+### Failure contract and authority
+
+`EventService` owns count calculation and presentation shaping. The landing
+route may render the returned context but must not infer missing counts from
+database objects. A missing required ticket field is a service contract defect;
+the service must supply it before rendering rather than relying on a template
+fallback that could hide inconsistent availability data.

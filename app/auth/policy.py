@@ -88,6 +88,18 @@ def can(
     return has_org_permission(user, org_id, permission)
 
 
+def can_in_context(
+    user: "User",
+    permission: str,
+    *,
+    context=None,
+) -> bool:
+    """Check a capability against the freshly resolved operating context."""
+    from app.auth.context import can_in_context as resolve_context_permission
+
+    return resolve_context_permission(user, permission, context)
+
+
 # ---------------------------------------------------------------------------
 # Convenience wrappers  (keeps view code readable)
 # ---------------------------------------------------------------------------

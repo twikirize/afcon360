@@ -1,32 +1,62 @@
 {% from "macros/booking_macros.html" import booking_type_badge, room_type_display %}
 {% extends "base.html" %}
 
-{% block title %}Booking Confirmed - AFCON360{% endblock %}
+{% block title %}{{ 'Booking Cancelled' if booking.status in ['cancelled', 'refunded'] else 'Booking Confirmed' }} - AFCON360{% endblock %}
 
 {% block content %}
+{% set booking_status = booking.status %}
+{% set booking_cancelled = booking_status in ['cancelled', 'refunded'] %}
 <div class="container py-4">
     <div class="row justify-content-center">
         <div class="col-lg-8">
             <!-- HEADER -->
-            <div class="card shadow-sm border-success mb-4">
+            <div class="card shadow-sm border-{{ 'danger' if booking_cancelled else 'success' }} mb-4">
                 <div class="card-body text-center py-4">
                     <div class="mb-3">
-                        <i class="fas fa-check-circle text-success" style="font-size: 3.5rem;"></i>
+                        <i class="fas {{ 'fa-times-circle text-danger' if booking_cancelled else 'fa-check-circle text-success' }}" style="font-size: 3.5rem;"></i>
                     </div>
-                    <h1 class="h3 mb-2">Booking Confirmed</h1>
-                    <p class="lead mb-1">Your accommodation is reserved.</p>
+                    <h1 class="h3 mb-2">{{ 'Booking Cancelled' if booking_cancelled else 'Booking Confirmed' }}</h1>
+                    <p class="lead mb-1">
+                        {{ 'This reservation is no longer active and the dates have been released.' if booking_cancelled else 'Your accommodation is reserved.' }}
+                    </p>
                     <div class="bg-light p-3 rounded d-inline-block mt-2">
                         <span class="text-muted small">Reference:</span>
                         <strong class="text-primary d-block" style="font-size: 1.2rem;">{{ booking.booking_reference }}</strong>
                     </div>
                     <div class="mt-2">
-                        <span class="badge bg-success fs-6">{{ booking.status|replace('_', ' ')|title }}</span>
-                        {% if booking.status == 'pending_approval' %}
+                        <span class="badge bg-{{ 'danger' if booking_cancelled else 'success' }} fs-6">{{ booking_status|replace('_', ' ')|title }}</span>
+                        {% if booking_status == 'pending_approval' %}
                         <span class="badge bg-warning text-dark ms-1">Awaiting Host Approval</span>
                         {% endif %}
                     </div>
                 </div>
             </div>
+
+            {% if registration_url and not booking_cancelled %}
+            <div class="card shadow-sm border-primary mb-4">
+                <div class="card-body">
+                    <h2 class="h5"><i class="fas fa-users me-2"></i>Share your guest registration link</h2>
+                    <p class="mb-2">Guests can register themselves without an AFCON360 account. Share this one link with your group.</p>
+                    <div class="input-group mb-3">
+                        <input id="registrationLink" class="form-control" value="{{ registration_url }}" readonly aria-label="Shared guest registration link">
+                        <button class="btn btn-outline-primary" type="button" data-copy-target="registrationLink">Copy</button>
+                    </div>
+                    <small class="text-muted">{{ registration_link.registrants_count }} of {{ registration_link.max_registrants }} registered.</small>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if booking.status in ['confirmed', 'pending_approval', 'checked_in'] %}
+            <div class="card shadow-sm border-info mb-4">
+                <div class="card-body">
+                    <h2 class="h5">Need anything from your host?</h2>
+                    <p class="mb-3">Add a request now, or come back to this booking later. There’s no rush.</p>
+                    <a class="btn btn-primary" href="{{ safe_url('accommodation.guest_add_request', booking_id=booking.id) }}">Add a request</a>
+                    <a class="btn btn-link" href="{{ safe_url('accommodation.guest_my_bookings') }}">Skip for now</a>
+                </div>
+            </div>
+            {% endif %}
+            </div> <!-- closing div for col? Actually there's a stray </div> but it's okay -->
 
             <!-- PROPERTY -->
             <div class="card shadow-sm mb-4">
@@ -49,6 +79,39 @@
                 </div>
             </div>
 
+            {% set booking_manager = booking.booked_by_user_id == current_user.id or booking.guest_user_id == current_user.id or booking.primary_guest_id == current_user.id or booking.booking_owner_id == current_user.id %}
+            {% if booking_manager and booking.status not in ['cancelled', 'refunded'] and booking.status in ['confirmed', 'pending_approval'] %}
+            <div class="card shadow-sm border-primary mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-edit me-2"></i>Manage This Booking</h5>
+                </div>
+                <div class="card-body">
+                    <p class="small text-muted">Request new dates from the host or open the full amendment form for guest details and special requests.</p>
+                    <form method="POST" action="{{ safe_url('accommodation.guest_amend_booking', booking_id=booking.id) }}" class="row g-3">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="amendment_type" value="dates">
+                        <input type="hidden" name="return_to_confirmation" value="1">
+                        <div class="col-md-6">
+                            <label class="form-label small" for="confirmationCheckIn">New check-in</label>
+                            <input id="confirmationCheckIn" type="date" name="requested_check_in" class="form-control" value="{{ booking.check_in.isoformat() }}" min="{{ now.date().isoformat() }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small" for="confirmationCheckOut">New check-out</label>
+                            <input id="confirmationCheckOut" type="date" name="requested_check_out" class="form-control" value="{{ booking.check_out.isoformat() }}" min="{{ now.date().isoformat() }}" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small" for="confirmationChangeReason">Reason (optional)</label>
+                            <textarea id="confirmationChangeReason" name="reason" class="form-control" rows="2" placeholder="Briefly explain the change"></textarea>
+                        </div>
+                        <div class="col-12 d-flex flex-wrap gap-2">
+                            <button type="submit" class="btn btn-primary">Request date change</button>
+                            <a href="{{ safe_url('accommodation.guest_amend_booking', booking_id=booking.id) }}" class="btn btn-outline-secondary">Other changes</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+
             <!-- STAY -->
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-white">
@@ -58,11 +121,11 @@
                     <div class="row">
                         <div class="col-6 mb-3">
                             <small class="text-muted d-block">Check-in</small>
-                            <strong>{{ booking.check_in.strftime('%a, %b %d, %Y') }}</strong>
+                            <strong>{{ formatted_check_in }}</strong>
                         </div>
                         <div class="col-6 mb-3">
                             <small class="text-muted d-block">Check-out</small>
-                            <strong>{{ booking.check_out.strftime('%a, %b %d, %Y') }}</strong>
+                            <strong>{{ formatted_check_out }}</strong>
                         </div>
                         <div class="col-6">
                             <small class="text-muted d-block">Nights</small>
@@ -85,18 +148,18 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <small class="text-muted d-block">Booked by</small>
-                            <strong>{{ booking.booked_by_user.username or 'N/A' }}</strong>
+                            <strong>{{ booking.booked_by_user.username | default('N/A') }}</strong>
                             <br>
-                            <small class="text-muted">{{ booking.booked_by_user.email or '' }}</small>
+                            <small class="text-muted">{{ booking.booked_by_user.email | default('') }}</small>
                         </div>
                         <div class="col-md-6 mb-3">
                             <small class="text-muted d-block">Staying guest</small>
-                            <strong>{{ booking.primary_guest_name or booking.guest_name or 'N/A' }}</strong>
+                            <strong>{{ booking.primary_guest_name | default(booking.guest_name | default('N/A')) }}</strong>
                             <br>
-                            <small class="text-muted">{{ booking.primary_guest_email or booking.guest_email or '' }}</small>
+                            <small class="text-muted">{{ booking.primary_guest_email | default(booking.guest_email | default('')) }}</small>
                             {% if booking.primary_guest_phone or booking.guest_phone %}
                             <br>
-                            <small class="text-muted">{{ booking.primary_guest_phone or booking.guest_phone }}</small>
+                            <small class="text-muted">{{ booking.primary_guest_phone | default(booking.guest_phone) }}</small>
                             {% endif %}
                         </div>
                     </div>
@@ -136,16 +199,20 @@
                         </div>
                         <div class="col-6 mb-2">
                             <small class="text-muted d-block">Method</small>
-                            <strong>{{ booking.payment_method|default('Wallet', true)|replace('_', ' ')|title }}</strong>
+                            <strong>{{ booking.payment_method | default('Wallet', true) | replace('_', ' ') | title }}</strong>
+                        </div>
+                        <div class="col-6 mb-2">
+                            <small class="text-muted d-block">Payment reference</small>
+                            <code class="small">{{ payment_event.payment_reference if payment_event else 'Pending registration' }}</code>
                         </div>
                         <div class="col-6 mb-2">
                             <small class="text-muted d-block">Transaction ID</small>
-                            <code class="small">{{ booking.wallet_txn_id or 'N/A' }}</code>
+                            <code class="small">{{ booking.wallet_txn_id or 'Not paid yet' }}</code>
                         </div>
                         {% if booking.paid_at %}
                         <div class="col-12">
                             <small class="text-muted d-block">Paid at</small>
-                            <strong>{{ booking.paid_at.strftime('%b %d, %Y %H:%M UTC') }}</strong>
+                            <strong>{{ formatted_paid_at }}</strong>
                         </div>
                         {% endif %}
                     </div>
@@ -166,14 +233,40 @@
                         </div>
                         <div class="col-6">
                             <small class="text-muted d-block">Room</small>
-                            <strong>{{ booking.room_number|default('1', true) }}</strong>
+                            <strong>{{ booking.room_number | default('1', true) }}</strong>
                         </div>
                     </div>
                 </div>
             </div>
             {% endif %}
 
+            {% if booking_cancelled %}
+            {% set cancellation_outcome = (booking.policy_snapshot or {}).get('cancellation_outcome', {}) %}
+            <div class="card shadow-sm border-danger mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-info-circle me-2 text-danger"></i>Cancellation Details</h5>
+                </div>
+                <div class="card-body">
+                    {% if booking.cancelled_at %}
+                    <p class="mb-2"><strong>Cancelled:</strong> {{ booking.cancelled_at.strftime('%b %d, %Y %H:%M UTC') }}</p>
+                    {% endif %}
+                    {% if booking.cancellation_reason %}
+                    <p class="mb-2"><strong>Reason:</strong> {{ booking.cancellation_reason }}</p>
+                    {% endif %}
+                    {% if booking.refund_amount and booking.refund_amount > 0 %}
+                    <p class="mb-0 text-success"><strong>Refund:</strong> {{ booking.currency }} {{ "%.2f"|format(booking.refund_amount) }} will be returned to the original payment method.</p>
+                    {% elif cancellation_outcome.get('fine') and cancellation_outcome.get('fine') != '0.00' %}
+                    <p class="mb-1 text-muted"><strong>Cancellation fee:</strong> {{ booking.currency }} {{ cancellation_outcome.get('fine') }}</p>
+                    <p class="mb-0 text-muted"><strong>Refund:</strong> No refund due under the cancellation policy.</p>
+                    {% else %}
+                    <p class="mb-0 text-muted">No refund was due for this cancellation.</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
             <!-- GUEST REGISTRATION -->
+            {% if not booking_cancelled %}
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-white">
                     <h5 class="mb-0"><i class="fas fa-id-card me-2"></i>Guest Registration</h5>
@@ -208,20 +301,21 @@
                     {% if booking.registration_deadline %}
                     <p class="small text-muted mt-2 mb-0">
                         <i class="fas fa-clock me-1"></i>
-                        Registration deadline: {{ booking.registration_deadline.strftime('%b %d, %Y %H:%M UTC') }}
+                        Registration deadline: {{ formatted_registration_deadline }}
                     </p>
                     {% endif %}
                 </div>
             </div>
+            {% endif %}
 
-            {% if booking.approval_deadline %}
+            {% if booking.approval_deadline and not booking_cancelled %}
             <!-- APPROVAL DEADLINE -->
             <div class="card shadow-sm mb-4 border-warning">
                 <div class="card-body">
                     <h6 class="mb-1"><i class="fas fa-clock me-2"></i>Host Approval Deadline</h6>
                     <p class="mb-0 small text-muted">
                         This booking requires host approval. The host has until
-                        <strong>{{ booking.approval_deadline.strftime('%b %d, %Y %H:%M UTC') }}</strong>
+                        <strong>{{ formatted_approval_deadline }}</strong>
                         to review your request.
                     </p>
                 </div>
@@ -230,9 +324,20 @@
 
             <!-- ACTIONS -->
             <div class="d-flex flex-wrap justify-content-center gap-2 mb-4">
+                {% if booking_manager and not booking_cancelled and booking.can_cancel()[0] %}
+                <form method="POST" action="{{ safe_url('accommodation.guest_cancel_booking', reference=booking.booking_reference) }}" class="d-inline" data-confirm="Cancel this booking?">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="return_to_confirmation" value="1">
+                    <button type="submit" class="btn btn-outline-danger">
+                        <i class="fas fa-times me-1"></i> Cancel booking
+                    </button>
+                </form>
+                {% endif %}
+                {% if not booking_cancelled %}
                 <a href="{{ safe_url('accommodation.guest_pass', reference=booking.booking_reference) }}" class="btn btn-success">
                     <i class="fas fa-qrcode me-1"></i> Booking Pass
                 </a>
+                {% endif %}
                 <a href="{{ safe_url('accommodation.guest_my_bookings') }}" class="btn btn-outline-primary">
                     <i class="fas fa-calendar-alt"></i> My Bookings
                 </a>
@@ -241,10 +346,14 @@
                 </a>
             </div>
 
-            <div class="alert alert-info text-center mb-0">
+            <div class="alert alert-{{ 'danger' if booking_cancelled else 'info' }} text-center mb-0">
                 <i class="fas fa-envelope me-2"></i>
+                {% if booking_cancelled %}
+                Keep this reference for your records. The reservation cannot be checked in.
+                {% else %}
                 A confirmation has been sent to
-                <strong>{{ booking.primary_guest_email or booking.guest_email }}</strong>
+                <strong>{{ booking.primary_guest_email | default(booking.guest_email) }}</strong>
+                {% endif %}
             </div>
 
             {% if booking.status == 'checked_out' %}
@@ -262,4 +371,9 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/modules/accommodation/confirmation.js') }}"></script>
 {% endblock %}

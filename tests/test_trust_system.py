@@ -5,6 +5,7 @@ Run with: pytest test_trust_system.py -v
 
 import pytest
 from app import create_app
+from app.config import TestingConfig
 from app.identity.models.user import User
 from app.events.trust_service import EventTrustService, TrustLevel
 
@@ -12,7 +13,7 @@ from app.events.trust_service import EventTrustService, TrustLevel
 @pytest.fixture
 def app():
     """Create test app"""
-    app = create_app()
+    app = create_app(config_object=TestingConfig)
     with app.app_context():
         yield app
 

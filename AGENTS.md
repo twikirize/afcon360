@@ -1,6 +1,159 @@
 # AFCON360 Agent Developer Guide
 
-**AUTHORITATIVE SOURCE** for all AI agents working on this codebase. Treat these rules as non-negotiable.
+**AUTHORITATIVE SOURCE** for all AI agents and automated engineering workers
+working on the AFCON360 codebase. This document is the repository-level
+engineering constitution. All agents MUST follow it unless an explicit,
+higher-priority instruction for the current task overrides it.
+
+## 0. AFCON360 Agent Operating Model
+
+AFCON360 uses a graph-based engineering workflow. AI coding tools are workers
+inside that workflow, not independent owners of product requirements or
+architecture. The worker executes the current task and does not independently
+redefine product requirements, business rules, ownership boundaries, financial
+rules, security boundaries, architecture, public contracts, or graph transitions.
+
+The repository root `AGENTS.md` is the single engineering constitution.
+Tool-specific agent files may adapt these rules to their tool, explain
+tool-specific execution, define commands, and provide context-loading guidance;
+they MUST NOT redefine or contradict this document.
+
+AFCON360 may contain skills, workflows, rules, ADRs, specifications, and
+module-specific documents. Agents MUST discover and use relevant resources when
+they exist; this document does not define a closed list of skills.
+
+## 1. Authority Hierarchy
+
+When instructions conflict, use this order:
+
+1. Explicit user instruction for the current task
+2. Approved behavioral specification, ADR, or formal contract
+3. Repository root `AGENTS.md`
+4. Current graph-node or task contract
+5. Applicable module/domain rules
+6. Applicable workflow
+7. Applicable skill
+8. Tool-specific agent instructions
+9. Existing implementation
+10. Existing tests
+11. Agent inference
+
+A lower-level instruction MUST NOT silently violate a higher-level security,
+financial, architectural, or authorization constraint. Existing code and
+passing tests are evidence of current behavior, not automatic authority over an
+approved specification.
+
+## 2. Graph Engineering Protocol
+
+Every substantial engineering task should be treated as a graph node. A node
+may represent exploration, audit, analysis, specification, planning,
+implementation, testing, verification, review, debugging, migration review, or
+release preparation.
+
+Where a graph node exists, establish its ID, objective, scope, exclusions,
+inputs, expected outputs, constraints, required evidence, verification
+requirements, and completion criteria. The current node determines what the
+worker may do:
+
+- `AUDIT`: inspect, analyze, test, and report; do not implement unless authorized.
+- `SPECIFICATION`: formalize behavior and resolve ambiguities; do not silently implement.
+- `IMPLEMENTATION`: modify approved code, add required tests, and verify it; do not redesign unrelated architecture.
+- `VERIFICATION`: inspect, test, compare against the specification, and report evidence; do not remediate unless authorized.
+
+Workers may recommend the next graph node, but do not own graph transitions
+unless explicitly instructed.
+
+## 2.1 Adaptive Context and Execution Cost
+
+Graph discipline is risk-adaptive. Agents MUST NOT load every skill,
+workflow, historical report, or architecture document for every task. Use
+repository memory and the task description as routing signals, then load only
+the context required for the authorized scope.
+
+Classify the task before broad inspection:
+
+- `TRIVIAL`: documentation, wording, formatting, or isolated presentation-only
+  changes. Inspect the target, make the minimal change, and perform a focused
+  check.
+- `LOCAL`: a single-file or tightly scoped code change with no cross-module
+  contract. Load local rules, inspect affected code, and run targeted
+  verification.
+- `BEHAVIORAL`: a business-rule, lifecycle, authorization, or API behavior
+  change. Load the relevant specification, ownership nodes, implementation,
+  and tests before changing code.
+- `ARCHITECTURAL`: cross-module, schema, ownership, or public-contract work.
+  Establish dependencies, invariants, and authority boundaries before
+  implementation.
+- `HIGH_RISK`: wallet, identity, authentication/authorization, security,
+  compliance, financial operations, migrations, or destructive operations.
+  Use the complete evidence and verification process; memory never replaces
+  current-code and specification checks.
+
+The minimum safe path is:
+
+```text
+memory/graph lookup → proportional inspection → minimal change
+→ proportional verification → memory update only if knowledge changed
+```
+
+Project memory answers what should be investigated; the current code and tests
+establish what actually exists. Routine fixes do not require memory updates.
+Update durable project memory, ADRs, specifications, or `BACKLOG.md` only when
+the task creates, changes, resolves, or discovers reusable knowledge, an
+invariant, an ownership rule, a decision, or deferred work.
+
+## 3. Agent Modes
+
+Typical modes include `EXPLORER`, `AUDITOR`, `ANALYST`, `SPECIFIER`,
+`PLANNER`, `IMPLEMENTER`, `VERIFIER`, `DIAGNOSTICIAN`, `REVIEWER`, and
+`MIGRATION_REVIEWER`. The current task determines the mode. A worker MUST NOT
+silently assume the authority of another mode.
+
+## 4. Controlled Helpfulness
+
+Agents must not equate helpfulness with scope expansion. If an adjacent issue
+is discovered, record it, determine whether it belongs to the current node, and
+leave it unchanged when out of scope. Add it to `BACKLOG.md` when appropriate.
+Do not refactor unrelated code, redesign architecture, rename unrelated
+objects, change public APIs or schemas without authorization, alter financial
+behavior without authorization, or remove compatibility behavior without
+authorization.
+
+## 5. Stop Conditions
+
+Stop and report `NEEDS_DECISION` when a required business rule is undefined,
+specifications conflict, ownership or authority is unclear, an architectural
+decision is unapproved, or a financial, security, compliance, identity, or
+public-contract boundary would change unexpectedly. Report `BLOCKED` when
+required files, dependencies, environment, migration state, or tests cannot be
+verified. Report `PARTIAL` when authorized work or verification is incomplete.
+Never invent a rule merely to complete a task.
+
+## 6. Formal Specification Law (MANDATORY)
+
+AFCON360 behavior MUST be specified before implementation whenever a change
+introduces or alters a business rule, invariant, workflow, lifecycle, state
+transition, permission boundary, ownership rule, financial guarantee,
+compliance obligation, or externally observable contract.
+
+Before implementation, establish the affected entities, state variables, inputs,
+outputs, invariants, failure conditions, valid transitions, ownership and
+authority boundaries, initiator, approver, rejector, retry authority, reversal
+authority, and observation/read authority. Resolve conflicting interpretations
+before implementation; do not use legacy behavior, convenience, agent
+preference, or passing tests as implicit authorization. Link relevant
+specifications from owning module documentation, update `README.md` for
+cross-module rules where appropriate, and add tests for transitions, invariants,
+authorization, and negative cases.
+
+## 7. Evidence-First Engineering
+
+Every completed graph node must report evidence appropriate to its purpose:
+node and authorized scope, actual files changed, significant behavior or
+architectural impact, commands/tests and results, contract or invariant checks,
+remaining risks, unverified assumptions, and deferred work. Completion status
+must be one of `PASS`, `PARTIAL`, `BLOCKED`, `NEEDS_DECISION`, or `FAIL`.
+Do not report `PASS` merely because code was written.
 
 ## Architecture Overview
 
@@ -47,12 +200,13 @@ class User(UserMixin, ProtectedModel):
 
 ## 2. Reference Documents (Read First!)
 
-Before implementing any feature or fix, consult these:
-- **`DATABASE_SCALABILITY_ROADMAP.md`** — Complete ENUM migration plan, current database state, and scalability principles
-- **`static/MOBILE_OPTIMIZATION.md`** — Mobile responsive refactor record: file tree, per-file change log, preserved colors/branding, future isolation plan
-- **`app/Documentation/IDENTITY_POLICIES.md`** — Identity separation rules, BIGINT vs UUID enforcement, and security requirements
-- **`app/Documentation/`** — Additional architectural documentation
-- **`Readme's/`** — Implementation reports and system analysis
+Before implementing a feature or fix, use the task class and affected scope to
+load only the relevant reference documents:
+- **`DATABASE_SCALABILITY_ROADMAP.md`** — when touching database schema, types, or migrations
+- **`static/MOBILE_OPTIMIZATION.md`** — when adding or modifying HTML, Jinja, or CSS
+- **`app/Documentation/IDENTITY_POLICIES.md`** — when working with user or organisation data
+- **`app/accommodation/AFCON360_SEAMLESS_BOOKING_SPEC.md`** — when changing accommodation checkout, guest roster, payment, or event-assignment code
+- **`app/Documentation/`** and **`Readme's/`** — when the affected module or task requires their domain guidance
 
 ---
 
@@ -86,6 +240,24 @@ Before implementing any feature or fix, consult these:
 ### Circular Imports
 - Be cautious of circular imports, especially between `identity` and feature modules
 - Test imports with `python -c "from app import create_app"`
+
+### PostgreSQL-only testing and SQLAlchemy query contract
+- PostgreSQL is the only supported database backend for application and pytest
+  execution; never add SQLite fallbacks or in-memory database fixtures.
+- Tests must use the shared `TestingConfig`/pytest fixtures and a dedicated,
+  migration-managed `TEST_DATABASE_URL` database.
+- Tests must fail fast when PostgreSQL is unavailable or the schema is stale;
+  do not hide database failures with skip flags.
+- New application and test code must use SQLAlchemy models or expressions,
+  never handwritten SQL strings or direct `text()` statements. Schema changes
+  belong in reviewed Alembic migrations, not in test setup.
+- The formal contract is `docs/POSTGRES_TESTING_CONTRACT.md`; update it when
+  changing this behavior.
+- Direct SQL tests are not supported. For PostgreSQL-specific behavior, use
+  SQLAlchemy model/Core expressions (`select`, `func`, `inspect`, reflected
+  tables) so SQL is generated for the configured PostgreSQL dialect. A test
+  may be database-free only when marked as a source/parser/configuration check;
+  persistence tests must use the PostgreSQL fixture.
 
 ---
 
@@ -149,8 +321,9 @@ To prevent "multiple heads" fragmentation, ALL agents MUST follow this protocol:
 #### Pre-Migration Checklist
 1. Run `flask db heads` — confirm exactly one head
 2. If multiple heads: `flask db merge heads -m "merge_<date>"` then `flask db upgrade`
-3. Create revision via `python scripts/create_migration.py "description"` (uses short timestamp ID)
-4. Review generated migration file for correctness before proposing `flask db upgrade` to user
+3. **Register new models in `app/core/model_registry.py`** if any were added
+4. Create revision via `python scripts/create_migration.py "description"` (uses short timestamp ID)
+5. Review generated migration file for correctness before proposing `flask db upgrade` to user
 
 #### Quick Reference — Common Issues
 | Problem | Solution |
@@ -215,6 +388,18 @@ record.restore()      # Reverts soft delete
 ```
 
 **Always filter queries**: `Model.query.filter(Model.is_deleted == False)`
+
+### Model Registration for Alembic Autodetection
+**CRITICAL:** Alembic `autogenerate` can only detect schema changes for models that are loaded into SQLAlchemy's `MetaData` before `db.init_app()` is called.
+
+**Required steps when adding ANY new model:**
+1. **Register in `app/core/model_registry.py`** — Add an explicit import for the new model in `register_all_models()`. This is the single source of truth for model loading.
+2. **Export from domain `__init__.py`** — If the model lives in a domain package (e.g., `app/accommodation/models/`), ensure it is exported from that package's `__init__.py`.
+3. **Verify with `flask db migrate`** — After updating the registry, run `flask db migrate` to confirm Alembic detects the new table/column. If it doesn't appear, the model is not properly registered.
+
+**Why this matters:** Models that are only imported lazily inside route handlers or service methods are invisible to Alembic's schema comparison. The `register_all_models()` function runs BEFORE `db.init_app(app)` in `app/__init__.py:579-580`, ensuring all tables are present in `db.metadata` at migration time.
+
+**See**: `app/core/model_registry.py`, `app/__init__.py:579-580`
 
 ### Property Naming Safety
 **NEVER name a `@property` the same as a Column field**. Use suffixes:
@@ -562,15 +747,24 @@ All HTML, Jinja templates, and CSS must be optimized for mobile devices (phones 
 - For AJAX/Pane loads, check for `?_pane=1` conditionals in `base.html`
 - Avoid `overflow: hidden` on containers that hold dropdowns (causes clipping issues)
 
-### Frontend Documentation Update (MANDATORY)
-When adding or modifying **any** HTML template, Jinja template, or CSS file:
-1. Open `static/MOBILE_OPTIMIZATION.md`
-2. Update the **File Tree** section if you added new files
-3. Add an entry under **Change Log by File** for every file you changed
-4. Update the **Verification Checklist** if you changed verification state
-5. If you added a new module CSS file, add it to the **Future Optimization Isolation Plan**
+### Content Security Policy and JavaScript
+- The application enforces a per-request Content Security Policy nonce through `app/__init__.py` (`g.csp_nonce` and the `csp_nonce` template variable).
+- Put page behavior in external files under `static/js/` and load them with `<script src="{{ url_for('static', filename='...') }}"></script>`; same-origin external scripts are permitted by the CSP without an inline nonce.
+- Do not use inline event handlers such as `onclick` or page behavior in inline `<script>` blocks. Use `data-*` attributes and event listeners in the external module instead.
+- Inline executable scripts are permitted only when unavoidable and must include `nonce="{{ csp_nonce }}"`; JSON-LD script blocks must also carry the nonce.
 
-**Failure to update `static/MOBILE_OPTIMIZATION.md` is a blocking review item.**
+### Frontend Documentation Update (CONDITIONAL)
+When adding or modifying **any** HTML template, Jinja template, or CSS file,
+open `static/MOBILE_OPTIMIZATION.md` and update it only when the frontend
+change affects the documented file tree, responsive behavior, styling,
+branding, verification state, or isolation plan. A content-only, non-layout
+change may require only a focused review and no documentation entry.
+
+If the file is updated, record the changed file under **Change Log by File**;
+update **File Tree**, **Verification Checklist**, or **Future Optimization
+Isolation Plan** only when those sections actually changed. Failure to assess
+the applicable frontend impact is a review issue; an unchanged frontend record
+does not require a no-op edit.
 
 ---
 
@@ -628,15 +822,15 @@ Before submitting any work, verify:
 - [ ] No circular imports introduced
 - [ ] Wallet logic maintains double-entry ledger constraints
 - [ ] **Frontend changes are mobile-responsive** (phones ≤480px, tablets ≤1024px)
-- [ ] **`static/MOBILE_OPTIMIZATION.md` updated** if any HTML/CSS/Jinja files were modified
+- [ ] Frontend impact assessed; update `static/MOBILE_OPTIMIZATION.md` only if the change affects its documented scope
 
 ---
 
 ## 23. Pre-Implementation Checklist
 
-Before writing any code:
+Before writing code, load only the applicable guidance:
 1. Read the relevant section of `DATABASE_SCALABILITY_ROADMAP.md` if touching database schema
-2. Read `static/MOBILE_OPTIMIZATION.md` if working on any HTML, Jinja, or CSS file
+2. Read `static/MOBILE_OPTIMIZATION.md` if the frontend change affects documented responsive/layout behavior
 3. Read `app/Documentation/IDENTITY_POLICIES.md` if working with user/organisation data
 4. Check for existing `backref` names in the target model file
 5. Verify the module's existing patterns and conventions
@@ -647,21 +841,18 @@ Before writing any code:
 
 ## 24. Post-Implementation Verification
 
-After completing work:
-1. Run the full test suite for the affected module
-2. Verify no `user.id` exposure in API responses
-3. Confirm all new models inherit from `BaseModel`
-4. Check that no new ENUM types were introduced
-5. Validate that migrations are reversible
-6. Ensure code follows the module's existing patterns
-7. **If frontend files were touched, update `static/MOBILE_OPTIMIZATION.md`** (file tree, change log, isolation plan)
-8. Document rollback plan in PR/commit message
+After completing work, verify proportionally to the task class and changed
+scope. Run the affected module suite for substantive changes; use focused
+checks for trivial or local changes. Apply identity, model, ENUM, migration,
+frontend, and rollback checks only when those concerns are in scope.
 
 ---
 
 ## 25. Post-Change Report Format
 
-After every implementation, always provide:
+After every implementation, provide a concise completion report, expanding it
+with the full evidence fields below for behavioral, architectural, or
+high-risk work:
 - **Files changed:** list every file modified
 - **What was done:** 2–3 sentence summary
 - **What changed / improved:** explicitly state what behavior changed, what bug was fixed, or what feature was added
@@ -669,7 +860,7 @@ After every implementation, always provide:
 - **Manual steps:** anything that cannot be automated (env vars, server restarts, seed scripts, etc.)
 - **Risks/conflicts:** flag anything that could break existing behavior, circular imports, or convention violations
 - **Verification:** how to confirm the fix works (test command, manual steps, or both)
-- **Frontend documentation:** if HTML/CSS/Jinja was touched, confirm `static/MOBILE_OPTIMIZATION.md` was updated
+- **Frontend documentation:** if HTML/CSS/Jinja was touched, report whether its documented scope was affected; do not make a no-op update
 
 ---
 
@@ -755,11 +946,13 @@ Ignore all Flask startup INFO/WARNING/DEBUG logs.
 
 ---
 
-## 29. Deferred Work Backlog (MANDATORY for all agents)
+## 29. Deferred Work Backlog (CONDITIONAL)
 
 **File:** `BACKLOG.md` at the repository root.
 
-Any agent (Code / Ask / Debug mode) MUST record work that is **identified but NOT completed in the current session** yet still belongs in the system. This prevents deferred items from being lost between sessions.
+Any agent (Code / Ask / Debug mode) MUST record work that is **identified but
+NOT completed in the current session** yet still belongs in the system. If no
+such work was identified, do not edit `BACKLOG.md`.
 
 **When to add an entry (any of these):**
 - Something was discussed/requested but is out of scope for today.
@@ -769,7 +962,7 @@ Any agent (Code / Ask / Debug mode) MUST record work that is **identified but NO
 - You explicitly decide "not for today" (e.g., a larger feature like adding a new status enum).
 
 **Rules:**
-- Create the entry in `BACKLOG.md` (use the template at the top of that file) before ending your turn.
+- When applicable, create the entry in `BACKLOG.md` (use the template at the top of that file) before ending your turn.
 - Reference concrete files/routes/models so the next agent can pick it up.
 - Do NOT remove an entry once it is resolved — instead mark its `Status:` as `Done` and add a `Resolved:` date.
 - This applies to every agent mode; treat `BACKLOG.md` as an authoritative hand-off artifact alongside this guide.

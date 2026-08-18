@@ -7,6 +7,7 @@ from functools import wraps
 from flask import Blueprint, request, jsonify, g
 from flask_login import current_user, login_required
 from datetime import datetime, timezone, timedelta
+from sqlalchemy import literal, select
 
 from app.extensions import db
 from app.wallet.models.transaction import TransactionModel, TransactionStatus, TransactionType
@@ -295,7 +296,7 @@ def system_health():
     """Public health check endpoint"""
     
     try:
-        db.session.execute('SELECT 1')
+        db.session.execute(select(literal(1)))
         db_healthy = True
     except:
         db_healthy = False

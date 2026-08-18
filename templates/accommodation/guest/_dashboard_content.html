@@ -101,17 +101,17 @@
                         </a>
                         {% endif %}
                         {% if current_stay.can_check_out %}
-                        <form method="POST" action="{{ safe_url('accommodation.guest_self_checkout', booking_id=current_stay.booking.id) }}" class="d-inline">
+                        <form method="POST" action="{{ safe_url('accommodation.guest_self_checkout', booking_id=current_stay.booking.id) }}" class="d-inline" data-confirm="Check out now?">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Check out now?')">
+                            <button type="submit" class="btn btn-sm btn-success">
                                 <i class="fas fa-sign-out-alt me-1"></i> Check out
                             </button>
                         </form>
                         {% endif %}
                         {% if current_stay.can_pay %}
-                        <form method="POST" action="{{ safe_url('accommodation.guest_pay_booking', booking_id=current_stay.booking.id) }}" class="d-inline">
+                        <form method="POST" action="{{ safe_url('accommodation.guest_pay_booking', booking_id=current_stay.booking.id) }}" class="d-inline" data-confirm="Pay balance of {{ current_stay.booking.currency }} {{ '%.2f'|format(current_stay.amount_due) }}?">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="btn btn-sm btn-warning" onclick="return confirm('Pay balance of {{ current_stay.booking.currency }} {{ '%.2f'|format(current_stay.amount_due) }}?')">
+                            <button type="submit" class="btn btn-sm btn-warning">
                                 <i class="fas fa-wallet me-1"></i> Pay {{ '%.2f'|format(current_stay.amount_due) }}
                             </button>
                         </form>
@@ -157,15 +157,15 @@
                         <div class="d-flex flex-wrap gap-2">
                             <a href="{{ safe_url('accommodation.guest_confirmation', reference=b.booking.booking_reference) }}" class="btn btn-sm btn-outline-primary">Details</a>
                             {% if b.can_check_in %}
-                            <form method="POST" action="{{ safe_url('accommodation.guest_self_checkin', booking_id=b.booking.id) }}" class="d-inline">
+                            <form method="POST" action="{{ safe_url('accommodation.guest_self_checkin', booking_id=b.booking.id) }}" class="d-inline" data-confirm="Check in now?">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Check in now?')">Check in</button>
+                                <button type="submit" class="btn btn-sm btn-success">Check in</button>
                             </form>
                             {% endif %}
                             {% if b.can_pay %}
-                            <form method="POST" action="{{ safe_url('accommodation.guest_pay_booking', booking_id=b.booking.id) }}" class="d-inline">
+                            <form method="POST" action="{{ safe_url('accommodation.guest_pay_booking', booking_id=b.booking.id) }}" class="d-inline" data-confirm="Pay balance of {{ b.booking.currency }} {{ '%.2f'|format(b.amount_due) }}?">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="btn btn-sm btn-warning" onclick="return confirm('Pay balance of {{ b.booking.currency }} {{ '%.2f'|format(b.amount_due) }}?')">Pay balance</button>
+                                <button type="submit" class="btn btn-sm btn-warning">Pay balance</button>
                             </form>
                             {% endif %}
                             {% if b.registration_needed %}
@@ -175,9 +175,9 @@
                             <a href="{{ safe_url('accommodation.guest_amend_booking', booking_id=b.booking.id) }}" class="btn btn-sm btn-outline-secondary">Amend</a>
                             {% endif %}
                             {% if b.can_cancel %}
-                            <form method="POST" action="{{ safe_url('accommodation.guest_cancel_booking', reference=b.booking.booking_reference) }}" class="d-inline">
+                            <form method="POST" action="{{ safe_url('accommodation.guest_cancel_booking', reference=b.booking.booking_reference) }}" class="d-inline" data-confirm="Cancel this booking?">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Cancel this booking?')">Cancel</button>
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Cancel</button>
                             </form>
                             {% endif %}
                         </div>
@@ -233,11 +233,11 @@
         <div class="alert alert-light border mb-4">No complaints raised.</div>
     {% endif %}
 
-    <!-- Past stays -->
+    <!-- Completed stays -->
+    {% if completed_history %}
     <h2 class="h5 mb-3"><i class="fas fa-history me-2 text-secondary"></i>Stay history</h2>
-    {% if past %}
         <div class="row g-3">
-        {% for b in past %}
+        {% for b in completed_history %}
             <div class="col-12 col-md-6">
                 <div class="card border-0 shadow-sm">
                     <div class="card-body">
@@ -261,7 +261,32 @@
         {% endfor %}
         </div>
     {% else %}
+        {% if not cancelled_bookings %}
         <div class="alert alert-light border">No past stays yet.</div>
+        {% endif %}
+    {% endif %}
+
+    <!-- Cancelled bookings -->
+    {% if cancelled_bookings %}
+    <h2 class="h5 mb-3 mt-4"><i class="fas fa-ban me-2 text-danger"></i>Cancelled bookings</h2>
+    <div class="row g-3">
+    {% for b in cancelled_bookings %}
+        <div class="col-12 col-md-6">
+            <div class="card border-danger-subtle shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-1">
+                        <h6 class="mb-0">{{ b.property.title }}</h6>
+                        {{ status_badge(b) }}
+                    </div>
+                    <p class="small text-muted mb-2">
+                        {{ b.booking.check_in.strftime('%b %d, %Y') }} → {{ b.booking.check_out.strftime('%b %d, %Y') }}
+                    </p>
+                    <a href="{{ safe_url('accommodation.guest_confirmation', reference=b.booking.booking_reference) }}" class="btn btn-sm btn-outline-primary">View cancellation details</a>
+                </div>
+            </div>
+        </div>
+    {% endfor %}
+    </div>
     {% endif %}
 
 </div>

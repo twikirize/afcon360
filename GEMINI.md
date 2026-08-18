@@ -29,7 +29,7 @@ Ensure your host machine features the following runtimes:
 
 * **Python 3.13+** (Optimized with `.pyc` targets matched to compilation environments)
 * **Redis Server** (Utilized for Flask-Session data storage and Celery task brokerage)
-* **Database engine** (PostgreSQL / MySQL / SQLite relative to configurations inside `app/config.py`)
+* **Database engine** (PostgreSQL only; application and pytest configurations use SQLAlchemy/Alembic)
 * **Nginx** (Reverse proxy configs are included natively under `docker/nginx/`)
 
 ---
@@ -72,6 +72,10 @@ To process non-blocking registrations, wallet ledger transactions, and webhook p
 celery -A app.celery_app.celery worker --loglevel=info
 
 ```
+
+Tests use a dedicated migrated PostgreSQL database configured with
+`TEST_DATABASE_URL`. SQLite, handwritten SQL strings, and test-time schema
+creation or repair are not supported; see `docs/POSTGRES_TESTING_CONTRACT.md`.
 
 ### 4. Running the Development Server
 

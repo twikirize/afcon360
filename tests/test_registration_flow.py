@@ -8,11 +8,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import threading
 import time
+import uuid
 from datetime import datetime, timezone, timedelta
 import unittest
 from unittest.mock import patch, MagicMock
-from flask import Flask
-from sqlalchemy import event
+from app import create_app
+from app.config import TestingConfig
 from app.extensions import db
 from app.kyc.models import KycRecord
 from app.identity.models.user import User
@@ -21,56 +22,40 @@ from app.events.services import EventService, IdempotencyChecker
 import app.identity.individuals.individual_verification        # IndividualVerification
 import app.fan.models
 
-# Note: SQLite BIGINT auto-increment is now handled by app/models/base.py
-# No need for custom event listeners
-
 class TestRegistrationFlow(unittest.TestCase):
     """Test registration flow with concurrency and idempotency"""
 
     def setUp(self):
         """Set up test environment"""
-        self.app = Flask(__name__)
-        self.app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-        self.app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-        self.app.config['TESTING'] = True
-
-        db.init_app(self.app)
+        self.app = create_app(config_object=TestingConfig)
 
         with self.app.app_context():
-            db.create_all()
-
             # Create test users
-            self.user1 = User(email='user1@example.com', username='user1', password_hash='pbkdf2:sha256:test')
-            self.user2 = User(email='user2@example.com', username='user2', password_hash='pbkdf2:sha256:test')
+            self.user1 = User(email=f'user1_{uuid.uuid4().hex[:8]}@example.com', username=f'user1_{uuid.uuid4().hex[:8]}', password_hash='pbkdf2:sha256:test')
+            self.user2 = User(email=f'user2_{uuid.uuid4().hex[:8]}@example.com', username=f'user2_{uuid.uuid4().hex[:8]}', password_hash='pbkdf2:sha256:test')
             db.session.add_all([self.user1, self.user2])
-            # Flush to generate IDs without committing
             db.session.flush()
-            try:
-                db.session.commit()
-            except Exception as e:
-                db.session.rollback()
-                # Workaround for SQLite ID generation
-                self.user1.id = 1
-                self.user2.id = 2
-                db.session.add_all([self.user1, self.user2])
-                db.session.flush()
-                db.session.commit()
+            db.session.commit()
+            self.user1_id = self.user1.id
+            self.user2_id = self.user2.id
+            self.slug_suffix = uuid.uuid4().hex[:8]
 
     def tearDown(self):
         """Clean up after tests"""
         with self.app.app_context():
             db.session.remove()
-            db.drop_all()
+            db.session.rollback()
 
     def test_idempotency(self):
         """Test that duplicate requests are idempotent"""
         with self.app.app_context():
             # Create event
             event = Event(
-                slug='idempotent-event',
+                slug=f'idempotent-event-{self.slug_suffix}',
                 name='Idempotent Event',
                 city='Kampala',
-                organizer_id=self.user1.id,
+                organizer_id=self.user1_id,
+                current_owner_type="individual", current_owner_id=self.user1_id,
                 status='active'
             )
             db.session.add(event)
@@ -85,15 +70,18 @@ class TestRegistrationFlow(unittest.TestCase):
             )
             db.session.add(ticket)
             db.session.commit()
+            ticket_id = ticket.id
+            event_id = event.id
 
             # Generate idempotency key
             data = {'full_name': 'Test User', 'email': 'test@example.com'}
             data_hash = 'test_hash'
-            key = IdempotencyChecker.generate_key(self.user1.id, 'idempotent-event', data_hash)
+            event_slug = f'idempotent-event-{self.slug_suffix}'
+            key = IdempotencyChecker.generate_key(self.user1_id, event_slug, data_hash)
 
             # First check should return False (key doesn't exist)
             # Mock redis_client to be None
-            with patch('app.events.services.redis_client', None):
+            with patch('app.events.services._legacy.redis_client', None):
                 exists = IdempotencyChecker.check_and_store(key)
                 self.assertFalse(exists)
 
@@ -107,17 +95,17 @@ class TestRegistrationFlow(unittest.TestCase):
             }
 
             # First registration
-            with patch('app.events.services.SIGNALS_AVAILABLE', False):
+            with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
                 reg1, qr1, err1 = EventService.register_for_event_optimistic(
-                    'idempotent-event', self.user1.id, registration_data, key
+                    event_slug, self.user1_id, registration_data, key
                 )
 
             self.assertIsNone(err1)
 
             # Second registration with same key should be detected as duplicate
-            with patch('app.events.services.SIGNALS_AVAILABLE', False):
+            with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
                 reg2, qr2, err2 = EventService.register_for_event_optimistic(
-                    'idempotent-event', self.user1.id, registration_data, key
+                    event_slug, self.user1_id, registration_data, key
                 )
 
             # Should return existing registration or error
@@ -129,10 +117,11 @@ class TestRegistrationFlow(unittest.TestCase):
         with self.app.app_context():
             # Create event with limited capacity
             event = Event(
-                slug='concurrent-event',
+                slug=f'concurrent-event-{self.slug_suffix}',
                 name='Concurrent Event',
                 city='Kampala',
-                organizer_id=self.user1.id,
+                organizer_id=self.user1_id,
+                current_owner_type="individual", current_owner_id=self.user1_id,
                 status='active',
                 max_capacity=5
             )
@@ -148,6 +137,8 @@ class TestRegistrationFlow(unittest.TestCase):
             )
             db.session.add(ticket)
             db.session.commit()
+            ticket_id = ticket.id
+            event_id = event.id
 
             # Simulate multiple concurrent registrations
             results = []
@@ -157,15 +148,15 @@ class TestRegistrationFlow(unittest.TestCase):
                 with self.app.app_context():
                     data = {
                         'full_name': f'User {user_num}',
-                        'email': f'user{user_num}@example.com',
+                        'email': f'user{user_num}_{self.slug_suffix}@example.com',
                         'phone': f'+256700000{user_num:03d}',
                         'nationality': 'Ugandan',
-                        'ticket_type_id': ticket.id
+                        'ticket_type_id': ticket_id
                     }
 
-                    with patch('app.events.services.SIGNALS_AVAILABLE', False):
+                    with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
                         reg, qr, err = EventService.register_for_event_optimistic(
-                            'concurrent-event', user_id, data
+                            f'concurrent-event-{self.slug_suffix}', user_id, data
                         )
 
                     if err:
@@ -177,8 +168,8 @@ class TestRegistrationFlow(unittest.TestCase):
             users = []
             for i in range(10):
                 user = User(
-                    email=f'concurrent{i}@example.com',
-                    username=f'concurrent{i}',
+                    email=f'concurrent{i}_{self.slug_suffix}@example.com',
+                    username=f'concurrent{i}_{self.slug_suffix}',
                     password_hash='pbkdf2:sha256:test'
                 )
                 db.session.add(user)
@@ -201,7 +192,8 @@ class TestRegistrationFlow(unittest.TestCase):
             self.assertEqual(len(errors), 3)   # 3 should fail (sold out)
 
             # Verify no overbooking
-            final_count = EventRegistration.query.filter_by(event_id=event.id).count()
+            db.session.remove()
+            final_count = EventRegistration.query.filter_by(event_id=event_id).count()
             self.assertEqual(final_count, 5)
 
     def test_waitlist_functionality(self):
@@ -209,10 +201,11 @@ class TestRegistrationFlow(unittest.TestCase):
         with self.app.app_context():
             # Create event with very limited capacity
             event = Event(
-                slug='waitlist-event',
+                slug=f'waitlist-event-{self.slug_suffix}',
                 name='Waitlist Event',
                 city='Kampala',
-                organizer_id=self.user1.id,
+                organizer_id=self.user1_id,
+                current_owner_type="individual", current_owner_id=self.user1_id,
                 status='active',
                 max_capacity=2
             )
@@ -232,8 +225,8 @@ class TestRegistrationFlow(unittest.TestCase):
             # Fill the event
             for i in range(2):
                 user = User(
-                    email=f'fill{i}@example.com',
-                    username=f'fill{i}',
+                    email=f'fill{i}_{self.slug_suffix}@example.com',
+                    username=f'fill{i}_{self.slug_suffix}',
                     password_hash='pbkdf2:sha256:test'
                 )
                 db.session.add(user)
@@ -241,21 +234,21 @@ class TestRegistrationFlow(unittest.TestCase):
 
                 data = {
                     'full_name': f'Fill User {i}',
-                    'email': f'fill{i}@example.com',
+                    'email': f'fill{i}_{self.slug_suffix}@example.com',
                     'phone': f'+25670000{i:04d}',
                     'nationality': 'Ugandan',
                     'ticket_type_id': ticket.id
                 }
 
-                with patch('app.events.services.SIGNALS_AVAILABLE', False):
+                with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
                     EventService.register_for_event_optimistic(
-                        'waitlist-event', user.id, data
+                        f'waitlist-event-{self.slug_suffix}', user.id, data
                     )
 
             # Now try to register another user - should go to waitlist
             waitlist_user = User(
-                email='waitlist@example.com',
-                username='waitlister',
+                email=f'waitlist_{self.slug_suffix}@example.com',
+                username=f'waitlister_{self.slug_suffix}',
                 password_hash='pbkdf2:sha256:test'
             )
             db.session.add(waitlist_user)
@@ -263,16 +256,16 @@ class TestRegistrationFlow(unittest.TestCase):
 
             waitlist_data = {
                 'full_name': 'Waitlist User',
-                'email': 'waitlist@example.com',
+                'email': f'waitlist_{self.slug_suffix}@example.com',
                 'phone': '+256711111111',
                 'nationality': 'Ugandan',
                 'ticket_type_id': ticket.id
             }
 
             # Try to register (should fail and suggest waitlist)
-            with patch('app.events.services.SIGNALS_AVAILABLE', False):
+            with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
                 reg, qr, err = EventService.register_for_event_optimistic(
-                    'waitlist-event', waitlist_user.id, waitlist_data
+                    f'waitlist-event-{self.slug_suffix}', waitlist_user.id, waitlist_data
                 )
 
             self.assertIsNotNone(err)
@@ -280,7 +273,7 @@ class TestRegistrationFlow(unittest.TestCase):
 
             # Add to waitlist
             waitlist_entry, waitlist_error = EventService.add_to_waitlist(
-                'waitlist-event', waitlist_user.id, waitlist_data
+                f'waitlist-event-{self.slug_suffix}', waitlist_user.id, waitlist_data
             )
 
             self.assertIsNone(waitlist_error)
@@ -293,10 +286,11 @@ class TestRegistrationFlow(unittest.TestCase):
         with self.app.app_context():
             # Create event
             event = Event(
-                slug='expiry-event',
+                slug=f'expiry-event-{self.slug_suffix}',
                 name='Expiry Event',
                 city='Kampala',
-                organizer_id=self.user1.id,
+                organizer_id=self.user1_id,
+                current_owner_type="individual", current_owner_id=self.user1_id,
                 status='active'
             )
             db.session.add(event)
@@ -316,7 +310,7 @@ class TestRegistrationFlow(unittest.TestCase):
             # Create a pending registration (simulates unpaid)
             registration = EventRegistration(
                 event_id=event.id,
-                user_id=self.user1.id,
+                user_id=self.user1_id,
                 ticket_type_id=ticket.id,
                 full_name='Pending User',
                 email='pending@example.com',
@@ -329,25 +323,28 @@ class TestRegistrationFlow(unittest.TestCase):
             registration.generate_refs(event.slug, 1)
             db.session.add(registration)
             db.session.commit()
+            registration_id = registration.id
+            ticket_id = ticket.id
 
             # Verify initial state
-            initial_ticket = db.session.get(TicketType, ticket.id)
+            initial_ticket = db.session.get(TicketType, ticket_id)
             self.assertEqual(initial_ticket.available_seats, 3)
 
             # Run the reaper task (simulated)
             from app.events.tasks import expire_pending_registrations
 
-            with patch('app.events.tasks.db.session', db.session):
-                with patch('app.events.signal_handlers.event_capacity_released') as mock_signal:
-                    result = expire_pending_registrations()
+            db.session.remove()
+            with patch('app.events.signal_handlers.event_capacity_released') as mock_signal:
+                result = expire_pending_registrations()
 
             # Check that registration was expired
-            expired_reg = db.session.get(EventRegistration, registration.id)
+            db.session.remove()
+            expired_reg = db.session.get(EventRegistration, registration_id)
             self.assertEqual(expired_reg.status, 'expired')
             self.assertEqual(expired_reg.payment_status, 'expired')
 
             # Check that capacity was released
-            updated_ticket = db.session.get(TicketType, ticket.id)
+            updated_ticket = db.session.get(TicketType, ticket_id)
             # Available seats should still be 3 (since it was never decremented for pending)
             # Or maybe it was decremented and then released back
             # This depends on implementation

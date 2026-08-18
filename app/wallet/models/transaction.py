@@ -44,7 +44,7 @@ class TransactionModel(db.Model):
     __table_args__ = (
         # DB-enforced idempotency - no TOCTOU possible
         CheckConstraint(
-            "status IN ('PENDING', 'COMPLETED', 'FAILED', 'CANCELLED')",
+            "status IN ('pending', 'completed', 'failed', 'cancelled')",
             name='ck_transaction_status_valid'
         ),
         CheckConstraint('amount > 0', name='ck_transaction_amount_positive'),

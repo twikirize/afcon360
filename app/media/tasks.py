@@ -6,8 +6,9 @@ from app.extensions import db
 from PIL import Image as PILImage
 import logging
 import io
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional
+from sqlalchemy import or_, select, func
 
 logger = logging.getLogger(__name__)
 
@@ -262,36 +263,35 @@ def process_pending_media():
     Scheduled self-healing task to find and reprocess stuck media.
     Runs every 2 minutes to ensure no tasks are left in limbo.
     """
-    from sqlalchemy import text
-    from datetime import timedelta
+    from app.media.models import Media
 
     logger.info("🔄 Running pending media cleanup...")
 
     # Find stuck pending media (older than 3 minutes)
-    pending_media = db.session.execute(text("""
-                                            SELECT id, public_id, status, created_at, processing_attempts
-                                            FROM media
-                                            WHERE status = 'pending'
-                                              AND created_at < NOW() - INTERVAL '3 minutes'
-                                              AND (processing_attempts IS NULL
-                                               OR processing_attempts
-                                                < 5)
-                                            ORDER BY created_at ASC
-                                                LIMIT 50
-                                            """)).fetchall()
+    pending_cutoff = datetime.now(timezone.utc) - timedelta(minutes=3)
+    pending_media = db.session.scalars(
+        select(Media)
+        .where(
+            Media.status == 'pending',
+            Media.created_at < pending_cutoff,
+            or_(Media.processing_attempts.is_(None), Media.processing_attempts < 5),
+        )
+        .order_by(Media.created_at.asc())
+        .limit(50)
+    ).all()
 
     # Find stuck processing media (older than 8 minutes)
-    processing_media = db.session.execute(text("""
-                                               SELECT id, public_id, status, processing_started_at, processing_attempts
-                                               FROM media
-                                               WHERE status = 'processing'
-                                                 AND processing_started_at < NOW() - INTERVAL '8 minutes'
-                                                 AND (processing_attempts IS NULL
-                                                  OR processing_attempts
-                                                   < 5)
-                                               ORDER BY processing_started_at ASC
-                                                   LIMIT 30
-                                               """)).fetchall()
+    processing_cutoff = datetime.now(timezone.utc) - timedelta(minutes=8)
+    processing_media = db.session.scalars(
+        select(Media)
+        .where(
+            Media.status == 'processing',
+            Media.processing_started_at < processing_cutoff,
+            or_(Media.processing_attempts.is_(None), Media.processing_attempts < 5),
+        )
+        .order_by(Media.processing_started_at.asc())
+        .limit(30)
+    ).all()
 
     total_recovered = 0
 
@@ -299,12 +299,8 @@ def process_pending_media():
     for row in pending_media:
         logger.info(f"🔄 Re-queuing pending media: {row.public_id} (attempt {row.processing_attempts or 0 + 1})")
         try:
-            db.session.execute(text("""
-                                    UPDATE media
-                                    SET status              = 'pending',
-                                        processing_attempts = COALESCE(processing_attempts, 0) + 1
-                                    WHERE id = :id
-                                    """), {'id': row.id})
+            row.status = 'pending'
+            row.processing_attempts = (row.processing_attempts or 0) + 1
             process_media_task.delay(row.id)
             total_recovered += 1
         except Exception as e:
@@ -315,12 +311,8 @@ def process_pending_media():
         logger.info(
             f"🔄 Re-queuing stuck processing media: {row.public_id} (attempt {row.processing_attempts or 0 + 1})")
         try:
-            db.session.execute(text("""
-                                    UPDATE media
-                                    SET status              = 'pending',
-                                        processing_attempts = COALESCE(processing_attempts, 0) + 1
-                                    WHERE id = :id
-                                    """), {'id': row.id})
+            row.status = 'pending'
+            row.processing_attempts = (row.processing_attempts or 0) + 1
             process_media_task.delay(row.id)
             total_recovered += 1
         except Exception as e:
@@ -329,21 +321,15 @@ def process_pending_media():
     db.session.commit()
 
     # Get current counts for monitoring
-    pending_count = db.session.execute(text(
-        "SELECT COUNT(*) FROM media WHERE status = 'pending'"
-    )).scalar() or 0
+    def count_status(status: str) -> int:
+        return db.session.scalar(
+            select(func.count()).select_from(Media).where(Media.status == status)
+        ) or 0
 
-    processing_count = db.session.execute(text(
-        "SELECT COUNT(*) FROM media WHERE status = 'processing'"
-    )).scalar() or 0
-
-    failed_count = db.session.execute(text(
-        "SELECT COUNT(*) FROM media WHERE status = 'failed'"
-    )).scalar() or 0
-
-    ready_count = db.session.execute(text(
-        "SELECT COUNT(*) FROM media WHERE status = 'ready'"
-    )).scalar() or 0
+    pending_count = count_status('pending')
+    processing_count = count_status('processing')
+    failed_count = count_status('failed')
+    ready_count = count_status('ready')
 
     logger.info(f"📊 Media status: Ready: {ready_count}, Pending: {pending_count}, "
                 f"Processing: {processing_count}, Failed: {failed_count}")
@@ -367,20 +353,21 @@ def cleanup_failed_media():
     Cleanup permanently failed media (mark for deletion, notify admins).
     Runs once per hour.
     """
-    from sqlalchemy import text
-    from datetime import timedelta
+    from app.media.models import Media
 
     logger.info("🧹 Running failed media cleanup...")
 
     # Find failed media older than 24 hours
-    failed_media = db.session.execute(text("""
-                                           SELECT id, public_id, error_message, failed_at
-                                           FROM media
-                                           WHERE status = 'failed'
-                                             AND failed_at < NOW() - INTERVAL '24 hours'
-                                             AND notified = FALSE
-                                               LIMIT 100
-                                           """)).fetchall()
+    failed_cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    failed_media = db.session.scalars(
+        select(Media)
+        .where(
+            Media.status == 'failed',
+            Media.failed_at < failed_cutoff,
+            Media.notified.is_(False),
+        )
+        .limit(100)
+    ).all()
 
     if not failed_media:
         logger.info("No failed media to cleanup")
@@ -388,12 +375,8 @@ def cleanup_failed_media():
 
     # Mark as notified to avoid duplicate alerts
     for row in failed_media:
-        db.session.execute(text("""
-                                UPDATE media
-                                SET notified   = TRUE,
-                                    cleaned_at = NOW()
-                                WHERE id = :id
-                                """), {'id': row.id})
+        row.notified = True
+        row.cleaned_at = datetime.now(timezone.utc)
         logger.info(f"📧 Marked failed media {row.public_id} for admin review: {row.error_message}")
 
     db.session.commit()

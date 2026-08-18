@@ -30,6 +30,7 @@ class AccommodationMediaService:
         uploader_user_id: int,
         caption: str = None,
         is_cover: bool = False,
+        category: str = "other",
     ) -> Dict:
         """
         Upload a property/room photo to the unified media hub.
@@ -44,6 +45,7 @@ class AccommodationMediaService:
             uploader_user_id=uploader_user_id,
             caption=caption,
             is_cover=is_cover,
+            category=category,
         )
 
     @staticmethod

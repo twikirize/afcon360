@@ -122,6 +122,12 @@ class MediaManager {
                 case 'delete':
                     this.deleteMedia(mediaId);
                     break;
+                case 'move-up':
+                    this.moveMedia(mediaId, -1);
+                    break;
+                case 'move-down':
+                    this.moveMedia(mediaId, 1);
+                    break;
             }
         });
     }
@@ -221,6 +227,8 @@ class MediaManager {
         formData.append('file', file);
         formData.append('module', this.options.module);
         formData.append('entity_id', this.options.entityId);
+        const category = this.container.querySelector('#mediaCategory')?.value || 'other';
+        formData.append('category', category);
 
         const item = this.container.querySelector(`[data-file-name="${CSS.escape(file.name)}"]`);
         const statusEl = item?.querySelector('.upload-item-status');
@@ -249,20 +257,25 @@ class MediaManager {
                         entity_id: this.options.entityId,
                         filename: file.name,
                         content_type: file.type || 'application/octet-stream',
-                        total_size: file.size
+                        total_size: file.size,
+                        category: category
                     })
                 });
 
                 if (presignResp.ok) {
                     const presign = await presignResp.json();
                     await this.uploadToPresignedUrl(file, presign, progressFill);
-                    await fetch(presign.confirm_url, {
+                    const confirmResponse = await fetch(presign.confirm_url, {
                         method: 'POST',
                         headers: {
                             'X-CSRFToken': this.getCsrfToken(),
                             'X-Requested-With': 'XMLHttpRequest'
                         }
                     });
+                    if (!confirmResponse.ok) {
+                        const confirmError = await confirmResponse.json().catch(() => ({}));
+                        throw new Error(confirmError.error || 'Could not confirm upload');
+                    }
                     usedPresigned = true;
                     // Build a minimal media record for immediate gallery render
                     this.uploadedFiles.push({
@@ -271,6 +284,7 @@ class MediaManager {
                         file_name: file.name,
                         media_type: file.type.startsWith('video/') ? 'video' : 'image',
                         is_cover: false,
+                        category,
                         status: 'processing'
                     });
                     this.uploadQueue = this.uploadQueue.filter(f => f !== file);
@@ -298,6 +312,7 @@ class MediaManager {
                         file_name: result.file_name || file.name,
                         media_type: result.media_type || (file.type.startsWith('video/') ? 'video' : 'image'),
                         is_cover: result.is_cover || false,
+                        category,
                         ...result
                     };
                     this.uploadedFiles.push(mediaData);
@@ -493,7 +508,7 @@ class MediaManager {
         const sortedFiles = [...this.uploadedFiles].sort((a, b) => {
             if (a.is_cover && !b.is_cover) return -1;
             if (!a.is_cover && b.is_cover) return 1;
-            return 0;
+            return (a.display_order || 0) - (b.display_order || 0);
         });
 
         gallery.innerHTML = sortedFiles.map((media, index) => {
@@ -507,10 +522,13 @@ class MediaManager {
                     <div class="media-item-overlay">
                         <div class="media-item-info">
                             <span class="media-item-name">${media.file_name || 'Untitled'}</span>
+                            <small class="media-item-category">${(media.category || 'other').replace('_', ' ')}</small>
                         </div>
                         <div class="media-item-actions">
                             <button class="media-item-btn view" data-action="view" data-media-id="${mediaId}" title="View">👁️</button>
                             ${!media.is_cover ? `<button class="media-item-btn cover" data-action="set-cover" data-media-id="${mediaId}" title="Set as cover">⭐</button>` : ''}
+                            <button class="media-item-btn" data-action="move-up" data-media-id="${mediaId}" title="Move earlier">↑</button>
+                            <button class="media-item-btn" data-action="move-down" data-media-id="${mediaId}" title="Move later">↓</button>
                             <button class="media-item-btn delete" data-action="delete" data-media-id="${mediaId}" title="Delete">🗑️</button>
                         </div>
                     </div>
@@ -519,6 +537,35 @@ class MediaManager {
         }).join('');
 
         this.updateUploadCount();
+    }
+
+    async moveMedia(mediaId, direction) {
+        const index = this.uploadedFiles.findIndex((media) =>
+            String(media.public_id || media.id || media.media_id) === String(mediaId)
+        );
+        const nextIndex = index + direction;
+        if (index < 0 || nextIndex < 0 || nextIndex >= this.uploadedFiles.length) return;
+        [this.uploadedFiles[index], this.uploadedFiles[nextIndex]] =
+            [this.uploadedFiles[nextIndex], this.uploadedFiles[index]];
+        this.uploadedFiles.forEach((media, order) => { media.display_order = order; });
+        this.renderGallery();
+        try {
+            const response = await fetch(`/api/media/reorder/${this.options.module}/${this.options.entityId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCsrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({
+                    media_ids: this.uploadedFiles.map((media) => media.public_id || media.id || media.media_id)
+                })
+            });
+            if (!response.ok) throw new Error('Could not save gallery order');
+        } catch (error) {
+            this.showNotification(error.message, 'error');
+            await this.loadExistingMedia();
+        }
     }
 
     renderMediaThumbnail(media) {

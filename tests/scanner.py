@@ -1,9 +1,10 @@
 # check_all_dependencies.py
-from app import create_app, db
-from sqlalchemy import text, inspect
-from app.extensions import db as sqla_db
+from app import create_app
+from app.config import TestingConfig
+from app.extensions import db
+from sqlalchemy import MetaData, func, inspect, select
 
-app = create_app()
+app = create_app(config_object=TestingConfig)
 
 with app.app_context():
     print("=" * 60)
@@ -31,44 +32,26 @@ with app.app_context():
         print(f"\n📋 TABLE: {suspect}")
         print("-" * 40)
 
-        # 1. Find tables that DEPEND ON this table (foreign keys to it)
-        result = db.session.execute(text(f"""
-            SELECT DISTINCT
-                conrelid::regclass::text as dependent_table,
-                conname as constraint_name
-            FROM pg_constraint
-            WHERE confrelid = '{suspect}'::regclass
-            AND contype = 'f'
-            ORDER BY dependent_table
-        """))
-
-        dependents = list(result)
+        # 1. Find tables that DEPEND ON this table through reflected foreign keys
+        dependents = [
+            (table, foreign_key.get('name'))
+            for table in all_tables
+            for foreign_key in inspector.get_foreign_keys(table)
+            if foreign_key.get('referred_table') == suspect
+        ]
         if dependents:
             print(f"  ⚠️ Tables that DEPEND ON '{suspect}':")
-            for row in dependents:
-                print(f"     - {row.dependent_table} (via {row.constraint_name})")
+            for dependent_table, constraint_name in dependents:
+                print(f"     - {dependent_table} (via {constraint_name})")
         else:
             print(f"  ✅ No tables depend on '{suspect}'")
 
-        # 2. Find tables THIS TABLE depends on (foreign keys from it)
-        result = db.session.execute(text(f"""
-            SELECT DISTINCT
-                confrelid::regclass::text as referenced_table,
-                conname as constraint_name
-            FROM pg_constraint
-            WHERE conrelid = '{suspect}'::regclass
-            AND contype = 'f'
-            ORDER BY referenced_table
-        """))
-
-        references = list(result)
+        # 2. Find tables THIS TABLE depends on
+        references = inspector.get_foreign_keys(suspect)
         if references:
             print(f"  📌 '{suspect}' references:")
-            for row in references:
-                print(f"     - {row.referenced_table}")
-
-        # 3. Check if any SQLAlchemy models use this table
-        from sqlalchemy import MetaData
+            for foreign_key in references:
+                print(f"     - {foreign_key.get('referred_table')}")
 
         metadata = MetaData()
         metadata.reflect(bind=db.engine, only=[suspect])
@@ -81,9 +64,10 @@ with app.app_context():
         else:
             print(f"  🔍 No SQLAlchemy model found for '{suspect}'")
 
-        # 4. Check row count
-        count_result = db.session.execute(text(f"SELECT COUNT(*) FROM {suspect}"))
-        row_count = count_result.scalar()
+        # 4. Check row count through the reflected table expression
+        row_count = db.session.scalar(
+            select(func.count()).select_from(metadata.tables[suspect])
+        )
         print(f"  📈 Row count: {row_count}")
 
     print("\n" + "=" * 60)

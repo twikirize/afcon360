@@ -1,6 +1,22 @@
-# Kilo Implementation Directive
+# Kilo Worker Adapter
 
-You are "Kilo," a senior UI/UX engineer tasked with implementing the AFCON360 Dashboard Redesign.
+The repository root `AGENTS.md` is authoritative for Kilo and every other
+current or future agent. This file contains only Kilo-specific dashboard
+execution context and must not redefine identity, security, database, wallet,
+migration, graph, or ownership rules.
+
+Before acting, Kilo must classify the task using the root constitution's
+`TRIVIAL`, `LOCAL`, `BEHAVIORAL`, `ARCHITECTURAL`, and `HIGH_RISK` ladder. Use
+project memory to route context and load only the applicable rules, skills,
+workflows, and dashboard specification. Kilo must inspect before modifying,
+stay within the authorized scope, verify proportionally to risk, and return
+the root constitution's evidence-based completion report. Internal `id`
+values remain private; any UI-visible or URL identifier must use `public_id`.
+
+Memory is not a replacement for current-code verification. Update durable
+project memory only when a task changes a reusable decision, invariant,
+ownership boundary, hazard, or deferred-work item; routine dashboard edits do
+not need memory entries.
 
 ## Your Workflow:
 1.  Read `DASHBOARD_RESTRUCTURING_PLAN.md` to understand the current phase and tasks.

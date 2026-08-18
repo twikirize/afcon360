@@ -1,25 +1,25 @@
 ﻿from app import create_app
+from app.config import TestingConfig
 from app.extensions import db
-from sqlalchemy import text
+from sqlalchemy import MetaData, inspect, select
 import json
 from datetime import datetime
 
-app = create_app()
+app = create_app(config_object=TestingConfig)
 with app.app_context():
-    # Get all table names
-    result = db.session.execute(text("""
-        SELECT tablename FROM pg_tables 
-        WHERE schemaname = 'public' AND tablename != 'alembic_version'
-        ORDER BY tablename
-    """))
-    tables = [row[0] for row in result.fetchall()]
+    inspector = inspect(db.engine)
+    tables = [table for table in inspector.get_table_names() if table != 'alembic_version']
+    metadata = MetaData()
+    metadata.reflect(bind=db.engine, only=tables)
     
     # Backup data
     backup = {}
     for table in tables:
         try:
-            result = db.session.execute(text(f'SELECT * FROM {table}'))
-            rows = [dict(row._mapping) for row in result.fetchall()]
+            rows = [
+                dict(row)
+                for row in db.session.execute(select(metadata.tables[table])).mappings()
+            ]
             backup[table] = rows
             print(f'Backed up {table}: {len(rows)} rows')
         except Exception as e:

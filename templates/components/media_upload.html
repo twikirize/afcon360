@@ -37,6 +37,21 @@
         <span class="media-hint">{{ media_hint|default('Upload images for your listing') }}</span>
     </div>
 
+    {% if module|default('accommodation') == 'accommodation' %}
+    <label class="media-category-picker">
+        <span>Photo category</span>
+        <select id="mediaCategory" class="form-select form-select-sm" aria-label="Photo category">
+            <option value="exterior">Property exterior</option>
+            <option value="living_area">Living area</option>
+            <option value="bedroom">Bedroom</option>
+            <option value="bathroom">Bathroom / toilet</option>
+            <option value="kitchen">Kitchen</option>
+            <option value="amenity">Amenity</option>
+            <option value="other" selected>Other</option>
+        </select>
+    </label>
+    {% endif %}
+
     {# ─── Gallery Grid ─── #}
     <div class="media-grid" id="mediaGrid">
         {% if media_items %}
@@ -69,6 +84,7 @@
                     <div class="media-item-overlay">
                         <div class="media-item-info">
                             <span class="media-item-name">{{ media.file_name or media.original_filename or 'Untitled' }}</span>
+                            {% if media.category %}<small class="media-item-category">{{ media.category|replace('_', ' ')|title }}</small>{% endif %}
                         </div>
                         <div class="media-item-actions">
                             <button class="media-item-btn view"

@@ -3,9 +3,10 @@
 User roles service for loading RBAC roles
 """
 
-from sqlalchemy import text
+from sqlalchemy import select
 from app.extensions import db
 from app.utils.transactions import transactional
+from app.identity.models import Organisation, Role, User, UserRole
 
 
 @transactional("Load RBAC roles for user")
@@ -14,27 +15,27 @@ def load_user_roles(user_id: int):
     Fetch all roles assigned to a user along with organisation and role details.
     Any DB error is caught, logged, and rolled back automatically via @transactional.
     """
-    result = db.session.execute(
-        text("""
-            SELECT ur.id AS user_roles_id,
-                   ur.user_id,
-                   ur.role_id,
-                   ur.assigned_by,
-                   ur.assigned_at,
-                   u.id AS assigned_by_user_id,
-                   u.username AS assigned_by_username,
-                   o.id AS org_id,
-                   o.legal_name AS org_name,
-                   r.name AS role_name,
-                   r.scope AS role_scope
-            FROM user_roles ur
-            LEFT JOIN users u ON u.id = ur.assigned_by
-            LEFT JOIN organisations o ON o.id = u.default_org_id
-            LEFT JOIN roles r ON r.id = ur.role_id
-            WHERE ur.user_id = :uid
-        """),
-        {"uid": user_id}
+    statement = (
+        select(
+            UserRole.id.label('user_roles_id'),
+            UserRole.user_id,
+            UserRole.role_id,
+            UserRole.assigned_by,
+            UserRole.assigned_at,
+            User.id.label('assigned_by_user_id'),
+            User.username.label('assigned_by_username'),
+            Organisation.id.label('org_id'),
+            Organisation.legal_name.label('org_name'),
+            Role.name.label('role_name'),
+            Role.scope.label('role_scope'),
+        )
+        .select_from(UserRole)
+        .outerjoin(User, User.id == UserRole.assigned_by)
+        .outerjoin(Organisation, Organisation.id == User.default_org_id)
+        .outerjoin(Role, Role.id == UserRole.role_id)
+        .where(UserRole.user_id == user_id)
     )
+    result = db.session.execute(statement)
     
     # Convert to list of dictionaries for easier consumption
     roles = []

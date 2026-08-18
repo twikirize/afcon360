@@ -1,7 +1,8 @@
 import pytest
 from datetime import date, timedelta
 from app.extensions import db
-from app.accommodation.models.property import Property, RoomType, InventoryBlock, AccommodationPropertyType, AccommodationCancellationPolicy
+from app.accommodation.models.property import Property, AccommodationPropertyType, AccommodationCancellationPolicy
+from app.accommodation.models.room import RoomType, InventoryBlock
 from app.accommodation.models.booking import AccommodationBooking, AccommodationBookingStatus, AccommodationPaymentStatus
 from app.accommodation.services.host_service import HostService
 from app.accommodation.services.booking_service import BookingService

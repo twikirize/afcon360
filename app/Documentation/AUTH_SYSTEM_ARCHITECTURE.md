@@ -227,6 +227,45 @@ google_oauth_required: false
 sms_provider_preference: auto
 ```
 
+## Temporary phone-verification transport contract
+
+This contract defines the owner-controlled bridge between email and SMS.
+The verification subject is the user's submitted `phone_number`; the owner
+selects `email` or `sms` from the Authentication Settings page, and changing
+that setting replaces delivery only rather than changing the verification state
+machine. The persisted setting is stored in the existing `otp_channels` JSON
+configuration under `phone_verification.transport`, with `email` as the safe
+default for missing or invalid values.
+
+### State and transition rules
+
+| State | Input | Result |
+|---|---|---|
+| Phone unverified | Valid phone + authenticated user requests a code | Generate a six-digit OTP, store only its keyed hash under the user's email and the `phone_verification` purpose, then deliver it through the owner-selected email or SMS transport. |
+| Phone unverified | Invalid, missing, expired, or purpose-mismatched code | Keep both phone-verification flags false and report failure. |
+| Phone unverified | Correct code | Consume the OTP, set `User.phone_verified` and `UserProfile.phone_verified` true, record `User.phone_verified_at`, commit atomically, and redirect to Account & Security so the verified state is visible. |
+| Phone verified | Any further use of the consumed code | Reject it; OTPs are one-time credentials. |
+
+The send operation may save a newly entered phone number as pending data on
+both `User.phone` and `UserProfile.phone_number`, but it must not set either
+verification flag. A failed delivery must invalidate the stored OTP. Only the
+authenticated user may initiate or complete this flow for their own account;
+internal numeric IDs remain database references only. Email delivery uses
+`OTPService.send_email_otp_checked`; SMS delivery uses the configured provider
+through `SMSService.send_message`, with owner-saved provider credentials. SMS
+selection fails closed when no provider is enabled or credentials are usable;
+it never falls back to console delivery or silently switches channels.
+
+Only the owner may change `phone_verification.transport`. The setting applies
+to the next code request without an application restart, is audit-logged with
+the old and new channel, and accepts only `email` or `sms`.
+
+The implemented route is `/verify-phone`, with `/send-phone-verification` used
+to issue or resend the code. A successful verification redirects to the
+`profile.account_overview` Account & Security page; invalid submissions retain
+the existing verification form flow. Tests for the transition and negative
+cases live in `tests/test_phone_verification.py`.
+
 ## Cost Projections
 
 ### Development (0 users)

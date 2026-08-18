@@ -39,9 +39,13 @@ from app.audit.comprehensive_audit import AuditService, SecurityEventLog
 TIER_0_UNREGISTERED = 0  # Email only
 TIER_1_BASIC = 1         # Phone + Name (UGX 400K daily limit)
 TIER_2_STANDARD = 2      # + National ID + Selfie (UGX 2M daily limit)
-TIER_3_ENHANCED = 3      # + Proof of Address + TIN (UGX 7M daily limit)
+TIER_3_ENHANCED = 3      # + Proof of Address (TIN configurable for individuals)
 TIER_4_PREMIUM = 4       # + Income source + Bank ref (UGX 20M daily limit)
 TIER_5_CORPORATE = 5     # + KYB + License (Custom limits)
+
+# Individual TIN collection is configurable for future regulatory changes.
+# Organisation KYB keeps its own corporate TIN-certificate requirement.
+INDIVIDUAL_TIN_REQUIRED = False
 
 # ============================================================================
 # Tier Requirements
@@ -68,7 +72,7 @@ TIER_REQUIREMENTS = {
     TIER_2_STANDARD: {
         "name": "Standard",
         "description": "National ID and selfie verification",
-        "required_documents": ["phone_verified", "national_id", "selfie"],
+        "required_documents": ["national_id", "selfie"],
         "required_scope": {"identity": True, "national_id": True, "biometric": True},
         "aml_required": True,
         "daily_limit": 2000000,
@@ -77,9 +81,9 @@ TIER_REQUIREMENTS = {
     },
     TIER_3_ENHANCED: {
         "name": "Enhanced",
-        "description": "Proof of address and TIN verification",
-        "required_documents": ["phone_verified", "national_id", "selfie", "proof_of_address", "tin"],
-        "required_scope": {"identity": True, "national_id": True, "biometric": True, "address": True, "tax": True},
+        "description": "Proof of address verification; TIN is optional for individuals",
+        "required_documents": ["proof_of_address"],
+        "required_scope": {"identity": True, "national_id": True, "biometric": True, "address": True},
         "aml_required": True,
         "pep_screening": True,
         "daily_limit": 7000000,
@@ -89,8 +93,8 @@ TIER_REQUIREMENTS = {
     TIER_4_PREMIUM: {
         "name": "Premium",
         "description": "Income source and bank reference",
-        "required_documents": ["phone_verified", "national_id", "selfie", "proof_of_address", "tin", "income_source", "bank_reference"],
-        "required_scope": {"identity": True, "national_id": True, "biometric": True, "address": True, "tax": True, "financial": True},
+        "required_documents": ["income_source", "bank_reference"],
+        "required_scope": {"identity": True, "national_id": True, "biometric": True, "address": True, "financial": True},
         "aml_required": True,
         "pep_screening": True,
         "sanctions_check": True,
@@ -346,8 +350,13 @@ def calculate_kyc_tier(user_identifier) -> Dict[str, Any]:
     achieved_tier = TIER_0_UNREGISTERED
     missing_requirements = []
 
-    # Check Tier 1: Phone verification
-    if profile and profile.phone_number and profile.phone_verified:
+    # Check Tier 1: Phone verification. User flags are canonical because the
+    # phone verification flow updates User, while legacy profile copies may lag.
+    phone_verified = bool(
+        getattr(user, "phone_verified", False)
+        and (getattr(user, "phone_verified_at", None) or getattr(user, "phone", None))
+    )
+    if phone_verified:
         achieved_tier = TIER_1_BASIC
     else:
         missing_requirements.append("phone_verified")
@@ -358,10 +367,10 @@ def calculate_kyc_tier(user_identifier) -> Dict[str, Any]:
             missing_requirements,
             verification,
             profile,
-            15 if profile and profile.phone_number else 0,
+            15 if getattr(user, "phone", None) else 0,
         )
 
-    # Check Tier 2: National ID and selfie
+    # Check Tier 2: National ID and selfie. Phone is already satisfied by Tier 1.
     if verification and verification.status in {"verified", "approved"}:
         scope = verification.scope or {}
         if scope.get("national_id") and scope.get("biometric"):
@@ -372,15 +381,17 @@ def calculate_kyc_tier(user_identifier) -> Dict[str, Any]:
             if not scope.get("biometric"):
                 missing_requirements.append("selfie")
 
-    # Check Tier 3: Address and TIN
+    # Check Tier 3: address; individual TIN is an optional policy toggle.
     if achieved_tier >= TIER_2_STANDARD and verification:
         scope = verification.scope or {}
-        if scope.get("address") and scope.get("tax"):
+        if scope.get("address") and (
+            not INDIVIDUAL_TIN_REQUIRED or scope.get("tax")
+        ):
             achieved_tier = TIER_3_ENHANCED
         else:
             if not scope.get("address"):
                 missing_requirements.append("proof_of_address")
-            if not scope.get("tax"):
+            if INDIVIDUAL_TIN_REQUIRED and not scope.get("tax"):
                 missing_requirements.append("tin")
 
     # Check Tier 4: Financial information
@@ -398,8 +409,8 @@ def calculate_kyc_tier(user_identifier) -> Dict[str, Any]:
     # Calculate fulfillment percentage
     # Tiers: 0=0%, 1=25%, 2=50%, 3=75%, 4=100%
     fulfillment_percentage = min(100, achieved_tier * 25)
-    if achieved_tier == 0 and profile and profile.phone_number:
-        fulfillment_percentage = 15 # phone entered but not verified yet
+    if achieved_tier == 0 and getattr(user, "phone", None):
+        fulfillment_percentage = 15  # phone entered but not verified yet
 
     return _build_tier_response(
         achieved_tier,

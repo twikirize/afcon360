@@ -36,7 +36,7 @@ class LedgerEntryModel(db.Model):
     __table_args__ = (
         CheckConstraint('amount > 0', name='ck_ledger_amount_positive'),
         CheckConstraint(
-            "entry_type IN ('DEBIT', 'CREDIT')", 
+            "entry_type IN ('DEBIT', 'CREDIT', 'debit', 'credit')",
             name='ck_ledger_entry_type_valid'
         ),
         Index('ix_ledger_account_id', 'account_id'),

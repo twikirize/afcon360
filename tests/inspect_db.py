@@ -1,9 +1,10 @@
-from sqlalchemy import inspect, text
+from sqlalchemy import MetaData, inspect, select
 
 from app import create_app
+from app.config import TestingConfig
 from app.extensions import db
 
-app = create_app()
+app = create_app(config_object=TestingConfig)
 
 with app.app_context():
     insp = inspect(db.engine)
@@ -29,9 +30,11 @@ with app.app_context():
         print("\nAUDIT_LOGS: not present")
 
     print("\nSAMPLE ROWS:")
+    metadata = MetaData()
+    metadata.reflect(bind=db.engine)
     for t in ("users", "user_roles", "audit_logs"):
         if t in insp.get_table_names():
             rows = db.session.execute(
-                text(f"SELECT * FROM {t} LIMIT 3")
-            ).fetchall()
+                select(metadata.tables[t]).limit(3)
+            ).mappings().all()
             print(f"{t}:", rows)

@@ -17,13 +17,13 @@
     <i class="fas fa-bars"></i>
 </button>
 
-<div class="dashboard-container" style="display:grid; grid-template-columns:220px minmax(0,1fr); background:var(--color-background-primary); height: 100vh; overflow: hidden;">
+<div class="dashboard-container">
 
     {# ── Left Panel (Sidebar) ────────────────────── #}
     <div class="left-panel" id="leftPanel">
-        <div style="display:flex; align-items:center; gap:8px; padding:0 6px 16px;">
-            <div style="width:26px; height:26px; border-radius:50%; background:var(--color-background-info); display:flex; align-items:center; justify-content:center;"><i class="fas fa-th-large" style="font-size:14px; color:var(--color-text-info);" aria-hidden="true"></i></div>
-            <span style="font-size:14px; font-weight:600; color:var(--color-text-primary);">AFCON 360</span>
+        <div class="shell-brand">
+            <div class="shell-brand-mark"><i class="fas fa-th-large" aria-hidden="true"></i></div>
+            <span>AFCON 360</span>
         </div>
 
         <nav class="nav-menu" id="dashNav">
@@ -31,35 +31,37 @@
                 <i class="fas fa-home" aria-hidden="true"></i><span>Home</span>
             </a>
             
+            {% if modules.events.enabled %}
             <a href="#" class="nav-item" data-pane-url="{{ safe_url('events.list') }}">
                 <i class="fas fa-ticket-alt" aria-hidden="true"></i><span>Events</span>
             </a>
+            {% endif %}
 
-            {% if module_enabled('wallet') %}
+            {% if modules.wallet.enabled %}
             <a href="#" class="nav-item" data-pane-url="{{ safe_url('wallet.wallet_dashboard') }}">
                 <i class="fas fa-wallet" aria-hidden="true"></i><span>Wallet</span>
             </a>
             {% endif %}
 
-            {% if module_enabled('transport') %}
+            {% if modules.transport.enabled %}
             <a href="#" class="nav-item" data-pane-url="{{ safe_url('transport.home') }}">
                 <i class="fas fa-car" aria-hidden="true"></i><span>Rides</span>
             </a>
             {% endif %}
 
-            {% if module_enabled('accommodation') %}
+            {% if modules.accommodation.enabled %}
             <a href="#" class="nav-item" data-pane-url="{{ safe_url('accommodation.guest_dashboard') }}">
                 <i class="fas fa-bed" aria-hidden="true"></i><span>Stays</span>
             </a>
             {% endif %}
 
-            {% if module_enabled('tourism') %}
+            {% if modules.tourism.enabled %}
             <a href="#" class="nav-item" data-pane-url="{{ safe_url('tourism.home') }}">
                 <i class="fas fa-map-marker-alt" aria-hidden="true"></i><span>Tourism</span>
             </a>
             {% endif %}
 
-            <div style="margin-top:auto; display:flex; flex-direction:column; gap:2px; padding-top:12px; border-top:0.5px solid var(--color-border-tertiary);">
+            <div class="shell-account-links">
                 <a href="#" class="nav-item" data-pane-url="{{ safe_url('profile.my_public_profile') }}">
                     <i class="fas fa-id-card" aria-hidden="true"></i><span>Public Profile</span>
                 </a>
@@ -77,277 +79,42 @@
     </div>
 
     {# ── Right Panel ──────────────────────────── #}
-    <div class="right-panel" id="rightPanel" style="padding:20px 24px; display:flex; flex-direction:column; gap:16px; min-width:0; overflow-y: auto;">
+    <div class="right-panel" id="rightPanel">
         
         {# Header Area #}
-        <div style="display:flex; align-items:center; justify-content:flex-end; gap:12px;">
-            <i class="fas fa-search" style="font-size:18px; color:var(--color-text-secondary); cursor:pointer;" aria-hidden="true"></i>
-            <span style="position:relative; cursor:pointer;"><i class="fas fa-bell" style="font-size:18px; color:var(--color-text-secondary);" aria-hidden="true"></i><span style="position:absolute; top:-2px; right:-2px; width:6px; height:6px; border-radius:50%; background:var(--color-text-danger);"></span></span>
+        <div class="shell-header" id="shellHeader">
+            <i class="fas fa-search shell-header-icon" aria-hidden="true"></i>
+            <span class="shell-notification"><i class="fas fa-bell shell-header-icon" aria-hidden="true"></i><span class="shell-notification-dot"></span></span>
             
-            <div style="position:relative;">
-                <div id="switcher-toggle" style="cursor:pointer; display:flex; align-items:center; gap:4px; padding: 4px 8px; border-radius: var(--border-radius-md); transition: background 0.2s;">
-                    <div style="width:28px; height:28px; border-radius:50%; background:var(--color-background-tertiary); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; color: var(--color-text-primary);">
+            <div class="context-switcher" data-context-switcher data-switch-url="{{ url_for('auth.switch_context') }}" data-csrf-token="{{ csrf_token() }}">
+                <button id="switcher-toggle" class="switcher-toggle" type="button" aria-expanded="false" aria-controls="switcher-panel">
+                    <span class="user-avatar">
                         {{ current_user.username[0]|upper if current_user.username else '?' }}
-                    </div>
-                    <i class="fas fa-chevron-down" style="font-size:14px; color:var(--color-text-secondary);" aria-hidden="true"></i>
-                </div>
+                    </span>
+                    <i class="fas fa-chevron-down" aria-hidden="true"></i>
+                </button>
                 
-                <div id="switcher-panel" style="display:none; position:absolute; top:42px; right:0; width:260px; background:var(--color-background-primary); border:1px solid rgba(0,0,0,0.08); border-radius:12px; padding:12px; z-index:1000; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);">
-                    <p style="font-size:11px; color:var(--color-text-tertiary); margin:0 8px 8px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">Active Account</p>
-                    <div class="context-item {% if current_context == 'individual' %}active{% endif %}" data-action="switch-personal" style="display:flex; align-items:center; gap:10px; padding:10px; border-radius:8px; cursor:pointer; background: {% if current_context == 'individual' %}rgba(var(--brand-primary-rgb), 0.05){% else %}transparent{% endif %}; border: 1px solid {% if current_context == 'individual' %}rgba(var(--brand-primary-rgb), 0.1){% else %}transparent{% endif %}; transition: all 0.2s;">
-                        <div style="width:32px; height:32px; border-radius:50%; background:var(--brand-primary-light); color:var(--brand-primary); display:flex; align-items:center; justify-content:center;">
-                            <i class="fas fa-user" style="font-size:14px;" aria-hidden="true"></i>
-                        </div>
-                        <span style="font-size:13px; flex:1; font-weight: {% if current_context == 'individual' %}600{% else %}500{% endif %}; color: var(--color-text-primary);">Personal Account</span>
-                        {% if current_context == 'individual' %}<i class="fas fa-check-circle" style="font-size:14px; color:var(--color-text-success);" aria-hidden="true"></i>{% endif %}
-                    </div>
-
-                    {% if user_organisations|default([])|length > 0 %}
-                    <div style="height: 1px; background: rgba(0,0,0,0.04); margin: 12px 0;"></div>
-                    <p style="font-size:11px; color:var(--color-text-tertiary); margin:0 8px 8px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">Organisations</p>
-                    {% for m in user_organisations %}
-                    <div class="context-item {% if current_context == 'organization' and current_org_id == m.organisation.org_id %}active{% endif %}" 
-                         data-action="switch-org" data-org-id="{{ m.organisation.org_id }}"
-                         style="display:flex; align-items:center; gap:10px; padding:10px; border-radius:8px; cursor:pointer; background: {% if current_context == 'organization' and current_org_id == m.organisation.org_id %}rgba(var(--brand-primary-rgb), 0.05){% else %}transparent{% endif %}; border: 1px solid {% if current_context == 'organization' and current_org_id == m.organisation.org_id %}rgba(var(--brand-primary-rgb), 0.1){% else %}transparent{% endif %}; margin-bottom: 2px; transition: all 0.2s;">
-                        <div style="width:32px; height:32px; border-radius:6px; background:var(--color-background-tertiary); color:var(--color-text-secondary); display:flex; align-items:center; justify-content:center;">
-                            <i class="fas fa-building" style="font-size:14px;" aria-hidden="true"></i>
-                        </div>
-                        <span style="font-size:13px; flex:1; font-weight: {% if current_context == 'organization' and current_org_id == m.organisation.org_id %}600{% else %}500{% endif %}; color: var(--color-text-primary);">{{ m.organisation.name }}</span>
-                        {% if current_context == 'organization' and current_org_id == m.organisation.org_id %}
-                        <i class="fas fa-check-circle" style="font-size:14px; color:var(--color-text-success);" aria-hidden="true"></i>
-                        {% else %}
-                        <i class="fas fa-chevron-right" style="font-size:10px; color: var(--color-text-tertiary);" aria-hidden="true"></i>
-                        {% endif %}
-                    </div>
+                <div id="switcher-panel" class="switcher-panel" hidden>
+                    <p class="switcher-label">Operating as</p>
+                    <div class="context-options" role="listbox" aria-label="Operating context">
+                    {% for context in available_contexts|default([]) %}
+                        {% set context_type = context.type.value %}
+                        <button class="context-option{% if active_context and context.type == active_context.type and context.public_id == active_context.public_id and context.role == active_context.role %} active{% endif %}" type="button" role="option" aria-selected="{{ 'true' if active_context and context.type == active_context.type and context.public_id == active_context.public_id and context.role == active_context.role else 'false' }}" data-context-type="{{ context_type }}" data-context-id="{{ context.public_id or '' }}" data-context-role="{{ context.role or '' }}">
+                            <span class="context-icon context-icon-{{ context_type }}" aria-hidden="true"><i class="fas {% if context_type == 'personal' %}fa-user{% elif context_type == 'organisation' %}fa-building{% elif context_type == 'event' %}fa-calendar-star{% elif context_type == 'driver' %}fa-car{% elif context_type == 'accommodation_host' %}fa-bed{% else %}fa-shield-halved{% endif %}"></i></span>
+                            <span class="context-copy"><strong>{{ context.label }}</strong>{% if context.role %}<small>{{ context.role|replace('_', ' ')|title }}</small>{% endif %}</span>
+                            <i class="fas fa-check-circle context-check" aria-hidden="true"></i>
+                        </button>
                     {% endfor %}
-                    {% endif %}
-
-                    {% set has_roles = role_dashboard_links|default([])|length > 0 %}
-                    {% if has_roles %}
-                    <p style="font-size:11px; color:var(--color-text-tertiary); margin:10px 8px 4px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">Other roles</p>
-                    {% for role_link in role_dashboard_links %}
-                    <a href="{{ role_link.url }}" style="display:flex; align-items:center; gap:8px; padding:8px; border-radius:var(--border-radius-md); cursor:pointer; color:var(--color-text-secondary); text-decoration:none;" title="{{ role_link.label }}">
-                        <i class="fas {{ role_link.icon }}" style="font-size:15px;" aria-hidden="true"></i><span style="font-size:12px; flex:1;">{{ role_link.label }}</span><i class="fas fa-arrow-right" style="font-size:11px;" aria-hidden="true"></i>
-                    </a>
-                    {% endfor %}
-                    {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
 
-        {% block content_section %}{% endblock %}
+        <div class="shell-content" id="shellContent">{% block content_section %}{% endblock %}</div>
     </div>
 </div>
 {% endblock %}
-
 {% block scripts %}
-<script>
-/**
- * AFCON360 Dashboard Router & UI Controller
- */
-(function () {
-    const rightPanel = document.getElementById('rightPanel');
-    const leftPanel = document.getElementById('leftPanel');
-    const mobileOverlay = document.getElementById('mobileOverlay');
-    const navItems = document.querySelectorAll('.nav-item');
-    const initialSectionsHtml = rightPanel.innerHTML;
-    let contentSections = document.querySelectorAll('.content-section');
-    let currentPaneUrl = null;
-    let paneRequestId = 0;
-
-    // ── Navigation Logic ─────────────────────────────────────────────────────
-    
-    function toggleMobileNav() {
-        leftPanel.classList.toggle('open');
-        mobileOverlay.classList.toggle('active');
-    }
-
-    function setActiveNav(selector, value) {
-        navItems.forEach(n => n.classList.remove('active'));
-        const match = document.querySelector(`.nav-item[${selector}="${value}"]`);
-        if (match) match.classList.add('active');
-    }
-
-    function runInlineScripts(root) {
-        root.querySelectorAll('script').forEach(old => {
-            const s = document.createElement('script');
-            if (old.src) s.src = old.src;
-            s.textContent = old.textContent;
-            old.parentNode.replaceChild(s, old);
-        });
-    }
-
-    function restoreInlineSections() {
-        if (!currentPaneUrl && rightPanel.innerHTML.trim() === initialSectionsHtml.trim()) {
-            return;
-        }
-
-        rightPanel.innerHTML = initialSectionsHtml;
-        currentPaneUrl = null;
-        contentSections = document.querySelectorAll('.content-section');
-        runInlineScripts(rightPanel);
-    }
-
-    function showSection(id) {
-        restoreInlineSections();
-
-        setActiveNav('data-section', id);
-        contentSections.forEach(s => s.classList.remove('active'));
-        const target = document.getElementById(id);
-        if (target) {
-            target.classList.add('active');
-        }
-
-        const url = new URL(window.location.href);
-        url.searchParams.delete('view');
-        url.hash = id;
-        history.replaceState({ section: id }, '', url.toString());
-
-        if (leftPanel.classList.contains('open')) toggleMobileNav();
-    }
-
-    function loadPane(paneUrl) {
-        setActiveNav('data-pane-url', paneUrl);
-        restoreInlineSections();
-        contentSections.forEach(s => s.classList.remove('active'));
-
-        const requestId = ++paneRequestId;
-
-        rightPanel.innerHTML = `
-            <div class="pane-loading">
-                <div class="pane-spinner"></div>
-                <p>Establishing secure connection...</p>
-            </div>`;
-
-        const sep = paneUrl.includes('?') ? '&' : '?';
-        fetch(paneUrl + sep + '_pane=1', {
-            credentials: 'same-origin',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-        .then(res => {
-            if (res.status === 401) { window.location.href = '/auth/login'; return null; }
-            if (!res.ok) throw new Error('HTTP ' + res.status);
-            return res.text();
-        })
-        .then(html => {
-            if (requestId !== paneRequestId) return;
-            if (!html) return;
-            rightPanel.innerHTML = html;
-            currentPaneUrl = paneUrl;
-            runInlineScripts(rightPanel);
-
-            const url = new URL(window.location.href);
-            url.searchParams.set('view', paneUrl);
-            url.hash = '';
-            history.pushState({ pane: paneUrl }, '', url.toString());
-        })
-        .catch(err => {
-            if (requestId !== paneRequestId) return;
-            currentPaneUrl = paneUrl;
-            rightPanel.innerHTML = `
-                <div class="pane-loading pane-error">
-                    <i class="fas fa-exclamation-circle"></i>
-                    <p>${err.message}</p>
-                    <button class="btn-retry" type="button" data-action="retry-pane">Retry Connection</button>
-                </div>`;
-        });
-
-        if (leftPanel.classList.contains('open')) toggleMobileNav();
-    }
-
-    // ── Event Delegation ─────────────────────────────────────────────────────
-
-    document.addEventListener('click', function (e) {
-        // Data actions
-        const actionBtn = e.target.closest('[data-action]');
-        if (actionBtn) {
-            const action = actionBtn.dataset.action;
-            if (action === 'toggle-nav') toggleMobileNav();
-            if (action === 'retry-pane') {
-                if (currentPaneUrl) loadPane(currentPaneUrl);
-                else window.location.reload();
-            }
-            if (action === 'switch-personal') {
-                document.querySelectorAll('.context-btn').forEach(b => b.classList.remove('active'));
-                actionBtn.classList.add('active');
-                fetch('/auth/switch-context/individual', { method: 'POST' })
-                    .then(() => window.location.reload());
-            }
-            if (action === 'switch-org') {
-                document.querySelectorAll('.context-btn').forEach(b => b.classList.remove('active'));
-                actionBtn.classList.add('active');
-                const orgId = actionBtn.dataset.orgId;
-                fetch(`/auth/switch-context/organization?org_id=${orgId}`, { method: 'POST' })
-                    .then(() => window.location.reload());
-            }
-            return;
-        }
-
-        // Nav items
-        const navItem = e.target.closest('.nav-item');
-        if (navItem) {
-            e.preventDefault();
-            const section = navItem.dataset.section;
-            const pane = navItem.dataset.paneUrl;
-            if (section) showSection(section);
-            else if (pane) loadPane(pane);
-            return;
-        }
-
-        // Generic pane links inside right panel
-        const paneLink = e.target.closest('[data-pane-url]');
-        if (paneLink && !paneLink.classList.contains('nav-item')) {
-            e.preventDefault();
-            loadPane(paneLink.dataset.paneUrl);
-            return;
-        }
-
-        // Section switcher links
-        const sectionLink = e.target.closest('[data-section]');
-        if (sectionLink && !sectionLink.classList.contains('nav-item')) {
-            e.preventDefault();
-            showSection(sectionLink.dataset.section);
-            return;
-        }
-    });
-
-    // ── Initial Routing ──────────────────────────────────────────────────────
-    
-    const params = new URLSearchParams(window.location.search);
-    const viewUrl = params.get('view');
-    const hash = window.location.hash.slice(1);
-
-    if (viewUrl) {
-        loadPane(viewUrl);
-    } else if (hash && document.getElementById(hash)) {
-        showSection(hash);
-    } else {
-        showSection('dashboard');
-    }
-
-    window.addEventListener('popstate', function (e) {
-        const p = new URLSearchParams(window.location.search).get('view');
-        if (p) loadPane(p);
-        else showSection(window.location.hash.slice(1) || 'dashboard');
-    });
-
-    // ── Switcher Panel Toggle ────────────────────────────────────────────────
-    const switcherToggle = document.getElementById('switcher-toggle');
-    const switcherPanel = document.getElementById('switcher-panel');
-
-    if (switcherToggle && switcherPanel) {
-        switcherToggle.addEventListener('click', function(e) {
-            e.stopPropagation();
-            switcherPanel.style.display = (switcherPanel.style.display === 'none' || switcherPanel.style.display === '') ? 'block' : 'none';
-        });
-
-        document.addEventListener('click', function(e) {
-            if (!switcherToggle.contains(e.target) && !switcherPanel.contains(e.target)) {
-                switcherPanel.style.display = 'none';
-            }
-        });
-    }
-
-})();
-</script>
+<script src="{{ url_for('static', filename='js/modules/user/dashboard-shell.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/user/user-dashboard.js') }}"></script>
 {% endblock %}

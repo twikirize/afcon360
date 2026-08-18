@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from celery import Celery
-from flask import Flask, current_app
+from flask import Flask, current_app, has_app_context
 from app.extensions import db # Assuming db is initialized in app.extensions
 from app.events.services import EventService
 from app.events.models import EventRegistration, Event
@@ -33,18 +33,8 @@ celery_app = Celery('event_tasks', broker=redis_url, backend=redis_url)
 # This is a placeholder for your Flask app creation function
 # In a real app, you'd import your create_app function
 def create_flask_app():
-    try:
-        from app import create_app # Assuming your create_app function is in app/__init__.py
-        return create_app()
-    except ImportError as e:
-        logger.error(f"Failed to import create_app: {e}")
-        # Create a minimal Flask app for testing
-        from flask import Flask
-        app = Flask(__name__)
-        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-        app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-        app.config['TESTING'] = True
-        return app
+    from app import create_app
+    return create_app()
 
 @celery_app.task(
     bind=True,
@@ -77,7 +67,7 @@ def process_event_registration(self, registration_id: int, event_slug: str, task
     except Exception as e:
         logger.warning(f"Error checking idempotency: {e}")
 
-    app = create_flask_app()
+    app = current_app._get_current_object() if has_app_context() else create_flask_app()
     with app.app_context():
         try:
             # Use with_for_update to lock the registration
@@ -209,9 +199,8 @@ def expire_pending_registrations(self):
     REAPER TASK: Expires pending registrations after 2 hours
     Runs every 5 minutes via Celery beat
     """
-    app = create_flask_app()
+    app = current_app._get_current_object() if has_app_context() else create_flask_app()
     with app.app_context():
-        from app.extensions import db
         from app.events.models import EventRegistration, TicketType
         from sqlalchemy import and_
         from datetime import datetime, timezone, timedelta
@@ -222,7 +211,7 @@ def expire_pending_registrations(self):
         # Use constants from the model
         expired_registrations = db.session.query(EventRegistration).filter(
             and_(
-                EventRegistration.payment_status == EventRegistration.PAYMENT_STATUS_PENDING,
+                EventRegistration.payment_status == EventRegistration.PAYMENT_PENDING,
                 EventRegistration.created_at <= cutoff_time,
                 EventRegistration.status == EventRegistration.STATUS_PENDING_PAYMENT
             )
@@ -238,7 +227,7 @@ def expire_pending_registrations(self):
                 event_id = registration.event_id
 
                 # Mark as expired using model constants
-                registration.payment_status = EventRegistration.PAYMENT_STATUS_EXPIRED
+                registration.payment_status = EventRegistration.PAYMENT_EXPIRED
                 registration.status = EventRegistration.STATUS_EXPIRED
                 registration.notes = f"Auto-expired by Reaper at {datetime.now(timezone.utc).isoformat()}"
 
@@ -261,7 +250,6 @@ def expire_pending_registrations(self):
             # Send capacity release signals for each event/ticket type
             try:
                 from app.events.signal_handlers import event_capacity_released
-                from flask import current_app
                 for key, count in capacity_released.items():
                     event_id, ticket_type_id = key.split(':')
                     event_capacity_released.send(
@@ -309,7 +297,7 @@ def process_waitlist_auto_conversion(self, event_id, ticket_type_id, seats_relea
     Convert waitlisted entries to confirmed registrations when capacity becomes available.
     This task should be triggered after capacity is released (e.g., from expired registrations).
     """
-    app = create_flask_app()
+    app = current_app._get_current_object() if has_app_context() else create_flask_app()
     with app.app_context():
         from app.extensions import db
         from app.events.models import Waitlist, TicketType, Event
@@ -409,7 +397,7 @@ def release_expired_capacity(self, event_id, ticket_type_id, seats_to_release=1)
     """
     Explicitly release capacity for expired registrations
     """
-    app = create_flask_app()
+    app = current_app._get_current_object() if has_app_context() else create_flask_app()
     with app.app_context():
         from app.extensions import db
         from app.events.models import TicketType

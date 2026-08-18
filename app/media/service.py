@@ -1,6 +1,7 @@
 # app/media/service.py
 
 import uuid as uuid_lib
+from sqlalchemy import or_
 from app.extensions import db
 from app.audit.forensic_audit import ForensicAuditService
 from flask import current_app
@@ -13,13 +14,53 @@ from app.media.settings_service import MediaSettingsService
 
 class MediaService:
     PLACEHOLDER_IMAGE = '/static/images/no-image.png'
+    PHOTO_CATEGORIES = frozenset({
+        'exterior', 'living_area', 'bedroom', 'bathroom',
+        'kitchen', 'amenity', 'other'
+    })
+
+    @classmethod
+    def validate_photo_category(cls, category: str) -> str:
+        """Validate and normalize the category stored with accommodation photos."""
+        category = (category or 'other').strip().lower()
+        if category not in cls.PHOTO_CATEGORIES:
+            raise ValueError('Invalid photo category')
+        return category
+
+    @classmethod
+    def get_original_url(cls, media):
+        """Return the best usable URL from current and legacy media records."""
+        if not media:
+            return None
+
+        urls = getattr(media, 'urls', None)
+        if isinstance(urls, str) and urls:
+            return urls
+        if isinstance(urls, dict):
+            for key in ('original', 'large', 'medium', 'small', 'tiny', 'url'):
+                value = urls.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value
+
+        thumbnail_url = getattr(media, 'thumbnail_url', None)
+        if isinstance(thumbnail_url, str) and thumbnail_url.strip():
+            return thumbnail_url
+
+        # Older rows may have retained the raw object but never received the
+        # processed URL JSON. It is still a valid source for the frontend.
+        storage_key = getattr(media, 'storage_key', None)
+        if storage_key:
+            try:
+                from app.media.storage import get_storage_backend
+                return get_storage_backend().get_url(storage_key)
+            except Exception:
+                pass
+        return None
 
     @classmethod
     def get_display_url(cls, media):
         """Return media URL or placeholder if none exists."""
-        if media and getattr(media, 'urls', None) and media.urls.get('original'):
-            return media.urls['original']
-        return cls.PLACEHOLDER_IMAGE
+        return cls.get_original_url(media) or cls.PLACEHOLDER_IMAGE
 
     @classmethod
     def _get_module_config(cls, module: str) -> dict:
@@ -57,7 +98,8 @@ class MediaService:
     @classmethod
     def upload_photo(cls, file, module: str, entity_id: str,
                      uploader_user_id: int, caption: str = None,
-                     is_cover: bool = False, upload_session_id: str = None) -> dict:
+                     is_cover: bool = False, upload_session_id: str = None,
+                     category: str = 'other') -> dict:
         """
         Upload a photo for any module.
         entity_id MUST be a public UUID string (not BIGINT).
@@ -69,6 +111,8 @@ class MediaService:
         from app.media.processors.image import ImageProcessor
         from app.media.storage import get_storage_backend
         from app.media.tasks import process_media_task
+
+        category = cls.validate_photo_category(category)
 
         module_config = cls._get_module_config(module)
 
@@ -177,6 +221,7 @@ class MediaService:
             upload_session_id=upload_session_id,
             status='pending',
             caption=caption,
+            processing_metadata={'photo_category': category},
             is_cover=is_cover,
             is_public=module_config.get('is_public', True),
         )
@@ -249,13 +294,18 @@ class MediaService:
 
     @classmethod
     def get_for_entity(cls, module: str, entity_id: str,
-                       media_type: str = None) -> list:
-        """Fetch all media for a module entity (e.g., all photos for a property)."""
+                       media_type: str = None,
+                       legacy_entity_ids=None) -> list:
+        """Fetch media for an entity, including explicitly supplied legacy IDs."""
         from app.media.models import Media
+        entity_ids = list(dict.fromkeys(
+            str(value) for value in [entity_id, *(legacy_entity_ids or [])]
+            if value is not None and str(value).strip()
+        ))
         q = db.session.query(Media).filter(
             Media.module == module,
-            Media.entity_id == entity_id,
-            Media.is_deleted == False
+            Media.entity_id.in_(entity_ids),
+            or_(Media.is_deleted == False, Media.is_deleted.is_(None))
         ).order_by(Media.is_cover.desc(), Media.display_order.asc())
         if media_type:
             q = q.filter(Media.media_type == media_type)

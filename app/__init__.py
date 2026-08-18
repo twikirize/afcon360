@@ -167,6 +167,9 @@ def create_app(config_object=None) -> Flask:
     Application factory pattern.
     """
     start_time = time.time()
+    if config_object is None and os.getenv('FLASK_ENV') == 'testing':
+        from app.config import TestingConfig
+        config_object = TestingConfig
 
     base_dir = os.path.abspath(os.path.dirname(__file__))
     template_path = os.path.join(base_dir, "..", "templates")
@@ -530,6 +533,13 @@ def create_app(config_object=None) -> Flask:
         logger.error(f"💥 Exception: {type(e).__name__}: {str(e)}")
         logger.debug(f"Full traceback:", exc_info=True)
 
+        # Reset the failed PostgreSQL transaction before attempting audit
+        # logging, otherwise the audit query/write hides the original error.
+        try:
+            db.session.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Failed to rollback failed request transaction: {rollback_error}")
+
         # Log to database for admin visibility
         try:
             user_id = current_user.id if current_user.is_authenticated else None
@@ -707,6 +717,17 @@ def create_app(config_object=None) -> Flask:
     def ensure_clean_transaction():
         if request.path.startswith('/static/'):
             return
+        # A previous request may have swallowed a database exception.  A
+        # scoped session can then still be present but unusable until its
+        # failed transaction is explicitly rolled back.
+        try:
+            if not db.session.is_active:
+                db.session.rollback()
+        except Exception:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
         # expire_all() marks cached ORM state as stale without detaching objects
         # or destroying the session scope. db.session.remove() was causing
         # g._login_user to hold a detached User instance, forcing user_loader
@@ -722,8 +743,13 @@ def create_app(config_object=None) -> Flask:
     @app.teardown_request
     def handle_transaction(exception=None):
         try:
-            if exception:
-                db.session.rollback()
+            # Roll back at every request boundary, not only for exceptions
+            # Flask sees.  Service code can intentionally catch an exception
+            # after SQLAlchemy has marked the transaction inactive; leaving
+            # that transaction open can poison later work in the same scoped
+            # session or connection pool.  Explicit commits have already
+            # completed and are unaffected by this cleanup rollback.
+            db.session.rollback()
         except Exception:
             pass
         finally:
@@ -817,12 +843,13 @@ def create_app(config_object=None) -> Flask:
         admin_ultimate_bp = None
 
     try:
-        from app.events import events_bp
+        from app.events import event_favorites_api_bp, events_bp
     except ImportError as e:
         logger.warning(f"Events blueprint not found: {e}")
         # Create a dummy blueprint to prevent crashes
         from flask import Blueprint
         events_bp = Blueprint('events', __name__)
+        event_favorites_api_bp = None
     from app.tools.theme_routes import theme_bp
     from app.kyc.routes import kyc_bp  # Integrated KYC
     from app.profile.routes import profile_bp
@@ -901,6 +928,9 @@ def create_app(config_object=None) -> Flask:
 
     for bp, prefix in core_blueprints:
         app.register_blueprint(bp, url_prefix=prefix)
+
+    if event_favorites_api_bp:
+        app.register_blueprint(event_favorites_api_bp)
 
     if auth_kyc_bp:
         def _auth_kyc_upload_alias():
@@ -1146,6 +1176,8 @@ def create_app(config_object=None) -> Flask:
         _profile_completed = False
         _in_org_context = False
         _org_name = None
+        _org_id = None
+        _org_role = None
 
         if _cu.is_authenticated:
             try:
@@ -1161,8 +1193,24 @@ def create_app(config_object=None) -> Flask:
             except Exception:
                 db.session.rollback()
                 pass
-            _in_org_context = _session.get("current_context") == "organization"
-            if _in_org_context:
+            # The canonical context resolver is the source of truth for the
+            # shared navigation.  The legacy session keys remain a fallback
+            # for older sessions, but must not override a live assignment.
+            try:
+                from app.auth.context import get_active_context
+
+                _active_context = get_active_context(_cu)
+                if _active_context.type.value == "organisation":
+                    _in_org_context = True
+                    _org_id = _active_context.public_id
+                    _org_role = _active_context.role
+                    _org_name = (_active_context.label or "Organisation").split(" — ", 1)[0]
+            except Exception:
+                logger.debug("Could not resolve canonical navigation context", exc_info=True)
+
+            if not _in_org_context and _session.get("current_context") == "organization":
+                _in_org_context = True
+                _org_id = _session.get("current_org_id")
                 _org_name = _session.get("current_org_name", "Organisation")
         # ── end nav state ───────────────────────────────────────────
 
@@ -1177,6 +1225,8 @@ def create_app(config_object=None) -> Flask:
             "nav_profile_completed": _profile_completed,
             "nav_in_org_context": _in_org_context,
             "nav_org_name": _org_name,
+            "nav_org_id": _org_id,
+            "nav_org_role": _org_role,
             "active_global_role": _session.get("active_global_role"),
         }
 
@@ -1474,32 +1524,19 @@ def create_app(config_object=None) -> Flask:
     def inject_user_context():
         """Inject user context into all templates."""
         from flask_login import current_user
-        from app.profile.models import get_profile_by_user
 
         if not current_user.is_authenticated:
             return {}
 
-        # Calculate profile completion percentage (use g-cache to avoid duplicate DB query)
+        # Use the KYC calculator as the single source for identity progress.
+        # The profile model has a separate legacy completeness score, which
+        # includes optional address fields and can disagree with KYC readiness.
         profile_completion = 0
         try:
-            from flask import g as _g
-            if not hasattr(_g, '_req_profiles'):
-                _g._req_profiles = {}
-            _pk = str(current_user.public_id)
-            if _pk not in _g._req_profiles:
-                _g._req_profiles[_pk] = get_profile_by_user(current_user.public_id)
-            profile = _g._req_profiles[_pk]
-            if profile:
-                # Check various profile fields
-                fields_to_check = [
-                    ('full_name', bool(getattr(profile, 'full_name', None))),
-                    ('phone_number', bool(getattr(profile, 'phone_number', None))),
-                    ('email_verified', getattr(profile, 'email_verified', False)),
-                    ('phone_verified', getattr(profile, 'phone_verified', False)),
-                    ('address', bool(getattr(profile, 'address', None))),
-                ]
-                completed = sum(1 for _, is_complete in fields_to_check if is_complete)
-                profile_completion = int((completed / len(fields_to_check)) * 100)
+            from app.auth.kyc_compliance import calculate_kyc_tier
+            profile_completion = int(
+                calculate_kyc_tier(current_user.id).get("fulfillment_percentage", 0)
+            )
         except Exception as e:
             logger.warning(f"Profile completion calculation error: {e}")
 
@@ -1539,10 +1576,50 @@ def create_app(config_object=None) -> Flask:
         from flask import session
         kyc_tier = session.get('kyc_tier', 0)
 
+        # Canonical operating context.  The resolver revalidates the selected
+        # assignment on every request; permissions are deliberately not stored
+        # in Flask session.
+        try:
+            from app.auth.context import (
+                get_active_context,
+                get_available_contexts,
+                resolve_effective_permissions,
+            )
+            from app.auth.policy import can_in_context
+
+            active_context = get_active_context(current_user)
+            available_contexts = get_available_contexts(current_user)
+            effective_permissions = resolve_effective_permissions(
+                current_user,
+                active_context,
+            )
+
+            def context_can(permission):
+                return can_in_context(
+                    current_user,
+                    permission,
+                    context=active_context,
+                )
+        except Exception as exc:
+            logger.warning("Canonical context injection failed: %s", exc)
+            from app.auth.context import ContextType, ContextDescriptor
+
+            active_context = ContextDescriptor(
+                type=ContextType.PERSONAL,
+                public_id=None,
+                label="Personal",
+                role="user",
+            )
+            available_contexts = [active_context]
+            effective_permissions = set()
+
+            def context_can(_permission):
+                return False
+
         # Get organization role if in org context
         org_role_name = None
-        if session.get('current_context') == 'organization' and session.get('current_org_id'):
-            org_role_name = session.get('org_role_name', 'Member')
+        if active_context.type.value == 'organisation':
+            org_role_name = active_context.role or 'Member'
 
         return {
             'profile_completion': profile_completion,
@@ -1550,6 +1627,10 @@ def create_app(config_object=None) -> Flask:
             'wallet_balance': wallet_balance,
             'kyc_tier': kyc_tier,
             'org_role_name': org_role_name,
+            'active_context': active_context,
+            'available_contexts': available_contexts,
+            'effective_permissions': effective_permissions,
+            'can': context_can,
         }
 
     @login_manager.user_loader
@@ -1571,6 +1652,9 @@ def create_app(config_object=None) -> Flask:
         """
         from app.identity.models.user import User
         from sqlalchemy.orm import joinedload
+        # Flask-Login sessions must contain User.get_id() (public_id).
+        if not public_id:
+            return None
         current_app.logger.debug(
             f"USER_LOADER called path={request.path} public_id={public_id}"
         )
@@ -1701,16 +1785,15 @@ def create_app(config_object=None) -> Flask:
         if current_app.config.get('FLASK_ENV') == 'production':
             abort(404)
         from app.extensions import db
-        from sqlalchemy import inspect, text
+        from sqlalchemy import func, inspect, select
+        from app.identity.models.user import User
         import os
 
         inspector = inspect(db.engine)
         tables = inspector.get_table_names()
 
-        # Try raw SQL
         try:
-            result = db.session.execute(text("SELECT COUNT(*) FROM users")).fetchone()
-            user_count = result[0]
+            user_count = db.session.scalar(select(func.count()).select_from(User)) or 0
         except:
             user_count = 0
 

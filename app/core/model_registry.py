@@ -37,9 +37,19 @@ def register_all_models():
     # independent of blueprint registration succeeding, matching every
     # other domain in this file.
     try:
-        from app.accommodation.models.property import Property
-        from app.accommodation.models.booking import AccommodationBooking
-        from app.accommodation.models.booking_policy import PropertyBookingPolicy
+        from app.accommodation.models import (
+            Property,
+            AccommodationBooking,
+            PropertyBookingPolicy,
+            BookingPriceAdjustment,
+            GuestRegistration,
+            Review,
+            RoomType,
+            Room,
+            BlockedDate,
+            AccommodationComplaint,
+            AccommodationBookingAmendment,
+        )
     except ImportError as e:
         # Deliberately NOT silent: if this fails, test/CI schema setup will
         # be silently incomplete again. Log loudly instead of `pass`.

@@ -19,6 +19,7 @@ from app.auth.decorators import (
     require_role,
     require_fresh_user
 )
+from app.auth.context import ContextType, active_context_or_platform_required
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 @admin_bp.route("/event-manager", endpoint="event_manager_dashboard")
 @login_required
 @require_role("event_manager")
+@active_context_or_platform_required(ContextType.EVENT)
 def event_manager_dashboard():
     """Event Manager Dashboard with comprehensive event management."""
     try:
@@ -76,6 +78,7 @@ def event_manager_dashboard():
 @admin_bp.route("/event-manager/events", endpoint="event_manager_events")
 @login_required
 @require_role("event_manager")
+@active_context_or_platform_required(ContextType.EVENT)
 def event_manager_events():
     """List and manage all events."""
     try:

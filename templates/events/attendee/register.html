@@ -404,6 +404,13 @@
     }
     .info-note i { color: #667eea; flex-shrink: 0; }
 
+    .registration-closed {
+        background: #fff5f5; border: 2px solid #feb2b2; border-radius: 12px;
+        padding: 1.5rem; color: #742a2a; text-align: center;
+    }
+    .registration-closed h2 { margin: 0 0 0.5rem; font-size: 1.2rem; }
+    .registration-closed p { margin: 0; }
+
     /* ── Responsive ── */
     @media (max-width: 640px) {
         .reg-header { padding: 1.25rem; }
@@ -436,6 +443,12 @@
 
             <div class="reg-body">
 
+                {% if registration_closed %}
+                <div class="registration-closed" role="status">
+                    <h2><i class="fas fa-calendar-times me-2"></i>Registration closed</h2>
+                    <p>This event has expired and no new registrations can be submitted.</p>
+                </div>
+                {% else %}
                 {# ── Ticket type analysis ── #}
                 {% set has_ticket_types  = event.ticket_types and event.ticket_types|length > 0 %}
                 {% set active_tickets    = event.ticket_types|selectattr('is_active')|list if has_ticket_types else [] %}
@@ -517,8 +530,6 @@
                         <i class="fas fa-exclamation-circle"></i> Please select a ticket tier to continue.
                     </div>
                 </div>
-                <input type="hidden" name="ticket_type_id" id="ticket_type_id_hidden">
-
                 <!-- ── Single free event ── -->
                 {% elif is_single_free %}
                 <div class="free-notice">
@@ -527,14 +538,24 @@
                         <h3>Free Event</h3>
                         <p>No payment required — just confirm your spot below.</p>
                     </div>
-                    <input type="hidden" name="ticket_type_id" value="{{ active_tickets[0].id }}">
                 </div>
                 {% endif %}
 
                 <!-- ── Registration Form ── -->
                 <form id="reg-form" method="POST">
+                    <div class="registration-notice" data-user-registered="{{ 'true' if user_registered else 'false' }}">
+                        {% if user_registered %}
+                        <i class="fas fa-info-circle me-1"></i>
+                        You are already registered for this event. Choose <strong>Someone Else</strong> or <strong>A Group</strong> to register other attendees.
+                        {% endif %}
+                    </div>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="booking_type" id="booking_type" value="self">
+                    {% if show_tier_picker %}
+                    <input type="hidden" name="ticket_type_id" id="ticket_type_id_hidden">
+                    {% elif is_single_free %}
+                    <input type="hidden" name="ticket_type_id" value="{{ active_tickets[0].id }}">
+                    {% endif %}
 
                     <!-- Step: Who are you registering? -->
                     <div class="form-section">
@@ -758,6 +779,7 @@
                     </div>
                 </form>
 
+                {% endif %}
             </div><!-- /reg-body -->
         </div><!-- /reg-card -->
     </div><!-- /reg-container -->
@@ -765,12 +787,13 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function () {
     var MAX_EXTRA = 24;
 
     // ── Elements ──
     var form           = document.getElementById('reg-form');
+    if (!form) return;
     var bookingInput   = document.getElementById('booking_type');
     var modeSelf       = document.getElementById('mode-self');
     var modeThird      = document.getElementById('mode-third-party');
@@ -942,6 +965,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     form.addEventListener('submit', function (e) {
         var type = bookingInput.value;
+
+        if (form.querySelector('[data-user-registered="true"]') && type === 'self') {
+            e.preventDefault();
+            alert('You are already registered for this event. Choose Someone Else or A Group to register other attendees.');
+            return;
+        }
+
 
         // Validate tier selection if picker is shown
         if (tierGrid) {

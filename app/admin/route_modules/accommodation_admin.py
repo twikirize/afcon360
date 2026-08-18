@@ -19,6 +19,7 @@ from app.auth.decorators import (
     require_role,
     require_fresh_user
 )
+from app.auth.context import ContextType, active_context_or_platform_required
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 @admin_bp.route("/accommodation-admin", endpoint="accommodation_admin_dashboard")
 @login_required
 @require_role("accommodation_admin")
+@active_context_or_platform_required(ContextType.PLATFORM)
 def accommodation_admin_dashboard():
     """Accommodation Admin Dashboard with comprehensive property management."""
     try:
@@ -100,6 +102,7 @@ def accommodation_admin_dashboard():
 @admin_bp.route("/accommodation-admin/properties", endpoint="accommodation_admin_properties")
 @login_required
 @require_role("accommodation_admin")
+@active_context_or_platform_required(ContextType.PLATFORM)
 def accommodation_admin_properties():
     """List and manage all properties."""
     try:

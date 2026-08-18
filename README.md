@@ -1,957 +1,312 @@
-# AFCON360 - Integrated Management Ecosystem
+# AFCON360 — Integrated Tournament Management Platform
 
-## Overview
+**Repository status:** Active development · **Updated:** 2026-08-14
 
-AFCON360 is a comprehensive Flask/PostgreSQL/Redis web application ecosystem that combines multiple management systems into a unified platform. It serves organizers, attendees, community hosts, and administrators with distinct capabilities:
+AFCON360 is a modular Flask platform for tournament operations, accommodation,
+transport, events, identity/KYC, wallet transactions, notifications, media, and
+administration. This README describes the repository as it exists today; it is
+not a promise that every integration or production deployment is enabled in
+every environment.
 
-- **Fintech/Wallet System**: Double-entry ledger, transactions, payouts, commissions
-- **Transport Management**: Booking system, driver/vehicle management, route tracking
-- **Accommodation Management**: Property listings, booking system, host management
-- **Event Management**: Event creation, registration, ticketing, payments
-- **Tourism Management**: Tourism services, activities, bookings
-- **Tournament Management**: Bracket management, scheduling
-- **Identity/KYC System**: User verification, organization verification, compliance
-- **Notification System**: Multi-channel notifications (email, SMS, push, in-app, webhook) with user preferences, templates, and Celery async delivery
+## Contents
 
-Each module operates independently but integrates seamlessly - users can pay for events via wallet, book transport to events, secure accommodation, and access tourism activities through a unified interface.
+- [Architecture](#architecture)
+- [Modules](#modules)
+- [Important invariants](#important-invariants)
+- [Technology](#technology)
+- [Local setup](#local-setup)
+- [Running services](#running-services)
+- [Testing and verification](#testing-and-verification)
+- [Configuration](#configuration)
+- [Documentation](#documentation)
+- [Known limitations](#known-limitations)
 
-## Payment Architecture
+## Architecture
 
-**Wallet is the single source of truth for all financial events.** Every module (accommodation, transport, events) delegates actual money movement to the wallet module and stores only a thin `wallet_txn_id` reference.
+The application uses Flask's application-factory pattern in `app/__init__.py`.
+Blueprints are registered centrally while domain code remains grouped by
+module. SQLAlchemy/Flask-Migrate manage persistence and Redis is used for
+caching, sessions, rate limiting, and Celery transport where configured.
 
-```
-Wallet Module (source of truth)
-├── TransactionModel      ← immutable record of every financial event
-├── LedgerEntryModel      ← double-entry records
-├── AccountModel          ← balances derived from ledger
-└── PaymentMethodConfig   ← global payment catalogue
-
-Accommodation             Transport             Events
-├── AccommodationBooking  ├── Booking           ├── EventRegistration
-│   ├── wallet_txn_id     │   ├── wallet_txn_id │   ├── wallet_txn_id
-│   └── payment_status    │   └── payment_status│   └── payment_status
-└── AccommodationBookingPayment (thin index)
-    ├── booking_id
-    ├── wallet_txn_id      ← canonical link
-    ├── payment_reference
-    ├── payment_status     ← cached from wallet
-    └── retry_count        ← module-specific
-```
-
-**Key rules:**
-- **Wallet owns the money.** All charges, refunds, and transfers flow through `WalletService` or `PaymentGateway`.
-- **Modules own the context.** Which room, which car, which event ticket — that stays in the domain module.
-- **One line links them.** `wallet_txn_id` / `wallet_transaction_id` points from the booking record to the canonical `TransactionModel`.
-- **No duplicate ledgers.** Module-specific payment tables (`AccommodationBookingPayment`, transport `BookingPayment`) are thin indexes for fast queries, not sources of truth.
-
-### Payment Settings Wiring
-
-| Role | Can View | Can Edit | Where |
-|------|----------|----------|-------|
-| Owner | All settings globally | All settings globally | `/owner/settings/wallet` → Payment Methods |
-| Super Admin | All settings globally | All settings globally | Same as Owner |
-| Admin | All settings globally | All settings globally | Same as Owner |
-| Host | Own property only | Own property only | `/host/property/<id>/booking-policy` |
-
-**Global payment methods** are stored in `payment_method_configs` and managed by the Owner via `/owner/settings/wallet` → **Payment Methods** tab.  
-**Property-level timing and accepted methods** are stored in `property_booking_policy` and `property_payment_methods`, managed by the Host.  
-**Guest checkout** shows the intersection of globally enabled methods AND property-accepted methods AND property-allowed timings.
-
-## System Architecture
-
-### **Core Technologies**
-- **Backend**: Flask (Python) with SQLAlchemy ORM
-- **Database**: PostgreSQL (production), SQLite (local dev)
-- **Cache/Queue**: Redis
-- **Frontend**: Bootstrap 5 with custom CSS (dark editorial UI with gold accents)
-- **Authentication**: Flask-Login with role-based permissions
-- **Deployment**: Docker Compose on Oracle Cloud VM.Standard.E4.Flex (IP 79.76.104.169)
-- **Server**: Gunicorn + Nginx
-- **Rate Limiting**: Flask-Limiter with Redis storage
-
-### **Key Components**
-- **User Management System**: Complete CRUD operations with bulk actions
-- **Role-Based Access Control**: Hierarchical roles with granular permissions
-- **Impersonation System**: Owner can impersonate any role below them
-- **Dashboard System**: Role-specific dashboards with relevant functionality
-- **Module System**: Toggleable features (events, wallet, transport, etc.)
-- **Media Management**: File upload, processing, and storage
-- **Compliance & Audit**: Forensic audit trails for regulatory compliance
-
----
-
-## Project Structure
-
-```
-app/
-├── __init__.py                 # Application factory
-├── config.py                   # Configuration settings
-├── extensions.py               # Flask extensions initialization
-├── routes.py                   # Core application routes
-├── utils.py                    # Utility functions
-│
-├── admin/                      # Admin management routes
-│   ├── __init__.py
-│   ├── routes.py               # Core admin functionality
-│   ├── routes_ultimate.py      # Advanced user management
-│   ├── decorators.py           # Admin decorators
-│   ├── models.py               # Admin models
-│   ├── services.py             # Admin services
-│   ├── trust_settings.py       # Trust settings
-│   ├── hooks.py                # Admin hooks
-│   │
-│   ├── admin_services/         # Admin service modules
-│   │   ├── ai_detection.py
-│   │   ├── analytics_service.py
-│   │   ├── content_safety.py
-│   │   ├── escalation_workflow.py
-│   │   ├── moderation_queue.py
-│   │   ├── payment_methods.py
-│   │   └── training_system.py
-│   │
-│   ├── owner/                  # Owner-specific functionality
-│   │   ├── __init__.py
-│   │   ├── routes.py
-│   │   ├── audit.py
-│   │   ├── csp_routes.py
-│   │   ├── decorators.py
-│   │   ├── models.py
-│   │   ├── security_routes.py
-│   │   ├── security_service.py
-│   │   ├── settings.md
-│   │   ├── utils.py
-│   │   ├── wallet_config.py
-│   │   └── api/
-│   │       └── module_api.py
-│   │
-│   ├── compliance/             # Compliance routes
-│   │   ├── __init__.py
-│   │   ├── models.py
-│   │   ├── routes.py
-│   │   └── services.py
-│   │
-│   ├── moderator/              # Moderator routes
-│   │   ├── __init__.py
-│   │   ├── pipeline.py
-│   │   ├── registry.py
-│   │   └── routes.py
-│   │
-│   ├── support/                # Support routes
-│   │   ├── __init__.py
-│   │   └── routes.py
-│   │
-│   ├── auditor/                # Auditor routes
-│   │   ├── __init__.py
-│   │   └── routes.py
-│   │
-│   ├── models/                 # Admin models
-│   │   ├── __init__.py
-│   │   ├── core.py
-│   │   ├── emergency_access.py
-│   │   └── moderation.py
-│   │
-│   └── route_modules/          # Role-specific route modules
-│       ├── accommodation_admin.py
-│       ├── event_manager.py
-│       ├── org_admin.py
-│       ├── org_member.py
-│       ├── settings.py
-│       ├── tourism_admin.py
-│       ├── transport_admin.py
-│       └── wallet_admin.py
-│
-├── accommodation/              # Accommodation module
-│   ├── __init__.py
-│   ├── routes.py
-│   ├── routes_old.py
-│   ├── services.py
-│   │
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── availability.py
-│   │   ├── booking.py
-│   │   ├── property.py
-│   │   ├── review.py
-│   │   └── wishlist.py
-│   │
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── abuse_prevention_service.py
-│   │   ├── ai_search_service.py
-│   │   ├── ai_trip_planner_service.py
-│   │   ├── availability_service.py
-│   │   ├── blockchain_reviews_service.py
-│   │   ├── booking_service.py
-│   │   ├── competitive_intelligence_service.py
-│   │   ├── dynamic_pricing_service.py
-│   │   ├── gamified_loyalty_service.py
-│   │   ├── host_service.py
-│   │   ├── hyper_personalization_service.py
-│   │   ├── identity_service.py
-│   │   ├── immersive_tour_service.py
-│   │   ├── payment_option_service.py
-│   │   ├── predictive_availability_service.py
-│   │   ├── pricing_service.py
-│   │   ├── search_service.py
-│   │   ├── urgency_service.py
-│   │   └── voice_booking_service.py
-│   │
-│   └── state_machine/
-│       ├── __init__.py
-│       └── booking_states.py
-│
-├── transport/                  # Transport module
-│   ├── __init__.py
-│   ├── models.py
-│   ├── routes.py
-│   ├── decorator.py
-│   ├── event_listeners.py
-│   ├── listeners.py
-│   ├── view_models.py
-│   │
-│   ├── api/
-│   │   ├── __init__.py
-│   │   ├── analytic_routes.py
-│   │   ├── booking_routes.py
-│   │   ├── dashboard_routes.py
-│   │   ├── driver_routes.py
-│   │   ├── incident_routes.py
-│   │   ├── organisation_routes.py
-│   │   ├── route_routes.py
-│   │   ├── settings_routes.py
-│   │   ├── utils.py
-│   │   └── vehicle_routes.py
-│   │
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── booking_service.py
-│   │   ├── dashboard_service.py
-│   │   ├── external_platforms.py
-│   │   ├── future_adds.py
-│   │   ├── matching_service.py
-│   │   ├── notification_service.py
-│   │   ├── payment_service.py
-│   │   ├── promotion_service.py
-│   │   ├── provider_service.py
-│   │   └── settings_service.py
-│   │
-│   └── utils/
-│       ├── __init__.py
-│       └── helpers.py
-│
-├── events/                     # Events module
-│   ├── __init__.py
-│   ├── models.py
-│   ├── routes.py
-│   ├── services.py
-│   ├── signal_handlers.py
-│   ├── permissions.py
-│   ├── metrics_service.py
-│   ├── payment_service.py
-│   ├── payment_config.py
-│   ├── assignment.py
-│   ├── bulk_upload.py
-│   ├── constants.py
-│   ├── routes_accommodation.py
-│   ├── routes_community_hosts.py
-│   ├── settings_model.py
-│   ├── settings_routes.py
-│   ├── signals.py
-│   └── view_models.py
-│
-├── wallet/                     # Wallet module
-│   ├── __init__.py
-│   ├── models.py
-│   ├── decorators.py
-│   ├── exceptions.py
-│   │
-│   ├── api/
-│   │   ├── __init__.py
-│   │   ├── admin_api.py
-│   │   ├── admin_webhook_routes.py
-│   │   ├── fx_api.py
-│   │   ├── wallet_api.py
-│   │   └── webhooks.py
-│   │
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── admin_audit.py
-│   │   ├── aggregator.py
-│   │   ├── audit.py
-│   │   ├── commission.py
-│   │   ├── config.py
-│   │   ├── fraud_detection.py
-│   │   ├── fx.py
-│   │   ├── ledger.py
-│   │   ├── nonce_protection.py
-│   │   ├── payout.py
-│   │   ├── reconciliation.py
-│   │   ├── transaction.py
-│   │   ├── travel_rule.py
-│   │   └── webhook_event.py
-│   │
-│   ├── payments/
-│   │   ├── __init__.py
-│   │   ├── alipay.py
-│   │   ├── flutterwave.py
-│   │   ├── mobile_money.py
-│   │   ├── paypal.py
-│   │   ├── paystack.py
-│   │   ├── visa.py
-│   │   └── wechat.py
-│   │
-│   ├── middleware/
-│   │   ├── __init__.py
-│   │   ├── idempotency.py
-│   │   ├── kill_switch.py
-│   │   ├── wallet_activation.py
-│   │   └── wallet_check.py
-│   │
-│   └── repositories/
-│       ├── __init__.py
-│       ├── account_repository.py
-│       └── commission_repository.py
-│
-├── identity/                   # Identity module
-│   ├── __init__.py
-│   ├── routes.py
-│   ├── services.py
-│   │
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── compliance_audit_log.py
-│   │   ├── compliance_settings.py
-│   │   ├── kyb.py
-│   │   ├── licence_document.py
-│   │   ├── note.py
-│   │   ├── organisation.py
-│   │   ├── organisation_controller.py
-│   │   ├── organisation_member.py
-│   │   ├── organization_types.py
-│   │   ├── roles_permission.py
-│   │   └── user.py
-│   │
-│   └── services/
-│       ├── __init__.py
-│       ├── organization_permissions.py
-│       └── organization_registration.py
-│
-├── kyc/                        # KYC verification
-│   ├── __init__.py
-│   ├── models.py
-│   ├── routes.py
-│   ├── services.py
-│   ├── nira_verification.py
-│   └── upgrade_routes.py
-│
-├── tourism/                    # Tourism module
-│   ├── __init__.py
-│   └── routes.py
-│
-├── tournament/                 # Tournament module
-│   ├── __init__.py
-│   └── routes.py
-│
-├── auth/                       # Authentication system
-│   ├── routes.py
-│   ├── services.py
-│   ├── decorators.py
-│   └── sessions.py
-│
-├── audit/                      # Audit logging
-│   ├── forensic_audit.py
-│   └── models.py
-│
-├── fan/                        # Fan/attendee features
-│   └── routes.py
-│
-├── profile/                    # User profile management
-│   ├── __init__.py
-│   ├── models.py
-│   └── routes.py
-│
-├── user/                       # User management
-│   ├── routes.py
-│   └── use_dashboard.md
-│
-├── services/                     # Core services
-│   ├── __init__.py
-│   ├── analytics.py
-│   ├── module_toggle_service.py
-│   ├── notification_service.py     # ← Re-export from app/notifications/services.py
-│   └── sms_service.py
-│
-├── notifications/                  # Notification System (NEW)
-│   ├── __init__.py                 # Blueprint registration & service exports
-│   ├── models.py                   # Notification, NotificationTemplate, UserNotificationPreference, NotificationLog
-│   ├── services.py                 # Centralized NotificationService with cross-module integration
-│   ├── tasks.py                    # Celery async workers & beat scheduler
-│   ├── preferences.py              # User notification preference management
-│   ├── template_loader.py          # Jinja2 template loader for email/SMS/push
-│   ├── utils.py                    # Rate limiting, exponential backoff, idempotency
-│   ├── channel_handlers/           # Pluggable handlers per channel
-│   │   ├── __init__.py
-│   │   ├── email.py                # Email (SendGrid/SMTP)
-│   │   ├── sms.py                  # SMS (Twilio/Africa's Talking)
-│   │   ├── push.py                 # Push (Firebase Cloud Messaging)
-│   │   ├── in_app.py               # In-app persistent inbox
-│   │   └── webhook.py              # HTTP JSON callback webhooks
-│   ├── templates/                  # Email HTML, SMS txt, Push JSON templates
-│   │   ├── email/
-│   │   ├── sms/
-│   │   └── push/
-│   └── tests/                      # Notification system tests
-│       ├── __init__.py
-│       ├── test_models.py
-│       ├── test_services.py
-│       ├── test_channel_handlers.py
-│       └── test_integration.py
-│
-├── tasks/                      # Background tasks
-│   ├── reconcile.py
-│   └── webhook_processor.py
-│
-├── middleware/                 # Middleware components
-│   └── (middleware files)
-│
-├── backup/                     # Backup system
-│   └── (backup files)
-│
-├── cli/                        # CLI commands
-│   └── owner.py
-│
-├── tools/                      # Development tools
-│   ├── inspect_project.py
-│   ├── theme_routes.py
-│   └── theme_service.py
-│
-├── forms/                      # Form definitions
-│   ├── booking_forms.py
-│   └── settings_forms.py
-│
-├── models/                     # Core models
-│   ├── base.py
-│   ├── audit.py
-│   ├── analytics.py
-│   ├── system_config.py
-│   └── theme.py
-│
-├── utils/                      # Utility functions
-│   ├── __init__.py
-│   ├── audit.py
-│   ├── caching.py
-│   ├── db_retry.py
-│   ├── error_handler.py
-│   ├── exceptions.py
-│   ├── id_guard.py
-│   ├── id_helpers.py
-│   ├── id_validator.py
-│   ├── idempotency.py
-│   ├── module_disabled.py
-│   ├── module_guard.py
-│   ├── module_switch.py
-│   ├── monitoring.py
-│   ├── rate_limiting.py
-│   ├── redis_lock.py
-│   ├── security.py
-│   ├── template_helpers.py
-│   ├── transactions.py
-│   └── validators.py
-│
-├── core/                       # Core functionality
-│   └── (core files)
-│
-├── compliance/                 # Compliance system
-│   └── (compliance files)
-│
-├── dashboard/                  # Dashboard components
-│   └── (dashboard files)
-│
-├── media/                      # Media management
-│   ├── __init__.py
-│   ├── routes.py
-│   ├── service.py
-│   ├── tasks.py
-│   ├── validators.py
-│   ├── models.py
-│   ├── storage/
-│   │   ├── __init__.py
-│   │   ├── local.py
-│   │   └── oci.py
-│   └── (media files)
-│
-└── Documentation/              # Documentation files
-    └── ID_SYSTEM_RULES.md
+```text
+Browser / API clients
+        |
+        v
+Flask application factory
+        |
+        +-- Auth, identity, profile, KYC, RBAC
+        +-- Events, accommodation, event accommodation, transport, tourism
+        +-- Wallet APIs, payments, ledger, reconciliation
+        +-- Notifications and domain-event backbone
+        +-- Media, audit, compliance, admin, dashboards
+        |
+        +-- PostgreSQL (all application and test configurations)
+        +-- Redis -> Celery workers and scheduled tasks
 ```
 
----
-
-## Role Hierarchy & Permissions
-
-### **Role Levels (Highest to Lowest)**
-
-1. **owner** - Complete system control, can impersonate all roles
-2. **super_admin** - System administration except owner modification
-3. **admin** - Administrative functions
-4. **auditor** - Audit and compliance oversight
-5. **compliance_officer** - Regulatory compliance
-6. **moderator** - Content moderation
-7. **support** - Customer service
-8. **event_manager** - Event administration
-9. **transport_admin** - Transportation management
-10. **wallet_admin** - Financial operations
-11. **accommodation_admin** - Lodging management
-12. **tourism_admin** - Tourism services
-13. **org_admin** - Organization management
-14. **org_member** - Organization member
-15. **user** - Standard user access
-
----
-
-## Core Modules
-
-### **1. Events Module** (`app/events/`)
-- Event creation, approval, and registration workflows
-- Ticketing and payment processing
-- **Wallet integration** — `EventRegistration.wallet_txn_id` links to `TransactionModel`; no separate payment ledger table needed
-- Signal handlers for event lifecycle
-- Event metrics and analytics
-- Community host integration
-- Accommodation and transport integration for events
-
-### **2. Wallet Module** (`app/wallet/`)
-- **Single source of truth for all financial events** across accommodation, transport, and events
-- Double-entry ledger architecture (enterprise-grade)
-- `TransactionModel` — immutable transaction records every other module references via `wallet_txn_id`
-- `LedgerEntryModel` — double-entry records; balances are derived, never stored
-- `PaymentMethodConfig` — global catalogue of enabled payment methods
-- Payment provider integrations (Flutterwave, Paystack, PayPal, Alipay, WeChat, Visa, Mobile Money)
-- Webhook handling and reconciliation
-- API endpoints for wallet operations
-- Middleware: idempotency, kill switch, activation checks
-- **Other modules do not duplicate financial records.** They store thin indexes (`AccommodationBookingPayment`, transport `BookingPayment`) that link back to `TransactionModel`.
-
-### **3. Transport Module** (`app/transport/`)
-- Transport booking system
-- Driver and vehicle management
-- Route and incident tracking
-- Real-time notifications
-- External platform integrations
-- Analytics and reporting (32+ API endpoints)
-- State management and matching services
-- **Wallet integration for payments** — `Booking.wallet_transaction_id` links to `TransactionModel`
-- Thin payment index `BookingPayment` for fast module-level queries
-
-### **4. Accommodation Module** (`app/accommodation/`)
-- Host registration and management
-- Property listing and search
-- Booking system with state machine
-- Review and rating system
-- Pricing and availability management
-- **Wallet integration for payments** — `AccommodationBooking.wallet_txn_id` links to `TransactionModel`
-- Thin payment index `AccommodationBookingPayment` for fast module-level queries
-- AI-powered search and trip planning
-- Gamified loyalty and blockchain reviews
-
-### **5. Tournament Module** (`app/tournament/`)
-- Bracket management
-- Tournament scheduling
-
-### **6. Identity Module** (`app/identity/`)
-- KYC (Know Your Customer) verification
-- Organization verification (KYB)
-- License document management
-- Compliance audit logging
-- Role and permission management
-- Organization registration and permissions
-
-### **7. KYC Module** (`app/kyc/`)
-- KYC document verification
-- NIRA verification integration
-- KYC upgrade workflows
-
-### **8. Tourism Module** (`app/tourism/`)
-- Tourism service listings
-- Tourism booking management
-- Activity management
-
-### **9. Auth Module** (`app/auth/`)
-- Authentication and session management
-- Role-based access control
-- OTP and email verification
-- Password policy enforcement
-- Onboarding workflows
-
-### **10. Admin Module** (`app/admin/`)
-- Role-based admin dashboards
-- Trust settings management
-- Security and compliance monitoring
-- Module toggle controls
-- AI content detection and moderation
-- Escalation workflows
-
-### **11. Media Module** (`app/media/`)
-- File upload, processing, and storage
-- Local and OCI (Oracle Cloud Infrastructure) storage backends
-- Media validation and processing tasks
-
-### **12. User Module** (`app/user/`)
-- User dashboard and profile management
-- User-specific features and settings
-
-### **13. Profile Module** (`app/profile/`)
-- User profile management
-- Profile update and verification workflows
-
-### **14. Fan Module** (`app/fan/`)
-- Enhanced fan/attendee dashboard
-- Event discovery and registration
-
-### **15. Notification System** (`app/notifications/`)
-- Multi-channel notification delivery (email, SMS, push, in-app, webhook)
-- Centralized `NotificationService` with cross-module integration
-- Reusable notification templates per type and channel
-- Per-user, per-type, per-channel notification preferences
-- Celery async delivery with exponential backoff retry
-- Notification audit logging via `NotificationLog`
-- Contextual notifications for wallet, bookings, transport, events, KYC, and reviews
-- API endpoints at `/api/notifications`
-
-### **16. Services Module** (`app/services/`)
-- Analytics services
-- Module toggle service
-- SMS service
-- Notification service (re-export from `app/notifications/services.py`)
-
-### **17. Tasks Module** (`app/tasks/`)
-- Webhook processing
-- Transaction reconciliation
-
-### **17. CLI Module** (`app/cli/`)
-- Owner CLI commands
-
-### **18. Tools Module** (`app/tools/`)
-- Theme management
-- Project inspection tools
-
-### **19. Forms Module** (`app/forms/`)
-- Booking forms
-- Settings forms
-
-### **20. Models Module** (`app/models/`)
-- BaseModel for all models
-- Audit models
-- Analytics models
-- System configuration
-- Theme models
-
-### **21. Utils Module** (`app/utils/`)
-- IDGuard for ID mixing protection
-- Module switch and guard
-- Audit, caching, and security utilities
-- Rate limiting, Redis locks, validators
-- Error handling and template helpers
-
----
-
-## Key Features
-
-### **IDGuard System**
-- Runtime ID mixing protection
-- String FK exception handling
-- Automatic ID validation
-
-### **Owner Management System**
-- **Owner Dashboard** (`/admin/owner/dashboard`): System statistics, user counts, role distribution
-- **Master Key Impersonation** (`/admin/owner/impersonate-page`): Role-based access with smart redirects
-- **Role Management**: Add/remove super admin privileges
-
-### **Advanced User Management**
-- **Ultimate User Interface** (`/admin/manage-users-ultimate`): Real-time search, bulk operations
-- **User Details View**: Complete profile, role history, audit trail
-- **Status Management**: Verification, activation, suspension
-
-### **Role Management System**
-- **Role Administration** (`/admin/roles`): Role statistics, assignment, hierarchy display
-- **Global Role Switcher (Persona System)**: Card-based UI to toggle between assigned roles
-
-### **Dashboard System**
-- Super Admin Dashboard (`/admin/super-dashboard`)
-- Moderator Dashboard (`/admin/moderator-dashboard`)
-- Support Dashboard (`/admin/support-dashboard`)
-- Auditor Dashboard (`/admin/auditor-dashboard`)
-- Compliance Officer Dashboard (`/admin/compliance/dashboard`)
-- Event Manager Dashboard (`/admin/event-manager-dashboard`)
-- Transport Admin Dashboard (`/admin/transport-admin-dashboard`)
-- Wallet Admin Dashboard (`/admin/wallet-admin-dashboard`)
-- Accommodation Admin Dashboard (`/admin/accommodation-admin-dashboard`)
-- Tourism Admin Dashboard (`/admin/tourism-admin-dashboard`)
-- Org Admin Dashboard (`/admin/org-admin-dashboard`)
-- Org Member Dashboard (`/admin/org-member-dashboard`)
-- Enhanced Fan Dashboard (`/fan/enhanced-dashboard`)
-
-### **Module System**
-- Toggleable features (events, wallet, transport, accommodation, tournament, identity, tourism)
-- Instant module reload hooks
-- Module disabled page handler
-
-### **Compliance & Forensic Audit**
-- Attempt vs completion tracking
-- Blocked action logging
-- Risk scoring for audit events
-- Suspicious pattern detection
-- Compliance reporting (FIA Uganda, Bank of Uganda formats)
-
----
-
-## API Endpoints
-
-### **Health Check**
-- `GET /api/health/ping` - Health check endpoint
-
-### **Owner Routes**
-- `GET /admin/owner/dashboard` - Owner dashboard
-- `GET /admin/owner/impersonate-page` - Role impersonation interface
-- `POST /admin/owner/master-key/act-as/<role_name>` - Impersonate role
-- `POST /admin/owner/master-key/exit` - Exit impersonation
-
-### **User Management Routes**
-- `GET /admin/manage-users-ultimate` - Advanced user interface
-- `POST /admin/users/<user_id>/verify` - Verify user
-- `POST /admin/users/<user_id>/activate` - Activate user
-- `POST /admin/users/<user_id>/deactivate` - Deactivate user
-- `POST /admin/users/<user_id>/delete` - Delete user
-- `POST /admin/users/bulk-verify` - Bulk verification
-- `POST /admin/users/bulk-deactivate` - Bulk deactivation
-
-### **Role Management Routes**
-- `GET /admin/roles` - Role management interface
-- `GET /admin/roles/<role_id>/users` - View users with role
-- `POST /admin/roles/assign` - Assign role to user
-- `POST /admin/roles/remove` - Remove role from user
-
-### **Audit API**
-- `/api/audit/timeline/<entity_type>/<entity_id>` - Get forensic timeline
-- `/api/audit/pending-reviews` - Get pending review items
-- `/api/audit/review/<audit_id>` - Process review approvals/rejections
-- `/api/audit/suspicious-patterns` - Get suspicious activity patterns
-- `/api/audit/compliance-report` - Generate compliance reports
-
-### **Wallet API**
-- `/api/wallet/balance` - Get wallet balance
-- `/api/wallet/transactions` - List transactions
-- `/api/wallet/deposit` - Create deposit
-- `/api/wallet/withdraw` - Create withdrawal
-- `/api/wallet/admin/*` - Admin wallet operations
-
-### **Transport API**
-- `/api/transport/bookings` - Booking operations
-- `/api/transport/drivers` - Driver management
-- `/api/transport/vehicles` - Vehicle management
-- `/api/transport/routes` - Route management
-- `/api/transport/analytics` - Analytics data
-
----
-
-## Configuration
-
-### **Environment Variables**
-```python
-# Database Configuration
-DATABASE_URL = "postgresql://user:password@localhost/afcon360"
-REDIS_URL = "redis://localhost:6379/0"
-
-# Security Configuration
-SECRET_KEY = "your-secret-key"
-CSRF_SECRET_KEY = "your-csrf-secret"
-
-# Rate Limiting
-RATELIMIT_STORAGE_URI = "redis://localhost:6379/1"
-
-# Application Configuration
-DEBUG = False
-TESTING = False
-```
-
-### **Module Toggle Configuration**
-Modules can be enabled/disabled via system configuration:
-- `events` - Event management module
-- `wallet` - Wallet/transaction module
-- `transport` - Transport booking module
-- `accommodation` - Accommodation module
-- `tournament` - Tournament module
-- `identity` - KYC/identity module
-- `moderation` - Moderation module
-
----
-
-## Database Models
-
-### **Core Models**
-- **User**: Core user information and authentication (inherits from `BaseModel`)
-- **Role**: Role definitions and permissions
-- **UserRole**: Many-to-many relationship between users and roles
-- **Organisation**: Organization management
-- **SystemConfig**: System-wide configuration
-
-### **Wallet Models** (source of truth for all payments)
-- **AccountModel**: Financial accounts (user wallets, org wallets, platform accounts); balances derived from ledger
-- **TransactionModel**: Immutable transaction records — every charge, refund, or transfer in the system
-- **LedgerEntryModel**: Double-entry ledger records tied to `TransactionModel`
-- **PaymentMethodConfig**: Global catalogue of enabled payment methods (wallet, mobile money, card)
-- **Payout**: Payout requests
-- **Commission**: Commission tracking
-- **FraudDetection**: Fraud detection records
-
-### **Module Payment Indexes** (thin references to wallet, not ledgers)
-- **AccommodationBookingPayment**: Maps `booking_id` → `wallet_txn_id`, caches `payment_status` and `payment_reference`
-- **Transport BookingPayment**: Maps `booking_id` → `wallet_txn_id`, caches `payment_status` and `payment_reference`
-- **EventRegistration**: Stores `wallet_txn_id` and `payment_status` directly — no separate ledger table needed
-
-### **Audit Models**
-- **AuditLog**: General audit logging
-- **ForensicAudit**: Forensic audit trail
-- **ComplianceAuditLog**: Compliance-specific audit
-
----
-
-## Deployment
-
-### **Docker Compose Stack**
-- Flask application container
-- PostgreSQL database container
-- Redis cache/queue container
-- Celery worker container (for background tasks)
-- Nginx reverse proxy container
-
-### **Production Server**
-- Oracle Cloud VM.Standard.E4.Flex (IP: 79.76.104.169)
-- User: ubuntu
-- Health check: `/api/health/ping`
-
-### **Deployment Commands**
-```bash
-# Build and start containers
-docker-compose up -d
-
-# Run database migrations
-flask db upgrade
-
-# Stamp head (after bootstrap)
-flask db stamp head
-
-# Check container status
-docker-compose ps
-
-# View logs
-docker-compose logs -f web
-```
-
-### **Key Dependencies**
-- Flask 2.x+
-- SQLAlchemy with Alembic migrations
-- PostgreSQL 14+
-- Redis 6+
-- Celery for background tasks
-- Bootstrap 5 for frontend
-
----
-
-## Development Setup
-
-### **Prerequisites**
-- Python 3.10+
-- PostgreSQL 14+
-- Redis 6+
-- Docker (for containerized deployment)
-
-### **Installation**
-```bash
-# Install dependencies
+### Seamless cross-module guest experience
+
+AFCON360 is intentionally modular: each domain remains independently usable,
+with its own routes, services, data ownership, and operational rules. The
+modules also compose through shared identity, event context, booking
+references, notifications, and wallet/payment references, so a guest should
+not need to log out or create a separate account when moving between services.
+
+An event owner can use the event's attendee/guest context to coordinate the
+connected experience: identify registered guests, arrange accommodation or
+transport through the relevant module, and assign guests to rooms, properties,
+vehicles, routes, or other approved travel arrangements. The event module
+owns the event and attendee relationship; accommodation owns availability,
+reservations, rooms, and stay assignments; transport owns journeys, vehicles,
+drivers, and movement assignments; and wallet owns payment and ledger state.
+These boundaries must remain explicit even when the user journey feels like a
+single workflow.
+
+The intended flow is:
+
+1. An event owner views authorized event attendees using public identifiers and
+   the event's access-control rules.
+2. The owner initiates or links accommodation and transport arrangements for
+   those guests through the appropriate domain workflows.
+3. The accommodation module confirms availability and records where each guest
+   will stay; the transport module records how each guest will move.
+4. Payment requests use the wallet/payment integration without allowing event,
+   accommodation, or transport code to create a competing ledger.
+5. Notifications and dashboards present the resulting itinerary and status in
+   one authenticated experience.
+
+Cross-module implementations must preserve ownership, authorization,
+idempotency, auditability, and failure isolation. A module must continue to
+function when an optional integration is unavailable, and partial failures
+must not silently create an accommodation, transport, or payment assignment.
+Consult the relevant module specification before changing these contracts,
+especially `app/accommodation/AFCON360_SEAMLESS_BOOKING_SPEC.md` for booking,
+guest-roster, payment, and event-assignment behavior.
+
+The formal Event Host guest-coordination contract is documented in
+`app/events/events.md`. It defines the assignment state transitions,
+event-scoped authority, public-reference API contract, capacity/eligibility
+invariants, and controlled behavior when Accommodation or Transport is disabled.
+
+### Financial ownership
+
+The wallet is the canonical owner of money movement. Domain modules keep
+context and references such as `wallet_txn_id` or
+`wallet_transaction_id`; they must not create competing ledgers. Wallet changes
+are high risk and must preserve double-entry, idempotency, rollback, and audit
+requirements.
+
+### Identity separation
+
+Internal database IDs (`id`) are for foreign keys and joins only. Public URLs,
+API responses, and sessions use `public_id`. Never expose a user's internal
+numeric ID.
+
+## Modules
+
+| Module | Responsibility |
+|---|---|
+| `app/auth` | Login, registration, OTP, onboarding, sessions, password policy |
+| `app/identity` | Users, organizations, roles, permissions, KYB and identity records |
+| `app/profile` | User profile and verification-facing profile workflows |
+| `app/kyc` | KYC tiers, documents, NIRA verification, upgrade workflows |
+| `app/events` | Event lifecycle, registrations, ticketing, assignments, metrics |
+| `app/accommodation` | Properties, rooms, availability, bookings, guest registration and reviews |
+| `app/event_accommodation` | Event-linked accommodation and trust/discovery flows |
+| `app/transport` | Drivers, vehicles, routes, incidents, bookings and analytics APIs |
+| `app/wallet` | Accounts, transactions, ledger, payments, webhooks, FX, payouts and reconciliation |
+| `app/notifications` | Email, SMS, push, in-app and webhook delivery plus event policies/outbox processing |
+| `app/media` | Upload validation, local/OCI storage, media administration and processing tasks |
+| `app/admin` | Owner/admin dashboards, moderation, support, compliance, settings and backups |
+| `app/audit` / `app/compliance` | Forensic audit trails, risk and regulatory workflows |
+| `app/tourism` / `app/tournament` | Tourism services and tournament scheduling/brackets |
+| `app/fan` / `app/user` / `app/dashboard` | Fan, user and role-specific dashboard experiences |
+
+Phone verification defaults to the account email as an OTP transport and can be
+switched by the owner to a configured SMS provider from Authentication Settings.
+The state machine, delivery boundary, and security invariants are defined in
+`app/Documentation/AUTH_SYSTEM_ARCHITECTURE.md` under
+“Temporary phone-verification transport contract”.
+
+## Important invariants
+
+- All new models inherit from `app.models.base.BaseModel` or an approved
+  protected variant; do not change shared base classes without approval.
+- Use `BigInteger` internal foreign keys and UUID/string public identifiers.
+- Do not add PostgreSQL enum types; use validated strings and constraints.
+- Preserve soft-delete filtering and audit sensitive actions.
+- Preserve module guards on gated routes.
+- Booking identity data may be completed after checkout; consult
+  `app/accommodation/AFCON360_SEAMLESS_BOOKING_SPEC.md` before changing that flow.
+- Every wallet operation requires idempotency and balanced ledger entries.
+- Frontend behavior must comply with the CSP nonce policy; prefer external
+  JavaScript modules over inline handlers/scripts.
+- An active organisation context lands in that organisation's public workspace;
+  the workspace can show its organisation-owned events, properties, and
+  accommodation bookings without changing the user's identity or granting new
+  permissions. The workspace presents the selected organisation role as the
+  authority for its Operations and Bookings areas. See
+  `app/Documentation/UNIFIED_IDENTITY_CONTEXT_SPEC.md`.
+
+## Technology
+
+- Python 3.10+; Flask 3.1.2; SQLAlchemy 2.0.44
+- PostgreSQL is the only supported application and test database backend
+- Alembic/Flask-Migrate for schema management
+- Redis 7.x for cache, sessions, rate limits and Celery broker/backend
+- Celery 5.4.0 for webhook, media, notification, accommodation and backup jobs
+- Flask-Login, Flask-WTF/CSRF, Flask-Limiter, Argon2/passlib and Pydantic
+- Bootstrap 5 with custom responsive CSS and Jinja templates
+- Gunicorn and Docker Compose for Linux/container deployments
+- Pytest and pytest-flask for automated tests
+
+## Local setup
+
+### Prerequisites
+
+- Python 3.10 or newer
+- PostgreSQL when using the PostgreSQL configuration
+- Redis for sessions, rate limiting and background work, unless deliberately
+  disabled for a limited local run
+
+### Windows PowerShell
+
+```powershell
+py -3 -m venv .venv
+& .venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 pip install -r requirements.txt
+Copy-Item env.example .env
+```
 
-# Initialize database
-flask db upgrade
+Fill in `.env` with real local values. Do not commit secrets. The application
+supports layered environment files: `.env` plus `.env.local`, `.env.docker`, or
+`.env.prod`, selected by `APP_ENV`.
 
-# Run development server
+Database migrations are intentionally not run automatically by agents. After
+reviewing the migration state, an operator may run:
+
+```powershell
+$env:APP_ENV = "testing"
+$env:FLASK_ENV = "testing"
+& .venv\Scripts\python.exe -m flask --app 'app:create_app()' db current
+& .venv\Scripts\python.exe -m flask --app 'app:create_app()' db heads
+& .venv\Scripts\python.exe -m flask --app 'app:create_app()' db upgrade
+```
+
+Using the explicit factory keeps migration commands on the same dedicated
+PostgreSQL test database selected by `TestingConfig`; agents and tests never
+apply migrations automatically.
+
+Use `flask db migrate` only as an explicitly reviewed developer operation, never
+as an unattended workaround.
+
+## Running services
+
+### Flask development server
+
+```powershell
+$env:APP_ENV = "local"
+$env:FLASK_ENV = "development"
 flask run
 ```
 
----
+The application entry points are the factory in `app.create_app` and the
+repository's `app.py` launcher. Confirm the actual configured entry point when
+using a custom environment.
 
-## Security Considerations
+### Celery
 
-- **Password Hashing**: Argon2 with passlib
-- **CSRF Protection**: All forms include security tokens
-- **Rate Limiting**: API endpoint protection via Flask-Limiter
-- **Session Security**: Secure session handling with Flask-Session
-- **Role-Based Access**: Granular permission control
-- **Audit Logging**: Comprehensive activity tracking
-- **Fernet Encryption**: Lazy `_get_fernet()` pattern for encryption
+```powershell
+celery -A app.celery_app worker --loglevel=info
+celery -A app.celery_app beat --loglevel=info
+```
 
----
+On Windows the worker defaults to a threads pool; Linux defaults to prefork.
+Override with `CELERY_WORKER_POOL` and `CELERY_WORKER_CONCURRENCY` when needed.
+Running worker and beat together is for development only.
 
-## Testing
+### Docker Compose
 
-- **Unit Testing**: Model, route, and service tests
-- **Integration Testing**: End-to-end workflow tests
-- **Security Testing**: Permission and authentication tests
-- **Run tests**: `pytest` or `pytest --cov=app`
+The current `docker-compose.yml` defines PostgreSQL 15, Redis 7, the Gunicorn
+web service, Celery worker/beat services, and Nginx-related deployment support.
+Use the non-destructive commands below after supplying the required environment
+values:
 
----
+```powershell
+docker compose up -d
+docker compose ps
+docker compose logs -f web
+```
+
+Do not use `docker compose down -v` unless you intentionally want to remove
+database and Redis volumes.
+
+## Testing and verification
+
+Run the relevant suite first, then broaden validation as appropriate:
+
+Tests must run against a dedicated, migrated PostgreSQL database. SQLite,
+embedded database fallbacks, raw SQL strings, and test-time schema creation or
+repair are not supported. Set `TEST_DATABASE_URL` before running pytest; the
+shared fixture fails fast if PostgreSQL is unavailable or the schema is stale.
+The full contract is documented in `docs/POSTGRES_TESTING_CONTRACT.md`.
+Direct SQL tests are not supported; use SQLAlchemy expressions to exercise
+PostgreSQL behavior. Only source/parser/configuration checks may be database-free.
+
+```powershell
+pytest
+pytest tests\notifications
+pytest tests\test_accommodation_checkout_processes.py
+```
+
+For the project database verification script:
+
+```powershell
+& .venv\Scripts\python.exe verify_db.py
+```
+
+Success requires exit code `0` and `DB_VERIFY_OK`. Existing test infrastructure
+and database-schema drift are tracked in `BACKLOG.md`; a failing test must not
+be hidden with skip flags or weakened assertions.
+
+Health endpoint: `GET /api/health/ping`.
+
+## Configuration
+
+Start from `env.example`. Common settings include:
+
+- `APP_ENV`, `FLASK_ENV`, `DEBUG`, `LOG_LEVEL`
+- `SECRET_KEY`, `ENCRYPTION_KEY`, `MFA_ENCRYPTION_KEY`
+- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS`, `DATABASE_URL`
+- `REDIS_URL`, `DISABLE_REDIS`, Celery broker/result settings
+- Mail, SMS, payment-provider, S3/OCI, backup, monitoring and compliance keys
+- `WALLET_ENABLED`, transaction limits, `AML_ENABLED`, `KYC_REQUIRED`, and
+  `TRAVEL_RULE_ENABLED`
+
+Use environment-specific files for deployment overrides. Never place provider
+secrets, production passwords, or private keys in source control.
+
+## Documentation
+
+- `AGENTS.md` — authoritative engineering constraints for contributors/agents
+- `DATABASE_SCALABILITY_ROADMAP.md` — schema and database scalability policy
+- `app/Documentation/IDENTITY_POLICIES.md` — public/internal ID rules
+- `app/Documentation/UNIFIED_IDENTITY_CONTEXT_SPEC.md` — unified identity and operating-context contract
+- `app/Documentation/SYSTEM_OVERVIEW.md` — deeper system reference
+- `app/accommodation/AFCON360_SEAMLESS_BOOKING_SPEC.md` — booking contract
+- `static/MOBILE_OPTIMIZATION.md` — responsive UI change record
+- `BACKLOG.md` — identified deferred, blocked and review-required work
+- `Readme's/` and `docs/` — implementation reports and supporting documentation
+
+## Known limitations
+
+This is an active codebase, not a claim of production readiness. In particular,
+`BACKLOG.md` records accommodation/KYC test-database drift, pending compliance
+review of mid-stay cancellation policy, a notification check-constraint update,
+backup migration follow-up, and planned read-replica/background-processing work.
+Review those entries before release or operational changes.
 
 ## License
 
-Proprietary - AFCON360 Platform
-
----
-
-## Static Files & Templates
-
-### **Static Files Structure**
-```
-static/
-├── css/
-│   └── modules/
-│       ├── accommodation/
-│       ├── admin/
-│       ├── events/
-│       ├── fan/
-│       ├── transport/
-│       └── wallet/
-├── js/
-│   ├── global/
-│   │   ├── main.js
-│   │   ├── media-manager.js
-│   │   └── theme-manager.js
-│   └── modules/
-│       ├── accommodation/
-│       ├── events/
-│       └── transport/
-└── images/
-```
-
-### **Templates Structure**
-```
-templates/
-├── admin/
-│   ├── super_dashboard.html
-│   ├── moderator_dashboard.html
-│   ├── support_dashboard.html
-│   ├── auditor_dashboard.html
-│   ├── manage_roles.html
-│   ├── manage_users_ultimate.html
-│   ├── view_user_ultimate.html
-│   └── compliance/
-├── fan/
-│   └── enhanced_dashboard.html
-├── accommodation_home.html
-├── transport_home.html
-├── tournament_home.html
-├── tourism_home.html
-├── public_home.html
-└── base.html
-```
-
-### **Mobile Optimization Documentation**
-- **`static/MOBILE_OPTIMIZATION.md`** — Canonical record of the 2026 mobile responsive refactor. Includes full file tree, per-file change log, what was explicitly preserved (colors, gradients, desktop layout), verification checklist, and future isolation plan for subsequent optimization phases.
+Proprietary — AFCON360 Platform.

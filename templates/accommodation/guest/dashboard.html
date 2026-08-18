@@ -7,3 +7,8 @@
 {% block content %}
 {% include "accommodation/guest/_dashboard_content.html" %}
 {% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/modules/accommodation/confirmation.js') }}"></script>
+{% endblock %}

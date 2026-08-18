@@ -40,6 +40,37 @@
         showStep(step);
     }
 
+    function validatePartySize() {
+        var bookingType = document.querySelector('[name="booking_type"]:checked')?.value;
+        var rooms = bookingType === 'group'
+            ? parseInt(document.getElementById('totalRooms')?.value, 10)
+            : 1;
+        var guests = bookingType === 'group'
+            ? parseInt(document.getElementById('groupGuestCount')?.value, 10)
+            : parseInt(document.querySelector('[name="num_guests"]')?.value, 10);
+        var maxGuests = parseInt(document.querySelector('[name="room_max_guests"]')?.value, 10);
+        var feedback = document.getElementById('capacity-feedback');
+
+        if (!Number.isInteger(rooms) || rooms < 1 || !Number.isInteger(guests) || guests < 1) {
+            if (feedback) {
+                feedback.textContent = 'Enter at least one room and one guest.';
+                feedback.classList.remove('d-none');
+            }
+            return false;
+        }
+        if (Number.isInteger(maxGuests) && guests > rooms * maxGuests) {
+            if (feedback) {
+                feedback.textContent = 'This room accommodates up to ' + (rooms * maxGuests) +
+                    ' guest(s) across ' + rooms + ' room(s). Choose more rooms or fewer guests.';
+                feedback.classList.remove('d-none');
+                feedback.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            return false;
+        }
+        if (feedback) feedback.classList.add('d-none');
+        return true;
+    }
+
     function validateAndNext(fromStep, toStep) {
         var error = false;
         var timingSelected = document.querySelector('[name="payment_timing"]:checked');
@@ -102,6 +133,49 @@
         }
     }
 
+    function renderTimingsForMethod(methodId) {
+        var wrapper = document.querySelector('.payment-method-wrapper input[value="' + methodId + '"]')?.closest('.payment-method-wrapper');
+        var timingGrid = document.getElementById('timingGrid');
+        if (!wrapper || !timingGrid) return;
+
+        var allowedTimings = [];
+        try {
+            allowedTimings = JSON.parse(wrapper.dataset.allowedTimings || '[]');
+        } catch (error) {
+            allowedTimings = [];
+        }
+
+        timingGrid.innerHTML = '';
+        document.querySelectorAll('[name="payment_timing"]').forEach(function (input) {
+            input.checked = false;
+        });
+        if (!allowedTimings.length) {
+            timingGrid.innerHTML = '<div class="alert alert-warning">No payment timing options are available for this method.</div>';
+            return;
+        }
+
+        var labels = {
+            pay_now: ['fa-bolt text-success', 'Instant', 'Pay the full amount now.'],
+            deposit: ['fa-hand-holding-usd text-warning', 'Deposit', 'Pay a deposit now and the balance later.'],
+            pay_on_arrival: ['fa-hotel text-primary', 'On Arrival', 'Pay when you check in.'],
+            invoice: ['fa-file-invoice text-info', 'Invoice', 'Billed separately according to your agreement.']
+        };
+        allowedTimings.forEach(function (timing) {
+            var meta = labels[timing] || ['fa-circle', timing, ''];
+            var card = document.createElement('div');
+            card.className = 'timing-card';
+            card.dataset.timingValue = timing;
+            card.innerHTML = '<input type="radio" name="payment_timing" value="' + timing + '" id="timing_' + timing + '" class="form-check-input">' +
+                '<label class="form-check-label" for="timing_' + timing + '"><i class="fas ' + meta[0] + '"></i> ' +
+                timing.replace(/_/g, ' ').replace(/\b\w/g, function (char) { return char.toUpperCase(); }) +
+                ' <span class="badge-timing">' + meta[1] + '</span></label>' +
+                '<div class="timing-description">' + meta[2] + '</div>';
+            timingGrid.appendChild(card);
+        });
+        var depositSection = document.getElementById('depositSection');
+        if (depositSection) depositSection.hidden = !allowedTimings.includes('deposit');
+    }
+
     function selectPaymentMethod(methodId) {
         var radio = document.querySelector('[name="payment_method"][value="' + methodId + '"]');
         if (!radio) return;
@@ -133,14 +207,32 @@
                 labelEl.innerHTML = '<i class="fas fa-info-circle"></i> Select a payment method';
             }
         }
+        radio.checked = true;
 
         var feedback = document.getElementById('payment-method-feedback');
         if (feedback) {
             feedback.classList.remove('show');
         }
+        renderTimingsForMethod(methodId);
+        var wrapper = radio.closest('.payment-method-wrapper');
+        document.querySelectorAll('.summary-currency').forEach(function (element) {
+            element.textContent = wrapper?.dataset.currency || 'USD';
+        });
     }
 
     function selectTiming(timing) {
+        var radio = document.querySelector('[name="payment_timing"][value="' + timing + '"]');
+        if (!radio) return;
+        document.querySelectorAll('[name="payment_timing"]').forEach(function (el) { el.checked = false; });
+        document.querySelectorAll('.timing-card').forEach(function (card) { card.classList.remove('selected'); });
+        radio.checked = true;
+        radio.closest('.timing-card')?.classList.add('selected');
+        var depositSection = document.getElementById('depositSection');
+        if (depositSection) depositSection.hidden = timing !== 'deposit';
+        var timingFeedback = document.getElementById('payment-timing-feedback');
+        if (timingFeedback) timingFeedback.classList.remove('show');
+        return;
+
         var wasAlreadySelected = document.querySelector('[name="payment_timing"]:checked')?.value === timing;
 
         document.querySelectorAll('[name="payment_timing"]').forEach(function(el) {
@@ -205,7 +297,7 @@
             }
 
             var summaryText = document.getElementById('payment-summary-text');
-            var totalEl = document.getElementById('bookingTotal');
+            var totalEl = document.querySelector('.price-item.total .amount');
             var total = totalEl ? parseFloat(totalEl.dataset.value || totalEl.textContent) : 0;
             var currency = '$';
 
@@ -288,6 +380,8 @@
             var targetStep = parseInt(nextStepVal, 10);
             if (btn.dataset.validate !== undefined) {
                 validateAndNext(currentStep, targetStep);
+            } else if (btn.dataset.validateParty !== undefined) {
+                if (validatePartySize()) showStep(targetStep);
             } else {
                 nextStep(targetStep);
             }
@@ -340,6 +434,16 @@
     });
 
     document.getElementById('checkout-form')?.addEventListener('submit', function(e) {
+        if (!validatePartySize()) {
+            e.preventDefault();
+            return false;
+        }
+        var bookingType = document.querySelector('[name="booking_type"]:checked')?.value;
+        var finalGuests = document.getElementById('numGuestsFinal');
+        var groupGuests = document.querySelector('[name="num_guests_group"]');
+        if (finalGuests && bookingType === 'group' && groupGuests) {
+            finalGuests.value = groupGuests.value;
+        }
         if (!document.getElementById('terms').checked) {
             e.preventDefault();
             alert('Please accept the terms and conditions.');
@@ -369,28 +473,19 @@
         }
     });
 
-    document.getElementById('totalRooms')?.addEventListener('change', function() {
-        var roomNumberInput = document.getElementById('roomNumber');
-        if (roomNumberInput) {
-            var currentRoom = parseInt(roomNumberInput.value);
-            var totalRooms = parseInt(this.value);
-
-            if (currentRoom > totalRooms) {
-                roomNumberInput.value = totalRooms;
-            }
-            roomNumberInput.max = totalRooms;
-            roomNumberInput.readOnly = false;
-        }
-    });
+    // room_number is intentionally not derived from totalRooms. Which room
+    // each guest occupies is assigned post-booking on the guest roster —
+    // totalRooms only feeds rooms_requested (the atomic quantity held at
+    // checkout). A prior version of this listener wrote totalRooms into a
+    // #roomNumber element that no longer exists in the template; removed
+    // rather than reconnected, since reconnecting it would silently conflate
+    // "how many rooms" with "which room," which is exactly what the deferred
+    // room-assignment design was built to avoid.
 
     // ---- Initialise ----
     document.addEventListener('DOMContentLoaded', function() {
-        var savedStep = sessionStorage.getItem('checkoutWizardStep');
-        if (savedStep) {
-            showStep(parseInt(savedStep, 10));
-        } else {
-            showStep(1);
-        }
+        var savedStep = Math.min(3, Math.max(1, parseInt(sessionStorage.getItem('checkoutWizardStep') || '1', 10)));
+        showStep(savedStep);
 
         var selectedTiming = document.querySelector('[name="payment_timing"]:checked');
         if (selectedTiming) {

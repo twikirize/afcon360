@@ -9,10 +9,58 @@
 {% block title %}KYC Verification - AFCON360{% endblock %}
 {% block content %}
 <div class="kyc-dashboard">
-    <h1>KYC Verification Status</h1>
+    <h1>Identity verification</h1>
+    <p class="mb-4" style="max-width:720px; color:var(--text-secondary);">
+        Complete the checks below to unlock the features and transaction limits available for your account.
+        We only ask for information needed for identity, fraud, and financial-crime screening.
+    </p>
+
+    <div class="panel mb-4">
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">Your verification decision</div>
+                <small style="color:var(--text-secondary);">Current account level: {{ kyc_info.tier_name }}</small>
+            </div>
+            <strong>{{ kyc_info.verification_status|replace('_', ' ')|title }}</strong>
+        </div>
+        <div class="panel-body">
+            <p>{{ verification_message }}</p>
+            {% if overall_status == 'rejected' %}
+                {% set rejection = records|selectattr('rejection_reason')|list|last %}
+                {% if rejection %}
+                    <div class="alert alert-warning">
+                        <strong>Action required:</strong> {{ rejection.rejection_reason }}
+                    </div>
+                {% endif %}
+            {% elif overall_status == 'processing' %}
+                <div class="alert alert-info">
+                    Your submission is in compliance review. We will notify you if clarification or replacement evidence is required.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="panel mb-4">
+        <div class="panel-header">
+            <div class="panel-title">Requirements for your next level</div>
+            <span>{{ fulfillment_percentage }}% complete</span>
+        </div>
+        <div class="panel-body">
+            <p style="color:var(--text-secondary);">
+                {% if next_tier_name %}To reach {{ next_tier_name }}, complete the following:{% else %}Your current verification level is the highest available level.{% endif %}
+            </p>
+            <ul class="list-unstyled mb-0">
+                {% for requirement in (missing_requirements or next_tier_requirements) %}
+                    <li class="mb-2"><i class="bi bi-exclamation-circle text-warning me-2"></i>{{ requirement }}</li>
+                {% else %}
+                    <li><i class="bi bi-check-circle text-success me-2"></i>All required checks are complete.</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
 
     {# Visual progress tracker — CSS steps showing pending → processing → verified #}
-    <div class="panel">
+    <div class="panel mb-4">
         <div class="panel-header">
             <div class="panel-title">Verification Progress</div>
         </div>
@@ -75,18 +123,6 @@
                 </ul>
             </div>
 
-            <p class="mb-3" style="font-size:0.95rem; color:var(--text-primary); max-width:520px; line-height:1.6;">
-                {% if overall_status == 'not_started' %}
-                    You have not submitted any verification documents yet.
-                {% elif overall_status == 'verified' %}
-                    Your identity has been successfully verified.
-                {% elif overall_status == 'rejected' %}
-                    Your submission was rejected. Please review the feedback and resubmit.
-                {% else %}
-                    Your documents are being reviewed by our compliance team.
-                {% endif %}
-            </p>
-
             {% if overall_status != 'verified' %}
             <div class="mt-2">
                 {% if show_organization %}
@@ -100,6 +136,17 @@
                 {% endif %}
             </div>
             {% endif %}
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header"><div class="panel-title">What happens next?</div></div>
+        <div class="panel-body">
+            <ol class="mb-0">
+                <li class="mb-2">Submit clear, valid evidence for each outstanding requirement.</li>
+                <li class="mb-2">Automated checks and, where necessary, a trained compliance reviewer assess the submission.</li>
+                <li>We approve the verification or explain exactly what must be corrected before resubmission.</li>
+            </ol>
         </div>
     </div>
 </div>

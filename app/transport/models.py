@@ -14,13 +14,13 @@ import hashlib
 import secrets
 
 from sqlalchemy import (
-    Index, UniqueConstraint, CheckConstraint, text, Enum as SQLEnum,
+    Index, UniqueConstraint, CheckConstraint, Enum as SQLEnum,
     ForeignKeyConstraint, event, DDL, and_
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import validates, relationship, backref
-from sqlalchemy.sql import expression
+from sqlalchemy.sql import column, expression
 
 from app.extensions import db
 from app.models.base import BaseModel
@@ -208,7 +208,7 @@ class DriverProfile(TransportBase, AuditMixin):
         Index("ix_driver_online", "is_online", "is_available", "last_seen_at"),
 
         # Partial indexes for performance
-        Index("ix_driver_not_deleted", "is_deleted", postgresql_where=text("is_deleted = false")),
+        Index("ix_driver_not_deleted", "is_deleted", postgresql_where=column("is_deleted") == expression.false()),
         Index("ix_driver_deleted", "is_deleted"),
 
         # Foreign key constraints
@@ -449,9 +449,9 @@ class OrganisationTransportProfile(TransportBase, AuditMixin):
         Index("ix_org_profile_status", "registration_type", "compliance_status", "is_deleted"),
 
         # Partial indexes for performance
-        Index("ix_org_not_deleted", "is_deleted", postgresql_where=text("is_deleted = false")),
+        Index("ix_org_not_deleted", "is_deleted", postgresql_where=column("is_deleted") == expression.false()),
         Index("ix_org_verified", "registration_type",
-              postgresql_where=text("registration_type IN ('platform_verified', 'event_certified')")),
+              postgresql_where=column("registration_type").in_(['platform_verified', 'event_certified'])),
         Index("ix_org_deleted", "is_deleted"),
 
         # Business rule constraints
@@ -785,7 +785,12 @@ class DriverVehicleHistory(TransportBase):
         Index("ix_driver_vehicle_history_driver", "driver_id", "started_at"),
         Index("ix_driver_vehicle_history_vehicle", "vehicle_id", "started_at"),
         Index("ix_driver_vehicle_history_active", "ended_at"),
-        Index("ix_unique_active_vehicle","vehicle_id",   unique=True,postgresql_where=text("ended_at IS NULL")),
+        Index(
+            "ix_unique_active_vehicle",
+            "vehicle_id",
+            unique=True,
+            postgresql_where=column("ended_at").is_(None),
+        ),
     )
     # Who and What
     driver_id = db.Column(db.BigInteger, db.ForeignKey("driver_profiles.id"), nullable=False)

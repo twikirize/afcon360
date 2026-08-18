@@ -1,9 +1,11 @@
 import logging
+import os
 from logging.config import fileConfig
 
 from flask import current_app
 
 from alembic import context
+from sqlalchemy.engine import make_url
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -51,11 +53,44 @@ def get_engine_url():
         return str(get_engine().url).replace('%', '%%')
 
 
+def assert_testing_database():
+    """Prevent testing migrations from targeting a non-test database."""
+    if os.getenv('APP_ENV') != 'testing' and os.getenv('FLASK_ENV') != 'testing':
+        return
+
+    database_url = make_url(str(get_engine().url))
+    if database_url.get_backend_name() != 'postgresql':
+        raise RuntimeError(
+            'Testing migrations require the PostgreSQL backend, got '
+            f"'{database_url.get_backend_name()}'."
+        )
+    if not database_url.database or not database_url.database.endswith('_test'):
+        raise RuntimeError(
+            'Testing migrations require a dedicated PostgreSQL database whose '
+            "name ends with '_test'."
+        )
+
+    configured_url = os.getenv('TEST_DATABASE_URL')
+    if configured_url:
+        configured_database_url = make_url(configured_url)
+        if (
+            configured_database_url.get_backend_name() != 'postgresql'
+            or configured_database_url.database != database_url.database
+            or configured_database_url.host != database_url.host
+            or configured_database_url.port != database_url.port
+        ):
+            raise RuntimeError(
+                'Testing migrations must use the same PostgreSQL database as '
+                'TEST_DATABASE_URL.'
+            )
+
+
 # add your model's MetaData object here
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 config.set_main_option('sqlalchemy.url', get_engine_url())
+assert_testing_database()
 target_db = current_app.extensions['migrate'].db
 
 # other values from the config, defined by the needs of env.py,

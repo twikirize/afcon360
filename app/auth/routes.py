@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import secrets
 import time
+import json
+import logging
 from typing import Optional
 from urllib.parse import urlparse, urljoin
 from flask import (Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for,)
@@ -19,6 +21,7 @@ from app.profile.models import get_profile_by_user
 
 # Standardized blueprint name: auth
 auth_bp = Blueprint("auth", __name__, url_prefix="")
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +111,17 @@ def _dashboard_for_user(user) -> str:
     RULE: If the user has NOT completed onboarding, redirect to the
     onboarding landing page regardless of roles.
     """
+
+    # Re-resolve an explicitly selected workspace before legacy role routing.
+    # The legacy branches remain as a compatibility fallback during migration.
+    try:
+        from app.auth.context import get_active_context
+
+        active_context = get_active_context(user)
+        if active_context.type.value != "personal" and active_context.workspace_url:
+            return active_context.workspace_url
+    except Exception as exc:
+        current_app.logger.debug("Canonical context redirect unavailable: %s", exc)
     
     # STEP 2: Owner check
     if hasattr(user, 'is_app_owner') and callable(user.is_app_owner):
@@ -590,11 +604,11 @@ def verify_email_code():
 @require_fresh_user
 def verify_phone():
     """
-    Verify phone number using OTP code sent via email (temporary - until Twilio is set up).
+    Verify phone number using the owner-selected OTP delivery transport.
     """
-    from app.auth.otp_service import OTPService
+    from app.auth.phone_verification import PhoneVerificationService
+    from app.auth.config_model import AuthConfiguration
     from app.profile.models import get_profile_by_user
-    from app.extensions import db
 
     profile = get_profile_by_user(current_user.public_id)
     phone_number = getattr(profile, 'phone_number', '') if profile else ''
@@ -602,12 +616,17 @@ def verify_phone():
 
     if request.method == "GET":
         if not user_email:
-            flash("No email address found on your account. Cannot verify phone via email.", "danger")
+            flash("No email address found on your account. Cannot start phone verification.", "danger")
             return redirect(url_for("profile.edit_profile"))
+        try:
+            phone_verification_transport = AuthConfiguration.get_config().get_phone_verification_transport()
+        except Exception:
+            phone_verification_transport = "email"
         return render_template(
             "auth/verify_phone.html",
             phone_number=phone_number,
             email=user_email,
+            phone_verification_transport=phone_verification_transport,
         )
 
     code = request.form.get("code", "").strip()
@@ -616,18 +635,16 @@ def verify_phone():
         flash("Please enter a valid 6-digit code.", "danger")
         return redirect(request.referrer or url_for("index"))
 
-    success, message = OTPService.verify_otp(
-        identifier=user_email,
-        otp=code,
-        purpose="phone_verification",
+    success, message = PhoneVerificationService.verify_code(
+        user=current_user,
+        profile=profile,
+        code=code,
     )
 
     if success:
         flash("Phone number verified successfully!", "success")
         session['phone_verified'] = True
-        if profile:
-            profile.phone_verified = True
-            db.session.commit()
+        return redirect(url_for("profile.account_overview"))
     else:
         flash(f"Invalid or expired verification code: {message}", "danger")
 
@@ -682,12 +699,11 @@ def delete_account():
 @limiter.limit("5 per hour")
 def send_phone_verification():
     """
-    Send OTP code to user's email for phone verification (temporary - until Twilio is set up).
+    Send a phone-verification OTP through the owner-selected transport.
     If a new phone number is provided and differs from the profile, update the profile first.
     """
-    from app.auth.otp_service import OTPService
+    from app.auth.phone_verification import PhoneVerificationService
     from app.profile.models import get_profile_by_user
-    from app.extensions import db
 
     phone_number = request.form.get("phone_number", "").strip()
 
@@ -705,35 +721,20 @@ def send_phone_verification():
         return redirect(request.referrer or url_for("auth.verify_phone"))
 
     profile = get_profile_by_user(current_user.public_id)
-    if profile and phone_number != getattr(profile, 'phone_number', None):
-        profile.phone_number = phone_number
-        db.session.commit()
-
-    otp = OTPService.generate_otp(length=6)
-    stored = OTPService.store_otp(
-        identifier=user_email,
-        otp=otp,
-        purpose="phone_verification",
-        ttl=300,
-    )
-
-    if not stored:
-        flash("Failed to generate verification code. Please try again.", "danger")
-        return redirect(request.referrer or url_for("auth.verify_phone"))
-
-    result = OTPService.send_email_otp_checked(
-        email=user_email,
-        otp=otp,
-        purpose="phone_verification",
-        user_id=current_user.id,
+    result = PhoneVerificationService.request_code(
+        user=current_user,
+        profile=profile,
+        phone_number=phone_number,
     )
 
     if result.get('success'):
-        flash(f"Verification code sent to your email ({user_email}).", "success")
+        if result.get('transport') == 'sms':
+            flash(f"Verification code sent by SMS to {phone_number}.", "success")
+        else:
+            flash(f"Verification code sent to your email ({user_email}).", "success")
         if result.get('debug_otp'):
             flash(f"[DEV] Your verification code is {result['debug_otp']}", "info")
     else:
-        OTPService.invalidate_otp(user_email, "phone_verification")
         flash(f"Failed to send verification code: {result.get('message', 'Unknown error')}", "danger")
 
     return redirect(request.referrer or url_for("auth.verify_phone"))
@@ -1000,7 +1001,8 @@ def logout():
     keys_to_clear = [
         "server_session_id", "user_id", "username", "ip", "user_agent",
         "current_context", "current_org_id", "has_organisations",
-        "available_orgs", "needs_profile_completion"
+        "available_orgs", "needs_profile_completion",
+        "active_context_type", "active_context_id", "active_role",
     ]
     for key in keys_to_clear:
         session.pop(key, None)
@@ -1144,66 +1146,98 @@ def recover_verify():
 
 
 # ---------------------------------------------------------------------------
-# Organization Context Switching
+# Operating Context Switching
 # ---------------------------------------------------------------------------
 
-@auth_bp.route("/switch-context/<context>", methods=["POST", "GET"])
+@auth_bp.route("/switch-context", methods=["POST"])
+@auth_bp.route("/switch-context/<context>", methods=["POST"])
 @login_required
-def switch_context(context):
+def switch_context(context=None):
     """
-    Switch between personal and organisation context.
-    Called from the nav dropdown.
-    context: 'individual' | 'organization'
+    Select one already-authorised operating context.
+
+    The path parameter is retained only as a POST compatibility shape. The
+    request body is the canonical contract and is validated by the resolver.
+    Flask-WTF's application-wide CSRF protection rejects missing/invalid tokens
+    before this function executes.
     """
-    from flask import session, redirect, url_for, request
+    from app.auth.context import (
+        ContextRequest,
+        ContextSwitchError,
+        get_active_context,
+        switch_context as select_context,
+    )
+    from app.audit.forensic_audit import ForensicAuditService
 
-    if context == "individual":
-        session["current_context"] = "individual"
-        session.pop("current_org_id", None)
-        session.pop("current_org_name", None)
-        # Redirect to universal dashboard
+    logger.info("Context switch request received: user=%s path=%s", current_user.public_id, request.path)
+    payload = request.get_json(silent=True) if request.is_json else request.form.to_dict()
+    payload = payload or {}
+    if context and not payload.get("type"):
+        payload["type"] = context
+    if not payload.get("id") and not payload.get("public_id"):
+        payload["id"] = payload.get("org_id") or payload.get("event_id")
+    if not payload.get("role") and context in ("individual", "personal"):
+        payload["role"] = "user"
+
+    previous = get_active_context(current_user)
+    requested_type = payload.get("type") or "unknown"
+    requested_id = payload.get("public_id", payload.get("id"))
+    audit_details = {
+        "previous_context": previous.to_dict(),
+        "requested_context": {
+            "type": str(requested_type),
+            "public_id": str(requested_id) if requested_id else None,
+            "role": payload.get("role"),
+        },
+    }
+    audit_id = ForensicAuditService.log_attempt(
+        entity_type="operating_context",
+        entity_id=str(requested_id or current_user.public_id),
+        action="switch",
+        user_id=current_user.id,
+        details=audit_details,
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string,
+    )
+
+    wants_json = request.is_json or request.accept_mimetypes.best == "application/json"
+    try:
+        normalized = ContextRequest.from_value(payload)
+        if normalized.type.value != "personal" and not normalized.role:
+            raise ContextSwitchError("role is required for a non-personal context")
+        selected = select_context(current_user, normalized)
+    except (ContextSwitchError, ValueError) as exc:
+        ForensicAuditService.log_blocked(
+            entity_type="operating_context",
+            entity_id=str(requested_id or current_user.public_id),
+            action="switch",
+            user_id=current_user.id,
+            reason=str(exc),
+            attempted_value=json.dumps(audit_details, default=str),
+            ip_address=request.remote_addr,
+            user_agent=request.user_agent.string,
+        )
+        if wants_json:
+            return jsonify({"success": False, "error": "Invalid or unassigned context"}), 400
+        flash("That operating context is unavailable.", "danger")
         return redirect(url_for("user.dashboard"))
 
-    elif context == "organization":
-        # org_id must be provided as query param or form field
-        org_id = request.args.get("org_id") or request.form.get("org_id")
-        if not org_id:
-            flash("No organisation specified.", "warning")
-            return redirect(url_for("user.dashboard"))
-
-        # Verify user is a member of this org
-        from app.identity.models.organisation import Organisation
-        from app.identity.models.organisation_member import OrganisationMember
-        from app.identity.models.user import User as UserModel
-
-        db_user = UserModel.query.filter_by(
-            public_id=str(current_user.public_id)
-        ).first()
-
-        org = Organisation.query.filter_by(org_id=org_id).first()
-        if not org:
-            flash("Organisation not found.", "danger")
-            return redirect(url_for("user.dashboard"))
-
-        member = OrganisationMember.query.filter_by(
-            user_id=db_user.id,
-            organisation_id=org.id,
-            is_active=True,
-            is_deleted=False,
-        ).first()
-
-        if not member:
-            flash("You are not a member of this organisation.", "danger")
-            return redirect(url_for("user.dashboard"))
-
-        session["current_context"] = "organization"
-        session["current_org_id"] = org.org_id   # UUID - not BIGINT
-        session["current_org_name"] = org.legal_name
-
-        return redirect(url_for("user.dashboard"))
-
-    else:
-        return redirect(url_for("user.dashboard"))
+    ForensicAuditService.log_completion(
+        audit_id,
+        result_details={"context": selected.to_dict()},
+    )
+    # A context switch must enter the selected workspace.  The browser sends
+    # the current page as ``next`` for compatibility, but that is commonly
+    # ``/user/dashboard`` and must not override the resolved destination.
+    target = selected.workspace_url
+    if not target:
+        target = payload.get("next")
+    if not target or not is_safe_url(target):
+        target = url_for("user.dashboard")
+    if wants_json:
+        logger.info("Context switch completed: user=%s type=%s public_id=%s role=%s redirect=%s", current_user.public_id, selected.type.value, selected.public_id, selected.role, target)
+        return jsonify({"success": True, "context": selected.to_dict(), "redirect": target})
+    return redirect(target)
 
 
 # ---------------------------------------------------------------------------

@@ -24,6 +24,7 @@ class GuestRegistration(BaseModel):
         Index("idx_guest_reg_booking", "booking_id"),
         Index("idx_guest_reg_user", "guest_user_id"),
         Index("idx_guest_reg_status", "status"),
+        Index("idx_guest_reg_active", "booking_id", "is_active"),
         CheckConstraint(
             "status IN ('pending', 'in_progress', 'completed', 'skipped')",
             name="ck_guest_reg_status_valid"
@@ -84,6 +85,27 @@ class GuestRegistration(BaseModel):
     notes = Column(Text, nullable=True)
     registration_source = Column(String(30), nullable=True)  # self, host, admin
 
+    # Slot lifecycle and reassignment audit trail.
+    is_active = Column(Boolean, default=True, server_default="true", nullable=False)
+    is_placeholder = Column(Boolean, default=False, server_default="false", nullable=False)
+    replaces_registration_id = Column(
+        BigInteger,
+        ForeignKey(
+            "accommodation_guest_registrations.id",
+            ondelete="SET NULL",
+            name="fk_guest_reg_replaces_registration",
+        ),
+        nullable=True,
+    )
+    removed_at = Column(DateTime(timezone=True), nullable=True)
+    removed_by_user_id = Column(
+        BigInteger,
+        ForeignKey("users.id", name="fk_guest_reg_removed_by_user"),
+        nullable=True,
+    )
+    removed_reason = Column(Text, nullable=True)
+    import_batch_id = Column(String(64), nullable=True, index=True)
+
     # -------------------------------
     # Timestamps
     # -------------------------------
@@ -111,3 +133,13 @@ class GuestRegistration(BaseModel):
         self.host_override_at = datetime.now(timezone.utc)
         if overridden_by_user_id:
             self.host_override_by = overridden_by_user_id
+
+    def remove(self, removed_by_user_id: int, reason: str):
+        """Retire a slot without deleting its identity or document history."""
+        reason = (reason or "").strip()
+        if not reason:
+            raise ValueError("A removal reason is required")
+        self.is_active = False
+        self.removed_at = datetime.now(timezone.utc)
+        self.removed_by_user_id = removed_by_user_id
+        self.removed_reason = reason

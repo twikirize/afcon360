@@ -20,7 +20,7 @@
       All Transactions
     </div>
     <div style="display:flex;gap:8px;">
-      <form method="GET" action="{{ safe_url('wallet.wallet_transactions') }}" style="display:flex;gap:8px;">
+      <form method="GET" action="{{ url_for('wallet.transactions') }}" style="display:flex;gap:8px;">
         <select name="range" class="form-control" style="width:auto;">
           <option value="7">Last 7 Days</option>
           <option value="30" selected>Last 30 Days</option>

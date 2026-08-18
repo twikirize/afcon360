@@ -326,11 +326,11 @@
           </td>
           <td data-col="reference"><span class="mono">{{ bk.booking_reference }}</span></td>
           <td data-col="guest">
-            <strong>{{ bk.guest_name | truncate(22) }}</strong><br>
-            <span class="cell-sub">{{ bk.guest_email | truncate(28) }}</span>
+            <strong>{{ (bk.guest_name or '') | truncate(22) }}</strong><br>
+            <span class="cell-sub">{{ (bk.guest_email or '') | truncate(28) }}</span>
           </td>
           <td data-col="owner" class="col-center">
-            <small>{{ bk.booking_owner.username | truncate(18) if bk.booking_owner else (bk.booked_by_user.username | truncate(18) if bk.booked_by_user else 'N/A') }}</small>
+            <small>{% if bk.booking_owner %}{{ (bk.booking_owner.username or '') | truncate(18) }}{% elif bk.booked_by_user %}{{ (bk.booked_by_user.username or '') | truncate(18) }}{% else %}N/A{% endif %}</small>
           </td>
           <td data-col="claimed" class="col-center">
             {% if bk.booking_type == 'third_party' %}
@@ -343,7 +343,7 @@
           </td>
           <td data-col="property">
             {% if bk.accommodation_property %}
-            <small>{{ bk.accommodation_property.title | truncate(30) }}</small><br>
+             <small>{{ (bk.accommodation_property.title or '') | truncate(30) }}</small><br>
             <span class="cell-sub">{{ bk.accommodation_property.city }}</span>
             {% else %}
             <span class="cell-sub">N/A</span>

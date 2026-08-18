@@ -1,65 +1,76 @@
 #app/events/routes/assignment.py
-"""Event Assignment Routes - Accommodation & Transport Management
-Integrates with EXISTING infrastructure:
-- EventAssignment model (accommodation_booking_id, transport_booking_id)
-- AccommodationBookingService.create_booking() & confirm_booking()
-- ProviderService.get_available_drivers()
-- AvailabilityService.is_range_available()
+"""Event Host coordination routes.
+
+The coordination service links attendees to already-reserved owning-domain
+resources; it does not create a parallel accommodation or transport system.
 """
 
-from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, current_app
+from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, abort
 from flask_login import login_required, current_user
-from sqlalchemy import and_, func
-from datetime import datetime, timezone
-from decimal import Decimal
+from sqlalchemy import and_, func, or_
 import csv
 from io import StringIO
 
 from app.extensions import db
-from app.auth.decorators import require_role
 from app.events.models import Event, EventRegistration, EventAssignment
-from app.accommodation.services.booking_service import BookingService
-from app.accommodation.services.availability_service import AvailabilityService
+from app.events.permissions import can_view_coordination
+from app.events.services.guest_coordination_service import (
+    CoordinationError,
+    GuestCoordinationService,
+)
 from app.accommodation.models.property import Property, AccommodationPropertyStatus
-from app.accommodation.models.booking import AccommodationBookingStatus
-from app.transport.models import Booking, BookingStatus, ServiceType, ProviderType
-from app.transport.services.provider_service import get_provider_service
-from app.identity.models.user import User
+from app.transport.models import Booking, BookingStatus, DriverProfile, Vehicle
 
-assignment_bp = Blueprint('event_assignment', __name__, url_prefix='/events')
+assignment_bp = Blueprint('event_assignment', __name__)
+
+
+def _event_for_ref(event_ref):
+    """Resolve public event references; numeric IDs remain legacy-only input."""
+    query = Event.query.filter(Event.is_deleted.is_(False))
+    event = query.filter(
+        (Event.public_id == str(event_ref))
+        | (Event.slug == str(event_ref))
+    ).first()
+    if event is None and str(event_ref).isdigit():
+        event = query.filter_by(id=int(event_ref)).first()
+    return event or abort(404)
 
 
 # ============================================================================
 # DASHBOARD - Main Assignment Interface
 # ============================================================================
 
-@assignment_bp.route('/<int:event_id>/assignment', methods=['GET'])
+@assignment_bp.route('/<event_ref>/assignment', methods=['GET'])
 @login_required
-@require_role('event_manager', 'admin', 'super_admin', 'owner')
-def assignment_dashboard(event_id):
+def assignment_dashboard(event_ref):
     """Main dashboard for event assignment management"""
-    event = Event.query.get_or_404(event_id)
+    event = _event_for_ref(event_ref)
+    event_id = event.id
 
-    # Permission check
-    if event.organizer_id != current_user.id and not current_user.has_global_role('admin'):
+    allowed, _ = can_view_coordination(current_user, event)
+    if not allowed:
         flash("You don't have permission to manage this event.", "danger")
         return redirect(url_for('events.list'))
 
     # Get event statistics
-    total_attendees = EventRegistration.query.filter_by(event_id=event_id).count()
+    total_attendees = EventRegistration.query.filter_by(
+        event_id=event_id, is_deleted=False
+    ).count()
 
     # Count assignments with bookings
     accommodation_assigned = db.session.query(func.count()).filter(
         and_(
             EventAssignment.event_id == event_id,
-            EventAssignment.accommodation_booking_id != None
+            EventAssignment.accommodation_booking_id != None,
+            EventAssignment.is_deleted.is_(False),
         )
     ).scalar() or 0
 
     transport_assigned = db.session.query(func.count()).filter(
         and_(
             EventAssignment.event_id == event_id,
-            EventAssignment.transport_booking_id != None
+            EventAssignment.transport_booking_id != None,
+            EventAssignment.is_deleted.is_(False),
         )
     ).scalar() or 0
 
@@ -84,7 +95,7 @@ def assignment_dashboard(event_id):
 
     # Get recent assignments
     recent_assignments = EventAssignment.query.filter_by(
-        event_id=event_id
+        event_id=event_id, is_deleted=False
     ).order_by(
         EventAssignment.assigned_at.desc()
     ).limit(10).all()
@@ -101,19 +112,22 @@ def assignment_dashboard(event_id):
 # ATTENDEES - List all registered attendees
 # ============================================================================
 
-@assignment_bp.route('/<int:event_id>/attendees', methods=['GET'])
+@assignment_bp.route('/<event_ref>/attendees', methods=['GET'])
 @login_required
-@require_role('event_manager', 'admin', 'super_admin', 'owner')
-def list_attendees(event_id):
+def list_attendees(event_ref):
     """List all registered attendees for an event"""
-    event = Event.query.get_or_404(event_id)
+    event = _event_for_ref(event_ref)
+    event_id = event.id
+    allowed, message = can_view_coordination(current_user, event)
+    if not allowed:
+        return jsonify({'success': False, 'code': 'EVENT_COORDINATION_FORBIDDEN', 'error': message}), 403
 
     page = request.args.get('page', 1, type=int)
     search = request.args.get('search', '')
     filter_type = request.args.get('filter', 'all')
 
     # Query attendees
-    query = EventRegistration.query.filter_by(event_id=event_id)
+    query = EventRegistration.query.filter_by(event_id=event_id, is_deleted=False)
 
     if search:
         query = query.filter(
@@ -122,8 +136,44 @@ def list_attendees(event_id):
         )
 
     # Get assignments for filtering
-    assignments = db.session.query(EventAssignment).filter_by(event_id=event_id).all()
+    assignments = db.session.query(EventAssignment).filter_by(
+        event_id=event_id, is_deleted=False
+    ).all()
+    user_registration_ids = {
+        identity_id: registration_id
+        for registration_id, user_id, attendee_user_id in EventRegistration.query.filter_by(
+            event_id=event_id, is_deleted=False
+        ).with_entities(
+            EventRegistration.id,
+            EventRegistration.user_id,
+            EventRegistration.attendee_user_id,
+        ).all()
+        for identity_id in (user_id, attendee_user_id)
+        if identity_id is not None
+    }
     assignment_map = {a.registration_id: a for a in assignments if a.registration_id}
+    accommodation_ids = set()
+    transport_ids = set()
+    for assignment in assignments:
+        registration_id = user_registration_ids.get(assignment.attendee_id)
+        if registration_id is not None:
+            assignment_map.setdefault(registration_id, assignment)
+        registration_id = assignment.registration_id or registration_id
+        if registration_id and assignment.accommodation_booking_id:
+            accommodation_ids.add(registration_id)
+        if registration_id and assignment.transport_booking_id:
+            transport_ids.add(registration_id)
+    if filter_type == 'accommodation':
+        query = query.filter(~EventRegistration.id.in_(accommodation_ids)) if accommodation_ids else query
+    elif filter_type == 'transport':
+        query = query.filter(~EventRegistration.id.in_(transport_ids)) if transport_ids else query
+    elif filter_type == 'both':
+        if accommodation_ids:
+            query = query.filter(~EventRegistration.id.in_(accommodation_ids))
+        if transport_ids:
+            query = query.filter(~EventRegistration.id.in_(transport_ids))
+    elif filter_type == 'assigned':
+        query = query.filter(EventRegistration.id.in_(accommodation_ids & transport_ids))
 
     attendees = query.paginate(page=page, per_page=20, error_out=False)
 
@@ -137,222 +187,167 @@ def list_attendees(event_id):
     )
 
 
+@assignment_bp.route('/<event_ref>/coordination', methods=['GET'])
+@login_required
+def coordination_dashboard(event_ref):
+    event = _event_for_ref(event_ref)
+    try:
+        result = GuestCoordinationService.dashboard(
+            event,
+            current_user,
+            search=request.args.get('search'),
+            page=request.args.get('page', 1, type=int),
+        )
+    except CoordinationError as error:
+        return jsonify({'success': False, 'code': error.code, 'error': error.message}), 403
+    return jsonify({'success': True, **result})
+
+
 # ============================================================================
 # ACCOMMODATION - Assign accommodation using EXISTING BookingService
 # ============================================================================
 
-@assignment_bp.route('/<int:event_id>/accommodation/assign', methods=['POST'])
+@assignment_bp.route('/<event_ref>/accommodation/assign', methods=['POST'])
 @login_required
-@require_role('event_manager', 'admin', 'super_admin', 'owner')
-def assign_accommodation(event_id):
-    """Assign accommodation to an attendee
-    Uses: AccommodationBookingService.create_booking() + confirm_booking()
-    Stores: EventAssignment.accommodation_booking_id
-    """
-    event = Event.query.get_or_404(event_id)
-    data = request.get_json()
-
-    attendee_id = data.get('attendee_id')
-    property_id = data.get('property_id')
-    check_in = data.get('check_in')  # ISO format
-    check_out = data.get('check_out')
-
-    # Get registration
-    registration = EventRegistration.query.filter_by(
-        id=attendee_id, event_id=event_id
-    ).first_or_404()
+def assign_accommodation(event_ref):
+    """Link a confirmed attendee to an existing event accommodation booking."""
+    event = _event_for_ref(event_ref)
+    event_id = event.id
+    data = request.get_json(silent=True) or {}
 
     try:
-        # 1. CREATE booking using EXISTING service
-        booking, error = BookingService.create_booking(
-            guest_user_id=registration.user_id,
-            property_id=property_id,
-            check_in_date=datetime.fromisoformat(check_in).date(),
-            check_out_date=datetime.fromisoformat(check_out).date(),
-            context_type='EVENT',  # EXISTING feature
-            context_id=str(event_id)
+        assignment = GuestCoordinationService.assign_accommodation(
+            event,
+            current_user,
+            str(data.get('registration_ref') or data.get('attendee_ref') or ''),
+            data.get('booking_ref') or data.get('booking_id'),
         )
-
-        if error:
-            return jsonify({'success': False, 'error': error}), 400
-
-        # 2. AUTO-CONFIRM booking (event organizers pre-approve)
-        success, confirm_error = BookingService.confirm_booking(booking.id)
-        if not success:
-            return jsonify({'success': False, 'error': confirm_error}), 400
-
-        # 3. LINK to EventAssignment (EXISTING model)
-        assignment = EventAssignment.query.filter_by(
-            event_id=event_id,
-            registration_id=registration.id
-        ).first()
-
-        if not assignment:
-            assignment = EventAssignment(
-                event_id=event_id,
-                attendee_id=registration.user_id,
-                registration_id=registration.id
-            )
-            db.session.add(assignment)
-
-        assignment.accommodation_booking_id = booking.id
-        assignment.assigned_by_id = current_user.id
-        assignment.assigned_at = datetime.now(timezone.utc)
-
-        db.session.commit()
-
         return jsonify({
             'success': True,
-            'booking_reference': booking.booking_reference,
-            'booking_id': booking.id,
-            'message': 'Accommodation assigned and confirmed'
+            'assignment_ref': GuestCoordinationService._assignment_ref(
+                event, assignment.registration
+            ),
+            'registration_ref': assignment.registration.registration_ref,
+            'status': assignment.status,
         })
-
-    except Exception as e:
+    except CoordinationError as error:
         db.session.rollback()
-        current_app.logger.error(f"Accommodation assignment error: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
-
+        return jsonify({'success': False, 'code': error.code, 'error': error.message}), 400
 
 # ============================================================================
 # TRANSPORT - Assign transport using EXISTING Booking model
 # ============================================================================
 
-@assignment_bp.route('/<int:event_id>/transport/assign', methods=['POST'])
+@assignment_bp.route('/<event_ref>/transport/assign', methods=['POST'])
 @login_required
-@require_role('event_manager', 'admin', 'super_admin', 'owner')
-def assign_transport(event_id):
-    """Assign transport to an attendee
-    Uses: ProviderService.get_available_drivers() + Booking model
-    Stores: EventAssignment.transport_booking_id
-    """
-    event = Event.query.get_or_404(event_id)
-    data = request.get_json()
-
-    attendee_id = data.get('attendee_id')
-    pickup_time_str = data.get('pickup_time')  # ISO format
-
-    # Get registration
-    registration = EventRegistration.query.filter_by(
-        id=attendee_id, event_id=event_id
-    ).first_or_404()
+def assign_transport(event_ref):
+    """Link a confirmed attendee to an existing eligible transport booking."""
+    event = _event_for_ref(event_ref)
+    event_id = event.id
+    data = request.get_json(silent=True) or {}
 
     try:
-        # 1. CHECK available drivers using EXISTING service
-        provider_service = get_provider_service()
-        available_drivers = provider_service.get_available_drivers(
-            zone=event.city,
-            limit=50
+        assignment = GuestCoordinationService.assign_transport(
+            event,
+            current_user,
+            str(data.get('registration_ref') or data.get('attendee_ref') or ''),
+            data.get('booking_ref') or data.get('booking_id'),
         )
-
-        if not available_drivers:
-            return jsonify({
-                'success': False,
-                'error': f'No available drivers in {event.city}'
-            }), 400
-
-        # 2. CREATE transport booking using EXISTING Booking model
-        booking = Booking(
-            user_id=registration.user_id,
-            service_type=ServiceType.STADIUM_SHUTTLE,
-            provider_type=ProviderType.TRANSPORT_COMPANY,
-            pickup_location={
-                'address': event.venue or event.city,
-                'latitude': getattr(event, 'venue_latitude', 0),
-                'longitude': getattr(event, 'venue_longitude', 0)
-            },
-            pickup_address=event.venue or event.city,
-            dropoff_address=event.venue or event.city,
-            pickup_time=datetime.fromisoformat(pickup_time_str),
-            passenger_count=1,
-            base_price=Decimal('0.00'),  # FREE for event attendees
-            subtotal=Decimal('0.00'),
-            total_amount=Decimal('0.00'),
-            final_price=Decimal('0.00'),
-            status=BookingStatus.CONFIRMED,  # AUTO-CONFIRMED
-            event_id=event_id,
-            booking_metadata={
-                'event_assignment': True,
-                'assignment_context': 'event_organizer'
-            }
-        )
-
-        booking.generate_booking_reference()
-        db.session.add(booking)
-        db.session.flush()
-
-        # 3. LINK to EventAssignment (EXISTING model)
-        assignment = EventAssignment.query.filter_by(
-            event_id=event_id,
-            registration_id=registration.id
-        ).first()
-
-        if not assignment:
-            assignment = EventAssignment(
-                event_id=event_id,
-                attendee_id=registration.user_id,
-                registration_id=registration.id
-            )
-            db.session.add(assignment)
-
-        assignment.transport_booking_id = booking.id
-        assignment.assigned_by_id = current_user.id
-        assignment.assigned_at = datetime.now(timezone.utc)
-
-        db.session.commit()
-
         return jsonify({
             'success': True,
-            'booking_reference': booking.booking_reference,
-            'booking_id': booking.id,
-            'available_drivers': len(available_drivers),
-            'message': 'Transport assigned and confirmed'
+            'assignment_ref': GuestCoordinationService._assignment_ref(
+                event, assignment.registration
+            ),
+            'registration_ref': assignment.registration.registration_ref,
+            'status': assignment.status,
         })
-
-    except Exception as e:
+    except CoordinationError as error:
         db.session.rollback()
-        current_app.logger.error(f"Transport assignment error: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'code': error.code, 'error': error.message}), 400
 
+
+@assignment_bp.route('/<event_ref>/coordination/bulk/<capability>', methods=['POST'])
+@login_required
+def bulk_coordination(event_ref, capability):
+    """Validate each attendee independently and report every result."""
+    event = _event_for_ref(event_ref)
+    data = request.get_json(silent=True) or {}
+    try:
+        result = GuestCoordinationService.bulk_assign(
+            event,
+            current_user,
+            capability,
+            data.get('assignments', []),
+        )
+        return jsonify(result), 200 if result['success'] else 207
+    except CoordinationError as error:
+        db.session.rollback()
+        return jsonify({'success': False, 'code': error.code, 'error': error.message}), 400
+
+
+@assignment_bp.route('/<event_ref>/coordination/<registration_ref>/<capability>', methods=['DELETE'])
+@login_required
+def cancel_coordination(event_ref, registration_ref, capability):
+    """Cancel one capability without deleting the attendee's other assignment."""
+    event = _event_for_ref(event_ref)
+    try:
+        assignment = GuestCoordinationService.cancel(
+            event, current_user, registration_ref, capability
+        )
+        return jsonify({
+            'success': True,
+            'registration_ref': registration_ref,
+            'capability': capability,
+            'status': assignment.status,
+        })
+    except CoordinationError as error:
+        db.session.rollback()
+        return jsonify({'success': False, 'code': error.code, 'error': error.message}), 400
 
 # ============================================================================
 # AVAILABILITY CHECKS - Query what's available
 # ============================================================================
 
-@assignment_bp.route('/<int:event_id>/available-properties', methods=['GET'])
+@assignment_bp.route('/<event_ref>/available-properties', methods=['GET'])
 @login_required
-def check_available_properties(event_id):
-    """Check available accommodation for event dates
-    Uses: AvailabilityService.is_range_available()
-    """
-    event = Event.query.get_or_404(event_id)
+def check_available_properties(event_ref):
+    """List event-reserved accommodation bookings, not generic inventory."""
+    event = _event_for_ref(event_ref)
+    allowed, message = can_view_coordination(current_user, event)
+    if not allowed:
+        return jsonify({'success': False, 'code': 'EVENT_COORDINATION_FORBIDDEN', 'error': message}), 403
 
-    properties = Property.query.filter(
-        Property.city == event.city,
-        Property.status == AccommodationPropertyStatus.ACTIVE.value,
-        Property.is_deleted == False
-    ).limit(50).all()
+    from app.accommodation.models.booking import AccommodationBooking
 
+    bookings = AccommodationBooking.query.filter(
+        or_(
+            AccommodationBooking.event_id == event.id,
+            AccommodationBooking.context_id.in_([str(event.public_id), str(event.slug)]),
+        ),
+        AccommodationBooking.status.in_(['held', 'confirmed', 'pending', 'pending_approval']),
+        AccommodationBooking.is_deleted.is_(False),
+    ).limit(100).all()
+    assigned_counts = dict(
+        db.session.query(
+            EventAssignment.accommodation_booking_id, func.count(EventAssignment.id)
+        ).filter(
+            EventAssignment.event_id == event.id,
+            EventAssignment.accommodation_booking_id.is_not(None),
+            EventAssignment.is_deleted.is_(False),
+        ).group_by(EventAssignment.accommodation_booking_id).all()
+    )
     available = []
-    check_in = event.start_date.date() if event.start_date else None
-    check_out = event.end_date.date() if event.end_date else check_in
-
-    for prop in properties:
-        is_available, _, _ = AvailabilityService.is_range_available(
-            property_id=prop.id,
-            check_in=check_in,
-            check_out=check_out
-        )
-
-        if is_available:
+    for booking in bookings:
+        used = assigned_counts.get(booking.id, 0)
+        capacity = max(1, int(booking.num_guests or 1))
+        if used < capacity:
             available.append({
-                'id': prop.id,
-                'title': prop.title,
-                'price_per_night': float(prop.base_price_per_night or 0),
-                'bedrooms': prop.bedrooms,
-                'max_guests': prop.max_guests,
-                'rating': float(prop.average_rating or 0),
-                'reviews': prop.total_reviews or 0
+                'booking_ref': booking.booking_reference,
+                'title': getattr(getattr(booking, 'accommodation_property', None), 'title', None) or 'Reserved accommodation',
+                'room_type': getattr(getattr(booking, 'room_type', None), 'name', None),
+                'check_in': booking.check_in.isoformat() if booking.check_in else None,
+                'check_out': booking.check_out.isoformat() if booking.check_out else None,
+                'remaining_capacity': capacity - used,
             })
 
     return jsonify({
@@ -362,31 +357,45 @@ def check_available_properties(event_id):
     })
 
 
-@assignment_bp.route('/<int:event_id>/available-drivers', methods=['GET'])
+@assignment_bp.route('/<event_ref>/available-drivers', methods=['GET'])
 @login_required
-def check_available_drivers(event_id):
-    """Check available drivers for event
-    Uses: ProviderService.get_available_drivers()
-    """
-    event = Event.query.get_or_404(event_id)
+def check_available_drivers(event_ref):
+    """List event-reserved transport bookings with their owning resources."""
+    event = _event_for_ref(event_ref)
+    allowed, message = can_view_coordination(current_user, event)
+    if not allowed:
+        return jsonify({'success': False, 'code': 'EVENT_COORDINATION_FORBIDDEN', 'error': message}), 403
 
-    provider_service = get_provider_service()
-    drivers = provider_service.get_available_drivers(
-        zone=event.city,
-        limit=100
-    )
+    bookings = Booking.query.filter(
+        Booking.event_id == event.id,
+        Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.ASSIGNED, 'confirmed', 'assigned']),
+        Booking.is_deleted.is_(False),
+    ).limit(100).all()
+
+    eligible = []
+    for booking in bookings:
+        try:
+            GuestCoordinationService._resolve_transport_booking(
+                event, booking.booking_reference
+            )
+        except CoordinationError:
+            continue
+        driver = db.session.get(DriverProfile, booking.assigned_driver_id)
+        vehicle = db.session.get(Vehicle, booking.assigned_vehicle_id)
+        eligible.append((booking, driver, vehicle))
 
     return jsonify({
         'success': True,
-        'available_drivers': len(drivers),
+        'available_drivers': len(eligible),
         'drivers': [
             {
-                'id': d.get('driver_id'),
-                'code': d.get('driver_code'),
-                'rating': d.get('average_rating', 0),
-                'vehicle': d.get('vehicle_type', 'Unknown')
+                'booking_ref': booking.booking_reference,
+                'driver_ref': getattr(driver, 'public_id', None),
+                'vehicle_ref': getattr(vehicle, 'public_id', None),
+                'vehicle': getattr(vehicle, 'registration_number', 'Unknown'),
+                'pickup_time': booking.pickup_time.isoformat() if booking.pickup_time else None,
             }
-            for d in drivers[:10]
+            for booking, driver, vehicle in eligible
         ]
     })
 
@@ -395,18 +404,34 @@ def check_available_drivers(event_id):
 # EXPORT - Download assignments
 # ============================================================================
 
-@assignment_bp.route('/<int:event_id>/export/assignments', methods=['GET'])
+@assignment_bp.route('/<event_ref>/export/assignments', methods=['GET'])
 @login_required
-@require_role('event_manager', 'admin', 'super_admin', 'owner')
-def export_assignments(event_id):
+def export_assignments(event_ref):
     """Export attendee assignments as CSV"""
     from flask import make_response
 
-    event = Event.query.get_or_404(event_id)
-    registrations = EventRegistration.query.filter_by(event_id=event_id).all()
-    assignments_map = {
-        a.registration_id: a for a in EventAssignment.query.filter_by(event_id=event_id).all()
+    event = _event_for_ref(event_ref)
+    event_id = event.id
+    allowed, message = can_view_coordination(current_user, event)
+    if not allowed:
+        return jsonify({'success': False, 'code': 'EVENT_COORDINATION_FORBIDDEN', 'error': message}), 403
+    registrations = EventRegistration.query.filter_by(
+        event_id=event_id, is_deleted=False
+    ).all()
+    assignments = EventAssignment.query.filter_by(
+        event_id=event_id, is_deleted=False
+    ).all()
+    assignments_map = {a.registration_id: a for a in assignments if a.registration_id}
+    user_registration_ids = {
+        identity_id: registration.id
+        for registration in registrations
+        for identity_id in (registration.user_id, getattr(registration, 'attendee_user_id', None))
+        if identity_id is not None
     }
+    for assignment in assignments:
+        registration_id = user_registration_ids.get(assignment.attendee_id)
+        if registration_id is not None:
+            assignments_map.setdefault(registration_id, assignment)
 
     # Create CSV
     output = StringIO()
@@ -437,7 +462,7 @@ def export_assignments(event_id):
             transport_ref = transport.booking_reference if transport else ''
 
         writer.writerow([
-            reg.id,
+            reg.registration_ref,
             reg.full_name,
             reg.email,
             reg.phone or '',
@@ -449,7 +474,7 @@ def export_assignments(event_id):
         ])
 
     response = make_response(output.getvalue())
-    response.headers['Content-Disposition'] = f'attachment; filename=event_{event_id}_assignments.csv'
+    response.headers['Content-Disposition'] = f'attachment; filename=event_{event.public_id}_assignments.csv'
     response.headers['Content-Type'] = 'text/csv'
     return response
 

@@ -19,6 +19,7 @@ from app.auth.decorators import (
     require_role,
     require_fresh_user
 )
+from app.auth.context import ContextType, active_context_or_platform_required
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 @admin_bp.route("/org-admin", endpoint="org_admin_dashboard")
 @login_required
 @require_role("org_admin")
+@active_context_or_platform_required(ContextType.ORGANISATION)
 def org_admin_dashboard():
     """Organization Admin Dashboard with comprehensive organization management."""
     try:
@@ -76,6 +78,7 @@ def org_admin_dashboard():
 @admin_bp.route("/org-admin/organizations", endpoint="org_admin_organizations")
 @login_required
 @require_role("org_admin")
+@active_context_or_platform_required(ContextType.ORGANISATION)
 def org_admin_organizations():
     """List and manage all organizations."""
     try:

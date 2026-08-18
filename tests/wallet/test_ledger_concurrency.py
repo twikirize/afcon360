@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 
 from app import create_app
+from app.config import TestingConfig
 from app.extensions import db
 from app.wallet.services.wallet_service import WalletService
 from app.wallet.repositories.ledger_repository import LedgerRepository
@@ -34,17 +35,15 @@ from app.wallet.exceptions import (
 @pytest.fixture
 def app():
     """Create application for testing."""
-    app = create_app('testing')
+    app = create_app(config_object=TestingConfig)
     app.config['TESTING'] = True
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://test:test@localhost:5432/afcon360_test'
     app.config['WALLET_MAX_DEPOSIT'] = Decimal('10000')
     app.config['WALLET_DAILY_LIMIT_HOME'] = Decimal('5000')
     
     with app.app_context():
-        db.create_all()
         yield app
         db.session.remove()
-        db.drop_all()
+        db.session.rollback()
 
 
 @pytest.fixture
@@ -70,8 +69,8 @@ def test_user(app):
     """Create a test user."""
     from app.identity.models.user import User
     user = User(
-        email='test@example.com',
-        username='testuser',
+        email=f'test_{uuid.uuid4().hex[:8]}@example.com',
+        username=f'testuser_{uuid.uuid4().hex[:8]}',
         password_hash='hashed_password'
     )
     db.session.add(user)

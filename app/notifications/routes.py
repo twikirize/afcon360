@@ -131,6 +131,24 @@ def mark_read(notification_id):
     return jsonify({'success': True, 'unread_count': NotificationService.get_unread_count(current_user.id)})
 
 
+@notifications_api.route('/<int:notification_id>/unread', methods=['POST'])
+@login_required
+def mark_unread(notification_id):
+    if not NotificationService.set_read_state(notification_id, current_user.id, False):
+        abort(404)
+    return jsonify({'success': True})
+
+
+@notifications_api.route('/<int:notification_id>/important', methods=['POST'])
+@login_required
+def toggle_important(notification_id):
+    data = request.get_json(silent=True) or {}
+    is_important = bool(data.get('is_important', True))
+    if not NotificationService.set_important(notification_id, current_user.id, is_important):
+        abort(404)
+    return jsonify({'success': True, 'is_important': is_important})
+
+
 @notifications_api.route('/read-all', methods=['POST'])
 @login_required
 def mark_all_read():
@@ -440,6 +458,7 @@ def broadcast():
 def _serialize_notification(n: Notification) -> Dict[str, Any]:
     return {
         'id': n.id,
+        'public_id': getattr(n, 'public_id', None),
         'type': n.type,
         'module': n.module,
         'module_label': n.module_label,
@@ -451,6 +470,7 @@ def _serialize_notification(n: Notification) -> Dict[str, Any]:
         'priority': n.priority,
         'status': n.status,
         'is_read': n.is_read,
+        'is_important': n.is_important,
         'read_at': n.read_at.isoformat() if n.read_at else None,
         'created_at': n.created_at.isoformat() if n.created_at else None,
         'link': getattr(n, 'link', None),

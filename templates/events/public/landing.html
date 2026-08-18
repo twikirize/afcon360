@@ -8,15 +8,30 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/public.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/public-past-event.css') }}">
 
-    {% if event.start_date %}
-    <script>
+    {% if event.start_date and not is_past_event %}
+    <script nonce="{{ csp_nonce }}">
+    const eventStartDate = '{{ event.start_date or '' }}';
+    const eventEndDate = '{{ event.end_date or '' }}';
+
     function updateCountdown() {
-        const eventDate = new Date('{{ event.start_date }}T{{ event_start_time|default("00:00:00") }}').getTime();
+        const eventDate = eventStartDate
+            ? new Date(eventStartDate + 'T{{ event_start_time|default("00:00:00") }}').getTime()
+            : null;
+        const expiryDate = eventEndDate
+            ? new Date(eventEndDate + 'T23:59:59.999').getTime()
+            : null;
         const now = new Date().getTime();
-        const distance = eventDate - now;
+        const distance = eventDate === null ? null : eventDate - now;
 
-        if (distance < 0) {
+        if (expiryDate !== null && now > expiryDate) {
+            const timer = document.getElementById('countdown-timer');
+            if (timer) timer.innerHTML = '<div class="text-danger fw-bold">EXPIRED</div>';
+            return;
+        }
+
+        if (distance === null || distance < 0) {
             const timer = document.getElementById('countdown-timer');
             if (timer) timer.innerHTML = '<div class="text-success fw-bold">EVENT IN PROGRESS</div>';
             return;
@@ -370,6 +385,16 @@
 
     .btn-register-free:hover {
         box-shadow: 0 10px 25px rgba(0,229,160,0.3);
+    }
+
+    .registration-closed-public {
+        background: #fff5f5;
+        border: 2px solid #feb2b2;
+        border-radius: 12px;
+        padding: 1.25rem;
+        color: #742a2a;
+        text-align: center;
+        font-weight: 700;
     }
 
     /* Availability Info */
@@ -1231,6 +1256,11 @@
                     <div class="hero-main">
 
                         <div class="event-title-section">
+                            {% if is_past_event %}
+                            <span class="event-lifecycle-badge event-lifecycle-badge--past" role="status">
+                                <i class="fas fa-calendar-check" aria-hidden="true"></i> Event Ended
+                            </span>
+                            {% endif %}
                             <h1 class="event-title">{{ event.name }}</h1>
                             <p class="event-description">{{ event.description[:200] }}{% if event.description|length > 200 %}...{% endif %}</p>
                         </div>
@@ -1259,13 +1289,13 @@
                                     <i class="fas fa-users"></i>
                                 </div>
                                 <div class="meta-content">
-                                    <span class="meta-label">Attending</span>
+                                    <span class="meta-label">{% if is_past_event %}Registered{% else %}Attending{% endif %}</span>
                                     <span class="meta-value">{{ total_registrations }} people</span>
                                 </div>
                             </div>
                         </div>
 
-                        {% if event.start_date %}
+                        {% if event.start_date and not is_past_event %}
                         <div class="countdown-section">
                             <div class="countdown-label">Event Starts In</div>
                             <div id="countdown-timer" class="countdown-timer">
@@ -1290,6 +1320,11 @@
                                 </div>
                             </div>
                         </div>
+                        {% elif is_past_event %}
+                        <div class="event-past-summary" role="status">
+                            <strong>Event Ended</strong>
+                            <span>Thank you to everyone who took part.</span>
+                        </div>
                         {% endif %}
                     </div>
 
@@ -1304,7 +1339,18 @@
                             </div>
 
                             <div class="card-body-modern">
-                                {% if not event.ticket_types or event.ticket_types|length == 0 %}
+                                {% if is_past_event %}
+                                    <div class="registration-closed-public" role="status">
+                                        <i class="fas fa-calendar-times me-1"></i>
+                                        Event Ended — registration is closed
+                                    </div>
+                                    <p class="past-event-copy">This event has concluded. Registration and ticket purchases are no longer available.</p>
+                                {% elif not can_register %}
+                                    <div class="registration-closed-public" role="status">
+                                        <i class="fas fa-ban me-1"></i>
+                                        Registration unavailable
+                                    </div>
+                                {% elif not event.ticket_types or event.ticket_types|length == 0 %}
                                     <div class="price-display free-price">
                                         <span class="price-amount">FREE</span>
                                         <span class="price-label">Entry</span>
@@ -1324,7 +1370,7 @@
                                     </a>
                                 {% endif %}
 
-                                {% if event.max_capacity and total_registrations %}
+                                {% if not is_past_event and event.max_capacity and total_registrations %}
                                 <div class="availability-info">
                                     <div class="availability-text">
                                         <i class="fas fa-chair"></i>
@@ -1346,7 +1392,7 @@
         </div>
     </div>
 
-    {% if current_user.is_authenticated %}
+    {% if not is_past_event and current_user.is_authenticated %}
     <div class="container mt-4 mb-4">
         <div class="p-4 bg-light rounded border">
             <h5><i class="fas fa-hand-holding-heart text-success me-2"></i>Community Hosting</h5>
@@ -1441,7 +1487,7 @@
                     </div>
 
                     <!-- Ticket Information -->
-                    {% if event.ticket_types and event.ticket_types|length > 0 %}
+                    {% if event.ticket_types and event.ticket_types|length > 0 and not is_past_event %}
                     <div class="info-section-modern">
                         <div class="section-header">
                             <div class="section-icon">
@@ -1483,19 +1529,49 @@
                         </div>
                     </div>
                     {% endif %}
+
+                    {% if is_past_event %}
+                    <div class="info-section-modern event-recap" id="event-recap">
+                        <div class="section-header">
+                            <div class="section-icon">
+                                <i class="fas fa-heart"></i>
+                            </div>
+                            <h2 class="section-title">Event Recap</h2>
+                        </div>
+                        <div class="section-content">
+                            <p class="event-description-full">Thank you to everyone who took part in this event. Registration and ticket sales are closed, but the event details remain available for reference.</p>
+                            <div class="recap-stat">
+                                <span class="recap-stat__value">{{ total_registrations }}</span>
+                                <span class="recap-stat__label">confirmed registrations</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
 
                 <!-- Sidebar -->
                 <div class="details-sidebar">
-                    <!-- Quick Registration -->
+                    <!-- Quick Registration / Past Event Recap -->
                     <div class="sidebar-card-modern">
                         <div class="sidebar-header">
                             <div class="sidebar-icon">
-                                <i class="fas fa-user-plus"></i>
+                                <i class="fas {% if is_past_event %}fa-calendar-check{% else %}fa-user-plus{% endif %}"></i>
                             </div>
-                            <h3 class="sidebar-title">Ready to Join?</h3>
+                            <h3 class="sidebar-title">{% if is_past_event %}Past Event{% else %}Ready to Join?{% endif %}</h3>
                         </div>
                         <div class="sidebar-content">
+                            {% if is_past_event %}
+                            <p class="past-event-copy">This event has ended. New registrations and bookings are closed.</p>
+                            <div class="recap-stat recap-stat--sidebar">
+                                <span class="recap-stat__value">{{ total_registrations }}</span>
+                                <span class="recap-stat__label">confirmed registrations</span>
+                            </div>
+                            {% elif not can_register %}
+                            <div class="registration-closed-public" role="status">
+                                <i class="fas fa-ban me-1"></i>
+                                {{ registration_message|default('Registration is currently unavailable.') }}
+                            </div>
+                            {% else %}
                             <div class="price-highlight">
                                 {% if event.ticket_types %}
                                     {% set min_price = (event.ticket_types | map(attribute='price') | min) %}
@@ -1520,9 +1596,11 @@
                                 <span class="capacity-text">{{ total_registrations }} of {{ event.max_capacity }} seats filled</span>
                             </div>
                             {% endif %}
+                            {% endif %}
                         </div>
                     </div>
 
+                    {% if not is_past_event %}
                     <!-- Accommodation -->
                     <div class="sidebar-card-modern">
                         <div class="sidebar-header">
@@ -1565,6 +1643,7 @@
                             {% endif %}
                         </div>
                     </div>
+                    {% endif %}
                 </div>
             </div>
         </div>

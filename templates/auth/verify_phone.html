@@ -6,11 +6,12 @@
       <h2 class="card-title text-center mb-2">Verify your phone</h2>
       <p class="text-center text-secondary mb-4">
         {% if phone_number %}
-          We will send a 6-digit code to your email to verify<br>
+          We will send a 6-digit code by {{ 'SMS' if phone_verification_transport == 'sms' else 'email' }} to verify<br>
           <strong id="verify-phone">{{ phone_number }}</strong>
         {% else %}
-          Enter your phone number below. We will send a 6-digit code to your email
-          (<strong>{{ email }}</strong>) to verify it.
+          Enter your phone number below. We will send a 6-digit code by
+          {{ 'SMS' if phone_verification_transport == 'sms' else 'email' }}
+          {% if phone_verification_transport != 'sms' %}(<strong>{{ email }}</strong>){% endif %} to verify it.
         {% endif %}
       </p>
 
@@ -95,7 +96,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 (function () {
   'use strict';
   var phoneInput = document.getElementById('phone_number');

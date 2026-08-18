@@ -17,6 +17,7 @@
 - Role-specific sections (Driver, Host, Admin)
 - Account limits (daily, monthly, per-transaction)
 - Links to edit profile and view public profile
+- Link to the private, requirements-oriented KYC case dashboard (`/kyc/`)
 
 **Key Difference**: This is the user's private dashboard showing account-level information, financial data, and settings. It's where users go to manage their account and see their overall status.
 
@@ -98,6 +99,14 @@ Account Page (/account) - Main dashboard
 | Profile Edit | `/profile/edit` | Private | Edit profile data | Form with field locking, completion tips |
 | Public Profile | `/profile/<id>` | Public | Display profile | Avatar, stats, activity, roles |
 | Fan Dashboard | `/fan/dashboard` | Private | Fan activities | Fan-specific features |
+
+## Applicant KYC Case Dashboard
+
+`/kyc/` is the applicant's private compliance information page, not merely a workflow progress indicator. It must explain the current tier and decision status, identify missing or submitted requirements, show safe rejection feedback when correction is needed, describe the next review step, and provide the appropriate submit/continue action. Internal risk scores, watchlist results, raw provider responses, reviewer identifiers, and other restricted compliance data remain available only to authorized compliance review screens.
+
+### Individual KYC tier contract
+
+Phone verification is completed at Tier 1 and is not repeated as a Tier 2 requirement. Tier 2 requires National ID and selfie/biometric evidence; Tier 3 requires proof of address. Individual TIN is retained as a configurable collection field but is optional by default, while organisation KYB may require a TIN certificate under its separate corporate policy.
 
 ## Overview
 

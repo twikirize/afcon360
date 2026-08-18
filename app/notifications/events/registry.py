@@ -111,6 +111,11 @@ class EventType:
     EVENT_REGISTERED = 'event.registered'
     EVENT_REMINDER_DUE = 'event.reminder_due'
     EVENT_CANCELLED = 'event.cancelled'
+    EVENT_ACCOMMODATION_ASSIGNED = 'event.accommodation_assigned'
+    EVENT_ACCOMMODATION_CHANGED = 'event.accommodation_changed'
+    EVENT_TRANSPORT_ASSIGNED = 'event.transport_assigned'
+    EVENT_TRANSPORT_CHANGED = 'event.transport_changed'
+    EVENT_COORDINATION_CANCELLED = 'event.coordination_cancelled'
 
     # --- messaging / system ---------------------------------------------
     MESSAGE_SENT = 'message.sent'
@@ -328,6 +333,16 @@ def _bootstrap_registry() -> None:
                    'event_registration', externally_visible=True)
     register_event(E.EVENT_REMINDER_DUE, 1, 'Event reminder is due', 'event')
     register_event(E.EVENT_CANCELLED, 1, 'Event cancelled', 'event', externally_visible=True)
+    register_event(E.EVENT_ACCOMMODATION_ASSIGNED, 1, 'Accommodation coordinated for attendee',
+                   'event_assignment', ['event_ref', 'registration_ref'])
+    register_event(E.EVENT_ACCOMMODATION_CHANGED, 1, 'Accommodation coordination changed',
+                   'event_assignment', ['event_ref', 'registration_ref', 'previous_booking_ref', 'booking_ref'])
+    register_event(E.EVENT_TRANSPORT_ASSIGNED, 1, 'Transport coordinated for attendee',
+                   'event_assignment', ['event_ref', 'registration_ref'])
+    register_event(E.EVENT_TRANSPORT_CHANGED, 1, 'Transport coordination changed',
+                   'event_assignment', ['event_ref', 'registration_ref', 'previous_booking_ref', 'booking_ref'])
+    register_event(E.EVENT_COORDINATION_CANCELLED, 1, 'Event coordination assignment cancelled',
+                   'event_assignment', ['event_ref', 'registration_ref', 'capability'])
 
     # messaging / system
     register_event(E.MESSAGE_SENT, 1, 'Internal message sent', 'message')

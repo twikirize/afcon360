@@ -71,8 +71,10 @@ def _get_wallet(context='individual', org_id=None):
             from app.identity.models.organisation import Organisation
             org = Organisation.query.filter_by(org_id=org_id).first()
             if org:
-                return WalletService.get_wallet_by_org_id(org.id)
-        return WalletService.get_wallet_by_user_id(current_user.id)
+                wallet = WalletService.get_wallet_by_org_id(org.id)
+                return wallet if hasattr(wallet, 'balance') else None
+        wallet = WalletService.get_wallet_by_user_id(current_user.id)
+        return wallet if hasattr(wallet, 'balance') else None
     except Exception:
         return None
 
@@ -230,11 +232,27 @@ def _get_shell_context(user=None):
     from flask import session
     from app.identity.models.user import User
     from sqlalchemy.orm import joinedload
+    from app.auth.context import (
+        get_active_context,
+        get_available_contexts,
+        resolve_effective_permissions,
+    )
+    from app.auth.policy import can_in_context
 
     if user is None:
         user = User.query.options(joinedload(User.organisations)).get(current_user.id)
 
     role_names = getattr(user, 'role_names', []) if user else []
+    active_context = get_active_context(user) if user else None
+    available_contexts = get_available_contexts(user) if user else []
+    try:
+        effective_permissions = resolve_effective_permissions(user, active_context) if user else set()
+    except Exception as exc:
+        logger.warning("Could not resolve context permissions for shell: %s", exc)
+        effective_permissions = set()
+
+    def context_can(permission):
+        return bool(user and active_context and can_in_context(user, permission, context=active_context))
     user_roles = {
         'event_manager': 'event_manager' in role_names or (user and user.is_super_admin()),
         'transport_admin': 'transport_admin' in role_names or (user and user.is_super_admin()),
@@ -248,6 +266,10 @@ def _get_shell_context(user=None):
     }
 
     return {
+        'active_context': active_context,
+        'available_contexts': available_contexts,
+        'effective_permissions': effective_permissions,
+        'can': context_can,
         'current_context': session.get('current_context', 'individual'),
         'current_org_id': session.get('current_org_id'),
         'current_org_name': session.get('current_org_name'),
@@ -286,8 +308,8 @@ def dashboard():
     try:
         from app.identity.models.user import User
         from app.identity.models.organisation import Organisation
-        from flask import session
         from sqlalchemy.orm import joinedload
+        from app.auth.context import get_active_context
 
         user = User.query.options(joinedload(User.organisations)).get(current_user.id)
         if not user:
@@ -297,10 +319,20 @@ def dashboard():
         mode = get_dashboard_mode(user)
         fan_profile = get_fan_profile(user.id)
 
-        # Context Info
-        current_context = session.get("current_context", "individual")
-        current_org_id = session.get("current_org_id")
-        current_org_name = session.get("current_org_name")
+        # Context Info is resolved from live assignments; legacy session values
+        # are read only inside the resolver's rollout compatibility path.
+        active_context = get_active_context(user)
+        current_context = (
+            "organization"
+            if active_context.type.value == "organisation"
+            else "individual"
+        )
+        current_org_id = (
+            active_context.public_id
+            if active_context.type.value == "organisation"
+            else None
+        )
+        current_org_name = active_context.label if current_org_id else None
         
         org_obj = None
         if current_context == 'organization' and current_org_id:
@@ -328,11 +360,14 @@ def dashboard():
                     'is_org': True
                 }
             else:
-                kyc_info = calculate_kyc_tier(current_user.id)
+                kyc_info = calculate_kyc_tier(user.id)
         except Exception:
             pass
 
         shell_context = _get_shell_context(user)
+        # The settings pane and dashboard must render the same authoritative
+        # KYC result for the effective user, including after phone verification.
+        shell_context['kyc_info'] = kyc_info
 
         tourism_listings = []
         try:

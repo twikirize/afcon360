@@ -19,6 +19,7 @@ from flask_login import login_required, current_user
 
 from app.transport.decorator import module_enabled_required, role_required, rate_limit
 from app.auth.decorators import require_profile_completion, require_kyc_tier, require_moderator
+from app.auth.context import ContextType, active_context_required
 from app.transport import transport_bp, transport_admin_bp
 from app.utils.module_guard import module_enabled as check_module_enabled
 from app.utils.exceptions import NotFoundError, ServiceUnavailableError, ValidationError
@@ -459,6 +460,7 @@ def drivers_verification(id):
 @transport_bp.route("/driver-dashboard")
 @module_enabled_required("transport")
 @login_required
+@active_context_required(ContextType.DRIVER)
 @role_required("driver")
 def driver_dashboard():
     """Driver's personal dashboard"""
@@ -485,6 +487,7 @@ def driver_dashboard():
 @transport_bp.route("/driver/dashboard")
 @module_enabled_required("transport")
 @login_required
+@active_context_required(ContextType.DRIVER)
 @role_required("driver")
 def driver_dashboard_slash():
     """Driver dashboard - manage vehicles, availability, trips."""

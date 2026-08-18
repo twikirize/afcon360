@@ -119,6 +119,9 @@ class AvailabilityService:
         Returns:
             (is_available, blocked_dates, first_unavailable_reason)
         """
+        if check_out <= check_in:
+            return False, [], "Check-out must be after check-in"
+
         blocked_dates = []
         current_date = check_in
 
@@ -157,6 +160,7 @@ class AvailabilityService:
             available = HostService.available_units(rt.id, check_in, check_out, exclude_booking_id)
             rooms_needed = max(1, (num_guests + rt.max_guests - 1) // rt.max_guests) if num_guests > 0 else num_rooms
             can_accommodate = rt.max_guests >= num_guests or rooms_needed <= available
+            rooms_required = max(num_rooms, rooms_needed)
 
             blocked_dates = []
             current_date = check_in
@@ -166,7 +170,7 @@ class AvailabilityService:
                     blocked_dates.append(current_date.isoformat())
                 current_date += timedelta(days=1)
 
-            status = "available" if (available >= num_rooms and can_accommodate) else (
+            status = "available" if (available >= rooms_required and can_accommodate) else (
                 "limited" if available > 0 else "sold_out"
             )
             if blocked_dates and available > 0:
@@ -178,7 +182,7 @@ class AvailabilityService:
                 'max_guests': rt.max_guests,
                 'total_units': rt.total_units,
                 'available_units': available,
-                'is_available': available >= num_rooms,
+                'is_available': available >= rooms_required and can_accommodate,
                 'can_accommodate_guests': can_accommodate,
                 'rooms_needed': rooms_needed,
                 'status': status,
@@ -205,6 +209,14 @@ class AvailabilityService:
         Tier 1: Same-property alternative room types
         Tier 2: Context-aware nearby properties
         """
+        if check_out <= check_in:
+            return {
+                'error': 'Check-out must be after check-in',
+                'property_id': property_id,
+                'check_in': check_in.isoformat(),
+                'check_out': check_out.isoformat(),
+            }
+
         from app.accommodation.models.property import Property
         from app.accommodation.services.host_service import HostService
 
@@ -698,38 +710,14 @@ class AvailabilityService:
 
         Formula: total_units - confirmed_bookings - inventory_blocks
         """
-        room_type = db.session.get(RoomType, room_type_id)
-        if not room_type:
-            return 0
+        from app.accommodation.services.host_service import HostService
 
-        available = room_type.total_units
-
-        # Subtract confirmed/checked-in bookings overlapping the date range
-        booking_query = AccommodationBooking.query.filter(
-            AccommodationBooking.room_type_id == room_type_id,
-            AccommodationBooking.status.in_([
-                AccommodationBookingStatus.CONFIRMED.value,
-                AccommodationBookingStatus.CHECKED_IN.value,
-            ]),
-            AccommodationBooking.check_in < check_out,
-            AccommodationBooking.check_out > check_in,
+        return HostService.available_units(
+            room_type_id=room_type_id,
+            check_in=check_in,
+            check_out=check_out,
+            exclude_booking_id=exclude_booking_id,
         )
-        if exclude_booking_id:
-            booking_query = booking_query.filter(AccommodationBooking.id != exclude_booking_id)
-
-        booked = booking_query.count()
-        available -= booked
-
-        # Subtract inventory blocks (maintenance, seasonal, etc.)
-        blocks = InventoryBlock.query.filter(
-            InventoryBlock.room_type_id == room_type_id,
-            InventoryBlock.date_range_start < check_out,
-            InventoryBlock.date_range_end > check_in,
-        ).all()
-        for block in blocks:
-            available -= block.units_blocked
-
-        return max(0, available)
 
     @staticmethod
     def is_room_type_available(
@@ -822,4 +810,48 @@ class AvailabilityService:
             logger.info(f"Released {result} inventory block(s) for room_type {room_type_id} on {check_in} to {check_out}")
 
         return result
+
+    @staticmethod
+    def check_availability_for_dates(
+            property_id: int,
+            check_in: date,
+            check_out: date,
+            exclude_booking_id: Optional[int] = None,
+            room_type_id: Optional[int] = None,
+            units_needed: int = 1,
+    ) -> Tuple[bool, List[date], Optional[str]]:
+        """
+        Check availability for a date range, optionally scoped to a room type.
+
+        When *room_type_id* is provided, unit-level availability is checked via
+        ``get_available_units`` (InventoryBlock + confirmed bookings). Otherwise
+        property-wide availability is checked via ``is_range_available``
+        (BlockedDate + AvailabilityRule).
+
+        Args:
+            property_id:        The property ID.
+            check_in:           Start date (inclusive).
+            check_out:          End date (exclusive).
+            exclude_booking_id: Booking ID whose own blocks should be ignored
+                                (used when modifying an existing booking).
+            room_type_id:       Optional room type to scope the check.
+            units_needed:       Number of units required (room-type scope only).
+
+        Returns:
+            (is_available, blocked_dates, error_message)
+        """
+        if check_out <= check_in:
+            return False, [], "Check-out must be after check-in"
+
+        if room_type_id:
+            available = AvailabilityService.get_available_units(
+                room_type_id, check_in, check_out, exclude_booking_id=exclude_booking_id
+            )
+            if available < units_needed:
+                return False, [], f"Only {available} unit(s) available, requested {units_needed}"
+            return True, [], None
+
+        return AvailabilityService.is_range_available(
+            property_id, check_in, check_out, exclude_booking_id=exclude_booking_id
+        )
 

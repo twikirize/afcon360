@@ -12,7 +12,7 @@ from typing import Union, Optional, List, Tuple
 import enum
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
@@ -24,6 +24,7 @@ from app.accommodation.models.booking import (
     BookingContextType
 )
 from app.accommodation.models.availability import AccommodationBlockedReason
+from app.accommodation.models.property import Property
 from app.accommodation.models.room import RoomType, InventoryBlock, Room
 from app.accommodation.services.pricing_service import PricingService
 from app.accommodation.state_machine.booking_states import BookingStateMachine, InvalidStateTransition
@@ -165,8 +166,9 @@ class BookingService:
         check_in: date,
         check_out: date,
         num_guests: int,
-        guest_name: str,
-        guest_email: str,
+        rooms_requested: int = 1,
+        guest_name: str = None,
+        guest_email: str = None,
         guest_phone: str = None,
         special_requests: str = None,
         idempotency_key: str = None,
@@ -225,6 +227,8 @@ class BookingService:
             # 2. BASIC VALIDATION
             if check_out <= check_in:
                 return None, "Check-out must be after check-in"
+            if rooms_requested < 1:
+                return None, "At least one room must be requested"
 
             property = db.session.execute(
                 select(Property).where(Property.id == property_id).with_for_update()
@@ -240,6 +244,17 @@ class BookingService:
                 room_type = RoomType.query.filter_by(property_id=property_id, is_active=True).first()
                 if room_type:
                     room_type_id = room_type.id
+
+            # 2.5. OCCUPANCY VALIDATION
+            # Guest count must never exceed rooms_requested * max_guests per unit.
+            # Do NOT auto-increase rooms_requested; the customer's room request is authoritative.
+            if room_type_id:
+                room_type = RoomType.query.get(room_type_id)
+                if room_type and num_guests > rooms_requested * room_type.max_guests:
+                    return None, (
+                        f"Too many guests ({num_guests}) for {rooms_requested} room(s). "
+                        f"Maximum {rooms_requested * room_type.max_guests} guests allowed."
+                    )
 
             # 3. ANTI-ABUSE PREVENTION (OPTIONAL)
             try:
@@ -275,6 +290,7 @@ class BookingService:
             if not skip_hold_creation:
                 from app.accommodation.services.availability_service import AvailabilityService
                 from app.accommodation.models.availability import BlockedDate
+                from app.accommodation.services.host_service import HostService
 
                 # Lock inventory rows for update to prevent double-booking
                 # the last available room. This serialises concurrent booking
@@ -282,9 +298,20 @@ class BookingService:
                 if room_type_id:
                     InventoryBlock.query.filter(
                         InventoryBlock.room_type_id == room_type_id,
-                        InventoryBlock.date_range_start <= check_out,
-                        InventoryBlock.date_range_end >= check_in,
+                        InventoryBlock.date_range_start < check_out,
+                        InventoryBlock.date_range_end > check_in,
                     ).with_for_update().all()
+
+                    available_units = HostService.available_units(
+                        room_type_id=room_type_id,
+                        check_in=check_in,
+                        check_out=check_out,
+                    )
+                    if available_units < rooms_requested:
+                        return None, (
+                            f"Only {available_units} unit(s) available, "
+                            f"but {rooms_requested} requested"
+                        )
                 else:
                     BlockedDate.query.filter(
                         BlockedDate.property_id == property_id,
@@ -330,14 +357,15 @@ class BookingService:
                 check_out=check_out,
                 num_nights=pricing['nights'],
                 num_guests=num_guests,
+                rooms_requested=rooms_requested,
                 nightly_rate=pricing['nightly_rate'],
                 cleaning_fee=pricing['cleaning_fee'],
                 service_fee=pricing['service_fee'],
                 taxes=pricing.get('taxes', Decimal('0')),
                 total_amount=pricing['total'],
                 currency=property.currency,
-                guest_name=guest_name,
-                guest_email=guest_email,
+                guest_name=primary_guest_name or guest_name,
+                guest_email=primary_guest_email or guest_email,
                 guest_phone=guest_phone,
                 special_requests=special_requests,
                 context_type=enum_value(context_type) if context_type else BookingContextType.NONE.value,
@@ -416,7 +444,7 @@ class BookingService:
                         room_type_id=booking.room_type_id,
                         check_in=booking.check_in,
                         check_out=booking.check_out,
-                        units_to_block=booking.num_guests,
+                        units_to_block=booking.rooms_requested or 1,
                         reason=AccommodationBlockedReason.TEMPORARY_HOLD.value,
                         booking_id=booking.id,
                         created_by=guest_user_id,
@@ -514,6 +542,284 @@ class BookingService:
 
 
     # -------------------------
+    # MODIFY BOOKING DATES
+    # -------------------------
+    @staticmethod
+    def modify_booking_dates(
+        booking_id: int,
+        host_user_id: int,
+        new_check_in: date = None,
+        new_check_out: date = None,
+        reason: str = None,
+        notify_guest: bool = True,
+        ip_address: str = None,
+        user_agent: str = None,
+    ) -> Tuple[bool, Optional[str], Optional[dict]]:
+        """
+        Modify a booking's check-in and/or check-out dates.
+
+        Validates authority, availability, min/max-stay rules, recalculates
+        pricing, releases old inventory blocks and creates new ones atomically,
+        records a BookingPriceAdjustment, and (optionally) notifies the guest.
+
+        Returns:
+            (success, error_message, result_dict)
+            result_dict contains: old_dates, new_dates, price_delta,
+            refund_amount, amount_owed, adjustment_id.
+        """
+        from app.accommodation.models.booking_price_adjustment import (
+            BookingPriceAdjustment, PriceAdjustmentType,
+        )
+        from app.accommodation.models.availability import (
+            BlockedDate, AccommodationBlockedReason,
+        )
+        from app.accommodation.services.pricing_service import PricingService
+        from app.accommodation.services.availability_service import AvailabilityService
+        from app.audit.forensic_audit import ForensicAuditService
+
+        booking = db.session.execute(
+            select(AccommodationBooking).where(AccommodationBooking.id == booking_id).with_for_update()
+        ).scalar_one()
+
+        if not booking:
+            return False, "Booking not found", None
+
+        if booking.is_deleted:
+            return False, "Booking is deleted and cannot be modified", None
+
+        # Authority check: only the host may modify dates
+        if booking.host_user_id != host_user_id:
+            # Allow admins / accommodation_admins to manage any booking
+            try:
+                from app.auth.helpers import has_global_role
+                from app.identity.models.user import User
+                host = db.session.get(User, host_user_id)
+                if host and has_global_role(host, 'owner', 'super_admin', 'accommodation_admin'):
+                    pass  # authorised
+                else:
+                    return False, "You are not authorised to modify this booking's dates", None
+            except Exception:
+                if booking.host_user_id != host_user_id:
+                    return False, "You are not authorised to modify this booking's dates", None
+
+        # Must be at least CONFIRMED to modify dates
+        if booking.status not in [
+            AccommodationBookingStatus.CONFIRMED.value,
+            AccommodationBookingStatus.CHECKED_IN.value,
+        ]:
+            return False, f"Cannot modify dates for a booking in '{booking.status}' status", None
+
+        # Resolve target dates
+        old_check_in = booking.check_in
+        old_check_out = booking.check_out
+        target_check_in = new_check_in if new_check_in else old_check_in
+        target_check_out = new_check_out if new_check_out else old_check_out
+
+        # No-op check
+        if target_check_in == old_check_in and target_check_out == old_check_out:
+            return False, "No date changes provided — new dates match the current booking", None
+
+        today = date.today()
+        if target_check_in < today:
+            return False, "New check-in date cannot be in the past", None
+        if target_check_out <= today:
+            return False, "New check-out date must be in the future", None
+        if target_check_out <= target_check_in:
+            return False, "Check-out must be after check-in", None
+
+        # Min / max stay validation
+        prop = db.session.get(Property, booking.property_id)
+        if not prop:
+            return False, "Property not found", None
+
+        new_nights = (target_check_out - target_check_in).days
+        if prop.min_stay_nights and new_nights < prop.min_stay_nights:
+            return False, (
+                f"New stay ({new_nights} nights) is shorter than the property's "
+                f"minimum stay of {prop.min_stay_nights} nights"
+            ), None
+        if prop.max_stay_nights and new_nights > prop.max_stay_nights:
+            return False, (
+                f"New stay ({new_nights} nights) exceeds the property's "
+                f"maximum stay of {prop.max_stay_nights} nights"
+            ), None
+
+        # Availability check (exclude the booking's own blocks)
+        is_available, blocked_dates, avail_error = AvailabilityService.check_availability_for_dates(
+            property_id=booking.property_id,
+            check_in=target_check_in,
+            check_out=target_check_out,
+            exclude_booking_id=booking.id,
+            room_type_id=booking.room_type_id,
+            units_needed=getattr(booking, 'rooms_requested', 1) or 1,
+        )
+        if not is_available:
+            return False, f"New dates are not available: {avail_error or 'conflicting booking'}", None
+
+        # Price recalculation
+        try:
+            price = PricingService.calculate_modification_price(
+                booking, target_check_in, target_check_out
+            )
+        except ValueError as e:
+            return False, str(e), None
+
+        # ---- Inventory re-blocking (transactional) ----
+        try:
+            # 1. Release old inventory blocks
+            # BlockedDate (property-wide / legacy)
+            BlockedDate.query.filter_by(booking_id=booking.id).delete(synchronize_session=False)
+
+            # InventoryBlock (room-type scoped)
+            if booking.room_type_id:
+                AvailabilityService.release_room_type_blocks(
+                    room_type_id=booking.room_type_id,
+                    check_in=old_check_in,
+                    check_out=old_check_out,
+                    booking_id=booking.id,
+                )
+
+            # 2. Create new inventory blocks
+            # Confirmed/checked-in bookings are represented by AccommodationBooking.rooms_requested,
+            # so we do NOT create duplicate InventoryBlocks for them.
+            if booking.room_type_id and booking.status not in [
+                AccommodationBookingStatus.CONFIRMED.value,
+                AccommodationBookingStatus.CHECKED_IN.value,
+            ]:
+                success, block_err = AvailabilityService.block_room_type_units(
+                    room_type_id=booking.room_type_id,
+                    check_in=target_check_in,
+                    check_out=target_check_out,
+                    units_to_block=getattr(booking, 'rooms_requested', 1) or 1,
+                    reason=AccommodationBlockedReason.BOOKED.value,
+                    booking_id=booking.id,
+                    created_by=host_user_id,
+                )
+                if not success:
+                    db.session.rollback()
+                    return False, f"Could not re-block inventory: {block_err}", None
+            elif not booking.room_type_id:
+                AvailabilityService.block_dates(
+                    property_id=booking.property_id,
+                    check_in=target_check_in,
+                    check_out=target_check_out,
+                    reason=AccommodationBlockedReason.BOOKED,
+                    booking_id=booking.id,
+                    created_by=host_user_id,
+                )
+
+            # 3. Update the booking record
+            booking.check_in = target_check_in
+            booking.check_out = target_check_out
+            booking.num_nights = new_nights
+            booking.total_amount = price["new_total"]
+            booking.amount_due = price["amount_owed"]
+            if price["refund_amount"] > 0:
+                booking.refund_amount = price["refund_amount"]
+
+            db.session.flush()
+
+            # 4. Record the price adjustment
+            adjustment = BookingPriceAdjustment(
+                booking_id=booking.id,
+                adjustment_type=PriceAdjustmentType.DATE_MODIFICATION.value,
+                old_check_in=old_check_in,
+                old_check_out=old_check_out,
+                new_check_in=target_check_in,
+                new_check_out=target_check_out,
+                old_num_nights=(old_check_out - old_check_in).days,
+                new_num_nights=new_nights,
+                old_total_amount=price["old_total"],
+                new_total_amount=price["new_total"],
+                old_nightly_rate=booking.nightly_rate,
+                delta_amount=price["delta_amount"],
+                old_amount_paid=price["old_amount_paid"],
+                new_amount_due=price["amount_owed"],
+                refund_amount=price["refund_amount"],
+                reason=reason or "Dates modified by host",
+                notify_guest=notify_guest,
+                changed_by_user_id=host_user_id,
+                adjustment_metadata={
+                    "ip_address": ip_address,
+                    "user_agent": user_agent,
+                    "currency": booking.currency,
+                },
+            )
+            db.session.add(adjustment)
+            db.session.flush()
+
+            # 5. Audit log
+            audit_id = ForensicAuditService.log_attempt(
+                entity_type="accommodation_booking",
+                entity_id=str(booking.booking_reference),
+                action="booking_date_modification",
+                user_id=host_user_id,
+                details={
+                    "booking_id": booking.id,
+                    "old_check_in": str(old_check_in),
+                    "old_check_out": str(old_check_out),
+                    "new_check_in": str(target_check_in),
+                    "new_check_out": str(target_check_out),
+                    "old_total": str(price["old_total"]),
+                    "new_total": str(price["new_total"]),
+                    "delta": str(price["delta_amount"]),
+                    "refund": str(price["refund_amount"]),
+                    "amount_owed": str(price["amount_owed"]),
+                },
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+            ForensicAuditService.log_completion(
+                audit_id=audit_id,
+                status="completed",
+                reviewed_by=host_user_id,
+                result_details={
+                    "adjustment_id": adjustment.id,
+                },
+            )
+
+            db.session.commit()
+
+            logger.info(
+                f"Booking dates modified: {booking.booking_reference} | "
+                f"{old_check_in} → {old_check_out}  ==>  {target_check_in} → {target_check_out} | "
+                f"Delta: {price['delta_amount']} | By: {host_user_id}"
+            )
+
+            # 6. Notify guest (via signal → listener)
+            if notify_guest:
+                try:
+                    from app.notifications.signals import booking_dates_modified
+                    booking_dates_modified.send(
+                        booking, booking=booking, adjustment=adjustment,
+                        notify_guest=notify_guest,
+                    )
+                except Exception as sig_err:
+                    logger.warning(
+                        f"booking_dates_modified signal failed for {booking_id}: {sig_err}"
+                    )
+
+            result = {
+                "adjustment_id": adjustment.id,
+                "old_check_in": old_check_in,
+                "old_check_out": old_check_out,
+                "new_check_in": target_check_in,
+                "new_check_out": target_check_out,
+                "old_total": str(price["old_total"]),
+                "new_total": str(price["new_total"]),
+                "delta_amount": str(price["delta_amount"]),
+                "refund_amount": str(price["refund_amount"]),
+                "amount_owed": str(price["amount_owed"]),
+                "currency": booking.currency,
+            }
+            return True, None, result
+
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Modify dates failed for booking {booking_id}: {e}", exc_info=True)
+            return False, "Unable to modify booking dates. Please try again.", None
+
+    # -------------------------
     # CHECK-IN
     # -------------------------
     @staticmethod
@@ -539,49 +845,117 @@ class BookingService:
         return "Booking is not ready for check-in."
 
     @staticmethod
-    def check_in(booking_id: int, user_id: int) -> Tuple[bool, Optional[str]]:
+    def check_in(
+        booking_id: int,
+        user_id: int,
+        adjust_checkin_to_today: bool = False,
+    ) -> Tuple[bool, Optional[str], Optional[dict]]:
         """
         Check in a booking and assign room if not already assigned.
         Enforces registration, payment, and date readiness via state machine.
+
+        If ``adjust_checkin_to_today`` is True and the booking's scheduled
+        check-in is still in the future, the system will modify the check-in
+        date to today (refunding unused nights if applicable) before
+        proceeding. This is intended for early arrivals where the guest
+        arrived before the original start date or for walk-in situations.
         """
         booking = db.session.get(AccommodationBooking, booking_id)
         if not booking:
-            return False, "Booking not found"
+            return False, "Booking not found", None
 
         if booking.is_checked_in:
-            return False, "Booking is already checked in"
+            return False, "Booking is already checked in", None
+
+        adjust_info: Optional[dict] = None
 
         try:
+            # Early-arrival adjustment: bring check-in forward to today
+            today = date.today()
+            if adjust_checkin_to_today and booking.check_in > today:
+                # Re-check availability for the shortened stay
+                ok, err, result = BookingService.modify_booking_dates(
+                    booking_id=booking.id,
+                    host_user_id=booking.host_user_id,
+                    new_check_in=today,
+                    new_check_out=booking.check_out,
+                    reason="Early arrival — check-in adjusted to today",
+                    notify_guest=False,  # checked-in signal covers notification
+                    ip_address=None,
+                    user_agent=None,
+                )
+                if not ok:
+                    return False, f"Could not adjust check-in to today: {err}", None
+                adjust_info = result
+
             # Enforce state-machine readiness (payment, registration, date).
             if not BookingStateMachine._can_check_in(booking):
-                return False, BookingService._check_in_block_reason(booking)
+                return False, BookingService._check_in_block_reason(booking), adjust_info
 
-            # Assign room if not assigned - must match booking's room type
-            if not booking.assigned_room_id:
-                available_room = Room.query.filter(
+            # Assign exactly the number of requested physical rooms.  Lock all
+            # candidates before selecting them so concurrent check-ins cannot
+            # claim the same room.
+            requested_rooms = int(booking.rooms_requested or 1)
+            existing_assignments = [
+                rb for rb in booking.room_assignments
+                if rb.status in {"active", "checked_in"}
+            ]
+            if existing_assignments:
+                if len(existing_assignments) != requested_rooms:
+                    return (
+                        False,
+                        "Existing physical room assignments do not match "
+                        "the requested room quantity",
+                        adjust_info,
+                    )
+                assigned_rooms = [rb.room for rb in existing_assignments if rb.room]
+                if len(assigned_rooms) != requested_rooms:
+                    return False, "Assigned physical rooms could not be loaded", adjust_info
+            else:
+                candidate_rooms = Room.query.filter(
                     Room.property_id == booking.property_id,
                     Room.room_type_id == booking.room_type_id,
                     Room.is_active == True,
                     Room.status == "available",
                     Room.is_maintenance == False,
-                ).first()
+                ).with_for_update().all()
 
-                if not available_room:
-                    return False, "No available rooms for check-in"
+                assigned_rooms = []
+                for room in candidate_rooms:
+                    has_active_assignment = any(
+                        rb.status in {"active", "checked_in"}
+                        and rb.check_in < booking.check_out
+                        and rb.check_out > booking.check_in
+                        for rb in room.bookings
+                    )
+                    if not has_active_assignment:
+                        assigned_rooms.append(room)
+                    if len(assigned_rooms) == requested_rooms:
+                        break
 
-                booking.assigned_room_id = available_room.id
-                available_room.assign_booking(booking.id)
+                if len(assigned_rooms) < requested_rooms:
+                    return (
+                        False,
+                        f"Insufficient physical rooms for check-in: "
+                        f"{len(assigned_rooms)} available, {requested_rooms} requested",
+                        adjust_info,
+                    )
 
-            # Create room booking assignment
-            room_booking = RoomBooking(
-                booking_id=booking.id,
-                room_id=booking.assigned_room_id,
-                check_in=booking.check_in,
-                check_out=booking.check_out,
-                status="checked_in",
-                assigned_by=user_id,
-            )
-            db.session.add(room_booking)
+                booking.assigned_room_id = assigned_rooms[0].id
+                for room in assigned_rooms:
+                    room.assign_booking(booking.id)
+
+                db.session.add_all(
+                    RoomBooking(
+                        booking_id=booking.id,
+                        room_id=room.id,
+                        check_in=booking.check_in,
+                        check_out=booking.check_out,
+                        status="checked_in",
+                        assigned_by=user_id,
+                    )
+                    for room in assigned_rooms
+                )
 
             BookingStateMachine.transition(
                 booking,
@@ -604,31 +978,62 @@ class BookingService:
             except Exception as sig_err:
                 logger.warning(f"booking_checked_in signal failed for {booking_id}: {sig_err}")
 
-            return True, None
+            return True, None, adjust_info
         except Exception as e:
             db.session.rollback()
             logger.error(f"Check-in failed for booking {booking_id}: {e}", exc_info=True)
-            return False, "Check-in failed. Please try again."
+            return False, "Check-in failed. Please try again.", None
 
     # -------------------------
     # CHECK-OUT
     # -------------------------
     @staticmethod
-    def check_out(booking_id: int, user_id: int) -> Tuple[bool, Optional[str]]:
+    def check_out(
+        booking_id: int,
+        user_id: int,
+        adjust_checkout_to_today: bool = False,
+    ) -> Tuple[bool, Optional[str], Optional[dict]]:
         """
         Check out a booking and release the room.
+
+        If ``adjust_checkout_to_today`` is True and the booking's scheduled
+        check-out is still in the future (early departure), the system will
+        modify the check-out date to today, refunding the guest for unused
+        nights before completing the check-out. Late check-outs (when the
+        scheduled date has already passed) are not auto-handled here — use
+        the dedicated late-checkout endpoint for extra-night charges.
         """
         booking = db.session.get(AccommodationBooking, booking_id)
         if not booking:
-            return False, "Booking not found"
+            return False, "Booking not found", None
 
         if booking.status != AccommodationBookingStatus.CHECKED_IN.value:
-            return False, "Only checked-in bookings can be checked out"
+            return False, "Only checked-in bookings can be checked out", None
 
         if booking.is_checked_out:
-            return False, "Booking is already checked out"
+            return False, "Booking is already checked out", None
+
+        adjust_info: Optional[dict] = None
 
         try:
+            today = date.today()
+
+            # Early departure adjustment: move check-out forward to today
+            if adjust_checkout_to_today and booking.check_out > today:
+                ok, err, result = BookingService.modify_booking_dates(
+                    booking_id=booking.id,
+                    host_user_id=booking.host_user_id,
+                    new_check_in=booking.check_in,
+                    new_check_out=today,
+                    reason="Early departure — check-out adjusted to today",
+                    notify_guest=False,  # checked-out signal covers notification
+                    ip_address=None,
+                    user_agent=None,
+                )
+                if not ok:
+                    return False, f"Could not adjust check-out to today: {err}", None
+                adjust_info = result
+
             BookingStateMachine.transition(
                 booking,
                 AccommodationBookingStatus.CHECKED_OUT,
@@ -661,11 +1066,11 @@ class BookingService:
             except Exception as sig_err:
                 logger.warning(f"booking_checked_out signal failed for {booking_id}: {sig_err}")
 
-            return True, None
+            return True, None, adjust_info
         except Exception as e:
             db.session.rollback()
             logger.error(f"Check-out failed for booking {booking_id}: {e}", exc_info=True)
-            return False, "Check-out failed. Please try again."
+            return False, "Check-out failed. Please try again.", None
 
     # -------------------------
     # CONFIRM BOOKING
@@ -744,17 +1149,16 @@ class BookingService:
                 {"reason": enum_value(AccommodationBlockedReason.BOOKED)}
             )
 
-            # Also update InventoryBlock for room type bookings
+            # Release temporary InventoryBlock for room type bookings.
+            # A confirmed booking is represented only by AccommodationBooking.rooms_requested,
+            # so the temporary hold must not remain in the inventory ledger.
             if booking.room_type_id:
                 InventoryBlock.query.filter(
                     InventoryBlock.room_type_id == booking.room_type_id,
                     InventoryBlock.date_range_start == booking.check_in,
                     InventoryBlock.date_range_end == booking.check_out,
                     InventoryBlock.booking_id == booking.id,
-                ).update(
-                    {"reason": AccommodationBlockedReason.BOOKED.value},
-                    synchronize_session=False,
-                )
+                ).delete(synchronize_session=False)
 
             # 3. UPDATE PAYMENT STATUS
             booking.payment_status = AccommodationPaymentStatus.PAID.value
@@ -885,17 +1289,16 @@ class BookingService:
                 {"reason": enum_value(AccommodationBlockedReason.BOOKED)}
             )
 
-            # Also update InventoryBlock for room type bookings
+            # Release temporary InventoryBlock for room type bookings.
+            # A confirmed booking is represented only by AccommodationBooking.rooms_requested,
+            # so the temporary hold must not remain in the inventory ledger.
             if booking.room_type_id:
                 InventoryBlock.query.filter(
                     InventoryBlock.room_type_id == booking.room_type_id,
                     InventoryBlock.date_range_start == booking.check_in,
                     InventoryBlock.date_range_end == booking.check_out,
                     InventoryBlock.booking_id == booking.id,
-                ).update(
-                    {"reason": AccommodationBlockedReason.BOOKED.value},
-                    synchronize_session=False,
-                )
+                ).delete(synchronize_session=False)
 
             db.session.commit()
             logger.info(
@@ -1159,7 +1562,15 @@ class BookingService:
 
     @staticmethod
     def get_user_bookings(user_id: int, status: str = None, limit: int = 50, offset: int = 0) -> list:
-        query = AccommodationBooking.query.filter_by(guest_user_id=user_id)
+        query = AccommodationBooking.query.filter(
+            or_(
+                AccommodationBooking.guest_user_id == user_id,
+                AccommodationBooking.primary_guest_id == user_id,
+                AccommodationBooking.booked_by_user_id == user_id,
+                AccommodationBooking.booking_owner_id == user_id,
+            ),
+            AccommodationBooking.is_deleted == False,  # noqa: E712
+        )
         if status:
             try:
                 query = query.filter_by(status=AccommodationBookingStatus(status).value)

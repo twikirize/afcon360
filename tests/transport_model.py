@@ -1,7 +1,8 @@
 # tests/transport_model.py - UPDATED
 from app import create_app
+from app.config import TestingConfig
 
-app = create_app()
+app = create_app(config_object=TestingConfig)
 
 print("=" * 60)
 print("TRANSPORT MODULE VERIFICATION - UPDATED PATH")
@@ -49,7 +50,7 @@ with app.app_context():
         # Test 4: Database check
         print("\n4. Checking database...")
         from app.extensions import db
-        from sqlalchemy import inspect, text
+        from sqlalchemy import inspect
 
         inspector = inspect(db.engine)
         existing_tables = inspector.get_table_names()

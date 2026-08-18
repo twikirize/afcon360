@@ -482,7 +482,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
 
           <div class="kyc-bar-wrap">
             <div style="display:flex;justify-content:space-between;align-items:baseline;">
-              <span style="font-size:12px;font-weight:600;color:var(--ink-2);">Progress</span>
+              <span style="font-size:12px;font-weight:600;color:var(--ink-2);">KYC progress</span>
               <span style="font-size:13px;font-weight:700;color:var(--ink);">{{ progress_percentage }}%</span>
             </div>
             <div class="kyc-bar-track">
@@ -513,6 +513,15 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
             </div>
           </div>
           {% endif %}
+
+          <div style="background:var(--surface-2);border:1px solid var(--surface-3);border-radius:var(--radius-md);padding:.85rem 1rem;">
+            <div style="font-size:.9rem;color:var(--text);">
+              This percentage measures regulatory KYC requirements only. Nickname, bio, team, and avatar are optional personalization and do not affect verification.
+            </div>
+            <a href="{{ url_for('kyc.index') }}" style="display:inline-block;margin-top:.6rem;font-size:.9rem;font-weight:600;color:var(--green);text-decoration:none;">
+              View KYC requirements and next steps →
+            </a>
+          </div>
 
           {% if verification_status == 'verified' %}
           <div style="background:var(--ok-bg);border:1px solid var(--ok-border);border-radius:var(--radius-md);padding:.85rem 1rem;">

@@ -19,7 +19,7 @@
     <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
       <div>
         <label class="form-label" style="margin-bottom:4px;">Transaction Type</label>
-        <select class="form-control" style="width:auto;min-width:160px;" onchange="location.href='{{ safe_url('wallet.wallet_transactions') }}?type=' + this.value">
+        <select class="form-control" style="width:auto;min-width:160px;" onchange="location.href='{{ url_for('wallet.transactions') }}?type=' + this.value">
           <option value="">All Transactions</option>
           <option value="DEPOSIT" {% if request.args.get('type') == 'DEPOSIT' %}selected{% endif %}>Deposits</option>
           <option value="WITHDRAWAL" {% if request.args.get('type') == 'WITHDRAWAL' %}selected{% endif %}>Withdrawals</option>

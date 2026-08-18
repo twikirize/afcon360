@@ -89,7 +89,7 @@ class Property(BaseModel):
         CheckConstraint("base_price_per_night >= 0", name="ck_price_positive"),
         CheckConstraint("max_guests >= 1", name="ck_max_guests_min"),
         CheckConstraint(
-            "property_type IN ('entire_place', 'private_room', 'shared_room', 'hotel_room', 'lodge', 'hostel')",
+            "property_type IN ('entire_place', 'private_room', 'shared_room', 'hotel_room', 'community_host', 'lodge', 'hostel')",
             name="ck_property_type_valid"
         ),
         CheckConstraint(
@@ -97,7 +97,7 @@ class Property(BaseModel):
             name="ck_cancellation_policy_valid"
         ),
         CheckConstraint(
-            "status IN ('draft', 'submitted', 'under_review', 'approved', 'needs_information', 'active', 'published', 'suspended', 'archived')",
+            "status IN ('draft', 'submitted', 'pending_review', 'under_review', 'approved', 'needs_information', 'active', 'published', 'suspended', 'archived')",
             name="ck_property_status_valid"
         ),
         CheckConstraint(
@@ -353,7 +353,33 @@ class Property(BaseModel):
             module="accommodation",
             entity_id=self.public_id,
             media_type=media_type,
+            # Older records used the internal property ID as entity_id. This
+            # remains an internal compatibility lookup and is never exposed.
+            legacy_entity_ids=[str(self.id), self.slug],
         )
+
+    def legacy_photo_urls(self):
+        """Resolve photos from the pre-unified accommodation_photos table."""
+        from app.media.service import MediaService
+        from app.media.storage import get_storage_backend
+
+        urls = []
+        for photo in sorted(self.photos or [], key=lambda item: (
+                getattr(item, 'is_cover', False) is not True,
+                getattr(item, 'display_order', 0) or 0,
+        )):
+            storage_key = getattr(photo, 'storage_key', None)
+            if not storage_key:
+                continue
+            url = storage_key if str(storage_key).startswith(('/', 'http://', 'https://')) else None
+            if not url:
+                try:
+                    url = get_storage_backend().get_url(storage_key)
+                except Exception:
+                    url = None
+            if url and url not in urls:
+                urls.append(url)
+        return urls
 
     @property
     def cover_image_url(self):
@@ -363,11 +389,16 @@ class Property(BaseModel):
         """
         from app.media.service import MediaService
         media = self.media_photos()
-        cover = next((m for m in media if getattr(m, "is_cover", False)), None)
+        cover = next(
+            (
+                m for m in media
+                if getattr(m, "is_cover", False)
+                and MediaService.get_original_url(m)
+            ),
+            None,
+        )
         if cover:
-            url = MediaService.get_display_url(cover)
-            if url:
-                return url
+            return MediaService.get_original_url(cover)
         # Fallback to legacy column if no unified media exists yet
         return self.main_image or MediaService.PLACEHOLDER_IMAGE
 
@@ -382,15 +413,19 @@ class Property(BaseModel):
         media = self.media_photos()
         if media:
             urls = [
-                MediaService.get_display_url(m)
+                MediaService.get_original_url(m)
                 for m in media
-                if MediaService.get_display_url(m)
+                if MediaService.get_original_url(m)
             ]
             if urls:
                 return urls
-        # Fallback to legacy column
+        urls = self.legacy_photo_urls()
         legacy = self.gallery or []
-        return list(legacy) if isinstance(legacy, (list, tuple)) else []
+        if isinstance(legacy, (list, tuple)):
+            urls.extend(url for url in legacy if url not in urls)
+        if self.main_image and self.main_image not in urls:
+            urls.insert(0, self.main_image)
+        return urls
 
     def is_owner(self, user_id=None, org_id=None):
         if user_id and self.owner_user_id == user_id:

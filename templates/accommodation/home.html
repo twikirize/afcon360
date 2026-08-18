@@ -129,8 +129,8 @@
         {% for property in featured_properties %}
         <a href="{{ url_for('accommodation.guest_detail', identifier=property.slug or property.id) }}" class="property-card">
             <div class="property-image">
-                {% if property.main_image %}
-                <img src="{{ property.main_image }}" alt="{{ property.title }}" loading="lazy">
+                {% if property.gallery_images %}
+                <img src="{{ property.gallery_images[0] }}" alt="{{ property.title }}" loading="lazy">
                 {% else %}
                 <div class="d-flex align-items-center justify-content-center h-100">
                     <i class="fas fa-hotel fa-3x text-muted"></i>

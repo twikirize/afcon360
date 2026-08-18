@@ -1,0 +1,57 @@
+﻿# Remaining Consumers Audit & Migration Report
+
+This report formally classifies the remaining internal consumers of organizer_id discovered during Phase 4 Step 5 observation. 
+Each consumer has been mapped to its exact semantic intent and migrated to canonical replacements where applicable, while leaving deliberate compatibility paths active.
+
+### 1. pp/events/routes_community_hosts.py
+- **Current State:** 0 remaining consumers.
+- **Analysis:** A code search (git grep) confirmed that 
+outes_community_hosts.py contains no active usages of organizer_id. Any previous ownership checks here have already been successfully migrated to the canonical _is_event_owner() function in earlier steps.
+
+### 2. pp/events/services.py
+**A. create_event (Lines 589-642)**
+- **Semantic Intent:** Legacy Compatibility / Constructor Fallback
+- **Canonical Replacement:** Explicit initialization of current_owner_type, current_owner_id, and created_by_entity_id.
+- **Migration Status:** Marked as **Compatibility-Only**. The assignment of organizer_id is retained purely to satisfy the Event constructor fallback, but canonical ownership fields are explicitly handled alongside it.
+
+**B. get_events_by_organizer (Lines 881-889)**
+- **Semantic Intent:** Owner + Operator
+- **Canonical Replacement:** Querying current_owner_id (Owner) and EventRole (Operator).
+- **Migration Status:** **Migrated**. The parameter name remains organizer_id for API compatibility, but the internal SQL query has been rewritten to explicitly evaluate Event.current_owner_id == organizer_id OR EventRole.user_id == organizer_id.
+
+**C. _event_to_dict (Line 988)**
+- **Semantic Intent:** API Compatibility (Serialization)
+- **Canonical Replacement:** Clients should read current_owner_id.
+- **Migration Status:** Marked as **Compatibility-Only**. Returning the field to clients ensures frontend applications don't crash while they transition to canonical fields.
+
+### 3. pp/events/routes.py
+**A. Contact Fallback in contact_organizer (Line 2523)**
+- **Semantic Intent:** Primary Contact
+- **Canonical Replacement:** current_owner_id for individuals, original_creator_id for orgs.
+- **Migration Status:** **Migrated / Compatibility-Only**. The logic was updated to prioritize current_owner_id and original_creator_id, strictly falling back to organizer_id only if neither exists.
+
+**B. Event Serialization in Routes (Lines 2040, 2280)**
+- **Semantic Intent:** API Compatibility (Serialization)
+- **Canonical Replacement:** Clients should read canonical ownership fields.
+- **Migration Status:** Marked as **Compatibility-Only**. Retained to prevent breaking existing mobile/web clients.
+
+**C. API Observability (Lines 378, 461)**
+- **Semantic Intent:** Runtime Observability
+- **Migration Status:** **Active**. Newly inserted loggers that warn when clients submit organizer_id in request payloads.
+
+### Conclusion & Regression
+Real-code regression tests have verified these paths. The affected Events regression set passes completely (52/52), confirming that canonical ownership/context behavior and the retained compatibility boundaries operate without regressions.
+
+### 4. Final Internal Compatibility Evidence
+
+- `app/events/services.py:create_event` now supplies explicit `organizer_id`, `current_owner_type`, `current_owner_id`, and `created_by_entity_id`. The organizer value remains a required public-contact compatibility field; it is no longer needed to infer ownership for newly created records.
+- `app/events/models.py:Event.__init__` emits the constructor deprecation warning only when `organizer_id` is supplied without an explicit canonical owner. The `_set_default_owner` fallback remains active for legacy records and is not removed by this cleanup.
+- `app/events/permissions.py:_is_event_owner` checks canonical ownership first and consults `organizer_id` only when both canonical owner fields are absent. A dedicated regression test proves that a stale organizer cannot override a transferred owner, while a legacy record without canonical ownership remains supported.
+- Runtime evidence from the 52-test suite: constructor-fallback warnings were `0`; one permission-fallback warning came from the deliberate legacy-record compatibility test. External legacy API usage remains `0` from the preceding observation report.
+- `created_by_type`/`created_by_entity_id` remain intact because polymorphic creator provenance is still a valid domain contract; no removal is authorized by this cleanup.
+
+### 5. Additional Code-Evidence Fixes Verified by Regression
+
+- `app/events/services.py` rolls back a failed PostgreSQL registration transaction before retrying serialization failures and uses bounded backoff.
+- `app/events/tasks.py` uses the active Flask application/session when invoked in an existing context and retains the model status constants used by the reaper.
+- `app/events/services.py:check_in_attendee` now verifies the same 24-character HMAC signature length generated by `EventRegistration.generate_refs`.

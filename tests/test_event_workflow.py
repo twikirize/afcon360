@@ -1,3 +1,4 @@
+import uuid
 #!/usr/bin/env python3
 """
 Test event workflow including creation, updates, and lifecycle management.
@@ -7,60 +8,39 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from datetime import datetime, timezone, timedelta
 import unittest
-from flask import Flask
-from sqlalchemy import event
+from app import create_app
+from app.config import TestingConfig
 from app.extensions import db
 from app.kyc.models import KycRecord  # MUST be before User
 from app.identity.models.user import User
 from app.events.models import Event, TicketType, EventRegistration
 from app.events.services import EventService
 
-# Note: SQLite BIGINT auto-increment is now handled by app/models/base.py
-# No need for custom event listeners
-
 class TestEventWorkflow(unittest.TestCase):
     """Test event creation and lifecycle management"""
 
     def setUp(self):
         """Set up test environment"""
-        self.app = Flask(__name__)
-        self.app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-        self.app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-        self.app.config['TESTING'] = True
-
-        db.init_app(self.app)
+        self.app = create_app(config_object=TestingConfig)
 
         with self.app.app_context():
-            db.create_all()
-
             # Create test user
             self.test_user = User(
-                email='owner@example.com',
-                username='eventowner',
+                email=f'owner_{uuid.uuid4().hex[:8]}@example.com',
+                username=f'eventowner_{uuid.uuid4().hex[:8]}',
                 password_hash='pbkdf2:sha256:test'
             )
-            # For SQLite, we need to handle ID generation differently
-            # Let SQLAlchemy handle it, but ensure it works
             db.session.add(self.test_user)
-            # Flush to generate the ID without committing
             db.session.flush()
-            try:
-                db.session.commit()
-            except Exception as e:
-                db.session.rollback()
-                # If there's an issue with ID generation, try setting it explicitly
-                # This is a workaround for SQLite
-                self.test_user.id = 1
-                db.session.add(self.test_user)
-                db.session.flush()
-                db.session.commit()
+            db.session.commit()
             self.user_id = self.test_user.id  # Get auto-generated ID
+            self.slug_suffix = uuid.uuid4().hex[:8]
 
     def tearDown(self):
         """Clean up after tests"""
         with self.app.app_context():
             db.session.remove()
-            db.drop_all()
+            db.session.rollback()
 
     def test_event_creation(self):
         """Test creating a new event"""
@@ -73,7 +53,7 @@ class TestEventWorkflow(unittest.TestCase):
                 event_service_available = False
 
             event_data = {
-                'name': 'Test Event 2025',
+                'name': f'Test Event 2025 {self.slug_suffix}',
                 'description': 'A test event for workflow testing',
                 'city': 'Kampala',
                 'venue': 'Test Venue',
@@ -87,19 +67,15 @@ class TestEventWorkflow(unittest.TestCase):
                 try:
                     # Try different method signatures
                     if hasattr(EventService, 'create_event'):
-                        # Try with organizer_id as first parameter
+                        # Try with valid parameters
                         try:
                             event_dict, error = EventService.create_event(event_data, self.test_user.id)
                             if error:
                                 raise Exception(f"Service error: {error}")
                             self.assertIsNotNone(event_dict)
-                            self.assertEqual(event_dict.get('slug'), 'test-event-2025')
-                        except TypeError:
-                            # Try different signature
-                            event_dict, error = EventService.create_event(organizer_id=self.test_user.id, data=event_data)
-                            if error:
-                                raise Exception(f"Service error: {error}")
-                            self.assertIsNotNone(event_dict)
+                            self.assertEqual(event_dict.get('slug'), f'test-event-2025-{self.slug_suffix}')
+                        except Exception as e:
+                            self.fail(f"Could not create event: {e}")
                 except Exception as e:
                     # Fallback to direct creation
                     print(f"EventService.create_event failed: {e}")
@@ -108,8 +84,8 @@ class TestEventWorkflow(unittest.TestCase):
             if not event_service_available:
                 # Fallback to direct creation
                 event = Event(
-                    slug='test-event-2025',
-                    name='Test Event 2025',
+                    slug=f'test-event-2025-{self.slug_suffix}',
+                    name=f'Test Event 2025 {self.slug_suffix}',
                     description='A test event for workflow testing',
                     city='Kampala',
                     venue='Test Venue',
@@ -119,23 +95,25 @@ class TestEventWorkflow(unittest.TestCase):
                     category='conference',
                     currency='USD',
                     max_capacity=100,
-                    organizer_id=self.test_user.id
+                    organizer_id=self.test_user.id,
+                    current_owner_type="individual", current_owner_id=self.test_user.id
                 )
                 db.session.add(event)
                 db.session.commit()
 
                 self.assertIsNotNone(event.id)
-                self.assertEqual(event.slug, 'test-event-2025')
+                self.assertEqual(event.slug, f'test-event-2025-{self.slug_suffix}')
 
     def test_event_publishing(self):
         """Test publishing an event"""
         with self.app.app_context():
             # Create a draft event
             event = Event(
-                slug='draft-event',
+                slug=f'draft-event-{self.slug_suffix}',
                 name='Draft Event',
                 city='Kampala',
                 organizer_id=self.user_id,
+                current_owner_type="individual", current_owner_id=self.user_id,
                 status='draft'
             )
             db.session.add(event)
@@ -154,10 +132,11 @@ class TestEventWorkflow(unittest.TestCase):
         with self.app.app_context():
             # Create event
             event = Event(
-                slug='update-event',
+                slug=f'update-event-{self.slug_suffix}',
                 name='Original Name',
                 city='Kampala',
                 organizer_id=self.user_id,
+                current_owner_type="individual", current_owner_id=self.user_id,
                 status='active'
             )
             db.session.add(event)
@@ -178,10 +157,11 @@ class TestEventWorkflow(unittest.TestCase):
         with self.app.app_context():
             # Create event
             event = Event(
-                slug='ticket-event',
+                slug=f'ticket-event-{self.slug_suffix}',
                 name='Ticket Event',
                 city='Kampala',
                 organizer_id=self.user_id,
+                current_owner_type="individual", current_owner_id=self.user_id,
                 status='active'
             )
             db.session.add(event)
@@ -225,10 +205,11 @@ class TestEventWorkflow(unittest.TestCase):
         with self.app.app_context():
             # Create active event
             event = Event(
-                slug='cancel-event',
+                slug=f'cancel-event-{self.slug_suffix}',
                 name='Event to Cancel',
                 city='Kampala',
                 organizer_id=self.user_id,
+                current_owner_type="individual", current_owner_id=self.user_id,
                 status='active'
             )
             db.session.add(event)
@@ -249,10 +230,11 @@ class TestEventWorkflow(unittest.TestCase):
         with self.app.app_context():
             # Create event
             event = Event(
-                slug='metrics-event',
+                slug=f'metrics-event-{self.slug_suffix}',
                 name='Metrics Event',
                 city='Kampala',
                 organizer_id=self.user_id,
+                current_owner_type="individual", current_owner_id=self.user_id,
                 status='active'
             )
             db.session.add(event)
@@ -279,10 +261,11 @@ class TestEventWorkflow(unittest.TestCase):
             # Create multiple events
             events = [
                 Event(
-                    slug=f'search-event-{i}',
+                    slug=f'search-event-{self.slug_suffix}-{i}',
                     name=f'Search Event {i}',
                     city='Kampala',
                     organizer_id=self.user_id,
+                    current_owner_type="individual", current_owner_id=self.user_id,
                     status='active',
                     category='conference' if i % 2 == 0 else 'workshop'
                 ) for i in range(5)
@@ -291,8 +274,15 @@ class TestEventWorkflow(unittest.TestCase):
             db.session.commit()
 
             # Search for events by category
-            conference_events = Event.query.filter_by(category='conference').all()
-            workshop_events = Event.query.filter_by(category='workshop').all()
+            event_prefix = f'search-event-{self.slug_suffix}-'
+            conference_events = Event.query.filter(
+                Event.category == 'conference',
+                Event.slug.like(f'{event_prefix}%'),
+            ).all()
+            workshop_events = Event.query.filter(
+                Event.category == 'workshop',
+                Event.slug.like(f'{event_prefix}%'),
+            ).all()
 
             # Should find 3 conferences and 2 workshops (0,2,4 are conferences; 1,3 are workshops)
             self.assertEqual(len(conference_events), 3)
@@ -303,10 +293,11 @@ class TestEventWorkflow(unittest.TestCase):
         with self.app.app_context():
             # Create event
             event = Event(
-                slug='soft-delete-event',
+                slug=f'soft-delete-event-{self.slug_suffix}',
                 name='Soft Delete Event',
                 city='Kampala',
                 organizer_id=self.user_id,
+                current_owner_type="individual", current_owner_id=self.user_id,
                 status='active'
             )
             db.session.add(event)

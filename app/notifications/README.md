@@ -7,6 +7,14 @@ platform** integrated into the AFCON360 management ecosystem. It provides
 centralized notification delivery across all modules including wallet,
 accommodation, transport, events, identity, and KYC.
 
+## Database and test contract
+
+Notification tests use the shared fixtures with a dedicated, migrated
+PostgreSQL database configured by `TEST_DATABASE_URL`. SQLAlchemy models and
+expressions are required; SQLite fallbacks, handwritten SQL strings, and
+test-time schema DDL are unsupported. See
+`docs/POSTGRES_TESTING_CONTRACT.md`.
+
 As of the latest milestone it is no longer *only* a delivery service. It now has
 two layers:
 

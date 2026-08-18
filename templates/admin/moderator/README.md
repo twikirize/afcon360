@@ -1,5 +1,9 @@
 # Moderator System Documentation
 
+Database-backed moderator tests follow the repository PostgreSQL-only testing
+contract and must use the migrated test schema through the shared fixtures.
+See `docs/POSTGRES_TESTING_CONTRACT.md`.
+
 ## Overview
 
 The AFCON360 Moderator System provides a comprehensive content moderation interface for managing user submissions, flags, users, organisations, events, KYC verifications, and escalations. The system is built with Flask/Jinja2 templates and follows a consistent design system.

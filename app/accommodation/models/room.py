@@ -9,7 +9,7 @@ import enum
 from sqlalchemy import (
     Column, BigInteger, String, Boolean, DateTime, Date, Float,
     ForeignKey, Integer, Text, Numeric, JSON,
-    Index, UniqueConstraint, CheckConstraint
+    Index, UniqueConstraint, CheckConstraint, func
 )
 from sqlalchemy.orm import relationship, validates
 from app.extensions import db
@@ -41,6 +41,9 @@ class RoomType(BaseModel):
     beds = Column(Integer, default=1)
     bathrooms = Column(Float, default=1.0)
 
+    # Short code for room type identification
+    short_code = Column(String(10), nullable=True)
+
     # Pricing
     base_price_per_night = Column(Numeric(10, 2), nullable=False)
     currency = Column(String(3), default="USD")
@@ -60,28 +63,33 @@ class RoomType(BaseModel):
     def booked_units(self) -> int:
         """Get number of booked/in-checked-in units for this room type (current date)."""
         from app.accommodation.models.booking import AccommodationBooking, AccommodationBookingStatus
-        from app.accommodation.models.availability import BlockedDate, AccommodationBlockedReason
 
         today = date.today()
 
-        confirmed = AccommodationBooking.query.filter(
-            AccommodationBooking.room_type_id == self.id,
-            AccommodationBooking.status.in_([
-                AccommodationBookingStatus.CONFIRMED.value,
-                AccommodationBookingStatus.CHECKED_IN.value,
-            ]),
-            AccommodationBooking.check_in <= today,
-            AccommodationBooking.check_out > today,
-        ).count()
+        booked_sum = int(
+            db.session.query(
+                func.coalesce(func.sum(func.coalesce(AccommodationBooking.rooms_requested, 1)), 0)
+            ).filter(
+                AccommodationBooking.room_type_id == self.id,
+                AccommodationBooking.status.in_([
+                    AccommodationBookingStatus.CONFIRMED.value,
+                    AccommodationBookingStatus.CHECKED_IN.value,
+                ]),
+                AccommodationBooking.check_in <= today,
+                AccommodationBooking.check_out > today,
+            ).scalar()
+            or 0
+        )
 
         blocks = InventoryBlock.query.filter(
             InventoryBlock.room_type_id == self.id,
             InventoryBlock.date_range_start <= today,
             InventoryBlock.date_range_end > today,
+            InventoryBlock.reason != 'booked',
         ).all()
         blocked = sum(b.units_blocked for b in blocks)
 
-        return confirmed + blocked
+        return booked_sum + blocked
 
     @property
     def available_units(self) -> int:
@@ -116,7 +124,7 @@ class InventoryBlock(BaseModel):
         Index("idx_inv_block_range", "room_type_id", "date_range_start", "date_range_end"),
         Index("idx_inv_block_booking", "booking_id"),
         CheckConstraint(
-            "reason IN ('MAINTENANCE', 'RENOVATION', 'SEASONAL_CLOSE', 'OWNER_BLOCK', 'temporary_hold')",
+            "reason IN ('MAINTENANCE', 'RENOVATION', 'SEASONAL_CLOSE', 'OWNER_BLOCK', 'temporary_hold', 'booked', 'owner_blocked', 'maintenance')",
             name="ck_inventory_block_reason_valid"
         ),
     )

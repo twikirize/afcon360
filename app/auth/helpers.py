@@ -314,6 +314,28 @@ def get_current_org_id():
     return org_id if context == "organization" else None
 
 
+def get_available_contexts(user=None):
+    """Compatibility wrapper for the canonical context resolver."""
+    if user is None:
+        from flask_login import current_user
+
+        user = current_user
+    from app.auth.context import get_available_contexts as resolve_contexts
+
+    return resolve_contexts(user)
+
+
+def get_active_context(user=None):
+    """Return the selected context after fresh eligibility validation."""
+    if user is None:
+        from flask_login import current_user
+
+        user = current_user
+    from app.auth.context import get_active_context as resolve_active_context
+
+    return resolve_active_context(user)
+
+
 # ---------------------------------------------------------------------------
 # Profile completion helpers
 # ---------------------------------------------------------------------------

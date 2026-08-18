@@ -12,6 +12,7 @@ import logging
 import uuid
 from typing import Dict, Any, Optional, List, Union, TYPE_CHECKING
 from datetime import datetime, timezone
+from decimal import Decimal
 from flask import current_app, render_template
 from flask_login import current_user
 from sqlalchemy import func
@@ -800,6 +801,31 @@ class NotificationService:
         return count
 
     @classmethod
+    def set_read_state(cls, notification_id: int, user_id: int, is_read: bool) -> bool:
+        notification = Notification.query.filter_by(
+            id=notification_id, user_id=user_id
+        ).first()
+        if not notification:
+            return False
+        if is_read:
+            notification.mark_read()
+        else:
+            notification.mark_unread()
+        db.session.commit()
+        return True
+
+    @classmethod
+    def set_important(cls, notification_id: int, user_id: int, is_important: bool) -> bool:
+        notification = Notification.query.filter_by(
+            id=notification_id, user_id=user_id
+        ).first()
+        if not notification:
+            return False
+        notification.is_important = is_important
+        db.session.commit()
+        return True
+
+    @classmethod
     def resend_failed(cls, max_retries: int = 3) -> int:
         """
         Resend failed notifications with exponential backoff.
@@ -1586,6 +1612,156 @@ class NotificationService:
                 priority='normal',
                 module=module,
             )
+
+    @classmethod
+    def notify_booking_dates_modified(
+        cls,
+        booking,
+        adjustment,
+        notify_guest: bool = True,
+    ):
+        """Notify guest and host that a booking's dates have been modified.
+
+        Args:
+            booking:          The AccommodationBooking (post-modification).
+            adjustment:       A BookingPriceAdjustment instance (or dict) with
+                              the before/after dates and price delta.
+            notify_guest:     When True, send a guest-facing notification
+                              (email + in-app) about the new dates and any
+                              balance / refund. The host is always notified
+                              in-app regardless of this flag.
+        """
+        module = cls.module_for_booking(booking)
+        ref = getattr(booking, 'booking_reference', 'N/A')
+        prop = getattr(booking, 'accommodation_property', None)
+        prop_title = getattr(prop, 'title', '') if prop else ''
+
+        old_check_in = (
+            getattr(adjustment, 'old_check_in', None)
+            or (adjustment.get('old_check_in') if isinstance(adjustment, dict) else None)
+        )
+        new_check_in = (
+            getattr(adjustment, 'new_check_in', None)
+            or (adjustment.get('new_check_in') if isinstance(adjustment, dict) else None)
+        )
+        old_check_out = (
+            getattr(adjustment, 'old_check_out', None)
+            or (adjustment.get('old_check_out') if isinstance(adjustment, dict) else None)
+        )
+        new_check_out = (
+            getattr(adjustment, 'new_check_out', None)
+            or (adjustment.get('new_check_out') if isinstance(adjustment, dict) else None)
+        )
+        delta_amount = (
+            getattr(adjustment, 'delta_amount', None)
+            or (adjustment.get('delta_amount') if isinstance(adjustment, dict) else None)
+        )
+        refund_amount = (
+            getattr(adjustment, 'refund_amount', None)
+            or (adjustment.get('refund_amount') if isinstance(adjustment, dict) else None)
+        )
+
+        date_msg = (
+            f"from {old_check_in} to {old_check_out}"
+            if old_check_in and old_check_out
+            else ""
+        )
+        new_date_msg = (
+            f"to {new_check_in} to {new_check_out}"
+            if new_check_in and new_check_out
+            else ""
+        )
+
+        delta_str = str(delta_amount) if delta_amount is not None else "0.00"
+        refund_str = str(refund_amount) if refund_amount is not None else "0.00"
+
+        # ---- Guest notification ----
+        guest_id = getattr(booking, 'guest_user_id', None)
+        if guest_id:
+            if delta_amount is not None and Decimal(delta_amount) > 0:
+                guest_msg = (
+                    f"Your booking {ref} dates have been changed {date_msg} {new_date_msg}. "
+                    f"You owe an additional {delta_str} {booking.currency or 'USD'}."
+                )
+            elif delta_amount is not None and Decimal(delta_amount) < 0:
+                guest_msg = (
+                    f"Your booking {ref} dates have been changed {date_msg} {new_date_msg}. "
+                    f"A refund of {refund_str} {booking.currency or 'USD'} will be processed."
+                )
+            else:
+                guest_msg = (
+                    f"Your booking {ref} dates have been updated {date_msg} {new_date_msg}."
+                )
+
+            channels = ['email', 'in_app'] if notify_guest else ['in_app']
+            cls.send(
+                user_id=guest_id,
+                notification_type=NotificationType.BOOKING_UPDATE,
+                title="Booking Dates Changed",
+                message=guest_msg,
+                data={
+                    'booking_reference': ref,
+                    'property_title': prop_title,
+                    'old_check_in': str(old_check_in) if old_check_in else '',
+                    'new_check_in': str(new_check_in) if new_check_in else '',
+                    'old_check_out': str(old_check_out) if old_check_out else '',
+                    'new_check_out': str(new_check_out) if new_check_out else '',
+                    'total_amount': str(getattr(booking, 'total_amount', '')),
+                    'delta_amount': delta_str,
+                    'refund_amount': refund_str,
+                    'currency': booking.currency or 'USD',
+                },
+                channels=channels,
+                link=f"/accommodation/guest/pass/{ref}",
+                priority='high',
+                module=module,
+            )
+
+        # ---- Host notification ----
+        host_id = getattr(booking, 'host_user_id', None)
+        if host_id:
+            cls.send(
+                user_id=host_id,
+                notification_type=NotificationType.BOOKING_UPDATE,
+                title=f"Booking {ref} Dates Modified",
+                message=(
+                    f"Booking {ref} ({prop_title}) dates changed "
+                    f"{date_msg} {new_date_msg}. Delta: {delta_str} "
+                    f"{booking.currency or 'USD'}."
+                ),
+                data={
+                    'booking_reference': ref,
+                    'property_title': prop_title,
+                    'old_check_in': str(old_check_in) if old_check_in else '',
+                    'new_check_in': str(new_check_in) if new_check_in else '',
+                    'old_check_out': str(old_check_out) if old_check_out else '',
+                    'new_check_out': str(new_check_out) if new_check_out else '',
+                    'delta_amount': delta_str,
+                    'refund_amount': refund_str,
+                    'currency': booking.currency or 'USD',
+                    'reason': getattr(adjustment, 'reason', '') or '',
+                    'changed_by': getattr(adjustment, 'changed_by_user_id', None),
+                },
+                channels=['email', 'in_app'],
+                link="/accommodation/host/bookings",
+                priority='normal',
+                module=module,
+            )
+
+        # ---- Admin notification ----
+        cls._notify_admins(
+            notification_type=NotificationType.BOOKING_UPDATE,
+            title=f"{MODULE_LABELS.get(module, 'Booking')} Dates Modified",
+            message=f"Booking {ref} dates modified. Delta: {delta_str} {booking.currency or 'USD'}.",
+            data={
+                'booking_reference': ref,
+                'delta_amount': delta_str,
+                'adjustment_type': getattr(adjustment, 'adjustment_type', '') or '',
+            },
+            link=cls.MODULE_ADMIN_LINKS.get(module, '/admin'),
+            channels=['in_app'],
+            domain=module,
+        )
 
     @classmethod
     def notify_event_registered(cls, registration):

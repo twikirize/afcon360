@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}{{ org.legal_name }} — Events{% endblock %}
+
+{% block content %}
+<main class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div>
+            <p class="text-muted mb-1">{{ org.legal_name }}</p>
+            <h1 class="h3 mb-0">Organisation events</h1>
+        </div>
+        <a class="btn btn-outline-primary" href="{{ url_for('org.org_dashboard', org_id=org.org_id) }}">Back to workspace</a>
+    </div>
+    {% if events %}
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead><tr><th>Event</th><th>Status</th><th>Start</th><th>Location</th></tr></thead>
+            <tbody>
+            {% for event in events %}
+            <tr><td>{{ event.name }}</td><td>{{ event.status }}</td><td>{{ event.start_date or '—' }}</td><td>{{ event.city }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}<p class="text-muted">No organisation events are available yet.</p>{% endif %}
+</main>
+{% endblock %}

@@ -2,6 +2,13 @@
 
 This document consolidates all Events-related READMEs/notes into a single, up‑to‑date reference. It de-duplicates overlapping content, aligns claims with the current codebase, and highlights what remains to be done.
 
+## Database and test contract
+
+Events tests run only against a dedicated, Alembic-migrated PostgreSQL
+database. Use the shared pytest fixtures and `TEST_DATABASE_URL`; do not add
+SQLite fallbacks, handwritten SQL strings, or test-time schema creation.
+The platform-wide contract is documented in `docs/POSTGRES_TESTING_CONTRACT.md`.
+
 Source docs merged and cross-checked:
 - Readme's/2026-04-11_events_concurrency_fixes.md
 - Readme's/registration_report2_15-04 (audit transcript with Events routes and checks)
@@ -106,6 +113,61 @@ Important endpoints (function names kept short; see file for full behavior and d
   - `/events/api/checkin-stats/<event_slug>` → `api_checkin_stats`
 
 Note: `landing`, `list`, `create_event`, etc., confirmed present (former notes questioned existence; code now contains them).
+
+### Public event listing contract
+
+The public `/events/` listing has this contract:
+
+- **Input:** the public route requests events with status `published`.
+- **Output:** serialized event dictionaries, with no database mutation.
+- **Ordering invariant:** for every adjacent pair, `(created_at, id)` is
+  non-increasing; the most recently created event appears first, and the larger
+  internal `id` breaks equal-timestamp ties deterministically.
+- **Authority:** any public visitor may observe the published list; internal
+  `id` is used only for sorting and is never exposed to clients.
+
+### Registration availability contract
+
+The complete state predicates, transition authority, and cache boundary are
+specified in [`registration_availability.md`](registration_availability.md).
+The service and templates must not treat a cached public snapshot as a
+capacity or authorization decision.
+
+The event registration workflow has the following state and authority rules:
+
+- **Event state:** a published event is registrable only when its availability
+  state is `open`; see the linked contract for `not_open`, `closed`,
+  `sold_out`, and `expired` predicates. Because event dates are date-only
+  values, the whole `end_date` remains active; the event expires at the start
+  of the following day.
+- **Registration window:** organizers may configure UTC opening and closing
+  timestamps. When no closing timestamp is configured, registration closes at
+  the start of `start_date`.
+- **Expired transition:** once expired, the landing page remains observable,
+  displays an expired state, and the registration CTA/form is unavailable.
+  Every registration service path also rejects the request with a closed-
+  registration error; client-side controls are only an additional safeguard.
+- **Identity transition:** a confirmed registration for the signed-in user
+  blocks another self-registration attempt and must not create a second
+  registration. The user may still register third parties or additional group
+  attendees; group registration must not require recreating the already
+  registered booker.
+- **Payment transition:** when the selected ticket price after discounts is
+  zero, the workflow transitions directly to a confirmed registration with
+  `payment_status=free`. It must not require a wallet, mobile-money provider,
+  payment method configuration, financial audit transaction, debit, or refund;
+  paid tickets retain the normal payment and compensating-refund flow.
+- **Presentation:** upcoming events count down to their start; events in
+  progress show their active state; expired events show `EXPIRED` and no
+  registration action.
+- **Invariants:** no registration is created after expiry; no duplicate
+  `(event_id, user_id)` registration is created; free registration creates no
+  wallet transaction reference or wallet activity; and a rejection does not
+  mutate capacity, payment, or registration records.
+- **Authority:** the server-side event date and registration records are the
+  source of truth. The signed-in user may initiate self, third-party, or group
+  registration, subject to the above constraints and normal capacity/payment
+  checks.
 
 
 ## 5) Permissions (app/events/permissions.py)

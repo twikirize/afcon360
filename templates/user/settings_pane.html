@@ -30,7 +30,7 @@
             </div>
             <div>
                 <p style="font-size:14px; font-weight:700; margin:0; color:var(--color-text-primary);">KYC Status & Tiers</p>
-                <p style="font-size:12px; margin:2px 0 0; color:var(--color-text-secondary);">{% if kyc_info %}{{ kyc_info.tier_name }} (Tier {{ kyc_info.tier }}) · {{ kyc_info.fulfillment_percentage|default(0) }}% Fulfilled{% else %}Unverified{% endif %}</p>
+                <p style="font-size:12px; margin:2px 0 0; color:var(--color-text-secondary);">{% if kyc_info %}{{ kyc_info.tier_name }} (Tier {{ kyc_info.tier }}) · {{ kyc_info.fulfillment_percentage|default(0) }}% KYC progress{% else %}Unverified{% endif %}</p>
             </div>
         </div>
         <a href="{{ safe_url('kyc.index') }}" class="btn-banner" style="background:var(--brand-accent); color:var(--brand-primary-dark); font-weight:700;">Verify</a>

@@ -408,7 +408,7 @@
             </li>
 
             <li class="menu-item">
-              <a href="{{ url_for('org.dashboard', org_id=session.get('current_org_id')) }}"
+              <a href="{{ url_for('org.org_dashboard', org_id=nav_org_id) }}"
                  class="nav-dashboard-link">
                 <i class="bi bi-speedometer2 me-1"></i>Org Dashboard
               </a>
@@ -428,11 +428,19 @@
               <ul class="drop-menu drop-menu--right" role="menu">
                 <li><span class="drop-header">{{ nav_org_name }}</span></li>
                 <li><hr class="drop-divider"></li>
-                <li><a class="drop-item" href="{{ url_for('auth.switch_context', context='individual') }}">
-                  <i class="bi bi-person me-2"></i>Switch to Personal</a></li>
-                <li><a class="drop-item" href="{{ url_for('org.members', org_id=session.get('current_org_id')) }}">
+                <li>
+                  <form method="POST" action="{{ url_for('auth.switch_context') }}">
+                    <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
+                    <input type="hidden" name="type" value="personal">
+                    <input type="hidden" name="role" value="user">
+                    <button type="submit" class="drop-item drop-item--btn">
+                      <i class="bi bi-person me-2"></i>Switch to Personal
+                    </button>
+                  </form>
+                </li>
+                <li><a class="drop-item" href="{{ url_for('org.members', org_id=nav_org_id) }}">
                   <i class="bi bi-people me-2"></i>Org Members</a></li>
-                <li><a class="drop-item" href="{{ url_for('org.settings', org_id=session.get('current_org_id')) }}">
+                <li><a class="drop-item" href="{{ url_for('org.settings', org_id=nav_org_id) }}">
                   <i class="bi bi-gear me-2"></i>Org Settings</a></li>
                 <li><hr class="drop-divider"></li>
                 <li>
@@ -636,12 +644,17 @@
             <i class="bi bi-person-plus me-2"></i>Create Account
           </a>
         {% elif nav_in_org_context %}
-          <a class="drawer-link" href="{{ url_for('org.dashboard', org_id=session.get('current_org_id')) }}">
+          <a class="drawer-link" href="{{ url_for('org.org_dashboard', org_id=nav_org_id) }}">
             <i class="bi bi-speedometer2 me-2"></i>Org Dashboard
           </a>
-          <a class="drawer-link" href="{{ url_for('auth.switch_context', context='individual') }}">
-            <i class="bi bi-person me-2"></i>Switch to Personal
-          </a>
+          <form method="POST" action="{{ url_for('auth.switch_context') }}">
+            <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
+            <input type="hidden" name="type" value="personal">
+            <input type="hidden" name="role" value="user">
+            <button type="submit" class="drawer-link drawer-auth">
+              <i class="bi bi-person me-2"></i>Switch to Personal
+            </button>
+          </form>
         {% else %}
           <a class="drawer-link" href="{% if current_user.is_app_owner() %}{{ url_for('admin.owner.dashboard') }}
             {% elif current_user.has_global_role('super_admin') %}{{ url_for('admin.super_dashboard') }}

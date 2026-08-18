@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, current_app, request, abort, jsonify
+from flask import Blueprint, render_template, redirect, url_for, flash, current_app, request, abort, jsonify, session
 from flask_login import current_user, login_required
 from datetime import datetime, timezone
 from app.identity.models.user import User, Session as UserSession
@@ -9,6 +9,13 @@ from app.auth.kyc_compliance import calculate_kyc_tier, get_user_limits
 from app.kyc.services import KycService
 
 profile_bp = Blueprint("profile", __name__)
+
+
+@profile_bp.route("/profile/kyc")
+@login_required
+def profile_kyc():
+    """Compatibility entry point for legacy profile KYC links."""
+    return redirect(url_for("kyc.index"))
 
 @profile_bp.route("/profile/<public_id>", endpoint="public_profile")
 def public_profile(public_id):
@@ -157,6 +164,7 @@ def account_overview():
         'verification_rejection_reason': rejection_reason,
         'tier_name': tier_name,
         'progress_percentage': progress_percentage,
+        'profile_completion': None,
         'active_sessions': active_sessions,
         'user_roles': user_roles,
         'org_memberships': org_memberships,

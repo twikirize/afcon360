@@ -1,1 +1,6 @@
 Single-database configuration for Flask.
+
+The application and test database backend is PostgreSQL. Apply reviewed
+Alembic migrations to a dedicated database ending in `_test` before running
+pytest; tests must not create or repair schema. See
+`docs/POSTGRES_TESTING_CONTRACT.md`.

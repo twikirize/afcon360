@@ -22,6 +22,7 @@ from decimal import Decimal
 from datetime import timedelta
 from pathlib import Path
 from dotenv import load_dotenv
+from sqlalchemy.engine import make_url
 
 logger = logging.getLogger(__name__)
 
@@ -425,10 +426,20 @@ class TestingConfig(Config):
     TESTING = True
     DEBUG   = True
 
-    SQLALCHEMY_DATABASE_URI = (
-        os.getenv("TEST_DATABASE_URL")
-        or os.getenv("DATABASE_URL", "postgresql://localhost:5432/afcon360") + "_test"
-    )
+    _configured_test_database_url = os.getenv("TEST_DATABASE_URL")
+    if not _configured_test_database_url:
+        _base_database_url = os.getenv("DATABASE_URL")
+        if _base_database_url:
+            _parsed_database_url = make_url(_base_database_url)
+            _database_name = _parsed_database_url.database or "afcon360"
+            _parsed_database_url = _parsed_database_url.set(
+                database=f"{_database_name}_test"
+            )
+            _configured_test_database_url = str(_parsed_database_url)
+        else:
+            _configured_test_database_url = "postgresql://localhost:5432/afcon360_test"
+
+    SQLALCHEMY_DATABASE_URI = _configured_test_database_url
 
     WTF_CSRF_ENABLED = False
     SERVER_NAME          = "localhost.localdomain"

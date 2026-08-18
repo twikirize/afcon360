@@ -8,6 +8,23 @@ from app.extensions import limiter, db
 media_bp = Blueprint('media', __name__, url_prefix='/api/media')
 
 
+def _can_manage_entity_media(module: str, entity_id: str, user) -> bool:
+    """Authorize media writes against the owning entity, never a raw DB id."""
+    if module != 'accommodation':
+        return True
+
+    from app.accommodation.models.property import Property
+    from app.accommodation.services.identity_service import AccommodationIdentityService
+
+    prop = db.session.query(Property).filter(
+        Property.public_id == entity_id,
+        Property.is_deleted == False,
+    ).first()
+    return bool(prop and AccommodationIdentityService.can_manage_property(
+        user, prop.owner_user_id, prop.owner_org_id
+    ))
+
+
 @media_bp.route('/upload/<module>', methods=['POST'])
 @login_required
 @limiter.limit("50 per minute")
@@ -27,9 +44,12 @@ def upload(module: str):
     entity_id = request.form.get('entity_id')
     caption = request.form.get('caption')
     is_cover = request.form.get('is_cover', 'false').lower() == 'true'
+    category = request.form.get('category', 'other')
 
     if not entity_id:
         return jsonify({'error': 'entity_id required'}), 400
+    if not _can_manage_entity_media(module, entity_id, current_user):
+        return jsonify({'error': 'You are not allowed to manage this property media'}), 403
 
     try:
         result = MediaService.upload_photo(
@@ -38,7 +58,8 @@ def upload(module: str):
             entity_id=entity_id,
             uploader_user_id=current_user.id,  # internal BIGINT
             caption=caption,
-            is_cover=is_cover
+            is_cover=is_cover,
+            category=category,
         )
         return jsonify(result), 202
     except ValueError as e:
@@ -57,6 +78,8 @@ def submit_youtube(module: str):
     data = request.get_json()
     if not data or 'youtube_url' not in data or 'entity_id' not in data:
         return jsonify({'error': 'youtube_url and entity_id required'}), 400
+    if not _can_manage_entity_media(module, data['entity_id'], current_user):
+        return jsonify({'error': 'You are not allowed to manage this property media'}), 403
 
     try:
         result = MediaService.submit_youtube_url(
@@ -82,6 +105,8 @@ def status(media_public_id: str):
     ).first()
     if not media:
         return jsonify({'error': 'Not found'}), 404
+    if not _can_manage_entity_media(media.module, media.entity_id, current_user):
+        return jsonify({'error': 'You are not allowed to view this media status'}), 403
     return jsonify({
         'media_id': media.public_id,
         'status': media.status,
@@ -101,6 +126,7 @@ def get_entity_media(module: str, entity_id: str):
         'media_type': m.media_type,
         'urls': m.urls,
         'caption': m.caption,
+        'category': (m.processing_metadata or {}).get('photo_category', 'other'),
         'is_cover': m.is_cover,
         'display_order': m.display_order,
         'status': m.status
@@ -112,6 +138,16 @@ def get_entity_media(module: str, entity_id: str):
 def delete(media_public_id: str):
     """Soft-delete a media item."""
     from app.media.service import MediaService
+    from app.media.models import Media
+
+    media = db.session.query(Media).filter(
+        Media.public_id == media_public_id,
+        Media.is_deleted == False,
+    ).first()
+    if not media:
+        return jsonify({'error': 'Not found or already deleted'}), 404
+    if not _can_manage_entity_media(media.module, media.entity_id, current_user):
+        return jsonify({'error': 'You are not allowed to manage this property media'}), 403
     success = MediaService.delete(media_public_id, current_user.id)
     if not success:
         return jsonify({'error': 'Not found or already deleted'}), 404
@@ -131,6 +167,8 @@ def set_cover(media_public_id: str):
 
     if not media:
         return jsonify({'error': 'Media not found'}), 404
+    if not _can_manage_entity_media(media.module, media.entity_id, current_user):
+        return jsonify({'error': 'You are not allowed to manage this property media'}), 403
 
     # Remove cover from other media for same entity
     db.session.query(Media).filter(
@@ -146,6 +184,34 @@ def set_cover(media_public_id: str):
     return jsonify({'success': True, 'media_id': media_public_id})
 
 
+@media_bp.route('/reorder/<module>/<entity_id>', methods=['POST'])
+@login_required
+def reorder(module: str, entity_id: str):
+    """Persist a host's gallery order using public media identifiers."""
+    from app.media.models import Media
+
+    if not _can_manage_entity_media(module, entity_id, current_user):
+        return jsonify({'error': 'You are not allowed to manage this property media'}), 403
+    payload = request.get_json(silent=True) or {}
+    media_ids = payload.get('media_ids')
+    if not isinstance(media_ids, list) or len(media_ids) > 100:
+        return jsonify({'error': 'media_ids must be a list of at most 100 items'}), 400
+
+    items = db.session.query(Media).filter(
+        Media.module == module,
+        Media.entity_id == entity_id,
+        Media.public_id.in_(media_ids),
+        Media.is_deleted == False,
+    ).all()
+    if len(items) != len(media_ids):
+        return jsonify({'error': 'One or more media items do not belong to this property'}), 400
+    by_public_id = {item.public_id: item for item in items}
+    for order, public_id in enumerate(media_ids):
+        by_public_id[public_id].display_order = order
+    db.session.commit()
+    return jsonify({'success': True})
+
+
 @media_bp.route('/health', methods=['GET'])
 @login_required
 def media_health():
@@ -153,11 +219,11 @@ def media_health():
     Health check endpoint for media system.
     Returns system status, queue health, and processing metrics.
     """
-    from sqlalchemy import text
+    from sqlalchemy import func, literal, select
     from datetime import datetime, timezone
 
     try:
-        db.session.execute(text("SELECT 1"))
+        db.session.execute(select(literal(1)))
         db_healthy = True
         db_error = None
     except Exception as e:
@@ -166,27 +232,30 @@ def media_health():
 
     counts = {}
     for status_name in ['pending', 'processing', 'ready', 'failed']:
-        counts[status_name] = db.session.execute(
-            text("SELECT COUNT(*) FROM media WHERE status = :s"),
-            {'s': status_name}
-        ).scalar() or 0
+        counts[status_name] = db.session.scalar(
+            select(func.count()).select_from(Media).where(Media.status == status_name)
+        ) or 0
 
     counts['total'] = sum(counts.values())
 
-    oldest_stuck = db.session.execute(text("""
-        SELECT public_id, status, created_at, processing_attempts
-        FROM media
-        WHERE status IN ('pending', 'processing')
-        ORDER BY created_at ASC
-        LIMIT 1
-    """)).fetchone()
+    oldest_stuck = db.session.execute(
+        select(
+            Media.public_id,
+            Media.status,
+            Media.created_at,
+            Media.processing_attempts,
+        )
+        .where(Media.status.in_(['pending', 'processing']))
+        .order_by(Media.created_at.asc())
+        .limit(1)
+    ).first()
 
-    failed_today = db.session.execute(text("""
-        SELECT COUNT(*)
-        FROM media
-        WHERE status = 'failed'
-        AND DATE(failed_at) = CURRENT_DATE
-    """)).scalar() or 0
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    failed_today = db.session.scalar(
+        select(func.count())
+        .select_from(Media)
+        .where(Media.status == 'failed', Media.failed_at >= today)
+    ) or 0
 
     celery_healthy = False
     celery_workers = 0
@@ -531,9 +600,17 @@ def presign(module: str):
     filename = data.get('filename')
     content_type = data.get('content_type', 'application/octet-stream')
     total_size = int(data.get('total_size', 0))
+    category = data.get('category', 'other')
 
     if not all([entity_id, filename]):
         return jsonify({'error': 'entity_id and filename required'}), 400
+    if not _can_manage_entity_media(module, entity_id, current_user):
+        return jsonify({'error': 'You are not allowed to manage this property media'}), 403
+    try:
+        from app.media.service import MediaService
+        category = MediaService.validate_photo_category(category)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
 
     module_config = current_app.config['MEDIA_MODULE_CONFIG'].get(module)
     if not module_config:
@@ -576,6 +653,7 @@ def presign(module: str):
         original_filename=filename,
         mime_type=content_type,
         file_size=total_size,
+        processing_metadata={'photo_category': category},
         status='uploading',  # awaiting client confirmation of direct upload
     )
     db.session.add(media)
@@ -605,6 +683,8 @@ def confirm_upload(media_public_id: str):
     ).first()
     if not media:
         return jsonify({'error': 'Not found'}), 404
+    if not _can_manage_entity_media(media.module, media.entity_id, current_user):
+        return jsonify({'error': 'You are not allowed to manage this property media'}), 403
 
     # Validate the file actually landed in storage.
     backend = get_storage_backend()

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}{{ event.name }} — Registration unavailable{% endblock %}
+
+{% block module_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/registration-availability.css') }}">
+{% endblock %}
+
+{% block content %}
+<main class="registration-unavailable" aria-labelledby="availability-title">
+    <section class="availability-card">
+        <p class="availability-state">{{ event_data.registration_availability|replace('_', ' ')|title }}</p>
+        <h1 id="availability-title">{{ event.name }}</h1>
+        <p class="availability-message">{{ event_data.registration_message }}</p>
+
+        <dl class="event-facts">
+            {% if event_data.event_start_date %}
+            <div><dt>Event date</dt><dd>{{ event_data.event_start_date }}{% if event_data.event_end_date and event_data.event_end_date != event_data.event_start_date %} — {{ event_data.event_end_date }}{% endif %}</dd></div>
+            {% endif %}
+            {% if event_data.registration_opens_at and event_data.registration_availability == 'not_open' %}
+            <div><dt>Registration opens</dt><dd>{{ event_data.registration_opens_at|replace('T', ' ')|replace('+00:00', ' UTC') }}</dd></div>
+            {% endif %}
+            {% if event_data.registration_closes_at and event_data.registration_availability == 'closed' %}
+            <div><dt>Registration deadline</dt><dd>{{ event_data.registration_closes_at|replace('T', ' ')|replace('+00:00', ' UTC') }}</dd></div>
+            {% endif %}
+            {% if event_data.total_registrations is not none %}
+            <div><dt>Registrations</dt><dd>{{ event_data.total_registrations }}{% if event_data.max_capacity %} / {{ event_data.max_capacity }}{% endif %}</dd></div>
+            {% endif %}
+        </dl>
+
+        {% if event_data.ticket_types %}
+        <div class="ticket-summary">
+            <h2>Ticket availability</h2>
+            {% for ticket in event_data.ticket_types %}
+            <div class="ticket-row">
+                <span>{{ ticket.name }}</span>
+                <span>{% if ticket.is_sold_out %}Sold out{% elif ticket.available_until and event_data.registration_availability == 'closed' %}Sales ended{% elif ticket.available_from and event_data.registration_availability == 'not_open' %}Sales open later{% else %}Unavailable{% endif %}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <a class="back-link" href="{{ url_for('events.landing', identifier=event.slug) }}">Back to event details</a>
+    </section>
+</main>
+
+{% endblock %}

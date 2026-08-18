@@ -17,7 +17,7 @@ _otp_storage = {}
 class SMSService:
     """Service for sending SMS messages with pluggable providers."""
 
-    def __init__(self, provider: Optional[str] = None):
+    def __init__(self, provider: Optional[str] = None, auth_config=None):
         """
         Initialize SMS service with a specific provider.
 
@@ -26,17 +26,22 @@ class SMSService:
                       If None, uses SMS_PROVIDER from config.
         """
         self.provider = provider or current_app.config.get('SMS_PROVIDER', 'console')
+        self.auth_config = auth_config
         self._provider_instance = self._get_provider()
 
     def _get_provider(self):
         """Get the appropriate provider instance based on configuration."""
         if self.provider == 'twilio':
-            return TwilioProvider()
-        elif self.provider == 'africas_talking':
-            return AfricaTalkingProvider()
+            return TwilioProvider(self.auth_config)
+        elif self.provider in {'africa_talking', 'africas_talking'}:
+            return AfricaTalkingProvider(self.auth_config)
         else:
             # Default to console provider for development
             return ConsoleProvider()
+
+    def send_message(self, phone_number: str, message: str) -> Dict[str, Any]:
+        """Send a message without creating a second OTP storage record."""
+        return self._provider_instance.send_sms(phone_number=phone_number, message=message)
 
     def send_otp(self, phone_number: str, otp: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -149,11 +154,11 @@ class ConsoleProvider(BaseSMSProvider):
 class TwilioProvider(BaseSMSProvider):
     """Twilio SMS provider implementation."""
 
-    def __init__(self):
+    def __init__(self, auth_config=None):
         from flask import current_app
-        self.account_sid = current_app.config.get('TWILIO_ACCOUNT_SID')
-        self.auth_token = current_app.config.get('TWILIO_AUTH_TOKEN')
-        self.phone_number = current_app.config.get('TWILIO_PHONE_NUMBER')
+        self.account_sid = getattr(auth_config, 'twilio_account_sid', None) or current_app.config.get('TWILIO_ACCOUNT_SID')
+        self.auth_token = getattr(auth_config, 'twilio_auth_token', None) or current_app.config.get('TWILIO_AUTH_TOKEN')
+        self.phone_number = getattr(auth_config, 'twilio_phone_number', None) or current_app.config.get('TWILIO_PHONE_NUMBER')
 
         if not all([self.account_sid, self.auth_token, self.phone_number]):
             logger.warning(
@@ -197,10 +202,10 @@ class TwilioProvider(BaseSMSProvider):
 class AfricaTalkingProvider(BaseSMSProvider):
     """Africa's Talking SMS provider implementation."""
 
-    def __init__(self):
+    def __init__(self, auth_config=None):
         from flask import current_app
-        self.username = current_app.config.get('AFRICAS_TALKING_USERNAME')
-        self.api_key = current_app.config.get('AFRICAS_TALKING_API_KEY')
+        self.username = getattr(auth_config, 'africa_talking_username', None) or current_app.config.get('AFRICAS_TALKING_USERNAME')
+        self.api_key = getattr(auth_config, 'africa_talking_api_key', None) or current_app.config.get('AFRICAS_TALKING_API_KEY')
         self.sender_id = current_app.config.get('AFRICAS_TALKING_SENDER_ID')
 
         if not all([self.username, self.api_key]):

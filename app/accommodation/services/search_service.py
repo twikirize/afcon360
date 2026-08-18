@@ -6,7 +6,7 @@ Phase 1: Mixed mode (hardcoded + DB fallback)
 
 from typing import List, Dict, Optional
 from flask import current_app
-from sqlalchemy import func, and_, or_, text
+from sqlalchemy import func, and_, or_
 from sqlalchemy.orm import selectinload, joinedload
 # FIX 1: Was `PropertyStatus` - that name does not exist. Correct name is AccommodationPropertyStatus.
 # This bad import was the root cause of the duplicate-table crash on startup.
@@ -231,9 +231,9 @@ def get_property_by_identifier(identifier: str) -> Optional[Dict]:
         if prop is not None:
             return _property_to_dict(prop)
 
-    except Exception as e:
+    except Exception:
+        logger.exception("DB lookup or property serialization failed for identifier %s", identifier)
         db.session.rollback()
-        logger.warning(f"DB lookup failed, using hardcoded: {e}")
 
     # Fallback to hardcoded only when no DB property was found
     for p in HARDCODED_PROPERTIES:

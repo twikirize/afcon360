@@ -26,6 +26,12 @@ from app.accommodation.models.booking import (
     BookingContextType,
 )
 
+# Booking Price Adjustment models
+from app.accommodation.models.booking_price_adjustment import (
+    BookingPriceAdjustment,
+    PriceAdjustmentType,
+)
+
 # Booking Policy models
 from app.accommodation.models.booking_policy import PropertyBookingPolicy
 from app.accommodation.models.property_payment_method import PropertyPaymentMethod
@@ -45,6 +51,8 @@ from app.accommodation.models.availability import (
 )
 
 from app.accommodation.models.guest_registration import GuestRegistration
+from app.accommodation.models.special_request import BookingSpecialRequest
+from app.accommodation.models.booking_registration_link import BookingRegistrationLink
 
 # Review models
 from app.accommodation.models.review import Review, AccommodationReviewStatus
@@ -84,6 +92,8 @@ __all__ = [
     'AvailabilityRule',
     'AccommodationBlockedReason',
     'GuestRegistration',
+    'BookingSpecialRequest',
+    'BookingRegistrationLink',
     # Review
     'Review',
     'AccommodationReviewStatus',
@@ -103,6 +113,9 @@ __all__ = [
     'HostProfile',
     'HostOrganisationProfile',
     'PropertyDocument',
+    # Booking Price Adjustment
+    'BookingPriceAdjustment',
+    'PriceAdjustmentType',
     # Feedback
     'AccommodationComplaint',
     'ComplaintCategory',

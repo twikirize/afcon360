@@ -4,7 +4,7 @@ Property Payment Method Model - Maps enabled payment methods per property
 """
 
 from sqlalchemy import (
-    Column, BigInteger, Boolean, ForeignKey, Index, UniqueConstraint
+    Column, BigInteger, Boolean, ForeignKey, Index, String, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from app.extensions import db
@@ -35,6 +35,7 @@ class PropertyPaymentMethod(BaseModel):
 
     wallet_method_id = Column(BigInteger, nullable=False, )
     enabled = Column(Boolean, default=True)
+    preferred_currency = Column(String(3), nullable=True)
 
     def __repr__(self):
         return (

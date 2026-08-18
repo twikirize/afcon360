@@ -13,7 +13,9 @@
 - When adding relationships, check for existing `backref` names in the same model file first
 
 ## After Implementing
-ALWAYS provide a comprehensive post-change report. The report must include:
+Provide a concise completion report for every change. Use the comprehensive
+fields below for behavioral, architectural, migration, security, identity, or
+high-risk work; a trivial/local change may report only the applicable fields.
 
 - **Files changed:** list every file modified
 - **What was done:** 2–3 sentence summary of the implementation
@@ -23,7 +25,10 @@ ALWAYS provide a comprehensive post-change report. The report must include:
 - **Risks/conflicts:** flag anything that could break existing behavior, circular imports, or convention violations
 - **Verification:** how to confirm the fix works (test command, manual steps, or both)
 
-This report format is mandatory after every code change, no matter how small.
+Do not report or verify unrelated concerns, and do not create no-op updates to
+frontend documentation or `BACKLOG.md`. Record deferred work in `BACKLOG.md`
+only when incomplete work, a blocker, required approval, or another durable
+handoff item was actually identified.
 
 ## What NOT to Do
 - NEVER create, generate, write, or patch migration files manually

@@ -2,7 +2,7 @@
 """
 Organization routes - comprehensive organization management
 """
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, abort
 from flask_login import login_required, current_user
 from app.extensions import db
 from app.identity.models.organisation import Organisation
@@ -17,6 +17,17 @@ from app.forms.organization_forms import (
 
 # Create the organization blueprint
 org_bp = Blueprint('org', __name__, url_prefix='/org')
+
+
+def _get_organisation_by_public_id(org_id):
+    """Resolve an organisation from its public URL identifier."""
+    org = Organisation.query.filter_by(
+        org_id=str(org_id),
+        is_deleted=False,
+    ).first()
+    if not org:
+        abort(404)
+    return org
 
 
 @org_bp.route('/')
@@ -36,8 +47,7 @@ def dashboard():
     
     # If only one organization, go directly to its dashboard
     if len(memberships) == 1:
-        org_id = memberships[0].organisation_id
-        return redirect(url_for('org.org_dashboard', org_id=org_id))
+        return redirect(url_for('org.org_dashboard', org_id=memberships[0].organisation.org_id))
     
     # Otherwise show organization selector
     return render_template('org/selector.html', memberships=memberships)
@@ -85,7 +95,7 @@ def register():
         
         if org:
             flash(f'Organization "{org.legal_name}" registered successfully! Your organization ID is {org.org_id}', 'success')
-            return redirect(url_for('org.org_dashboard', org_id=org.id))
+            return redirect(url_for('org.org_dashboard', org_id=org.org_id))
         else:
             for error in errors:
                 flash(error, 'danger')
@@ -93,26 +103,40 @@ def register():
     return render_template('org/register.html', form=form)
 
 
-@org_bp.route('/<int:org_id>/dashboard')
+@org_bp.route('/<org_id>/dashboard')
 @login_required
 def org_dashboard(org_id):
     """Organization-specific dashboard"""
+    org = Organisation.query.filter_by(
+        org_id=str(org_id),
+        is_deleted=False,
+    ).first()
+    if not org and str(org_id).isdigit():
+        # Read-only compatibility for legacy internal-ID links; immediately
+        # redirect to the public organisation boundary when found.
+        legacy_org = Organisation.query.get(int(org_id))
+        if legacy_org and legacy_org.org_id:
+            return redirect(url_for('org.org_dashboard', org_id=legacy_org.org_id))
+    if not org:
+        from flask import abort
+
+        abort(404)
+
     # Verify membership
-    if not OrganizationPermissionService.is_member(current_user, org_id):
+    if not OrganizationPermissionService.is_member(current_user, org):
         flash('You are not a member of this organization.', 'danger')
         return redirect(url_for('org.dashboard'))
-    
-    org = Organisation.query.get_or_404(org_id)
+
     member = OrganisationMember.query.filter_by(
         user_id=current_user.id,
-        organisation_id=org_id,
+        organisation_id=org.id,
         is_deleted=False
     ).first()
     
     # Get organization statistics
     stats = {
         'total_members': OrganisationMember.query.filter_by(
-            organisation_id=org_id,
+            organisation_id=org.id,
             is_deleted=False,
             is_active=True
         ).count(),
@@ -129,23 +153,31 @@ def org_dashboard(org_id):
     # Get user permissions
     user_permissions = OrganizationPermissionService.get_user_permissions(current_user, org)
     accessible_modules = OrganizationPermissionService.get_accessible_modules(current_user, org)
+    organisation_role = OrganizationPermissionService.get_user_role(current_user, org)
+    role_value = getattr(organisation_role, 'value', organisation_role) or 'member'
+    organisation_role_label = str(role_value).replace('_', ' ').title()
+    business_category = getattr(org.business_category, 'value', org.business_category)
+    if role_value == 'org_manager' and str(business_category).lower() in {
+        'hotel', 'accommodation_provider', 'hostel', 'vacation_rental'
+    }:
+        organisation_role_label = 'Hotel Manager'
     
     return render_template('org/dashboard.html', 
                          org=org, member=member, stats=stats,
                          user_permissions=user_permissions,
-                         accessible_modules=accessible_modules)
+                         accessible_modules=accessible_modules,
+                         organisation_role_label=organisation_role_label)
 
 
-@org_bp.route('/<int:org_id>/members', methods=['GET', 'POST'])
+@org_bp.route('/<org_id>/members', methods=['GET', 'POST'])
 @login_required
 def members(org_id):
     """View and manage organization members"""
+    org = _get_organisation_by_public_id(org_id)
     # Verify permissions
-    if not OrganizationPermissionService.can_manage_staff(current_user, org_id):
+    if not OrganizationPermissionService.can_manage_staff(current_user, org):
         flash('You do not have permission to manage members.', 'danger')
         return redirect(url_for('org.org_dashboard', org_id=org_id))
-    
-    org = Organisation.query.get_or_404(org_id)
     
     # Handle member addition
     form = OrganizationMemberForm(organization_type=org.business_category)
@@ -164,7 +196,7 @@ def members(org_id):
             # Check if user is already a member
             existing_member = OrganisationMember.query.filter_by(
                 user_id=user.id,
-                organisation_id=org_id,
+                organisation_id=org.id,
                 is_deleted=False
             ).first()
             
@@ -200,19 +232,18 @@ def members(org_id):
     return render_template('org/members.html', org=org, form=form, hierarchy=hierarchy)
 
 
-@org_bp.route('/<int:org_id>/settings', methods=['GET', 'POST'])
+@org_bp.route('/<org_id>/settings', methods=['GET', 'POST'])
 @login_required
 def settings(org_id):
     """Organization settings"""
+    org = _get_organisation_by_public_id(org_id)
     # Verify permissions
-    if not OrganizationPermissionService.can_manage_settings(current_user, org_id):
+    if not OrganizationPermissionService.can_manage_settings(current_user, org):
         flash('You do not have permission to manage settings.', 'danger')
         return redirect(url_for('org.org_dashboard', org_id=org_id))
-    
-    org = Organisation.query.get_or_404(org_id)
     member = OrganisationMember.query.filter_by(
         user_id=current_user.id,
-        organisation_id=org_id,
+        organisation_id=org.id,
         is_deleted=False
     ).first()
     
@@ -252,19 +283,18 @@ def settings(org_id):
     return render_template('org/settings.html', org=org, member=member, form=form)
 
 
-@org_bp.route('/<int:org_id>/settings/kyc', methods=['POST'])
+@org_bp.route('/<org_id>/settings/kyc', methods=['POST'])
 @login_required
 def kyc_settings(org_id):
     """Save KYC settings for organization"""
+    org = _get_organisation_by_public_id(org_id)
     # Verify permissions
-    if not OrganizationPermissionService.can_manage_settings(current_user, org_id):
+    if not OrganizationPermissionService.can_manage_settings(current_user, org):
         return jsonify({'success': False, 'message': 'Access denied'}), 403
     
     try:
         import json
         data = json.loads(request.data)
-        
-        org = Organisation.query.get_or_404(org_id)
         
         # Save KYC settings
         org.set_setting('kyc_enabled', data.get('kyc_enabled', False))
@@ -287,16 +317,15 @@ def kyc_settings(org_id):
         return jsonify({'success': False, 'message': 'Error saving settings'}), 500
 
 
-@org_bp.route('/<int:org_id>/wallet', methods=['GET', 'POST'])
+@org_bp.route('/<org_id>/wallet', methods=['GET', 'POST'])
 @login_required
 def wallet(org_id):
     """Organization wallet management"""
+    org = _get_organisation_by_public_id(org_id)
     # Verify permissions
-    if not OrganizationPermissionService.can_manage_wallet(current_user, org_id):
+    if not OrganizationPermissionService.can_manage_wallet(current_user, org):
         flash('You do not have permission to manage wallet.', 'danger')
         return redirect(url_for('org.org_dashboard', org_id=org_id))
-    
-    org = Organisation.query.get_or_404(org_id)
     
     # Get organization wallet
     from app.wallet.models.ledger import AccountModel, AccountOwnerType
@@ -345,93 +374,122 @@ def wallet(org_id):
     return render_template('org/wallet.html', org=org, wallet=wallet, balance=balance, form=form)
 
 
-@org_bp.route('/<int:org_id>/events')
+@org_bp.route('/<org_id>/events')
 @login_required
 def events(org_id):
     """Organization events management"""
+    org = _get_organisation_by_public_id(org_id)
     # Verify permissions
-    if not OrganizationPermissionService.can_create_events(current_user, org_id):
+    if not OrganizationPermissionService.can_create_events(current_user, org):
         flash('You do not have permission to manage events.', 'danger')
         return redirect(url_for('org.org_dashboard', org_id=org_id))
     
-    org = Organisation.query.get_or_404(org_id)
-    
-    # Get organization events
+    # Get organization events (Owned or Operated by the selected organization)
     from app.events.models import Event
-    events = Event.query.filter_by(organizer_id=org_id).order_by(Event.start_date.desc()).all()
+    from sqlalchemy import or_, and_
+    events = Event.query.filter(
+        Event.is_deleted.is_(False),
+        or_(
+            Event.organization_id == org.id, # Operated by the organisation
+            and_(
+                Event.current_owner_type == 'organization',
+                Event.current_owner_id == org.id, # Owned by the organisation
+            ),
+        ),
+    ).order_by(Event.start_date.desc()).all()
     
     return render_template('org/events.html', org=org, events=events)
 
 
-@org_bp.route('/<int:org_id>/accommodation')
+@org_bp.route('/<org_id>/accommodation')
 @login_required
 def accommodation(org_id):
     """Organization accommodation management"""
+    org = _get_organisation_by_public_id(org_id)
     # Verify permissions
-    if not OrganizationPermissionService.can_manage_accommodation(current_user, org_id):
+    if not OrganizationPermissionService.can_manage_accommodation(current_user, org):
         flash('You do not have permission to manage accommodation.', 'danger')
         return redirect(url_for('org.org_dashboard', org_id=org_id))
     
-    org = Organisation.query.get_or_404(org_id)
-    
     # Get organization accommodations
     from app.accommodation.models import Property
-    accommodations = Property.query.filter_by(owner_org_id=org_id).all()
+    accommodations = Property.query.filter_by(owner_org_id=org.id, is_deleted=False).all()
     
     return render_template('org/accommodation.html', org=org, accommodations=accommodations)
 
 
-@org_bp.route('/<int:org_id>/transport')
+@org_bp.route('/<org_id>/bookings')
+@login_required
+def bookings(org_id):
+    """View bookings for properties owned by the selected organisation."""
+    org = _get_organisation_by_public_id(org_id)
+    if not OrganizationPermissionService.can_manage_accommodation(current_user, org):
+        flash('You do not have permission to manage accommodation.', 'danger')
+        return redirect(url_for('org.org_dashboard', org_id=org_id))
+
+    from app.accommodation.models import AccommodationBooking, Property
+    bookings = (
+        AccommodationBooking.query
+        .join(Property, AccommodationBooking.property_id == Property.id)
+        .filter(
+            Property.owner_org_id == org.id,
+            Property.is_deleted.is_(False),
+            AccommodationBooking.is_deleted.is_(False),
+        )
+        .order_by(AccommodationBooking.created_at.desc())
+        .all()
+    )
+    return render_template('org/bookings.html', org=org, bookings=bookings)
+
+
+@org_bp.route('/<org_id>/transport')
 @login_required
 def transport(org_id):
     """Organization transport management"""
+    org = _get_organisation_by_public_id(org_id)
     # Verify permissions
-    if not OrganizationPermissionService.can_manage_transport(current_user, org_id):
+    if not OrganizationPermissionService.can_manage_transport(current_user, org):
         flash('You do not have permission to manage transport.', 'danger')
         return redirect(url_for('org.org_dashboard', org_id=org_id))
     
-    org = Organisation.query.get_or_404(org_id)
-    
     # Get organization transport fleet
     from app.transport.models import Vehicle
-    vehicles = Vehicle.query.filter_by(operator_id=org_id).all()
+    vehicles = Vehicle.query.filter_by(operator_id=org.id).all()
     
     return render_template('org/transport.html', org=org, vehicles=vehicles)
 
 
-@org_bp.route('/<int:org_id>/tourism')
+@org_bp.route('/<org_id>/tourism')
 @login_required
 def tourism(org_id):
     """Organization tourism management"""
+    org = _get_organisation_by_public_id(org_id)
     # Verify permissions
-    if not OrganizationPermissionService.can_manage_tourism(current_user, org_id):
+    if not OrganizationPermissionService.can_manage_tourism(current_user, org):
         flash('You do not have permission to manage tourism.', 'danger')
         return redirect(url_for('org.org_dashboard', org_id=org_id))
     
-    org = Organisation.query.get_or_404(org_id)
-    
     # Get organization tourism offerings
     from app.tourism.models import TourismListing
-    tourism_listings = TourismListing.query.filter_by(operator_id=org_id).all()
+    tourism_listings = TourismListing.query.filter_by(operator_id=org.id).all()
     
     return render_template('org/tourism.html', org=org, tourism_listings=tourism_listings)
 
 
-@org_bp.route('/<int:org_id>/reports')
+@org_bp.route('/<org_id>/reports')
 @login_required
 def reports(org_id):
     """Organization reports"""
+    org = _get_organisation_by_public_id(org_id)
     # Verify permissions
-    if not OrganizationPermissionService.can_view_reports(current_user, org_id):
+    if not OrganizationPermissionService.can_view_reports(current_user, org):
         flash('You do not have permission to view reports.', 'danger')
         return redirect(url_for('org.org_dashboard', org_id=org_id))
-    
-    org = Organisation.query.get_or_404(org_id)
     
     # Generate organization reports
     reports_data = {
         'member_stats': OrganisationMember.query.filter_by(
-            organisation_id=org_id,
+            organisation_id=org.id,
             is_deleted=False,
             is_active=True
         ).count(),

@@ -26,7 +26,9 @@ class EventPaymentService:
     """Payment service for event ticket purchases"""
     
     def __init__(self):
-        self.wallet_service = WalletService()
+        # Wallet services are created only when a paid flow selects wallet
+        # payment or requires a compensating refund.
+        self.wallet_service = None
         
     def process_ticket_purchase(
         self,
@@ -56,6 +58,24 @@ class EventPaymentService:
             
             if ticket_type.event_id != event_id:
                 return {"success": False, "error": "Ticket type doesn't belong to this event"}
+
+            from app.events.services import EventService
+            if EventService.is_event_expired(event):
+                return {
+                    "success": False,
+                    "error": "Event registration closed. This event has already ended."
+                }
+
+            if create_primary_for_payer:
+                existing = EventRegistration.query.filter_by(
+                    event_id=event_id,
+                    user_id=user_id
+                ).first()
+                if existing:
+                    return {
+                        "success": False,
+                        "error": "You are already registered for this event"
+                    }
             
             # Calculate total price
             # Discount applies per-seat - see REFACTOR_PLAN.md 4.3
@@ -71,21 +91,23 @@ class EventPaymentService:
                 if available < quantity:
                     return {"success": False, "error": f"Only {available} tickets available"}
             
-            # Process payment based on method
-            payment_result = None
-            if payment_method == "wallet":
-                payment_result = self._process_wallet_payment(
-                    user_id, total_price, event.currency, audit_transaction_id
-                )
-            elif payment_method == "mobile_money":
-                if not mobile_money_operator or not mobile_money_phone:
-                    return {"success": False, "error": "Mobile money operator and phone required"}
-                payment_result = self._process_mobile_money_payment(
-                    user_id, total_price, event.currency, mobile_money_operator, 
-                    mobile_money_phone, audit_transaction_id
-                )
-            else:
-                return {"success": False, "error": "Unsupported payment method"}
+            # Free tickets are registrations, not financial transactions.
+            is_free_purchase = total_price <= Decimal("0.00")
+            payment_result = {"success": True, "payment_reference": None, "amount": 0}
+            if not is_free_purchase:
+                if payment_method == "wallet":
+                    payment_result = self._process_wallet_payment(
+                        user_id, total_price, event.currency, audit_transaction_id
+                    )
+                elif payment_method == "mobile_money":
+                    if not mobile_money_operator or not mobile_money_phone:
+                        return {"success": False, "error": "Mobile money operator and phone required"}
+                    payment_result = self._process_mobile_money_payment(
+                        user_id, total_price, event.currency, mobile_money_operator,
+                        mobile_money_phone, audit_transaction_id
+                    )
+                else:
+                    return {"success": False, "error": "Unsupported payment method"}
             
             if not payment_result.get("success"):
                 return payment_result
@@ -124,6 +146,9 @@ class EventPaymentService:
             except Exception as reg_exc:
                 db.session.rollback()
                 logger.error(f"Error creating registrations or reserving seats: {reg_exc}")
+
+                if is_free_purchase:
+                    return {"success": False, "error": f"Registration failed: {str(reg_exc)}"}
                 
                 # Compensating refund for wallet payment
                 refund_result = None
@@ -459,7 +484,12 @@ class EventPaymentService:
                 phone = getattr(user, "phone", None)
                 nationality = getattr(user, "nationality", None)
 
+        ticket_type = db.session.get(TicketType, ticket_type_id)
+        if not ticket_type:
+            raise ValueError("Ticket type not found")
+
         price = unit_price_override if unit_price_override is not None else Decimal(str(ticket_type.price))
+        is_free_registration = price <= Decimal("0.00")
         registration = EventRegistration(
             event_id=event_id,
             ticket_type_id=ticket_type_id,
@@ -468,7 +498,7 @@ class EventPaymentService:
             email=(email or "").lower(),
             phone=phone,
             nationality=nationality,
-            payment_status="paid",
+            payment_status="free" if is_free_registration else "paid",
             status="confirmed",
             registered_by=booking_type,
             booked_by_user_id=booked_by_user_id,
@@ -477,7 +507,7 @@ class EventPaymentService:
             group_label=group_label,
             attendee_user_id=user_id if booking_type != BookingType.SELF.value else None,
             group_index=group_index,
-            wallet_txn_id=payment_reference,
+            wallet_txn_id=None if is_free_registration else payment_reference,
             registration_fee=float(price)
         )
         

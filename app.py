@@ -51,6 +51,13 @@ except Exception as e:
 app.config['REQUIRE_EMAIL_VERIFICATION'] = Config.REQUIRE_EMAIL_VERIFICATION
 
 
+@app.template_filter('strftime')
+def strftime_filter(value, fmt):
+    if value is None:
+        return ''
+    return value.strftime(fmt)
+
+
 @app.context_processor
 def inject_config():
     return dict(config=app.config)

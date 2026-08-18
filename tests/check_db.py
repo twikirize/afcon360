@@ -1,44 +1,21 @@
 ﻿from app import create_app
+from app.config import TestingConfig
 from app.extensions import db
-from sqlalchemy import text
+from sqlalchemy import inspect
 
-app = create_app()
+app = create_app(config_object=TestingConfig)
 with app.app_context():
     print("=== CHECKING DATABASE SCHEMA ===\n")
     
-    # Check events table status column
-    result = db.session.execute(text("""
-        SELECT data_type, udt_name 
-        FROM information_schema.columns 
-        WHERE table_name = 'events' AND column_name = 'status'
-    """))
-    row = result.fetchone()
-    if row:
-        print(f"events.status: data_type={row[0]}, udt_name={row[1]}")
-    
-    # Check if eventstatus enum exists
-    result = db.session.execute(text("SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'eventstatus')"))
-    print(f"eventstatus enum exists: {result.fetchone()[0]}")
-    
-    # Check current alembic version
-    result = db.session.execute(text("SELECT version_num FROM alembic_version"))
-    version = result.fetchone()
-    print(f"Alembic version: {version[0] if version else 'None'}")
-    
-    # Check if event_host_registrations table exists
-    result = db.session.execute(text("""
-        SELECT EXISTS (
-            SELECT 1 FROM information_schema.tables 
-            WHERE table_name = 'event_host_registrations'
-        )
-    """))
-    print(f"event_host_registrations table exists: {result.fetchone()[0]}")
-    
-    # List all event-related tables
-    result = db.session.execute(text("""
-        SELECT tablename FROM pg_tables 
-        WHERE schemaname='public' AND tablename LIKE '%event%'
-        ORDER BY tablename
-    """))
-    tables = [row[0] for row in result.fetchall()]
+    inspector = inspect(db.engine)
+    event_columns = {
+        column['name']: column for column in inspector.get_columns('events')
+    }
+    if 'status' in event_columns:
+        print(f"events.status: type={event_columns['status']['type']}")
+
+    enum_names = {enum['name'] for enum in inspector.get_enums()}
+    print(f"eventstatus enum exists: {'eventstatus' in enum_names}")
+    print(f"Alembic version table exists: {'alembic_version' in inspector.get_table_names()}")
+    tables = [table for table in inspector.get_table_names() if 'event' in table]
     print(f"\nEvent-related tables: {tables}")

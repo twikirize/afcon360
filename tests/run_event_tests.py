@@ -84,7 +84,7 @@ class TestEventWorkflow(unittest.TestCase):
         self.assertIsNotNone(event)
         self.assertEqual(event['name'], 'Test Conference')
         self.assertEqual(event['city'], 'Kampala')
-        self.assertEqual(event['status'], 'draft')
+        self.assertEqual(event['status'], 'pending_approval')
 
     # -------------------------------------------------------------------------
     # STEP 2 - Event Approval
@@ -97,6 +97,7 @@ class TestEventWorkflow(unittest.TestCase):
             category='conference',
             city='Kampala',
             organizer_id=self.user_id,
+            current_owner_type="individual", current_owner_id=self.user_id,
             status='pending'
         )
         db.session.add(event)
@@ -109,7 +110,7 @@ class TestEventWorkflow(unittest.TestCase):
         self.assertIsNone(error)
 
         updated_event = Event.query.filter_by(slug=slug).first()
-        self.assertEqual(updated_event.status, 'active')
+        self.assertEqual(updated_event.status, 'published')
         self.assertIsNotNone(updated_event.approved_at)
 
     # -------------------------------------------------------------------------
@@ -124,6 +125,7 @@ class TestEventWorkflow(unittest.TestCase):
             category='concert',
             city='Kampala',
             organizer_id=self.user_id,
+            current_owner_type="individual", current_owner_id=self.user_id,
             status='active',
             registration_required=True
         )
@@ -148,7 +150,7 @@ class TestEventWorkflow(unittest.TestCase):
             'ticket_type_id': ticket.id
         }
 
-        with patch('app.events.services.SIGNALS_AVAILABLE', False):
+        with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
             registration, qr_code, error = EventService.register_for_event(
                 slug, self.user_id, registration_data
             )
@@ -171,6 +173,7 @@ class TestEventWorkflow(unittest.TestCase):
             category='workshop',
             city='Kampala',
             organizer_id=self.user_id,
+            current_owner_type="individual", current_owner_id=self.user_id,
             status='active',
             registration_required=True,
             currency='USD'
@@ -188,14 +191,14 @@ class TestEventWorkflow(unittest.TestCase):
         db.session.add(ticket)
         db.session.flush()
 
-        # Fix: mock both static and instance call patterns
-        with patch('app.events.services.WalletService') as mock_wallet:
-            mock_wallet.debit.return_value = (True, {'transaction_id': 123}, None)
-            mock_wallet.return_value.debit.return_value = (True, {'transaction_id': 123}, None)
-
-            # FIXED - mock returns integer ID just like the real wallet service would
-            mock_wallet.debit.return_value = (True, {'transaction_id': 123}, None)
-            mock_wallet.return_value.debit.return_value = (True, {'transaction_id': 123}, None)
+        # Mock the wallet contract used by the Events service.
+        with patch('app.events.services._legacy.WalletService') as mock_wallet:
+            wallet_instance = mock_wallet.return_value
+            wallet_instance.account_repo.get_by_user_id.return_value = MagicMock(id='account-paid')
+            wallet_instance.withdraw.return_value = {
+                'status': 'success',
+                'transaction_id': 'wallet_txn_123',
+            }
 
             registration_data = {
                 'full_name': 'Test User',
@@ -205,7 +208,7 @@ class TestEventWorkflow(unittest.TestCase):
                 'ticket_type_id': ticket.id
             }
 
-            with patch('app.events.services.SIGNALS_AVAILABLE', False):
+            with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
                 registration, qr_code, error = EventService.register_for_event_with_payment(
                     slug, self.user_id, registration_data
                 )
@@ -226,6 +229,7 @@ class TestEventWorkflow(unittest.TestCase):
             category='conference',
             city='Kampala',
             organizer_id=self.user_id,
+            current_owner_type="individual", current_owner_id=self.user_id,
             status='active',
             registration_required=True,
             max_capacity=1
@@ -252,7 +256,7 @@ class TestEventWorkflow(unittest.TestCase):
             'ticket_type_id': ticket.id
         }
 
-        with patch('app.events.services.SIGNALS_AVAILABLE', False):
+        with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
             reg1, qr1, err1 = EventService.register_for_event(
                 slug, self.user_id, reg_data1
             )
@@ -279,7 +283,7 @@ class TestEventWorkflow(unittest.TestCase):
             'ticket_type_id': ticket.id
         }
 
-        with patch('app.events.services.SIGNALS_AVAILABLE', False):
+        with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
             # Fix: catch SoldOutException if service raises instead of returning error string
             try:
                 reg2, qr2, err2 = EventService.register_for_event(
@@ -305,6 +309,7 @@ class TestEventWorkflow(unittest.TestCase):
             category='conference',
             city='Kampala',
             organizer_id=self.user_id,
+            current_owner_type="individual", current_owner_id=self.user_id,
             status='active'
         )
         db.session.add(event)

@@ -43,6 +43,14 @@ class PaymentMethodConfig(BaseModel):
 
     # Supported currencies
     supported_currencies = Column(JSON, default=list)
+    # Per-method capabilities; policy services must not infer these from
+    # method_type because providers can support different timing rules.
+    allowed_timings = Column(
+        JSON,
+        default=list,
+        server_default="[]",
+        nullable=False,
+    )
 
     # Limits and fees
     min_amount = Column(Numeric(10, 2), default=0.00)
@@ -109,6 +117,7 @@ class PaymentMethodConfig(BaseModel):
                 'is_active': True,
                 'requires_phone': False,
                 'supported_currencies': ['UGX', 'KES', 'NGN', 'USD', 'EUR', 'GBP'],
+                'allowed_timings': ['pay_now', 'deposit'],
                 'min_amount': 0.00,
                 'max_amount': 10000000.00,
                 'transaction_fee': 0.0000
@@ -123,6 +132,7 @@ class PaymentMethodConfig(BaseModel):
                 'is_active': True,
                 'requires_phone': False,
                 'supported_currencies': ['UGX', 'KES', 'NGN', 'USD', 'EUR', 'GBP'],
+                'allowed_timings': ['pay_on_arrival'],
                 'min_amount': 0.00,
                 'max_amount': 10000000.00,
                 'transaction_fee': 0.0000
@@ -137,6 +147,7 @@ class PaymentMethodConfig(BaseModel):
                 'is_active': False,
                 'requires_phone': True,
                 'supported_currencies': ['UGX'],
+                'allowed_timings': [],
                 'min_amount': 500.00,
                 'max_amount': 5000000.00,
                 'transaction_fee': 0.0100,
@@ -153,6 +164,7 @@ class PaymentMethodConfig(BaseModel):
                 'is_active': False,
                 'requires_phone': True,
                 'supported_currencies': ['UGX'],
+                'allowed_timings': [],
                 'min_amount': 500.00,
                 'max_amount': 5000000.00,
                 'transaction_fee': 0.0100,
@@ -169,6 +181,7 @@ class PaymentMethodConfig(BaseModel):
                 'is_active': False,
                 'requires_phone': True,
                 'supported_currencies': ['KES'],
+                'allowed_timings': [],
                 'min_amount': 10.00,
                 'max_amount': 700000.00,
                 'transaction_fee': 0.0100,
@@ -185,6 +198,7 @@ class PaymentMethodConfig(BaseModel):
                 'is_active': False,
                 'requires_phone': True,
                 'supported_currencies': ['NGN'],
+                'allowed_timings': [],
                 'min_amount': 100.00,
                 'max_amount': 10000000.00,
                 'transaction_fee': 0.0100,
@@ -201,6 +215,7 @@ class PaymentMethodConfig(BaseModel):
                 'is_active': False,
                 'requires_phone': True,
                 'supported_currencies': ['NGN'],
+                'allowed_timings': [],
                 'min_amount': 100.00,
                 'max_amount': 10000000.00,
                 'transaction_fee': 0.0100,
@@ -217,6 +232,7 @@ class PaymentMethodConfig(BaseModel):
                 'is_active': False,
                 'requires_phone': False,
                 'supported_currencies': ['UGX', 'USD'],
+                'allowed_timings': [],
                 'min_amount': 0.00,
                 'max_amount': 10000000.00,
                 'transaction_fee': 0.0000,

@@ -146,7 +146,7 @@ truth first.
 3. **Add `service_type` to `accounts`**: nullable `String(30)`, plus a
    partial unique index — one active escrow account per
    `(service_type, currency)` where `account_type = 'escrow'`. Write this as
-   a proper Alembic migration, not a raw SQL patch, consistent with how
+   a proper Alembic migration, not a handwritten SQL patch, consistent with how
    migrations are already tracked in this repo (`alembic/versions/`, see
    `5582ce532c6f_add_agents_enabled_to_wallet_config.py` as a template for
    style).

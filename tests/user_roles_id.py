@@ -1,32 +1,19 @@
-from tests.db_connector import get_connection
-import os
+from sqlalchemy import select
 
-# App user credentials from .env
-APP_USER = os.getenv("APP_USER", "afcon_app_user")
-APP_PASSWORD = os.getenv("APP_PASSWORD", "default_pass")  # secure password in .env
+from app import create_app
+from app.config import TestingConfig
+from app.identity.models.organisation import Organisation
+from app.identity.models.user import User
+from app.identity.models.organisation_member import OrganisationMember
 
-try:
-    # Connect as superuser
-    conn = get_connection()
-    cur = conn.cursor()
-    print("✅ Connected as superuser")
 
-    # Example query: users + organisations + roles
-    cur.execute("""
-        SELECT u.username, o.legal_name, m.role
-        FROM users u
-        JOIN organisation_members m ON u.id = m.user_id
-        JOIN organisations o ON o.id = m.organisation_id
-        LIMIT 10;
-    """)
-
-    rows = cur.fetchall()
-
-    # Print results nicely
+app = create_app(config_object=TestingConfig)
+with app.app_context():
+    rows = app.extensions['sqlalchemy'].session.execute(
+        select(User.username, Organisation.legal_name, OrganisationMember.job_title)
+        .join(OrganisationMember, OrganisationMember.user_id == User.id)
+        .join(Organisation, Organisation.id == OrganisationMember.organisation_id)
+        .limit(10)
+    ).all()
     for username, org_name, role in rows:
-        print(f"User: {username}, Organisation: {org_name}, Role: {role}")
-
-    cur.close()
-    conn.close()
-except Exception as e:
-    print("❌ Error:", e)
+        print(f"User: {username}, Organisation: {org_name}, Job title: {role}")

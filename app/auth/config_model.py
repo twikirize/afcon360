@@ -90,6 +90,50 @@ class AuthConfiguration(BaseModel):
     
     def __repr__(self):
         return f"<AuthConfiguration id={self.id} google_oauth={self.google_oauth_enabled}>"
+
+    def get_phone_verification_transport(self):
+        """Return the owner-selected phone OTP transport.
+
+        The setting lives inside the existing JSON configuration so this
+        operational switch does not require a schema migration. Missing or
+        invalid values fail safe to the temporary email transport.
+        """
+        channels = self.otp_channels if isinstance(self.otp_channels, dict) else {}
+        phone_settings = channels.get('phone_verification', {})
+        transport = phone_settings.get('transport') if isinstance(phone_settings, dict) else None
+        return transport if transport in {'email', 'sms'} else 'email'
+
+    def set_phone_verification_transport(self, transport):
+        """Persist a validated owner-selected phone OTP transport."""
+        if transport not in {'email', 'sms'}:
+            raise ValueError("Phone verification transport must be 'email' or 'sms'")
+
+        channels = dict(self.otp_channels or {})
+        phone_settings = dict(channels.get('phone_verification') or {})
+        phone_settings['transport'] = transport
+        channels['phone_verification'] = phone_settings
+        self.otp_channels = channels
+
+    def get_sms_provider_for_phone(self, phone_number):
+        """Resolve the configured SMS provider for a phone number."""
+        phone_number = (phone_number or '').strip()
+        country_code = 'UG'
+        country_prefixes = {
+            '+1': 'US',
+            '+20': 'EG',
+            '+27': 'ZA',
+            '+250': 'RW',
+            '+254': 'KE',
+            '+255': 'TZ',
+            '+256': 'UG',
+            '+257': 'BI',
+            '+44': 'GB',
+        }
+        for prefix, country in sorted(country_prefixes.items(), key=lambda item: len(item[0]), reverse=True):
+            if phone_number.startswith(prefix):
+                country_code = country
+                break
+        return self.get_active_sms_provider(country_code)
     
     def get_active_sms_provider(self, country_code):
         """
@@ -107,7 +151,8 @@ class AuthConfiguration(BaseModel):
             return 'africa_talking' if self.africa_talking_enabled else None
         
         # Auto routing based on location
-        if country_code in self.african_countries:
+        african_countries = self.african_countries or []
+        if country_code in african_countries:
             if self.africa_talking_enabled:
                 return 'africa_talking'
             elif self.twilio_enabled:

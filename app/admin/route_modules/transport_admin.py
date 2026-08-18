@@ -19,6 +19,7 @@ from app.auth.decorators import (
     require_role,
     require_fresh_user
 )
+from app.auth.context import ContextType, active_context_or_platform_required
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 @admin_bp.route("/transport-admin", endpoint="transport_admin_dashboard")
 @login_required
 @require_role("transport_admin")
+@active_context_or_platform_required(ContextType.PLATFORM)
 def transport_admin_dashboard():
     """Transport Admin Dashboard with comprehensive transport management."""
     try:
@@ -77,6 +79,7 @@ def transport_admin_dashboard():
 @admin_bp.route("/transport-admin/vehicles", endpoint="transport_admin_vehicles")
 @login_required
 @require_role("transport_admin")
+@active_context_or_platform_required(ContextType.PLATFORM)
 def transport_admin_vehicles():
     """List and manage all vehicles."""
     try:

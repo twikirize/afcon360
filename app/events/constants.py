@@ -112,6 +112,7 @@ class EventStatus(str, Enum):
     ARCHIVED = "archived"
     DELETED = "deleted"
 
+
     # Legacy (kept for backward compatibility)
     ACTIVE = "active"
 
@@ -156,6 +157,16 @@ class EventStatus(str, Enum):
     def needs_moderation(cls, status: str) -> bool:
         """Check if event needs moderator review"""
         return status == cls.PENDING_APPROVAL.value
+
+
+class RegistrationAvailability(str, Enum):
+    """Public registration-window states derived from event data and time."""
+
+    NOT_OPEN = "not_open"
+    OPEN = "open"
+    CLOSED = "closed"
+    SOLD_OUT = "sold_out"
+    EXPIRED = "expired"
 
 
 # Allowed state transitions - single source of truth
