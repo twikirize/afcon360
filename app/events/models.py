@@ -51,6 +51,7 @@ def _deprecated(new_name: str):
     Usage (class body):
         is_active = _deprecated("is_active_flag")
     """
+
     @property
     def prop(self):
         warnings.warn(
@@ -59,7 +60,13 @@ def _deprecated(new_name: str):
             stacklevel=2,
         )
         return getattr(self, new_name)
+
     return prop
+
+
+def _owner_type_value(value):
+    """Return the string value from either a string enum or a plain string."""
+    return getattr(value, "value", value)
 
 
 # ============================================================================
@@ -75,9 +82,9 @@ class CreatorType(str, enum.Enum):
     SYSTEM       - the platform itself created it (e.g. anniversary events,
                    auto-generated fixtures).  current_owner_id = 0 in this case.
     """
-    INDIVIDUAL   = "individual"
+    INDIVIDUAL = "individual"
     ORGANIZATION = "organization"
-    SYSTEM       = "system"
+    SYSTEM = "system"
 
 
 class OwnerType(str, enum.Enum):
@@ -87,21 +94,21 @@ class OwnerType(str, enum.Enum):
     Example: a manager (INDIVIDUAL creator) creates an event on behalf of a
     client (INDIVIDUAL owner) - creator ≠ owner from day one.
     """
-    INDIVIDUAL   = "individual"
+    INDIVIDUAL = "individual"
     ORGANIZATION = "organization"
-    SYSTEM       = "system"       # platform-owned event; owner_id = 0
+    SYSTEM = "system"  # platform-owned event; owner_id = 0
 
 
 class TransferStatus(str, enum.Enum):
-    PENDING   = "pending"
-    APPROVED  = "approved"
-    REJECTED  = "rejected"
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
     CANCELLED = "cancelled"
 
 
 class DiscountType(str, enum.Enum):
     PERCENTAGE = "percentage"
-    FIXED      = "fixed"
+    FIXED = "fixed"
 
 
 # Sentinel value used when the system itself is the owner/creator (no real user).
@@ -116,18 +123,18 @@ class Event(BaseModel):
     __tablename__ = "events"
     __table_args__ = (
         # ── Performance indexes ────────────────────────────────────────────
-        Index("idx_event_start_date",       "start_date"),
-        Index("idx_event_status_featured",  "status", "featured"),
-        Index("idx_event_slug_unique",      "slug", unique=True),
-        Index("idx_event_category",         "category"),
+        Index("idx_event_start_date", "start_date"),
+        Index("idx_event_status_featured", "status", "featured"),
+        Index("idx_event_slug_unique", "slug", unique=True),
+        Index("idx_event_category", "category"),
         Index("idx_event_organizer_status", "organizer_id", "status"),
-        Index("idx_event_status_start",     "status", "start_date"),
-        Index("idx_event_creator",          "created_by_type", "created_by_id"),
-        Index("idx_event_organization",     "organization_id"),
-        Index("idx_event_system",           "is_system_event"),
-        Index("idx_event_current_owner",    "current_owner_type", "current_owner_id"),
+        Index("idx_event_status_start", "status", "start_date"),
+        Index("idx_event_creator", "created_by_type", "created_by_id"),
+        Index("idx_event_organization", "organization_id"),
+        Index("idx_event_system", "is_system_event"),
+        Index("idx_event_current_owner", "current_owner_type", "current_owner_id"),
         # ── Constraints ────────────────────────────────────────────────────
-        UniqueConstraint("slug",            name="uq_event_slug"),
+        UniqueConstraint("slug", name="uq_event_slug"),
         CheckConstraint("end_date >= start_date",
                         name="ck_event_end_after_start"),
         CheckConstraint(
@@ -145,31 +152,31 @@ class Event(BaseModel):
     )
 
     # ── Identifiers ────────────────────────────────────────────────────────
-    public_id  = Column(String(64),  unique=True, nullable=False,
-                        default=lambda: str(uuid.uuid4()), index=True)
-    event_ref  = Column(String(50),  unique=True)
-    slug       = Column(String(120), nullable=False)
+    public_id = Column(String(64), unique=True, nullable=False,
+                       default=lambda: str(uuid.uuid4()), index=True)
+    event_ref = Column(String(50), unique=True)
+    slug = Column(String(120), nullable=False)
 
     # ── Core fields ────────────────────────────────────────────────────────
-    name                  = Column(String(255), nullable=False)
-    description           = Column(Text, default='', server_default='')
-    category              = Column(String(50),  nullable=False, default="general")
-    city                  = Column(String(100), nullable=False)
-    country               = Column(String(100), default="Uganda")
-    venue                 = Column(String(255))
-    start_date            = Column(Date)
-    end_date              = Column(Date)
-    max_capacity          = Column(Integer,      default=0, nullable=False)
-    registration_required = Column(Boolean,      default=False)
-    registration_fee      = Column(Numeric(10, 2), default=0, nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, default='', server_default='')
+    category = Column(String(50), nullable=False, default="general")
+    city = Column(String(100), nullable=False)
+    country = Column(String(100), default="Uganda")
+    venue = Column(String(255))
+    start_date = Column(Date)
+    end_date = Column(Date)
+    max_capacity = Column(Integer, default=0, nullable=False)
+    registration_required = Column(Boolean, default=False)
+    registration_fee = Column(Numeric(10, 2), default=0, nullable=False)
     registration_opens_at = Column(DateTime(timezone=True), nullable=True)
     registration_closes_at = Column(DateTime(timezone=True), nullable=True)
-    currency              = Column(String(3),    default="USD")
-    featured              = Column(Boolean,      default=False)
-    website               = Column(String(500))
-    contact_email         = Column(String(255))
-    contact_phone         = Column(String(50))
-    event_metadata        = Column(JSON,         default=dict)
+    currency = Column(String(3), default="USD")
+    featured = Column(Boolean, default=False)
+    website = Column(String(500))
+    contact_email = Column(String(255))
+    contact_phone = Column(String(50))
+    event_metadata = Column(JSON, default=dict)
 
     # ── Status ─────────────────────────────────────────────────────────────
     status = Column(
@@ -183,28 +190,28 @@ class Event(BaseModel):
     organizer_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
 
     # ── Approval / rejection audit ─────────────────────────────────────────
-    approved_at      = Column(DateTime(timezone=True), nullable=True)
-    approved_by_id   = Column(BigInteger, ForeignKey("users.id"), nullable=True)
-    rejected_at      = Column(DateTime(timezone=True), nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    approved_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    rejected_at = Column(DateTime(timezone=True), nullable=True)
     rejection_reason = Column(Text, nullable=True)
 
     # Internal moderation notes (separate from rejection_reason which goes to organiser)
     moderation_notes = Column(Text, nullable=True)
 
     # ── Moderation enforcement ─────────────────────────────────────────────
-    suspension_reason   = Column(Text,       nullable=True)
+    suspension_reason = Column(Text, nullable=True)
     suspension_duration = Column(String(20), nullable=True)
-    suspended_at        = Column(DateTime(timezone=True),   nullable=True)
-    suspended_by_id     = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    suspended_at = Column(DateTime(timezone=True), nullable=True)
+    suspended_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
 
-    deactivation_reason = Column(Text,       nullable=True)
-    deactivated_at      = Column(DateTime(timezone=True),   nullable=True)
-    deactivated_by_id   = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    deactivation_reason = Column(Text, nullable=True)
+    deactivated_at = Column(DateTime(timezone=True), nullable=True)
+    deactivated_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
 
-    takedown_reason   = Column(Text,       nullable=True)
+    takedown_reason = Column(Text, nullable=True)
     takedown_category = Column(String(50), nullable=True)
-    taken_down_at     = Column(DateTime(timezone=True),   nullable=True)
-    taken_down_by_id  = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    taken_down_at = Column(DateTime(timezone=True), nullable=True)
+    taken_down_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
 
     # ── Completion (auto-set by scheduler) ────────────────────────────────
     completed_at = Column(DateTime(timezone=True), nullable=True)
@@ -215,26 +222,16 @@ class Event(BaseModel):
     # is_deleted=True + status=ARCHIVED  → organiser soft-deleted
     # is_deleted=True + status=DELETED   → admin removed
     deleted_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
-    deletion_reason = Column(Text,    nullable=True)
+    deletion_reason = Column(Text, nullable=True)
 
     # ── Optimistic locking ─────────────────────────────────────────────────
     version = Column(Integer, default=0, nullable=False)
 
     # ── Submission preferences (set by organiser at submit time) ──────────
-    # auto_publish_on_approval:
-    #   True  → system publishes the event automatically once it is APPROVED
-    #   False → organiser is notified and publishes manually
     auto_publish_on_approval = Column(Boolean, default=False, nullable=False)
-
-    # publish_permission:
-    #   'self'   → only the organiser may publish
-    #   'admin'  → only an admin may publish
-    #   'either' → either party may publish (default)
     publish_permission = Column(String(20), default='either', nullable=False)
 
     # risk_flags: list of strings populated at submission time.
-    # Examples: ["new_account", "unverified_phone", "duplicate_venue"]
-    # Used by admins during moderation review. Never shown to organisers.
     risk_flags = Column(JSON, default=list, nullable=False)
 
     # ── Standard audit trail ───────────────────────────────────────────────
@@ -242,23 +239,19 @@ class Event(BaseModel):
     updated_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
 
     # ── Creator (immutable after creation) ────────────────────────────────
-    # Who pressed the "create" button.  Never changes.
     created_by_type = Column(
         String(20),
         nullable=False,
         default=CreatorType.INDIVIDUAL.value,
     )
-    # For INDIVIDUAL → user id; for ORGANIZATION → org id; for SYSTEM → 0
     created_by_entity_id = Column(BigInteger, nullable=False, default=0)
 
     # ── Owner (mutable via EventTransferRequest) ───────────────────────────
-    # Who currently controls the event.  Can differ from creator.
     current_owner_type = Column(
         String(20),
         nullable=False,
         default=OwnerType.INDIVIDUAL.value,
     )
-    # For INDIVIDUAL → user id; for ORGANIZATION → org id; for SYSTEM → 0
     current_owner_id = Column(BigInteger, nullable=False)
 
     # ── Organisation context ───────────────────────────────────────────────
@@ -267,7 +260,7 @@ class Event(BaseModel):
         ForeignKey("organisations.id", ondelete="SET NULL"),
         nullable=True, index=True,
     )
-    is_system_event     = Column(Boolean,    default=False, nullable=False, )
+    is_system_event = Column(Boolean, default=False, nullable=False, )
     original_creator_id = Column(
         BigInteger,
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -275,18 +268,18 @@ class Event(BaseModel):
     )
 
     # ── Relationships ──────────────────────────────────────────────────────
-    organizer      = relationship("User", foreign_keys=[organizer_id])
-    approved_by    = relationship("User", foreign_keys=[approved_by_id])
-    deleted_by     = relationship("User", foreign_keys=[deleted_by_id])
-    created_by     = relationship("User", foreign_keys=[created_by_id])
-    updated_by     = relationship("User", foreign_keys=[updated_by_id])
-    suspended_by   = relationship("User", foreign_keys=[suspended_by_id])
+    organizer = relationship("User", foreign_keys=[organizer_id])
+    approved_by = relationship("User", foreign_keys=[approved_by_id])
+    deleted_by = relationship("User", foreign_keys=[deleted_by_id])
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    updated_by = relationship("User", foreign_keys=[updated_by_id])
+    suspended_by = relationship("User", foreign_keys=[suspended_by_id])
     deactivated_by = relationship("User", foreign_keys=[deactivated_by_id])
-    taken_down_by  = relationship("User", foreign_keys=[taken_down_by_id])
-    registrations  = relationship("EventRegistration", back_populates="event",
-                                  cascade="all, delete-orphan")
-    ticket_types   = relationship("TicketType", back_populates="event",
-                                  cascade="all, delete-orphan")
+    taken_down_by = relationship("User", foreign_keys=[taken_down_by_id])
+    registrations = relationship("EventRegistration", back_populates="event",
+                                 cascade="all, delete-orphan")
+    ticket_types = relationship("TicketType", back_populates="event",
+                                cascade="all, delete-orphan")
 
     # ── Constructor ────────────────────────────────────────────────────────
 
@@ -294,8 +287,14 @@ class Event(BaseModel):
         if 'organizer_id' in kwargs and kwargs.get('current_owner_id') is None:
             import logging
             import warnings
-            warnings.warn('Event constructor organizer_id parameter is DEPRECATED (Phase 4 Step 5)', DeprecationWarning, stacklevel=2)
-            logging.getLogger(__name__).warning('LEGACY CONSTRUCTOR FALLBACK: Event initialized with organizer_id. Phase 4 Deprecation.')
+            warnings.warn(
+                'Event constructor organizer_id parameter is DEPRECATED (Phase 4 Step 5)',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            logging.getLogger(__name__).warning(
+                'LEGACY CONSTRUCTOR FALLBACK: Event initialized with organizer_id. Phase 4 Deprecation.'
+            )
         super().__init__(**kwargs)
         self._ensure_public_id()
         self._set_default_owner()
@@ -316,16 +315,13 @@ class Event(BaseModel):
         For individual events the owner defaults to the organiser.
         """
         if self.is_system_event:
-            self.current_owner_type = OwnerType.SYSTEM
-            self.current_owner_id   = SYSTEM_OWNER_ID
-            if self.created_by_type != CreatorType.SYSTEM:
-                # An admin created a system event - creator stays INDIVIDUAL
-                pass
+            self.current_owner_type = OwnerType.SYSTEM.value
+            self.current_owner_id = SYSTEM_OWNER_ID
             return
 
         if not self.current_owner_id and self.organizer_id:
-            self.current_owner_type = OwnerType.INDIVIDUAL
-            self.current_owner_id   = self.organizer_id
+            self.current_owner_type = OwnerType.INDIVIDUAL.value
+            self.current_owner_id = self.organizer_id
 
         if not self.created_by_entity_id and self.organizer_id:
             self.created_by_entity_id = self.organizer_id
@@ -441,6 +437,7 @@ class Event(BaseModel):
             self.deleted_at = now
             self.deleted_by_id = actor_id
             self.deletion_reason = reason
+            self.is_deleted = True
 
         self.status = new_status
         return log
@@ -470,33 +467,34 @@ class Event(BaseModel):
 
     def restore(self):
         """Undo a soft-delete back to DRAFT for organiser revision."""
-        self.deleted_at     = None
-        self.deleted_by_id  = None
+        self.deleted_at = None
+        self.deleted_by_id = None
         self.deletion_reason = None
-        self.status         = EventStatus.DRAFT.value
+        self.is_deleted = False
+        self.status = EventStatus.DRAFT.value
 
     # ── Ownership helpers ─────────────────────────────────────────────────
 
     def is_owned_by_user(self, user_id: int) -> bool:
         return (
-            self.current_owner_type == OwnerType.INDIVIDUAL
-            and self.current_owner_id == user_id
+                _owner_type_value(self.current_owner_type) == OwnerType.INDIVIDUAL.value
+                and self.current_owner_id == user_id
         )
 
     def is_owned_by_organization(self, org_id: int) -> bool:
         return (
-            self.current_owner_type == OwnerType.ORGANIZATION
-            and self.current_owner_id == org_id
+                _owner_type_value(self.current_owner_type) == OwnerType.ORGANIZATION.value
+                and self.current_owner_id == org_id
         )
 
     def is_created_by_user(self, user_id: int) -> bool:
         return (
-            self.created_by_type == CreatorType.INDIVIDUAL
-            and self.created_by_entity_id == user_id
+                _owner_type_value(self.created_by_type) == CreatorType.INDIVIDUAL.value
+                and self.created_by_entity_id == user_id
         )
 
     def is_system_owned(self) -> bool:
-        return self.current_owner_type == OwnerType.SYSTEM
+        return _owner_type_value(self.current_owner_type) == OwnerType.SYSTEM.value
 
 
 # ============================================================================
@@ -509,18 +507,18 @@ class TicketType(BaseModel):
         Index("idx_ticket_type_event_active", "event_id", "is_active"),
     )
 
-    event_id        = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
-    name            = Column(String(100), nullable=False)
-    description     = Column(Text)
-    price           = Column(Numeric(10, 2), default=0)
-    capacity        = Column(Integer, default=0, nullable=False)
+    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(100), nullable=False)
+    description = Column(Text)
+    price = Column(Numeric(10, 2), default=0)
+    capacity = Column(Integer, default=0, nullable=False)
     available_seats = Column(Integer, nullable=True)
-    version         = Column(Integer, default=0, nullable=False)
-    available_from  = Column(DateTime(timezone=True), nullable=True)
+    version = Column(Integer, default=0, nullable=False)
+    available_from = Column(DateTime(timezone=True), nullable=True)
     available_until = Column(DateTime(timezone=True), nullable=True)
-    is_active       = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=True)
 
-    event         = relationship("Event", back_populates="ticket_types")
+    event = relationship("Event", back_populates="ticket_types")
     registrations = relationship("EventRegistration", back_populates="ticket_type_rel")
 
     def __init__(self, **kwargs):
@@ -549,7 +547,7 @@ class TicketType(BaseModel):
     @property
     def is_sold_out_flag(self) -> bool:
         if self.capacity == 0:
-            return False        # unlimited
+            return False  # unlimited
         if self.available_seats is None:
             self._sync_available_seats()
         return self.available_seats <= 0
@@ -557,24 +555,40 @@ class TicketType(BaseModel):
     is_sold_out = _deprecated("is_sold_out_flag")
 
     def reserve_seat(self) -> bool:
-        """Decrement available_seats.  Returns True if reservation succeeded."""
+        """Deprecated: use app.events.inventory.decrement_capacity.
+
+        Retained only for backward compatibility. Now delegates to the atomic
+        inventory primitive so it is no longer a non-atomic read-modify-write.
+        """
+        import warnings
+        warnings.warn(
+            "TicketType.reserve_seat is deprecated; use events.inventory.decrement_capacity",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if self.capacity == 0:
-            return True         # unlimited
-        if self.available_seats is None:
-            self._sync_available_seats()
-        if self.available_seats > 0:
-            self.available_seats -= 1
+            return True  # unlimited
+        from app.events.inventory import decrement_capacity
+
+        try:
+            decrement_capacity(self.id, 1, event_id=self.event_id)
             return True
-        return False
+        except Exception:
+            return False
 
     def release_seat(self, count: int = 1):
-        """Return seats (e.g. on cancellation)."""
-        if self.capacity == 0:
+        """Deprecated: use app.events.inventory.increment_capacity."""
+        import warnings
+        warnings.warn(
+            "TicketType.release_seat is deprecated; use events.inventory.increment_capacity",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if self.capacity == 0 or count < 1:
             return
-        if self.available_seats is None:
-            self.available_seats = 0
-        self.available_seats = min(self.capacity, self.available_seats + count)
-        self.version += 1
+        from app.events.inventory import increment_capacity
+
+        increment_capacity(self.id, count)
 
 
 # ============================================================================
@@ -589,46 +603,42 @@ class EventRegistration(BaseModel):
     __tablename__ = "event_registrations"
     __table_args__ = (
         UniqueConstraint("registration_ref", name="uq_reg_ref"),
-        UniqueConstraint("ticket_number",    name="uq_ticket_number"),
-        UniqueConstraint("qr_token",         name="uq_qr_token"),
-        # DB-enforced duplicate protection (source of truth):
-        # - One registration per (event,user)
-        # - One registration per (event,email)
-        #   (Postgres unique constraints allow multiple NULLs; non-users use email)
-        UniqueConstraint("event_id", "user_id",  name="uq_reg_event_user"),
-        UniqueConstraint("event_id", "email",    name="uq_reg_event_email"),
-        Index("idx_reg_event_user",      "event_id", "user_id"),
-        Index("idx_reg_event_status",    "event_id", "status"),
-        Index("idx_reg_event_payment",   "event_id", "payment_status"),
-        Index("idx_reg_event_ticket",    "event_id", "ticket_type_id"),
-        Index("idx_reg_user_status",     "user_id",  "status"),
-        Index("idx_reg_created_event",   "created_at", "event_id"),
-        Index("idx_reg_checkin",         "checked_in_at", "event_id"),
-        Index("idx_reg_ticket_status",   "ticket_type_id", "status"),
+        UniqueConstraint("ticket_number", name="uq_ticket_number"),
+        UniqueConstraint("qr_token", name="uq_qr_token"),
+        UniqueConstraint("event_id", "user_id", name="uq_reg_event_user"),
+        UniqueConstraint("event_id", "email", name="uq_reg_event_email"),
+        Index("idx_reg_event_user", "event_id", "user_id"),
+        Index("idx_reg_event_status", "event_id", "status"),
+        Index("idx_reg_event_payment", "event_id", "payment_status"),
+        Index("idx_reg_event_ticket", "event_id", "ticket_type_id"),
+        Index("idx_reg_user_status", "user_id", "status"),
+        Index("idx_reg_created_event", "created_at", "event_id"),
+        Index("idx_reg_checkin", "checked_in_at", "event_id"),
+        Index("idx_reg_ticket_status", "ticket_type_id", "status"),
         Index("idx_reg_payment_created", "payment_status", "created_at"),
-        Index("idx_reg_qr_token",        "qr_token"),
-        Index("idx_reg_email",           "email"),
-        Index("idx_reg_phone",           "phone"),
-        Index("idx_reg_created",         "created_at"),
+        Index("idx_reg_qr_token", "qr_token"),
+        Index("idx_reg_email", "email"),
+        Index("idx_reg_phone", "phone"),
+        Index("idx_reg_created", "created_at"),
         CheckConstraint("registration_fee >= 0", name="ck_reg_fee_non_negative"),
     )
 
     """
     Event Registration with full database-backed ID hierarchy:
-    
+
     ID STRUCTURE (all database-backed):
     ──────────────────────────────────
     Event
       ├─ event.id (BigInteger PK)
       ├─ event.public_id (UUID string, unique)
       └─ event.slug (human-readable unique string)
-    
+
     TicketType
       ├─ ticket_type.id (BigInteger PK) ← FK'd by registrations
       ├─ ticket_type.event_id (FK → events.id)
       ├─ ticket_type.name (e.g. "VIP", "General", "Free Entry")
       └─ ticket_type.price (Decimal - 0 for free tiers)
-    
+
     EventRegistration (this table)
       ├─ registration.id (BigInteger PK)
       ├─ registration.seq_number (PostgreSQL SEQUENCE - globally unique)
@@ -638,69 +648,67 @@ class EventRegistration(BaseModel):
       ├─ registration.ticket_type_id (FK → event_ticket_types.id) ← ALWAYS SET
       ├─ registration.id_type (String - registration-specific ID type: passport/national_id/etc)
       └─ registration.id_number (String - registration-specific ID number)
-    
+
     KEY DESIGN:
     ───────────
     1. ticket_type_id is NEVER NULL - every event has ≥1 TicketType
        - Free events: one "Free Entry" ticket type (price=0, capacity=0/unlimited)
        - Paid events: one or more paid ticket tiers
-    
+
     2. All IDs are database-backed for referential integrity
-    
+
     3. id_type in registration is a STRING (not a foreign key):
        - Stores values like "passport", "national_id", "driver_license"
        - Allows flexibility for future ID types without schema migration
        - Registration can collect ID info independently of event ID requirements
     """
 
-    # Payment status constants
-    PAYMENT_FREE     = "free"
-    PAYMENT_PENDING  = "pending"
-    PAYMENT_PAID     = "paid"
-    PAYMENT_FAILED   = "failed"
+    PAYMENT_FREE = "free"
+    PAYMENT_PENDING = "pending"
+    PAYMENT_PAID = "paid"
+    PAYMENT_FAILED = "failed"
     PAYMENT_REFUNDED = "refunded"
-    PAYMENT_EXPIRED  = "expired"
+    PAYMENT_EXPIRED = "expired"
 
-    # Registration status constants
     STATUS_PENDING_PAYMENT = "pending_payment"
-    STATUS_CONFIRMED       = "confirmed"
-    STATUS_CANCELLED       = "cancelled"
-    STATUS_CHECKED_IN      = "checked_in"
-    STATUS_NO_SHOW         = "no_show"
-    STATUS_EXPIRED         = "expired"
+    STATUS_CONFIRMED = "confirmed"
+    STATUS_CANCELLED = "cancelled"
+    STATUS_CHECKED_IN = "checked_in"
+    STATUS_NO_SHOW = "no_show"
+    STATUS_EXPIRED = "expired"
 
     # ── Columns ────────────────────────────────────────────────────────────
-    # seq_number is sourced from a PG sequence - guaranteed unique, no races
-    seq_number       = Column(BigInteger, _reg_seq, server_default=_reg_seq.next_value())
+    seq_number = Column(BigInteger, _reg_seq, server_default=_reg_seq.next_value())
 
-    registration_ref = Column(String(60),    unique=True, nullable=False, index=True)
-    event_id         = Column(BigInteger,    ForeignKey("events.id", ondelete="RESTRICT"),
-                              nullable=False, index=True)
-    ticket_type_id   = Column(BigInteger,    ForeignKey("event_ticket_types.id", ondelete="RESTRICT"),
-                              nullable=False)
-    user_id          = Column(BigInteger,    ForeignKey("users.id", ondelete="SET NULL"),
-                              nullable=True, index=True)
-    full_name        = Column(String(255),   nullable=False)
-    email            = Column(String(255),   nullable=False)
-    phone            = Column(String(50))
-    nationality      = Column(String(64))
-    id_number        = Column(String(100))
-    id_type          = Column(String(30))
-    ticket_type      = Column(String(50),    default="general", nullable=False)
-    ticket_number    = Column(String(50),    unique=True, nullable=False)
-    qr_token         = Column(String(200),   unique=True, nullable=False, index=True)
+    registration_ref = Column(String(60), unique=True, nullable=False, index=True)
+    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="RESTRICT"),
+                      nullable=False, index=True)
+    ticket_type_id = Column(BigInteger, ForeignKey("event_ticket_types.id", ondelete="RESTRICT"),
+                            nullable=False)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"),
+                     nullable=True, index=True)
+    guest_id = Column(BigInteger, ForeignKey("event_guests.id", ondelete="SET NULL"),
+                      nullable=True, index=True)
+    full_name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False)
+    phone = Column(String(50))
+    nationality = Column(String(64))
+    id_number = Column(String(100))
+    id_type = Column(String(30))
+    ticket_type = Column(String(50), default="general", nullable=False)
+    ticket_number = Column(String(50), unique=True, nullable=False)
+    qr_token = Column(String(200), unique=True, nullable=False, index=True)
     registration_fee = Column(Numeric(10, 2), default=0)
-    payment_status   = Column(String(30),    default="free")
-    wallet_txn_id    = Column(String(255),   nullable=True)
-    status           = Column(String(30),    default="confirmed", nullable=False, index=True)
-    checked_in_at    = Column(DateTime(timezone=True),      nullable=True)
-    checked_in_by_id = Column(BigInteger,    ForeignKey("users.id"), nullable=True)
+    payment_status = Column(String(30), default="free")
+    wallet_txn_id = Column(String(255), nullable=True)
+    status = Column(String(30), default="confirmed", nullable=False, index=True)
+    checked_in_at = Column(DateTime(timezone=True), nullable=True)
+    checked_in_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     discount_code_applied = Column(String(50), nullable=True)
-    discount_amount  = Column(Numeric(10, 2), default=0, nullable=False)
-    registered_by    = Column(String(30),    default="self")
-    notes            = Column(Text,          nullable=True)
+    discount_amount = Column(Numeric(10, 2), default=0, nullable=False)
+    registered_by = Column(String(30), default="self")
+    notes = Column(Text, nullable=True)
 
-    # NEW: Third-party registration tracking
     booked_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     booking_type = Column(String(30), default=BookingType.SELF.value, nullable=False, index=True)
     group_booking_id = Column(String(100), nullable=True, index=True)
@@ -714,15 +722,15 @@ class EventRegistration(BaseModel):
 
     Do not use this field for current business logic - use user_id and booking_type.
     """
-    # Optional display ordering within a group booking (1..N)
-    group_index     = Column(Integer, nullable=True)
+    group_index = Column(Integer, nullable=True)
 
     # ── Relationships ──────────────────────────────────────────────────────
-    event          = relationship("Event",      back_populates="registrations")
+    event = relationship("Event", back_populates="registrations")
     ticket_type_rel = relationship("TicketType", back_populates="registrations")
-    user           = relationship("User",        foreign_keys=[user_id])
-    checked_in_by  = relationship("User",        foreign_keys=[checked_in_by_id])
-    booked_by      = relationship("User", foreign_keys=[booked_by_user_id], backref="booked_registrations")
+    user = relationship("User", foreign_keys=[user_id])
+    guest = relationship("EventGuest", foreign_keys=[guest_id])
+    checked_in_by = relationship("User", foreign_keys=[checked_in_by_id])
+    booked_by = relationship("User", foreign_keys=[booked_by_user_id], backref="booked_registrations")
     attendee_user = relationship("User", foreign_keys=[attendee_user_id], backref="attending_registrations")
 
     # ── Ref generation ─────────────────────────────────────────────────────
@@ -748,11 +756,10 @@ class EventRegistration(BaseModel):
         slug = (slug or "EVENT").upper().replace("-", "_")[:20]
 
         self.registration_ref = f"ER-{slug}-{seq:08d}"
-        self.ticket_number    = f"TKT-{slug}-{seq:08d}"
+        self.ticket_number = f"TKT-{slug}-{seq:08d}"
 
-        # HMAC-signed QR token - tamper-evident
-        payload   = f"AFCON360:{self.registration_ref}:{seq}"
-        key       = os.environ.get("QR_SECRET_KEY", "dev-secret-change-in-production").encode()
+        payload = f"AFCON360:{self.registration_ref}:{seq}"
+        key = os.environ.get("QR_SECRET_KEY", "dev-secret-change-in-production").encode()
         signature = hmac.new(key, payload.encode(), digestmod=hashlib.sha256).hexdigest()[:24]
         self.qr_token = f"{payload}:{signature}"
 
@@ -794,37 +801,37 @@ class EventRegistration(BaseModel):
 class Waitlist(BaseModel):
     __tablename__ = "event_waitlist"
     __table_args__ = (
-        UniqueConstraint("event_id", "user_id",    name="uq_waitlist_event_user"),
-        Index("idx_waitlist_event_status",  "event_id", "status"),
-        Index("idx_waitlist_created",       "created_at"),
-        Index("idx_waitlist_position",      "event_id", "position"),
-        Index("idx_waitlist_notification",  "notification_sent", "created_at"),
+        UniqueConstraint("event_id", "user_id", name="uq_waitlist_event_user"),
+        Index("idx_waitlist_event_status", "event_id", "status"),
+        Index("idx_waitlist_created", "created_at"),
+        Index("idx_waitlist_position", "event_id", "position"),
+        Index("idx_waitlist_notification", "notification_sent", "created_at"),
     )
 
-    event_id            = Column(BigInteger, ForeignKey("events.id",             ondelete="CASCADE"), nullable=False, index=True)
-    user_id             = Column(BigInteger, ForeignKey("users.id",              ondelete="CASCADE"), nullable=False, index=True)
-    ticket_type_id      = Column(BigInteger, ForeignKey("event_ticket_types.id", ondelete="CASCADE"), nullable=True)
-    position            = Column(Integer,    nullable=False, default=1)
-    status              = Column(String(30), default="pending", nullable=False, index=True)
-    email               = Column(String(255), nullable=False)
-    phone               = Column(String(50),  nullable=True)
-    notes               = Column(Text,        nullable=True)
-    notified_at         = Column(DateTime(timezone=True),    nullable=True)
-    converted_at        = Column(DateTime(timezone=True),    nullable=True)
-    notification_sent   = Column(Boolean,     default=False, nullable=False)
-    conversion_attempts = Column(Integer,     default=0, nullable=False)
+    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    ticket_type_id = Column(BigInteger, ForeignKey("event_ticket_types.id", ondelete="CASCADE"), nullable=True)
+    position = Column(Integer, nullable=False, default=1)
+    status = Column(String(30), default="pending", nullable=False, index=True)
+    email = Column(String(255), nullable=False)
+    phone = Column(String(50), nullable=True)
+    notes = Column(Text, nullable=True)
+    notified_at = Column(DateTime(timezone=True), nullable=True)
+    converted_at = Column(DateTime(timezone=True), nullable=True)
+    notification_sent = Column(Boolean, default=False, nullable=False)
+    conversion_attempts = Column(Integer, default=0, nullable=False)
 
-    event       = relationship("Event",      backref="waitlist_entries")
-    user        = relationship("User",       foreign_keys=[user_id])
+    event = relationship("Event", backref="waitlist_entries")
+    user = relationship("User", foreign_keys=[user_id])
     ticket_type = relationship("TicketType", foreign_keys=[ticket_type_id])
 
     def mark_notified(self):
-        self.notified_at       = datetime.now(timezone.utc)
+        self.notified_at = datetime.now(timezone.utc)
         self.notification_sent = True
 
     def mark_converted(self):
         self.converted_at = datetime.now(timezone.utc)
-        self.status       = "converted"
+        self.status = "converted"
 
     def __repr__(self):
         return f"<Waitlist event={self.event_id} user={self.user_id} pos={self.position}>"
@@ -839,23 +846,24 @@ class EventRole(BaseModel):
     __table_args__ = (
         UniqueConstraint("event_id", "user_id", "role", name="uq_event_user_role"),
         Index("idx_event_roles_event", "event_id"),
-        Index("idx_event_roles_user",  "user_id"),
-        Index("idx_event_roles_role",  "role"),
+        Index("idx_event_roles_user", "user_id"),
+        Index("idx_event_roles_role", "role"),
     )
 
-    event_id        = Column(BigInteger, ForeignKey("events.id",        ondelete="CASCADE"),   nullable=False)
-    user_id         = Column(BigInteger, ForeignKey("users.id",         ondelete="CASCADE"),   nullable=False)
-    role            = Column(String(50), nullable=False)
-    organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="SET NULL"),  nullable=True, index=True)
-    permissions     = Column(JSON,       default=list)
-    assigned_by_id  = Column(BigInteger, ForeignKey("users.id"),        nullable=True)
-    assigned_at     = Column(DateTime(timezone=True),   default=func.now())
-    is_active       = Column(Boolean,    default=True)
+    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    role = Column(String(50), nullable=False)
+    title = Column(String(120), nullable=True)
+    organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="SET NULL"), nullable=True, index=True)
+    permissions = Column(JSON, default=list)
+    assigned_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    assigned_at = Column(DateTime(timezone=True), default=func.now())
+    is_active = Column(Boolean, default=True)
 
-    event        = relationship("Event",        backref="staff_roles")
-    user         = relationship("User",         foreign_keys=[user_id])
+    event = relationship("Event", backref="staff_roles")
+    user = relationship("User", foreign_keys=[user_id])
     organisation = relationship("Organisation", foreign_keys=[organisation_id])
-    assigned_by  = relationship("User",         foreign_keys=[assigned_by_id])
+    assigned_by = relationship("User", foreign_keys=[assigned_by_id])
 
     def __repr__(self):
         return f"<EventRole event={self.event_id} user={self.user_id} role={self.role!r}>"
@@ -868,34 +876,34 @@ class EventRole(BaseModel):
 class DiscountCode(BaseModel):
     __tablename__ = "discount_codes"
     __table_args__ = (
-        Index("idx_discount_code_event",  "event_id"),
+        Index("idx_discount_code_event", "event_id"),
         Index("idx_discount_code_active", "is_active", "valid_until"),
-        UniqueConstraint("code",          name="uq_discount_code"),
+        UniqueConstraint("code", name="uq_discount_code"),
     )
 
-    event_id       = Column(BigInteger,     ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
-    code           = Column(String(50),     nullable=False, unique=True, index=True)
-    discount_type  = Column(String(20), nullable=False)
+    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    code = Column(String(50), nullable=False, unique=True, index=True)
+    discount_type = Column(String(20), nullable=False)
     discount_value = Column(Numeric(10, 2), nullable=False)
-    currency       = Column(String(3),      default="USD")
-    valid_from     = Column(DateTime(timezone=True),       nullable=False, default=lambda: datetime.now(timezone.utc))
-    valid_until    = Column(DateTime(timezone=True),       nullable=True)
-    usage_limit    = Column(Integer,        nullable=True)
-    used_count     = Column(Integer,        default=0, nullable=False)
-    minimum_order  = Column(Numeric(10, 2), default=0)
-    is_active      = Column(Boolean,        default=True, nullable=False)
-    created_by     = Column(BigInteger,     ForeignKey("users.id"), nullable=True)
+    currency = Column(String(3), default="USD")
+    valid_from = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    valid_until = Column(DateTime(timezone=True), nullable=True)
+    usage_limit = Column(Integer, nullable=True)
+    used_count = Column(Integer, default=0, nullable=False)
+    minimum_order = Column(Numeric(10, 2), default=0)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
 
-    event   = relationship("Event", backref="discount_codes")
-    creator = relationship("User",  foreign_keys=[created_by])
+    event = relationship("Event", backref="discount_codes")
+    creator = relationship("User", foreign_keys=[created_by])
 
     def is_valid(self) -> bool:
         now = datetime.now(timezone.utc)
         return (
-            self.is_active
-            and now >= self.valid_from
-            and (self.valid_until is None or now <= self.valid_until)
-            and (self.usage_limit is None or self.used_count < self.usage_limit)
+                self.is_active
+                and now >= self.valid_from
+                and (self.valid_until is None or now <= self.valid_until)
+                and (self.usage_limit is None or self.used_count < self.usage_limit)
         )
 
     def calculate_discount(self, amount: float) -> float:
@@ -912,41 +920,41 @@ class EventTransferRequest(BaseModel):
     __tablename__ = "event_transfer_requests"
     __table_args__ = (
         Index("idx_transfer_event_status", "event_id", "status"),
-        Index("idx_transfer_from_user",    "from_user_id"),
-        Index("idx_transfer_to_org",       "to_organization_id"),
+        Index("idx_transfer_from_user", "from_user_id"),
+        Index("idx_transfer_to_org", "to_organization_id"),
     )
 
-    event_id             = Column(BigInteger, ForeignKey("events.id",        ondelete="CASCADE"),   nullable=False)
-    from_user_id         = Column(BigInteger, ForeignKey("users.id",         ondelete="SET NULL"),  nullable=True)
-    from_organization_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="SET NULL"),  nullable=True)
-    to_user_id           = Column(BigInteger, ForeignKey("users.id",         ondelete="SET NULL"),  nullable=True)
-    to_organization_id   = Column(BigInteger, ForeignKey("organisations.id", ondelete="SET NULL"),  nullable=True)
-    requested_by_id      = Column(BigInteger, ForeignKey("users.id"),        nullable=False)
-    status               = Column(
+    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    from_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    from_organization_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="SET NULL"), nullable=True)
+    to_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    to_organization_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="SET NULL"), nullable=True)
+    requested_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    status = Column(
         String(20),
         nullable=False,
         default=TransferStatus.PENDING.value,
     )
-    reason         = Column(Text,     nullable=True)
+    reason = Column(Text, nullable=True)
     approved_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
-    approved_at    = Column(DateTime(timezone=True), nullable=True)
-    expires_at     = Column(DateTime(timezone=True), nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
 
-    event             = relationship("Event",        foreign_keys=[event_id])
-    from_user         = relationship("User",         foreign_keys=[from_user_id])
+    event = relationship("Event", foreign_keys=[event_id])
+    from_user = relationship("User", foreign_keys=[from_user_id])
     from_organization = relationship("Organisation", foreign_keys=[from_organization_id])
-    to_user           = relationship("User",         foreign_keys=[to_user_id])
-    to_organization   = relationship("Organisation", foreign_keys=[to_organization_id])
-    requested_by      = relationship("User",         foreign_keys=[requested_by_id])
-    approved_by       = relationship("User",         foreign_keys=[approved_by_id])
+    to_user = relationship("User", foreign_keys=[to_user_id])
+    to_organization = relationship("Organisation", foreign_keys=[to_organization_id])
+    requested_by = relationship("User", foreign_keys=[requested_by_id])
+    approved_by = relationship("User", foreign_keys=[approved_by_id])
 
     def approve(self, approver_id: int):
-        self.status         = TransferStatus.APPROVED
+        self.status = TransferStatus.APPROVED.value
         self.approved_by_id = approver_id
-        self.approved_at    = datetime.now(timezone.utc)
+        self.approved_at = datetime.now(timezone.utc)
 
     def __repr__(self):
-        return f"<EventTransferRequest {self.id}: event {self.event_id} [{self.status.value}]>"
+        return f"<EventTransferRequest {self.id}: event {self.event_id} [{self.status}]>"
 
 
 # ============================================================================
@@ -956,24 +964,24 @@ class EventTransferRequest(BaseModel):
 class EventModerationLog(BaseModel):
     __tablename__ = "event_moderation_logs"
     __table_args__ = (
-        Index("idx_moderation_event",  "event_id"),
-        Index("idx_moderation_user",   "user_id"),
+        Index("idx_moderation_event", "event_id"),
+        Index("idx_moderation_user", "user_id"),
         Index("idx_moderation_action", "action"),
-        Index("idx_moderation_date",   "created_at"),
+        Index("idx_moderation_date", "created_at"),
     )
 
-    event_id    = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
-    user_id     = Column(BigInteger, ForeignKey("users.id"), nullable=False)
-    action      = Column(String(50), nullable=False)
+    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    action = Column(String(50), nullable=False)
     from_status = Column(String(30), nullable=False)
-    to_status   = Column(String(30), nullable=False)
-    reason      = Column(Text,        nullable=True)
-    ip_address  = Column(String(64),  nullable=True)
-    user_agent  = Column(String(512), nullable=True)
-    extra_data  = Column(JSON,        default=dict)
+    to_status = Column(String(30), nullable=False)
+    reason = Column(Text, nullable=True)
+    ip_address = Column(String(64), nullable=True)
+    user_agent = Column(String(512), nullable=True)
+    extra_data = Column(JSON, default=dict)
 
     event = relationship("Event", foreign_keys=[event_id])
-    user  = relationship("User",  foreign_keys=[user_id])
+    user = relationship("User", foreign_keys=[user_id])
 
     def __repr__(self):
         return (
@@ -989,23 +997,23 @@ class EventModerationLog(BaseModel):
 class EventTransferLog(BaseModel):
     __tablename__ = "event_transfer_logs"
 
-    event_id          = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
-    from_owner_type   = Column(String(20), nullable=False)
-    from_owner_id     = Column(BigInteger, nullable=False)
-    to_owner_type     = Column(String(20), nullable=False)
-    to_owner_id       = Column(BigInteger, nullable=False)
+    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    from_owner_type = Column(String(20), nullable=False)
+    from_owner_id = Column(BigInteger, nullable=False)
+    to_owner_type = Column(String(20), nullable=False)
+    to_owner_id = Column(BigInteger, nullable=False)
     transferred_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
-    transferred_at    = Column(DateTime(timezone=True),   default=lambda: datetime.now(timezone.utc))
-    extra_data        = Column(JSON,       default=dict)
+    transferred_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    extra_data = Column(JSON, default=dict)
 
-    event          = relationship("Event", foreign_keys=[event_id])
-    transferred_by = relationship("User",  foreign_keys=[transferred_by_id])
+    event = relationship("Event", foreign_keys=[event_id])
+    transferred_by = relationship("User", foreign_keys=[transferred_by_id])
 
     def __repr__(self):
         return (
             f"<EventTransferLog {self.id}: event {self.event_id} "
-            f"{self.from_owner_type.value}:{self.from_owner_id} → "
-            f"{self.to_owner_type.value}:{self.to_owner_id}>"
+            f"{_owner_type_value(self.from_owner_type)}:{self.from_owner_id} → "
+            f"{_owner_type_value(self.to_owner_type)}:{self.to_owner_id}>"
         )
 
 
@@ -1016,36 +1024,31 @@ class EventTransferLog(BaseModel):
 class EventHostRegistration(BaseModel):
     """Tracks community host registration for specific events"""
     __tablename__ = "event_host_registrations"
-    
+
     event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
     property_id = Column(BigInteger, ForeignKey("accommodation_properties.id", ondelete="CASCADE"), nullable=False)
-    host_user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
-    
-    # Registration status
-    status = Column(String(30), default="pending", nullable=False)  # pending, approved, rejected, active
-    
-    # Pricing for this specific event
-    price_per_night = Column(Numeric(10, 2), nullable=True)  # NULL = free
+    host_user_id = Column(BigInteger, ForeignKey("users.id", use_alter=True, name="fk_event_host_reg_user"), nullable=False)
+
+    status = Column(String(30), default="pending", nullable=False)
+
+    price_per_night = Column(Numeric(10, 2), nullable=True)
     currency = Column(String(3), default="USD")
     is_free = Column(Boolean, default=False)
-    
-    # Event-specific details
-    max_guests = Column(Integer, nullable=True)  # Override property default
+
+    max_guests = Column(Integer, nullable=True)
     special_instructions = Column(Text, nullable=True)
-    
-    # Timestamps
+
     registered_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     approved_at = Column(DateTime(timezone=True), nullable=True)
     approved_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     rejected_at = Column(DateTime(timezone=True), nullable=True)
     rejection_reason = Column(Text, nullable=True)
-    
-    # Relationships
+
     event = relationship("Event", foreign_keys=[event_id], backref="host_registrations")
     property = relationship("Property", foreign_keys=[property_id], back_populates="event_host_registrations")
     host_user = relationship("User", foreign_keys=[host_user_id])
     approved_by = relationship("User", foreign_keys=[approved_by_id])
-    
+
     __table_args__ = (
         UniqueConstraint("event_id", "property_id", name="uq_event_property_host"),
         Index("idx_host_registration_event", "event_id", "status"),
@@ -1058,10 +1061,35 @@ class EventHostRegistration(BaseModel):
 # EVENT ASSIGNMENT MODEL
 # ============================================================================
 
+class EventGuest(BaseModel):
+    """Stable event guest identity independent of an AFCON360 account."""
+
+    __tablename__ = "event_guests"
+    __table_args__ = (
+        UniqueConstraint("guest_ref", name="uq_event_guest_ref"),
+        Index("idx_event_guest_email", "email"),
+        Index("idx_event_guest_user", "user_id"),
+    )
+
+    guest_ref = Column(String(80), unique=True, nullable=False, index=True,
+                       default=lambda: f"EG-{uuid.uuid4().hex}")
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    full_name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False)
+    phone = Column(String(50), nullable=True)
+    nationality = Column(String(64), nullable=True)
+    qr_token = Column(String(200), nullable=True)
+    notification_eligible = Column(Boolean, nullable=False, default=True)
+
+    user = relationship("User", foreign_keys=[user_id])
+
+    def __repr__(self):
+        return f"<EventGuest {self.guest_ref}>"
+
 class EventAssignment(BaseModel):
     __tablename__ = "event_assignments"
     __table_args__ = (
-        UniqueConstraint("event_id", "attendee_id", name="uq_event_assignment_attendee"),
+        UniqueConstraint("event_id", "guest_id", name="uq_event_assignment_guest"),
         Index("idx_assignment_event_attendee", "event_id", "attendee_id"),
         Index("idx_assignment_accommodation", "accommodation_booking_id"),
         Index("idx_assignment_transport", "transport_booking_id"),
@@ -1072,28 +1100,96 @@ class EventAssignment(BaseModel):
         Index("idx_assignment_community_host", "community_host_id"),
     )
 
-    event_id                  = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
-    attendee_id               = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    accommodation_booking_id  = Column(BigInteger, nullable=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
-    transport_booking_id      = Column(BigInteger, nullable=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
-    meal_booking_id           = Column(BigInteger, nullable=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
-    community_host_id         = Column(BigInteger, nullable=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
-    managed_by                = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    notes                     = Column(Text, nullable=True)
-    schedule_json             = Column(JSON, default=dict)
-    registration_id           = Column(BigInteger, ForeignKey("event_registrations.id", ondelete="SET NULL"), nullable=True)
-    status                    = Column(String(30), default="active", nullable=False)
-    assigned_by_id            = Column(BigInteger, ForeignKey("users.id"), nullable=True)
-    assigned_at               = Column(DateTime(timezone=True), default=func.now())
+    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    guest_id = Column(BigInteger, ForeignKey("event_guests.id", ondelete="CASCADE"), nullable=True)
+    attendee_id = Column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    accommodation_booking_id = Column(BigInteger, nullable=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
+    transport_booking_id = Column(BigInteger, nullable=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
+    meal_booking_id = Column(BigInteger, nullable=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
+    community_host_id = Column(BigInteger, nullable=True, info={"id_kind": IDKind.CROSS_MODULE_REF})
+    managed_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    notes = Column(Text, nullable=True)
+    schedule_json = Column(JSON, default=dict)
+    acc_link_token_hash = Column(String(64), nullable=True, unique=True, index=True)
+    acc_link_expires_at = Column(DateTime(timezone=True), nullable=True)
+    registration_id = Column(BigInteger, ForeignKey("event_registrations.id", ondelete="SET NULL"), nullable=True)
+    status = Column(String(30), default="active", nullable=False)
+    assigned_by_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    assigned_at = Column(DateTime(timezone=True), default=func.now())
 
-    event        = relationship("Event", foreign_keys=[event_id], backref="assignments")
-    attendee     = relationship("User", foreign_keys=[attendee_id])
-    manager      = relationship("User", foreign_keys=[managed_by])
+    event = relationship("Event", foreign_keys=[event_id], backref="assignments")
+    attendee = relationship("User", foreign_keys=[attendee_id])
+    guest = relationship("EventGuest", foreign_keys=[guest_id])
+    manager = relationship("User", foreign_keys=[managed_by])
     registration = relationship("EventRegistration", foreign_keys=[registration_id])
-    assigned_by  = relationship("User", foreign_keys=[assigned_by_id])
+    assigned_by = relationship("User", foreign_keys=[assigned_by_id])
 
     def __repr__(self):
         return f"<EventAssignment {self.id}: event {self.event_id}, attendee {self.attendee_id}>"
+
+
+# ============================================================================
+# EVENT GROUP / DELEGATION MODEL
+# ============================================================================
+
+class EventGroup(BaseModel):
+    """A delegation or group of guests scoped to a single event.
+
+    Groups let organisers coordinate a subset of attendees (e.g. a national
+    delegation or a VIP party) without granting those attendees any organiser
+    authority.  Membership is recorded in EventGroupMember.
+    """
+
+    __tablename__ = "event_groups"
+    __table_args__ = (
+        UniqueConstraint("event_id", "name", name="uq_event_group_name"),
+        Index("idx_event_group_event", "event_id"),
+    )
+
+    public_id = Column(String(64), unique=True, nullable=False,
+                       default=lambda: str(uuid.uuid4()), index=True)
+    event_id = Column(BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(150), nullable=False)
+    description = Column(Text, nullable=True)
+    group_type = Column(String(30), default="delegation", nullable=False)
+    created_by_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    event = relationship("Event", foreign_keys=[event_id], backref="groups")
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+    def __repr__(self):
+        return f"<EventGroup {self.public_id}: {self.name}>"
+
+
+class EventGroupMember(BaseModel):
+    """A guest/attendee that belongs to an EventGroup."""
+
+    __tablename__ = "event_group_members"
+    __table_args__ = (
+        UniqueConstraint("group_id", "registration_id", name="uq_group_registration"),
+        Index("idx_group_member_group", "group_id"),
+        Index("idx_group_member_registration", "registration_id"),
+        Index("idx_group_member_guest", "guest_id"),
+    )
+
+    group_id = Column(BigInteger, ForeignKey("event_groups.id", ondelete="CASCADE"), nullable=False)
+    registration_id = Column(BigInteger, ForeignKey("event_registrations.id", ondelete="CASCADE"), nullable=True)
+    guest_id = Column(BigInteger, ForeignKey("event_guests.id", ondelete="SET NULL"), nullable=True)
+    is_vip = Column(Boolean, default=False, nullable=False)
+    added_by_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    group = relationship("EventGroup", foreign_keys=[group_id], backref="members")
+    registration = relationship("EventRegistration", foreign_keys=[registration_id])
+    guest = relationship("EventGuest", foreign_keys=[guest_id])
+    added_by = relationship("User", foreign_keys=[added_by_id])
+
+    def __repr__(self):
+        return f"<EventGroupMember {self.id}: group {self.group_id}>"
 
 
 # ============================================================================
@@ -1112,7 +1208,6 @@ class OrganizerMessage(BaseModel):
         Index('idx_organizer_message_status', 'status'),
     )
 
-    # public_id for external API responses
     public_id = Column(String(64), unique=True, nullable=False,
                        default=lambda: str(uuid.uuid4()), index=True)
 
@@ -1121,10 +1216,69 @@ class OrganizerMessage(BaseModel):
     message = Column(Text, nullable=False)
     status = Column(String(20), default='unread', nullable=False)
 
-    # Relationships
     event = relationship('Event', backref='organizer_messages')
     user = relationship('User', backref='sent_organizer_messages')
 
     def __repr__(self):
         return f'<OrganizerMessage {self.id}: event {self.event_id}, user {self.user_id}>'
 
+
+# ============================================================================
+# ORGANIZER PROFILE
+# ============================================================================
+
+class OrganizerProfile(BaseModel):
+    """
+    Lightweight profile created when an attendee is approved to "Become an
+    Organizer".
+
+    Design notes
+    ------------
+    * This is intentionally separate from event ownership (Event.current_owner_*)
+      and EventRole. It records that a user has been granted organizer
+      capability and snapshots the eligibility evidence at approval time.
+    * Attendee data is NEVER moved or copied: the user keeps the same account,
+      so all existing registrations/attendance remain intact (continuity).
+    * Status uses a String (no PostgreSQL ENUM, per project policy).
+    """
+    __tablename__ = 'organizer_profiles'
+    __table_args__ = (
+        UniqueConstraint('user_id', 'public_id', name='uq_organizer_profile_user_pub'),
+        Index('idx_organizer_profile_user', 'user_id'),
+    )
+
+    public_id = Column(
+        String(64), unique=True, nullable=False,
+        default=lambda: str(uuid.uuid4()), index=True,
+    )
+
+    user_id = Column(
+        BigInteger, ForeignKey('users.id', ondelete='CASCADE'),
+        nullable=False,
+    )
+
+    # ── Eligibility snapshot (captured at approval) ──────────────────────────
+    account_verified = Column(Boolean, default=False, nullable=False)
+    kyc_tier = Column(Integer, nullable=True)
+    attended_events_count = Column(Integer, default=0, nullable=False)
+    total_registrations = Column(Integer, default=0, nullable=False)
+
+    # ── Lifecycle ────────────────────────────────────────────────────────────
+    # approved | pending_review | rejected | suspended
+    status = Column(String(30), default='approved', nullable=False, index=True)
+    eligibility_passed = Column(Boolean, default=True, nullable=False)
+
+    # ── Onboarding / continuity ──────────────────────────────────────────────
+    onboarding_completed = Column(Boolean, default=False, nullable=False)
+    organization_name = Column(String(255), nullable=True)
+    bio = Column(Text, nullable=True)
+
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship(
+        'User', foreign_keys=[user_id], backref='organizer_profile',
+    )
+
+    def __repr__(self):
+        return f'<OrganizerProfile {self.public_id}: user {self.user_id} ({self.status})>'

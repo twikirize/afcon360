@@ -130,13 +130,13 @@
                   <label for="id_type" class="kyc-label">Document Type <span class="kyc-req">*</span></label>
                   <select class="kyc-select" id="id_type" name="id_type" required>
                     <option value="" selected disabled>Select document type…</option>
-                    <option value="national_id">National ID (NIRA)</option>
-                    <option value="passport">Passport</option>
-                    <option value="driver_license">Driver's License</option>
-                    <option value="proof_of_address">Proof of Address</option>
-                    <option value="tin">Tax ID (TIN)</option>
-                    <option value="income_source">Income Source Proof</option>
-                    <option value="bank_reference">Bank Reference Letter</option>
+                    <option value="national_id" {% if 'national_id' in verified_id_types %}disabled{% endif %}{% if accepted_id_types is defined and 'national_id' not in accepted_id_types %}disabled{% endif %}>National ID (NIRA){% if 'national_id' in verified_id_types %} — verified{% elif accepted_id_types is defined and 'national_id' not in accepted_id_types %} — not accepted{% endif %}</option>
+                    <option value="passport" {% if 'passport' in verified_id_types %}disabled{% endif %}{% if accepted_id_types is defined and 'passport' not in accepted_id_types %}disabled{% endif %}>Passport{% if 'passport' in verified_id_types %} — verified{% elif accepted_id_types is defined and 'passport' not in accepted_id_types %} — not accepted{% endif %}</option>
+                    <option value="driver_license" {% if 'driver_license' in verified_id_types %}disabled{% endif %}{% if accepted_id_types is defined and 'driver_license' not in accepted_id_types %}disabled{% endif %}>Driver's License{% if 'driver_license' in verified_id_types %} — verified{% elif accepted_id_types is defined and 'driver_license' not in accepted_id_types %} — not accepted{% endif %}</option>
+                    <option value="proof_of_address" {% if 'proof_of_address' in verified_id_types %}disabled{% endif %}>Proof of Address{% if 'proof_of_address' in verified_id_types %} — verified{% endif %}</option>
+                    <option value="tin" {% if 'tin' in verified_id_types %}disabled{% endif %}>Tax ID (TIN){% if 'tin' in verified_id_types %} — verified{% endif %}</option>
+                    <option value="income_source" {% if 'income_source' in verified_id_types %}disabled{% endif %}>Income Source Proof{% if 'income_source' in verified_id_types %} — verified{% endif %}</option>
+                    <option value="bank_reference" {% if 'bank_reference' in verified_id_types %}disabled{% endif %}>Bank Reference Letter{% if 'bank_reference' in verified_id_types %} — verified{% endif %}</option>
                   </select>
                   <span class="kyc-help">Select the document you are uploading.</span>
                 </div>

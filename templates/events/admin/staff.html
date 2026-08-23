@@ -1,8 +1,8 @@
 {#
   FILE: templates/events/admin/staff.html
-  PURPOSE: Manage event staff (stewards, volunteers, co-organizers)
+  PURPOSE: Manage event staff (invite, role + permission assignment)
   ACCESS: Event Organizer, Organization Admin, or System Admin
-  RELATED: events.event_staff, events.add_staff, events.remove_staff routes
+  RELATED: events.event_staff, events.add_staff, events.update_staff, events.remove_staff
 #}
 
 {% extends "base.html" %}
@@ -25,54 +25,72 @@
                    class="btn btn-outline-primary">
                     <i class="fas fa-arrow-left"></i> Back to Event
                 </a>
+                <a href="{{ safe_url('events.staff_dashboard', identifier=event.slug) }}"
+                   class="btn btn-outline-success ms-2">
+                    <i class="fas fa-tachometer-alt"></i> Staff Dashboard
+                </a>
             </div>
         </div>
     </div>
 
     <div class="row">
-        {# Left Column - Add Staff Form #}
-        <div class="col-md-4 mb-4">
+        {# Left Column - Add / Edit Staff Form #}
+        <div class="col-md-5 mb-4">
             <div class="card shadow-sm">
                 <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0"><i class="fas fa-user-plus"></i> Add Staff Member</h5>
+                    <h5 class="mb-0"><i class="fas fa-user-plus"></i> <span id="formTitle">Add Staff Member</span></h5>
                 </div>
                 <div class="card-body">
-                    <form id="addStaffForm">
+                    <form id="staffForm">
+                        <input type="hidden" name="staff_id" id="staffId" value="">
+
                         <div class="mb-3">
                             <label class="form-label">Email Address</label>
-                            <input type="email" name="email" class="form-control"
-                                   placeholder="staff@example.com" required>
-                            <small class="text-muted">User must have an existing account</small>
+                            <input type="email" name="email" id="emailInput" class="form-control"
+                                   placeholder="staff@example.com" list="userList" required>
+                            <datalist id="userList"></datalist>
+                            <small class="text-muted">Pick an existing user, or enter a new email to auto-create their account.</small>
                         </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Custom Title <span class="text-muted">(optional)</span></label>
+                            <input type="text" name="title" id="titleInput" class="form-control"
+                                   placeholder="e.g. Head of Hospitality">
+                        </div>
+
                         <div class="mb-3">
                             <label class="form-label">Role</label>
-                            <select name="role" class="form-select">
-                                <option value="co_organizer">🤝 Co-Organizer (can edit event)</option>
-                                <option value="steward">🛡️ Steward (can check in attendees)</option>
-                                <option value="volunteer">🤲 Volunteer (limited check-in access)</option>
-                                <option value="media">📸 Media (view-only access)</option>
+                            <select name="role" id="roleSelect" class="form-select">
+                                {% for key, label in role_choices %}
+                                <option value="{{ key }}">{{ label }}</option>
+                                {% endfor %}
                             </select>
                         </div>
-                        <div class="alert alert-info small">
-                            <i class="fas fa-info-circle"></i>
-                            <strong>Role Permissions:</strong>
-                            <ul class="mb-0 mt-1">
-                                <li><strong>Co-Organizer:</strong> Can edit event, view attendees, manage staff</li>
-                                <li><strong>Steward:</strong> Can check in attendees, view attendee list</li>
-                                <li><strong>Volunteer:</strong> Limited check-in access</li>
-                                <li><strong>Media:</strong> View-only access to event stats</li>
-                            </ul>
+
+                        <div class="mb-3">
+                            <label class="form-label">Permissions</label>
+                            <div id="permissionBox" class="border rounded p-2" style="max-height: 220px; overflow-y: auto;">
+                                {# populated by JS from role_permissions #}
+                            </div>
+                            <small class="text-muted">Defaults come from the selected role; uncheck to narrow access.</small>
+                            <div id="roleSummary" class="alert alert-light border small mt-2 mb-0" style="display:none;"></div>
                         </div>
-                        <button type="submit" class="btn btn-primary w-100">
-                            <i class="fas fa-plus-circle"></i> Add Staff Member
-                        </button>
+
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary flex-fill" id="submitBtn">
+                                <i class="fas fa-plus-circle"></i> Add Staff Member
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" id="cancelEdit" style="display:none;">
+                                Cancel
+                            </button>
+                        </div>
                     </form>
                 </div>
             </div>
         </div>
 
         {# Right Column - Staff List #}
-        <div class="col-md-8">
+        <div class="col-md-7">
             <div class="card shadow-sm">
                 <div class="card-header">
                     <h5 class="mb-0">
@@ -88,25 +106,27 @@
                                     <tr>
                                         <th>Name</th>
                                         <th>Email</th>
-                                        <th>Role</th>
-                                        <th>Assigned</th>
+                                        <th>Title / Role</th>
                                         <th>Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for s in staff %}
-                                    <tr>
-                                        <td>
-                                            <strong>{{ s.user.username or s.user.email }}</strong>
-                                        </td>
+                                    <tr data-staff-id="{{ s.id }}"
+                                        data-email="{{ s.user.email }}"
+                                        data-role="{{ s.role }}"
+                                        data-title="{{ s.title or '' }}"
+                                        data-permissions="{{ (s.permissions or [])|tojson }}">
+                                        <td><strong>{{ s.user.username or s.user.email }}</strong></td>
                                         <td>{{ s.user.email }}</td>
                                         <td>
-                                            <span class="badge {% if s.role == 'co_organizer' %}bg-primary{% elif s.role == 'steward' %}bg-success{% elif s.role == 'volunteer' %}bg-info{% else %}bg-secondary{% endif %}">
-                                                {{ s.role|replace('_', ' ')|title }}
-                                            </span>
+                                            {% if s.title %}<div>{{ s.title }}</div>{% endif %}
+                                            <span class="badge bg-secondary">{{ s.role|replace('_', ' ')|title }}</span>
                                         </td>
-                                        <td><small>{{ s.assigned_at.strftime('%Y-%m-%d') if s.assigned_at else 'N/A' }}</small></td>
                                         <td>
+                                            <button class="btn btn-sm btn-outline-primary edit-staff">
+                                                <i class="fas fa-edit"></i> Edit
+                                            </button>
                                             <button class="btn btn-sm btn-danger remove-staff"
                                                     data-staff-id="{{ s.id }}"
                                                     data-name="{{ s.user.username or s.user.email }}">
@@ -132,43 +152,200 @@
 </div>
 
 <script>
-// Add staff form submission
-document.getElementById('addStaffForm').addEventListener('submit', async function(e) {
+const ROLE_PERMISSIONS = {{ role_permissions|tojson }};
+const PERM_DESC = {{ permission_descriptions|tojson }};
+
+function humanize(perm) {
+    return (PERM_DESC && PERM_DESC[perm]) ? PERM_DESC[perm] : perm;
+}
+
+function renderPermissions(role, selected) {
+    const box = document.getElementById('permissionBox');
+    const perms = ROLE_PERMISSIONS[role] || [];
+    box.innerHTML = '';
+    perms.forEach(function(p) {
+        const checked = selected && selected.includes(p) ? 'checked' : '';
+        const id = 'perm-' + p.replace(/[^a-z0-9]/gi, '_');
+        const wrap = document.createElement('div');
+        wrap.className = 'form-check mb-1';
+        wrap.innerHTML =
+            '<input class="form-check-input" type="checkbox" id="' + id + '" value="' + p + '" ' + checked + '>' +
+            '<label class="form-check-label small" for="' + id + '"><strong>' + humanize(p) + '</strong></label>';
+        box.appendChild(wrap);
+    });
+    if (!perms.length) {
+        box.innerHTML = '<small class="text-muted">No permissions defined for this role.</small>';
+    }
+}
+
+function renderRoleSummary(role) {
+    const el = document.getElementById('roleSummary');
+    const perms = ROLE_PERMISSIONS[role] || [];
+    if (!perms.length) {
+        el.style.display = 'none';
+        return;
+    }
+    const items = perms.map(function(p) {
+        return '<li><i class="fas fa-check-circle text-success me-1"></i>' + humanize(p) + '</li>';
+    }).join('');
+    el.innerHTML = '<div class="fw-bold mb-1"><i class="fas fa-map me-1"></i> What this role can do:</div>' +
+        '<ul class="mb-0 ps-3">' + items + '</ul>';
+    el.style.display = 'block';
+}
+
+function getSelectedPermissions() {
+    return Array.from(document.querySelectorAll('#permissionBox input:checked')).map(function(c) {
+        return c.value;
+    });
+}
+
+function resetForm() {
+    document.getElementById('staffForm').reset();
+    document.getElementById('staffId').value = '';
+    document.getElementById('formTitle').textContent = 'Add Staff Member';
+    document.getElementById('submitBtn').innerHTML = '<i class="fas fa-plus-circle"></i> Add Staff Member';
+    document.getElementById('cancelEdit').style.display = 'none';
+renderPermissions(document.getElementById('roleSelect').value, null);
+renderRoleSummary(document.getElementById('roleSelect').value);
+
+    renderRoleSummary(document.getElementById('roleSelect').value);
+}
+
+document.getElementById('roleSelect').addEventListener('change', function() {
+    renderPermissions(this.value, null);
+    renderRoleSummary(this.value);
+});
+
+// Live user search for autocomplete
+let searchTimer;
+document.getElementById('emailInput').addEventListener('input', function() {
+    const q = this.value.trim();
+    clearTimeout(searchTimer);
+    if (q.length < 2) { document.getElementById('userList').innerHTML = ''; return; }
+    searchTimer = setTimeout(function() {
+        fetch('{{ safe_url("events.search_users", identifier=event.slug) }}?q=' + encodeURIComponent(q))
+            .then(r => r.json())
+            .then(data => {
+                const list = document.getElementById('userList');
+                list.innerHTML = '';
+                (data.users || []).forEach(u => {
+                    const opt = document.createElement('option');
+                    opt.value = u.email;
+                    opt.label = u.username + ' (' + u.email + ')';
+                    list.appendChild(opt);
+                });
+            }).catch(() => {});
+    }, 250);
+});
+
+function showToast(message, type = 'success') {
+    // Create toast container if not exists
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.style.cssText = 'position:fixed;top:20px;right:20px;z-index:9999;';
+        document.body.appendChild(container);
+    }
+    
+    const toast = document.createElement('div');
+    toast.className = `toast align-items-center text-white bg-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} border-0`;
+    toast.setAttribute('role', 'alert');
+    toast.setAttribute('aria-live', 'assertive');
+    toast.setAttribute('aria-atomic', 'true');
+    toast.style.cssText = 'min-width:300px;margin-bottom:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);';
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">${message}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    `;
+    container.appendChild(toast);
+    
+    // Use Bootstrap toast if available, otherwise simple timeout
+    if (typeof bootstrap !== 'undefined' && bootstrap.Toast) {
+        const bsToast = new bootstrap.Toast(toast, { delay: 5000 });
+        bsToast.show();
+        toast.addEventListener('hidden.bs.toast', () => toast.remove());
+    } else {
+        setTimeout(() => {
+            toast.style.transition = 'opacity 0.3s';
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+        }, 5000);
+    }
+}
+
+document.getElementById('staffForm').addEventListener('submit', async function(e) {
     e.preventDefault();
+    const staffId = document.getElementById('staffId').value;
+    const isEdit = !!staffId;
+    const payload = {
+        email: document.getElementById('emailInput').value.trim(),
+        title: document.getElementById('titleInput').value.trim(),
+        role: document.getElementById('roleSelect').value,
+        permissions: getSelectedPermissions(),
+    };
+    if (isEdit) {
+        payload.staff_id = staffId;
+    }
 
-    const formData = new FormData(this);
-    const data = Object.fromEntries(formData.entries());
-
-    const submitBtn = this.querySelector('button[type="submit"]');
-    const originalText = submitBtn.innerHTML;
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding...';
+    const submitBtn = document.getElementById('submitBtn');
+    const original = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
     submitBtn.disabled = true;
 
+    const url = '{{ safe_url("events.update_staff", identifier=event.slug) }}';
+
     try {
-        const response = await fetch(window.location.href + '/add', {
+        const response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
             },
-            body: JSON.stringify(data)
+            body: JSON.stringify(payload)
         });
-
         const result = await response.json();
-
         if (result.success) {
-            alert(result.message);
-            location.reload();
+            const staff = result.staff || {};
+            const action = staff.is_new ? 'added as' : 'updated to';
+            const roleLabel = staff.role ? staff.role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'staff';
+            const userName = staff.username || staff.email || 'User';
+            showToast(`${userName} has been ${action} ${roleLabel} for this event.`);
+            resetForm();
+            setTimeout(() => location.reload(), 800);
         } else {
             alert('Error: ' + result.error);
-            submitBtn.innerHTML = originalText;
+            submitBtn.innerHTML = original;
             submitBtn.disabled = false;
         }
-    } catch (error) {
-        alert('Error: ' + error.message);
-        submitBtn.innerHTML = originalText;
+    } catch (err) {
+        alert('Error: ' + err.message);
+        submitBtn.innerHTML = original;
         submitBtn.disabled = false;
     }
+});
+
+document.getElementById('cancelEdit').addEventListener('click', resetForm);
+
+// Edit existing staff
+document.querySelectorAll('.edit-staff').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const row = this.closest('tr');
+        document.getElementById('staffId').value = row.dataset.staffId;
+        document.getElementById('emailInput').value = row.dataset.email;
+        document.getElementById('titleInput').value = row.dataset.title;
+        document.getElementById('roleSelect').value = row.dataset.role;
+        let perms = [];
+        try { perms = JSON.parse(row.dataset.permissions || '[]'); } catch (e) {}
+        renderPermissions(row.dataset.role, perms);
+        renderRoleSummary(row.dataset.role);
+        document.getElementById('formTitle').textContent = 'Edit Staff Member';
+        document.getElementById('submitBtn').innerHTML = '<i class="fas fa-save"></i> Save Changes';
+        document.getElementById('cancelEdit').style.display = 'inline-block';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
 });
 
 // Remove staff member
@@ -176,38 +353,36 @@ document.querySelectorAll('.remove-staff').forEach(btn => {
     btn.addEventListener('click', async function() {
         const staffId = this.dataset.staffId;
         const name = this.dataset.name;
+        if (!confirm('Remove "' + name + '" from event staff?')) return;
 
-        if (!confirm(`Remove "${name}" from event staff?`)) return;
-
-        const originalText = this.innerHTML;
+        const original = this.innerHTML;
         this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
         this.disabled = true;
-
         try {
-            const response = await fetch(`{{ safe_url('events.remove_staff', staff_id='') }}${staffId}`, {
+            const response = await fetch('{{ safe_url("events.remove_staff", staff_id=0) }}'.replace('/0', '/' + staffId), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
                 }
             });
-
             const result = await response.json();
-
             if (result.success) {
-                alert(result.message);
-                location.reload();
+                showToast(`${name} has been removed from event staff.`, 'success');
+                setTimeout(() => location.reload(), 800);
             } else {
                 alert('Error: ' + result.error);
-                this.innerHTML = originalText;
+                this.innerHTML = original;
                 this.disabled = false;
             }
-        } catch (error) {
-            alert('Error: ' + error.message);
-            this.innerHTML = originalText;
+        } catch (err) {
+            alert('Error: ' + err.message);
+            this.innerHTML = original;
             this.disabled = false;
         }
     });
 });
+
+renderPermissions(document.getElementById('roleSelect').value, null);
 </script>
 {% endblock %}

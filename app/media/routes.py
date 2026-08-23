@@ -221,6 +221,7 @@ def media_health():
     """
     from sqlalchemy import func, literal, select
     from datetime import datetime, timezone
+    from app.media.models import Media
 
     try:
         db.session.execute(select(literal(1)))
@@ -308,7 +309,7 @@ def retry_failed_media():
     from app.media.tasks import process_media_task
     from app.media.models import Media
 
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     media_id = data.get('media_id')
 
     if media_id:

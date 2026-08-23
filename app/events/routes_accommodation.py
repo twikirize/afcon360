@@ -4,13 +4,15 @@ Event Accommodation Management Routes
 Organizer can assign attendees to accommodation (hotels or community hosts)
 """
 
-from flask import request, jsonify, Response
+from flask import request, jsonify, Response, render_template, redirect, url_for, flash
 from flask_login import login_required, current_user
+from datetime import datetime, timezone
+from sqlalchemy import or_, and_
 from app.events import events_bp
 from app.events.services import EventService
-from app.events.models import Event, EventRegistration
+from app.events.models import Event, EventRegistration, EventAssignment
 from app.events.permissions import can_cancel_assignment, can_view_coordination
-from app.events.services.guest_coordination_service import (
+from app.events.guest_coordination_service import (
     CoordinationError,
     GuestCoordinationService,
 )
@@ -18,6 +20,14 @@ from app.accommodation.models.booking import AccommodationBooking
 from app.extensions import db
 import csv
 import io
+
+
+@events_bp.route("/accommodation")
+@login_required
+def accommodation_manage_universal():
+    """Universal accommodation entry point across all events the user organizes."""
+    events = EventService.get_organizer_event_models(current_user)
+    return render_template('events/organizer/accommodation_universal.html', events=events)
 
 
 @events_bp.route("/<slug>/accommodation")
@@ -28,13 +38,13 @@ def accommodation_manage(slug):
     if not event:
         flash('Event not found', 'danger')
         return redirect(url_for('events.my_events'))
-    
+
     # Check permission: organizer or admin
     allowed, _ = can_view_coordination(current_user, event)
     if not allowed:
         flash('You do not have permission to manage this event', 'danger')
         return redirect(url_for('events.landing', identifier=slug))
-    
+
     return render_template('events/organizer/accommodation_manage.html', event=event)
 
 
@@ -67,28 +77,45 @@ def api_accommodation_inventory(slug):
     if not allowed:
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
-    hotel_bookings = AccommodationBooking.query.filter(
-        AccommodationBooking.event_id == event.id,
-        AccommodationBooking.status.in_(['held', 'confirmed', 'pending', 'pending_approval']),
-        AccommodationBooking.is_deleted.is_(False),
-    ).all()
-
-    assigned = {
+    assigned_booking_ids = {
         assignment.accommodation_booking_id
         for assignment in EventAssignment.query.filter_by(
             event_id=event.id, is_deleted=False
         ).all()
         if assignment.accommodation_booking_id
     }
+
+    hotel_bookings = AccommodationBooking.query.filter(
+        AccommodationBooking.is_deleted.is_(False),
+        AccommodationBooking.status.in_(['held', 'confirmed', 'pending', 'pending_approval']),
+        or_(
+            AccommodationBooking.event_id == event.id,
+            AccommodationBooking.id.in_(assigned_booking_ids),
+            and_(
+                or_(
+                    AccommodationBooking.booked_by_user_id == current_user.id,
+                    AccommodationBooking.booking_owner_id == current_user.id,
+                )
+            ),
+        ),
+    ).filter(
+        or_(
+            AccommodationBooking.status.in_(['checked_in', 'checked_out']),
+            AccommodationBooking.check_out >= datetime.now(timezone.utc),
+        )
+    ).all()
+
     hotels = [{
-        'booking_ref': booking.booking_reference,
+        'id': booking.id,
         'type': 'hotel',
         'property_ref': getattr(booking.accommodation_property, 'public_id', None),
         'property_name': booking.accommodation_property.title if booking.accommodation_property else 'Unknown Property',
+        'room_type': booking.room_type.name if booking.room_type else 'Room',
         'check_in': booking.check_in.isoformat() if booking.check_in else None,
         'check_out': booking.check_out.isoformat() if booking.check_out else None,
-        'remaining_capacity': booking.num_guests,
-        'is_assigned': booking.id in assigned,
+        'max_guests': booking.num_guests or 1,
+        'nightly_rate': float(booking.nightly_rate) if booking.nightly_rate else 0.0,
+        'is_assigned': booking.id in assigned_booking_ids,
     } for booking in hotel_bookings]
     return jsonify({'success': True, 'inventory': {'hotels': hotels, 'community_hosts': []}})
 

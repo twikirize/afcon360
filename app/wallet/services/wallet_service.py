@@ -197,23 +197,28 @@ class WalletService:
         user_id: int,
         amount: Decimal,
         action: str,
-        currency: str = 'UGX'
+        currency: str = 'UGX',
+        recipient_user_id: Optional[int] = None
     ) -> None:
         """
         Check KYC-based transaction limits.
 
         Args:
-            user_id: Internal user ID
+            user_id: Internal user ID (or organisation ID for org wallets)
             amount: Transaction amount
             action: 'send', 'receive', 'withdraw', 'deposit'
             currency: Currency code
+            recipient_user_id: Optional recipient owner id, used to detect a
+                     "personal transfer" (org -> individual) for org KYB gating.
 
         Raises:
             LimitExceededError: If KYC limits exceeded
         """
         from app.wallet.services.kyc_limit_service import KYCLimitService
-        
-        result = KYCLimitService.check_transaction_allowed(user_id, amount, action, currency)
+
+        result = KYCLimitService.check_transaction_allowed(
+            user_id, amount, action, currency, recipient_user_id=recipient_user_id
+        )
         if not result['allowed']:
             raise LimitExceededError(
                 limit_type="kyc",
@@ -480,16 +485,27 @@ class WalletService:
     @retry_on_deadlock(max_retries=3, base_delay=0.1, max_delay=2.0)
     def deposit(
         self,
-        account_id: str,  # UUID - primary identifier (Alipay model)
-        amount: Decimal,
-        currency: str,
-        client_request_id: str,
+        account_id: Optional[str] = None,  # UUID - primary identifier (Alipay model)
+        amount: Optional[Decimal] = None,
+        currency: Optional[str] = None,
+        client_request_id: Optional[str] = None,
         metadata: Optional[Dict] = None,
         payment_method: Optional[str] = None,
         payment_provider: Optional[str] = None,
         external_reference: Optional[str] = None,
         tx_type: TransactionType = TransactionType.DEPOSIT,
-        actor_id: Optional[int] = None
+        actor_id: Optional[int] = None,
+        # When True the deposit is credited by a backend/system flow (provider webhook,
+        # async callback) that runs outside a user session. The account to credit is
+        # resolved from the stored deposit intent created during the authenticated POST,
+        # so ownership is already established; only the `current_user` session check is
+        # skipped. All freeze/limit/KYC/fraud/idempotency checks remain enforced.
+        system_initiated: bool = False,
+        # Backward-compatible aliases used by legacy callers (payment gateways, API).
+        # Canonical identifier is `account_id`; `user_id` is resolved here.
+        user_id: Optional[int] = None,
+        reference: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Deposit funds into account.
@@ -514,6 +530,21 @@ class WalletService:
             LimitExceededError: If limits exceeded
             PermissionError: If user doesn't own the account
         """
+        # Resolve backward-compatible idempotency key
+        client_request_id = client_request_id or idempotency_key or reference
+
+        # Resolve canonical account identifier (Alipay model: account_id is primary)
+        if account_id is None and user_id is not None:
+            account = self.account_repo.get_by_user_id(int(user_id), (currency or 'UGX'))
+            if not account:
+                raise WalletNotFoundError(wallet_ref=str(user_id))
+            account_id = str(account.id)
+
+        if not account_id:
+            raise ValueError("account_id (or user_id) is required")
+        if amount is None or currency is None:
+            raise ValueError("amount and currency are required")
+
         amount = self._quantize(amount)
 
         # Validate
@@ -523,6 +554,16 @@ class WalletService:
         self._validate_currency(currency)
         self._check_transaction_limit(amount, "deposit")
 
+        # Ensure no dangling read-only transaction is active. Flask-SQLAlchemy
+        # autobegins a transaction as soon as a SELECT runs (route decorators /
+        # helpers call .query/.first()). Opening our own atomic transaction below
+        # would otherwise raise "A transaction is already begun on this Session".
+        # Any such transaction only contains read queries at this point.
+        try:
+            self.db.rollback()
+        except Exception:
+            pass
+
         # SINGLE TRANSACTION - everything or nothing
         with self.db.begin():
             # 1. Get account by UUID with lock
@@ -531,7 +572,10 @@ class WalletService:
                 raise WalletNotFoundError(wallet_ref=str(account_id))
 
             # Ownership validation - defense in depth
-            if account.user_id != current_user.id and not self._is_admin():
+            # Skipped for system-initiated (provider webhook) deposits where the
+            # target account was resolved from a deposit intent created during the
+            # authenticated initiation request.
+            if not system_initiated and account.user_id != current_user.id and not self._is_admin():
                 current_app.logger.warning(f"Ownership violation attempt on account {account.id} by user {current_user.id}")
                 raise PermissionError("You do not have permission to operate on this account")
 
@@ -541,6 +585,27 @@ class WalletService:
                     wallet_ref=str(account.id),
                     reason=account.frozen_reason
                 )
+
+            # Auto-FX: If deposit currency differs from account's home currency, convert it dynamically.
+            original_amount = amount
+            original_currency = currency
+            if account.currency != currency:
+                from app.wallet.services.fx_service import FXService
+                fx_service = FXService()
+                fx_rate = fx_service.get_rate_safe(base_currency=currency, quote_currency=account.currency)
+                
+                # Convert the amount to the home currency
+                amount = (original_amount * fx_rate.rate).quantize(Decimal('0.01'))
+                currency = account.currency
+                
+                if metadata is None:
+                    metadata = {}
+                metadata.update({
+                    "cross_border_fx": True,
+                    "original_deposit_amount": str(original_amount),
+                    "original_deposit_currency": original_currency,
+                    "fx_rate_applied": str(fx_rate.rate)
+                })
 
             # 3. KYC limit check
             self._check_kyc_limits(account.user_id, amount, 'deposit', currency)
@@ -707,6 +772,13 @@ class WalletService:
 
         self._validate_currency(currency)
         self._check_transaction_limit(amount, "withdraw")
+
+        # End any dangling read-only transaction from caller-side queries so we can
+        # open our own atomic transaction (see deposit() for rationale).
+        try:
+            self.db.rollback()
+        except Exception:
+            pass
 
         # SINGLE TRANSACTION
         with self.db.begin():
@@ -910,6 +982,13 @@ class WalletService:
         self._validate_currency(currency)
         self._check_transaction_limit(amount, "transfer")
 
+        # End any dangling read-only transaction from caller-side queries so we can
+        # open our own atomic transaction (see deposit() for rationale).
+        try:
+            self.db.rollback()
+        except Exception:
+            pass
+
         # SINGLE TRANSACTION
         with self.db.begin():
             # 0. PIN verification inside the transaction to avoid TOCTOU
@@ -971,8 +1050,12 @@ class WalletService:
                     reason=to_account.frozen_reason
                 )
 
-            # 3. KYC limit check (sender)
-            self._check_kyc_limits(from_account.user_id, amount, 'send', currency)
+            # 3. KYC limit check (sender) — pass recipient so org->individual
+            # "personal transfers" are gated by full organisation KYB.
+            self._check_kyc_limits(
+                from_account.user_id, amount, 'send', currency,
+                recipient_user_id=to_account.user_id
+            )
             
             # 4. Fraud risk check (sender)
             self._check_fraud_risk(
@@ -983,20 +1066,46 @@ class WalletService:
                 ip_address=self._get_ip_address()
             )
 
+            # Cross-currency support
+            debit_amount = amount
+            debit_currency = currency
+            credit_amount = amount
+            credit_currency = currency
+            
+            if from_account.currency != to_account.currency:
+                from app.wallet.services.fx_service import FXService
+                fx_service = FXService()
+                
+                if currency == from_account.currency:
+                    fx_rate = fx_service.get_rate_safe(base_currency=from_account.currency, quote_currency=to_account.currency)
+                    debit_amount = amount
+                    debit_currency = from_account.currency
+                    credit_amount = (amount * fx_rate.rate).quantize(Decimal('0.01'))
+                    credit_currency = to_account.currency
+                else:
+                    fx_rate = fx_service.get_rate_safe(base_currency=currency, quote_currency=from_account.currency)
+                    debit_amount = (amount * fx_rate.rate).quantize(Decimal('0.01'))
+                    debit_currency = from_account.currency
+                    credit_amount = amount
+                    credit_currency = to_account.currency
+            elif from_account.currency != currency:
+                debit_currency = from_account.currency
+                credit_currency = to_account.currency
+
             # 5. Balance check (derived from ledger)
-            from_balance = self.ledger_repo.get_balance(from_account.id, currency)
-            total_debit = amount + (platform_fee or Decimal('0'))
+            from_balance = self.ledger_repo.get_balance(from_account.id, debit_currency)
+            total_debit = debit_amount + (platform_fee or Decimal('0'))
 
             if from_balance < total_debit:
                 raise InsufficientBalanceError(
-                    currency, float(total_debit), float(from_balance)
+                    debit_currency, float(total_debit), float(from_balance)
                 )
 
             # 6. Daily limit check
-            self._check_daily_limit(from_account.id, amount, currency, "transfer")
+            self._check_daily_limit(from_account.id, debit_amount, debit_currency, "transfer")
             
             # 7. Monthly limit check
-            self._check_monthly_limit(from_account.id, amount, currency)
+            self._check_monthly_limit(from_account.id, debit_amount, debit_currency)
 
             # 5. Atomic idempotency
             tx = self.tx_repo.get_or_create(
@@ -1010,8 +1119,8 @@ class WalletService:
             )
 
             if tx.status == TransactionStatus.COMPLETED:
-                from_balance = self.ledger_repo.get_balance(from_account.id, currency)
-                to_balance = self.ledger_repo.get_balance(to_account.id, currency)
+                from_balance = self.ledger_repo.get_balance(from_account.id, debit_currency)
+                to_balance = self.ledger_repo.get_balance(to_account.id, credit_currency)
                 return {
                     "status": "success",
                     "transaction_id": str(tx.id),
@@ -1029,17 +1138,17 @@ class WalletService:
                     transaction_id=tx.id,
                     account_id=from_account.id,
                     entry_type=EntryType.DEBIT,
-                    amount=amount,
-                    currency=currency,
-                    meta={"note": note, "counterparty": to_account_id}
+                    amount=debit_amount,
+                    currency=debit_currency,
+                    meta={"note": note, "counterparty": to_account_id, "original_amount": str(amount), "original_currency": currency}
                 ),
                 LedgerEntryModel(
                     transaction_id=tx.id,
                     account_id=to_account.id,
                     entry_type=EntryType.CREDIT,
-                    amount=amount,
-                    currency=currency,
-                    meta={"note": note, "counterparty": from_account_id}
+                    amount=credit_amount,
+                    currency=credit_currency,
+                    meta={"note": note, "counterparty": from_account_id, "original_amount": str(amount), "original_currency": currency}
                 )
             ]
 

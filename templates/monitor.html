@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<!-- templates/monitor.html -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live System Monitor — Owner Mission Control</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root { --bg:#0f1420; --panel:#161d2e; --panel2:#1e2840; --line:#26324d;
+                --text:#e6ecff; --muted:#8b97b8; --green:#36d399; --orange:#fbbd23;
+                --red:#f87272; --blue:#3abff8; --purple:#a78bfa; }
+        * { box-sizing: border-box; }
+        body { margin:0; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg);
+               color: var(--text); padding: 16px; }
+        h1 { font-size: 1.3rem; font-weight: 600; margin: 0 0 4px; }
+        .sub { color: var(--muted); font-size: .8rem; margin-bottom: 10px; }
+        .badge { display:inline-block; padding:2px 10px; border-radius: 20px; font-size:.75rem;
+                 background: var(--panel2); border:1px solid var(--line); vertical-align: middle; }
+        .badge.live { color: var(--green); border-color: var(--green); }
+        .badge.off { color: var(--red); border-color: var(--red); }
+        .badge.green{ color: var(--green); border-color: var(--green); }
+        .badge.blue{ color: var(--blue); border-color: var(--blue); }
+        .badge.orange{ color: var(--orange); border-color: var(--orange); }
+        .badge.red{ color: var(--red); border-color: var(--red); }
+        .envbar { margin-bottom: 14px; font-size:.8rem; color: var(--muted); }
+        .envbar .badge { margin-right: 8px; }
+        #banner { display:none; margin-bottom:12px; padding:10px 14px; border-radius:10px;
+                  background: rgba(248,114,114,.12); border:1px solid var(--red); color: var(--red); font-size:.85rem; }
+        .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:12px; margin-bottom:14px; }
+        .card { background: var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
+        .card .v { font-size:1.8rem; font-weight:700; }
+        .card .l { font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+        .v.green{color:var(--green);} .v.orange{color:var(--orange);} .v.red{color:var(--red);}
+        .v.blue{color:var(--blue);} .v.purple{color:var(--purple);}
+        .row { display:grid; grid-template-columns: 1.4fr 1fr; gap:14px; }
+        @media (max-width: 900px){ .row{ grid-template-columns:1fr; } }
+        .panel { background: var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; }
+        .panel h2 { font-size:.85rem; margin:0 0 8px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
+        #log { height: 460px; overflow-y:auto; font-family: ui-monospace, 'Cascadia Code', monospace;
+               font-size:.78rem; background:#0b0f18; border-radius:8px; padding:10px; border:1px solid var(--line); }
+        #log div { padding:2px 0; border-bottom:1px dashed #1b2336; white-space:nowrap; }
+        .ts { color: var(--muted); }
+        .s-reserved { color: var(--green); }
+        .s-sold { color: var(--blue); }
+        .s-sold_out { color: var(--orange); }
+        .s-payment_failed, .s-error { color: var(--red); }
+        #inv { list-style:none; margin:0; padding:0; font-size:.8rem; }
+        #inv li { display:flex; justify-content:space-between; padding:5px 8px; border-bottom:1px solid var(--line); }
+        #inv .av { color: var(--green); font-weight:600; }
+        #inv .low { color: var(--orange); }
+        #inv .zero { color: var(--red); }
+        canvas { width:100% !important; height:300px !important; }
+    </style>
+</head>
+<body>
+    {% set env_class = 'red' if app_env == 'prod' else ('blue' if app_env == 'docker' else ('orange' if app_env == 'staging' else 'green')) %}
+    <h1>🟢 Live System Monitor
+        <span id="conn" class="badge off">disconnected</span>
+    </h1>
+    <div class="envbar">
+        <span class="badge {{ env_class }}">ENV: {{ app_env }}</span>
+        <span class="badge">FLASK_ENV: {{ flask_env }}</span>
+        <span class="badge">transport: {{ async_mode }}</span>
+        {% if debug %}<span class="badge orange">DEBUG</span>{% endif %}
+        <span id="xport"></span>
+    </div>
+    <div id="banner"></div>
+
+    <div class="grid">
+        <div class="card"><div class="v" id="k_total">0</div><div class="l">Total Requests</div></div>
+        <div class="card"><div class="v green" id="k_reserved">0</div><div class="l">Reserved (201)</div></div>
+        <div class="card"><div class="v blue" id="k_sold">0</div><div class="l">Sold (confirmed)</div></div>
+        <div class="card"><div class="v orange" id="k_soldout">0</div><div class="l">Sold Out (409)</div></div>
+        <div class="card"><div class="v red" id="k_errors">0</div><div class="l">Errors / Failed</div></div>
+        <div class="card"><div class="v purple" id="k_reqs">0</div><div class="l">Req / sec</div></div>
+        <div class="card"><div class="v purple" id="k_fails">0</div><div class="l">Fail / sec</div></div>
+    </div>
+
+    <div class="row">
+        <div class="panel">
+            <h2>Live Event Feed</h2>
+            <div id="log"></div>
+        </div>
+        <div class="panel">
+            <h2>Inventory Levels (per ticket type)</h2>
+            <ul id="inv"><li style="color:var(--muted)">Waiting for events…</li></ul>
+            <h2 style="margin-top:14px;">Throughput (req/s · fail/s)</h2>
+            <canvas id="chart"></canvas>
+        </div>
+    </div>
+
+    <script nonce="{{ csp_nonce }}">
+        function showBanner(msg){
+            var b = document.getElementById('banner');
+            b.textContent = msg; b.style.display = 'block';
+        }
+        function setConn(state){ // 'live' | 'off' | 'error'
+            var b = document.getElementById('conn');
+            if (state === 'live'){ b.textContent = 'live'; b.className = 'badge live'; }
+            else if (state === 'error'){ b.textContent = 'error'; b.className = 'badge off'; }
+            else { b.textContent = 'disconnected'; b.className = 'badge off'; }
+        }
+
+        var socket = null;
+        if (typeof io === 'undefined') {
+            setConn('off');
+            showBanner('Realtime client unavailable: /socket.io/socket.io.js did not load. '
+                + 'SocketIO must be initialised (app.extensions.socketio + socketio.init_app) for live updates.');
+        } else {
+            try { socket = io(); }
+            catch (e) { setConn('error'); showBanner('Could not open realtime connection: ' + e); }
+        }
+
+        var logEl = document.getElementById('log');
+        var invEl = document.getElementById('inv');
+        var invMap = {};
+        var k = { total:0, reserved:0, sold:0, soldout:0, errors:0 };
+        var reqStamps = [], failStamps = [];
+        var WINDOW = 5000;
+
+        var ctx = document.getElementById('chart').getContext('2d');
+        var chart = new Chart(ctx, {
+            type: 'line',
+            data: { labels: [], datasets: [
+                { label:'req/s', data:[], borderColor:'#3abff8', backgroundColor:'rgba(58,191,248,.12)', fill:true, tension:.25, pointRadius:0 },
+                { label:'fail/s', data:[], borderColor:'#f87272', backgroundColor:'rgba(248,114,114,.12)', fill:true, tension:.25, pointRadius:0 }
+            ]},
+            options: { responsive:true, maintainAspectRatio:false,
+                scales:{ y:{ beginAtZero:true, ticks:{ color:'#8b97b8' }, grid:{ color:'#26324d' } },
+                         x:{ ticks:{ color:'#8b97b8', maxTicksLimit:8 }, grid:{ display:false } } },
+                plugins:{ legend:{ labels:{ color:'#e6ecff' } } } }
+        });
+
+        function val(v, fb){ return (v === null || v === undefined || v === '') ? (fb || 'n/a') : v; }
+        function bump(id, n){ document.getElementById(id).textContent = n; }
+        function failStatus(s){ return s === 'sold_out' || s === 'error' || s === 'payment_failed'; }
+
+        function onEvent(d){
+            d = d || {};
+            k.total++;
+            var s = d.status;
+            if (s === 'reserved') k.reserved++;
+            else if (s === 'sold') k.sold++;
+            else if (s === 'sold_out') k.soldout++;
+            else k.errors++;
+            bump('k_total', k.total); bump('k_reserved', k.reserved); bump('k_sold', k.sold);
+            bump('k_soldout', k.soldout); bump('k_errors', k.errors);
+
+            var ts = val((d.timestamp || new Date().toISOString()).slice(11,19), '--:--:--');
+            var row = document.createElement('div');
+            var html = '<span class="ts">' + ts + '</span> '
+                + val(d.type, 'ticket') + ' &middot; <span class="s-' + (s || 'error') + '">' + val(s, 'unknown') + '</span>';
+            if (d.ticket_type_id != null) html += ' &middot; TT#' + d.ticket_type_id;
+            if (d.quantity != null) html += ' &middot; x' + d.quantity;
+            if (d.available != null) html += ' &middot; stock:' + d.available;
+            if (d.message) html += ' &middot; ' + (String(d.message).length > 60 ? String(d.message).slice(0,60) + '…' : d.message);
+            row.innerHTML = html;
+            logEl.appendChild(row);
+            logEl.scrollTop = logEl.scrollHeight;
+            while (logEl.childElementCount > 800) logEl.removeChild(logEl.firstChild);
+
+            if (d.ticket_type_id != null && d.available != null){
+                invMap[d.ticket_type_id] = d.available;
+                renderInv();
+            }
+
+            var now = Date.now();
+            reqStamps.push(now);
+            if (failStatus(s)) failStamps.push(now);
+            while (reqStamps.length && reqStamps[0] < now - WINDOW) reqStamps.shift();
+            while (failStamps.length && failStamps[0] < now - WINDOW) failStamps.shift();
+            var rps = (reqStamps.length / (WINDOW/1000)).toFixed(1);
+            var fps = (failStamps.length / (WINDOW/1000)).toFixed(1);
+            bump('k_reqs', rps); bump('k_fails', fps);
+
+            if (k.total % 10 === 0){
+                var t = new Date().toLocaleTimeString();
+                chart.data.labels.push(t);
+                chart.data.datasets[0].data.push(parseFloat(rps));
+                chart.data.datasets[1].data.push(parseFloat(fps));
+                if (chart.data.labels.length > 40){ chart.data.labels.shift();
+                    chart.data.datasets[0].data.shift(); chart.data.datasets[1].data.shift(); }
+                chart.update('none');
+            }
+        }
+
+        function renderInv(){
+            invEl.innerHTML = '';
+            var keys = Object.keys(invMap).sort(function(a,b){ return a-b; });
+            if (!keys.length){ invEl.innerHTML = '<li style="color:var(--muted)">No inventory data yet</li>'; return; }
+            for (var i=0; i<keys.length; i++){
+                var key = keys[i], v = invMap[key];
+                var cls = v <= 0 ? 'zero' : (v < 20 ? 'low' : 'av');
+                var li = document.createElement('li');
+                li.innerHTML = '<span>Ticket type #' + key + '</span><span class="' + cls + '">' + v + ' left</span>';
+                invEl.appendChild(li);
+            }
+        }
+
+        function setTransport(note){ document.getElementById('xport').innerHTML = '<span class="badge">' + note + '</span>'; }
+
+        if (socket) {
+            socket.on('reservation_event', onEvent);
+            socket.on('connect', function(){
+                setConn('live');
+                setTransport('realtime connected');
+            });
+            socket.on('disconnect', function(){ setConn('off'); setTransport('realtime disconnected — retrying'); });
+            socket.on('connect_error', function(){ setConn('error'); setTransport('realtime connection error'); });
+        }
+    </script>
+</body>
+</html>

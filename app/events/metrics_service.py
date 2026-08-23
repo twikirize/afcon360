@@ -121,21 +121,65 @@ class EventMetricsService:
 
     @staticmethod
     def get_organizer_metrics(organizer_id: int, days: int = 30) -> Dict:
-        """Get metrics for all events operated or owned by a user"""
+        """
+        Get metrics for all events owned or operated by a user.
+
+        Ownership contract:
+          - current_owner_type == 'individual' and current_owner_id == user.id
+          - current_owner_type == 'organization' and user is org_owner/org_admin
+          - EventRole linkage is preserved for staff/coordination visibility,
+            but future versions should filter by relevant EventRole permissions.
+        """
         try:
             from sqlalchemy import or_, and_
             from app.events.models import EventRole
-            
-            # Get all events where user is owner or has an EventRole
+            from app.identity.models.user import User
+
+            user = db.session.get(User, organizer_id)
+            if not user:
+                return {
+                    "organizer_id": organizer_id,
+                    "total_events": 0,
+                    "metrics": {}
+                }
+
+            # Events directly owned by the user or where user has an EventRole.
             events = Event.query.outerjoin(
                 EventRole, Event.id == EventRole.event_id
             ).filter(
                 or_(
-                    and_(Event.current_owner_type == 'individual', Event.current_owner_id == organizer_id),
+                    and_(
+                        Event.current_owner_type == 'individual',
+                        Event.current_owner_id == organizer_id,
+                    ),
                     EventRole.user_id == organizer_id
                 )
             ).all()
-            event_ids = [event.id for event in events]
+
+            # Include organization-owned events where the user is org_owner/org_admin.
+            # This aligns with can_manage_event() and get_events_managed_by_user().
+            for membership in getattr(user, "organisations", []):
+                try:
+                    if user.has_org_role(
+                        membership.organisation_id,
+                        "org_owner",
+                        "org_admin",
+                    ):
+                        org_events = Event.query.filter_by(
+                            current_owner_type="organization",
+                            current_owner_id=membership.organisation_id,
+                        ).all()
+                        events.extend(org_events)
+                except Exception as exc:
+                    logger.debug(
+                        "Skipping organisation membership %s: %s",
+                        membership.organisation_id,
+                        exc,
+                    )
+
+            # Deduplicate by event id, preserving order.
+            unique_events = {event.id: event for event in events}.values()
+            event_ids = [event.id for event in unique_events]
 
             if not event_ids:
                 return {
@@ -160,7 +204,7 @@ class EventMetricsService:
 
             # Event-by-event breakdown
             event_breakdown = []
-            for event in events:
+            for event in unique_events:
                 reg_count = EventRegistration.query.filter_by(event_id=event.id).count()
                 revenue = db.session.query(
                     func.sum(EventRegistration.registration_fee)
@@ -184,7 +228,7 @@ class EventMetricsService:
 
             return {
                 "organizer_id": organizer_id,
-                "total_events": len(events),
+                "total_events": len(unique_events),
                 "period_days": days,
                 "total_registrations": total_stats.total or 0,
                 "total_revenue": float(total_stats.revenue or 0),

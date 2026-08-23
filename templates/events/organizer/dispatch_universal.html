@@ -1,0 +1,70 @@
+{#
+   FILE: templates/events/organizer/dispatch_universal.html
+   PURPOSE: Shared organizer dispatch page. Lists all events the organizer
+            manages as cards; each card routes to that event's specific
+            tool (scanner / export / staff / dashboard / ...).
+   ACCESS: Event organizer / owner
+   RELATED: app/events/routes_organizer.py
+#}
+
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }} - All Events - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4 align-items-center">
+        <div class="col-md-8">
+            <h1 class="display-5 mb-0">
+                <i class="fas {{ page_icon }} text-primary me-2"></i>{{ page_title }}
+            </h1>
+            <p class="text-muted">{{ page_desc }}</p>
+        </div>
+        <div class="col-md-4 text-md-end">
+            <a href="{{ safe_url('events.organizer_dashboards') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-1"></i> All Events
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        {% if events %}
+            {% for event in events %}
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ event.name }}</h5>
+                        <p class="card-text text-muted small">
+                            <i class="fas fa-map-marker-alt"></i>
+                            {{ event.city }}{% if event.venue %} - {{ event.venue }}{% endif %}
+                        </p>
+                        {% if waitlist_counts and waitlist_counts.get(event.id) %}
+                            <span class="badge bg-warning text-dark">
+                                {{ waitlist_counts[event.id] }} on waitlist
+                            </span>
+                        {% endif %}
+                    </div>
+                    <div class="card-footer bg-white">
+                        <a href="{{ safe_url(target_endpoint, identifier=event.slug) }}"
+                           class="btn btn-primary w-100">
+                            <i class="fas {{ page_icon }} me-1"></i> {{ target_label }}
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="col-12">
+                <div class="alert alert-info text-center py-5">
+                    <i class="fas {{ page_icon }} fa-3x mb-3"></i>
+                    <h4>No Events Yet</h4>
+                    <p>Create an event first.</p>
+                    <a href="{{ safe_url('events.create_event') }}" class="btn btn-primary">
+                        <i class="fas fa-plus-circle me-1"></i> Create Event
+                    </a>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

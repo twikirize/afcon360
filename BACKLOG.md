@@ -27,6 +27,16 @@
 
 ---
 
+## Missing baseline migration — DB cannot be built via `flask db upgrade`
+- **Status:** Done
+- **Resolved:** 2026-08-20
+- **Context:** `ab6dd422c152_initial_schema` (down_revision=None) was the effective root of the migration graph but never created `users`, `events`, `accounts`, `transactions`, or `accommodation_properties`, so `flask db upgrade` failed against an empty database in ANY environment.
+- **Resolution:** Retired `ab6dd422c152_initial_schema` to `migrations/_retired_versions/` and added `migrations/versions/8a0deccce6f6_initial_full_schema_baseline.py` — a single root migration (`down_revision=None`) that builds the entire schema from current models via `db.metadata.create_all()` (handles FK ordering/circular deps). Verified: `flask db upgrade` from an EMPTY database now builds all 182 tables incl. `users`/`events`/`accounts`/`transactions`/`accommodation_properties`, stamped at head `8a0deccce6f6`. The test env keeps its `db.create_all()` + `stamp head` bootstrap (identical schema).
+- **Owner/area:** migrations / database
+- **Links:** `migrations/versions/8a0deccce6f6_initial_full_schema_baseline.py`, `migrations/_retired_versions/ab6dd422c152_initial_schema.py`, `tests/conftest.py`, `scripts/setup_test_db_schema.py`, `AGENTS.md` §20, §21.1
+
+---
+
 ## Accommodation test database and RoomType import drift
 - **Status:** Blocked
 - **Raised:** 2026-08-12
@@ -111,6 +121,16 @@
 
 ---
 
+## Event guest identity schema migration
+- **Status:** Needs review
+- **Raised:** 2026-08-18
+- **Context:** Guest coordination now defines an account-independent `EventGuest`, nullable `EventRegistration.guest_id`, nullable `EventAssignment.guest_id`/`attendee_id`, and guest-centric coordination contracts. The configured database does not yet contain `event_guests`, so accountless persistence cannot be exercised until the schema is migrated.
+- **What needs to happen:** Review model registration and constraints, create the approved short Alembic revision using the repository migration protocol, apply it under operator control, backfill registration guest links, and add PostgreSQL integration coverage for uniqueness, soft delete, and compatibility resolution. Do not modify wallet models.
+- **Owner/area:** Events + database operations
+- **Links:** `app/events/models.py`, `app/events/events.md`, `app/events/guest_coordination_service.py`, `tests/test_guest_coordination_contract.py`
+
+---
+
 ## Group checkout and booking notification migration
 - **Status:** Partial — migration applied for new table; notification type CHECK constraint still needs manual update
 - **Raised:** 2026-08-12
@@ -150,7 +170,42 @@
 
 ---
 
+## Account-optional event guest assignment: test DB restore + test execution blocked
+- **Status:** Blocked
+- **Raised:** 2026-08-19
+- **Context:** The account-optional guest-assignment change set is implemented across `app/events/models.py:1088` (`EventAssignment.attendee_id` is `BigInteger`, `ForeignKey("users.id", ondelete="SET NULL")`, `nullable=True`, `index=True`), `app/events/guest_coordination_service.py:303` (registration_id resolution, no `REGISTRATION_IDENTITY_REQUIRED`, attendee_id may be None), `app/events/attendee_accounts.py`, `app/events/services.py`, `app/events/payment_service.py`, and `app/events/assignment.py`, plus the regression test `tests/test_guest_assignment_account_optional.py`. The model already declares `attendee_id` `nullable=True`/`index=True`, so no nullable migration is required — only the `ix_event_assignments_attendee_id` index delta, which is already present in the existing `ad665a64d4b4` migration. Tests cannot be executed because `afcon360_test` was dropped during troubleshooting and is currently empty; the base schema is not built by Alembic (the initial migration `ab6dd422c152` (`down_revision=None`) creates only 3 tables and ALTERs pre-existing base tables), so a from-scratch `flask db upgrade` cannot build it.
+- **What needs to happen:**
+  1. Restore `afcon360_test` from its snapshot/dump (human-owned — the base schema is not migration-built).
+  2. With `APP_ENV=testing` + `FLASK_ENV=testing` and `DATABASE_URL`/`SQLALCHEMY_DATABASE_URI`/`DB_NAME` cleared, run `flask db current` then `flask db upgrade` to reach `(head)` (`1f2072788371`).
+  3. Run `pytest tests/test_guest_assignment_account_optional.py tests/test_guest_coordination_contract.py`.
+  - Migration/DB-restore application is human-owned; Kilo only proposes exact commands.
+- **Owner/area:** events + test infrastructure / database operations
+- **Links:** `app/events/models.py:1088`, `app/events/guest_coordination_service.py:303`, `app/events/attendee_accounts.py`, `app/events/services.py`, `app/events/payment_service.py`, `app/events/assignment.py`, `tests/test_guest_assignment_account_optional.py`, `tests/test_guest_coordination_contract.py`, `migrations/versions/ad665a64d4b4_account_optional_guest_coordination_.py`, `.kilicode/rules/postgres-test-db-rules.md`
+
+---
+
+## PostgreSQL test-database targeting guidance (Kilo rule)
+- **Status:** Done (Resolved 2026-08-19)
+- **Raised:** 2026-08-19
+- **Context:** Kilo sessions risked targeting `afcon360_prod` because `.env`'s `DB_NAME=afcon360_prod` and `DATABASE_URL` override `TestingConfig`, and `flask` is not on PATH. Captured the verified targeting procedure in a durable, auto-loaded Kilo rule.
+- **What needs to happen:** None — rule written.
+- **Owner/area:** test infrastructure
+- **Links:** `.kilicode/rules/postgres-test-db-rules.md`, `app/config.py:421-442`, `migrations/env.py:56-85`
+
 <!-- New deferred items go above this line. -->
+
+## Event settings enforcement and persistence safety
+- **Status:** Not started
+- **Raised:** 2026-08-18
+- **Context:** Review of `app/events/settings_model.py` found the file safe for the current Events authority-contract correction: it defines platform-wide defaults and does not use `organizer_id`, authorize individual events, or mutate canonical event ownership. Several follow-up gaps remain around enforcing those defaults and safely persisting cached settings.
+- **What needs to happen:**
+  - Enforce `allow_organiser_cancel` in `can_cancel_event()` and `allow_organiser_delete` in `can_soft_delete_event()`.
+  - Enforce `max_capacity_limit` and `max_ticket_types_per_event` in `EventService.create_event()` and related ticket configuration paths.
+  - Make cached `EventSettings.get()` results update the attached database row, or invalidate/reload the cache before writes.
+  - Preserve native boolean/integer types during cache serialization and safely handle any stringified datetime values.
+  - Ensure the settings mutation route requires `is_system_admin(current_user)` and audit-log the platform-level change.
+- **Owner/area:** events + platform administration
+- **Links:** `app/events/settings_model.py`, `app/events/permissions.py`, `app/events/services.py`, `app/events/routes.py`, `app/owner/routes/settings.py`
 
 ## Event registration availability schema migration
 - **Status:** Blocked — migration generated, review/application pending
@@ -165,7 +220,7 @@
 ## Individual TIN policy administration surface
 - **Status:** Partial — application toggle implemented, admin surface pending
 - **Raised:** 2026-08-14
-- **Context:** Individual TIN is now optional by default through `INDIVIDUAL_TIN_REQUIRED` in `app/auth/kyc_compliance.py`; organisation KYB still retains its separate TIN-certificate requirement. Compliance policy may need to make TIN mandatory later without a code deployment.
+- **Context:** Individual TIN is now optional by default through the `kyc_require_tin` owner/Super-Admin toggle (seeded in `app/kyc_config_schema.py` and persisted in `system_configs`); organisation KYB still retains its separate TIN-certificate requirement. All KYC tunables (document toggles, tier limits, screening flags, activity tiers, reporting thresholds) are now configurable from the Wallet Capabilities → KYC Requirement Configuration page and applied across the codebase via `app/kyc_config_schema.py`.
 - **What needs to happen:** Add an owner/compliance-controlled configuration entry with audit logging, safe defaults, effective-date handling, and tests for both toggle states before enabling it in production.
 - **Owner/area:** KYC + compliance configuration
 - **Links:** `app/auth/kyc_compliance.py`, `app/admin/owner/`, `app/models/system_config.py`, `app/Documentation/PROFILE_KYC_SYSTEM.md`
@@ -218,4 +273,21 @@
 - **Context:** Property-level media now supports categories such as bedroom and bathroom, but hosts may eventually need separate galleries attached to each `RoomType` (for example, “Deluxe room” photos distinct from the property exterior and shared facilities).
 - **What needs to happen:** Give room types a stable public media entity identifier, add host UI and authorization for room-specific uploads/reordering/deletion, and render each room gallery beside its booking option. Keep property-level media for exterior, shared areas, amenities, and other common spaces.
 - **Owner/area:** accommodation media + room types
+
+---
+
+## Reversible attendee registration suspension (Suspend/Reinstate)
+- **Status:** Not started — needs spec + migration authorization
+- **Raised:** 2026-08-19
+- **Context:** The Organizer Hub now unifies all attendees across managed events with Check-in / Cancel / Assign actions, but there is no reversible "suspend" state. `EventRegistration` (`app/events/models.py:657-662`) defines only `pending_payment`, `confirmed`, `cancelled`, `checked_in`, `no_show`, `expired` — no `suspended`. The only remove-access path is `EventService.cancel_registration` (`app/events/services.py:2237-2262`), which is terminal (frees a seat, no un-cancel), blocks checked-in attendees, and captures no reason, no audit entry, and no refund handling. An attendee who must be pulled (misconduct, fraud, TOS/security flag) currently can only be hard-cancelled or left untouched.
+- **What needs to happen:**
+  - Approve a spec for the suspend/reinstate lifecycle (status set, reason, actor, reversibility, check-in enforcement, capacity/assignment release, refund policy).
+  - Migration (HIGH_RISK per AGENTS.md §19–20, §34): add `STATUS_SUSPENDED = "suspended"` plus `suspended_at`, `suspended_by_id`, `suspended_reason` columns to `EventRegistration` (mirror existing `Event.is_suspended` fields at `models.py:204-205`).
+  - `EventService.suspend_registration(ref, actor, reason)` + `reinstate_registration(ref, actor)` restoring prior status (e.g. `confirmed`).
+  - Extend `check_in_attendee` / `check_in_attendee_by_ref` (`services.py:1489-1493`) to reject `suspended` like `cancelled`.
+  - Gated by `can_manage_registration`; forensic audit (AGENTS.md §29) on every suspend/reinstate.
+  - Hub UI: Suspend / Reinstate buttons in the attendee table + reason modal.
+  - Do NOT auto-refund — releasing assigned accommodation/transport capacity that implies a refund is a separate HIGH_RISK finance decision (wallet double-entry), requires finance/compliance review.
+- **Owner/area:** Events + identity/permissions + finance/compliance (for refund policy)
+- **Links:** `app/events/models.py:657-662`, `app/events/models.py:204-205`, `app/events/services.py:2237-2262`, `app/events/services.py:1455-1514`, `app/events/permissions.py` (`can_manage_registration`), `templates/events/events_hub.html` (attendee table actions), AGENTS.md §6, §19, §20, §29, §34
 - **Links:** `app/accommodation/models/room.py`, `app/accommodation/services/media_service.py`, `app/media/routes.py`, `templates/accommodation/host/edit_listing.html`, `templates/accommodation/guest/detail.html`

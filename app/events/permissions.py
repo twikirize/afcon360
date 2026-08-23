@@ -45,14 +45,275 @@ from typing import Tuple
 from flask_login import current_user
 
 from app.extensions import db
-from app.auth.helpers import has_global_role, has_org_role, has_global_permission, has_org_permission
-from app.auth.helpers import is_system_admin as auth_is_system_admin
+from app.auth.helpers import (
+    has_global_role,
+    has_org_role,
+    has_global_permission,
+    has_org_permission,
+)
 from app.events.constants import EventStatus
 
 
 # ============================================================================
+# EVENT-LEVEL STAFF ACTION MAP
+# ============================================================================
+
+EVENT_STAFF_ACTION_MAP = {
+    # Role name in EventRole.table        Actions permitted
+    'co_organizer': {
+        'view_coordination',
+        'manage_coordination',
+        'check_in',
+    },
+    'steward': {
+        'check_in',
+    },
+    'volunteer': {
+        'check_in',
+    },
+}
+
+# ============================================================================
+# EVENT GUEST OPERATIONS — GRANULAR PERMISSION MODEL
+# ============================================================================
+# Fine-grained permissions for the Event Guest Operations / assignment system.
+# Grouped by capability per the Event Guest Operations permission model.
+#
+# Event staff (EventRole) are scoped by a permission bundle, never by a single
+# catch-all flag.  Platform admins, event managers, the canonical event owner
+# (individual or organisation) and org_owner/org_admin of the owning
+# organisation receive EVERY permission below.  Event-level staff receive only
+# the permissions present in their role bundle.
+GUEST_OPERATIONS_PERMISSION_GROUPS = {
+    'Guest Management': [
+        'guest.view',
+        'guest.create',
+        'guest.edit',
+        'guest.import',
+        'guest.archive',
+        'guest.link_account',
+        'guest.merge',
+    ],
+    'Coordination / Assignment': [
+        'assignment.view',
+        'accommodation.assign',
+        'accommodation.cancel',
+        'accommodation.allocate_room',
+        'transport.assign',
+        'transport.cancel',
+        'transport.plan',
+        'tourism.assign',
+        'tourism.cancel',
+        'experience.assign',
+    ],
+    'Wallet / Allowance': [
+        'wallet.view',
+        'allowance.create',
+        'allowance.adjust',
+        'wallet.authorise_spend',
+        'financial.approve',
+        'financial.view',
+    ],
+    'Guest Journey': [
+        'journey.view',
+        'journey.manage',
+        'journey.override',
+        'exception.resolve',
+        'coverage.view',
+    ],
+    'Groups / Delegations': [
+        'group.view',
+        'group.create',
+        'group.edit',
+        'group.bulk_assign',
+        'group.vip_manage',
+    ],
+    'Communication': [
+        'notify.guest',
+        'notify.bulk',
+        'message.view',
+    ],
+    'Audit / Compliance': [
+        'audit.view',
+        'audit.export',
+    ],
+    'Check-in': [
+        'check_in',
+    ],
+}
+
+ALL_GUEST_OPERATIONS_PERMISSIONS = {
+    perm for perms in GUEST_OPERATIONS_PERMISSION_GROUPS.values() for perm in perms
+}
+
+# Permissions that mutate event guest state.  Used by can_manage_coordination
+# and by capability-aware helpers to recognise a "manager".
+MUTATION_PERMISSIONS = {
+    'guest.create', 'guest.edit', 'guest.import', 'guest.archive',
+    'guest.link_account', 'guest.merge',
+    'accommodation.assign', 'accommodation.cancel', 'accommodation.allocate_room',
+    'transport.assign', 'transport.cancel', 'transport.plan',
+    'tourism.assign', 'tourism.cancel', 'experience.assign',
+    'allowance.create', 'allowance.adjust', 'wallet.authorise_spend',
+    'financial.approve',
+    'journey.manage', 'journey.override', 'exception.resolve',
+    'group.create', 'group.edit', 'group.bulk_assign', 'group.vip_manage',
+    'notify.guest', 'notify.bulk',
+    'audit.export',
+}
+
+# Default permission bundles for event staff roles.  A concrete EventRole may
+# override these via its JSON `permissions` column; otherwise this map supplies
+# the default for the role name.  co_organizer / steward / volunteer remain
+# backward compatible with the legacy EVENT_STAFF_ACTION_MAP behaviour.
+EVENT_STAFF_ROLE_PERMISSIONS = {
+    # Legacy broad coordinator.
+    'co_organizer': {
+        'guest.view', 'guest.create', 'guest.edit', 'guest.import',
+        'guest.archive', 'guest.link_account', 'guest.merge',
+        'assignment.view',
+        'accommodation.assign', 'accommodation.cancel', 'accommodation.allocate_room',
+        'transport.assign', 'transport.cancel', 'transport.plan',
+        'tourism.assign', 'tourism.cancel',
+        'journey.view', 'journey.manage', 'journey.override',
+        'exception.resolve', 'coverage.view',
+        'group.view', 'group.create', 'group.edit', 'group.bulk_assign', 'group.vip_manage',
+        'notify.guest', 'notify.bulk', 'message.view',
+        'audit.view', 'check_in',
+    },
+    'steward': {'check_in', 'guest.view', 'assignment.view', 'journey.view'},
+    'volunteer': {'check_in', 'guest.view', 'assignment.view', 'journey.view'},
+
+    # Event Operations Manager — day-to-day event operator.
+    'operations_manager': {
+        'guest.view', 'guest.create', 'guest.edit', 'guest.import',
+        'guest.archive', 'guest.link_account', 'guest.merge',
+        'assignment.view',
+        'accommodation.assign', 'accommodation.cancel', 'accommodation.allocate_room',
+        'transport.assign', 'transport.cancel', 'transport.plan',
+        'tourism.assign', 'tourism.cancel',
+        'journey.view', 'journey.manage', 'journey.override',
+        'exception.resolve', 'coverage.view',
+        'group.view', 'group.create', 'group.edit', 'group.bulk_assign', 'group.vip_manage',
+        'notify.guest', 'notify.bulk', 'message.view',
+        'wallet.view', 'allowance.create', 'allowance.adjust',
+        'wallet.authorise_spend', 'financial.view',
+        'audit.view', 'check_in',
+    },
+
+    # Accommodation Coordinator — accommodation only.
+    'accommodation_coordinator': {
+        'guest.view', 'assignment.view',
+        'accommodation.assign', 'accommodation.cancel', 'accommodation.allocate_room',
+        'journey.view', 'coverage.view', 'check_in',
+    },
+
+    # Transport Coordinator — transport only.
+    'transport_coordinator': {
+        'guest.view', 'assignment.view',
+        'transport.assign', 'transport.cancel', 'transport.plan',
+        'journey.view', 'coverage.view', 'check_in',
+    },
+
+    # Guest Services / Hospitality Coordinator.
+    'guest_services_coordinator': {
+        'guest.view', 'guest.create', 'guest.edit', 'guest.link_account',
+        'assignment.view',
+        'journey.view', 'journey.manage',
+        'tourism.assign', 'tourism.cancel',
+        'notify.guest', 'message.view', 'check_in',
+    },
+
+    # Finance Manager / Budget Controller.
+    'finance_manager': {
+        'guest.view', 'assignment.view',
+        'wallet.view', 'allowance.create', 'allowance.adjust',
+        'wallet.authorise_spend', 'financial.approve', 'financial.view',
+        'journey.view', 'audit.view',
+    },
+
+    # Check-in / Door Staff.
+    'checkin_staff': {
+        'guest.view', 'assignment.view', 'journey.view', 'check_in',
+    },
+
+    # Auditor / Compliance Viewer — read only.
+    'auditor': {
+        'guest.view', 'assignment.view', 'journey.view', 'coverage.view',
+        'audit.view', 'audit.export',
+    },
+
+    # Delegation Lead / Group Coordinator — scoped to their group.
+    'delegation_lead': {
+        'guest.view', 'assignment.view',
+        'group.view', 'group.edit', 'group.bulk_assign',
+        'accommodation.assign', 'transport.assign', 'tourism.assign',
+        'notify.guest', 'message.view', 'journey.view', 'check_in',
+    },
+}
+
+# Human-readable explanations for every permission key used by event staff
+# roles.  Surfaced in the staff management UI so the organizer can read, at a
+# glance, what each role/permission actually allows (the "treasure map").
+PERMISSION_DESCRIPTIONS = {
+    'guest.view': 'View the guest / attendee list',
+    'guest.create': 'Register new guests manually',
+    'guest.edit': 'Edit guest details',
+    'guest.import': 'Bulk-import guests',
+    'guest.archive': 'Archive guest records',
+    'guest.link_account': 'Link a guest to a user account',
+    'guest.merge': 'Merge duplicate guest records',
+    'assignment.view': 'View accommodation / transport assignments',
+    'accommodation.assign': 'Assign accommodation to guests',
+    'accommodation.cancel': 'Cancel accommodation assignments',
+    'accommodation.allocate_room': 'Allocate specific rooms',
+    'transport.assign': 'Assign transport to guests',
+    'transport.cancel': 'Cancel transport assignments',
+    'transport.plan': 'Plan transport logistics',
+    'tourism.assign': 'Assign tourism experiences',
+    'tourism.cancel': 'Cancel tourism assignments',
+    'journey.view': 'View guest journeys / movement',
+    'journey.manage': 'Manage guest journeys',
+    'journey.override': 'Override journey records',
+    'exception.resolve': 'Resolve guest exceptions',
+    'coverage.view': 'View coverage / rosters',
+    'group.view': 'View guest groups',
+    'group.create': 'Create guest groups',
+    'group.edit': 'Edit guest groups',
+    'group.bulk_assign': 'Bulk-assign guests to groups',
+    'group.vip_manage': 'Manage VIP groups',
+    'notify.guest': 'Send notifications to guests',
+    'notify.bulk': 'Send bulk notifications',
+    'message.view': 'View and send messages / announcements',
+    'audit.view': 'View audit logs',
+    'audit.export': 'Export audit logs',
+    'check_in': 'Check guests in at the door (scanner)',
+    'wallet.view': 'View financial wallet info',
+    'allowance.create': 'Create spending allowances',
+    'allowance.adjust': 'Adjust allowances',
+    'wallet.authorise_spend': 'Authorise spending',
+    'financial.view': 'View financial reports',
+    'financial.approve': 'Approve financial transactions',
+}
+
+# ============================================================================
 # INTERNAL HELPERS
 # ============================================================================
+
+def _has_event_staff_permission(user, event, action: str) -> bool:
+    """Return True if the user holds an event staff role granting ``action``.
+
+    Adding a new event staff role later does not require editing every
+    permission function.  Add the role to `EVENT_STAFF_ACTION_MAP` after
+    making it available in the `EventRole` role reference data.
+    """
+    roles = resolve_user_roles(user, event)
+    for role in roles:
+        allowed_actions = EVENT_STAFF_ACTION_MAP.get(role)
+        if allowed_actions and action in allowed_actions:
+            return True
+    return False
+
 
 def _resolve_event_org_id(event) -> int | None:
     """Return the organisation id from either a model instance or a dict."""
@@ -67,8 +328,14 @@ def _resolve_organiser_id(event) -> int | None:
     """Return the organiser user id from either a model instance or a dict."""
     import logging
     import warnings
-    warnings.warn('organizer_id fallback usage is DEPRECATED (Phase 4 Step 5)', DeprecationWarning, stacklevel=2)
-    logging.getLogger(__name__).warning('LEGACY PERMISSION FALLBACK: _resolve_organiser_id called. Phase 4 Deprecation.')
+    warnings.warn(
+        'organizer_id fallback usage is DEPRECATED (Phase 4 Step 5)',
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    logging.getLogger(__name__).warning(
+        'LEGACY PERMISSION FALLBACK: _resolve_organiser_id called. Phase 4 Deprecation.'
+    )
     if hasattr(event, 'organizer_id'):
         return event.organizer_id
     if hasattr(event, 'get'):
@@ -104,9 +371,6 @@ def _is_event_owner(user, event) -> bool:
     explicit current owner.  This preserves legacy-record compatibility
     without allowing a stale organizer value to override a transfer.
     """
-    if hasattr(event, 'is_owned_by_user') and event.is_owned_by_user(user.id):
-        return True
-
     if hasattr(event, 'current_owner_type'):
         owner_type = event.current_owner_type
         owner_id = event.current_owner_id
@@ -115,6 +379,10 @@ def _is_event_owner(user, event) -> bool:
         owner_id = event.get('current_owner_id')
     else:
         owner_type = owner_id = None
+
+    owner_type_value = getattr(owner_type, 'value', owner_type)
+    if owner_type_value == 'individual' and owner_id == user.id:
+        return True
 
     if owner_type is not None or owner_id is not None:
         return False
@@ -130,6 +398,85 @@ def _is_org_member_of_event(user, event, *org_roles) -> bool:
     if not org_id:
         return False
     return has_org_role(user, org_id, *org_roles)
+
+
+# ============================================================================
+# EVENT GUEST OPERATIONS — PERMISSION RESOLUTION
+# ============================================================================
+
+def _is_coordination_authority(user, event) -> bool:
+    """True for platform/event authorities that hold EVERY guest operation permission.
+
+    Mirrors the authority contract used by can_view_coordination /
+    can_manage_coordination: system admins, event managers, moderators, the
+    canonical event owner, and org_owner/org_admin of the owning organisation.
+    """
+    if not user or not user.is_authenticated:
+        return False
+    if is_system_admin(user) or is_event_manager(user) or is_moderator(user):
+        return True
+    if event:
+        if _is_event_owner(user, event):
+            return True
+        if _is_org_member_of_event(user, event, 'org_owner', 'org_admin'):
+            return True
+    return False
+
+
+def _resolve_user_event_permissions(user, event) -> set:
+    """Return the full set of guest-operation permissions a user holds for event.
+
+    Authorities receive every permission.  Event staff receive the union of
+    their EventRole.permissions (JSON) and the role's default bundle.
+    """
+    if _is_coordination_authority(user, event):
+        return set(ALL_GUEST_OPERATIONS_PERMISSIONS)
+
+    perms: set = set()
+    if event is None or not getattr(user, 'id', None):
+        return perms
+
+    event_id = getattr(event, 'id', None) or (
+        event.get('id') if hasattr(event, 'get') else None
+    )
+    if not event_id:
+        return perms
+
+    from app.events.models import EventRole
+
+    staff_roles = EventRole.query.filter_by(
+        event_id=event_id, user_id=user.id, is_active=True
+    ).all()
+    for role in staff_roles:
+        role_perms = role.permissions
+        if isinstance(role_perms, (list, tuple, set)) and role_perms:
+            perms.update(str(p) for p in role_perms)
+        else:
+            perms.update(EVENT_STAFF_ROLE_PERMISSIONS.get(role.role, set()))
+    return perms
+
+
+def has_guest_operation_permission(user, event, permission: str) -> Tuple[bool, str]:
+    """Authorize a single granular guest-operation permission."""
+    if not user or not user.is_authenticated:
+        return False, 'Not authenticated'
+    perms = _resolve_user_event_permissions(user, event)
+    if permission in perms:
+        return True, ''
+    return False, 'Not authorized for this event guest operation'
+
+
+def get_event_guest_permissions(user, event) -> dict:
+    """Return a granular permission map for templates / API consumers.
+
+    Every permission in GUEST_OPERATIONS_PERMISSION_GROUPS is present as a
+    boolean key, so the UI can show/hide actions without re-implementing the
+    authority logic.  Safe to pass directly into Jinja2 templates.
+    """
+    if not user or not user.is_authenticated:
+        return {perm: False for perm in ALL_GUEST_OPERATIONS_PERMISSIONS}
+    perms = _resolve_user_event_permissions(user, event)
+    return {perm: (perm in perms) for perm in ALL_GUEST_OPERATIONS_PERMISSIONS}
 
 
 # ============================================================================
@@ -250,7 +597,7 @@ def resolve_user_roles(user, event) -> set[str]:
                 # Strict Context Boundary: If acting personally or on another platform,
                 # you do not implicitly get your org permissions here.
                 allow_org = False
-            
+
             if allow_org:
                 if has_org_role(user, org_id, 'org_owner'):
                     roles.add('org_owner')
@@ -294,53 +641,283 @@ def can_manage_event(user, event) -> Tuple[bool, str]:
     """Edit, create, update - organiser and above."""
     if not user or not user.is_authenticated:
         return False, 'Not authenticated'
+
+    if is_system_admin(user):
+        return True, ''
     if is_event_manager(user):
         return True, ''
     if is_moderator(user):
         return True, ''
+
     if event:
         if _is_event_owner(user, event):
             return True, ''
         if _is_org_member_of_event(user, event, 'org_owner', 'org_admin'):
             return True, ''
+
     return False, 'Not authorized to manage this event'
 
 
-def can_view_coordination(user, event) -> Tuple[bool, str]:
-    """View confirmed attendees and live coordination state."""
+def can_approve_event_transfer(user, transfer_request) -> Tuple[bool, str]:
+    """Authorize approval against the requested transfer target."""
     if not user or not user.is_authenticated:
         return False, 'Not authenticated'
-    if is_event_manager(user) or is_system_admin(user):
+
+    if (
+        has_global_permission(user, 'events.manage')
+        or has_global_permission(user, 'events.approve')
+    ):
         return True, ''
-    if event and (_is_event_owner(user, event) or
-                  _is_org_member_of_event(user, event, 'org_owner', 'org_admin')):
+
+    if transfer_request.to_user_id is not None:
+        if user.id == transfer_request.to_user_id:
+            return True, ''
+        return False, 'Only the requested individual owner can approve this transfer'
+
+    if transfer_request.to_organization_id is not None:
+        if has_org_role(user, transfer_request.to_organization_id, 'org_owner', 'org_admin'):
+            return True, ''
+        return False, 'Only an authorized target organization member can approve this transfer'
+
+    return False, 'Transfer request has no valid approval target'
+
+
+def can_view_coordination(user, event) -> Tuple[bool, str]:
+    """View confirmed attendees and live coordination state.
+
+    Maps to the granular ``assignment.view`` / ``guest.view`` permissions while
+    preserving authority behaviour for platform/event owners and managers.
+    """
+    if not user or not user.is_authenticated:
+        return False, 'Not authenticated'
+
+    if is_event_manager(user) or is_system_admin(user) or is_moderator(user):
         return True, ''
-    if event and 'co_organizer' in resolve_user_roles(user, event):
+
+    if event and (
+        _is_event_owner(user, event)
+        or _is_org_member_of_event(user, event, 'org_owner', 'org_admin')
+    ):
         return True, ''
+
+    ok, _ = has_guest_operation_permission(user, event, 'assignment.view')
+    if ok:
+        return True, ''
+    ok, _ = has_guest_operation_permission(user, event, 'guest.view')
+    if ok:
+        return True, ''
+
     return False, 'Not authorized to view event coordination'
 
 
+def can_manage_coordination(user, event) -> Tuple[bool, str]:
+    """Authorize coordination mutations broadly.
+
+    True for authorities, or for any staff member holding at least one mutation
+    permission.  Prefer the capability-specific helpers (can_assign_accommodation,
+    can_assign_transport, can_cancel_assignment) for fine-grained control.
+    """
+    if not user or not user.is_authenticated:
+        return False, 'Not authenticated'
+    if is_event_manager(user) or is_system_admin(user) or is_moderator(user):
+        return True, ''
+    if event and (
+        _is_event_owner(user, event)
+        or _is_org_member_of_event(user, event, 'org_owner', 'org_admin')
+    ):
+        return True, ''
+    perms = _resolve_user_event_permissions(user, event)
+    if perms & MUTATION_PERMISSIONS:
+        return True, ''
+    return False, 'Not authorized to manage event coordination'
+
+
 def can_assign_accommodation(user, event) -> Tuple[bool, str]:
-    return can_view_coordination(user, event)
+    return has_guest_operation_permission(user, event, 'accommodation.assign')
 
 
 def can_assign_transport(user, event) -> Tuple[bool, str]:
-    return can_view_coordination(user, event)
+    return has_guest_operation_permission(user, event, 'transport.assign')
 
 
-def can_cancel_assignment(user, event) -> Tuple[bool, str]:
-    return can_view_coordination(user, event)
+def can_cancel_assignment(user, event, capability: str = None) -> Tuple[bool, str]:
+    """Cancel an assignment capability.
+
+    ``capability`` may be 'accommodation' or 'transport'; when omitted any
+    cancellation permission is accepted (broad authority / manager).
+    """
+    if not user or not user.is_authenticated:
+        return False, 'Not authenticated'
+    if capability == 'accommodation':
+        return has_guest_operation_permission(user, event, 'accommodation.cancel')
+    if capability == 'transport':
+        return has_guest_operation_permission(user, event, 'transport.cancel')
+    acc_ok, _ = has_guest_operation_permission(user, event, 'accommodation.cancel')
+    trn_ok, _ = has_guest_operation_permission(user, event, 'transport.cancel')
+    if acc_ok or trn_ok:
+        return True, ''
+    return False, 'Not authorized to cancel assignments'
+
+
+# ============================================================================
+# EVENT GUEST OPERATIONS — GRANULAR CONVENIENCE HELPERS
+# Each maps to exactly one permission in GUEST_OPERATIONS_PERMISSION_GROUPS.
+# Authorities (platform/event owners, managers) receive every permission via
+# _resolve_user_event_permissions, so these return True for them automatically.
+# ============================================================================
+
+def _guest_op(user, event, permission: str) -> Tuple[bool, str]:
+    return has_guest_operation_permission(user, event, permission)
+
+
+def can_view_guests(user, event):
+    return _guest_op(user, event, 'guest.view')
+
+
+def can_create_guest(user, event):
+    return _guest_op(user, event, 'guest.create')
+
+
+def can_edit_guest(user, event):
+    return _guest_op(user, event, 'guest.edit')
+
+
+def can_import_guests(user, event):
+    return _guest_op(user, event, 'guest.import')
+
+
+def can_archive_guest(user, event):
+    return _guest_op(user, event, 'guest.archive')
+
+
+def can_link_guest_account(user, event):
+    return _guest_op(user, event, 'guest.link_account')
+
+
+def can_merge_guest(user, event):
+    return _guest_op(user, event, 'guest.merge')
+
+
+def can_view_assignment(user, event):
+    return _guest_op(user, event, 'assignment.view')
+
+
+def can_allocate_room(user, event):
+    return _guest_op(user, event, 'accommodation.allocate_room')
+
+
+def can_plan_transport(user, event):
+    return _guest_op(user, event, 'transport.plan')
+
+
+def can_assign_tourism(user, event):
+    return _guest_op(user, event, 'tourism.assign')
+
+
+def can_cancel_tourism(user, event):
+    return _guest_op(user, event, 'tourism.cancel')
+
+
+def can_assign_experience(user, event):
+    return _guest_op(user, event, 'experience.assign')
+
+
+def can_view_wallet(user, event):
+    return _guest_op(user, event, 'wallet.view')
+
+
+def can_create_allowance(user, event):
+    return _guest_op(user, event, 'allowance.create')
+
+
+def can_adjust_allowance(user, event):
+    return _guest_op(user, event, 'allowance.adjust')
+
+
+def can_authorise_spend(user, event):
+    return _guest_op(user, event, 'wallet.authorise_spend')
+
+
+def can_approve_financial(user, event):
+    return _guest_op(user, event, 'financial.approve')
+
+
+def can_view_financial(user, event):
+    return _guest_op(user, event, 'financial.view')
+
+
+def can_view_journey(user, event):
+    return _guest_op(user, event, 'journey.view')
+
+
+def can_manage_journey(user, event):
+    return _guest_op(user, event, 'journey.manage')
+
+
+def can_override_journey(user, event):
+    return _guest_op(user, event, 'journey.override')
+
+
+def can_resolve_exception(user, event):
+    return _guest_op(user, event, 'exception.resolve')
+
+
+def can_view_coverage(user, event):
+    return _guest_op(user, event, 'coverage.view')
+
+
+def can_view_group(user, event):
+    return _guest_op(user, event, 'group.view')
+
+
+def can_create_group(user, event):
+    return _guest_op(user, event, 'group.create')
+
+
+def can_edit_group(user, event):
+    return _guest_op(user, event, 'group.edit')
+
+
+def can_bulk_assign_group(user, event):
+    return _guest_op(user, event, 'group.bulk_assign')
+
+
+def can_manage_vip(user, event):
+    return _guest_op(user, event, 'group.vip_manage')
+
+
+def can_notify_guest(user, event):
+    return _guest_op(user, event, 'notify.guest')
+
+
+def can_notify_bulk(user, event):
+    return _guest_op(user, event, 'notify.bulk')
+
+
+def can_view_messages(user, event):
+    return _guest_op(user, event, 'message.view')
+
+
+def can_view_audit(user, event):
+    return _guest_op(user, event, 'audit.view')
+
+
+def can_export_audit(user, event):
+    return _guest_op(user, event, 'audit.export')
 
 
 def can_approve_event(user, event) -> Tuple[bool, str]:
     """Approve PENDING_APPROVAL → APPROVED.  event_manager and above."""
     if not user or not user.is_authenticated:
         return False, 'Not authenticated'
+
     if not has_global_permission(user, 'events.approve'):
         return False, 'You do not have permission to approve events'
+
     status = _resolve_status(event)
     if status and status != EventStatus.PENDING_APPROVAL:
         return False, f"Event must be pending approval (current: {status.value})"
+
     return True, ''
 
 
@@ -348,11 +925,14 @@ def can_reject_event(user, event) -> Tuple[bool, str]:
     """Reject PENDING_APPROVAL → REJECTED.  event_manager and above."""
     if not user or not user.is_authenticated:
         return False, 'Not authenticated'
+
     if not has_global_permission(user, 'events.approve'):
         return False, 'Only event managers and above can reject events'
+
     status = _resolve_status(event)
     if status and status != EventStatus.PENDING_APPROVAL:
         return False, f"Event must be pending approval (current: {status.value})"
+
     return True, ''
 
 
@@ -360,11 +940,14 @@ def can_publish_event(user, event) -> Tuple[bool, str]:
     """Publish APPROVED → PUBLISHED.  event_manager and above."""
     if not user or not user.is_authenticated:
         return False, 'Not authenticated'
+
     if not is_event_manager(user):
         return False, 'Only event managers and above can publish events'
+
     status = _resolve_status(event)
     if status and status != EventStatus.APPROVED:
         return False, f"Event must be approved before publishing (current: {status.value})"
+
     return True, ''
 
 
@@ -375,11 +958,14 @@ def can_suspend_event(user, event) -> Tuple[bool, str]:
     """
     if not user or not user.is_authenticated:
         return False, 'Not authenticated'
+
     if not is_system_admin(user):
         return False, 'Only admins and above can suspend events'
+
     status = _resolve_status(event)
     if status and status != EventStatus.PUBLISHED:
         return False, f"Only published events can be suspended (current: {status.value})"
+
     return True, ''
 
 
@@ -387,11 +973,14 @@ def can_unsuspend_event(user, event) -> Tuple[bool, str]:
     """Restore SUSPENDED → PUBLISHED.  admin and above only."""
     if not user or not user.is_authenticated:
         return False, 'Not authenticated'
+
     if not is_system_admin(user):
         return False, 'Only admins and above can unsuspend events'
+
     status = _resolve_status(event)
     if status and status != EventStatus.SUSPENDED:
         return False, f"Event is not suspended (current: {status.value})"
+
     return True, ''
 
 
@@ -402,8 +991,10 @@ def can_takedown_event(user, event) -> Tuple[bool, str]:
     """
     if not user or not user.is_authenticated:
         return False, 'Not authenticated'
+
     if not is_super_admin(user):
         return False, 'Only super admins and owners can take down events'
+
     return True, ''
 
 
@@ -411,15 +1002,20 @@ def can_pause_event(user, event) -> Tuple[bool, str]:
     """Pause PUBLISHED → PAUSED.  organiser and above."""
     if not user or not user.is_authenticated:
         return False, 'Not authenticated'
-    if is_event_manager(user):
+
+    if is_system_admin(user) or is_event_manager(user):
         return True, ''
+
     if event and _is_event_owner(user, event):
         return True, ''
+
     if event and _is_org_member_of_event(user, event, 'org_owner', 'org_admin'):
         return True, ''
+
     status = _resolve_status(event)
     if status and status != EventStatus.PUBLISHED:
         return False, f"Only published events can be paused (current: {status.value})"
+
     return False, 'Not authorized to pause this event'
 
 
@@ -427,15 +1023,20 @@ def can_resume_event(user, event) -> Tuple[bool, str]:
     """Resume PAUSED → PUBLISHED.  organiser and above."""
     if not user or not user.is_authenticated:
         return False, 'Not authenticated'
-    if is_event_manager(user):
+
+    if is_system_admin(user) or is_event_manager(user):
         return True, ''
+
     if event and _is_event_owner(user, event):
         return True, ''
+
     if event and _is_org_member_of_event(user, event, 'org_owner', 'org_admin'):
         return True, ''
+
     status = _resolve_status(event)
     if status and status != EventStatus.PAUSED:
         return False, f"Event is not paused (current: {status.value})"
+
     return False, 'Not authorized to resume this event'
 
 
@@ -443,12 +1044,16 @@ def can_cancel_event(user, event) -> Tuple[bool, str]:
     """Cancel → CANCELLED.  organiser and above."""
     if not user or not user.is_authenticated:
         return False, 'Not authenticated'
-    if is_event_manager(user):
+
+    if is_system_admin(user) or is_event_manager(user):
         return True, ''
+
     if event and _is_event_owner(user, event):
         return True, ''
+
     if event and _is_org_member_of_event(user, event, 'org_owner', 'org_admin'):
         return True, ''
+
     return False, 'Not authorized to cancel this event'
 
 
@@ -460,12 +1065,16 @@ def can_soft_delete_event(user, event) -> Tuple[bool, str]:
     """
     if not user or not user.is_authenticated:
         return False, 'Not authenticated'
-    if is_event_manager(user):
+
+    if is_system_admin(user) or is_event_manager(user):
         return True, ''
+
     if event and _is_event_owner(user, event):
         return True, ''
+
     if event and _is_org_member_of_event(user, event, 'org_owner', 'org_admin'):
         return True, ''
+
     return False, 'Not authorized to delete this event'
 
 
@@ -477,8 +1086,10 @@ def can_hard_delete_event(user, event) -> Tuple[bool, str]:
     """
     if not user or not user.is_authenticated:
         return False, 'Not authenticated'
+
     if not is_super_admin(user):
         return False, 'Only super admins and owners can permanently remove events'
+
     return True, ''
 
 
@@ -500,7 +1111,11 @@ def can_delete_event(user, event) -> Tuple[bool, str]:
     if is_super_admin(user):
         return True, ''
 
-    # event_manager and admin can soft-delete (→ ARCHIVED)
+    # Platform admins can soft-delete from any non-terminal state
+    if is_system_admin(user):
+        return True, ''
+
+    # event_manager and above can soft-delete
     if is_event_manager(user):
         return True, ''
 
@@ -531,8 +1146,10 @@ def can_view_analytics(user, event) -> Tuple[bool, str]:
     """Analytics: event_manager, org admins, finance managers, organiser."""
     if not user or not user.is_authenticated:
         return False, 'Not authenticated'
+
     if has_global_permission(user, 'events.analytics'):
         return True, ''
+
     if event:
         if _is_event_owner(user, event):
             return True, ''
@@ -542,24 +1159,27 @@ def can_view_analytics(user, event) -> Tuple[bool, str]:
         if _is_org_member_of_event(user, event,
                                     'org_owner', 'org_admin', 'finance_manager'):
             return True, ''
+
     return False, 'Not authorized to view analytics'
 
 
 def can_check_in(user, event) -> Tuple[bool, str]:
     """Check-in: event_manager, org admins, organiser, steward, volunteer."""
     if not user or not user.is_authenticated:
-        return False, 'Not authenticated'
+        return False, 'Not authorized to check in attendees'
+
     if has_global_permission(user, 'events.checkin'):
         return True, ''
+
     if event:
         if _is_event_owner(user, event):
             return True, ''
         if _is_org_member_of_event(user, event, 'org_owner', 'org_admin'):
             return True, ''
-        # Event-level staff
-        roles = resolve_user_roles(user, event)
-        if roles & {'steward', 'volunteer', 'co_organizer'}:
+        ok, _ = has_guest_operation_permission(user, event, 'check_in')
+        if ok:
             return True, ''
+
     return False, 'Not authorized to check in attendees'
 
 
@@ -614,6 +1234,61 @@ def require_event_permission(user, event, action: str) -> Tuple[bool, str]:
 
 
 # ============================================================================
+# CENTRALIZED ROUTE GATE
+# The single, context-independent event-ownership security gate that every
+# event route must route through.  Authorization is decided ONLY against the
+# database (event owner OR platform system admin).  Operating-context switching
+# is intentionally NOT consulted here - context is a workspace lens, never the
+# lock.  Centralizing the decision prevents the IDOR risk of an ad-hoc check
+# being forgotten on a single route.
+# ============================================================================
+
+def enforce_event_owner(
+    event_model,
+    user=None,
+    *,
+    redirect_endpoint: str = 'events.my_events',
+    redirect_kwargs: dict = None,
+    flash_message: str = 'Unauthorized access',
+):
+    """Context-independent event-ownership gate for route handlers.
+
+    Returns a Flask response to return immediately on failure, or ``None`` when
+    the user is authorized (event owner OR platform system admin).
+
+    Failure response shape:
+      * JSON / API requests  -> 403 JSON (``{'success': False, 'error': ...}``)
+      * HTML requests        -> flash + redirect
+
+    Usage::
+
+        resp = enforce_event_owner(event_model)
+        if resp:
+            return resp
+    """
+    from flask import flash, redirect, request, url_for, jsonify
+    from flask_login import current_user
+
+    user = user or current_user
+    authorized = bool(
+        event_model
+        and (is_system_admin(user) or _is_event_owner(user, event_model))
+    )
+    if authorized:
+        return None
+
+    if (
+        request.is_json
+        or request.path.startswith('/api/')
+        or request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+    ):
+        return jsonify({'success': False, 'error': flash_message}), 403
+
+    flash(flash_message, 'danger')
+    return redirect(url_for(redirect_endpoint, **(redirect_kwargs or {})))
+
+
+# ============================================================================
 # CONVENIENCE WRAPPERS  (bool-only, for templates and legacy callers)
 # ============================================================================
 
@@ -637,7 +1312,7 @@ def can_manage_registration(user, registration, event=None) -> bool:
 
     Permissions hierarchy:
     1. System admin → always True
-    2. Event organizer → True for any registration in their event
+    2. Canonical event owner → True for any registration in their event
     3. The attendee themselves → True for their own registration
     4. The person who booked it → True for registrations they paid for
 
@@ -647,22 +1322,23 @@ def can_manage_registration(user, registration, event=None) -> bool:
         return False
 
     # System admin can manage anything
-    if auth_is_system_admin(user):
+    if is_system_admin(user):
         return True
 
-    # Event organizer can manage all registrations for their event
-    if event and hasattr(event, 'organizer_id') and event.organizer_id == user.id:
-        return True
-
-    # If we have registration but no event, try to get event
-    if not event and registration and hasattr(registration, 'event'):
+    # Canonical event owner can manage all registrations for their event
+    if event:
+        if _is_event_owner(user, event):
+            return True
+    elif registration and hasattr(registration, 'event'):
         event = registration.event
-        if event and event.organizer_id == user.id:
+        if _is_event_owner(user, event):
             return True
 
     # Attendee or booker
-    return (registration.user_id == user.id or
-            registration.booked_by_user_id == user.id)
+    return (
+        registration.user_id == user.id
+        or registration.booked_by_user_id == user.id
+    )
 
 
 def get_user_event_permissions(user, event_slug: str) -> dict:

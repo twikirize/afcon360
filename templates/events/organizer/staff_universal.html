@@ -1,0 +1,90 @@
+{#
+   FILE: templates/events/organizer/staff_universal.html
+   PURPOSE: Universal staff management across all organizer events
+   ACCESS: Event organizer / owner
+   RELATED: events.organizer_staff route
+#}
+
+{% extends "base.html" %}
+
+{% block title %}Staff - All Events - AFCON360{% endblock %}
+
+{% block module_styles %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/dashboard.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4 align-items-center">
+        <div class="col-md-8">
+            <h1 class="display-5 mb-0">
+                <i class="fas fa-user-shield text-success me-2"></i>
+                Staff
+            </h1>
+            <p class="text-muted">Co-organizers and volunteers across all your events</p>
+        </div>
+        <div class="col-md-4 text-md-end">
+            <a href="{{ safe_url('events.organizer_dashboards') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-1"></i> All Events
+            </a>
+        </div>
+    </div>
+
+    {% if staff_rows %}
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Event</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Role</th>
+                            <th>Permissions</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in staff_rows %}
+                        <tr>
+                            <td>
+                                <a href="{{ safe_url('events.event_staff', identifier=row.event_slug) }}" class="fw-bold text-decoration-none">
+                                    {{ row.event_name }}
+                                </a>
+                            </td>
+                            <td>{{ row.user.username or row.user.email }}</td>
+                            <td class="text-muted small">{{ row.user.email }}</td>
+                            <td><span class="badge bg-info-subtle text-info border border-info-subtle">{{ row.role|replace('_', ' ')|title }}</span></td>
+                            <td>
+                                {% if row.permissions %}
+                                    {% for perm in row.permissions[:3] %}
+                                        <span class="badge bg-light text-dark border me-1">{{ perm|replace('_', ' ')|title }}</span>
+                                    {% endfor %}
+                                    {% if row.permissions|length > 3 %}<span class="text-muted small">+{{ row.permissions|length - 3 }}</span>{% endif %}
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <a href="{{ safe_url('events.event_staff', identifier=row.event_slug) }}" class="btn btn-sm btn-outline-secondary">
+                                    <i class="fas fa-cog"></i> Manage
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+        <div class="alert alert-info text-center py-5">
+            <i class="fas fa-user-shield fa-3x mb-3"></i>
+            <h4>No Staff Yet</h4>
+            <p>Assign co-organizers and volunteers from each event's staff page.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

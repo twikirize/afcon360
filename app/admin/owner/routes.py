@@ -18,7 +18,7 @@ from app.identity.models.roles_permission import Role
 from app.identity.models import User, UserRole
 from app.models.system_config import SystemConfig as SystemSetting
 from sqlalchemy import func
-from app.admin.owner.decorators import owner_required
+from app.admin.owner.decorators import owner_required, owner_or_superadmin_required
 from app.admin.owner.utils import log_owner_action, get_system_health
 from app.auth.roles import assign_global_role, revoke_global_role
 from app.profile.models import get_profile_by_user
@@ -60,21 +60,22 @@ def utility_processor():
 # ============================================================================
 
 @owner_bp.route('/wallet-capabilities')
-@owner_login_required
+@login_required
+@owner_or_superadmin_required
 def wallet_capabilities():
-    """Wallet system capabilities overview and configuration (Owner only)"""
+    """Wallet system capabilities overview and configuration (Owner/Super Admin)"""
     try:
         # Get wallet statistics
         from app.wallet.models.ledger import AccountModel
         from app.wallet.models.transaction import TransactionModel
-        
+
         stats = {
             'total_users': User.query.count(),
             'active_wallets': AccountModel.query.count(),
             'total_transactions': TransactionModel.query.count(),
             'total_volume': '0'  # Would need calculation from transactions
         }
-        
+
         return render_template('owner/wallet_capabilities.html', stats=stats)
     except Exception as e:
         current_app.logger.error(f"Wallet capabilities error: {e}")
@@ -2505,6 +2506,77 @@ def platform_accounts_transfer(account_id):
         flash("Error processing transfer", "danger")
     
     return redirect(url_for('admin.owner.platform_accounts_detail', account_id=account_id))
+
+
+# ============================================================================
+# KYC Requirement Configuration (lives under Wallet Capabilities as its own page)
+# ============================================================================
+
+from app.kyc_config_schema import (
+    KYC_CONFIG_SCHEMA,
+    KYC_CONFIG_GROUPS,
+    get_kyc_settings,
+    clear_kyc_config_cache,
+)
+
+
+@owner_bp.route('/wallet-capabilities/kyc-requirements', methods=['GET', 'POST'])
+@login_required
+@owner_or_superadmin_required
+def wallet_kyc_requirements():
+    """
+    Owner/Super-Admin KYC configuration page (reached from the Wallet
+    Capabilities basket). Every item is generated from app/kyc_config_schema,
+    so any KYC tunable (document toggles, tier limits, screening flags, activity
+    tiers, reporting thresholds) can be edited here and is persisted in
+    system_configs and applied across the whole codebase.
+    """
+    if request.method == 'POST':
+        for item in KYC_CONFIG_SCHEMA:
+            key = item['key']
+            typ = item['type']
+            if typ == 'bool':
+                value = request.form.get(key) == 'on'
+            elif typ == 'int':
+                raw = request.form.get(key, '').strip()
+                try:
+                    value = None if raw == '' else int(raw)
+                except ValueError:
+                    flash(f"Invalid number for {item['label']}.", 'danger')
+                    return redirect(url_for('admin.owner.wallet_kyc_requirements'))
+            elif typ == 'json':
+                import json as _json
+                raw = request.form.get(key, '').strip()
+                try:
+                    value = _json.loads(raw) if raw else item['default']
+                except _json.JSONDecodeError:
+                    flash(f"Invalid JSON for {item['label']}.", 'danger')
+                    return redirect(url_for('admin.owner.wallet_kyc_requirements'))
+            else:
+                value = request.form.get(key, '').strip()
+
+            SystemSetting.set(
+                key, value, value_type=typ, category='kyc',
+                description=f"{item['label']}: {item['description']}",
+                updated_by=current_user.id,
+            )
+
+        clear_kyc_config_cache()
+        flash('KYC configuration updated.', 'success')
+        return redirect(url_for('admin.owner.wallet_kyc_requirements'))
+
+    settings = get_kyc_settings()
+    grouped = {group: [] for group in KYC_CONFIG_GROUPS}
+    for item in KYC_CONFIG_SCHEMA:
+        entry = dict(item)
+        entry['value'] = settings.get(item['key'], item['default'])
+        grouped.setdefault(item['group'], []).append(entry)
+
+    return render_template(
+        'owner/wallet_config/kyc_requirements.html',
+        groups=KYC_CONFIG_GROUPS,
+        grouped=grouped,
+    )
 
 
 # ============================================================================

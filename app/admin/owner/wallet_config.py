@@ -434,6 +434,11 @@ def init_wallet_config(app):
             PaymentProviderConfig.initialize_defaults()
         except Exception as e:
             app.logger.warning(f"Could not initialize payment provider defaults: {e}")
+        try:
+            from app.models.system_config import SystemConfig
+            SystemConfig.initialize_defaults()
+        except Exception as e:
+            app.logger.warning(f"Could not initialize system config defaults: {e}")
 
 
 __all__ = ['wallet_config_bp', 'init_wallet_config']

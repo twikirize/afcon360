@@ -1,67 +1,266 @@
 {# templates/wallet/_deposit_content.html #}
-{# Shared inner content for the deposit page (full page + shell pane fragment). #}
 <div class="heading-row">
   <div>
     <h1 class="page-heading">Deposit Funds</h1>
-    <p class="page-subheading">Add money to your wallet</p>
+    <p class="page-subheading">Add money to your wallet securely</p>
   </div>
 </div>
 
-<div class="col-layout-8-4">
+<div class="col-layout-8-4" id="deposit-wizard" x-data="depositWizard()">
   <div class="panel">
     <div class="panel-header">
       <div class="panel-title">
         <i class="fas fa-arrow-down panel-title-icon green"></i>
-        Deposit Form
+        Deposit Wizard
       </div>
     </div>
+    
+    <!-- Progress Indicator -->
+    <div class="wizard-progress" style="padding: 20px; display: flex; justify-content: space-between; border-bottom: 1px solid var(--border);">
+      <div :style="step >= 1 ? 'font-weight: bold; color: var(--primary)' : 'color: var(--muted)'">1. Amount</div>
+      <div :style="step >= 2 ? 'font-weight: bold; color: var(--primary)' : 'color: var(--muted)'">2. Compliance</div>
+      <div :style="step >= 3 ? 'font-weight: bold; color: var(--primary)' : 'color: var(--muted)'">3. Method</div>
+    </div>
+
     <div class="panel-body" style="padding:24px;">
-      <form method="POST" action="{{ url_for('wallet.deposit') }}">
+      <form method="POST" action="{{ url_for('wallet.deposit') }}" id="depositForm">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-        <div class="form-group">
-          <label class="form-label">Amount</label>
-          <input type="number" step="0.01" name="amount" class="form-control" placeholder="0.00" required>
+        <!-- STEP 1: Amount & Currency -->
+        <div x-show="step === 1">
+          <div class="form-group">
+            <label class="form-label">Currency</label>
+            <select name="currency" x-model="currency" class="form-control" @change="updateLimits">
+              {% for method in methods %}
+                {% for curr in method.supported_currencies %}
+                  <option value="{{ curr }}">{{ curr }}</option>
+                {% endfor %}
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Amount</label>
+            <input type="number" step="0.01" name="amount" x-model.number="amount" class="form-control" placeholder="0.00" required>
+            
+            <div x-show="currency !== baseCurrency && amount" style="margin-top: 10px;">
+                <template x-if="fxLoading">
+                    <small class="form-help text-muted"><i class="fas fa-spinner fa-spin"></i> Fetching live exchange rate...</small>
+                </template>
+                <template x-if="fxError">
+                    <small class="form-help text-danger" style="color: red;" x-text="fxError"></small>
+                </template>
+                <template x-if="!fxLoading && !fxError && fxRate">
+                    <div class="alert alert-info" style="padding: 10px; margin-top: 5px; font-size: 13px;">
+                        <i class="fas fa-exchange-alt"></i> 
+                        <strong>Cross-Border Deposit:</strong> You are depositing <span x-text="formatCurrency(amount, currency)"></span>. 
+                        Based on the live exchange rate (1 <span x-text="currency"></span> = <span x-text="fxRate"></span> <span x-text="baseCurrency"></span>), 
+                        your wallet will be credited with <strong><span x-text="formatCurrency(convertedAmount, baseCurrency)"></span></strong>.
+                    </div>
+                </template>
+            </div>
+            
+            <small class="form-help" :style="(convertedAmount || amount) > limit ? 'color: red;' : ''" style="display: block; margin-top: 8px;">
+              Your Daily Limit: <span x-text="formatCurrency(limit, baseCurrency)"></span> (KYC Level {{ limits.kyc_level }})
+            </small>
+          </div>
+          
+          <button type="button" class="btn btn-primary" style="width:100%;" @click="nextStep(1)" :disabled="amount <= 0 || (convertedAmount || amount) > limit || fxLoading || fxError">
+            Continue <i class="fas fa-arrow-right"></i>
+          </button>
         </div>
 
-        <div class="form-group">
-          <label class="form-label">Currency</label>
-          <select name="currency" class="form-control">
-            <option value="USD">USD — US Dollar</option>
-            <option value="UGX">UGX — Ugandan Shilling</option>
-            <option value="KES">KES — Kenyan Shilling</option>
-            <option value="TZS">TZS — Tanzanian Shilling</option>
-            <option value="NGN">NGN — Nigerian Naira</option>
-          </select>
+        <!-- STEP 2: Compliance (Source of Funds) -->
+        <div x-show="step === 2" style="display:none;">
+          <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i> Based on the amount, we require a source of wealth declaration to comply with AML directives.
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Source of Funds</label>
+            <select name="source_of_funds" class="form-control" x-model="sourceOfFunds" :required="amount > 10000000">
+              <option value="">— Select source —</option>
+              <option value="salary">Salary / Wages</option>
+              <option value="savings">Personal Savings</option>
+              <option value="business">Business Income</option>
+              <option value="gift">Gift / Family</option>
+              <option value="sale_of_assets">Sale of Assets / Real Estate</option>
+            </select>
+          </div>
+          
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="btn btn-secondary" style="flex:1;" @click="step = 1">Back</button>
+            <button type="button" class="btn btn-primary" style="flex:2;" @click="nextStep(2)" :disabled="amount > 10000000 && !sourceOfFunds">
+              Select Payment Method <i class="fas fa-arrow-right"></i>
+            </button>
+          </div>
         </div>
 
-        <button type="submit" class="btn btn-primary" style="width:100%;">
-          <i class="fas fa-check-circle"></i> Submit Deposit
-        </button>
+        <!-- STEP 3: Payment Method -->
+        <div x-show="step === 3" style="display:none;">
+          <div class="form-group">
+            <label class="form-label">Payment Method</label>
+            <select name="source" id="source-select" class="form-control" x-model="method" required>
+              <option value="">— Select payment method —</option>
+              <option value="mobile_money">Mobile Money (M-Pesa, Airtel, MTN)</option>
+              <option value="flutterwave">Debit/Credit Card & Bank Transfer</option>
+              <option value="agent">Authorized Cash Agent</option>
+            </select>
+          </div>
+
+          <!-- Mobile Money Fields -->
+          <div x-show="method === 'mobile_money'" style="display:none;">
+            <div class="form-group">
+              <label class="form-label">Mobile Money Network</label>
+              <select name="operator" class="form-control">
+                <option value="mtn">MTN</option>
+                <option value="airtel">Airtel</option>
+                <option value="safaricom">M-PESA (Safaricom)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Phone Number</label>
+              <input type="text" name="phone_number" class="form-control" placeholder="e.g. 2567XXXXXXXX">
+              <small class="form-help">A prompt will be sent to this number.</small>
+            </div>
+          </div>
+
+          <!-- Flutterwave Fields -->
+          <div x-show="method === 'flutterwave'" style="display:none;">
+            <div class="form-group">
+              <label class="form-label">Flutterwave Method</label>
+              <select name="payment_method" class="form-control">
+                <option value="card">Card (Visa/Mastercard)</option>
+                <option value="banktransfer">Bank Transfer (Open Banking)</option>
+                <option value="ussd">USSD</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Agent Fields -->
+          <div x-show="method === 'agent'" style="display:none;">
+            <div class="alert alert-warning">
+              <i class="fas fa-hand-holding-usd"></i> You must take cash to an authorized AFCON360 agent.
+            </div>
+            <div class="form-group">
+              <label class="form-label">Agent ID (If known)</label>
+              <input type="text" name="agent_id" class="form-control" placeholder="Agent Code">
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="btn btn-secondary" style="flex:1;" @click="step = 2">Back</button>
+            <button type="submit" class="btn btn-success" style="flex:2;" :disabled="!method">
+              <i class="fas fa-check-circle"></i> Confirm Deposit
+            </button>
+          </div>
+        </div>
       </form>
     </div>
   </div>
 
+  <!-- Compliance Panel -->
   <div class="panel">
     <div class="panel-header">
       <div class="panel-title">
-        <i class="fas fa-circle-info panel-title-icon blue"></i>
-        Information
+        <i class="fas fa-shield-alt panel-title-icon blue"></i>
+        Regulatory Info
       </div>
     </div>
     <div class="panel-body" style="padding:20px;">
+      <div class="kyc-status">
+        <strong>KYC Status:</strong> <span class="badge badge-primary">{{ limits.kyc_label }}</span>
+      </div>
+      <hr>
       <p style="font-size:13px;color:var(--ink-2);margin-bottom:12px;">
-        <i class="fas fa-clock" style="color:var(--muted);margin-right:8px;"></i>
-        Deposits are processed instantly
+        <i class="fas fa-globe-africa" style="color:var(--muted);margin-right:8px;"></i>
+        Transactions are monitored for AML compliance.
       </p>
       <p style="font-size:13px;color:var(--ink-2);margin-bottom:12px;">
-        <i class="fas fa-shield-alt" style="color:var(--muted);margin-right:8px;"></i>
-        Secure transaction processing
+        <i class="fas fa-file-invoice" style="color:var(--muted);margin-right:8px;"></i>
+        Source of Funds required for deposits > 10M.
       </p>
       <p style="font-size:13px;color:var(--ink-2);">
-        <i class="fas fa-globe" style="color:var(--muted);margin-right:8px;"></i>
-        Multiple currencies supported
+        <i class="fas fa-lock" style="color:var(--muted);margin-right:8px;"></i>
+        Cards use 3D-Secure 2.0 (PSD2 Compliant).
       </p>
     </div>
   </div>
 </div>
+
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+<script{% if csp_nonce %} nonce="{{ csp_nonce }}"{% endif %}>
+function depositWizard() {
+  return {
+    step: 1,
+    amount: null,
+    currency: '{{ account.currency if account else "UGX" }}',
+    baseCurrency: '{{ account.currency if account else "UGX" }}',
+    limit: {{ limits.daily_limit }},
+    sourceOfFunds: '',
+    method: '',
+    fxRate: null,
+    fxLoading: false,
+    fxError: null,
+    
+    init() {
+        this.$watch('currency', () => this.updateFxQuote());
+        this.$watch('amount', () => this.updateFxQuote());
+    },
+    
+    async updateFxQuote() {
+        if (!this.amount || this.currency === this.baseCurrency) {
+            this.fxRate = null;
+            this.fxError = null;
+            return;
+        }
+        
+        // Only fetch rate if we don't have it or it's a different currency pair
+        this.fxLoading = true;
+        this.fxError = null;
+        try {
+            const response = await fetch(`/api/fx/rates/${this.currency}/${this.baseCurrency}`);
+            const data = await response.json();
+            
+            if (response.ok) {
+                this.fxRate = data.data.rate;
+            } else {
+                this.fxError = data.error || 'Failed to fetch exchange rate';
+                this.fxRate = null;
+            }
+        } catch (error) {
+            this.fxError = 'Network error fetching exchange rate';
+            this.fxRate = null;
+        } finally {
+            this.fxLoading = false;
+        }
+    },
+    
+    get convertedAmount() {
+        if (!this.amount) return null;
+        if (this.currency === this.baseCurrency) return this.amount;
+        if (!this.fxRate) return null;
+        return (this.amount * this.fxRate).toFixed(2);
+    },
+    
+    formatCurrency(val, curr) {
+      if(!val) return '0.00';
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: curr }).format(val);
+    },
+    
+    nextStep(currentStep) {
+      if (currentStep === 1) {
+        let checkAmount = this.convertedAmount || this.amount;
+        if (checkAmount > 10000000) {
+          this.step = 2; // Require Source of Funds
+        } else {
+          this.step = 3; // Skip directly to payment method
+        }
+      } else if (currentStep === 2) {
+        this.step = 3;
+      }
+    }
+  }
+}
+</script>

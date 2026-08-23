@@ -2,6 +2,11 @@
 
 {% block content_section %}
 
+<link rel="stylesheet" href="{{ url_for('static', filename='css/global/kyc-ribbon.css') }}">
+{# Global KYC ribbon — scoped to the user dashboard only (not site-wide) #}
+{% include 'components/kyc_ribbon.html' %}
+<script src="{{ url_for('static', filename='js/modules/user/kyc-ribbon.js') }}"></script>
+
 {# ── DASHBOARD MODE CONTEXT ─────────────────────────────────────────── #}
 {# dashboard_mode is passed from the view: 'standard' or 'tournament'   #}
 
@@ -15,250 +20,366 @@
 {% endif %}
 
 {# ── SECTION: Dashboard overview ──────────────────────────────────────────── #}
-<div id="dashboard" class="content-section active" style="display:flex; flex-direction:column; gap:24px;">
+<div id="dashboard" class="content-section active">
     
-    {# Greeting & Header #}
-    <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+    {# Priority Notifications (KYC is handled by the global ribbon in base.html) #}
+
+    {# My Events header #}
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
         <div>
-            <h1 class="greeting-text">
-                Welcome back, {{ current_user.username }}
-            </h1>
-            <p class="sub-greeting">Your AFCON 360 overview for today</p>
+            <h2 style="font-size: 1.4rem; font-weight: 800; margin: 0; color: var(--color-text-primary);">My Events</h2>
+            <p class="sub-greeting" style="margin: 2px 0 0;">Your attendee dashboard — tickets, activity &amp; organizer tools</p>
         </div>
-        <div style="margin-bottom: 24px;">
-            {% if kyc_info %}
-            <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 6px 12px; background: rgba(var(--brand-primary-rgb), 0.1); color: var(--brand-primary); border-radius: 20px; border: 1px solid rgba(var(--brand-primary-rgb), 0.1);">
-                <i class="fas fa-check-circle me-1"></i> {{ kyc_info.tier_name }}
-            </span>
-            {% endif %}
-        </div>
+        <a href="#" data-pane-url="{{ safe_url('events.list') }}" class="btn-banner" style="background: var(--brand-primary); color: white;">
+            <i class="fas fa-search me-1"></i> Browse Events
+        </a>
     </div>
 
-    {# Priority Notifications #}
-    {% if wallet_banner or (kyc_info and kyc_info.tier < 2) %}
-    <div style="display: flex; flex-direction: column; gap: 12px;">
-        {% if kyc_info and kyc_info.tier < 2 %}
-        <div class="dash-card" style="display:flex; align-items:center; gap:16px; border-left: 4px solid var(--warning); background: rgba(var(--warning-rgb), 0.03);">
-            <div class="card-icon-wrapper" style="background: var(--color-background-warning); color: var(--color-text-warning); margin-bottom: 0;">
-                <i class="fas fa-shield-alt"></i>
-            </div>
-            <div style="flex:1;">
-                <p style="font-size:14px; font-weight:700; margin:0; color: var(--color-text-primary);">Verify your identity</p>
-                <p style="font-size:13px; margin:2px 0 0; color: var(--color-text-secondary);">Upgrade to Tier 2 to unlock higher transaction limits and premium features.</p>
-            </div>
-            <a href="#" data-pane-url="{{ safe_url('kyc.index') }}" class="btn-banner" style="background: var(--brand-accent); color: var(--brand-primary-dark); font-weight: 700;">Complete Verification</a>
-        </div>
-        {% endif %}
+    {# Top layout: calendar + Next Event (75%) | Upcoming Reminders (25%) #}
+    <div class="afc-top-grid">
 
-        {% if wallet_banner %}
-        <div class="dash-card" style="display:flex; align-items:center; gap:16px; border-left: 4px solid var(--info); background: rgba(var(--info-rgb), 0.03);">
-            <div class="card-icon-wrapper" style="background: var(--color-background-info); color: var(--color-text-info); margin-bottom: 0;">
-                <i class="fas fa-info-circle"></i>
-            </div>
-            <div style="flex:1;">
-                <p style="font-size:14px; font-weight:700; margin:0; color: var(--color-text-primary);">{{ wallet_banner.title }}</p>
-                <p style="font-size:13px; margin:2px 0 0; color: var(--color-text-secondary);">{{ wallet_banner.message }}</p>
-            </div>
-            <a href="#" data-pane-url="{{ safe_url(wallet_banner.action_url) }}" class="btn-banner" style="background: var(--brand-primary); color: white;">{{ wallet_banner.action }}</a>
-        </div>
-        {% endif %}
-    </div>
-    {% endif %}
+        <div class="afc-top-left">
+            {# Event Calendar #}
+            {% set ns = namespace(cal_events=[]) %}
+            {% for reg in upcoming_registrations|default([]) %}
+                {% if reg.event and reg.event.start_date and reg.event.slug %}
+                    {% set ns.cal_events = ns.cal_events + [{'date': reg.event.start_date[:10], 'name': reg.event.name, 'status': 'upcoming', 'url': safe_url('events.landing', identifier=reg.event.slug)}] %}
+                {% endif %}
+            {% endfor %}
+            {% for reg in past_registrations|default([]) %}
+                {% if reg.event and reg.event.start_date and reg.event.slug %}
+                    {% set ns.cal_events = ns.cal_events + [{'date': reg.event.start_date[:10], 'name': reg.event.name, 'status': 'past', 'url': safe_url('events.landing', identifier=reg.event.slug)}] %}
+                {% endif %}
+            {% endfor %}
 
-    {# Main Grid #}
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:20px;">
-        
-        {# Wallet Widget #}
-        <div class="dash-card wallet-widget">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                <div class="card-icon-wrapper" style="background: rgba(var(--brand-primary-rgb), 0.1); color: var(--brand-primary);">
-                    <i class="fas fa-wallet"></i>
+            <script type="application/json" id="eventCalendarData">{{ ns.cal_events|tojson }}</script>
+
+            <div class="dash-card afc-calendar-card" id="eventCalendar">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <div class="card-icon-wrapper" style="background: rgba(27,67,50,0.1); color:#1b4332; margin-bottom:0;">
+                            <i class="fas fa-calendar-days"></i>
+                        </div>
+                        <h4 style="font-size:0.85rem; font-weight:700; margin:0; color: var(--color-text-primary);">Event Calendar</h4>
+                    </div>
+                    <div style="display:flex; gap:3px;">
+                        <button type="button" id="calPrev" class="afc-cal-nav" aria-label="Previous month"><i class="fas fa-chevron-left"></i></button>
+                        <button type="button" id="calNext" class="afc-cal-nav" aria-label="Next month"><i class="fas fa-chevron-right"></i></button>
+                    </div>
                 </div>
-                <a href="#" data-pane-url="{{ safe_url('wallet.wallet_dashboard') }}" class="action-link">Details <i class="fas fa-chevron-right"></i></a>
+                <div id="calMonthLabel" style="font-weight:700; font-size:0.85rem; color:var(--color-text-primary); margin-bottom:8px; text-align:center;"></div>
+                <div class="afc-cal-weekdays">
+                    <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+                </div>
+                <div class="afc-cal-grid" id="calGrid"></div>
+                <div class="afc-cal-legend">
+                    <span><i class="afc-dot afc-dot-upcoming"></i> Upcoming</span>
+                    <span><i class="afc-dot afc-dot-past"></i> Past</span>
+                </div>
             </div>
-            <p style="font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color: var(--color-text-tertiary); margin: 12px 0 4px;">Available Balance</p>
-            <h2 class="wallet-balance">
-                {% if wallet %}<span style="font-size: 18px; vertical-align: middle; margin-right: 4px; opacity: 0.7;">UGX</span>{{ "{:,.0f}".format(wallet.balance) }}{% else %}UGX 0{% endif %}
-            </h2>
-            <div style="display:flex; gap:8px; margin-top: 16px;">
-                <button style="flex:1; padding: 10px; border-radius: 8px; border: 1px solid rgba(var(--brand-primary-rgb), 0.2); background: white; color: var(--brand-primary); font-size: 12px; font-weight: 700; cursor: pointer;">
-                    <i class="fas fa-plus-circle me-1"></i> Top Up
-                </button>
-                <button style="flex:1; padding: 10px; border-radius: 8px; border: none; background: var(--brand-primary); color: white; font-size: 12px; font-weight: 700; cursor: pointer;">
-                    <i class="fas fa-paper-plane me-1"></i> Send
-                </button>
+
+            {# Next Event Widget #}
+            <div class="dash-card">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <div class="card-icon-wrapper" style="background: rgba(var(--blue-rgb), 0.1); color: var(--blue);">
+                        <i class="fas fa-calendar-alt"></i>
+                    </div>
+                    <a href="#" data-section="events" class="action-link">My Events <i class="fas fa-chevron-right"></i></a>
+                </div>
+                {% if upcoming_registrations|default([])|length > 0 %}
+                    {% set next_event = upcoming_registrations[0] %}
+                    <p style="font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color: var(--color-text-tertiary); margin: 12px 0 4px;">Upcoming Event</p>
+                    <h3 style="font-size:16px; font-weight:700; margin:4px 0; color: var(--color-text-primary);">{{ next_event.event.name }}</h3>
+                    <div style="display:flex; align-items:center; gap:12px; margin-top: 8px;">
+                        <div style="display:flex; align-items:center; gap:6px; font-size: 12px; color: var(--color-text-secondary);">
+                            <i class="far fa-clock"></i> {{ next_event.event.start_date[:10] }}
+                        </div>
+                        <div style="display:flex; align-items:center; gap:6px; font-size: 12px; color: var(--color-text-secondary);">
+                            <i class="fas fa-map-marker-alt"></i> {{ next_event.event.city|default('Main Stadium') }}
+                        </div>
+                    </div>
+                    <button style="width:100%; margin-top: 16px; padding: 10px; border-radius: 8px; border: 1px solid var(--border-light); background: var(--color-background-secondary); color: var(--color-text-primary); font-size: 12px; font-weight: 700; cursor: pointer;">
+                        View Ticket
+                    </button>
+                {% else %}
+                    <p style="font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color: var(--color-text-tertiary); margin: 12px 0 4px;">Events</p>
+                    <h3 style="font-size:16px; font-weight:700; margin:4px 0; color: var(--color-text-primary);">No scheduled events</h3>
+                    <p style="font-size:13px; color: var(--color-text-secondary); margin-top: 8px;">Explore the tournament and book your matches now.</p>
+                    <a href="#" data-pane-url="{{ safe_url('events.list') }}" class="btn-banner" style="margin-top: 16px; display: block; text-align: center; background: var(--brand-primary); color: white;">Browse Events</a>
+                {% endif %}
             </div>
         </div>
 
-        {# Next Event Widget #}
-        <div class="dash-card">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                <div class="card-icon-wrapper" style="background: rgba(var(--blue-rgb), 0.1); color: var(--blue);">
-                    <i class="fas fa-calendar-alt"></i>
+        {# Upcoming Reminders (25%) #}
+        <div class="dash-card afc-reminders-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="card-icon-wrapper" style="background: rgba(201,162,39,0.12); color:#c9a227; margin-bottom:0;">
+                        <i class="fas fa-bell"></i>
+                    </div>
+                    <h4 style="font-size:0.95rem; font-weight:700; margin:0; color: var(--color-text-primary);">Upcoming Reminders</h4>
                 </div>
-                <a href="#" data-section="events" class="action-link">My Events <i class="fas fa-chevron-right"></i></a>
+                <a href="#" data-pane-url="{{ safe_url('profile.settings_pane') }}" class="afc-manage-alerts" aria-label="Manage event reminder alerts">Manage Alerts</a>
             </div>
             {% if upcoming_registrations|default([])|length > 0 %}
-                {% set next_event = upcoming_registrations[0] %}
-                <p style="font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color: var(--color-text-tertiary); margin: 12px 0 4px;">Upcoming Event</p>
-                <h3 style="font-size:16px; font-weight:700; margin:4px 0; color: var(--color-text-primary);">{{ next_event.event.name }}</h3>
-                <div style="display:flex; align-items:center; gap:12px; margin-top: 8px;">
-                    <div style="display:flex; align-items:center; gap:6px; font-size: 12px; color: var(--color-text-secondary);">
-                        <i class="far fa-clock"></i> {{ next_event.event.start_date[:10] }}
-                    </div>
-                    <div style="display:flex; align-items:center; gap:6px; font-size: 12px; color: var(--color-text-secondary);">
-                        <i class="fas fa-map-marker-alt"></i> {{ next_event.event.city|default('Main Stadium') }}
-                    </div>
-                </div>
-                <button style="width:100%; margin-top: 16px; padding: 10px; border-radius: 8px; border: 1px solid var(--border-light); background: var(--color-background-secondary); color: var(--color-text-primary); font-size: 12px; font-weight: 700; cursor: pointer;">
-                    View Ticket
-                </button>
+            <ul class="afc-reminder-list">
+                {% for reg in upcoming_registrations[:3] %}
+                <li>
+                    <i class="fas fa-clock" aria-hidden="true"></i>
+                    <span>
+                        <strong style="color: var(--color-text-primary);">{{ reg.event.name|default('Event') }}</strong><br>
+                        {{ reg.event.start_date[:10] if reg.event.start_date else '' }}{% if reg.event.city %} · {{ reg.event.city }}{% endif %}
+                        <span class="afc-reminder-countdown" data-countdown="{{ reg.event.start_date[:10] if reg.event.start_date else '' }}" aria-live="polite"></span>
+                    </span>
+                </li>
+                {% endfor %}
+            </ul>
             {% else %}
-                <p style="font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color: var(--color-text-tertiary); margin: 12px 0 4px;">Events</p>
-                <h3 style="font-size:16px; font-weight:700; margin:4px 0; color: var(--color-text-primary);">No scheduled events</h3>
-                <p style="font-size:13px; color: var(--color-text-secondary); margin-top: 8px;">Explore the tournament and book your matches now.</p>
-                <a href="#" data-pane-url="{{ safe_url('events.list') }}" class="btn-banner" style="margin-top: 16px; display: block; text-align: center; background: var(--brand-primary); color: white;">Browse Events</a>
+            <p style="font-size:0.82rem; color: var(--color-text-secondary); margin:0;">No upcoming event reminders.</p>
             {% endif %}
         </div>
 
     </div>
 
-    {# Quick Actions / Services #}
-    <div style="margin-top: 8px;">
-        <h3 style="font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-text-tertiary); margin-bottom: 16px;">Platform Services</h3>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px;">
-            
-            <a href="#" data-pane-url="{{ safe_url('transport.home') }}" class="dash-card" style="text-decoration: none; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
-                <div class="card-icon-wrapper" style="background: rgba(var(--brand-primary-rgb), 0.05); color: var(--brand-primary); margin-bottom: 0;">
-                    <i class="fas fa-car"></i>
-                </div>
-                <span style="font-size: 13px; font-weight: 700; color: var(--color-text-primary);">Book a Ride</span>
-            </a>
-
-            <a href="#" data-pane-url="{{ safe_url('accommodation.guest_search') }}" class="dash-card" style="text-decoration: none; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
-                <div class="card-icon-wrapper" style="background: rgba(var(--orange-rgb), 0.05); color: var(--orange); margin-bottom: 0;">
-                    <i class="fas fa-bed"></i>
-                </div>
-                <span style="font-size: 13px; font-weight: 700; color: var(--color-text-primary);">Find Stays</span>
-            </a>
-
-            <a href="#" data-pane-url="{{ safe_url('tourism.home') }}" class="dash-card" style="text-decoration: none; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
-                <div class="card-icon-wrapper" style="background: rgba(var(--info-rgb), 0.05); color: var(--info); margin-bottom: 0;">
-                    <i class="fas fa-map-marked-alt"></i>
-                </div>
-                <span style="font-size: 13px; font-weight: 700; color: var(--color-text-primary);">Tourism</span>
-            </a>
-
-            <a href="#" data-pane-url="{{ safe_url('tournament.home') }}" class="dash-card" style="text-decoration: none; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
-                <div class="card-icon-wrapper" style="background: rgba(var(--brand-accent-rgb), 0.1); color: var(--brand-accent-dark); margin-bottom: 0;">
-                    <i class="fas fa-trophy"></i>
-                </div>
-                <span style="font-size: 13px; font-weight: 700; color: var(--color-text-primary);">Matches</span>
-            </a>
-
-        </div>
-    </div>
-
-    {# KYC Verification Tier & Fulfillment Progress (Towards the end of Dashboard) #}
-    {% if kyc_info %}
-    <div class="dash-card" style="margin-top: 12px; background: rgba(var(--brand-primary-rgb), 0.02); border: 1px solid rgba(var(--brand-primary-rgb), 0.1);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <div class="card-icon-wrapper" style="background: rgba(var(--brand-primary-rgb), 0.1); color: var(--brand-primary); margin-bottom: 0; width: 36px; height: 36px; font-size: 14px;">
-                    <i class="fas fa-id-card"></i>
-                </div>
-                <div>
-                    <h4 style="font-size: 15px; font-weight: 700; margin: 0; color: var(--color-text-primary);">KYC Tier Fulfillment</h4>
-                    <p style="font-size: 12px; margin: 2px 0 0; color: var(--color-text-secondary);">Current Status: <strong>{{ kyc_info.tier_name }} (Tier {{ kyc_info.tier }})</strong></p>
-                </div>
-            </div>
-            <span style="font-size: 14px; font-weight: 800; color: var(--brand-primary);">{{ kyc_info.fulfillment_percentage|default(0) }}%</span>
-        </div>
-        
-        {# Progress Bar #}
-        <div style="width: 100%; height: 8px; background: var(--border-light); border-radius: 4px; overflow: hidden; margin-bottom: 12px;">
-            <div style="width: {{ kyc_info.fulfillment_percentage|default(0) }}%; height: 100%; background: var(--brand-primary); border-radius: 4px; transition: width 0.3s ease;"></div>
-        </div>
-
-        {% if kyc_info.next_tier is not none and kyc_info.next_tier_requirements_labels %}
-        <div style="font-size: 12px; color: var(--color-text-secondary);">
-            <span>Next tier ({{ kyc_info.next_tier_name }}) needs: </span>
-            <span style="font-weight: 600; color: var(--color-text-primary);">{{ kyc_info.next_tier_requirements_labels|join(', ') }}</span>
-        </div>
-        {% else %}
-        <div style="font-size: 12px; color: var(--success, #28a745); font-weight: 600;">
-            <i class="fas fa-check-circle me-1"></i> All requirements fulfilled for current tier level.
-        </div>
-        {% endif %}
-    </div>
-    {% endif %}
+    {# KYC Verification Tier & Fulfillment Progress is now shown in the global
+       KYC ribbon (components/kyc_ribbon.html), which appears across the whole
+       app until KYC issues are resolved. #}
 
 </div>
 
-{# ── SECTION: My Events ───────────────────────────────────────────────────── #}
+{# ── SECTION: My Events (Attendee Dashboard) ─────────────────────────────── #}
 <div id="events" class="content-section">
 
-    {# Tab controls #}
-    <div class="tab-container">
-        <button class="tab-btn active" data-tab="upcoming">
-            Upcoming <span class="tab-count">{{ upcoming_registrations|default([])|length }}</span>
-        </button>
-        <button class="tab-btn" data-tab="past">
-            Past <span class="tab-count">{{ past_registrations|default([])|length }}</span>
-        </button>
-        <button class="tab-btn" data-tab="all">
-            All <span class="tab-count">{{ registrations|default([])|length }}</span>
-        </button>
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+        <div>
+            <h2 style="font-size: 1.4rem; font-weight: 800; margin: 0; color: var(--color-text-primary);">My Events</h2>
+            <p class="sub-greeting" style="margin: 2px 0 0;">Your attendee dashboard — tickets, activity &amp; organizer tools</p>
+        </div>
+        <a href="#" data-pane-url="{{ safe_url('events.list') }}" class="btn-banner" style="background: var(--brand-primary); color: white;">
+            <i class="fas fa-search me-1"></i> Browse Events
+        </a>
     </div>
 
-    {# Upcoming tab #}
-    <div id="tab-upcoming" class="tab-panel">
-        {% if upcoming_registrations|default([])|length > 0 %}
-            {% for reg in upcoming_registrations %}
-            {% include 'user/_reg_card.html' %}
-            {% endfor %}
-        {% else %}
-        <div class="empty-state">
-            <i class="fas fa-calendar-plus empty-icon"></i>
-            <h5 class="empty-title">No Upcoming Events</h5>
-            <p>You haven't registered for any upcoming events yet.</p>
-            <a href="#" data-pane-url="{{ safe_url('events.list') }}" class="btn-gold btn-gold-spaced">
-                <i class="fas fa-search me-1"></i> Browse Events
+    {# Organizer tools — adapts to whether the user is already an organizer #}
+    <div class="dash-card" id="organizerPromo" style="margin-bottom: 20px; background: linear-gradient(135deg, rgba(var(--brand-primary-rgb),0.06), rgba(var(--brand-accent-rgb),0.08)); border: 1px solid rgba(var(--brand-primary-rgb), 0.15);">
+        <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+            <div class="card-icon-wrapper" style="background: var(--brand-primary); color: white; margin-bottom: 0;">
+                <i class="fas fa-user-tie"></i>
+            </div>
+            <div style="flex: 1; min-width: 220px;">
+                {% if is_organizer %}
+                <h4 style="font-size: 1rem; font-weight: 700; margin: 0; color: var(--color-text-primary);">Do you have any event?</h4>
+                <p style="font-size: 13px; margin: 4px 0 0; color: var(--color-text-secondary);">
+                    Manage your events, tickets, track and manage attendance and grow your community from your Organizer Dashboard.
+                </p>
+                {% else %}
+                <h4 style="font-size: 1rem; font-weight: 700; margin: 0; color: var(--color-text-primary);">Want to host your own event?</h4>
+                <p style="font-size: 13px; margin: 4px 0 0; color: var(--color-text-secondary);">
+                    Become an Organizer to create events, sell tickets and build your community. Your attendee history stays with you.
+                </p>
+                {% endif %}
+            </div>
+            {% if is_organizer %}
+            <a href="{{ safe_url('events.organizer_dashboards') }}" class="btn-banner" style="background: var(--brand-primary); color: white; font-weight: 700; text-decoration: none;">
+                <i class="fas fa-rocket me-1"></i> Host an Event
             </a>
+            {% else %}
+            <button id="hostEventBtn" type="button" class="btn-banner" style="background: var(--brand-primary); color: white; font-weight: 700;">
+                <i class="fas fa-rocket me-1"></i> Host an Event
+            </button>
+            {% endif %}
         </div>
-        {% endif %}
     </div>
 
-    {# Past tab #}
-    <div id="tab-past" class="tab-panel">
-        {% if past_registrations|default([])|length > 0 %}
-            {% for reg in past_registrations %}
-            {% include 'user/_reg_card.html' %}
-            {% endfor %}
-        {% else %}
-        <div class="empty-state">
-            <i class="fas fa-history empty-icon"></i>
-            <h5 class="empty-title">No Past Events</h5>
-            <p>Your attended events will appear here.</p>
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; align-items: start;">
+
+        {# ── LEFT COLUMN ── #}
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+
+            {# Next Event highlight #}
+            {% if upcoming_registrations|default([])|length > 0 %}
+            {% set next_event = upcoming_registrations[0] %}
+            <div class="dash-card" style="border-left: 4px solid var(--brand-primary);">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <div class="card-icon-wrapper" style="background: rgba(var(--brand-primary-rgb),0.1); color: var(--brand-primary); margin-bottom: 0;">
+                        <i class="fas fa-calendar-star"></i>
+                    </div>
+                    <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--brand-primary);">Next Event</span>
+                </div>
+                <h3 style="font-size: 1.1rem; font-weight: 700; margin: 10px 0 4px; color: var(--color-text-primary);">{{ next_event.event.name }}</h3>
+                <div style="display:flex; align-items:center; gap:12px; font-size: 13px; color: var(--color-text-secondary);">
+                    <span><i class="far fa-clock me-1"></i>{{ next_event.event.start_date[:10] if next_event.event.start_date else '' }}</span>
+                    <span><i class="fas fa-map-marker-alt me-1"></i>{{ next_event.event.city|default('Venue') }}</span>
+                </div>
+                <div class="afc-countdown" id="nextEventCountdown" data-target="{{ next_event.event.start_date }}">
+                    <i class="fas fa-hourglass-half"></i> <span class="afc-countdown-value">--</span>
+                </div>
+                <div style="display:flex; gap:8px; margin-top: 14px; flex-wrap: wrap;">
+                    <a href="{{ safe_url('events.registration_confirmation', reg_ref=next_event.registration_ref) }}" class="btn-banner" style="background: var(--brand-primary); color: white;">
+                        <i class="fas fa-qrcode me-1"></i> Access Pass
+                    </a>
+                    <a href="#" data-pane-url="{{ safe_url('transport.home') }}" class="btn-banner" style="background: var(--color-background-secondary); color: var(--color-text-primary);">
+                        <i class="fas fa-bus me-1"></i> Transport
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+
+            {# My Schedule / Registrations tabs #}
+            <div>
+                <div class="tab-container">
+                    <button class="tab-btn active" data-tab="upcoming">
+                        Upcoming <span class="tab-count">{{ upcoming_registrations|default([])|length }}</span>
+                    </button>
+                    <button class="tab-btn" data-tab="past">
+                        Past <span class="tab-count">{{ past_registrations|default([])|length }}</span>
+                    </button>
+                    <button class="tab-btn" data-tab="all">
+                        All <span class="tab-count">{{ registrations|default([])|length }}</span>
+                    </button>
+                </div>
+
+                <div id="tab-upcoming" class="tab-panel">
+                    {% if upcoming_registrations|default([])|length > 0 %}
+                        {% for reg in upcoming_registrations %}
+                        {% include 'user/_reg_card.html' %}
+                        {% endfor %}
+                    {% else %}
+                    <div class="empty-state">
+                        <i class="fas fa-calendar-plus empty-icon"></i>
+                        <h5 class="empty-title">No Upcoming Events</h5>
+                        <p>You haven't registered for any upcoming events yet.</p>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div id="tab-past" class="tab-panel">
+                    {% if past_registrations|default([])|length > 0 %}
+                        {% for reg in past_registrations %}
+                        {% include 'user/_reg_card.html' %}
+                        {% endfor %}
+                    {% else %}
+                    <div class="empty-state">
+                        <i class="fas fa-history empty-icon"></i>
+                        <h5 class="empty-title">No Past Events</h5>
+                        <p>Your attended events will appear here.</p>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div id="tab-all" class="tab-panel">
+                    {% if registrations|default([])|length > 0 %}
+                        {% for reg in registrations %}
+                        {% include 'user/_reg_card.html' %}
+                        {% endfor %}
+                    {% else %}
+                    <div class="empty-state">
+                        <h5 class="empty-title">No Registrations Yet</h5>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {# Recommended Events #}
+            {% if recommended_events|default([])|length > 0 %}
+            <div class="dash-card">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom: 12px;">
+                    <div class="card-icon-wrapper" style="background: rgba(var(--brand-accent-rgb),0.1); color: var(--brand-accent-dark); margin-bottom: 0;">
+                        <i class="fas fa-sparkles"></i>
+                    </div>
+                    <h4 style="font-size: 0.95rem; font-weight: 700; margin: 0; color: var(--color-text-primary);">Recommended For You</h4>
+                </div>
+                <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px;">
+                    {% for ev in recommended_events[:4] %}
+                    {% set ns2 = namespace(flyer='') %}
+                    {% set _meta = ev.event_metadata if ev.event_metadata else {} %}
+                    {% for _k in ['flyer_url', 'flyer', 'poster_url', 'banner_image', 'cover_image', 'image_url'] %}
+                        {% if not ns2.flyer and _meta.get(_k) %}{% set ns2.flyer = _meta.get(_k) %}{% endif %}
+                    {% endfor %}
+                    <a href="{{ safe_url('events.landing', identifier=ev.slug) }}" class="afc-event-poster {% if ns2.flyer %}has-flyer{% else %}no-flyer{% endif %}" {% if ns2.flyer %}style="background-image:url('{{ ns2.flyer }}');"{% endif %} aria-label="View event {{ ev.name|default('Event') }}">
+                        <span class="afc-poster-cat">{{ ev.category|default('Event')|title }}</span>
+                        <span class="afc-poster-title">{{ ev.name|default('Event') }}</span>
+                        <span class="afc-poster-meta">{% if ev.city %}{{ ev.city }}{% endif %}{% if ev.start_date %}{% if ev.city %} · {% endif %}{{ ev.start_date.strftime('%Y-%m-%d') }}{% endif %}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+        </div>{# end left column #}
+
+        {# ── RIGHT COLUMN ── #}
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+
+            {# Tickets & Badges #}
+            <div class="dash-card">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom: 12px;">
+                    <div class="card-icon-wrapper" style="background: rgba(var(--orange-rgb),0.1); color: var(--orange); margin-bottom: 0;">
+                        <i class="fas fa-ticket-alt"></i>
+                    </div>
+                    <h4 style="font-size: 0.95rem; font-weight: 700; margin: 0; color: var(--color-text-primary);">Tickets &amp; Badges</h4>
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div style="background: var(--color-background-secondary); border-radius: 10px; padding: 12px; text-align:center;">
+                        <div style="font-size: 1.4rem; font-weight: 800; color: var(--brand-primary);">{{ upcoming_count|default(0) }}</div>
+                        <div style="font-size: 0.72rem; color: var(--color-text-secondary); text-transform: uppercase;">Active Tickets</div>
+                    </div>
+                    <div style="background: var(--color-background-secondary); border-radius: 10px; padding: 12px; text-align:center;">
+                        <div style="font-size: 1.4rem; font-weight: 800; color: var(--brand-accent-dark);">{{ attended_count|default(0) }}</div>
+                        <div style="font-size: 0.72rem; color: var(--color-text-secondary); text-transform: uppercase;">Badges Earned</div>
+                    </div>
+                </div>
+                <a href="{{ safe_url('events.my_registrations') }}" class="btn-banner" style="margin-top: 12px; display:block; text-align:center; background: var(--color-background-secondary); color: var(--color-text-primary);">
+                    View All
+                </a>
+            </div>
+
+            {# Recent Activity #}
+            <div class="dash-card">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom: 12px;">
+                    <div class="card-icon-wrapper" style="background: rgba(var(--blue-rgb),0.1); color: var(--blue); margin-bottom: 0;">
+                        <i class="fas fa-bolt"></i>
+                    </div>
+                    <h4 style="font-size: 0.95rem; font-weight: 700; margin: 0; color: var(--color-text-primary);">Recent Activity</h4>
+                </div>
+                {% set activity = (upcoming_registrations|default([]) + past_registrations|default([]))|sort(attribute='created_at', reverse=true) %}
+                {% if activity|length > 0 %}
+                <ul style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px;">
+                    {% for reg in activity[:5] %}
+                    <li style="display:flex; gap:10px; align-items:flex-start; font-size: 0.8rem; color: var(--color-text-secondary);">
+                        <i class="fas {{ 'fa-check-circle' if reg.status == 'checked_in' else 'fa-ticket-alt' }}" style="color: var(--brand-primary); margin-top: 3px;"></i>
+                        <span>
+                            <strong style="color: var(--color-text-primary);">{{ reg.event.name|default('Event') }}</strong><br>
+                            {{ 'Attended' if reg.status == 'checked_in' else 'Registered' }} · {{ reg.ticket_type|default('General Admission') }}
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p style="font-size: 0.82rem; color: var(--color-text-secondary); margin: 0;">No activity yet. Register for an event to get started.</p>
+                {% endif %}
+            </div>
+
+        </div>{# end right column #}
+    </div>{# end grid #}
+
+    {# Eligibility modal #}
+    <div id="orgEligibilityModal" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width: 460px;">
+            <div class="modal-icon" style="color: var(--brand-primary);"><i class="fas fa-user-tie"></i></div>
+            <h5 class="modal-title" id="orgEligibilityTitle">Host an Event</h5>
+            <div id="orgEligibilityBody" class="modal-text"></div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" data-action="close-org-modal">Close</button>
+                <button id="orgConfirmBtn" class="btn btn-primary" style="display:none;">Create Organizer Profile</button>
+            </div>
         </div>
-        {% endif %}
     </div>
 
-    {# All tab #}
-    <div id="tab-all" class="tab-panel">
-        {% if registrations|default([])|length > 0 %}
-            {% for reg in registrations %}
-            {% include 'user/_reg_card.html' %}
-            {% endfor %}
-        {% else %}
-        <div class="empty-state">
-            <h5 class="empty-title">No Registrations Yet</h5>
-            <a href="#" data-pane-url="{{ safe_url('events.list') }}" class="btn-gold">
-                <i class="fas fa-search me-1"></i> Browse Events
-            </a>
-        </div>
-        {% endif %}
-    </div>
+    {# Hidden POST form — performs the real server redirect to Organizer Dashboard #}
+    <form id="becomeOrganizerForm" method="POST" action="{{ url_for('events.become_organizer') }}" style="display:none;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    </form>
 
     {# Cancel modal #}
     <div id="cancelModal" class="modal-overlay">
@@ -274,5 +395,7 @@
     </div>
 
 </div>
+
+<script src="{{ url_for('static', filename='js/modules/user/events-calendar.js') }}"></script>
 
 {% endblock %}

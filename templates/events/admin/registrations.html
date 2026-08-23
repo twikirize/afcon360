@@ -1,0 +1,117 @@
+{#
+  FILE: templates/events/admin/registrations.html
+  PURPOSE: Admin — platform-wide event registrations
+  ACCESS: System Admin only
+  RELATED: events.admin_registrations route
+#}
+
+{% extends "base.html" %}
+
+{% block title %}Event Registrations — AFCON360 Admin{% endblock %}
+
+{% block module_styles %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/dashboard.css') }}">
+  <style>
+    .filter-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+    .filter-tab {
+      padding:7px 16px; border-radius:6px; font-size:11px; text-transform:uppercase;
+      letter-spacing:.07em; text-decoration:none; color:var(--brand-muted);
+      background:var(--brand-surface); border:1px solid var(--brand-border);
+      transition:all .18s; display:inline-flex; align-items:center; gap:6px; cursor:pointer;
+    }
+    .filter-tab:hover { border-color:var(--brand-border2); color:var(--brand-text); }
+    .filter-tab.active { background:var(--brand-accent); color:#000; border-color:var(--brand-accent); }
+    .data-table { width:100%; border-collapse:collapse; margin-top:18px; }
+    .data-table th, .data-table td { padding:11px 14px; text-align:left; font-size:13px; border-bottom:1px solid var(--brand-border); }
+    .data-table th { font-family:var(--font-mono); font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--brand-muted); }
+    .data-table td { color:var(--brand-text); }
+    .data-table tr:hover td { background:var(--brand-surface); }
+    .pill { padding:3px 9px; border-radius:999px; font-size:11px; font-family:var(--font-mono); }
+    .pill-confirmed { background:rgba(0,229,160,.14); color:#00e5a0; }
+    .pill-pending_payment { background:rgba(255,200,0,.14); color:#ffc800; }
+    .pill-checked_in { background:rgba(80,160,255,.14); color:#80b0ff; }
+    .pill-cancelled { background:rgba(255,60,60,.14); color:#ff8080; }
+    .pill-no_show { background:rgba(255,140,0,.14); color:#ff8c00; }
+    .pill-expired { background:rgba(150,150,150,.14); color:#aaa; }
+    .empty-note { padding:40px; text-align:center; color:var(--brand-muted); font-size:14px; }
+    .reg-ref { font-family:var(--font-mono); font-size:11px; color:var(--brand-muted); }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="afcon-admin">
+
+  <div class="topbar">
+    <div class="topbar-brand">
+      <div class="dot"></div>
+      AFCON360 &nbsp;/&nbsp; Registrations
+    </div>
+    <div class="topbar-right">
+      <span class="topbar-badge">SYSTEM ADMIN</span>
+    </div>
+  </div>
+
+  <div class="page-header">
+    <div>
+      <h1>Event <em>Registrations</em></h1>
+      <p>Every registration across all platform events</p>
+    </div>
+    <div class="header-actions">
+      <a href="{{ safe_url('events.admin_dashboard') }}" class="btn-ghost">
+        <i class="fas fa-tachometer-alt"></i> Command Centre
+      </a>
+    </div>
+  </div>
+
+  <div class="main-content" style="padding-bottom:60px;">
+
+    <div class="panel" style="border-radius:12px 12px 0 0;border-bottom:none;padding:16px 24px;">
+      <div class="filter-bar">
+        {% for val, label in status_options %}
+          <a class="filter-tab {% if current_filter == val %}active{% endif %}"
+             href="{{ url_for('events.admin_registrations', status=val) }}">{{ label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="panel" style="border-radius:0 0 12px 12px;padding:8px 8px 18px;">
+      {% if registrations %}
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Reference</th>
+              <th>Attendee</th>
+              <th>Event</th>
+              <th>Ticket</th>
+              <th>Status</th>
+              <th>Payment</th>
+              <th>Registered</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for reg in registrations %}
+              <tr>
+                <td><span class="reg-ref">{{ reg.registration_ref }}</span></td>
+                <td>{{ reg.full_name }}<br><span class="reg-ref">{{ reg.email }}</span></td>
+                <td>
+                  {% if reg.event %}
+                    <a href="{{ url_for('events.landing', identifier=reg.event.slug) }}">{{ reg.event.title }}</a>
+                  {% else %}—{% endif %}
+                </td>
+                <td>{{ reg.ticket_type or '—' }}</td>
+                <td><span class="pill pill-{{ reg.status }}">{{ reg.status.replace('_',' ') }}</span></td>
+                <td>{{ reg.payment_status }}</td>
+                <td><span class="reg-ref">{{ reg.created_at.strftime('%Y-%m-%d') if reg.created_at else '—' }}</span></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="empty-note">No registrations found for this filter.</div>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+{% endblock %}

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 from flask import Flask
 
-import app.events.services.guest_coordination_service as coordination
+import app.events.guest_coordination_service as coordination
 from app.notifications.events.policy import policy_engine
 from app.notifications.events.registry import EventType, event_registry
 
@@ -82,6 +82,14 @@ def test_assignment_reference_is_public_and_stable():
     assert reference == "event-public:ER-EVENT-00000001"
     assert "10" not in reference
     assert "30" not in reference
+
+
+def test_guest_reference_is_preferred_when_registration_is_linked():
+    registration = _registration()
+    registration.guest = SimpleNamespace(guest_ref="EG-public-1")
+    reference = coordination.GuestCoordinationService._assignment_ref(_event(), registration)
+    assert reference == "event-public:EG-public-1"
+    assert "20" not in reference
 
 
 def test_accommodation_assignment_passes_booking_reference_and_emits_no_internal_ref(monkeypatch):

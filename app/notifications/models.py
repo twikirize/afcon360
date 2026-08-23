@@ -13,6 +13,30 @@ from app.models.base import BaseModel
 import enum
 
 
+def _notification_type_check() -> str:
+    """Generate CHECK constraint SQL from NotificationType enum."""
+    values = ",".join(f"'{v.value}'" for v in NotificationType)
+    return f"type IN ({values})"
+
+
+def _notification_channel_check() -> str:
+    """Generate CHECK constraint SQL from NotificationChannel enum."""
+    values = ",".join(f"'{v.value}'" for v in NotificationChannel)
+    return f"channel IN ({values})"
+
+
+def _notification_module_check() -> str:
+    """Generate CHECK constraint SQL from NotificationModule enum."""
+    values = ",".join(f"'{v.value}'" for v in NotificationModule)
+    return f"module IN ({values})"
+
+
+def _notification_status_check() -> str:
+    """Generate CHECK constraint SQL from NotificationStatus enum."""
+    values = ",".join(f"'{v.value}'" for v in NotificationStatus)
+    return f"status IN ({values})"
+
+
 class NotificationType(str, enum.Enum):
     """Types of notifications across the system."""
     # Accommodation
@@ -32,6 +56,8 @@ class NotificationType(str, enum.Enum):
     ACCOMMODATION_COMPLAINT_OPENED = "accommodation_complaint_opened"
     BOOKING_EXPIRED = "booking_expired"
     BOOKING_NO_SHOW = "booking_no_show"
+    EVENT_ACCOMMODATION_ASSIGNED = "event_accommodation_assigned"
+    EVENT_ACCOMMODATION_CANCELLED = "event_accommodation_cancelled"
 
     # Auth
     VERIFICATION_EMAIL = "verification_email"
@@ -45,6 +71,9 @@ class NotificationType(str, enum.Enum):
     # Events
     EVENT_REGISTERED = "event_registered"
     EVENT_REMINDER = "event_reminder"
+    EVENT_STAFF_ADDED = "event_staff_added"
+    EVENT_STAFF_REMOVED = "event_staff_removed"
+    EVENT_STAFF_UPDATED = "event_staff_updated"
 
     # Wallet
     DEPOSIT_CONFIRMED = "deposit_confirmed"
@@ -180,35 +209,19 @@ class Notification(BaseModel):
         # Per-module dashboard queries: "unread transport notifications for me"
         Index('idx_notifications_user_module', 'user_id', 'module', 'is_read'),
         CheckConstraint(
-            "status IN ('pending','sent','delivered','failed','read','cancelled')",
+            _notification_status_check(),
             name='ck_notifications_status',
         ),
         CheckConstraint(
-            "channel IN ('in_app','email','sms','push','webhook')",
+            _notification_channel_check(),
             name='ck_notifications_channel',
         ),
         CheckConstraint(
-            "module IN ("
-            "'accommodation','transport','events','wallet','tourism','tournament',"
-            "'identity','kyc','account','messaging','compliance','system'"
-            ")",
+            _notification_module_check(),
             name='ck_notifications_module',
         ),
         CheckConstraint(
-            "type IN ("
-            "'property_submitted','property_approved','property_rejected',"
-            "'property_changes_requested','property_suspended','property_reinstated',"
-            "'property_archived','property_restored','booking_confirmed','booking_pending',"
-            "'third_party_booking','booking_cancelled','accommodation_complaint_opened',"
-            "'booking_expired','booking_no_show',"
-            "'review_received','verification_email','password_reset','login_alert',"
-            "'booking_update','driver_assigned','event_registered','event_reminder',"
-            "'deposit_confirmed','withdrawal_completed','transaction_completed','payment_received',"
-            "'system_alert','platform_announcement','internal_message','internal_reply',"
-            "'admin_notification','signup_notification','transaction_notification','message_notification',"
-            "'compliance_case_created','compliance_case_assigned','compliance_case_updated',"
-            "'compliance_case_escalated','compliance_case_resolved'"
-            ")",
+            _notification_type_check(),
             name='ck_notifications_type',
         ),
     )

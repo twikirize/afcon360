@@ -308,8 +308,10 @@
             {% if current_user.is_authenticated %}
             <li><hr class="drop-divider"></li>
             <li><span class="drop-header"><i class="fas fa-ticket-alt me-1"></i> My Event Activity</span></li>
-            <li><a class="drop-item" href="{{ safe_url('events.attendee_dashboard') }}">
+            <li><a class="drop-item" href="{{ safe_url('user.dashboard') }}#events">
                 <i class="fas fa-tachometer-alt me-2"></i>📊 Attendee Dashboard</a></li>
+            <li><a class="drop-item" href="{{ safe_url('events.events_hub') }}">
+                <i class="fas fa-briefcase me-2"></i>📋 Organizer Hub</a></li>
             
             {# Only show organizer tools if user has organizer role #}
             {% set is_organizer = current_user.has_global_role('organizer') or current_user.has_global_role('event_manager') or current_user.is_app_owner() %}
@@ -587,17 +589,19 @@
           <a class="drawer-sub-link" href="{{ safe_url('events.landing', identifier='world-cup-2026') }}">🌍 World Cup 2026</a>
           
           {% if current_user.is_authenticated %}
-          <span class="drawer-sub-label">🎟️ My Event Activity</span>
-          <a class="drawer-sub-link" href="{{ safe_url('events.attendee_dashboard') }}">
-              <i class="fas fa-tachometer-alt me-2"></i>Attendee Dashboard</a>
-          
-          {% set is_organizer = current_user.has_global_role('organizer') or current_user.has_global_role('event_manager') or current_user.is_app_owner() %}
-          {% if is_organizer %}
-          <span class="drawer-sub-label">📋 Organizer Tools</span>
-          <a class="drawer-sub-link" href="{{ safe_url('events.create_event') }}">Create Event</a>
-          <a class="drawer-sub-link" href="{{ safe_url('events.my_events') }}">My Events</a>
-          {% endif %}
-          {% endif %}
+           <span class="drawer-sub-label">🎟️ My Event Activity</span>
+           <a class="drawer-sub-link" href="{{ safe_url('user.dashboard') }}#events">
+                <i class="fas fa-tachometer-alt me-2"></i>Attendee Dashboard</a>
+           <a class="drawer-sub-link" href="{{ safe_url('events.events_hub') }}">
+               <i class="fas fa-briefcase me-2"></i>Organizer Hub</a>
+           
+           {% set is_organizer = current_user.has_global_role('organizer') or current_user.has_global_role('event_manager') or current_user.is_app_owner() %}
+           {% if is_organizer %}
+           <span class="drawer-sub-label">📋 Organizer Tools</span>
+           <a class="drawer-sub-link" href="{{ safe_url('events.create_event') }}">Create Event</a>
+           <a class="drawer-sub-link" href="{{ safe_url('events.my_events') }}">My Events</a>
+           {% endif %}
+           {% endif %}
         </div>
       </div>
 

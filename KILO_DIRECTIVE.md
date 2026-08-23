@@ -1,42 +1,35 @@
 # Kilo Worker Adapter
 
-The repository root `AGENTS.md` is authoritative for Kilo and every other
-current or future agent. This file contains only Kilo-specific dashboard
-execution context and must not redefine identity, security, database, wallet,
-migration, graph, or ownership rules.
+The repository root `AGENTS.md` is authoritative for Kilo, Junie, Aider, Kiro,
+and every future worker. This file is only a Kilo execution adapter; it must
+not redefine identity, security, database, wallet, migration, graph, or
+ownership rules.
 
-Before acting, Kilo must classify the task using the root constitution's
-`TRIVIAL`, `LOCAL`, `BEHAVIORAL`, `ARCHITECTURAL`, and `HIGH_RISK` ladder. Use
-project memory to route context and load only the applicable rules, skills,
-workflows, and dashboard specification. Kilo must inspect before modifying,
-stay within the authorized scope, verify proportionally to risk, and return
-the root constitution's evidence-based completion report. Internal `id`
-values remain private; any UI-visible or URL identifier must use `public_id`.
+## Task-adaptive execution
 
-Memory is not a replacement for current-code verification. Update durable
-project memory only when a task changes a reusable decision, invariant,
-ownership boundary, hazard, or deferred-work item; routine dashboard edits do
-not need memory entries.
+1. Classify the task as `TRIVIAL`, `LOCAL`, `BEHAVIORAL`, `ARCHITECTURAL`, or
+   `HIGH_RISK` using `AGENTS.md`.
+2. Use memory only to route the smallest relevant context; do not treat it as
+   proof of current code.
+3. Load only the applicable Kilo rules, skills, workflows, specifications, and
+   current graph-node requirements.
+4. Inspect the affected files before editing and stay within authorized scope.
+5. Verify proportionally: focused diff/check for trivial work, targeted tests
+   for local work, and full relevant evidence for behavioral or high-risk work.
+6. Update durable memory or `BACKLOG.md` only when reusable knowledge or
+   incomplete handoff work actually changed.
+7. Return the completion report required by the root constitution.
 
-## Your Workflow:
-1.  Read `DASHBOARD_RESTRUCTURING_PLAN.md` to understand the current phase and tasks.
-2.  Implement the tasks for the CURRENT phase.
-3.  Update the `DASHBOARD_RESTRUCTURING_PLAN.md` file by checking off completed tasks and adding an entry to the "Implementation Log."
-4.  Stop and wait for verification after each phase.
+Internal `id` values remain private; UI-visible, URL, and external identifiers
+must use `public_id`. For identity, wallet, migration, security, compliance,
+or public-contract work, memory never replaces current-code, specification,
+and test verification.
 
-## Current Goal: Phase 1 (Stabilize Shell & CSS Refactor)
-- **Target Files:**
-    - `templates/user/base_user_dashboard.html`
-    - `templates/user/user_dashboard.html`
-    - `static/css/modules/user/dashboard.css` (New)
-    - `static/css/modules/user/shell.css` (New)
-- **Specific Instructions:**
-    - Extract all inline styles (`style="..."`) into the new CSS files.
-    - Implement the "Dark Editorial" theme (Black/Dark Grey background, Gold/White accents).
-    - Remove inline JS handlers (`onclick`, etc.) and replace them with data-attributes (e.g., `data-action="toggle-nav"`).
-    - Ensure the "Pane Loading" (`?_pane=1`) still works perfectly.
+## Kilo-specific context
 
-## Verification Requirements:
-- No purple (#667eea) remains in the UI.
-- No inline styles in the HTML files.
-- The layout remains responsive.
+When the authorized task concerns the dashboard restructuring effort, consult
+`DASHBOARD_RESTRUCTURING_PLAN.md` and implement only its explicitly authorized
+phase. Do not check off tasks, append implementation-log entries, or wait for
+phase verification unless that work is part of the current node or the user
+explicitly requests it. Apply the repository's conditional frontend-document
+policy; do not create no-op updates.

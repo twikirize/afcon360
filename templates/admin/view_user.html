@@ -423,7 +423,7 @@
     <div class="role-management">
         <h3><i class="bi bi-tags"></i> Quick Role Management</h3>
         <div class="action-buttons">
-            {% set common_roles = ['admin', 'moderator', 'support', 'auditor', 'compliance_officer', 'transport_admin', 'wallet_admin'] %}
+            {% set common_roles = ['admin', 'moderator', 'support', 'auditor', 'compliance_officer', 'event_manager', 'transport_admin', 'wallet_admin', 'accommodation_admin', 'tourism_admin'] %}
             {% for role in common_roles %}
             <div style="display: inline-block; margin-right: 10px; margin-bottom: 10px;">
                 <form method="post" action="{{ url_for('admin.add_user_role', user_id=user.public_id, role_name=role) }}" style="display: inline;">

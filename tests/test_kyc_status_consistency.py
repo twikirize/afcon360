@@ -64,8 +64,12 @@ def test_next_tier_requirements_do_not_repeat_phone_verification():
 
 
 def test_individual_tin_is_not_required_for_enhanced_tier():
-    """TIN remains available as a field but is not an individual tier gate."""
-    from app.auth.kyc_compliance import TIER_3_ENHANCED, TIER_REQUIREMENTS
+    """TIN is a configurable requirement but is OFF by default (not an enforced individual gate)."""
+    from app.auth.kyc_compliance import (
+        TIER_3_ENHANCED, TIER_REQUIREMENTS, is_requirement_enabled,
+    )
 
-    assert "tin" not in TIER_REQUIREMENTS[TIER_3_ENHANCED]["required_documents"]
-    assert "tax" not in TIER_REQUIREMENTS[TIER_3_ENHANCED]["required_scope"]
+    # 'tin' is now part of the configurable requirement set so the Owner/Super
+    # Admin can toggle it, but it defaults to OFF (individual TIN optional).
+    assert "tin" in TIER_REQUIREMENTS[TIER_3_ENHANCED]["required_documents"]
+    assert is_requirement_enabled("tin") is False

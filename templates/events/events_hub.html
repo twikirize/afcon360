@@ -1,167 +1,1261 @@
-{#
-  FILE: templates/events/events_hub.html
-  PURPOSE: Unified "Hub" dashboard for all user roles (Attendee, Organizer, Provider, Admin)
-  ACCESS: Authenticated users only
-  RELATED: events.events_hub route
-#}
-
 {% extends "base.html" %}
 
-{% block title %}Events Hub - AFCON360{% endblock %}
+{% block title %}Organizer Hub – AFCON360{% endblock %}
 
 {% block module_styles %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/hub.css') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+
+<style>
+    /* ── Base Variables ── */
+    .organizer-hub {
+        --brand-accent: #00e5a0;
+        --brand-accent-dark: #00b87d;
+        --brand-purple: #667eea;
+        --brand-purple-dark: #5a67d8;
+        --brand-orange: #f6ad55;
+        --brand-red: #fc8181;
+        --brand-blue: #4299e1;
+        --brand-dark: #1a202c;
+        --brand-gray: #718096;
+        --brand-light: #f7fafc;
+        --brand-border: #e2e8f0;
+        --card-shadow: 0 4px 20px rgba(0,0,0,0.06);
+        --card-shadow-hover: 0 8px 30px rgba(0,0,0,0.12);
+        --radius: 16px;
+        --radius-sm: 10px;
+        font-family: 'DM Sans', sans-serif;
+        color: var(--brand-dark);
+    }
+
+    .organizer-hub .container {
+        max-width: 1400px;
+    }
+
+    /* ── Hub Hero ── */
+    .hub-hero {
+        background: linear-gradient(135deg, #1a202c 0%, #2d3748 50%, #00b87d 100%);
+        padding: 2.5rem 0 1.5rem;
+        position: relative;
+        overflow: hidden;
+        border-radius: 0 0 32px 32px;
+        margin-bottom: 2rem;
+    }
+    .hub-hero::before {
+        content: '';
+        position: absolute;
+        top: -80px;
+        right: -80px;
+        width: 350px;
+        height: 350px;
+        background: radial-gradient(circle, rgba(0,229,160,0.15) 0%, transparent 70%);
+        border-radius: 50%;
+        pointer-events: none;
+    }
+    .hub-hero::after {
+        content: '';
+        position: absolute;
+        bottom: -100px;
+        left: -60px;
+        width: 280px;
+        height: 280px;
+        background: radial-gradient(circle, rgba(102,126,234,0.15) 0%, transparent 70%);
+        border-radius: 50%;
+        pointer-events: none;
+    }
+    .hero-content {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    .hero-greeting {
+        font-size: 0.9rem;
+        opacity: 0.75;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: white;
+    }
+    .hero-title {
+        font-family: 'Syne', sans-serif;
+        font-size: 2.2rem;
+        font-weight: 800;
+        margin: 0.2rem 0 0.4rem;
+        color: white;
+    }
+    .hero-sub {
+        opacity: 0.8;
+        font-size: 1rem;
+        color: white;
+    }
+    .hero-wallet {
+        background: rgba(255,255,255,0.12);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 12px;
+        padding: 0.75rem 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        color: white;
+    }
+    .hero-wallet .balance {
+        font-size: 1.5rem;
+        font-weight: 800;
+        font-family: 'DM Mono', monospace;
+        color: var(--brand-accent);
+    }
+    .hero-wallet .label {
+        font-size: 0.75rem;
+        opacity: 0.7;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    /* ── Stats Bar ── */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+    .stat-card {
+        background: white;
+        border-radius: var(--radius-sm);
+        padding: 1.25rem 1rem;
+        box-shadow: var(--card-shadow);
+        border: 1px solid var(--brand-border);
+        transition: transform 0.2s, box-shadow 0.2s;
+        text-align: center;
+    }
+    .stat-card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--card-shadow-hover);
+    }
+    .stat-card .value {
+        font-size: 2rem;
+        font-weight: 800;
+        font-family: 'DM Mono', monospace;
+        line-height: 1.2;
+    }
+    .stat-card .label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--brand-gray);
+        margin-top: 0.3rem;
+    }
+    .stat-green .value { color: var(--brand-accent-dark); }
+    .stat-blue .value  { color: var(--brand-blue); }
+    .stat-purple .value { color: var(--brand-purple); }
+    .stat-orange .value { color: var(--brand-orange); }
+
+    /* ── Quick Actions ── */
+    .quick-actions-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+    .quick-action-card {
+        background: white;
+        border: 1px solid var(--brand-border);
+        border-radius: var(--radius-sm);
+        padding: 1.25rem 0.75rem;
+        text-align: center;
+        text-decoration: none;
+        color: var(--brand-dark);
+        transition: all 0.2s;
+        box-shadow: var(--card-shadow);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .quick-action-card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--card-shadow-hover);
+        border-color: var(--brand-purple);
+        color: var(--brand-purple);
+    }
+    .quick-action-card .icon {
+        font-size: 1.6rem;
+        color: var(--brand-purple);
+    }
+    .quick-action-card .title {
+        font-weight: 600;
+        font-size: 0.85rem;
+    }
+    .quick-action-card .desc {
+        font-size: 0.7rem;
+        color: var(--brand-gray);
+    }
+
+    /* ── Chart Container ── */
+    .chart-container {
+        background: white;
+        border-radius: var(--radius);
+        border: 1px solid var(--brand-border);
+        box-shadow: var(--card-shadow);
+        padding: 1.25rem;
+        margin-bottom: 2rem;
+    }
+    .chart-container canvas {
+        max-height: 200px;
+        width: 100% !important;
+    }
+
+    /* ── Tabs ── */
+    .hub-tabs .nav-tabs {
+        border-bottom: 2px solid var(--brand-border);
+    }
+    .hub-tabs .nav-link {
+        font-weight: 600;
+        color: var(--brand-gray);
+        border: none;
+        border-bottom: 3px solid transparent;
+        border-radius: 0;
+        padding: 0.75rem 1.25rem;
+    }
+    .hub-tabs .nav-link.active {
+        color: var(--brand-purple);
+        border-bottom: 3px solid var(--brand-purple);
+        background: transparent;
+    }
+
+    /* ── Event List ── */
+    .events-section {
+        margin-bottom: 2rem;
+    }
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .section-header h2 {
+        font-family: 'Syne', sans-serif;
+        font-weight: 700;
+        font-size: 1.4rem;
+        margin: 0;
+    }
+    .section-header .badge-count {
+        background: var(--brand-light);
+        border: 1px solid var(--brand-border);
+        border-radius: 20px;
+        padding: 0.2rem 0.8rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .event-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1.25rem;
+    }
+    .event-card {
+        background: white;
+        border: 1px solid var(--brand-border);
+        border-radius: var(--radius);
+        box-shadow: var(--card-shadow);
+        overflow: hidden;
+        transition: transform 0.2s, box-shadow 0.2s;
+        display: flex;
+        flex-direction: column;
+    }
+    .event-card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--card-shadow-hover);
+    }
+    .event-card-header {
+        padding: 1rem 1.25rem;
+        background: var(--brand-light);
+        border-bottom: 1px solid var(--brand-border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .event-card-header .status-badge {
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding: 0.2rem 0.6rem;
+        border-radius: 20px;
+    }
+    .event-card-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .btn-overflow {
+        background: transparent;
+        border: none;
+        color: var(--brand-gray);
+        font-size: 0.95rem;
+        line-height: 1;
+        padding: 0.15rem 0.35rem;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.2s, color 0.2s;
+    }
+    .btn-overflow:hover,
+    .btn-overflow:focus {
+        background: var(--brand-border);
+        color: var(--brand-dark);
+        outline: none;
+    }
+    .event-card-header-actions .dropdown-menu {
+        font-size: 0.85rem;
+        border-radius: 10px;
+        box-shadow: var(--card-shadow-hover);
+        border-color: var(--brand-border);
+    }
+    .event-card-header-actions .dropdown-item {
+        display: flex;
+        align-items: center;
+    }
+    .event-card-header-actions .dropdown-item i {
+        width: 1.1rem;
+        text-align: center;
+    }
+    .status-published { background: #c6f6d5; color: #22543d; }
+    .status-approved  { background: #bee3f8; color: #2a4365; }
+    .status-pending_approval { background: #fefcbf; color: #744210; }
+    .status-draft     { background: #e2e8f0; color: #4a5568; }
+    .status-suspended { background: #fed7d7; color: #742a2a; }
+    .status-paused    { background: #feebc8; color: #7b4d0c; }
+    .status-completed { background: #e9d8fd; color: #4c1d95; }
+    .status-cancelled { background: #feb2b2; color: #742a2a; }
+    .status-archived  { background: #e2e8f0; color: #4a5568; }
+    .status-deleted   { background: #feb2b2; color: #742a2a; }
+    .status-rejected  { background: #fed7d7; color: #742a2a; }
+
+    .event-card-body {
+        padding: 1.25rem;
+        flex: 1;
+    }
+    .event-card-body .event-name {
+        font-weight: 700;
+        font-size: 1.05rem;
+        margin-bottom: 0.3rem;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .event-card-body .event-meta {
+        font-size: 0.8rem;
+        color: var(--brand-gray);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem 1rem;
+        margin-bottom: 0.75rem;
+    }
+    .event-card-body .event-meta i {
+        width: 14px;
+    }
+    .event-card-body .event-stats {
+        display: flex;
+        gap: 0.5rem;
+        font-size: 0.8rem;
+        border-top: 1px solid var(--brand-border);
+        padding-top: 0.75rem;
+        margin-top: 0.5rem;
+        justify-content: space-between;
+    }
+    .event-card-body .event-stat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        flex: 1;
+        text-align: center;
+    }
+    .event-card-body .event-stat-value {
+        font-weight: 700;
+        color: var(--brand-dark);
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+    .event-card-body .event-stat-label {
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--brand-gray);
+        margin-top: 0.15rem;
+    }
+    .event-card-footer {
+        padding: 0.75rem 1.25rem;
+        background: white;
+        border-top: 1px solid var(--brand-border);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+    }
+    .event-card-footer .btn-sm {
+        font-size: 0.7rem;
+        padding: 0.45rem 0.7rem;
+        border-radius: 6px;
+        font-weight: 600;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        border: 1px solid transparent;
+        transition: all 0.2s;
+        background: var(--brand-light);
+        color: var(--brand-dark);
+        border-color: var(--brand-border);
+    }
+    .event-card-footer .btn-sm:hover {
+        background: var(--brand-purple);
+        color: white;
+        border-color: var(--brand-purple);
+    }
+    .event-card-footer .btn-sm-primary {
+        background: var(--brand-purple);
+        color: white;
+        border-color: var(--brand-purple);
+    }
+    .event-card-footer .btn-sm-primary:hover {
+        background: var(--brand-purple-dark);
+    }
+
+    /* ── Empty State ── */
+    .empty-state {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: var(--brand-gray);
+        background: white;
+        border-radius: var(--radius);
+        border: 1px solid var(--brand-border);
+    }
+    .empty-state .icon {
+        font-size: 3rem;
+        color: #cbd5e0;
+        margin-bottom: 1rem;
+    }
+    .empty-state h4 {
+        color: var(--brand-dark);
+        font-weight: 700;
+    }
+    .empty-state .btn-create {
+        display: inline-block;
+        margin-top: 1rem;
+        padding: 0.6rem 2rem;
+        background: var(--brand-purple);
+        color: white;
+        border-radius: 8px;
+        font-weight: 600;
+        text-decoration: none;
+        transition: background 0.2s;
+    }
+    .empty-state .btn-create:hover {
+        background: var(--brand-purple-dark);
+    }
+
+    /* ── Recent Activity ── */
+    .activity-feed {
+        background: white;
+        border-radius: var(--radius);
+        border: 1px solid var(--brand-border);
+        box-shadow: var(--card-shadow);
+        padding: 0;
+        max-height: 350px;
+        overflow-y: auto;
+    }
+    .activity-item {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.75rem 1.25rem;
+        border-bottom: 1px solid var(--brand-border);
+    }
+    .activity-item:last-child {
+        border-bottom: none;
+    }
+    .activity-item .avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--brand-purple);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 0.8rem;
+        flex-shrink: 0;
+    }
+    .activity-item .content {
+        flex: 1;
+        font-size: 0.85rem;
+    }
+    .activity-item .content .highlight {
+        font-weight: 600;
+        color: var(--brand-dark);
+    }
+    .activity-item .time {
+        font-size: 0.7rem;
+        color: var(--brand-gray);
+        white-space: nowrap;
+    }
+
+    /* ── Attendee Table ── */
+    .attendee-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+    }
+    .attendee-table th {
+        background: var(--brand-light);
+        font-weight: 700;
+        text-transform: uppercase;
+        font-size: 0.7rem;
+        letter-spacing: 0.05em;
+        color: var(--brand-gray);
+        padding: 0.75rem 1rem;
+        border-bottom: 2px solid var(--brand-border);
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+    .attendee-table td {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--brand-border);
+        vertical-align: middle;
+    }
+    .attendee-table tbody tr:hover {
+        background: rgba(102,126,234,0.03);
+    }
+    .attendee-table td a {
+        color: var(--brand-purple-dark);
+        text-decoration: none;
+    }
+    .attendee-table td a:hover {
+        text-decoration: underline;
+    }
+    .attendee-table .action-btns .btn {
+        margin-right: 0.25rem;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+    }
+
+    /* ── Assignment Modal Booking List ── */
+    #bookingList .list-group-item-action:hover {
+        background: var(--brand-light);
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+        .hero-title { font-size: 1.6rem; }
+        .hero-wallet { padding: 0.5rem 1rem; }
+        .hero-wallet .balance { font-size: 1.2rem; }
+        .quick-actions-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+        .event-grid { grid-template-columns: 1fr; }
+        .stats-grid { grid-template-columns: 1fr 1fr; }
+        .hero-content { flex-direction: column; align-items: stretch; }
+        .event-card-footer .btn-sm { flex: 1; justify-content: center; }
+        .attendee-table { font-size: 0.8rem; }
+        .attendee-table .action-btns .btn { padding: 0.2rem 0.4rem; font-size: 0.7rem; }
+        .attendee-table th:nth-child(2),
+        .attendee-table td:nth-child(2) { display: none; }
+    }
+    @media (max-width: 480px) {
+        .stats-grid { grid-template-columns: 1fr; }
+        .quick-actions-grid { grid-template-columns: 1fr 1fr; }
+    }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="container py-4">
-    <div class="row mb-4 align-items-center">
-        <div class="col-md-8">
-            <h1 class="display-4 mb-0">Events Hub</h1>
-            <p class="lead text-muted">Your central control room for everything events</p>
-        </div>
-        <div class="col-md-4 text-md-end">
-            <div class="card bg-light border-0 shadow-sm">
-                <div class="card-body py-2 px-3 d-flex align-items-center justify-content-between">
-                    <div>
-                        <small class="text-muted d-block text-uppercase fw-bold" style="font-size: 0.7rem;">Wallet Balance</small>
-                        <span class="h5 mb-0 text-success">${{ "%.2f"|format(wallet_balance) }}</span>
-                    </div>
-                    <a href="{{ safe_url('wallet.wallet_home') }}" class="btn btn-sm btn-success ms-3">
-                        <i class="fas fa-wallet"></i>
-                    </a>
+<div class="organizer-hub">
+
+    {# ─── HERO ─── #}
+    <div class="hub-hero">
+        <div class="container hero-content">
+            <div>
+                <p class="hero-greeting"><i class="fas fa-calendar-alt me-1"></i> Organizer Hub</p>
+                <h1 class="hero-title">Welcome back, {{ current_user.username or 'Organizer' }}</h1>
+                <p class="hero-sub">Your central command center for all events</p>
+            </div>
+            <div class="hero-wallet">
+                <i class="fas fa-wallet fa-lg" style="opacity:0.7;"></i>
+                <div>
+                    <div class="label">Wallet Balance</div>
+                    <div class="balance">{{ wallet_balance or '0.00' }} {{ wallet_currency or 'USD' }}</div>
                 </div>
+                <a href="{{ safe_url('wallet.wallet_home') }}" class="btn btn-sm btn-outline-light ms-2" style="border-radius:8px;">
+                    <i class="fas fa-chevron-right"></i>
+                </a>
             </div>
         </div>
     </div>
 
-    {# SECTION 1: ATTENDEE (Everyone) #}
-    <div class="card shadow-sm mb-4 border-0">
-        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
-            <h4 class="mb-0 text-primary"><i class="fas fa-ticket-alt me-2"></i>My Registrations</h4>
-            <a href="{{ safe_url('events.my_registrations') }}" class="btn btn-sm btn-outline-primary">Full Dashboard</a>
+    <div class="container">
+        {% set first_event_slug = events[0].slug if events else '' %}
+
+        {# ─── STATS ─── #}
+        <div class="stats-grid">
+            <div class="stat-card stat-green">
+                <div class="value">{{ total_events }}</div>
+                <div class="label">Total Events</div>
+            </div>
+            <div class="stat-card stat-blue">
+                <div class="value">{{ total_registrations }}</div>
+                <div class="label">Total Registrations</div>
+            </div>
+            <div class="stat-card stat-purple">
+                <div class="value">{{ total_revenue|default(0)|round(2) }}</div>
+                <div class="label">Revenue</div>
+            </div>
+            <div class="stat-card stat-orange">
+                <div class="value">{{ total_checkins }}</div>
+                <div class="label">Checked In</div>
+            </div>
         </div>
-        <div class="card-body">
-            {% if registrations %}
-                <div class="row row-cols-1 row-cols-md-3 g-3">
-                    {% for reg in registrations[:3] %}
-                    <div class="col">
-                        <div class="border rounded p-3 h-100 bg-light-hover position-relative">
-                            <span class="badge {% if reg.status == 'checked_in' %}bg-success{% else %}bg-primary{% endif %} position-absolute top-0 end-0 m-2">
-                                {{ reg.status }}
-                            </span>
-                            <h6 class="mb-1 text-truncate pe-5">{{ reg.event.name }}</h6>
-                            <p class="small text-muted mb-2"><i class="fas fa-calendar-day me-1"></i>{{ reg.event.start_date[:10] }}</p>
-                            <a href="{{ safe_url('events.registration_confirmation', reg_ref=reg.registration_ref) }}" class="btn btn-sm btn-primary w-100">
-                                <i class="fas fa-qrcode me-1"></i> View Ticket
-                            </a>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <div class="text-center py-4">
-                    <p class="text-muted mb-2">You haven't registered for any events yet.</p>
-                    <a href="{{ safe_url('events.list') }}" class="btn btn-primary">Find Your Next Event</a>
-                </div>
+
+        {# ─── QUICK ACTIONS ─── #}
+        <div class="quick-actions-grid">
+            <a href="{{ safe_url('events.organizer_dashboards') }}" class="quick-action-card">
+                <div class="icon"><i class="fas fa-tachometer-alt"></i></div>
+                <div class="title">Event Dashboard</div>
+                <div class="desc">Manage your events</div>
+            </a>
+            <a href="{{ safe_url('events.create_event') }}" class="quick-action-card">
+                <div class="icon"><i class="fas fa-plus-circle"></i></div>
+                <div class="title">Create Event</div>
+                <div class="desc">Start a new event</div>
+            </a>
+            <a href="{{ safe_url('events.organizer_dashboards') }}" class="quick-action-card">
+                <div class="icon"><i class="fas fa-list-ul"></i></div>
+                <div class="title">My Events</div>
+                <div class="desc">Manage your events</div>
+            </a>
+            <a href="{{ safe_url('events.list') }}" class="quick-action-card">
+                <div class="icon"><i class="fas fa-globe"></i></div>
+                <div class="title">Browse Events</div>
+                <div class="desc">Discover other events</div>
+            </a>
+            <a href="{{ safe_url('wallet.wallet_home') }}" class="quick-action-card">
+                <div class="icon"><i class="fas fa-wallet"></i></div>
+                <div class="title">Wallet</div>
+                <div class="desc">Manage funds</div>
+            </a>
+            <a href="{{ safe_url('events.accommodation_manage_universal') }}" class="quick-action-card">
+                <div class="icon"><i class="fas fa-hotel"></i></div>
+                <div class="title">Accommodation</div>
+                <div class="desc">Manage hotels & hosts</div>
+            </a>
+            <a href="{{ safe_url('events.community_hosts_universal') }}" class="quick-action-card">
+                <div class="icon"><i class="fas fa-hand-holding-heart"></i></div>
+                <div class="title">Community Hosts</div>
+                <div class="desc">Review host applications</div>
+            </a>
+            <a href="{{ safe_url('events.organizer_staff') }}" class="quick-action-card">
+                <div class="icon"><i class="fas fa-user-shield"></i></div>
+                <div class="title">Staff</div>
+                <div class="desc">Co-organizers & volunteers</div>
+            </a>
+            <a href="{{ safe_url('events.organizer_messages') }}" class="quick-action-card">
+                <div class="icon"><i class="fas fa-envelope"></i></div>
+                <div class="title">Messages</div>
+                <div class="desc">Attendee communications</div>
+            </a>
+            <a href="{{ safe_url('events.organizer_export') }}" class="quick-action-card">
+                <div class="icon"><i class="fas fa-file-csv"></i></div>
+                <div class="title">Export Attendees</div>
+                <div class="desc">Download all events CSV</div>
+            </a>
+            <a href="{{ safe_url('events.organizer_scanner') }}" class="quick-action-card">
+                <div class="icon"><i class="fas fa-qrcode"></i></div>
+                <div class="title">Scanner</div>
+                <div class="desc">Quick check-in</div>
+            </a>
+            <a href="{{ safe_url('events.organizer_waitlist') }}" class="quick-action-card">
+                <div class="icon"><i class="fas fa-clock"></i></div>
+                <div class="title">Waitlist</div>
+                <div class="desc">Pending attendees</div>
+            </a>
+            {% if is_admin or is_moderator %}
+            <a href="{{ safe_url('events.admin_dashboard') }}" class="quick-action-card" style="border-color:var(--brand-orange);">
+                <div class="icon" style="color:var(--brand-orange);"><i class="fas fa-shield-alt"></i></div>
+                <div class="title">Pending Approvals</div>
+                <div class="desc">{{ pending_approvals_count }} awaiting review</div>
+            </a>
             {% endif %}
+            <a href="{{ safe_url('events.admin_dashboard') }}" class="quick-action-card" style="border-color:var(--brand-purple);">
+                <div class="icon" style="color:var(--brand-purple);"><i class="fas fa-shield-alt"></i></div>
+                <div class="title">Admin Console</div>
+                <div class="desc">System-wide oversight</div>
+            </a>
         </div>
-    </div>
 
-    <div class="row">
-        {# SECTION 2: ORGANIZER #}
-        <div class="col-lg-6 mb-4">
-            <div class="card shadow-sm h-100 border-0">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
-                    <h4 class="mb-0 text-success"><i class="fas fa-briefcase me-2"></i>Events I Manage</h4>
-                    <a href="{{ safe_url('events.my_events') }}" class="btn btn-sm btn-outline-success">Manage All</a>
-                </div>
-                <div class="card-body">
-                    {% if managed_events %}
-                        <div class="list-group list-group-flush">
-                            {% for event in managed_events[:4] %}
-                            <a href="{{ safe_url('events.organizer_dashboard', identifier=event.slug) }}" class="list-group-item list-group-item-action px-0 border-0 mb-2">
-                                <div class="d-flex w-100 justify-content-between align-items-center border rounded p-3">
-                                    <div>
-                                        <h6 class="mb-1">{{ event.name }}</h6>
-                                        <small class="text-muted"><i class="fas fa-map-marker-alt me-1"></i>{{ event.city }}</small>
-                                    </div>
-                                    <span class="badge bg-light text-dark border">
-                                        {{ event.status|upper }}
-                                    </span>
-                                </div>
-                            </a>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
-                    <div class="d-grid mt-3">
-                        <a href="{{ safe_url('events.create_event') }}" class="btn btn-outline-success border-dashed py-3">
-                            <i class="fas fa-plus-circle me-2"></i>Create New Event
-                        </a>
+        {# ─── CHART ─── #}
+        <div class="chart-container">
+            <h5 style="margin:0 0 1rem; font-weight:700;">
+                <i class="fas fa-chart-line me-2" style="color:var(--brand-purple);"></i>
+                Registrations over time
+            </h5>
+            <canvas id="registrationsChart"></canvas>
+        </div>
+
+        {# ─── TABS ─── #}
+        <div class="hub-tabs mb-4">
+            <ul class="nav nav-tabs" id="hubTabs" role="tablist">
+                <li class="nav-item">
+                    <a class="nav-link active" id="events-tab" data-bs-toggle="tab" href="#eventsTab" role="tab">
+                        <i class="fas fa-calendar-alt me-1"></i> Events
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" id="attendees-tab" data-bs-toggle="tab" href="#attendeesTab" role="tab">
+                        <i class="fas fa-users me-1"></i> Attendees
+                        <span class="badge bg-primary rounded-pill ms-1">{{ attendees|length }}</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="tab-content">
+            {# ─── EVENTS TAB ─── #}
+            <div class="tab-pane fade show active" id="eventsTab" role="tabpanel">
+                <div class="events-section">
+                    <div class="section-header">
+                        <h2><i class="fas fa-calendar-check me-2" style="color:var(--brand-purple);"></i> Your Events</h2>
+                        <span class="badge-count">{{ events|length }} event{% if events|length != 1 %}s{% endif %}</span>
                     </div>
-                </div>
-            </div>
-        </div>
 
-        {# SECTION 3: SERVICE PROVIDER (Accommodation/Transport) #}
-        <div class="col-lg-6 mb-4">
-            <div class="card shadow-sm h-100 border-0">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
-                    <h4 class="mb-0 text-info"><i class="fas fa-handshake me-2"></i>Service Opportunities</h4>
-                    <a href="{{ safe_url('events.service_provider_dashboard') }}" class="btn btn-sm btn-outline-info">Provider Dashboard</a>
-                </div>
-                <div class="card-body">
-                    <p class="small text-muted mb-3">Events near your properties or service areas:</p>
-                    {% if relevant_events %}
-                        <div class="list-group list-group-flush">
-                            {% for event in relevant_events[:4] %}
-                            <div class="list-group-item px-0 border-0 mb-2">
-                                <div class="d-flex w-100 justify-content-between align-items-center border rounded p-3">
-                                    <div>
-                                        <h6 class="mb-1">{{ event.name }}</h6>
-                                        <small class="text-muted"><i class="fas fa-calendar-alt me-1"></i>{{ event.start_date[:10] }}</small>
+                    {% if events %}
+                    <div class="event-grid">
+                        {% for event in events %}
+                        <div class="event-card">
+                            <div class="event-card-header">
+                                <span class="status-badge status-{{ event.status }}">{{ event.status|replace('_',' ')|title }}</span>
+                                <div class="event-card-header-actions">
+                                    <small style="color:var(--brand-gray); font-size:0.7rem;">
+                                        {{ event.created_at.strftime('%b %d, %Y') if event.created_at else '' }}
+                                    </small>
+                                    <div class="dropdown">
+                                        <button type="button" class="btn-overflow" data-bs-toggle="dropdown" aria-expanded="false" title="More actions" aria-label="More actions">
+                                            <i class="fas fa-ellipsis-v"></i>
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end">
+                                            <li>
+                                                <a class="dropdown-item" href="{{ safe_url('events.edit_event', identifier=event.slug) }}">
+                                                    <i class="fas fa-edit me-2"></i> Edit Event
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a class="dropdown-item" href="{{ safe_url('events.landing', identifier=event.slug) }}" target="_blank" rel="noopener">
+                                                    <i class="fas fa-external-link-alt me-2"></i> View Public Page
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a class="dropdown-item" href="{{ safe_url('events.organizer_dashboard', identifier=event.slug) }}">
+                                                    <i class="fas fa-cog me-2"></i> Manage
+                                                </a>
+                                            </li>
+                                        </ul>
                                     </div>
-                                    <a href="{{ safe_url('events.landing', identifier=event.slug) }}" class="btn btn-sm btn-info text-white">Offer Services</a>
                                 </div>
                             </div>
-                            {% endfor %}
+                            <div class="event-card-body">
+                                <div class="event-name">{{ event.name }}</div>
+                                <div class="event-meta">
+                                    <span><i class="fas fa-map-marker-alt"></i> {{ event.city }}{% if event.venue %}, {{ event.venue }}{% endif %}</span>
+                                    <span><i class="fas fa-calendar-alt"></i> {{ event.start_date.strftime('%b %d, %Y') if event.start_date else 'TBD' }}</span>
+                                </div>
+                                <div class="event-stats">
+                                    <div class="event-stat">
+                                        <span class="event-stat-value"><i class="fas fa-users" style="color:var(--brand-blue);"></i> {{ event.registration_count }}</span>
+                                        <span class="event-stat-label">Registered</span>
+                                    </div>
+                                    <div class="event-stat">
+                                        <span class="event-stat-value"><i class="fas fa-check-circle" style="color:var(--brand-accent-dark);"></i> {{ event.checked_in_count or 0 }}</span>
+                                        <span class="event-stat-label">Checked-in</span>
+                                    </div>
+                                    <div class="event-stat">
+                                        <span class="event-stat-value"><i class="fas fa-dollar-sign" style="color:var(--brand-orange);"></i> {{ event.revenue or 0 }}</span>
+                                        <span class="event-stat-label">Revenue</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="event-card-footer">
+                                <a href="{{ safe_url('events.organizer_dashboard', identifier=event.slug) }}" class="btn-sm btn-sm-primary w-100 justify-content-center">
+                                    <i class="fas fa-tachometer-alt me-1"></i> Manage Event
+                                </a>
+                            </div>
                         </div>
+                        {% endfor %}
+                    </div>
                     {% else %}
-                        <div class="alert alert-light border text-center py-4">
-                            <i class="fas fa-info-circle mb-2 fa-2x opacity-25"></i>
-                            <p class="mb-0 text-muted small">No events currently match your service locations.</p>
+                    <div class="empty-state">
+                        <div class="icon"><i class="fas fa-calendar-plus"></i></div>
+                        <h4>No Events Yet</h4>
+                        <p>Create your first event to get started. Your events will appear here.</p>
+                        <a href="{{ safe_url('events.create_event') }}" class="btn-create">
+                            <i class="fas fa-plus-circle me-2"></i> Create Event
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {# ─── ATTENDEES TAB ─── #}
+            <div class="tab-pane fade" id="attendeesTab" role="tabpanel">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <h5 class="mb-0"><i class="fas fa-users me-1"></i> All Attendees ({{ attendees|length }})</h5>
+                        <div class="d-flex gap-2">
+                            <input type="text" id="attendeeSearch" placeholder="Search name or email..." class="form-control form-control-sm" style="width: 220px;">
+                            <select id="eventFilter" class="form-select form-select-sm" style="width: 180px;">
+                                <option value="">All Events</option>
+                                {% for event in events %}
+                                <option value="{{ event.slug }}">{{ event.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="attendee-table" id="attendeeTable">
+                                <thead>
+                                    <tr>
+                                        <th>Attendee</th>
+                                        <th>Email</th>
+                                        <th>Event</th>
+                                        <th>Ticket</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for attendee in attendees %}
+                                    <tr data-event="{{ attendee.event_slug }}" data-name="{{ attendee.full_name|lower }}" data-email="{{ attendee.email|lower }}" data-status="{{ attendee.status }}">
+                                        <td><strong>{{ attendee.full_name }}</strong></td>
+                                        <td>{{ attendee.email }}</td>
+                                        <td><a href="{{ safe_url('events.landing', identifier=attendee.event_slug) }}">{{ attendee.event_name }}</a></td>
+                                        <td><span class="badge bg-secondary">{{ attendee.ticket_type }}</span></td>
+                                        <td>
+                                            {% if attendee.status == 'checked_in' %}
+                                            <span class="badge bg-success">Checked In</span>
+                                            {% elif attendee.status == 'confirmed' %}
+                                            <span class="badge bg-primary">Confirmed</span>
+                                            {% elif attendee.status == 'cancelled' %}
+                                            <span class="badge bg-danger">Cancelled</span>
+                                            {% elif attendee.status == 'pending_payment' %}
+                                            <span class="badge bg-warning text-dark">Pending Payment</span>
+                                            {% else %}
+                                            <span class="badge bg-warning text-dark">{{ attendee.status }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm action-btns" role="group">
+                                                <a href="{{ safe_url('events.registration_confirmation', reg_ref=attendee.registration_ref) }}" class="btn btn-outline-primary" title="View Ticket">
+                                                    <i class="fas fa-qrcode"></i>
+                                                </a>
+                                                {% if attendee.status != 'checked_in' and attendee.status != 'cancelled' %}
+                                                <button class="btn btn-outline-success checkin-btn" data-reg-ref="{{ attendee.registration_ref }}" data-event-slug="{{ attendee.event_slug }}" data-name="{{ attendee.full_name }}" title="Check In">
+                                                    <i class="fas fa-check"></i>
+                                                </button>
+                                                {% endif %}
+                                                {% if attendee.status != 'cancelled' and attendee.status != 'checked_in' %}
+                                                <button class="btn btn-outline-danger cancel-btn" data-reg-ref="{{ attendee.registration_ref }}" data-name="{{ attendee.full_name }}" title="Cancel Registration">
+                                                    <i class="fas fa-times"></i>
+                                                </button>
+                                                {% endif %}
+                                                <button class="btn btn-outline-info assign-accommodation-btn" data-reg-ref="{{ attendee.registration_ref }}" data-event-slug="{{ attendee.event_slug }}" data-name="{{ attendee.full_name }}" title="Assign Accommodation">
+                                                    <i class="fas fa-bed"></i>
+                                                </button>
+                                                <button class="btn btn-outline-info assign-transport-btn" data-reg-ref="{{ attendee.registration_ref }}" data-event-slug="{{ attendee.event_slug }}" data-name="{{ attendee.full_name }}" title="Assign Transport">
+                                                    <i class="fas fa-bus"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            {% if not attendees %}
+                            <div class="text-center py-5 text-muted">No attendees found.</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# ─── RECENT ACTIVITY ─── #}
+        <div class="row g-4 mt-2">
+            <div class="col-md-6">
+                <h5 style="font-weight:700; margin-bottom:0.75rem;">
+                    <i class="fas fa-history me-2" style="color:var(--brand-purple);"></i>
+                    Recent Registrations
+                </h5>
+                <div class="activity-feed">
+                    {% if recent_registrations %}
+                        {% for reg in recent_registrations %}
+                        <div class="activity-item">
+                            <div class="avatar">{{ reg.full_name[0]|upper }}</div>
+                            <div class="content">
+                                <span class="highlight">{{ reg.full_name }}</span> registered for
+                                <span class="highlight">{{ reg.event.name }}</span>
+                                <span class="text-muted">({{ reg.ticket_type }})</span>
+                            </div>
+                            <div class="time">{{ reg.created_at.strftime('%b %d, %H:%M') if reg.created_at else '' }}</div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="activity-item text-muted" style="justify-content:center; padding:1.5rem;">
+                            No recent registrations.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-6">
+                <h5 style="font-weight:700; margin-bottom:0.75rem;">
+                    <i class="fas fa-ticket-alt me-2" style="color:var(--brand-orange);"></i>
+                    Recent Check-ins
+                </h5>
+                <div class="activity-feed">
+                    {% if recent_checkins %}
+                        {% for checkin in recent_checkins %}
+                        <div class="activity-item">
+                            <div class="avatar" style="background:var(--brand-accent-dark);">{{ checkin.full_name[0]|upper }}</div>
+                            <div class="content">
+                                <span class="highlight">{{ checkin.full_name }}</span> checked in at
+                                <span class="highlight">{{ checkin.event.name }}</span>
+                            </div>
+                            <div class="time">{{ checkin.checked_in_at.strftime('%b %d, %H:%M') if checkin.checked_in_at else '' }}</div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="activity-item text-muted" style="justify-content:center; padding:1.5rem;">
+                            No recent check-ins.
                         </div>
                     {% endif %}
                 </div>
             </div>
         </div>
-    </div>
 
-    {# SECTION 4: SYSTEM ADMIN (Only for Super Admins) #}
-    {% if admin_stats %}
-    <div class="card shadow-sm mb-4 border-warning">
-        <div class="card-header bg-warning-subtle d-flex justify-content-between align-items-center py-3">
-            <h4 class="mb-0 text-dark"><i class="fas fa-user-shield me-2"></i>Global Administration</h4>
-            <a href="{{ safe_url('events.admin_dashboard') }}" class="btn btn-sm btn-warning">Admin Dashboard</a>
-        </div>
-        <div class="card-body">
-            <div class="row text-center">
-                <div class="col-4">
-                    <h2 class="mb-0 text-primary">{{ admin_stats.total_events }}</h2>
-                    <small class="text-muted text-uppercase fw-bold">Total</small>
-                </div>
-                <div class="col-4">
-                    <h2 class="mb-0 text-success">{{ admin_stats.active_events }}</h2>
-                    <small class="text-muted text-uppercase fw-bold">Active</small>
-                </div>
-                <div class="col-4">
-                    <h2 class="mb-0 text-danger">{{ admin_stats.pending_events }}</h2>
-                    <small class="text-muted text-uppercase fw-bold">Pending</small>
-                </div>
+    </div>{# /container #}
+</div>{# /organizer-hub #}
+
+{# ─── CHECK-IN MODAL ─── #}
+<div class="modal fade" id="checkinModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-check-circle me-2 text-success"></i> Check In Attendee</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Confirm check-in for <strong id="checkinName"></strong>?</p>
+                <div id="checkinAlert"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="confirmCheckinBtn">Check In</button>
             </div>
         </div>
     </div>
-    {% endif %}
 </div>
+
+{# ─── CANCEL MODAL ─── #}
+<div class="modal fade" id="cancelModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-times-circle me-2 text-danger"></i> Cancel Registration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to cancel <strong id="cancelName"></strong>'s registration? This cannot be undone easily.</p>
+                <div id="cancelAlert"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Keep Registration</button>
+                <button type="button" class="btn btn-danger" id="confirmCancelBtn">Cancel Registration</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ─── ASSIGNMENT MODAL ─── #}
+<div class="modal fade" id="assignmentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-link me-2"></i> <span id="assignmentModalTitle">Assign</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Assign <strong id="assignmentName"></strong> to an available booking.</p>
+                <div id="assignmentAlert"></div>
+                <div id="bookingList" class="list-group" style="max-height: 360px; overflow-y: auto;">
+                    <div class="text-center py-4 text-muted">
+                        <div class="spinner-border spinner-border-sm me-2"></div>
+                        Loading available bookings...
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+(function() {
+    "use strict";
+
+    function getCsrf() {
+        return document.querySelector('meta[name="csrf-token"]')?.content || '';
+    }
+
+    function postJSON(url, payload) {
+        return fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+            body: JSON.stringify(payload || {})
+        }).then(r => r.json().catch(() => ({ success: false, error: 'Invalid server response' })));
+    }
+
+    function showAlert(container, type, message) {
+        container.innerHTML = '<div class="alert alert-' + type + ' py-2 mb-0">' + message + '</div>';
+    }
+
+    /* ── Chart ── */
+    function initChart() {
+        const canvas = document.getElementById('registrationsChart');
+        if (!canvas) return;
+        const chartData = {{ chart_data|default({})|tojson|safe }};
+        new Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: chartData.labels || ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                datasets: [{
+                    label: 'Registrations',
+                    data: chartData.values || [0, 5, 12, 8, 15, 22],
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102,126,234,0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 3,
+                    pointBackgroundColor: '#667eea'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+    }
+
+    /* ── Attendee search & filter ── */
+    function initAttendeeFilters() {
+        const search = document.getElementById('attendeeSearch');
+        const filter = document.getElementById('eventFilter');
+        const rows = Array.from(document.querySelectorAll('#attendeeTable tbody tr'));
+
+        function apply() {
+            const q = (search.value || '').trim().toLowerCase();
+            const ev = (filter.value || '').trim();
+            rows.forEach(row => {
+                if (!row.dataset || !row.dataset.event) return;
+                const matchEvent = !ev || row.dataset.event === ev;
+                const matchText = !q ||
+                    row.dataset.name.indexOf(q) !== -1 ||
+                    row.dataset.email.indexOf(q) !== -1;
+                row.style.display = (matchEvent && matchText) ? '' : 'none';
+            });
+        }
+
+        if (search) search.addEventListener('input', apply);
+        if (filter) filter.addEventListener('change', apply);
+    }
+
+    /* ── Check-in ── */
+    let checkinModal, pendingCheckin = null;
+    function initCheckin() {
+        checkinModal = new bootstrap.Modal(document.getElementById('checkinModal'));
+        const nameEl = document.getElementById('checkinName');
+        const alertEl = document.getElementById('checkinAlert');
+
+        document.querySelectorAll('.checkin-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                pendingCheckin = btn.dataset.regRef;
+                nameEl.textContent = btn.dataset.name;
+                alertEl.innerHTML = '';
+                checkinModal.show();
+            });
+        });
+
+        document.getElementById('confirmCheckinBtn').addEventListener('click', () => {
+            if (!pendingCheckin) return;
+            const btn = document.getElementById('confirmCheckinBtn');
+            btn.disabled = true;
+            postJSON('/events/api/registration/' + encodeURIComponent(pendingCheckin) + '/checkin')
+                .then(data => {
+                    btn.disabled = false;
+                    if (data.success) {
+                        showAlert(alertEl, 'success', data.message || 'Checked in successfully.');
+                        const row = document.querySelector('.checkin-btn[data-reg-ref="' + pendingCheckin + '"]').closest('tr');
+                        if (row) {
+                            const statusCell = row.querySelector('td:nth-child(5)');
+                            if (statusCell) statusCell.innerHTML = '<span class="badge bg-success">Checked In</span>';
+                            const actionCell = row.querySelector('td:nth-child(6) .action-btns');
+                            if (actionCell) actionCell.querySelector('.checkin-btn')?.remove();
+                        }
+                        setTimeout(() => checkinModal.hide(), 1200);
+                    } else {
+                        showAlert(alertEl, 'danger', data.error || 'Check-in failed.');
+                    }
+                })
+                .catch(() => { btn.disabled = false; showAlert(alertEl, 'danger', 'Network error.'); });
+        });
+    }
+
+    /* ── Cancel registration ── */
+    let cancelModal, pendingCancel = null;
+    function initCancel() {
+        cancelModal = new bootstrap.Modal(document.getElementById('cancelModal'));
+        const nameEl = document.getElementById('cancelName');
+        const alertEl = document.getElementById('cancelAlert');
+
+        document.querySelectorAll('.cancel-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                pendingCancel = btn.dataset.regRef;
+                nameEl.textContent = btn.dataset.name;
+                alertEl.innerHTML = '';
+                cancelModal.show();
+            });
+        });
+
+        document.getElementById('confirmCancelBtn').addEventListener('click', () => {
+            if (!pendingCancel) return;
+            const btn = document.getElementById('confirmCancelBtn');
+            btn.disabled = true;
+            postJSON('/events/registration/' + encodeURIComponent(pendingCancel) + '/cancel')
+                .then(data => {
+                    btn.disabled = false;
+                    if (data.success) {
+                        showAlert(alertEl, 'success', data.message || 'Registration cancelled.');
+                        const row = document.querySelector('.cancel-btn[data-reg-ref="' + pendingCancel + '"]').closest('tr');
+                        if (row) {
+                            const statusCell = row.querySelector('td:nth-child(5)');
+                            if (statusCell) statusCell.innerHTML = '<span class="badge bg-danger">Cancelled</span>';
+                            const actionCell = row.querySelector('td:nth-child(6) .action-btns');
+                            if (actionCell) {
+                                actionCell.querySelector('.checkin-btn')?.remove();
+                                actionCell.querySelector('.cancel-btn')?.remove();
+                            }
+                        }
+                        setTimeout(() => cancelModal.hide(), 1200);
+                    } else {
+                        showAlert(alertEl, 'danger', data.error || 'Cancellation failed.');
+                    }
+                })
+                .catch(() => { btn.disabled = false; showAlert(alertEl, 'danger', 'Network error.'); });
+        });
+    }
+
+    /* ── Assignment (accommodation / transport) ── */
+    let assignmentModal, assignmentContext = null;
+    function initAssignment() {
+        assignmentModal = new bootstrap.Modal(document.getElementById('assignmentModal'));
+        const nameEl = document.getElementById('assignmentName');
+        const titleEl = document.getElementById('assignmentModalTitle');
+        const alertEl = document.getElementById('assignmentAlert');
+        const listEl = document.getElementById('bookingList');
+
+        function openAssignment(btn, type) {
+            const regRef = btn.dataset.regRef;
+            const eventSlug = btn.dataset.eventSlug;
+            const name = btn.dataset.name;
+            assignmentContext = { regRef: regRef, eventSlug: eventSlug, type: type };
+            nameEl.textContent = name;
+            titleEl.textContent = (type === 'accommodation' ? 'Assign Accommodation' : 'Assign Transport');
+            alertEl.innerHTML = '';
+            listEl.innerHTML = '<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading available bookings...</div>';
+            assignmentModal.show();
+
+            fetch('/events/' + encodeURIComponent(eventSlug) + '/available-bookings/' + type)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success && data.bookings && data.bookings.length) {
+                        listEl.innerHTML = '';
+                        data.bookings.forEach(b => {
+                            const item = document.createElement('a');
+                            item.href = '#';
+                            item.className = 'list-group-item list-group-item-action';
+                            const guest = b.guest_name ? '<div class="small text-muted mt-1"><i class="fas fa-user me-1"></i>' + b.guest_name + '</div>' : '';
+                            const dates = (b.check_in ? '<div class="small text-muted">' + b.check_in + (b.check_out ? ' → ' + b.check_out : '') + '</div>' : '');
+                            item.innerHTML = '<div class="d-flex w-100 justify-content-between align-items-center"><div><i class="fas ' + (type === 'accommodation' ? 'fa-hotel' : 'fa-bus') + ' me-2 text-primary"></i><strong>' + b.name + '</strong>' + guest + dates + '</div><span class="badge bg-primary rounded-pill"><i class="fas fa-arrow-right"></i></span></div>';
+                            item.addEventListener('click', e => {
+                                e.preventDefault();
+                                assignBooking(b.id);
+                            });
+                            listEl.appendChild(item);
+                        });
+                    } else {
+                        listEl.innerHTML = '<div class="text-center py-4 text-muted"><i class="fas fa-info-circle fa-2x mb-2 opacity-50"></i><p>No available ' + type + ' bookings found in the event city.</p><small>Bookings must be created first in the ' + type + ' module.</small></div>';
+                    }
+                })
+                .catch(() => { listEl.innerHTML = '<div class="alert alert-danger">Failed to load bookings.</div>'; });
+        }
+
+        function assignBooking(bookingId) {
+            if (!assignmentContext) return;
+            const { regRef, eventSlug, type } = assignmentContext;
+            alertEl.innerHTML = '<div class="text-center py-2 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Assigning...</div>';
+            postJSON('/events/' + encodeURIComponent(eventSlug) + '/' + type + '/assign', {
+                    registration_ref: regRef,
+                    booking_ref: bookingId
+                })
+                .then(data => {
+                    if (data.success) {
+                        showAlert(alertEl, 'success', (type.charAt(0).toUpperCase() + type.slice(1)) + ' assigned successfully.');
+                        setTimeout(() => assignmentModal.hide(), 1200);
+                    } else {
+                        showAlert(alertEl, 'danger', data.error || 'Assignment failed.');
+                    }
+                })
+                .catch(() => { showAlert(alertEl, 'danger', 'Network error.'); });
+        }
+
+        document.querySelectorAll('.assign-accommodation-btn').forEach(btn => {
+            btn.addEventListener('click', () => openAssignment(btn, 'accommodation'));
+        });
+        document.querySelectorAll('.assign-transport-btn').forEach(btn => {
+            btn.addEventListener('click', () => openAssignment(btn, 'transport'));
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        initChart();
+        initAttendeeFilters();
+        initCheckin();
+        initCancel();
+        initAssignment();
+    });
+})();
+</script>
 {% endblock %}

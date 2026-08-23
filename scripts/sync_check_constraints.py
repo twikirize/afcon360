@@ -241,6 +241,17 @@ def normalize_sql(sql: Optional[str]) -> str:
     #   ::character varying
     #   ::numeric
     #   ::numeric(10,2)
+    #
+    # IMPORTANT: the type-name body must NOT include spaces in its general
+    # (single-word) form.  An earlier version used [a-z0-9_ ]* which greedily
+    # consumed spaces, so a cast like ``0::numeric AND deposit_percentage``
+    # matched ``numeric AND deposit_percentage`` (all letters/spaces) and was
+    # stripped entirely — collapsing two distinct predicates into one and
+    # producing false "semantic drift" on constraints that were actually
+    # identical.  Multi-word type names (``character varying``,
+    # ``double precision``, ``timestamp without time zone`` ...) are handled
+    # by explicit alternatives so they still match without letting the
+    # single-word branch eat across SQL keywords/identifiers.
 
     s = re.sub(
         r"""
@@ -249,9 +260,15 @@ def normalize_sql(sql: Optional[str]) -> str:
         (?:
             ".*?"
             |
-            [a-z_][a-z0-9_ ]*
+            character[ ]varying
+            |
+            double[ ]precision
+            |
+            (?:timestamp|time)[ ](?:without|with)[ ]time[ ]zone
+            |
+            [a-z_][a-z0-9_]*
         )
-        (?:\(\s*\d+(?:\s*,\s*\d+)?\s*\))?
+        (?:\([ ]*\d+(?:[ ]*,[ ]*\d+)?[ ]*\))?
         """,
         "",
         s,
@@ -282,8 +299,13 @@ def normalize_sql(sql: Optional[str]) -> str:
         s,
     )
 
-    # Normalize IN syntax.
-    s = re.sub(r"\bin\s*\(", "in(", s)
+    # Normalize IN syntax.  Case-insensitive because the ANY/ARRAY
+    # rewrites above emit an upper-case " IN " token, while the model's
+    # sqltext (already lower-cased at the top of this function) uses
+    # lower-case "in".  Without IGNORECASE the DB side keeps "IN ("
+    # and the model side becomes "in(", causing false semantic drift
+    # on every constraint that PostgreSQL reflects via ANY(ARRAY[...]).
+    s = re.sub(r"\bin\s*\(", "in(", s, flags=re.IGNORECASE)
 
     # Remove harmless outer whitespace around parentheses.
     s = re.sub(r"\(\s+", "(", s)

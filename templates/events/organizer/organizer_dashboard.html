@@ -25,12 +25,30 @@
             </h1>
             <p class="text-muted">Real-time oversight and management for your event</p>
         </div>
-        <div class="col-md-4 text-md-end">
+        <div class="col-md-auto text-md-end">
             <div class="btn-group shadow-sm">
-                <a href="{{ safe_url('events.edit_event', identifier=event.slug) }}" class="btn btn-primary">
+                <a href="{{ safe_url('events.edit_event', identifier=event.slug) }}" class="btn btn-primary" title="Edit Event">
                     <i class="fas fa-edit me-1"></i> Edit
                 </a>
-                <a href="{{ safe_url('events.landing', identifier=event.slug) }}" class="btn btn-outline-secondary" target="_blank">
+                {% if event.status == 'approved' %}
+                    <button onclick="moderateEvent('{{ event.slug }}', 'publish')" class="btn btn-success" title="Publish">
+                        <i class="fas fa-rocket me-1"></i> Publish
+                    </button>
+                {% endif %}
+                {% if event.status == 'published' %}
+                    <button onclick="moderateEvent('{{ event.slug }}', 'pause')" class="btn btn-warning" title="Pause">
+                        <i class="fas fa-pause me-1"></i> Pause
+                    </button>
+                {% endif %}
+                {% if event.status == 'paused' %}
+                    <button onclick="moderateEvent('{{ event.slug }}', 'resume')" class="btn btn-success" title="Resume">
+                        <i class="fas fa-play me-1"></i> Resume
+                    </button>
+                {% endif %}
+                <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{ event.slug }}" title="Delete Event">
+                    <i class="fas fa-trash"></i>
+                </button>
+                <a href="{{ safe_url('events.landing', identifier=event.slug) }}" class="btn btn-outline-secondary" target="_blank" title="View Landing Page">
                     <i class="fas fa-external-link-alt"></i>
                 </a>
             </div>
@@ -341,6 +359,29 @@
     </div>
 </div>
 
+    <!-- Delete Modal -->
+    <div class="modal fade" id="deleteModal{{ event.slug }}" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form method="POST" action="{{ safe_url('events.delete_event', identifier=event.slug) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Delete Event</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Are you sure you want to delete <strong>{{ event.name }}</strong>?</p>
+                        <p class="text-danger small">This cannot be undone.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-danger">Delete Event</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
 <style>
 .hover-shadow-sm:hover {
     box-shadow: 0 4px 8px rgba(0,0,0,0.1);
@@ -356,6 +397,7 @@ let currentEventSlug = '{{ event.slug }}';
 document.addEventListener('DOMContentLoaded', function() {
     assignModal = new bootstrap.Modal(document.getElementById('assignServiceModal'));
     loadExistingAssignments();
+    setInterval(loadExistingAssignments, 10000);
 });
 
 function loadExistingAssignments() {
@@ -506,5 +548,35 @@ function escapeHtml(text) {
 
 // Get event city from template
 const eventCity = '{{ event.city }}';
+
+function moderateEvent(slug, action) {
+    var csrf = document.querySelector('meta[name="csrf-token"]')?.content || 
+               document.querySelector('input[name="csrf_token"]')?.value || '';
+    
+    var url = '/events/' + slug + '/' + action;
+    
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrf
+        }
+    })
+    .then(function(response) {
+        return response.json();
+    })
+    .then(function(data) {
+        if (data.success) {
+            alert(data.message || action + ' successful');
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(function(err) {
+        console.error('moderateEvent network error:', err);
+        alert('Network error. Check console for details.');
+    });
+}
 </script>
 {% endblock %}

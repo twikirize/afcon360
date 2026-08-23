@@ -1,0 +1,109 @@
+{# templates/feed/_layout_sections.html
+   Stacked dynamic sections — groups items by type into labeled sections.
+   Each section is a horizontally-scrollable row.
+   Expects: feed_items (list of item dicts)
+
+   Infinite scroll appends new items into the last section or creates
+   new sections dynamically — but for the initial server render, we
+   group what we have.
+#}
+{% set ns = namespace(posts=[], events=[], ads=[], system=[], properties=[], transport=[], other=[]) %}
+
+{% for item in feed_items %}
+  {% if item.type == 'post' %}{% set ns.posts = ns.posts + [item] %}
+  {% elif item.type == 'event' %}{% set ns.events = ns.events + [item] %}
+  {% elif item.type == 'ad' %}{% set ns.ads = ns.ads + [item] %}
+  {% elif item.type == 'system_update' %}{% set ns.system = ns.system + [item] %}
+  {% elif item.type == 'property' %}{% set ns.properties = ns.properties + [item] %}
+  {% elif item.type == 'transport' %}{% set ns.transport = ns.transport + [item] %}
+  {% else %}{% set ns.other = ns.other + [item] %}
+  {% endif %}
+{% endfor %}
+
+<div class="feed-sections" id="feed-stream">
+
+  {% if ns.events %}
+  <section class="feed-section">
+    <div class="section-head">
+      <h2 class="section-title">🏟️ Upcoming Events</h2>
+    </div>
+    <div class="feed-section-scroll">
+      {% for item in ns.events %}{% include 'feed/_item_card.html' %}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if ns.system %}
+  <section class="feed-section">
+    <div class="section-head">
+      <h2 class="section-title">🔔 System Updates</h2>
+    </div>
+    <div class="feed-section-scroll">
+      {% for item in ns.system %}{% include 'feed/_item_card.html' %}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if ns.posts %}
+  <section class="feed-section">
+    <div class="section-head">
+      <h2 class="section-title">💬 Community Posts</h2>
+    </div>
+    <div class="feed-section-scroll">
+      {% for item in ns.posts %}{% include 'feed/_item_card.html' %}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if ns.properties %}
+  <section class="feed-section">
+    <div class="section-head">
+      <h2 class="section-title">🏨 Accommodation</h2>
+    </div>
+    <div class="feed-section-scroll">
+      {% for item in ns.properties %}{% include 'feed/_item_card.html' %}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if ns.transport %}
+  <section class="feed-section">
+    <div class="section-head">
+      <h2 class="section-title">🚌 Transport</h2>
+    </div>
+    <div class="feed-section-scroll">
+      {% for item in ns.transport %}{% include 'feed/_item_card.html' %}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if ns.ads %}
+  <section class="feed-section">
+    <div class="section-head">
+      <h2 class="section-title">📣 Sponsored</h2>
+    </div>
+    <div class="feed-section-scroll">
+      {% for item in ns.ads %}{% include 'feed/_item_card.html' %}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if ns.other %}
+  <section class="feed-section">
+    <div class="section-head">
+      <h2 class="section-title">📰 More</h2>
+    </div>
+    <div class="feed-section-scroll">
+      {% for item in ns.other %}{% include 'feed/_item_card.html' %}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+</div>
+
+<div id="feed-sentinel" class="feed-sentinel">
+  <span class="feed-loading-spinner" id="feed-loading-spinner" style="display:none;">Loading more…</span>
+  <span class="feed-end-message" id="feed-end-message" style="display:none;">
+    You're all caught up! 🎉
+  </span>
+</div>

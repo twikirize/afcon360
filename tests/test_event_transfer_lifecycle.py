@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 from app.events.models import Event, CreatorType, OwnerType, EventTransferRequest, TransferStatus, EventTransferLog
 from app.identity.models.user import User
 from app.identity.models.organisation import Organisation
+from app.identity.models.organisation_member import OrganisationMember, OrgRole, OrgUserRole
 from app.events.services import EventService
 
 @pytest.fixture
@@ -11,7 +12,8 @@ def transfer_user(test_db):
     user = User(
         public_id=str(uuid.uuid4()),
         email=f"transfer_{uuid.uuid4()}@example.com",
-        password_hash="fakehash"
+        password_hash="fakehash",
+        is_active=True
     )
     test_db.add(user)
     test_db.commit()
@@ -22,7 +24,8 @@ def target_user(test_db):
     user = User(
         public_id=str(uuid.uuid4()),
         email=f"target_{uuid.uuid4()}@example.com",
-        password_hash="fakehash"
+        password_hash="fakehash",
+        is_active=True
     )
     test_db.add(user)
     test_db.commit()
@@ -93,6 +96,12 @@ def test_request_event_transfer_unauthorized(test_db, target_user, test_event):
 
 def test_approve_event_transfer_success(test_db, transfer_user, target_user, target_org, test_event):
     # Request transfer to an organisation
+    membership = OrganisationMember(user_id=target_user.id, organisation_id=target_org.id)
+    role = OrgRole(name="org_admin", organisation_id=target_org.id, template_name="org_admin")
+    test_db.add_all([membership, role])
+    test_db.flush()
+    test_db.add(OrgUserRole(organisation_member_id=membership.id, role_id=role.id))
+    test_db.commit()
     EventService.request_event_transfer(
         event_slug=test_event.slug,
         requester_id=transfer_user.id,
@@ -104,7 +113,7 @@ def test_approve_event_transfer_success(test_db, transfer_user, target_user, tar
     
     success, err = EventService.approve_event_transfer(
         request_id=req.id,
-        approver_id=target_user.id  # Simulating target user acting on behalf of org
+        approver_id=target_user.id
     )
     assert success is True
     assert err is None
@@ -127,6 +136,30 @@ def test_approve_event_transfer_success(test_db, transfer_user, target_user, tar
     assert log.to_owner_type == OwnerType.ORGANIZATION
     assert log.to_owner_id == target_org.id
     assert log.transferred_by_id == target_user.id
+
+
+def test_unauthorized_transfer_approval_does_not_mutate(test_db, transfer_user, target_user, target_org, test_event):
+    EventService.request_event_transfer(
+        event_slug=test_event.slug,
+        requester_id=transfer_user.id,
+        to_owner_type=OwnerType.ORGANIZATION.value,
+        to_owner_id=target_org.id,
+        reason="Corporate move"
+    )
+    req = test_db.query(EventTransferRequest).filter_by(event_id=test_event.id).first()
+    initial_owner_type = test_event.current_owner_type
+    initial_owner_id = test_event.current_owner_id
+
+    success, error = EventService.approve_event_transfer(req.id, target_user.id)
+
+    assert success is False
+    assert "authorized" in error
+    test_db.refresh(req)
+    test_db.refresh(test_event)
+    assert req.status == TransferStatus.PENDING.value
+    assert test_event.current_owner_type == initial_owner_type
+    assert test_event.current_owner_id == initial_owner_id
+    assert test_db.query(EventTransferLog).filter_by(event_id=test_event.id).count() == 0
 
 def test_update_event_bypasses_ownership_change(test_db, transfer_user, target_user, test_event):
     """

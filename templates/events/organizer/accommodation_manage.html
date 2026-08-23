@@ -80,6 +80,21 @@
         </div>
     </div>
 
+    <!-- Assignment Action Bar -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div id="assignmentActionBar" class="alert alert-info d-flex align-items-center justify-content-between">
+                <div>
+                    <i class="fas fa-info-circle me-2"></i>
+                    <span id="assignmentActionText">Select an attendee from the left panel, then select a hotel from the right panel to assign.</span>
+                </div>
+                <button id="assignConfirmBtn" class="btn btn-primary d-none" onclick="showAssignConfirmModal()">
+                    <i class="fas fa-check me-1"></i> Confirm Assignment
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Main Content: Two Columns -->
     <div class="row g-4">
         <!-- LEFT COLUMN: Attendees -->
@@ -122,6 +137,11 @@
                                 Needs Assignment
                             </a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link" data-bs-toggle="tab" href="#assignedAttendees" onclick="renderAssignedAttendees()">
+                                Assigned
+                            </a>
+                        </li>
                     </ul>
                     
                     <!-- Attendee List -->
@@ -139,6 +159,14 @@
                                 <div class="text-center p-4 text-muted">
                                     <i class="fas fa-info-circle"></i>
                                     <p>Switch to this tab to see unassigned attendees</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="assignedAttendees">
+                            <div id="assignedAttendeeList" class="list-group list-group-flush" style="max-height: 500px; overflow-y: auto;">
+                                <div class="text-center p-4 text-muted">
+                                    <i class="fas fa-info-circle"></i>
+                                    <p>Assigned attendees will appear here</p>
                                 </div>
                             </div>
                         </div>
@@ -250,9 +278,34 @@ jane@example.com,456,community_host</pre>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p>Assign <strong id="confirmAttendeeName"></strong> to:</p>
-                <div class="alert alert-info">
-                    <div id="confirmInventoryDetails"></div>
+                <h6 class="fw-bold mb-3">Assignment Summary</h6>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="card h-100 border-primary">
+                            <div class="card-header bg-primary text-white py-2">
+                                <strong>Attendee</strong>
+                            </div>
+                            <div class="card-body py-2">
+                                <p class="mb-1"><strong>Name:</strong> <span id="confirmAttendeeName"></span></p>
+                                <p class="mb-1"><strong>Email:</strong> <span id="confirmAttendeeEmail"></span></p>
+                                <p class="mb-0"><strong>Status:</strong> <span id="confirmAttendeeStatus"></span></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100 border-success">
+                            <div class="card-header bg-success text-white py-2">
+                                <strong>Booking</strong>
+                            </div>
+                            <div class="card-body py-2">
+                                <p class="mb-1"><strong>Property:</strong> <span id="confirmPropertyName"></span></p>
+                                <p class="mb-1"><strong>Room:</strong> <span id="confirmRoomType"></span></p>
+                                <p class="mb-1"><strong>Check-in:</strong> <span id="confirmCheckIn"></span></p>
+                                <p class="mb-1"><strong>Check-out:</strong> <span id="confirmCheckOut"></span></p>
+                                <p class="mb-0"><strong>Rate:</strong> <span id="confirmNightlyRate"></span></p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -308,6 +361,7 @@ jane@example.com,456,community_host</pre>
 let currentEventSlug = '{{ event.slug }}';
 let attendees = [];
 let unassignedAttendees = [];
+let assignedAttendees = [];
 let hotelInventory = [];
 let communityInventory = [];
 let selectedAttendeeId = null;
@@ -323,27 +377,30 @@ async function loadData() {
         loadInventory()
     ]);
     updateStats();
+    renderAssignedAttendees();
 }
 
 // Load attendees
 async function loadAttendees() {
     try {
-        const response = await fetch(`/events/api/${currentEventSlug}/accommodation/attendees`);
+        const response = await Promise.race([
+            fetch(`/events/api/${currentEventSlug}/accommodation/attendees`),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Attendee load timed out')), 15000))
+        ]);
         const data = await response.json();
         if (data.success) {
             attendees = data.attendees;
-            unassignedAttendees = attendees.filter(a => !a.has_accommodation);
+            unassignedAttendees = attendees.filter(a => !a.accommodation_assigned);
+            assignedAttendees = attendees.filter(a => a.accommodation_assigned);
             renderAttendees(attendees);
             renderUnassignedAttendees();
+            renderAssignedAttendees();
+        } else {
+            document.getElementById('attendeeList').innerHTML = `<div class="text-center p-4 text-danger"><p>${escapeHtml(data.error || 'Failed to load attendees')}</p></div>`;
         }
     } catch (error) {
         console.error('Error loading attendees:', error);
-        document.getElementById('attendeeList').innerHTML = `
-            <div class="text-center p-4 text-danger">
-                <i class="fas fa-exclamation-triangle fa-2x"></i>
-                <p>Error loading attendees</p>
-            </div>
-        `;
+        document.getElementById('attendeeList').innerHTML = `<div class="text-center p-4 text-danger"><p>${escapeHtml(error.message || 'Error loading attendees')}</p></div>`;
     }
 }
 
@@ -357,14 +414,14 @@ function renderAttendees(attendeesList) {
     }
     
     container.innerHTML = attendeesList.map(attendee => `
-        <div class="list-group-item attendee-item" data-id="${attendee.id}" onclick="selectAttendee(${attendee.id}, '${escapeHtml(attendee.name)}')">
+        <div class="list-group-item attendee-item" data-id="${attendee.registration_ref}" onclick="selectAttendee('${attendee.registration_ref}', '${escapeHtml(attendee.name)}')">
             <div class="d-flex justify-content-between align-items-center">
                 <div class="flex-grow-1">
                     <div class="fw-bold">${escapeHtml(attendee.name)}</div>
                     <div class="small text-muted">${escapeHtml(attendee.email)}</div>
                     <div class="mt-1">
-                        <span class="badge bg-secondary">${escapeHtml(attendee.ticket_type)}</span>
-                        ${attendee.has_accommodation ? 
+                        <span class="badge bg-secondary">${escapeHtml(attendee.registration_status || 'registered')}</span>
+                        ${attendee.accommodation_assigned ? 
                             '<span class="badge assigned-badge ms-1"><i class="fas fa-check"></i> Assigned</span>' : 
                             '<span class="badge unassigned-badge ms-1"><i class="fas fa-clock"></i> Unassigned</span>'
                         }
@@ -389,12 +446,12 @@ function renderUnassignedAttendees() {
     }
     
     container.innerHTML = unassignedAttendees.map(attendee => `
-        <div class="list-group-item attendee-item" data-id="${attendee.id}" onclick="selectAttendee(${attendee.id}, '${escapeHtml(attendee.name)}')">
+        <div class="list-group-item attendee-item" data-id="${attendee.registration_ref}" onclick="selectAttendee('${attendee.registration_ref}', '${escapeHtml(attendee.name)}')">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
                     <div class="fw-bold">${escapeHtml(attendee.name)}</div>
                     <div class="small text-muted">${escapeHtml(attendee.email)}</div>
-                    <div class="small">${escapeHtml(attendee.ticket_type)}</div>
+                    <div class="small">${escapeHtml(attendee.registration_status || 'registered')}</div>
                 </div>
                 <i class="fas fa-chevron-right text-muted"></i>
             </div>
@@ -405,7 +462,10 @@ function renderUnassignedAttendees() {
 // Load inventory
 async function loadInventory() {
     try {
-        const response = await fetch(`/events/api/${currentEventSlug}/accommodation/inventory`);
+        const response = await Promise.race([
+            fetch(`/events/api/${currentEventSlug}/accommodation/inventory`),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Inventory load timed out')), 15000))
+        ]);
         const data = await response.json();
         if (data.success) {
             // Only show unassigned items as available
@@ -417,9 +477,14 @@ async function loadInventory() {
             
             renderHotelInventory();
             renderCommunityInventory();
+        } else {
+            document.getElementById('hotelInventory').innerHTML = `<div class="text-center p-4 text-danger"><p>${escapeHtml(data.error || 'Failed to load inventory')}</p></div>`;
+            document.getElementById('communityInventory').innerHTML = `<div class="text-center p-4 text-muted"><p>No community hosts available.</p></div>`;
         }
     } catch (error) {
         console.error('Error loading inventory:', error);
+        document.getElementById('hotelInventory').innerHTML = `<div class="text-center p-4 text-danger"><p>${escapeHtml(error.message || 'Error loading inventory')}</p></div>`;
+        document.getElementById('communityInventory').innerHTML = `<div class="text-center p-4 text-muted"><p>No community hosts available.</p></div>`;
     }
 }
 
@@ -495,44 +560,94 @@ function renderCommunityInventory() {
     `).join('');
 }
 
-// Select attendee
+// Select attendee (toggle)
 function selectAttendee(attendeeId, attendeeName) {
-    // Remove previous selection
-    document.querySelectorAll('.attendee-item').forEach(el => el.classList.remove('selected'));
-    document.querySelector(`.attendee-item[data-id="${attendeeId}"]`).classList.add('selected');
+    const isAlreadySelected = selectedAttendeeId === attendeeId;
     
-    selectedAttendeeId = attendeeId;
-    selectedAttendeeName = attendeeName;
+    if (isAlreadySelected) {
+        selectedAttendeeId = null;
+        selectedAttendeeName = null;
+        document.querySelectorAll('.attendee-item').forEach(el => el.classList.remove('selected'));
+    } else {
+        document.querySelectorAll('.attendee-item').forEach(el => el.classList.remove('selected'));
+        document.querySelector(`.attendee-item[data-id="${attendeeId}"]`).classList.add('selected');
+        selectedAttendeeId = attendeeId;
+        selectedAttendeeName = attendeeName;
+    }
     
-    // If inventory already selected, show confirmation
-    if (selectedInventoryId && selectedInventoryType) {
+    updateAssignmentActionBar();
+
+    if (selectedInventoryId && selectedInventoryType && selectedAttendeeId) {
         showAssignConfirmModal();
     }
 }
 
-// Select inventory
+// Select inventory (toggle)
 function selectInventory(type, id, name) {
-    // Remove previous selection
-    document.querySelectorAll('.inventory-item').forEach(el => el.classList.remove('selected'));
-    document.querySelector(`.inventory-item[data-id="${id}"]`).classList.add('selected');
+    const isAlreadySelected = selectedInventoryId == id;
     
-    selectedInventoryId = id;
-    selectedInventoryType = type;
-    selectedInventoryDetails = name;
+    if (isAlreadySelected) {
+        selectedInventoryId = null;
+        selectedInventoryType = null;
+        selectedInventoryDetails = null;
+        document.querySelectorAll('.inventory-item').forEach(el => el.classList.remove('selected'));
+    } else {
+        document.querySelectorAll('.inventory-item').forEach(el => el.classList.remove('selected'));
+        document.querySelector(`.inventory-item[data-id="${id}"]`).classList.add('selected');
+        selectedInventoryId = id;
+        selectedInventoryType = type;
+        selectedInventoryDetails = name;
+    }
     
-    // If attendee already selected, show confirmation
-    if (selectedAttendeeId) {
+    updateAssignmentActionBar();
+
+    if (selectedAttendeeId && selectedInventoryId && selectedInventoryType) {
         showAssignConfirmModal();
     }
 }
 
-// Show assignment confirmation modal
+function updateAssignmentActionBar() {
+    const textEl = document.getElementById('assignmentActionText');
+    const btnEl = document.getElementById('assignConfirmBtn');
+    const bar = document.getElementById('assignmentActionBar');
+    if (!textEl || !btnEl || !bar) return;
+
+    if (selectedAttendeeId && selectedInventoryId && selectedInventoryType) {
+        textEl.textContent = `Assign ${selectedAttendeeName || 'attendee'} to ${selectedInventoryDetails || 'booking'}?`;
+        btnEl.classList.remove('d-none');
+        bar.className = 'alert alert-success d-flex align-items-center justify-content-between';
+    } else if (selectedAttendeeId) {
+        textEl.textContent = `Attendee selected: ${selectedAttendeeName || 'attendee'}. Now select a ${selectedInventoryType || 'hotel'} from the right panel.`;
+        btnEl.classList.add('d-none');
+        bar.className = 'alert alert-info d-flex align-items-center justify-content-between';
+    } else if (selectedInventoryId) {
+        textEl.textContent = `${selectedInventoryDetails || 'Booking'} selected. Now select an attendee from the left panel.`;
+        btnEl.classList.add('d-none');
+        bar.className = 'alert alert-info d-flex align-items-center justify-content-between';
+    } else {
+        textEl.textContent = 'Select an attendee from the left panel, then select a booking from the right panel to assign.';
+        btnEl.classList.add('d-none');
+        bar.className = 'alert alert-info d-flex align-items-center justify-content-between';
+    }
+}
+
+// Show assignment confirmation modal with full details
 function showAssignConfirmModal() {
-    document.getElementById('confirmAttendeeName').innerText = selectedAttendeeName;
-    document.getElementById('confirmInventoryDetails').innerHTML = `
-        <strong>${selectedInventoryType === 'hotel' ? '🏨 Hotel' : '❤️ Community Host'}</strong><br>
-        ${selectedInventoryDetails}
-    `;
+    updateAssignmentActionBar();
+    
+    const attendee = attendees.find(a => a.registration_ref === selectedAttendeeId) || {};
+    const allInventory = [...hotelInventory, ...communityInventory];
+    const booking = allInventory.find(b => b.id == selectedInventoryId) || {};
+    
+    document.getElementById('confirmAttendeeName').textContent = attendee.name || selectedAttendeeName || '';
+    document.getElementById('confirmAttendeeEmail').textContent = attendee.email || '';
+    document.getElementById('confirmAttendeeStatus').textContent = attendee.registration_status || attendee.status || 'registered';
+    
+    document.getElementById('confirmPropertyName').textContent = booking.property_name || booking.name || selectedInventoryDetails || '';
+    document.getElementById('confirmRoomType').textContent = booking.room_type || 'Room';
+    document.getElementById('confirmCheckIn').textContent = booking.check_in ? new Date(booking.check_in).toLocaleDateString() : 'TBD';
+    document.getElementById('confirmCheckOut').textContent = booking.check_out ? new Date(booking.check_out).toLocaleDateString() : 'TBD';
+    document.getElementById('confirmNightlyRate').textContent = booking.nightly_rate ? `$${Number(booking.nightly_rate).toFixed(2)}/night` : (booking.price_per_night ? `$${Number(booking.price_per_night).toFixed(2)}/night` : '—');
     
     new bootstrap.Modal(document.getElementById('assignConfirmModal')).show();
 }
@@ -550,8 +665,8 @@ async function confirmAssignment() {
                 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
             },
             body: JSON.stringify({
-                attendee_id: selectedAttendeeId,
-                inventory_id: selectedInventoryId,
+                registration_ref: selectedAttendeeId,
+                booking_ref: selectedInventoryId,
                 inventory_type: selectedInventoryType
             })
         });
@@ -568,9 +683,16 @@ async function confirmAssignment() {
             
             // Remove selection highlights
             document.querySelectorAll('.attendee-item, .inventory-item').forEach(el => el.classList.remove('selected'));
+            updateAssignmentActionBar();
             
             // Reload data
             await loadData();
+            
+            // Switch to assigned tab
+            const assignedTab = document.querySelector('[href="#assignedAttendees"]');
+            if (assignedTab) {
+                assignedTab.click();
+            }
             
             alert('✓ Assignment successful!');
         } else {
@@ -593,12 +715,19 @@ async function unassignAttendee(attendeeId) {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
             },
-            body: JSON.stringify({ attendee_id: attendeeId })
+            body: JSON.stringify({ registration_ref: attendeeId })
         });
         
         const data = await response.json();
         
         if (data.success) {
+            selectedAttendeeId = null;
+            selectedAttendeeName = null;
+            selectedInventoryId = null;
+            selectedInventoryType = null;
+            selectedInventoryDetails = null;
+            document.querySelectorAll('.attendee-item, .inventory-item').forEach(el => el.classList.remove('selected'));
+            updateAssignmentActionBar();
             await loadData();
             alert('Unassigned successfully');
         } else {
@@ -623,7 +752,7 @@ function filterAttendees() {
 // Update stats
 function updateStats() {
     const total = attendees.length;
-    const assigned = attendees.filter(a => a.has_accommodation).length;
+    const assigned = attendees.filter(a => a.accommodation_assigned).length;
     const unassigned = total - assigned;
     const inventoryTotal = hotelInventory.length + communityInventory.length;
     
@@ -633,16 +762,53 @@ function updateStats() {
     document.getElementById('inventoryCount').innerText = inventoryTotal;
 }
 
+// Render assigned attendees
+function renderAssignedAttendees() {
+    const container = document.getElementById('assignedAttendeeList');
+    if (!container) return;
+    
+    if (assignedAttendees.length === 0) {
+        container.innerHTML = `<div class="text-center p-4 text-muted">No assigned attendees yet</div>`;
+        return;
+    }
+    
+    container.innerHTML = assignedAttendees.map(attendee => `
+        <div class="list-group-item attendee-item" data-id="${attendee.registration_ref}">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="flex-grow-1">
+                    <div class="fw-bold">${escapeHtml(attendee.name)}</div>
+                    <div class="small text-muted">${escapeHtml(attendee.email)}</div>
+                    <div class="mt-1">
+                        <span class="badge bg-secondary">${escapeHtml(attendee.registration_status || 'registered')}</span>
+                        <span class="badge assigned-badge ms-1"><i class="fas fa-check"></i> Assigned</span>
+                    </div>
+                    ${attendee.accommodation && attendee.accommodation.property_name ? `
+                        <div class="small text-muted mt-1">
+                            <i class="fas fa-hotel me-1"></i>${escapeHtml(attendee.accommodation.property_name)}
+                            ${attendee.accommodation.check_in ? `(${attendee.accommodation.check_in} → ${attendee.accommodation.check_out || '?'})` : ''}
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-danger" onclick="event.stopPropagation(); unassignAttendee('${attendee.registration_ref}')" title="Unassign">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
 // Export unassigned attendees as CSV
 function exportUnassignedCSV() {
-    const unassigned = attendees.filter(a => !a.has_accommodation);
+    const unassigned = attendees.filter(a => !a.accommodation_assigned);
     if (unassigned.length === 0) {
         alert('All attendees have been assigned!');
         return;
     }
     
-    const headers = ['Name', 'Email', 'Ticket Type', 'Phone'];
-    const rows = unassigned.map(a => [a.name, a.email, a.ticket_type, a.phone || '']);
+    const headers = ['Name', 'Email', 'Status', 'Phone'];
+    const rows = unassigned.map(a => [a.name, a.email, a.registration_status || '', a.phone || '']);
     
     const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -737,6 +903,7 @@ function escapeHtml(text) {
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     loadData();
+    setInterval(loadData, 10000);
 });
 </script>
 {% endblock %}

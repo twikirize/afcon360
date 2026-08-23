@@ -1,0 +1,128 @@
+{#
+  FILE: templates/events/admin/ticketing.html
+  PURPOSE: Admin — platform-wide ticket types / pricing
+  ACCESS: System Admin only
+  RELATED: events.admin_ticketing route
+#}
+
+{% extends "base.html" %}
+
+{% block title %}Ticketing Settings — AFCON360 Admin{% endblock %}
+
+{% block module_styles %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/dashboard.css') }}">
+  <style>
+    .data-table { width:100%; border-collapse:collapse; margin-top:18px; }
+    .data-table th, .data-table td { padding:12px 16px; text-align:left; font-size:13px; border-bottom:1px solid var(--brand-border); }
+    .data-table th { font-family:var(--font-mono); font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--brand-muted); }
+    .data-table td { color:var(--brand-text); }
+    .data-table tr:hover td { background:var(--brand-surface); }
+    .price { font-family:var(--font-mono); font-weight:600; }
+    .price-free { color:#00e5a0; }
+    .pill { padding:3px 9px; border-radius:999px; font-size:11px; font-family:var(--font-mono); }
+    .pill-active { background:rgba(0,229,160,.14); color:#00e5a0; }
+    .pill-inactive { background:rgba(150,150,150,.14); color:#aaa; }
+    .evt-name { font-weight:600; }
+    .evt-sub { font-family:var(--font-mono); font-size:11px; color:var(--brand-muted); }
+    .empty-note { padding:40px; text-align:center; color:var(--brand-muted); font-size:14px; }
+    .summary { display:flex; gap:14px; flex-wrap:wrap; margin-top:18px; }
+    .stat-card {
+      flex:1; min-width:160px; background:var(--brand-surface); border:1px solid var(--brand-border);
+      border-radius:12px; padding:16px 18px;
+    }
+    .stat-card .label { font-family:var(--font-mono); font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--brand-muted); }
+    .stat-card .value { font-size:24px; font-weight:700; color:var(--brand-text); margin-top:6px; font-family:var(--font-mono); }
+  </style>
+{% endblock %}
+
+{% block content %}
+{% set total_types = tickets|length %}
+{% set paid_types = tickets|selectattr('price')|selectattr('price','gt',0)|list|length %}
+{% set free_types = total_types - paid_types %}
+{% set total_capacity = tickets|sum(attribute='capacity') %}
+
+<div class="afcon-admin">
+
+  <div class="topbar">
+    <div class="topbar-brand">
+      <div class="dot"></div>
+      AFCON360 &nbsp;/&nbsp; Ticketing
+    </div>
+    <div class="topbar-right">
+      <span class="topbar-badge">SYSTEM ADMIN</span>
+    </div>
+  </div>
+
+  <div class="page-header">
+    <div>
+      <h1>Ticket <em>Settings</em></h1>
+      <p>All ticket types, pricing and capacity across events</p>
+    </div>
+    <div class="header-actions">
+      <a href="{{ safe_url('events.admin_settings') }}" class="btn-ghost">
+        <i class="fas fa-cogs"></i> Platform Settings
+      </a>
+      <a href="{{ safe_url('events.admin_dashboard') }}" class="btn-ghost">
+        <i class="fas fa-tachometer-alt"></i> Command Centre
+      </a>
+    </div>
+  </div>
+
+  <div class="main-content" style="padding-bottom:60px;">
+
+    <div class="summary">
+      <div class="stat-card"><div class="label">Ticket Types</div><div class="value">{{ total_types }}</div></div>
+      <div class="stat-card"><div class="label">Paid</div><div class="value">{{ paid_types }}</div></div>
+      <div class="stat-card"><div class="label">Free</div><div class="value">{{ free_types }}</div></div>
+      <div class="stat-card"><div class="label">Total Capacity</div><div class="value">{{ total_capacity }}</div></div>
+    </div>
+
+    <div class="panel" style="border-radius:12px;padding:8px 8px 18px;margin-top:18px;">
+      {% if tickets %}
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Ticket Type</th>
+              <th>Event</th>
+              <th>Price</th>
+              <th>Capacity</th>
+              <th>Available</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in tickets %}
+              <tr>
+                <td>{{ t.name }}</td>
+                <td>
+                  {% if t.event %}
+                    <div class="evt-name">{{ t.event.title }}</div>
+                    <div class="evt-sub">{{ t.event.slug }}</div>
+                  {% else %}—{% endif %}
+                </td>
+                <td class="price {% if t.price == 0 %}price-free{% endif %}">
+                  {% if t.price == 0 %}FREE{% else %}{{ '%.2f'|format(t.price) }}{% endif %}
+                </td>
+                <td>{% if t.capacity == 0 %}Unlimited{% else %}{{ t.capacity }}{% endif %}</td>
+                <td>
+                  {% if t.available_seats is none %}—{% elif t.capacity == 0 %}Unlimited{% else %}{{ t.available_seats }}{% endif %}
+                </td>
+                <td>
+                  {% if t.is_active %}
+                    <span class="pill pill-active">Active</span>
+                  {% else %}
+                    <span class="pill pill-inactive">Inactive</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="empty-note">No ticket types found.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

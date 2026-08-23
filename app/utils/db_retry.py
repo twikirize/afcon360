@@ -52,7 +52,17 @@ def retry_on_deadlock(
                     return func(*args, **kwargs)
                 except retry_on as e:
                     last_exception = e
-                    
+
+                    # The failed transaction is now aborted by PostgreSQL. Without
+                    # rolling it back, the next attempt reuses the same session and
+                    # every statement fails with InFailedSqlTransaction. Roll back
+                    # so the retry starts a fresh transaction.
+                    try:
+                        from app.extensions import db
+                        db.session.rollback()
+                    except Exception:
+                        pass
+
                     # Check if it's a deadlock (PostgreSQL error code 40P01)
                     is_deadlock = hasattr(e, 'orig') and hasattr(e.orig, 'pgcode') and e.orig.pgcode == '40P01'
                     

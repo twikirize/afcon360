@@ -96,7 +96,32 @@ class SystemConfig(BaseModel):
             {'key': 'payment_cash_requires_previous_booking', 'value': 'true', 'value_type': 'bool', 'category': 'payments', 'description': 'Require at least 1 previous booking for cash'},
             {'key': 'payment_cash_max_amount', 'value': '500000', 'value_type': 'int', 'category': 'payments', 'description': 'Maximum cash booking amount (UGX)'},
             {'key': 'payment_cash_default_deposit_pct', 'value': '30', 'value_type': 'int', 'category': 'payments', 'description': 'Default deposit percentage for cash bookings'},
+            {'key': 'home_feed_layout', 'value': 'mixed', 'value_type': 'str', 'category': 'homepage', 'description': 'Homepage feed layout mode (mixed/sections/tabbed)', 'is_public': True},
         ]
+
+        # KYC configuration (Owner/Super Admin configurable). Seeded from the
+        # single source of truth in app/kyc_config_schema so the page, the
+        # runtime getters and the database defaults never drift apart.
+        from app.kyc_config_schema import KYC_CONFIG_SCHEMA
+        import json as _json
+
+        for item in KYC_CONFIG_SCHEMA:
+            default = item['default']
+            if item['type'] == 'json':
+                value = _json.dumps(default)
+            elif item['type'] == 'bool':
+                value = 'true' if default else 'false'
+            elif item['type'] == 'int':
+                value = None if default is None else str(int(default))
+            else:
+                value = str(default)
+            defaults.append({
+                'key': item['key'],
+                'value': value,
+                'value_type': item['type'],
+                'category': 'kyc',
+                'description': f"{item['label']}: {item['description']}",
+            })
         created = 0
         for item in defaults:
             if not cls.query.filter_by(key=item['key']).first():

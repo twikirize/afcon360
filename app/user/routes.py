@@ -376,6 +376,20 @@ def dashboard():
         except Exception:
             pass
 
+        recommended_events = []
+        try:
+            from app.events.models import Event as EventModel
+            recommended_events = EventModel.query.filter_by(is_deleted=False).order_by(EventModel.created_at.desc()).limit(6).all()
+        except Exception:
+            pass
+
+        is_organizer = False
+        try:
+            from app.events.models import OrganizerProfile
+            is_organizer = bool(OrganizerProfile.query.filter_by(user_id=current_user.id, is_deleted=False).first())
+        except Exception:
+            pass
+
         wallet_banner = WalletStatusService.get_wallet_banner(org_obj if current_context == 'organization' else user)
         wallet_action_buttons = WalletStatusService.get_action_buttons(org_obj if current_context == 'organization' else user)
 
@@ -400,8 +414,9 @@ def dashboard():
             wallet_action_buttons=wallet_action_buttons,
             priority_actions=priority_actions,
             current_date=date.today().isoformat(),
-            kyc_info=kyc_info,
             tourism_listings=tourism_listings,
+            recommended_events=recommended_events,
+            is_organizer=is_organizer,
             modules=_get_modules(),
             **shell_context,
         )
@@ -416,7 +431,8 @@ def dashboard():
             upcoming_count=0, attended_count=0, total_spent="0.00",
             wallet=None, wallet_balance=0,
             current_date=date.today().isoformat(),
-            kyc_info={}, tourism_listings=[],
+            kyc_info={}, tourism_listings=[], recommended_events=[],
+            is_organizer=False,
             modules=_get_modules(),
             **_get_shell_context(None)
         )

@@ -1,0 +1,99 @@
+{# templates/feed/_item_card.html
+   Shared renderer for one feed item (any type).
+   Expects: item (dict with feed_id, type, title, body, image_url, link_url,
+            author_name, source_module, metadata, created_at, is_pinned)
+
+   The card switches on item.type to show the right icon/visual.
+   This same HTML structure is mirrored by the JS renderer in feed.js
+   for infinite-scroll items — keep them in sync.
+#}
+<article class="feed-item feed-type-{{ item.type }}{% if item.is_pinned %} is-pinned{% endif %}"
+         data-feed-id="{{ item.feed_id }}"
+         data-type="{{ item.type }}">
+
+  {# Pinned badge #}
+  {% if item.is_pinned %}
+  <span class="feed-pin-badge">📌 Pinned</span>
+  {% endif %}
+
+  {# Header: author + type icon #}
+  <header class="feed-item-head">
+    <span class="feed-item-icon feed-icon-{{ item.type }}">
+      {% if item.type == 'post' %}💬
+      {% elif item.type == 'event' %}🏟️
+      {% elif item.type == 'ad' %}📣
+      {% elif item.type == 'system_update' %}🔔
+      {% elif item.type == 'property' %}🏨
+      {% elif item.type == 'transport' %}🚌
+      {% else %}📰
+      {% endif %}
+    </span>
+    <div class="feed-item-meta">
+      <span class="feed-item-author">{{ item.author_name or 'AFCON360' }}</span>
+      {% if item.source_module %}
+      <span class="feed-item-module">{{ item.source_module|capitalize }}</span>
+      {% endif %}
+    </div>
+    {% if item.type == 'ad' %}
+    <span class="feed-sponsored-tag">Sponsored</span>
+    {% endif %}
+  </header>
+
+  {# Body #}
+  <div class="feed-item-body">
+    {% if item.title %}
+    <h3 class="feed-item-title">{{ item.title }}</h3>
+    {% endif %}
+
+    {% if item.body %}
+    <p class="feed-item-text">{{ item.body }}</p>
+    {% endif %}
+
+    {% if item.image_url %}
+    <div class="feed-item-image-wrap">
+      <img src="{{ item.image_url }}" alt="{{ item.title or '' }}" loading="lazy"
+           onerror="this.parentElement.style.display='none'">
+    </div>
+    {% endif %}
+
+    {# Type-specific metadata #}
+    {% if item.type == 'event' and item.metadata %}
+    <div class="feed-item-extras">
+      {% if item.metadata.start_date %}<span class="feed-extra">📅 {{ item.metadata.start_date[:10] }}</span>{% endif %}
+      {% if item.metadata.city %}<span class="feed-extra">📍 {{ item.metadata.city }}{% if item.metadata.country %}, {{ item.metadata.country }}{% endif %}</span>{% endif %}
+      {% if item.metadata.venue %}<span class="feed-extra">🏟 {{ item.metadata.venue }}</span>{% endif %}
+      {% if item.metadata.registration_fee %}<span class="feed-extra">💵 {{ item.metadata.registration_fee }} {{ item.metadata.currency or 'USD' }}</span>{% endif %}
+      {% if item.metadata.featured %}<span class="feed-extra feed-extra-highlight">⭐ Featured</span>{% endif %}
+    </div>
+    {% elif item.type == 'property' and item.metadata %}
+    <div class="feed-item-extras">
+      {% if item.metadata.property_type %}<span class="feed-extra">🏠 {{ item.metadata.property_type }}</span>{% endif %}
+      {% if item.metadata.city %}<span class="feed-extra">📍 {{ item.metadata.city }}{% if item.metadata.country %}, {{ item.metadata.country }}{% endif %}</span>{% endif %}
+      {% if item.metadata.price_per_night %}<span class="feed-extra">💵 {{ item.metadata.price_per_night }}/night</span>{% endif %}
+    </div>
+    {% elif item.type == 'transport' and item.metadata %}
+    <div class="feed-item-extras">
+      {% if item.metadata.route_type %}<span class="feed-extra">{{ item.metadata.route_type }}</span>{% endif %}
+      {% if item.metadata.primary_zone %}<span class="feed-extra">📍 {{ item.metadata.primary_zone }}</span>{% endif %}
+      {% if item.metadata.price_per_seat %}<span class="feed-extra">💵 {{ item.metadata.price_per_seat }}/seat</span>{% endif %}
+      {% if item.metadata.available_seats %}<span class="feed-extra">🪑 {{ item.metadata.available_seats }} seats</span>{% endif %}
+    </div>
+    {% elif item.type == 'post' and item.metadata %}
+    <div class="feed-item-extras">
+      {% if item.metadata.likes is defined %}<span class="feed-extra">❤ {{ item.metadata.likes }}</span>{% endif %}
+      {% if item.metadata.comments is defined %}<span class="feed-extra">💬 {{ item.metadata.comments }}</span>{% endif %}
+    </div>
+    {% elif item.type == 'system_update' and item.metadata %}
+    <div class="feed-item-extras">
+      {% if item.metadata.module_label %}<span class="feed-extra feed-extra-highlight">{{ item.metadata.module_label }}</span>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {# Footer: action link #}
+  {% if item.link_url %}
+  <footer class="feed-item-foot">
+    <a href="{{ item.link_url }}" class="feed-item-link">View Details →</a>
+  </footer>
+  {% endif %}
+</article>

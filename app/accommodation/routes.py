@@ -2564,7 +2564,27 @@ def shared_registration(token):
     roster_form = GuestRosterEntryForm()
     request_form = SpecialRequestsForm()
     if request.method == "POST":
-        if link.is_full:
+        submitted_email = (roster_form.guest_email.data or "").strip().lower()
+        existing = None
+        if submitted_email:
+            existing = GuestRegistration.query.filter_by(
+                booking_id=booking.id, guest_email=submitted_email, is_active=True
+            ).first()
+
+        is_event_coordination_slot = (
+            existing
+            and existing.registration_source == "event_coordination"
+        )
+
+        if is_event_coordination_slot and existing.status == "completed":
+            return render_template(
+                "accommodation/guest/registration_link.html",
+                link=link,
+                booking=booking,
+                registered=True,
+            )
+
+        if not is_event_coordination_slot and link.is_full:
             return render_template(
                 "accommodation/guest/registration_link.html",
                 link=link,
@@ -2583,10 +2603,8 @@ def shared_registration(token):
             ), 400
 
         try:
-            # Lock the link row so two simultaneous submissions cannot both
-            # pass the capacity check.
             locked_link = BookingRegistrationLinkService.find_by_token(token, lock=True)
-            if locked_link.is_full:
+            if not is_event_coordination_slot and locked_link.is_full:
                 db.session.rollback()
                 return render_template(
                     "accommodation/guest/registration_link.html",
@@ -2596,19 +2614,34 @@ def shared_registration(token):
                     roster_form=roster_form,
                     request_form=request_form,
                 ), 409
-            registration = RegistrationService.create(
-                booking,
-                name=roster_form.guest_name.data,
-                email=roster_form.guest_email.data,
-                phone=(
+
+            if is_event_coordination_slot:
+                existing.guest_name = (roster_form.guest_name.data or existing.guest_name).strip()[:255]
+                existing.guest_phone = (
                     f"{roster_form.guest_phone_country_code.data.strip()}"
                     f"{roster_form.guest_phone_national.data.strip()}"
-                ),
-                id_document_type=roster_form.id_document_type.data,
-                source="self",
-                status="completed",
-            )
-            db.session.flush()
+                ).strip()[:50]
+                existing.id_document_type = roster_form.id_document_type.data or existing.id_document_type
+                existing.is_placeholder = False
+                complete = bool(existing.guest_name and existing.guest_email and existing.guest_phone and existing.id_document_type)
+                existing.status = "completed" if complete else "in_progress"
+                db.session.flush()
+                registration = existing
+            else:
+                registration = RegistrationService.create(
+                    booking,
+                    name=roster_form.guest_name.data,
+                    email=submitted_email,
+                    phone=(
+                        f"{roster_form.guest_phone_country_code.data.strip()}"
+                        f"{roster_form.guest_phone_national.data.strip()}"
+                    ),
+                    id_document_type=roster_form.id_document_type.data,
+                    source="self",
+                    status="completed",
+                )
+                db.session.flush()
+
             request_text = (request_form.special_requests.data or "").strip()
             if request_text:
                 SpecialRequestService.add_request(
@@ -2618,6 +2651,7 @@ def shared_registration(token):
                     guest_registration_id=registration.id,
                     source="guest_self_registration",
                 )
+                db.session.commit()
             else:
                 db.session.commit()
             return render_template(
@@ -2645,6 +2679,92 @@ def shared_registration(token):
         roster_form=roster_form,
         request_form=request_form,
         full=link.is_full,
+    )
+
+
+@accommodation_bp.route("/assignment/<token>", methods=["GET", "POST"], endpoint="assignment_completion")
+@limiter.limit("20 per minute")
+def assignment_completion(token):
+    """Attendee-specific accommodation completion via event assignment token."""
+    from app.accommodation.booking_forms import GuestRosterEntryForm, SpecialRequestsForm
+    from app.events.models import EventAssignment
+
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    assignment = EventAssignment.query.filter_by(
+        acc_link_token_hash=token_hash, is_deleted=False
+    ).first()
+    if not assignment:
+        return render_template("accommodation/guest/assignment_completion.html", assignment=None, expired=True), 404
+
+    if assignment.acc_link_expires_at and assignment.acc_link_expires_at < datetime.now(timezone.utc):
+        return render_template("accommodation/guest/assignment_completion.html", assignment=None, expired=True), 410
+
+    booking = db.session.get(AccommodationBooking, assignment.accommodation_booking_id)
+    if not booking or booking.is_deleted:
+        return render_template("accommodation/guest/assignment_completion.html", assignment=None, expired=True), 404
+
+    # Resolve the specific guest registration slot for this assignment
+    slot = GuestRegistration.query.filter_by(
+        booking_id=booking.id,
+        event_assignment_id=assignment.id,
+        is_active=True
+    ).first()
+    if not slot:
+        return render_template("accommodation/guest/assignment_completion.html", assignment=None, expired=True), 404
+
+    roster_form = GuestRosterEntryForm(obj=slot)
+    request_form = SpecialRequestsForm()
+
+    if request.method == "POST":
+        if not roster_form.validate_on_submit():
+            return render_template(
+                "accommodation/guest/assignment_completion.html",
+                assignment=assignment,
+                booking=booking,
+                slot=slot,
+                roster_form=roster_form,
+                request_form=request_form,
+            ), 400
+
+        slot.guest_name = (roster_form.guest_name.data or slot.guest_name).strip()[:255]
+        slot.guest_phone = (
+            f"{roster_form.guest_phone_country_code.data.strip()}"
+            f"{roster_form.guest_phone_national.data.strip()}"
+        ).strip()[:50]
+        slot.id_document_type = roster_form.id_document_type.data or slot.id_document_type
+        slot.is_placeholder = False
+        complete = bool(slot.guest_name and slot.guest_email and slot.guest_phone and slot.id_document_type)
+        slot.status = "completed" if complete else "in_progress"
+        db.session.flush()
+
+        request_text = (request_form.special_requests.data or "").strip()
+        if request_text:
+            SpecialRequestService.add_request(
+                booking.id,
+                request_text,
+                request_type="other",
+                guest_registration_id=slot.id,
+                source="guest_self_registration",
+            )
+            db.session.commit()
+        else:
+            db.session.commit()
+
+        return render_template(
+            "accommodation/guest/assignment_completion.html",
+            assignment=assignment,
+            booking=booking,
+            slot=slot,
+            registered=True,
+        )
+
+    return render_template(
+        "accommodation/guest/assignment_completion.html",
+        assignment=assignment,
+        booking=booking,
+        slot=slot,
+        roster_form=roster_form,
+        request_form=request_form,
     )
 
 

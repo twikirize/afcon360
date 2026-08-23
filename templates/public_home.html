@@ -3,6 +3,12 @@
 {% block styles %}
 {{ super() }}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/global/home.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/feed/feed.css') }}">
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/feed/feed.js') }}" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -81,7 +87,13 @@
       Tickets
     </a>
 
-    <!-- Hotel Ad -->
+    <!-- Dynamic Ad Slots — fall back to hardcoded placeholders -->
+    {% if left_ads %}
+      {% for ad in left_ads %}
+        {% include 'feed/_sidebar_ad.html' %}
+      {% endfor %}
+    {% else %}
+    <!-- Hotel Ad (placeholder fallback) -->
     <div class="left-ad">
       <div class="left-ad-placeholder hotel" style="position:relative;">
         <div style="font-size:2.5rem;margin-bottom:0.4rem;">🏨✨</div>
@@ -93,7 +105,7 @@
       </div>
     </div>
 
-    <!-- Airline Ad -->
+    <!-- Airline Ad (placeholder fallback) -->
     <div class="left-ad">
       <div class="left-ad-placeholder airline" style="position:relative;">
         <div style="font-size:2.5rem;margin-bottom:0.4rem;">✈️⭐</div>
@@ -104,6 +116,7 @@
         </div>
       </div>
     </div>
+    {% endif %}
 
     <!-- Host CTA -->
     {% if session.get('user_id') %}
@@ -122,10 +135,39 @@
   <!-- ====== END LEFT SIDEBAR ====== -->
 
 
-  <!-- ====== MAIN CONTENT ====== -->
-  <main class="home-main">
+  <!-- ====== MAIN CONTENT (Dynamic Feed) ====== -->
+  <main class="home-main" id="feed-container"
+        data-layout="{{ feed_layout }}"
+        data-seed="{{ feed_seed }}"
+        data-next-page="{{ feed_next_page }}"
+        data-has-more="{{ feed_has_more }}">
 
-    <!-- Featured Events -->
+    <!-- Quick Actions (utility bar) -->
+    <section>
+      <div class="quick-actions">
+        <a href="{{ safe_url('transport.home') }}" class="quick-action {% if not modules.get('transport') %}disabled{% endif %}" {% if not modules.get('transport') %}onclick="event.preventDefault(); flash('Transport module is currently disabled', 'warning');"{% endif %}>
+          <span class="quick-action-icon">✈️</span>
+          <span>Book Flights</span>
+          {% if not modules.get('transport') %}<span class="disabled-badge">Disabled</span>{% endif %}
+        </a>
+        <a href="{{ safe_url('accommodation.guest_search') }}" class="quick-action {% if not modules.get('accommodation') %}disabled{% endif %}" {% if not modules.get('accommodation') %}onclick="event.preventDefault(); flash('Accommodation module is currently disabled', 'warning');"{% endif %}>
+          <span class="quick-action-icon">🏨</span>
+          <span>Find Accommodation</span>
+          {% if not modules.get('accommodation') %}<span class="disabled-badge">Disabled</span>{% endif %}
+        </a>
+        <a href="{{ links.tourism_home }}" class="quick-action {% if links.tourism_home == '#' %}disabled{% endif %}" {% if links.tourism_home == '#' %}onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"{% endif %}>
+          <span class="quick-action-icon">🗺️</span>
+          <span>Explore Tourism</span>
+          {% if links.tourism_home == '#' %}<span class="disabled-badge">Disabled</span>{% endif %}
+        </a>
+        <a href="{% if session.get('user_id') %}{{ safe_url('wallet.wallet_dashboard') }}{% else %}{{ safe_url('wallet.wallet_home') }}{% endif %}" class="quick-action">
+          <span class="quick-action-icon">🎟️</span>
+          <span>Buy Tickets &amp; Open Wallet</span>
+        </a>
+      </div>
+    </section>
+
+    <!-- ── STANDARD FEATURED EVENTS (always visible) ── -->
     <section>
       <div class="section-head">
         <h2 class="section-title">Featured Events</h2>
@@ -189,7 +231,7 @@
       </div>
     </section>
 
-    <!-- Live & Upcoming -->
+    <!-- ── STANDARD LIVE & UPCOMING (always visible) ── -->
     <section>
       <div class="section-head">
         <h2 class="section-title">Live &amp; Upcoming <span>Events</span></h2>
@@ -233,35 +275,31 @@
       </div>
     </section>
 
-    <!-- Quick Actions -->
-    <section>
-      <div class="quick-actions">
-        <a href="{{ safe_url('transport.home') }}" class="quick-action {% if not modules.get('transport') %}disabled{% endif %}" {% if not modules.get('transport') %}onclick="event.preventDefault(); flash('Transport module is currently disabled', 'warning');"{% endif %}>
-          <span class="quick-action-icon">✈️</span>
-          <span>Book Flights</span>
-          {% if not modules.get('transport') %}<span class="disabled-badge">Disabled</span>{% endif %}
-        </a>
-        <a href="{{ safe_url('accommodation.guest_search') }}" class="quick-action {% if not modules.get('accommodation') %}disabled{% endif %}" {% if not modules.get('accommodation') %}onclick="event.preventDefault(); flash('Accommodation module is currently disabled', 'warning');"{% endif %}>
-          <span class="quick-action-icon">🏨</span>
-          <span>Find Accommodation</span>
-          {% if not modules.get('accommodation') %}<span class="disabled-badge">Disabled</span>{% endif %}
-        </a>
-        <a href="{{ links.tourism_home }}" class="quick-action {% if links.tourism_home == '#' %}disabled{% endif %}" {% if links.tourism_home == '#' %}onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"{% endif %}>
-          <span class="quick-action-icon">🗺️</span>
-          <span>Explore Tourism</span>
-          {% if links.tourism_home == '#' %}<span class="disabled-badge">Disabled</span>{% endif %}
-        </a>
-        <a href="{{ links.tourism_home }}" class="quick-action {% if links.tourism_home == '#' %}disabled{% endif %}" {% if links.tourism_home == '#' %}onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"{% endif %}>
-          <span class="quick-action-icon">🌍</span>
-          <span>Explore Tourism</span>
-          {% if not modules.get('tourism') %}<span class="disabled-badge">Disabled</span>{% endif %}
-        </a>
-        <a href="{% if session.get('user_id') %}{{ safe_url('wallet.wallet_dashboard') }}{% else %}{{ safe_url('wallet.wallet_home') }}{% endif %}" class="quick-action">
-          <span class="quick-action-icon">🎟️</span>
-          <span>Buy Tickets &amp; Open Wallet</span>
-        </a>
-      </div>
-    </section>
+    <!-- ── DYNAMIC FEED ── -->
+    <!-- Feed layout toggle — visible to owner/super_admin only -->
+    {% if user_highest_role in ['owner', 'super_admin'] %}
+    <div class="feed-layout-toggle-bar" style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.8rem;background:#fff;border:1px solid #e0e0e0;border-radius:8px;margin-bottom:0.5rem;">
+      <span style="font-size:0.78rem;color:#666;font-weight:600;">Feed Layout:</span>
+      <form id="feed-layout-toggle-form" class="feed-layout-toggle" style="display:flex;gap:0.4rem;align-items:center;">
+        <select id="feed-layout-select">
+          <option value="mixed" {% if feed_layout == 'mixed' %}selected{% endif %}>Mixed Timeline</option>
+          <option value="sections" {% if feed_layout == 'sections' %}selected{% endif %}>Stacked Sections</option>
+          <option value="tabbed" {% if feed_layout == 'tabbed' %}selected{% endif %}>Tabbed</option>
+        </select>
+        <button type="submit">Apply</button>
+      </form>
+    </div>
+    {% endif %}
+
+    {% if feed_layout == 'mixed' %}
+      {% include 'feed/_layout_mixed.html' %}
+    {% elif feed_layout == 'sections' %}
+      {% include 'feed/_layout_sections.html' %}
+    {% elif feed_layout == 'tabbed' %}
+      {% include 'feed/_layout_tabbed.html' %}
+    {% else %}
+      {% include 'feed/_layout_mixed.html' %}
+    {% endif %}
 
     <!-- Host Your Event Banner -->
     <section>
@@ -283,7 +321,13 @@
   <!-- ====== RIGHT SIDEBAR ====== -->
   <aside class="home-right">
 
-    <!-- Luxury Hotel Ad -->
+    <!-- Dynamic Ad Slots — fall back to hardcoded placeholders -->
+    {% if right_ads %}
+      {% for ad in right_ads %}
+        {% include 'feed/_sidebar_ad.html' %}
+      {% endfor %}
+    {% else %}
+    <!-- Luxury Hotel Ad (placeholder fallback) -->
     <div class="right-ad">
       <div class="right-ad-img-wrap">🏨✨</div>
       <div class="right-ad-head">
@@ -295,7 +339,7 @@
       </div>
     </div>
 
-    <!-- Airline Ad -->
+    <!-- Airline Ad (placeholder fallback) -->
     <div class="right-ad">
       <div class="right-ad-img-wrap airline">✈️⭐</div>
       <div class="right-ad-head">
@@ -306,6 +350,7 @@
         <a href="#" class="right-ad-btn">Book Flights <span>›</span></a>
       </div>
     </div>
+    {% endif %}
 
   </aside>
   <!-- ====== END RIGHT SIDEBAR ====== -->

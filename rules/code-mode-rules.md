@@ -1,5 +1,8 @@
 # Code Mode — AFCON360 Specific Instructions
 
+Apply `agent-governance-rules.md` before using this checklist. Do not perform
+model, migration, wallet, identity, or frontend checks for unrelated changes.
+
 ## Before You Write Any Code
 1. Identify which module is being touched (events, wallet, transport, etc.)
 2. Check if the task involves wallet — if yes, treat as HIGH RISK and be extra conservative

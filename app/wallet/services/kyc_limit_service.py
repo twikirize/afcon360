@@ -92,47 +92,125 @@ class KYCLimitService:
         user_id: int,
         amount: Decimal,
         action: str,
-        currency: str = 'UGX'
+        currency: str = 'UGX',
+        recipient_user_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Check if a transaction is allowed based on KYC level.
-        
+
         Args:
-            user_id: Internal user ID
+            user_id: Internal user OR organisation ID (organisation wallets use the
+                     organisation id as the account owner).
             amount: Transaction amount
             action: One of 'send', 'receive', 'withdraw', 'deposit'
             currency: Currency code
-            
+            recipient_user_id: Optional recipient owner id, used to detect a
+                     "personal transfer" (organ -> individual) which forces full KYB.
+
         Returns:
-            Dict with 'allowed' (bool) and 'reason' (str if not allowed)
+            Dict with 'allowed' (bool) and 'reason' (str if not allowed).
         """
+        # ── Organisation KYB gating ──
+        # An organisation wallet's user_id is the organisation id, so a lookup
+        # that misses User resolves to an Organisation. Org KYB rules then apply.
+        from app.identity.models.organisation import Organisation
+        org = db.session.get(Organisation, user_id)
+        if org is not None and not getattr(org, "is_deleted", False):
+            return cls._check_org_transaction_allowed(org, amount, action, currency, recipient_user_id)
+
         kyc_level = cls.get_user_kyc_level(user_id)
         limits = cls.get_limits(kyc_level)
-        
+
         action_map = {
             'send': 'can_send',
             'receive': 'can_receive',
             'withdraw': 'can_withdraw',
             'deposit': 'can_deposit'
         }
-        
+
         allowed_attr = action_map.get(action)
         if not allowed_attr:
             return {'allowed': False, 'reason': f'Unknown action: {action}'}
-        
+
         if not limits.get(allowed_attr, False):
             return {
                 'allowed': False,
                 'reason': f'{action.capitalize()} not permitted at KYC level {limits["label"]} (level {kyc_level}). Complete KYC verification to unlock.'
             }
-        
+
         if amount > limits['per_txn_limit']:
             return {
                 'allowed': False,
                 'reason': f'Per-transaction limit for {limits["label"]} tier is {limits["per_txn_limit"]:,.0f} {currency}. Amount: {amount:,.0f}'
             }
-        
+
         return {'allowed': True}
+
+    @classmethod
+    def _check_org_transaction_allowed(
+        cls,
+        org,
+        amount,
+        action: str,
+        currency: str,
+        recipient_user_id: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Apply two-tier organisation KYB gating to a transaction."""
+        from app.identity.services.organisation_kyb_service import OrganisationKYBService
+
+        status = OrganisationKYBService.compute_status(org)
+        pending_keys = [p["key"] for p in status["pending_requirements"]]
+
+        # L1 (basic KYB) is required before the organisation can transact at all.
+        if not status["is_operational_kyb"]:
+            needs_license = "license" in pending_keys
+            return {
+                "allowed": False,
+                "reason": (
+                    "Complete your organisation KYB (business registration, identity and tax"
+                    + (" and operating licence" if needs_license else "")
+                    + ") before transacting."
+                ),
+                "kyb_required": "basic",
+                "pending": pending_keys,
+            }
+
+        # L2 (full KYB incl. source of funds) only for personal transfers / large-value.
+        if OrganisationKYBService.requires_full_kyb(org, amount, currency, recipient_user_id):
+            if not status["is_full_kyb"]:
+                return {
+                    "allowed": False,
+                    "reason": (
+                        "This transaction requires full organisation KYB, including a verified "
+                        "source of funds. Complete the remaining verification steps to proceed."
+                    ),
+                    "kyb_required": "full",
+                    "pending": pending_keys,
+                }
+
+        # Passed KYB gates; apply standard amount/limit checks using the mapped level.
+        kyc_level = status["kyb_level"]  # 1 (basic) or 2 (full)
+        limits = cls.get_limits(kyc_level)
+        action_map = {
+            'send': 'can_send',
+            'receive': 'can_receive',
+            'withdraw': 'can_withdraw',
+            'deposit': 'can_deposit'
+        }
+        allowed_attr = action_map.get(action)
+        if not allowed_attr:
+            return {'allowed': False, 'reason': f'Unknown action: {action}'}
+        if not limits.get(allowed_attr, False):
+            return {
+                'allowed': False,
+                'reason': f'{action.capitalize()} not permitted for this organisation KYB tier.',
+            }
+        if amount > limits['per_txn_limit']:
+            return {
+                'allowed': False,
+                'reason': f'Per-transaction limit for this organisation KYB tier is {limits["per_txn_limit"]:,.0f} {currency}. Amount: {amount:,.0f}'
+            }
+        return {'allowed': True, 'kyb_level': kyc_level}
 
     @classmethod
     def check_volume_limits(

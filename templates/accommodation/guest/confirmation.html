@@ -351,8 +351,9 @@
                 {% if booking_cancelled %}
                 Keep this reference for your records. The reservation cannot be checked in.
                 {% else %}
+                {% set _confirm_email = booking.primary_guest_email or booking.guest_email or booking.booked_by_email_snapshot %}
                 A confirmation has been sent to
-                <strong>{{ booking.primary_guest_email | default(booking.guest_email) }}</strong>
+                <strong>{{ _confirm_email if _confirm_email else "your email on file" }}</strong>
                 {% endif %}
             </div>
 

@@ -333,7 +333,11 @@ def submit_national_id():
             id_type="national_id",             # Required field
             document_type="national_id",       # Required field
             id_number=id_number,               # Actual ID (unmasked for DB)
-            status="manual_review" if result.get("manual_review_required") else "pending",
+            status=(
+                "verified" if result.get("auto_verified")
+                else "manual_review" if result.get("manual_review_required")
+                else "pending"
+            ),
             id_number_masked=result.get("id_number"), # Masked version from result
             # verification_id is a BIGINT foreign key, not a string
             # Store the NIRA reference in reference_code field
@@ -353,11 +357,14 @@ def submit_national_id():
 
         db.session.commit()
 
-        flash(
-            "Your National ID has been submitted for verification. "
-            "A compliance officer will review it shortly.",
-            "success",
-        )
+        if result.get("auto_verified"):
+            flash("Your National ID has been verified successfully.", "success")
+        else:
+            flash(
+                "Your National ID has been submitted for verification. "
+                "A compliance officer will review it shortly.",
+                "success",
+            )
         return redirect(url_for("kyc.upgrade"))
 
     except Exception as exc:
@@ -561,6 +568,24 @@ def status():
                            organisation_reupload_requests=(
                                _get_organisation_reupload_requests(user_orgs)
                            ))
+
+
+def _get_verified_id_types(user_id):
+    """
+    Return the set of ``id_type`` values the user has already verified.
+
+    Used to gate the individual upload form so a document type that compliance
+    has already approved is not re-prompted / re-submitted. Compliance-requested
+    replacements bypass this gate via the dedicated reupload token flow.
+    """
+    from app.kyc.models import KycRecord
+
+    VERIFIED = {"verified", "approved"}
+    verified = set()
+    for record in KycRecord.query.filter_by(user_id=user_id).all():
+        if (record.status or "pending").lower() in VERIFIED and record.id_type:
+            verified.add(record.id_type.lower())
+    return verified
 
 
 def _get_user_organisations():
@@ -862,6 +887,32 @@ def verify_upload():
             id_type = request.form.get('id_type')
             id_number = request.form.get('id_number')
 
+            # Reject document types the Owner/Super Admin have disabled.
+            from app.kyc_config_schema import get_kyc_settings
+            accepted_id_types = [
+                t.lower() for t in get_kyc_settings().get(
+                    "kyc_accepted_id_types",
+                    ["national_id", "passport", "driver_license", "voter_card"],
+                )
+            ]
+            if id_type and id_type.lower() not in accepted_id_types:
+                flash_form_error(
+                    f'{id_type} verification is not currently accepted. '
+                    'Please choose an accepted document type.'
+                )
+                return redirect(url_for('kyc.upload'))
+
+            # Per-type gate: do not re-accept a document type compliance has
+            # already verified. Users must use the compliance-issued replacement
+            # link instead of starting a fresh submission for that type.
+            if id_type and id_type.lower() in _get_verified_id_types(current_user.id):
+                flash_form_error(
+                    f'You have already verified a {id_type} document. '
+                    'If compliance requested a clearer copy, use the replacement '
+                    'link shown on this page.'
+                )
+                return redirect(url_for('kyc.upload'))
+
             # Prefer an uploaded file; fall back to a pasted URL. A file is
             # uploaded server-side in this same request (no client polling).
             document_url = None
@@ -963,15 +1014,25 @@ def verify_upload():
     show_individual = not in_org_context
     show_organization = in_org_context
 
+    verified_id_types = _get_verified_id_types(current_user.id)
+
+    from app.kyc_config_schema import get_kyc_settings
+    accepted_id_types = get_kyc_settings().get(
+        "kyc_accepted_id_types",
+        ["national_id", "passport", "driver_license", "voter_card"],
+    )
+
     return render_template('kyc/verify_upload.html',
-                           user_orgs=user_orgs,
-                           in_org_context=in_org_context,
-                           active_org_id=active_org_id,
-                           show_individual=show_individual,
-                           show_organization=show_organization,
-                           reupload_requests=individual_reupload_requests,
-                           organisation_reupload_requests=organisation_reupload_requests,
-                           requested_reupload=requested_reupload)
+                            user_orgs=user_orgs,
+                            in_org_context=in_org_context,
+                            active_org_id=active_org_id,
+                            show_individual=show_individual,
+                            show_organization=show_organization,
+                            verified_id_types=verified_id_types,
+                            accepted_id_types=accepted_id_types,
+                            reupload_requests=individual_reupload_requests,
+                            organisation_reupload_requests=organisation_reupload_requests,
+                            requested_reupload=requested_reupload)
 
 
 # ============================================================================

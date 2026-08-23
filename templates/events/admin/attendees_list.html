@@ -18,17 +18,28 @@
                         <i class="fas fa-users"></i>
                         Attendees: {{ event.name }}
                     </h1>
-                    <p class="lead">Manage event attendees and assign accommodation/transport</p>
+                    <p class="lead">
+                        {% set scope = [] %}
+                        {% if perms.get('accommodation.assign') %}{% set _ = scope.append('accommodation') %}{% endif %}
+                        {% if perms.get('transport.assign') %}{% set _ = scope.append('transport') %}{% endif %}
+                        {% if scope %}
+                            Manage event attendees and assign {{ scope|join(' / ') }}
+                        {% else %}
+                            View event attendees
+                        {% endif %}
+                    </p>
                 </div>
                 <div>
                     <a href="{{ url_for('events.event_assignment.assignment_dashboard', event_ref=event.public_id) }}"
                        class="btn btn-outline-primary">
                         <i class="fas fa-arrow-left"></i> Back to Dashboard
                     </a>
+                    {% if perms.get('assignment.view') %}
                     <a href="{{ url_for('events.event_assignment.export_assignments', event_ref=event.public_id) }}"
                        class="btn btn-outline-success ms-2">
                         <i class="fas fa-download"></i> Export CSV
                     </a>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -142,7 +153,13 @@
                                 {% endif %}
                             </td>
                             <td>
+                                {% set can_accom = perms.get('accommodation.assign') %}
+                                {% set can_accom_cancel = perms.get('accommodation.cancel') %}
+                                {% set can_trans = perms.get('transport.assign') %}
+                                {% set can_trans_cancel = perms.get('transport.cancel') %}
+                                {% if can_accom or can_accom_cancel or can_trans or can_trans_cancel %}
                                 <div class="btn-group btn-group-sm">
+                                    {% if can_accom %}
                                     <button type="button"
                                             class="btn btn-outline-primary assign-accommodation-btn"
                                             data-bs-toggle="modal"
@@ -152,12 +169,14 @@
                                             >
                                         <i class="fas fa-bed"></i> {% if assignment and assignment.accommodation_booking_id %}Reassign{% else %}Accommodation{% endif %}
                                     </button>
-                                    {% if assignment and assignment.accommodation_booking_id %}
+                                    {% endif %}
+                                    {% if assignment and assignment.accommodation_booking_id and can_accom_cancel %}
                                     <button type="button" class="btn btn-outline-danger cancel-coordination-btn"
                                             data-registration-ref="{{ reg.registration_ref }}" data-capability="accommodation">
                                         <i class="fas fa-times"></i> Cancel
                                     </button>
                                     {% endif %}
+                                    {% if can_trans %}
                                     <button type="button"
                                             class="btn btn-outline-info assign-transport-btn"
                                             data-bs-toggle="modal"
@@ -167,13 +186,17 @@
                                             >
                                         <i class="fas fa-bus"></i> {% if assignment and assignment.transport_booking_id %}Reassign{% else %}Transport{% endif %}
                                     </button>
-                                    {% if assignment and assignment.transport_booking_id %}
+                                    {% endif %}
+                                    {% if assignment and assignment.transport_booking_id and can_trans_cancel %}
                                     <button type="button" class="btn btn-outline-danger cancel-coordination-btn"
                                             data-registration-ref="{{ reg.registration_ref }}" data-capability="transport">
                                         <i class="fas fa-times"></i> Cancel
                                     </button>
                                     {% endif %}
                                 </div>
+                                {% else %}
+                                <span class="text-muted small">View only</span>
+                                {% endif %}
                             </td>
                         </tr>
                         {% else %}

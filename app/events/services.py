@@ -209,19 +209,25 @@ class EventService:
         Redis is used only for presentation.  Passing ``use_cache=False`` is
         required by mutation paths so capacity and deadlines are re-read from
         the database immediately before creating a registration.
+
+        When caching is enabled the (potentially expensive) snapshot is
+        computed under singleflight so a cache stampede at sale-open time T
+        collapses to a single DB read per key.
         """
         now = cls._as_utc(now or datetime.now(timezone.utc))
         cache_key = cls._registration_cache_key(event)
         if use_cache and redis_client:
-            try:
-                cached = redis_client.get(cache_key)
-                if cached:
-                    if isinstance(cached, bytes):
-                        cached = cached.decode("utf-8")
-                    return json.loads(cached)
-            except Exception as exc:
-                logger.debug("Event availability cache read failed: %s", exc)
+            from app.utils.singleflight import singleflight_json
 
+            ttl = int(current_app.config.get("EVENT_AVAILABILITY_CACHE_TTL", 30))
+            return singleflight_json(
+                cache_key, lambda: cls._availability_snapshot(event, now), ttl
+            )
+        return cls._availability_snapshot(event, now)
+
+    @classmethod
+    def _availability_snapshot(cls, event, now: datetime) -> Dict[str, Any]:
+        """Pure computation of the public availability snapshot (no caching)."""
         event_end = event.end_date
         expired = bool(event_end and event_end < now.date())
         event_phase = "upcoming"
@@ -311,12 +317,6 @@ class EventService:
             "is_sold_out": event_sold_out,
             "ticket_types": tickets,
         }
-        if use_cache and redis_client:
-            try:
-                ttl = int(current_app.config.get("EVENT_AVAILABILITY_CACHE_TTL", 30))
-                redis_client.set(cache_key, json.dumps(snapshot), ex=max(1, ttl))
-            except Exception as exc:
-                logger.debug("Event availability cache write failed: %s", exc)
         return snapshot
 
     @staticmethod
@@ -330,7 +330,7 @@ class EventService:
 
     @classmethod
     def _registration_gate_error(cls, event, ticket_type_id=None) -> Optional[str]:
-        snapshot = cls.get_registration_availability(event, use_cache=False)
+        snapshot = cls._availability_snapshot(event, datetime.now(timezone.utc))
         if snapshot["state"] != RegistrationAvailability.OPEN.value:
             return snapshot["message"]
         if ticket_type_id:
@@ -691,6 +691,72 @@ class EventService:
 
             db.session.commit()
 
+            # Create EventRole for the event owner (individual or organization)
+            try:
+                from app.events.models import EventRole
+                if creator_type == 'individual':
+                    owner_role = EventRole(
+                        event_id=event.id,
+                        user_id=user_id,
+                        role="owner",
+                        title="Event Owner",
+                        assigned_by_id=user_id,
+                        permissions=[
+                            'view_coordination', 'manage_coordination', 'check_in',
+                            'guest.view', 'guest.create', 'guest.edit', 'guest.import',
+                            'guest.archive', 'guest.link_account', 'guest.merge',
+                            'assignment.view', 'accommodation.assign', 'accommodation.cancel',
+                            'accommodation.allocate_room', 'transport.assign', 'transport.cancel',
+                            'transport.plan', 'tourism.assign', 'tourism.cancel',
+                            'experience.assign', 'wallet.view', 'allowance.create',
+                            'allowance.adjust', 'wallet.authorise_spend', 'financial.approve',
+                            'financial.view', 'journey.view', 'journey.manage',
+                            'journey.override', 'exception.resolve', 'coverage.view',
+                            'group.view', 'group.create', 'group.edit', 'group.bulk_assign',
+                            'group.vip_manage', 'notify.guest', 'notify.bulk', 'message.view',
+                        ],
+                    )
+                    db.session.add(owner_role)
+                elif creator_type == 'organization' and organization_id:
+                    # For organization events, create EventRole for org admins/owners
+                    from app.identity.models.user import User
+                    from sqlalchemy.orm import joinedload
+                    
+                    org_members = User.query.join(User.organisations).filter(
+                        User.organisations.any(id=organization_id)
+                    ).options(joinedload(User.organisations)).all()
+                    
+                    for member in org_members:
+                        if member.has_org_role(organization_id, "org_owner", "org_admin"):
+                            owner_role = EventRole(
+                                event_id=event.id,
+                                user_id=member.id,
+                                role="owner",
+                                title="Event Owner",
+                                organisation_id=organization_id,
+                                assigned_by_id=user_id,
+                                permissions=[
+                                    'view_coordination', 'manage_coordination', 'check_in',
+                                    'guest.view', 'guest.create', 'guest.edit', 'guest.import',
+                                    'guest.archive', 'guest.link_account', 'guest.merge',
+                                    'assignment.view', 'accommodation.assign', 'accommodation.cancel',
+                                    'accommodation.allocate_room', 'transport.assign', 'transport.cancel',
+                                    'transport.plan', 'tourism.assign', 'tourism.cancel',
+                                    'experience.assign', 'wallet.view', 'allowance.create',
+                                    'allowance.adjust', 'wallet.authorise_spend', 'financial.approve',
+                                    'financial.view', 'journey.view', 'journey.manage',
+                                    'journey.override', 'exception.resolve', 'coverage.view',
+                                    'group.view', 'group.create', 'group.edit', 'group.bulk_assign',
+                                    'group.vip_manage', 'notify.guest', 'notify.bulk', 'message.view',
+                                ],
+                            )
+                            db.session.add(owner_role)
+                
+                db.session.commit()
+            except Exception as role_exc:
+                logger.warning(f"Failed to create owner EventRole for event {event.id}: {role_exc}")
+                db.session.rollback()
+
             try:
                 if status == EventStatus.PENDING_APPROVAL:
                     from app.admin.moderator.pipeline import submit_for_moderation
@@ -848,11 +914,95 @@ class EventService:
             )
             db.session.add(log_entry)
 
+            # Capture old owner for EventRole update
+            old_owner_type = event.current_owner_type
+            old_owner_id = event.current_owner_id
+
             event.current_owner_type = to_owner_type
             event.current_owner_id = to_owner_id
             event.updated_at = datetime.now(timezone.utc)
 
             db.session.commit()
+
+            # Update EventRoles after successful transfer
+            try:
+                from app.events.models import EventRole
+                
+                # Deactivate old owner's EventRole
+                old_roles = EventRole.query.filter_by(
+                    event_id=event.id, 
+                    role="owner"
+                ).filter(
+                    EventRole.user_id == old_owner_id
+                ).all()
+                for old_role in old_roles:
+                    old_role.is_active = False
+                
+                # Create new owner's EventRole
+                if to_owner_type == OwnerType.INDIVIDUAL and to_owner_id:
+                    new_owner_role = EventRole(
+                        event_id=event.id,
+                        user_id=to_owner_id,
+                        role="owner",
+                        title="Event Owner",
+                        assigned_by_id=approver_id,
+                        permissions=[
+                            'view_coordination', 'manage_coordination', 'check_in',
+                            'guest.view', 'guest.create', 'guest.edit', 'guest.import',
+                            'guest.archive', 'guest.link_account', 'guest.merge',
+                            'assignment.view', 'accommodation.assign', 'accommodation.cancel',
+                            'accommodation.allocate_room', 'transport.assign', 'transport.cancel',
+                            'transport.plan', 'tourism.assign', 'tourism.cancel',
+                            'experience.assign', 'wallet.view', 'allowance.create',
+                            'allowance.adjust', 'wallet.authorise_spend', 'financial.approve',
+                            'financial.view', 'journey.view', 'journey.manage',
+                            'journey.override', 'exception.resolve', 'coverage.view',
+                            'group.view', 'group.create', 'group.edit', 'group.bulk_assign',
+                            'group.vip_manage', 'notify.guest', 'notify.bulk', 'message.view',
+                        ],
+                    )
+                    db.session.add(new_owner_role)
+                
+                elif to_owner_type == OwnerType.ORGANIZATION and to_owner_id:
+                    # For organization transfers, create EventRole for org admins/owners
+                    from app.identity.models.user import User
+                    from sqlalchemy.orm import joinedload
+                    
+                    org_members = User.query.join(User.organisations).filter(
+                        User.organisations.any(id=to_owner_id)
+                    ).options(joinedload(User.organisations)).all()
+                    
+                    for member in org_members:
+                        if member.has_org_role(to_owner_id, "org_owner", "org_admin"):
+                            new_owner_role = EventRole(
+                                event_id=event.id,
+                                user_id=member.id,
+                                role="owner",
+                                title="Event Owner",
+                                organisation_id=to_owner_id,
+                                assigned_by_id=approver_id,
+                                permissions=[
+                                    'view_coordination', 'manage_coordination', 'check_in',
+                                    'guest.view', 'guest.create', 'guest.edit', 'guest.import',
+                                    'guest.archive', 'guest.link_account', 'guest.merge',
+                                    'assignment.view', 'accommodation.assign', 'accommodation.cancel',
+                                    'accommodation.allocate_room', 'transport.assign', 'transport.cancel',
+                                    'transport.plan', 'tourism.assign', 'tourism.cancel',
+                                    'experience.assign', 'wallet.view', 'allowance.create',
+                                    'allowance.adjust', 'wallet.authorise_spend', 'financial.approve',
+                                    'financial.view', 'journey.view', 'journey.manage',
+                                    'journey.override', 'exception.resolve', 'coverage.view',
+                                    'group.view', 'group.create', 'group.edit', 'group.bulk_assign',
+                                    'group.vip_manage', 'notify.guest', 'notify.bulk', 'message.view',
+                                ],
+                            )
+                            db.session.add(new_owner_role)
+                
+                db.session.commit()
+            except Exception as role_exc:
+                logger.warning(f"Failed to update EventRoles after transfer for event {event.id}: {role_exc}")
+                db.session.rollback()
+
             return True, None
         except Exception as e:
             db.session.rollback()
@@ -883,6 +1033,7 @@ class EventService:
     def get_events_by_organizer(cls, organizer_id: int) -> List[Dict]:
         Event = cls._get_event_model_class()
         from sqlalchemy import or_, and_
+        from app.events.models import EventRole
         events = Event.query.outerjoin(
             EventRole, Event.id == EventRole.event_id
         ).filter(
@@ -892,6 +1043,41 @@ class EventService:
             )
         ).order_by(Event.created_at.desc()).all()
         return [cls._event_to_dict(event) for event in events]
+
+    @classmethod
+    def get_organizer_event_models(cls, user: Any) -> List[Any]:
+        """Return Event model instances the user can manage.
+
+        Includes individually owned events, events where the user holds an
+        active EventRole, and events owned by organisations the user administers.
+        Used by universal (cross-event) management routes.
+        """
+        Event = cls._get_event_model_class()
+        from sqlalchemy import or_, and_
+        from app.events.models import EventRole
+
+        managed = Event.query.outerjoin(
+            EventRole, Event.id == EventRole.event_id
+        ).filter(
+            or_(
+                and_(Event.current_owner_type == 'individual', Event.current_owner_id == user.id),
+                EventRole.user_id == user.id
+            )
+        ).order_by(Event.created_at.desc()).all()
+
+        org_event_ids = set()
+        for membership in getattr(user, "organisations", []):
+            if user.has_org_role(membership.organisation_id, "org_owner", "org_admin"):
+                org_events = Event.query.filter_by(organisation_id=membership.organisation_id).all()
+                managed.extend(org_events)
+
+        seen = set()
+        unique = []
+        for e in managed:
+            if e.id not in seen:
+                seen.add(e.id)
+                unique.append(e)
+        return unique
 
     @classmethod
     def get_featured_event(cls) -> Optional[Dict]:
@@ -932,9 +1118,15 @@ class EventService:
 
     @classmethod
     def get_event_model(cls, event_id: str):
-        """Get the actual Event model instance"""
+        """Get the actual Event model instance by slug"""
         Event = cls._get_event_model_class()
         return Event.query.filter_by(slug=event_id).first()
+
+    @classmethod
+    def get_event_model_by_public_id(cls, public_id: str):
+        """Get the actual Event model instance by public_id"""
+        Event = cls._get_event_model_class()
+        return Event.query.filter_by(public_id=public_id).first()
 
     @classmethod
     def approve_event(cls, event_id: str, admin_id: int) -> Tuple[bool, Optional[str]]:
@@ -1110,7 +1302,7 @@ class EventService:
                                       group_index: Optional[int] = None,
                                       group_label: Optional[str] = None) -> Tuple[
         Optional[Dict], Optional[str], Optional[str]]:
-        from sqlalchemy import func, and_
+        from sqlalchemy import func
         from decimal import Decimal
 
         if idempotency_key:
@@ -1206,23 +1398,12 @@ class EventService:
                             return None, None, f"The attendee ({attendee_name or attendee_email}) is already registered for this event"
                         return None, None, "You are already registered for this event"
 
-                if event.max_capacity > 0:
-                    event_count = db.session.query(func.count(Registration.id)).filter_by(event_id=event.id).scalar()
-                    if event_count >= event.max_capacity:
-                        raise SoldOutException("The event has reached full capacity")
-
                 if ticket_type.capacity and ticket_type.capacity > 0:
-                    updated = db.session.query(TicketType).filter(
-                        and_(TicketType.id == ticket_type.id,
-                             func.coalesce(TicketType.available_seats, ticket_type.capacity) > 0)
-                    ).update({
-                        'available_seats': func.coalesce(TicketType.available_seats, ticket_type.capacity) - 1,
-                        'version': TicketType.version + 1
-                    })
-                    if updated == 0:
-                        raise SoldOutException(f"Ticket tier '{ticket_type.name}' is sold out")
-                else:
-                    db.session.query(TicketType).filter(TicketType.id == ticket_type.id).update({'version': TicketType.version + 1})
+                    from app.events.inventory import decrement_capacity, ReservationInventoryError
+                    try:
+                        decrement_capacity(ticket_type.id, 1, event_id=event.id)
+                    except ReservationInventoryError as exc:
+                        raise SoldOutException(str(exc))
 
                 reg_count = db.session.query(func.count(Registration.id)).filter_by(event_id=event.id).scalar() or 0
                 sequence = reg_count + 1
@@ -1513,6 +1694,44 @@ class EventService:
         return True, f"Welcome {registration.full_name}! Successfully checked in.", result
 
     @classmethod
+    def check_in_attendee_by_ref(cls, registration_ref: str, checked_by_user_id: int) -> Tuple[bool, Optional[str], Optional[Dict]]:
+        Registration = cls._get_registration_class()
+        Event = cls._get_event_model_class()
+
+        registration = Registration.query.filter_by(registration_ref=registration_ref).first()
+        if not registration:
+            return False, "Registration not found", None
+
+        event = db.session.get(Event, registration.event_id)
+        if event and event.end_date:
+            if date.today() > event.end_date + timedelta(days=1):
+                return False, "This ticket has expired", None
+
+        if registration.status == "checked_in":
+            return False, f"Already checked in at {registration.checked_in_at.strftime('%Y-%m-%d %H:%M')}", None
+
+        if registration.status == "cancelled":
+            return False, "Registration has been cancelled", None
+
+        registration.status = "checked_in"
+        registration.checked_in_at = datetime.now(timezone.utc)
+        registration.checked_in_by_id = checked_by_user_id
+        db.session.commit()
+
+        result = {
+            "name": registration.full_name, "ticket_type": registration.ticket_type,
+            "ticket_type_id": registration.ticket_type_id,
+            "event_name": event.name if event else "Unknown",
+            "event_start_date": event.start_date.isoformat() if event and event.start_date else None,
+            "event_venue": event.venue if event else None, "registration_ref": registration.registration_ref,
+            "photo_url": None, "nationality": registration.nationality, "phone": registration.phone,
+            "checked_in_at": registration.checked_in_at.isoformat() if registration.checked_in_at else None,
+        }
+
+        logger.info(f"Checked in by ref: {registration.registration_ref} by user {checked_by_user_id}")
+        return True, f"Welcome {registration.full_name}! Successfully checked in.", result
+
+    @classmethod
     def _generate_qr_code(cls, qr_token: str, registration_ref: str) -> str:
         qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
         qr.add_data(qr_token)
@@ -1587,6 +1806,89 @@ class EventService:
         return result
 
     # OPTIMIZED VERSION - Fixes N+1 queries
+    @classmethod
+    def check_organizer_eligibility(cls, user_id: int) -> Dict[str, Any]:
+        """
+        Determine whether an attendee may "Become an Organizer".
+
+        Eligibility requires:
+          1. Account verification — email + phone verified and account active.
+          2. Attendance history — at least one attended event (checked_in) OR
+             a minimum number of registrations, proving real platform usage.
+
+        Returns a structured result so the UI can both gate the flow and
+        explain exactly what is missing.
+        """
+        from app.identity.models.user import User
+        from app.auth.kyc_compliance import calculate_kyc_tier
+        from app.events.models import OrganizerProfile
+
+        ATTENDANCE_THRESHOLD = 1  # attended events required
+        REGISTRATION_FLOOR = 2    # or this many total registrations
+
+        user = db.session.get(User, user_id)
+        if not user:
+            return {
+                "eligible": False,
+                "reasons": ["Account not found."],
+                "metrics": {},
+                "already_organizer": False,
+            }
+
+        account_verified = bool(
+            getattr(user, "email_verified", False)
+            and getattr(user, "phone_verified", False)
+            and getattr(user, "is_active", False)
+        )
+
+        try:
+            kyc = calculate_kyc_tier(user_id)
+            kyc_tier = kyc.get("tier")
+        except Exception:
+            kyc_tier = None
+
+        attendee = cls.get_attendee_dashboard_data(user_id)
+        attended_count = attendee.get("attended_count", 0)
+        total_registrations = attendee.get("upcoming_count", 0) + attendee.get("past_count", 0)
+
+        already_organizer = bool(
+            OrganizerProfile.query.filter_by(user_id=user_id, is_deleted=False)
+            .filter(OrganizerProfile.status.in_(["approved", "pending_review"]))
+            .first()
+        )
+
+        reasons = []
+        if not account_verified:
+            if not getattr(user, "email_verified", False):
+                reasons.append("Verify your email address")
+            if not getattr(user, "phone_verified", False):
+                reasons.append("Verify your phone number")
+            if not getattr(user, "is_active", False):
+                reasons.append("Activate your account")
+        if attended_count < ATTENDANCE_THRESHOLD and total_registrations < REGISTRATION_FLOOR:
+            reasons.append(
+                f"Attend at least {ATTENDANCE_THRESHOLD} event"
+                f"{'s' if ATTENDANCE_THRESHOLD != 1 else ''} "
+                f"(or register for {REGISTRATION_FLOOR}+ events)"
+            )
+
+        eligible = (not reasons) and (not already_organizer)
+
+        return {
+            "eligible": eligible,
+            "already_organizer": already_organizer,
+            "reasons": reasons,
+            "metrics": {
+                "account_verified": account_verified,
+                "email_verified": bool(getattr(user, "email_verified", False)),
+                "phone_verified": bool(getattr(user, "phone_verified", False)),
+                "kyc_tier": kyc_tier,
+                "attended_count": attended_count,
+                "total_registrations": total_registrations,
+                "attendance_threshold": ATTENDANCE_THRESHOLD,
+                "registration_floor": REGISTRATION_FLOOR,
+            },
+        }
     @classmethod
     def get_attendee_dashboard_data(cls, user_id: int) -> Dict:
         from sqlalchemy.orm import joinedload
@@ -1704,6 +2006,7 @@ class EventService:
             return []
         events = []
         from sqlalchemy import or_, and_
+        from app.events.models import EventRole
         user_events = Event.query.outerjoin(
             EventRole, Event.id == EventRole.event_id
         ).filter(
@@ -1759,6 +2062,7 @@ class EventService:
         Event = cls._get_event_model_class()
         Registration = cls._get_registration_class()
         from sqlalchemy import or_, and_
+        from app.events.models import EventRole
         event_models = Event.query.outerjoin(
             EventRole, Event.id == EventRole.event_id
         ).filter(
@@ -1769,14 +2073,19 @@ class EventService:
         ).all()
         total_registrations = 0
         total_revenue = 0.0
+        total_checkins = 0
         active_events_list = []
         for event_model in event_models:
             reg_count = Registration.query.filter_by(event_id=event_model.id).count()
             reg_revenue = db.session.query(func.sum(Registration.registration_fee)).filter_by(
                 event_id=event_model.id, payment_status='paid'
             ).scalar() or 0
+            checked_in = Registration.query.filter_by(
+                event_id=event_model.id, status='checked_in'
+            ).count()
             total_registrations += reg_count
             total_revenue += float(reg_revenue)
+            total_checkins += checked_in
             if event_model.status in ['active', 'published']:
                 event_dict = cls._event_to_dict(event_model)
                 event_dict['registration_count'] = reg_count
@@ -1784,7 +2093,8 @@ class EventService:
                 active_events_list.append(event_dict)
         return {
             "stats": {"total_events": len(managed_events), "total_registrations": total_registrations,
-                     "total_revenue": f"{total_revenue:.2f}", "active_events": len(active_events_list)},
+                     "total_revenue": f"{total_revenue:.2f}", "total_checkins": total_checkins,
+                     "active_events": len(active_events_list)},
             "active_events": active_events_list[:5], "managed_events": managed_events
         }
 
@@ -1957,12 +2267,11 @@ class EventService:
                         return None, None, "You are already registered for this event"
 
                 if ticket_type.capacity > 0:
-                    if ticket_type.available_seats is None:
-                        current_count = db.session.query(func.count(Registration.id)).filter_by(ticket_type_id=ticket_type.id).scalar()
-                        ticket_type.available_seats = max(0, ticket_type.capacity - current_count)
-                    if ticket_type.available_seats <= 0:
-                        raise SoldOutException(f"Ticket tier '{ticket_type.name}' is sold out")
-                    ticket_type.available_seats -= 1
+                    from app.events.inventory import decrement_capacity, ReservationInventoryError
+                    try:
+                        decrement_capacity(ticket_type.id, 1, event_id=event.id)
+                    except ReservationInventoryError as exc:
+                        raise SoldOutException(str(exc))
 
                 count = db.session.query(func.count(Registration.id)).filter_by(event_id=event.id).scalar()
                 sequence = (count if count else 0) + 1
@@ -2041,29 +2350,23 @@ class EventService:
     def create_participation(cls, user_id: int, identifier: str, role: str = 'attendee',
                              control_mode: str = 'self_managed') -> Tuple[Optional[Dict], Optional[str]]:
         try:
-            from app.events.models import Event, EventParticipation, ParticipationRole, ParticipationControlMode
+            from app.events.models import Event, EventRegistration
             event = Event.query.filter_by(slug=identifier).first()
             if not event:
                 return None, "Event not found"
-            existing = EventParticipation.query.filter_by(event_id=event.id, user_id=user_id).first()
+            existing = EventRegistration.query.filter_by(event_id=event.id, user_id=user_id).first()
             if existing:
-                return cls._participation_to_dict(existing), "Participation already exists"
-            participation = EventParticipation(
-                event_id=event.id, user_id=user_id, role=ParticipationRole(role),
-                control_mode=ParticipationControlMode(control_mode), status='confirmed'
+                return cls._registration_to_dict(existing), "Participation already exists"
+            registration = EventRegistration(
+                event_id=event.id, user_id=user_id,
+                full_name=getattr(user_id, 'full_name', 'Guest'),
+                email=getattr(user_id, 'email', ''),
+                status='confirmed'
             )
-            db.session.add(participation)
+            db.session.add(registration)
             db.session.commit()
-            try:
-                from app.audit.comprehensive_audit import AuditService
-                AuditService.data_change(entity_type="event_participation", entity_id=str(participation.id),
-                                        operation="create", old_value=None,
-                                        new_value={"event_id": event.id, "user_id": user_id, "role": role, "control_mode": control_mode},
-                                        changed_by=user_id, extra_data={"event_slug": identifier})
-            except ImportError:
-                logger.warning("AuditService not available, skipping audit log")
             logger.info(f"Participation created: user {user_id} for event {identifier} as {role}")
-            return cls._participation_to_dict(participation), None
+            return cls._registration_to_dict(registration), None
         except Exception as e:
             db.session.rollback()
             logger.error(f"Error creating participation: {e}")
@@ -2075,11 +2378,11 @@ class EventService:
                                    managed_by: Optional[int] = None,
                                    notes: Optional[str] = None) -> Tuple[Optional[Dict], Optional[str]]:
         try:
-            from app.events.models import Event, EventAssignment, EventParticipation
+            from app.events.models import Event, EventAssignment, EventRegistration
             event = Event.query.filter_by(slug=identifier).first()
             if not event:
                 return None, "Event not found"
-            participation = EventParticipation.query.filter_by(event_id=event.id, user_id=attendee_id).first()
+            participation = EventRegistration.query.filter_by(event_id=event.id, user_id=attendee_id).first()
             if not participation:
                 return None, "User is not participating in this event"
             assignment = EventAssignment.query.filter_by(event_id=event.id, attendee_id=attendee_id).first()
@@ -2093,7 +2396,6 @@ class EventService:
                     acc_booking = db.session.get(AccommodationBooking, booking_id)
                     if acc_booking:
                         acc_booking.event_id = event.id
-                        acc_booking.event_participation_id = participation.id
                 except ImportError:
                     logger.warning("Could not import AccommodationBooking, skipping event_id update")
             elif booking_type == 'transport':
@@ -2103,7 +2405,6 @@ class EventService:
                     transport_booking = db.session.get(Booking, booking_id)
                     if transport_booking:
                         transport_booking.event_id = event.id
-                        transport_booking.event_participation_id = participation.id
                 except ImportError:
                     logger.warning("Could not import Booking from transport.models, skipping event_id update")
             elif booking_type == 'meal':
@@ -2129,17 +2430,13 @@ class EventService:
             return None, str(e)
 
     @classmethod
-    def _participation_to_dict(cls, participation) -> Dict:
+    def _registration_to_dict(cls, registration) -> Dict:
         return {
-            "id": participation.id, "event_id": participation.event_id, "user_id": participation.user_id,
-            "role": participation.role.value if participation.role else None,
-            "control_mode": participation.control_mode.value if participation.control_mode else None,
-            "status": participation.status.value if participation.status else None,
-            "joined_at": participation.joined_at.isoformat() if participation.joined_at else None,
-            "left_at": participation.left_at.isoformat() if participation.left_at else None,
-            "notes": participation.notes, "metadata": participation.metadata,
-            "created_at": participation.created_at.isoformat() if participation.created_at else None,
-            "updated_at": participation.updated_at.isoformat() if participation.updated_at else None,
+            "id": registration.id, "event_id": registration.event_id, "user_id": registration.user_id,
+            "full_name": registration.full_name, "email": registration.email,
+            "status": registration.status.value if hasattr(registration.status, 'value') else registration.status,
+            "created_at": registration.created_at.isoformat() if registration.created_at else None,
+            "updated_at": registration.updated_at.isoformat() if registration.updated_at else None,
         }
 
     @classmethod
@@ -2156,15 +2453,15 @@ class EventService:
     @classmethod
     def get_event_participations(cls, identifier: str, role: Optional[str] = None) -> List[Dict]:
         try:
-            from app.events.models import Event, EventParticipation
+            from app.events.models import Event, EventRegistration
             event = Event.query.filter_by(slug=identifier).first()
             if not event:
                 return []
-            query = EventParticipation.query.filter_by(event_id=event.id)
+            query = EventRegistration.query.filter_by(event_id=event.id)
             if role:
                 query = query.filter_by(role=role)
-            participations = query.order_by(EventParticipation.created_at.desc()).all()
-            return [cls._participation_to_dict(participation) for participation in participations]
+            registrations = query.order_by(EventRegistration.created_at.desc()).all()
+            return [cls._registration_to_dict(reg) for reg in registrations]
         except Exception as e:
             logger.error(f"Error getting event participations: {e}")
             return []
@@ -2213,8 +2510,8 @@ class EventService:
         if registration.ticket_type_id:
             ticket_type = db.session.get(TicketType, registration.ticket_type_id)
             if ticket_type and ticket_type.capacity and ticket_type.capacity > 0:
-                ticket_type.available_seats = (ticket_type.available_seats or 0) + 1
-                ticket_type.version = (ticket_type.version or 0) + 1
+                from app.events.inventory import increment_capacity
+                increment_capacity(ticket_type.id, 1)
         db.session.commit()
         cls.invalidate_registration_availability(event)
         logger.info(f"Registration {registration_ref} cancelled by user {user_id}")

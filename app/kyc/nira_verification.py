@@ -103,10 +103,29 @@ def verify_national_id(
     # Placeholder for actual NIRA API integration
     # In production, this would make an API call to NIRA
 
+    # Owner/Super-Admin may enable automatic approval of valid-format NINs.
+    from app.kyc_config_schema import get_kyc_settings
+    auto_verify = get_kyc_settings().get("kyc_nira_auto_verify", False)
+
+    if auto_verify:
+        return {
+            'verified': True,
+            'manual_review_required': False,
+            'auto_verified': True,
+            'id_number': id_number[:4] + "******" + id_number[-2:],
+            'names_match': None,  # API would verify this
+            'is_valid_format': True,
+            'requires_review_by': None,
+            'verification_id': f"NIRA_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{id_number[:4]}",
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'notes': 'Auto-verified (NIRA auto-verify enabled)'
+        }
+
     # For now, return manual review required
     return {
         'verified': False,
         'manual_review_required': True,
+        'auto_verified': False,
         'id_number': id_number[:4] + "******" + id_number[-2:],
         'names_match': None,  # API would verify this
         'is_valid_format': True,

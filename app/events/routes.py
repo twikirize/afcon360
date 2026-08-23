@@ -25,9 +25,10 @@ from app.events.permissions import (
     can_delete_event,
     can_hard_delete_event,
 )
-from app.auth.context import ContextType, active_context_or_platform_required
+from app.auth.context import ContextType, active_context_or_platform_required, event_owner_context_required, event_hub_context_required
 from app.events.constants import EventStatus, BookingType, MAX_INLINE_GROUP_SIZE
 from app.auth.decorators import require_moderator, require_fresh_user
+from app.extensions import csrf
 
 
 # Remove tight coupling - define fallback functions
@@ -213,6 +214,7 @@ def api_properties(identifier=None):
 
 @events_bp.route("/hub")
 @login_required
+@event_hub_context_required()
 def events_hub():
     """Unified landing page for all event-related activities"""
     from app.wallet.services.wallet_service import WalletService
@@ -235,12 +237,18 @@ def events_hub():
     if is_system_admin(current_user):
         admin_stats = EventService.get_admin_dashboard_data()
 
+    organizer_stats = organizer_data['stats']
+
     return render_template('events/events_hub.html',
                            registrations=attendee_data['upcoming_registrations'],
                            managed_events=organizer_data['active_events'],
                            relevant_events=provider_data['relevant_events'],
                            wallet_balance=wallet_balance,
-                           admin_stats=admin_stats)
+                           admin_stats=admin_stats,
+                           total_events=organizer_stats.get('total_events', 0),
+                           total_registrations=organizer_stats.get('total_registrations', 0),
+                           total_revenue=float(organizer_stats.get('total_revenue') or 0),
+                           total_checkins=organizer_stats.get('total_checkins', 0))
 
 
 @events_bp.route("/attendee-dashboard")
@@ -288,7 +296,7 @@ def my_registrations():
 
 @events_bp.route("/organizer/dashboard/<identifier>")
 @login_required
-@active_context_or_platform_required(ContextType.EVENT)
+@event_owner_context_required()
 def organizer_dashboard(identifier):
     """Specific Event Organizer Dashboard"""
     event = EventService.get_event(identifier)
@@ -298,17 +306,6 @@ def organizer_dashboard(identifier):
     if not event_model or not _is_event_owner(current_user, event_model):
         flash('Unauthorized access', 'danger')
         return redirect(url_for('events.my_events'))
-
-    from app.auth.context import get_active_context
-
-    active_context = get_active_context(current_user)
-    event_public_id = str(event.get("public_id") or identifier)
-    if active_context.type is not ContextType.PLATFORM and (
-        active_context.type is not ContextType.EVENT
-        or active_context.public_id != event_public_id
-    ):
-        flash('Select this event context before opening its operational dashboard.', 'warning')
-        return redirect(url_for('user.dashboard'))
 
     stats = EventService.get_event_stats(identifier)
     registrations = EventService.get_registrations_by_event(identifier)
@@ -2222,19 +2219,269 @@ def event_staff(identifier):
         return redirect(url_for('events.landing', identifier=identifier))
 
     from app.events.models import EventRole
+    from app.events.permissions import EVENT_STAFF_ROLE_PERMISSIONS, GUEST_OPERATIONS_PERMISSION_GROUPS
+    
     event_model = EventService.get_event_model(identifier)
     staff = EventRole.query.filter_by(
         event_id=event_model.id, is_active=True
     ).all() if event_model else []
 
-    return render_template('events/admin/staff.html', event=event, staff=staff)
+    # Build permission descriptions for UI
+    permission_descriptions = {}
+    for group_name, perms in GUEST_OPERATIONS_PERMISSION_GROUPS.items():
+        for perm in perms:
+            # Humanize: replace dots with spaces, title case
+            permission_descriptions[perm] = perm.replace('.', ' ').replace('_', ' ').title()
+
+    # Convert sets to lists for JSON serialization
+    role_permissions_json = {role: [*perms] for role, perms in EVENT_STAFF_ROLE_PERMISSIONS.items()}
+
+    # Role choices for dropdown
+    role_choices = [
+        ('co_organizer', 'Co-Organizer'),
+        ('operations_manager', 'Operations Manager'),
+        ('accommodation_manager', 'Accommodation Manager'),
+        ('transport_manager', 'Transport Manager'),
+        ('guest_services_manager', 'Guest Services Manager'),
+        ('finance_manager', 'Finance Manager'),
+        ('steward', 'Steward'),
+        ('volunteer', 'Volunteer'),
+    ]
+
+    return render_template(
+        'events/admin/staff.html',
+        event=event,
+        staff=staff,
+        role_permissions=role_permissions_json,
+        permission_descriptions=permission_descriptions,
+        role_choices=role_choices
+    )
+
+
+# ============================================================================
+# STAFF MANAGEMENT ENDPOINTS (for event_staff template)
+# ============================================================================
+
+@events_bp.route("/<identifier>/staff-dashboard", methods=['GET'])
+@login_required
+def staff_dashboard(identifier):
+    """Alias for event_staff - used by template"""
+    return redirect(url_for('events.event_staff', identifier=identifier))
+
+
+@events_bp.route("/<identifier>/staff/search-users", methods=['GET'])
+@login_required
+@csrf.exempt
+def search_users(identifier):
+    """Search users for staff assignment"""
+    query = request.args.get('q', '').strip()
+    if not query or len(query) < 2:
+        return jsonify({'users': []})
+    
+    # Check permission
+    event_model = EventService.get_event_model(identifier)
+    if not event_model or not (_is_event_owner(current_user, event_model) or is_system_admin(current_user)):
+        return jsonify({'users': []})
+    
+    from app.identity.models.user import User
+    from sqlalchemy import or_
+    
+    users = User.query.filter(
+        or_(
+            User.username.ilike(f'%{query}%'),
+            User.email.ilike(f'%{query}%')
+        )
+    ).limit(10).all()
+    
+    return jsonify({
+        'users': [{'email': u.email, 'username': u.username} for u in users]
+    })
+
+
+@events_bp.route("/<identifier>/staff", methods=['POST'])
+@login_required
+@csrf.exempt
+def update_staff(identifier):
+    """Add or update staff member"""
+    # Debug: log raw request data
+    raw_data = request.get_data(as_text=True)
+    current_app.logger.debug(f"update_staff raw request data: {raw_data}")
+    current_app.logger.debug(f"Content-Type: {request.content_type}")
+    
+    data = request.get_json(silent=True)
+    if not data:
+        # Try form data as fallback
+        if request.form:
+            data = request.form.to_dict()
+            current_app.logger.debug(f"Using form data: {data}")
+        else:
+            current_app.logger.warning(f"Empty request body for update_staff. Raw: {raw_data}")
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+    
+    event_model = EventService.get_event_model(identifier)
+    if not event_model or not (_is_event_owner(current_user, event_model) or is_system_admin(current_user)):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    email = data.get('email', '').strip().lower()
+    title = data.get('title', '').strip()
+    role = data.get('role', '').strip()
+    permissions = data.get('permissions', [])
+    staff_id = data.get('staff_id')
+    
+    if not email or not role:
+        return jsonify({'success': False, 'error': 'Email and role required'}), 400
+    
+    from app.events.models import EventRole
+    from app.identity.models.user import User
+    from app.notifications.services import NotificationService
+    from app.notifications.models import NotificationType, NotificationChannel
+    
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        # Auto-create user account
+        import secrets
+        user = User(
+            email=email,
+            username=email.split('@')[0],
+            password_hash=secrets.token_urlsafe(32),
+            is_active=True
+        )
+        db.session.add(user)
+        db.session.flush()
+    
+    try:
+        is_new_staff = False
+        if staff_id:
+            # Update existing
+            staff = EventRole.query.get_or_404(staff_id)
+            if staff.event_id != event_model.id:
+                return jsonify({'success': False, 'error': 'Staff not found for this event'}), 404
+            
+            old_role = staff.role
+            old_title = staff.title
+            old_permissions = staff.permissions
+            
+            staff.title = title
+            staff.role = role
+            staff.permissions = permissions
+            
+            notification_type = NotificationType.EVENT_STAFF_UPDATED
+            action = "updated"
+        else:
+            # Add new - check if already active staff
+            existing = EventRole.query.filter_by(
+                event_id=event_model.id, user_id=user.id, is_active=True
+            ).first()
+            if existing:
+                return jsonify({'success': False, 'error': 'User is already staff for this event'}), 400
+            
+            # Check for inactive record with same role (due to unique constraint on event_id, user_id, role)
+            inactive_staff = EventRole.query.filter_by(
+                event_id=event_model.id, user_id=user.id, role=role, is_active=False
+            ).first()
+            
+            if inactive_staff:
+                # Reactivate existing inactive record
+                inactive_staff.title = title
+                inactive_staff.permissions = permissions
+                inactive_staff.assigned_by_id = current_user.id
+                inactive_staff.is_active = True
+                staff = inactive_staff
+                is_new_staff = True  # Treat as new for notification purposes
+                notification_type = NotificationType.EVENT_STAFF_ADDED
+                action = "added"
+            else:
+                staff = EventRole(
+                    event_id=event_model.id,
+                    user_id=user.id,
+                    role=role,
+                    title=title,
+                    permissions=permissions,
+                    assigned_by_id=current_user.id,
+                    is_active=True
+                )
+                db.session.add(staff)
+                
+                is_new_staff = True
+                notification_type = NotificationType.EVENT_STAFF_ADDED
+                action = "added"
+        
+        db.session.commit()
+        
+        # Send notification to the staff member
+        try:
+            event_name = event_model.name if hasattr(event_model, 'name') else str(event_model)
+            event_slug = event_model.slug if hasattr(event_model, 'slug') else identifier
+            
+            # Generate absolute URL for email links
+            staff_dashboard_url = url_for('events.staff_dashboard', identifier=event_slug, _external=True)
+            event_home_url = url_for('events.landing', identifier=event_slug, _external=True)
+            
+            if is_new_staff:
+                message = (
+                    f"Congratulations! You have been selected to act as {role.replace('_', ' ').title()}"
+                    f"{f' ({title})' if title else ''} for the event \"{event_name}\". "
+                    f"Kindly log in at the staff portal to perform your duties."
+                )
+            else:
+                message = (
+                    f"Your staff role for the event \"{event_name}\" has been updated. "
+                    f"You are now {role.replace('_', ' ').title()}"
+                    f"{f' ({title})' if title else ''}. "
+                    f"Please log in at the staff portal to review your updated permissions and duties."
+                )
+            
+            current_app.logger.info(f"Sending staff notification: type={notification_type}, action={action}, user_id={user.id}, email={user.email}")
+            
+            NotificationService.send(
+                user_id=user.id,
+                notification_type=notification_type,
+                title=f"Staff Role {action.title()}: {event_name}",
+                message=message,
+                data={
+                    'event_id': event_model.id,
+                    'event_name': event_name,
+                    'event_slug': event_slug,
+                    'role': role,
+                    'title': title,
+                    'permissions': permissions,
+                    'action': action,
+                },
+                channels=[NotificationChannel.IN_APP, NotificationChannel.EMAIL],
+                link=staff_dashboard_url,
+                priority='normal',
+                module='events',
+            )
+            current_app.logger.info(f"Staff notification sent successfully")
+        except Exception as notify_error:
+            current_app.logger.warning(f"Failed to send staff notification: {notify_error}")
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Staff {action} successfully',
+            'staff': {
+                'id': staff.id,
+                'email': user.email,
+                'username': user.username,
+                'role': staff.role,
+                'title': staff.title,
+                'permissions': staff.permissions,
+                'is_new': is_new_staff,
+            }
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @events_bp.route("/staff/<int:staff_id>/remove", methods=['POST'])
 @login_required
+@csrf.exempt
 def remove_staff(staff_id):
     """Remove staff member from event"""
     from app.events.models import EventRole
+    from app.notifications.services import NotificationService
+    from app.notifications.models import NotificationType, NotificationChannel
 
     staff = EventRole.query.get_or_404(staff_id)
     event = EventService.get_event_model_by_id(staff.event_id)
@@ -2245,10 +2492,48 @@ def remove_staff(staff_id):
     # Check permission - use the is_system_admin function defined at the top of the file
     if not (_is_event_owner(current_user, event) or is_system_admin(current_user)):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    # Get user info before deactivating
+    user = staff.user
+    event_name = event.name if hasattr(event, 'name') else str(event)
+    event_slug = event.slug if hasattr(event, 'slug') else None
+    
+    # Generate absolute URL for email links
+    event_home_url = url_for('events.landing', identifier=event_slug, _external=True) if event_slug else url_for('events.list', _external=True)
 
     try:
         staff.is_active = False
         db.session.commit()
+        
+        # Send notification to the removed staff member
+        try:
+            message = (
+                f"You have been removed from your role as {staff.role.replace('_', ' ').title()}"
+                f"{f' ({staff.title})' if staff.title else ''} for the event \"{event_name}\". "
+                f"Your access to the staff portal for this event has been revoked. "
+                f"If you believe this is an error, please contact the event organizer."
+            )
+            
+            NotificationService.send(
+                user_id=user.id,
+                notification_type=NotificationType.EVENT_STAFF_REMOVED,
+                title=f"Staff Role Removed: {event_name}",
+                message=message,
+                data={
+                    'event_id': event.id,
+                    'event_name': event_name,
+                    'event_slug': event_slug,
+                    'role': staff.role,
+                    'title': staff.title,
+                },
+                channels=[NotificationChannel.IN_APP, NotificationChannel.EMAIL],
+                link=event_home_url,
+                priority='normal',
+                module='events',
+            )
+        except Exception as notify_error:
+            current_app.logger.warning(f"Failed to send staff removal notification: {notify_error}")
+        
         return jsonify({'success': True, 'message': 'Staff member removed successfully'})
     except Exception as e:
         db.session.rollback()
@@ -2571,6 +2856,63 @@ def contact_organizer(event_id):
         db.session.rollback()
         current_app.logger.error(f"Error contacting organizer: {e}")
         return jsonify({'success': False, 'error': 'Failed to send message'}), 500
+
+
+# ============================================================================
+# BECOME ORGANIZER ROUTES
+# ============================================================================
+
+@events_bp.route("/become-organizer", methods=['POST'])
+@login_required
+def become_organizer():
+    """Create an OrganizerProfile for the current user after eligibility check."""
+    try:
+        from app.events.models import OrganizerProfile
+        from datetime import datetime
+        
+        # Check eligibility first
+        eligibility = EventService.check_organizer_eligibility(current_user.id)
+        
+        if not eligibility.get("eligible", False):
+            return jsonify({
+                "success": False, 
+                "error": "Not eligible to become an organizer",
+                "reasons": eligibility.get("reasons", []),
+                "already_organizer": eligibility.get("already_organizer", False)
+            }), 400
+        
+        if eligibility.get("already_organizer", False):
+            return jsonify({
+                "success": False,
+                "error": "Already an organizer",
+                "redirect": url_for("events.organizer_dashboards")
+            }), 400
+        
+        # Create OrganizerProfile
+        metrics = eligibility.get("metrics", {})
+        profile = OrganizerProfile(
+            user_id=current_user.id,
+            account_verified=metrics.get("account_verified", False),
+            kyc_tier=metrics.get("kyc_tier"),
+            attended_events_count=metrics.get("attended_count", 0),
+            total_registrations=metrics.get("total_registrations", 0),
+            status="approved",
+            eligibility_passed=True,
+            approved_at=datetime.utcnow()
+        )
+        db.session.add(profile)
+        db.session.commit()
+        
+        return jsonify({
+            "success": True, 
+            "message": "Organizer profile created successfully",
+            "redirect": url_for("events.organizer_dashboards")
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error creating organizer profile: {e}")
+        return jsonify({'success': False, 'error': 'Failed to create organizer profile'}), 500
 
 
 @events_bp.route("/messages/<int:message_id>/read", methods=['POST'])

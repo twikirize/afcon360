@@ -1,0 +1,9 @@
+{
+  "subagents": {
+    "agents": {
+      "general-purpose": {
+        "model": "custom-local:tencent/hunyuan-a13b-instruct"
+      }
+    }
+  }
+}

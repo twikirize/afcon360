@@ -1,0 +1,19 @@
+{# templates/feed/_layout_mixed.html
+   Unified timeline — all items in a single vertical stream.
+   This is the infinite-scroll target: feed.js appends new items
+   into #feed-stream as the user scrolls.
+   Expects: feed_items (list of item dicts)
+#}
+<div class="feed-stream" id="feed-stream">
+  {% for item in feed_items %}
+  {% include 'feed/_item_card.html' %}
+  {% endfor %}
+</div>
+
+{# Sentinel for IntersectionObserver — feed.js watches this #}
+<div id="feed-sentinel" class="feed-sentinel">
+  <span class="feed-loading-spinner" id="feed-loading-spinner" style="display:none;">Loading more…</span>
+  <span class="feed-end-message" id="feed-end-message" style="display:none;">
+    You're all caught up! 🎉
+  </span>
+</div>

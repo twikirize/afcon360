@@ -1003,6 +1003,14 @@ def create_app(config_object=None) -> Flask:
     except Exception as e:
         app.logger.error(f"❌ Failed to register accommodation module: {e}")
 
+    # Feed module (homepage dynamic feed + sidebar ads)
+    try:
+        from app.feed import feed_bp
+        app.register_blueprint(feed_bp)
+        app.logger.info("✅ Feed module registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register feed module: {e}")
+
     # Event Accommodation module (Layer 1-4 trust & discovery architecture)
     try:
         from app.event_accommodation import event_accommodation_bp
@@ -1120,6 +1128,16 @@ def create_app(config_object=None) -> Flask:
         app.logger.warning("Module disabled page handler not found – skipping")
     except Exception as e:
         app.logger.error(f"❌ Failed to register module disabled page handler: {e}")
+
+    # ------------------------------------------------------------------
+    # Owner mission-control live monitor (/monitor)
+    # ------------------------------------------------------------------
+    try:
+        from app.monitor import monitor_bp
+        app.register_blueprint(monitor_bp)
+        app.logger.info("✅ Monitor blueprint registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register monitor blueprint: {e}")
 
     # ------------------------------------------------------------------
     # Template helpers for module isolation
@@ -1724,12 +1742,47 @@ def create_app(config_object=None) -> Flask:
     @app.route('/')
     def index():
         try:
-            from app.events.services import EventService
-            featured_event = EventService.get_featured_event()
-            other_events = EventService.get_upcoming_events(limit=2, exclude_featured=True)
-            return render_template('public_home.html', featured_event=featured_event, other_events=other_events)
-        except:
-            return render_template('public_home.html', featured_event=None, other_events=[])
+            from app.feed.services import FeedService
+            from app.models.system_config import SystemConfig
+
+            layout = SystemConfig.get('home_feed_layout', 'mixed')
+            if layout not in ('mixed', 'sections', 'tabbed'):
+                layout = 'mixed'
+
+            user_id = session.get('user_id')
+            page1 = FeedService.get_feed(page=1, per_page=10, layout=layout, user_id=user_id)
+            left_ads = FeedService.get_sidebar_ads('home_left', limit=3)
+            right_ads = FeedService.get_sidebar_ads('home_right', limit=3)
+
+            return render_template(
+                'public_home.html',
+                feed_items=page1['items'],
+                feed_layout=layout,
+                feed_has_more=page1['has_more'],
+                feed_next_page=2,
+                feed_seed=page1['seed'],
+                left_ads=left_ads,
+                right_ads=right_ads,
+            )
+        except Exception as e:
+            logger.error(f"Homepage feed error: {e}", exc_info=True)
+            # Rollback the session so context processors (which query the DB
+            # for current_user) don't fail with InFailedSqlTransaction
+            try:
+                from app.extensions import db
+                db.session.rollback()
+            except Exception:
+                pass
+            return render_template(
+                'public_home.html',
+                feed_items=[],
+                feed_layout='mixed',
+                feed_has_more=False,
+                feed_next_page=2,
+                feed_seed='',
+                left_ads=[],
+                right_ads=[],
+            )
 
     @app.errorhandler(CSRFError)
     def handle_csrf_error(e):
@@ -1897,6 +1950,11 @@ def create_app(config_object=None) -> Flask:
             "wallet.wallet_dashboard",
             "events.list",
             "events.events_hub",
+            "events.event_staff",
+            "events.staff_dashboard",
+            "events.search_users",
+            "events.update_staff",
+            "events.remove_staff",
             "auth.login",
             "auth.register",
             "user.dashboard",

@@ -58,6 +58,50 @@ function eventModerationAction(action, slug, extraData = {}) {
         alert('Network error'); 
     });
 }
+
+// Homepage feed layout toggle
+document.addEventListener('DOMContentLoaded', function() {
+    var form = document.getElementById('feed-layout-toggle-form');
+    if (!form) return;
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var select = document.getElementById('feed-layout-select');
+        var status = document.getElementById('feed-layout-status');
+        var btn = form.querySelector('button[type="submit"]');
+        var csrf = document.querySelector('meta[name="csrf-token"]').content;
+        var originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Saving…';
+        status.textContent = '';
+        fetch('/api/home/feed/layout', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+            credentials: 'same-origin',
+            body: JSON.stringify({layout: select.value})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.status === 'ok') {
+                btn.textContent = '✓ Saved';
+                status.style.color = '#2d5a2d';
+                status.textContent = data.message || 'Layout updated';
+                setTimeout(function() { window.location.reload(); }, 800);
+            } else {
+                btn.disabled = false;
+                btn.textContent = originalText;
+                status.style.color = '#c0392b';
+                status.textContent = data.message || 'Failed to save';
+            }
+        })
+        .catch(function(err) {
+            console.error('Layout toggle error:', err);
+            btn.disabled = false;
+            btn.textContent = originalText;
+            status.style.color = '#c0392b';
+            status.textContent = 'Network error';
+        });
+    });
+});
 </script>
 {% endblock %}
 
@@ -93,6 +137,13 @@ function eventModerationAction(action, slug, extraData = {}) {
       <a href="#" class="sad-nav-item active">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.85"/><rect x="8.5" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/><rect x="1" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/><rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/></svg>
         Dashboard
+      </a>
+      <a href="{{ safe_url('monitor.monitor_dashboard') }}" class="sad-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+          <circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M4 4.5c2.5 2 5.5 2 8.5 0M2 2.5c4.5 3 9.5 3 13 0" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+        Live Monitor
       </a>
       <a href="{{ url_for('admin.manage_users') }}" class="sad-nav-item">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="5.5" cy="4.5" r="2.5" stroke="currentColor" stroke-width="1.4"/><path d="M1 13c0-2.5 2-4.5 4.5-4.5h1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="11" cy="10" r="2.5" stroke="currentColor" stroke-width="1.4"/></svg>
@@ -164,6 +215,10 @@ function eventModerationAction(action, slug, extraData = {}) {
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="3.5" width="13" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 8a.5.5 0 1 1 1 0 .5.5 0 0 1-1 0z" fill="currentColor"/></svg>
         Payout Requests
       </a>
+      <a href="{{ url_for('admin.owner.wallet_capabilities') }}" class="sad-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 1.5L9 5H13l-2.9 2.1 1 3.4L7.5 8.8 4.4 10.5l1-3.4L2.5 5H6z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        KYC Requirement Toggles
+      </a>
 
       <div class="sad-nav-label">Content</div>
       <a href="{{ url_for('admin.content_dashboard') }}" class="sad-nav-item">
@@ -215,6 +270,13 @@ function eventModerationAction(action, slug, extraData = {}) {
       <a href="#" class="sad-mobile-nav-item active">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.85"/><rect x="8.5" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/><rect x="1" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/><rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/></svg>
         Dashboard
+      </a>
+      <a href="{{ safe_url('monitor.monitor_dashboard') }}" class="sad-mobile-nav-item">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+          <circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M4 4.5c2.5 2 5.5 2 8.5 0M2 2.5c4.5 3 9.5 3 13 0" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+        Live Monitor
       </a>
       <a href="{{ url_for('admin.manage_users') }}" class="sad-mobile-nav-item">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="5.5" cy="4.5" r="2.5" stroke="currentColor" stroke-width="1.4"/><path d="M1 13c0-2.5 2-4.5 4.5-4.5h1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="11" cy="10" r="2.5" stroke="currentColor" stroke-width="1.4"/></svg>
@@ -713,7 +775,7 @@ function eventModerationAction(action, slug, extraData = {}) {
                 <div style="padding:14px 0">
                   <div class="sad-alert warn">
                     Transport features not configured.
-                    <a href="{{ url_for('admin.update_transport_settings') }}" style="color:var(--sad-amber);text-decoration:underline">Configure now</a>
+                     <a href="{{ url_for('admin.super_dashboard') }}#transportSettingsCollapse" style="color:var(--sad-amber);text-decoration:underline">Configure now</a>
                   </div>
                 </div>
               {% endif %}
@@ -1088,6 +1150,44 @@ function eventModerationAction(action, slug, extraData = {}) {
 
         </div><!-- /sad-right -->
       </div><!-- /sad-twocol -->
+
+      <!-- ════════ HOMEPAGE FEED LAYOUT SETTINGS ════════ -->
+      <div class="sad-card">
+        <div class="sad-card-head">
+          <div class="sad-card-title">
+            <div class="sad-card-icon" style="background:rgba(255,204,0,0.15);color:#b8860b">🏠</div>
+            Homepage Feed Layout
+          </div>
+        </div>
+        <div class="sad-card-body">
+          <p style="font-size:0.82rem;color:#666;margin-bottom:1rem;">
+            Choose how the dynamic feed on the homepage middle pane is displayed.
+            The standard Featured Events and Live &amp; Upcoming cards always stay on top.
+            Below them, the dynamic feed (events, posts, ads, system updates, accommodation, transport)
+            is arranged according to the layout you select here.
+          </p>
+          <form id="feed-layout-toggle-form" style="display:flex;gap:0.6rem;align-items:flex-end;flex-wrap:wrap;">
+            <div style="display:flex;flex-direction:column;gap:0.3rem;">
+              <label style="font-size:0.72rem;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:0.5px;">Layout Mode</label>
+              <select id="feed-layout-select" style="padding:0.5rem 0.8rem;border:1px solid #ccc;border-radius:6px;font-size:0.85rem;background:#fff;cursor:pointer;min-width:200px;">
+                <option value="mixed" {% if home_feed_layout == 'mixed' %}selected{% endif %}>Mixed Timeline — social-media style scroll</option>
+                <option value="sections" {% if home_feed_layout == 'sections' %}selected{% endif %}>Stacked Sections — grouped by type</option>
+                <option value="tabbed" {% if home_feed_layout == 'tabbed' %}selected{% endif %}>Tabbed — filter by content type</option>
+              </select>
+            </div>
+            <button type="submit" style="background:#2d5a2d;color:#fff;border:none;border-radius:6px;padding:0.55rem 1.2rem;font-size:0.85rem;font-weight:600;cursor:pointer;transition:background 0.15s;">Save Layout</button>
+            <span id="feed-layout-status" style="font-size:0.78rem;color:#888;"></span>
+          </form>
+          <div style="margin-top:0.8rem;padding:0.6rem 0.8rem;background:rgba(45,90,45,0.05);border-radius:6px;font-size:0.75rem;color:#555;">
+            <strong>Current layout:</strong>
+            {% if home_feed_layout == 'mixed' %} Mixed Timeline — all items in a single vertical stream with infinite scroll
+            {% elif home_feed_layout == 'sections' %} Stacked Sections — items grouped by type (Events, Updates, Posts, etc.)
+            {% elif home_feed_layout == 'tabbed' %} Tabbed — tabs at top let users filter by content type
+            {% else %} Mixed Timeline (default)
+            {% endif %}
+          </div>
+        </div>
+      </div>
 
     </div><!-- /sad-content -->
   </div><!-- /sad-main -->

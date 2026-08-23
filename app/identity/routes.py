@@ -169,6 +169,41 @@ def org_dashboard(org_id):
                          organisation_role_label=organisation_role_label)
 
 
+def _can_view_all_org_kyb() -> bool:
+    u = current_user
+    if getattr(u, "is_app_owner", lambda: False)():
+        return True
+    roles = getattr(u, "role_names", []) or []
+    return any(r in roles for r in ("super_admin", "admin", "compliance", "compliance_officer"))
+
+
+@org_bp.route('/<org_id>/kyb')
+@login_required
+def org_kyb(org_id):
+    """Organisation KYB dashboard: per-org step status + (for owners/compliance)
+    an overview of KYB status across all registered organisations."""
+    org = Organisation.query.filter_by(org_id=str(org_id), is_deleted=False).first()
+    if not org:
+        abort(404)
+
+    can_all = _can_view_all_org_kyb()
+    if not can_all and not OrganizationPermissionService.is_member(current_user, org):
+        flash('You are not a member of this organization.', 'danger')
+        return redirect(url_for('org.dashboard'))
+
+    from app.identity.services.organisation_kyb_service import OrganisationKYBService
+    status = OrganisationKYBService.compute_status(org)
+    all_summaries = OrganisationKYBService.get_all_summaries() if can_all else None
+
+    return render_template(
+        'org/kyb.html',
+        org=org,
+        status=status,
+        all_summaries=all_summaries,
+        can_view_all=can_all,
+    )
+
+
 @org_bp.route('/<org_id>/members', methods=['GET', 'POST'])
 @login_required
 def members(org_id):

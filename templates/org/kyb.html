@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Organisation KYB — {{ org.legal_name }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+
+    <div class="row mb-4 align-items-center">
+        <div class="col-md-8">
+            <h1 class="display-6 mb-0">
+                <i class="fas fa-shield-alt text-primary me-2"></i>
+                Organisation KYB
+            </h1>
+            <p class="text-muted mb-0">{{ org.legal_name }}
+                <span class="badge bg-{{ 'success' if org.verification_status == 'verified' else 'warning' }} ms-1">
+                    {{ org.verification_status }}
+                </span>
+                <span class="badge bg-{{ 'success' if status.is_full_kyb else ('info' if status.is_operational_kyb else 'secondary') }} ms-1">
+                    KYB Level {{ status.kyb_level }}
+                </span>
+            </p>
+        </div>
+        <div class="col-md-4 text-md-end">
+            <a href="{{ url_for('org.org_dashboard', org_id=org.org_id) }}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-1"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+
+    {# ── This organisation's KYB step status ── #}
+    <div class="card mb-4">
+        <div class="card-header">
+            <strong>Verification Steps</strong>
+            <span class="text-muted small">— completed vs pending for this organisation</span>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                {% for key, step in status.steps.items() %}
+                <div class="col-md-6 col-lg-4">
+                    <div class="border rounded p-3 h-100"
+                         style="border-color: {{ '#198754' if step.done else ('#dc3545' if step.required else '#ced4da') }} !important;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="fw-semibold">{{ step.label if step.label else key }}</span>
+                            {% if not step.required %}
+                                <span class="badge bg-light text-secondary">Not required</span>
+                            {% elif step.done %}
+                                <span class="badge bg-success">Completed</span>
+                            {% else %}
+                                <span class="badge bg-danger">Pending</span>
+                            {% endif %}
+                        </div>
+                        {% if step.record %}
+                        <div class="small text-muted mt-1">Source: {{ step.record }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            {% if status.pending_requirements %}
+            <div class="alert alert-warning mt-3 mb-0">
+                <i class="fas fa-exclamation-triangle me-1"></i>
+                <strong>Pending requirements:</strong>
+                <ul class="mb-0 mt-1">
+                    {% for p in status.pending_requirements %}
+                    <li>{{ p.label }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% else %}
+            <div class="alert alert-success mt-3 mb-0">
+                <i class="fas fa-check-circle me-1"></i> All applicable KYB steps are complete.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# ── Owner / compliance: overview of ALL registered organisations ── #}
+    {% if can_view_all and all_summaries %}
+    <div class="card">
+        <div class="card-header">
+            <strong>All Registered Organisations — KYB Overview</strong>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Organisation</th>
+                            <th>Status</th>
+                            <th>KYB Lvl</th>
+                            <th>Basic</th>
+                            <th>Full</th>
+                            <th>Pending</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in all_summaries %}
+                        <tr>
+                            <td>{{ s.legal_name }}</td>
+                            <td><span class="badge bg-{{ 'success' if s.verification_status == 'verified' else 'warning' }}">{{ s.verification_status }}</span></td>
+                            <td>{{ s.kyb_level }}</td>
+                            <td>
+                                {% if s.is_operational_kyb %}
+                                    <i class="fas fa-check-circle text-success"></i>
+                                {% else %}
+                                    <i class="fas fa-times-circle text-danger"></i>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if s.is_full_kyb %}
+                                    <i class="fas fa-check-circle text-success"></i>
+                                {% else %}
+                                    <i class="fas fa-times-circle text-danger"></i>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if s.pending_requirements %}
+                                <span class="badge bg-danger">{{ s.pending_requirements|length }}</span>
+                                <small class="text-muted">{{ s.pending_requirements|map(attribute='label')|join(', ') }}</small>
+                                {% else %}
+                                <span class="text-success">none</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

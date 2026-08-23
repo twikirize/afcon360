@@ -1,32 +1,85 @@
-# AFCON360 Agent Developer Guide
+# AFCON360 Agent Constitution
 
-**AUTHORITATIVE SOURCE** for all AI agents and automated engineering workers
-working on the AFCON360 codebase. This document is the repository-level
-engineering constitution. All agents MUST follow it unless an explicit,
-higher-priority instruction for the current task overrides it.
+**Status:** AUTHORITATIVE
+**Scope:** Entire repository
+**Audience:** All AI agents, automation, developers, and code-generation tools
+**Last Updated:** August 2026
 
-## 0. AFCON360 Agent Operating Model
+## Fast routing rule
 
-AFCON360 uses a graph-based engineering workflow. AI coding tools are workers
-inside that workflow, not independent owners of product requirements or
-architecture. The worker executes the current task and does not independently
-redefine product requirements, business rules, ownership boundaries, financial
-rules, security boundaries, architecture, public contracts, or graph transitions.
+This constitution is authoritative, but agents must not load every section for
+every task. Classify the task first, use memory to route the relevant sections,
+and inspect only the affected subtree and applicable references. `TRIVIAL`
+work should normally need only the target and a focused check; `LOCAL` work
+needs targeted implementation evidence; `BEHAVIORAL`, `ARCHITECTURAL`, and
+`HIGH_RISK` work require progressively deeper specification, code, and test
+verification. This routing rule does not weaken any security, identity,
+financial, migration, or public-contract invariant.
 
-The repository root `AGENTS.md` is the single engineering constitution.
-Tool-specific agent files may adapt these rules to their tool, explain
-tool-specific execution, define commands, and provide context-loading guidance;
-they MUST NOT redefine or contradict this document.
+The root `AGENTS.md` defines how an agent operates. It does not attempt to
+contain every fact about the application. Detailed knowledge lives in the
+referenced specifications, ADRs, module documentation, skills, workflows,
+rules, and the code itself.
 
-AFCON360 may contain skills, workflows, rules, ADRs, specifications, and
-module-specific documents. Agents MUST discover and use relevant resources when
-they exist; this document does not define a closed list of skills.
+Agent-specific rules, skills, and workflows may extend this document, but they
+MUST NOT contradict it.
 
-## 1. Authority Hierarchy
+When an agent-specific instruction conflicts with this document, this document
+wins.
+
+---
+
+# 0. Purpose
+
+This document is the authoritative repository-level contract for all agents
+working on AFCON360.
+
+It defines:
+
+- architectural invariants
+- ownership boundaries
+- safety constraints
+- identity rules
+- database rules
+- financial rules
+- testing requirements
+- documentation requirements
+- agent behavior
+- graph behavior
+- context-loading behavior
+- memory behavior
+- handoff requirements
+- deferred-work requirements
+- tool-adapter boundaries
+
+It does NOT attempt to contain every workflow or implementation detail.
+
+Detailed domain knowledge belongs in the appropriate:
+
+- specifications
+- ADRs
+- module documentation
+- rules
+- skills
+- workflows
+- implementation
+- tests
+
+Reusable execution procedures are distributed under `rules/`, `.junie/rules/`,
+agent skills, and workflows. Agents must route to those resources rather than
+loading unrelated procedures. The shared adaptive procedure is
+`rules/agent-governance-rules.md`; this constitution retains only repository
+authority, non-delegable invariants, ownership boundaries, and escalation
+requirements.
+
+---
+
+# 1. Authority & Precedence
 
 When instructions conflict, use this order:
 
-1. Explicit user instruction for the current task
+1. Explicit current-task user instruction — defines requested scope and
+   objective
 2. Approved behavioral specification, ADR, or formal contract
 3. Repository root `AGENTS.md`
 4. Current graph-node or task contract
@@ -38,950 +91,2279 @@ When instructions conflict, use this order:
 10. Existing tests
 11. Agent inference
 
+A user instruction determines what the user wants the agent to do, but does not
+silently rewrite an approved specification, security invariant, financial
+control, or architectural decision.
+
+If the user intentionally wants to change such a constraint, treat that as a
+specification, architecture, security, financial, or policy change requiring
+the appropriate decision process. Do not silently override the governing rule.
+
 A lower-level instruction MUST NOT silently violate a higher-level security,
-financial, architectural, or authorization constraint. Existing code and
-passing tests are evidence of current behavior, not automatic authority over an
-approved specification.
+financial, architectural, identity, authorization, or public-contract
+constraint.
 
-## 2. Graph Engineering Protocol
+Existing code and passing tests are evidence of current behavior. They are NOT
+automatic authorization to preserve or extend behavior that conflicts with an
+approved specification or architectural decision.
 
-Every substantial engineering task should be treated as a graph node. A node
-may represent exploration, audit, analysis, specification, planning,
-implementation, testing, verification, review, debugging, migration review, or
-release preparation.
+---
 
-Where a graph node exists, establish its ID, objective, scope, exclusions,
-inputs, expected outputs, constraints, required evidence, verification
-requirements, and completion criteria. The current node determines what the
-worker may do:
+# 2. Agent Operating Model
 
-- `AUDIT`: inspect, analyze, test, and report; do not implement unless authorized.
-- `SPECIFICATION`: formalize behavior and resolve ambiguities; do not silently implement.
-- `IMPLEMENTATION`: modify approved code, add required tests, and verify it; do not redesign unrelated architecture.
-- `VERIFICATION`: inspect, test, compare against the specification, and report evidence; do not remediate unless authorized.
+AFCON360 uses a graph-based engineering workflow.
 
-Workers may recommend the next graph node, but do not own graph transitions
-unless explicitly instructed.
+AI coding tools are workers inside that workflow, not independent owners of:
 
-## 2.1 Adaptive Context and Execution Cost
+- product requirements
+- business rules
+- architecture
+- ownership boundaries
+- financial rules
+- security boundaries
+- public contracts
+- graph transitions
 
-Graph discipline is risk-adaptive. Agents MUST NOT load every skill,
-workflow, historical report, or architecture document for every task. Use
-repository memory and the task description as routing signals, then load only
-the context required for the authorized scope.
+The engineering system is conceptually:
 
-Classify the task before broad inspection:
+    User / Product Decision
+             |
+             v
+        Agent Graph
+             |
+             v
+        Current Node
+             |
+       +-----+-----+
+       |           |
+     Junie       Kilo
+     Worker     Worker
+       |           |
+       +-----+-----+
+             |
+             v
+      Repository State
 
-- `TRIVIAL`: documentation, wording, formatting, or isolated presentation-only
-  changes. Inspect the target, make the minimal change, and perform a focused
-  check.
-- `LOCAL`: a single-file or tightly scoped code change with no cross-module
-  contract. Load local rules, inspect affected code, and run targeted
-  verification.
-- `BEHAVIORAL`: a business-rule, lifecycle, authorization, or API behavior
-  change. Load the relevant specification, ownership nodes, implementation,
-  and tests before changing code.
-- `ARCHITECTURAL`: cross-module, schema, ownership, or public-contract work.
-  Establish dependencies, invariants, and authority boundaries before
-  implementation.
-- `HIGH_RISK`: wallet, identity, authentication/authorization, security,
-  compliance, financial operations, migrations, or destructive operations.
-  Use the complete evidence and verification process; memory never replaces
-  current-code and specification checks.
+Workers execute the current authorized node.
 
-The minimum safe path is:
+They do not independently redefine the product or architecture.
 
-```text
-memory/graph lookup → proportional inspection → minimal change
-→ proportional verification → memory update only if knowledge changed
-```
+---
 
-Project memory answers what should be investigated; the current code and tests
-establish what actually exists. Routine fixes do not require memory updates.
-Update durable project memory, ADRs, specifications, or `BACKLOG.md` only when
-the task creates, changes, resolves, or discovers reusable knowledge, an
-invariant, an ownership rule, a decision, or deferred work.
+## 2.1 Graph Nodes
 
-## 3. Agent Modes
+Every substantial engineering task should be treated as a graph node.
 
-Typical modes include `EXPLORER`, `AUDITOR`, `ANALYST`, `SPECIFIER`,
-`PLANNER`, `IMPLEMENTER`, `VERIFIER`, `DIAGNOSTICIAN`, `REVIEWER`, and
-`MIGRATION_REVIEWER`. The current task determines the mode. A worker MUST NOT
-silently assume the authority of another mode.
+A node may represent:
 
-## 4. Controlled Helpfulness
+- exploration
+- audit
+- analysis
+- specification
+- planning
+- implementation
+- testing
+- verification
+- review
+- debugging
+- migration review
+- release preparation
 
-Agents must not equate helpfulness with scope expansion. If an adjacent issue
-is discovered, record it, determine whether it belongs to the current node, and
-leave it unchanged when out of scope. Add it to `BACKLOG.md` when appropriate.
-Do not refactor unrelated code, redesign architecture, rename unrelated
-objects, change public APIs or schemas without authorization, alter financial
-behavior without authorization, or remove compatibility behavior without
-authorization.
+Where a graph node exists, establish:
 
-## 5. Stop Conditions
+- node ID
+- objective
+- authorized scope
+- exclusions
+- inputs
+- expected outputs
+- constraints
+- required evidence
+- verification requirements
+- completion criteria
 
-Stop and report `NEEDS_DECISION` when a required business rule is undefined,
-specifications conflict, ownership or authority is unclear, an architectural
-decision is unapproved, or a financial, security, compliance, identity, or
-public-contract boundary would change unexpectedly. Report `BLOCKED` when
-required files, dependencies, environment, migration state, or tests cannot be
-verified. Report `PARTIAL` when authorized work or verification is incomplete.
-Never invent a rule merely to complete a task.
+The current node determines what the worker may do.
 
-## 6. Formal Specification Law (MANDATORY)
+---
+
+## 2.2 Node Modes
+
+### `EXPLORER`
+
+Inspect and map the relevant system.
+
+Do not modify application behavior unless explicitly authorized.
+
+### `AUDIT`
+
+Inspect, analyze, test, compare, classify, and report.
+
+An audit is read-only unless the node contract explicitly grants
+implementation authority.
+
+An audit agent MUST NOT silently:
+
+- fix findings
+- modify application code
+- modify tests
+- modify migrations
+- change schemas
+- refactor adjacent code
+
+An audit may produce:
+
+- evidence reports
+- findings
+- classifications
+- recommendations
+- proposed next-node definitions
+
+### `SPECIFICATION`
+
+Formalize intended behavior and resolve ambiguities.
+
+Do not silently implement the specification.
+
+### `PLANNER`
+
+Determine implementation steps, dependencies, risks, verification strategy,
+and affected files.
+
+Do not modify implementation unless explicitly authorized.
+
+### `IMPLEMENTATION`
+
+Modify approved code, add required tests, and verify the result.
+
+Do not redesign unrelated architecture.
+
+### `VERIFIER`
+
+Inspect, test, compare implementation against specification, and report
+evidence.
+
+A verification node may discover defects but MUST NOT silently remediate them
+unless remediation is explicitly included in the node contract.
+
+### `DIAGNOSTICIAN`
+
+Investigate failures and identify root causes.
+
+Do not broaden into unrelated fixes.
+
+### `REVIEWER`
+
+Review the implementation against its specification, node contract,
+architecture, security rules, and verification evidence.
+
+### `MIGRATION_REVIEWER`
+
+Review schema state, model metadata, migration requirements, migration history,
+and migration safety.
+
+Workers may recommend the next graph node.
+
+Workers do not own graph transitions unless explicitly instructed.
+
+---
+
+# 3. Task Classification & Adaptive Execution
+
+Before broad inspection, classify the task by scope and risk.
+
+## 3.1 Task Classes
+
+### `TRIVIAL`
+
+Examples:
+
+- documentation wording
+- formatting
+- comments
+- isolated presentation-only changes
+
+Process:
+
+- inspect target
+- make minimal change
+- perform focused verification
+
+Do not load the entire project context.
+
+### `LOCAL`
+
+A single-file or tightly scoped code change with no cross-module contract.
+
+Process:
+
+- identify affected module
+- load local rules
+- inspect affected implementation
+- make minimal change
+- run targeted verification
+
+### `BEHAVIORAL`
+
+A change involving:
+
+- business rules
+- lifecycle
+- authorization
+- permissions
+- API behavior
+- state transitions
+- ownership
+- externally observable behavior
+
+Process:
+
+- identify governing specification
+- inspect affected implementation
+- inspect relevant tests
+- inspect ownership boundaries
+- implement only after the behavior is understood and authorized
+- verify transitions and negative cases
+
+### `ARCHITECTURAL`
+
+Cross-module, schema, ownership, public-contract, or architectural work.
+
+Process:
+
+- establish dependencies
+- establish invariants
+- identify ownership boundaries
+- identify affected contracts
+- establish required specifications
+- plan before implementation
+- verify cross-module effects
+
+### `HIGH_RISK`
+
+Includes:
+
+- wallet
+- identity
+- authentication
+- authorization
+- security
+- compliance
+- financial operations
+- migrations
+- destructive operations
+- public-contract changes
+
+Use the complete evidence and verification process.
+
+Memory may reduce exploration but NEVER replaces:
+
+- current-code inspection
+- specification inspection
+- invariant verification
+- test verification
+
+---
+
+# 3.2 Progressive Context Loading
+
+Context is loaded progressively, not indiscriminately.
+
+Use:
+
+    task → graph node → memory/routing → affected module → applicable rules
+    → applicable skills/workflows/specifications → current code/tests
+    → proportional verification
+
+Start with:
+
+1. task description
+2. current graph node
+3. relevant repository memory/index if available
+4. affected module
+5. risk classification
+
+Then load only:
+
+- relevant rules
+- relevant skills
+- relevant workflows
+- relevant ADRs
+- relevant specifications
+- relevant documentation
+
+Expand context only when evidence reveals:
+
+- dependency
+- contradiction
+- ownership boundary
+- architectural consequence
+- security concern
+- financial consequence
+- public-contract impact
+
+DO NOT load every skill, workflow, ADR, historical report, or module document
+merely because it exists.
+
+---
+
+# 3.3 Minimal Execution Principle
+
+Agents MUST prefer the smallest safe inspection and implementation path that
+can establish correctness.
+
+Agents SHOULD NOT:
+
+- scan the entire repository for a local task
+- load unrelated skills
+- load unrelated workflows
+- read historical reports that cannot affect the decision
+- run the entire test suite for an isolated change unless required
+- perform broad refactoring merely because related code is imperfect
+- repeatedly inspect the same files without new evidence
+
+Verification must be proportional to:
+
+- task class
+- risk
+- scope
+- changed behavior
+- affected contracts
+
+The objective is:
+
+    minimum necessary context
+    +
+    minimum necessary inspection
+    +
+    minimum necessary implementation
+    +
+    sufficient verification
+
+Safety MUST NOT be sacrificed for token or time savings.
+
+---
+
+# 4. Change Authority
+
+Before modifying anything, the agent MUST establish:
+
+- active graph node
+- node type
+- whether modification is authorized
+- authorized files/subtrees
+- excluded files/subtrees
+- governing specifications
+- required verification
+- applicable risks
+
+The existence of a defect does NOT itself grant permission to fix it.
+
+The existence of a convenient refactoring opportunity does NOT grant
+permission to perform it.
+
+The existence of a failing test does NOT automatically authorize changing the
+test or implementation.
+
+The existence of related work does NOT authorize scope expansion.
+
+---
+
+# 5. Scope Discipline & Controlled Helpfulness
+
+Agents MUST implement ONLY the approved change.
+
+Do not perform unrelated:
+
+- refactors
+- renames
+- architecture migrations
+- dependency upgrades
+- formatting sweeps
+- test rewrites
+- database cleanup
+- public API changes
+
+unless explicitly authorized.
+
+When exploring a module, prefer the relevant subtree.
+
+---
+
+## 5.1 Scope Expansion
+
+If implementation reveals a dependency outside the authorized scope, the agent
+must choose one:
+
+1. Resolve it only if the current node explicitly permits dependency changes.
+2. Record it as deferred work.
+3. Stop with `NEEDS_DECISION` if the dependency changes:
+   - architecture
+   - ownership
+   - security
+   - financial behavior
+   - public contracts
+   - specification
+
+Agents MUST NOT silently expand scope because doing so appears technically
+convenient.
+
+---
+
+# 6. Specification Law
 
 AFCON360 behavior MUST be specified before implementation whenever a change
-introduces or alters a business rule, invariant, workflow, lifecycle, state
-transition, permission boundary, ownership rule, financial guarantee,
-compliance obligation, or externally observable contract.
+introduces or alters:
 
-Before implementation, establish the affected entities, state variables, inputs,
-outputs, invariants, failure conditions, valid transitions, ownership and
-authority boundaries, initiator, approver, rejector, retry authority, reversal
-authority, and observation/read authority. Resolve conflicting interpretations
-before implementation; do not use legacy behavior, convenience, agent
-preference, or passing tests as implicit authorization. Link relevant
-specifications from owning module documentation, update `README.md` for
-cross-module rules where appropriate, and add tests for transitions, invariants,
-authorization, and negative cases.
+- business rules
+- invariants
+- workflows
+- lifecycle
+- state transitions
+- permission boundaries
+- ownership rules
+- financial guarantees
+- compliance obligations
+- externally observable contracts
 
-## 7. Evidence-First Engineering
+Before implementation, establish:
 
-Every completed graph node must report evidence appropriate to its purpose:
-node and authorized scope, actual files changed, significant behavior or
-architectural impact, commands/tests and results, contract or invariant checks,
-remaining risks, unverified assumptions, and deferred work. Completion status
-must be one of `PASS`, `PARTIAL`, `BLOCKED`, `NEEDS_DECISION`, or `FAIL`.
-Do not report `PASS` merely because code was written.
+- affected entities
+- state variables
+- inputs
+- outputs
+- invariants
+- failure conditions
+- valid transitions
+- ownership
+- authority
+- initiator
+- approver
+- rejector
+- retry authority
+- reversal authority
+- observation/read authority
 
-## Architecture Overview
+Resolve conflicting interpretations before implementation.
 
-**AFCON360** is a modular Flask application using a modular architecture for managing events, wallets, transport, and identity. It's an enterprise-grade platform for tournament management, accommodation, transport, wallet services, and fan engagement.
+Do NOT use:
 
-### Core Stack
-- **Backend:** Flask 3.1.2 with application factory pattern
-- **Database:** SQLAlchemy 2.0.44 with PostgreSQL (Alembic migrations)
-- **Async:** Celery 5.4.0 with Redis 7.1.0 broker
-- **Auth:** Flask-Login with role-based access control (RBAC)
-- **Caching:** Redis via Flask-Caching and lazy-loaded LazyRedis client
-- **Rate Limiting:** Flask-Limiter with Redis backend
+- legacy behavior
+- convenience
+- agent preference
+- passing tests
+- implementation simplicity
+
+as implicit authorization.
+
+If the specification is:
+
+- missing
+- contradictory
+- ambiguous
+- materially incomplete
+
+STOP and return:
+
+    STATUS: NEEDS_DECISION
+
+Relevant specifications should be linked from owning module documentation.
+
+Cross-module rules should be documented appropriately in repository
+documentation.
+
+Tests should cover:
+
+- transitions
+- invariants
+- authorization
+- negative cases
+- important failure paths
+
+---
+
+# 7. Evidence-First Engineering
+
+For non-trivial work, maintain the following evidence chain:
+
+    Requirement
+        ↓
+    Specification
+        ↓
+    Current implementation
+        ↓
+    Current tests
+        ↓
+    Gap
+        ↓
+    Proposed change
+        ↓
+    Verification
+
+Do not implement from assumptions when repository evidence is available.
+
+Every completed graph node must provide evidence appropriate to its purpose.
+
+Evidence may include:
+
+- files inspected
+- specifications reviewed
+- relevant models
+- relevant routes
+- relevant services
+- relevant tests
+- commands executed
+- test results
+- contract checks
+- invariant checks
+- risks
+- unresolved assumptions
+- deferred work
+
+Do not report success merely because code was written.
+
+---
+
+# 8. Completion Status
+
+Use one of these statuses:
+
+### `PASS`
+
+Authorized work is complete and required verification passed.
+
+### `PARTIAL`
+
+Some authorized work or required verification remains incomplete.
+
+### `BLOCKED`
+
+Work cannot proceed because a required:
+
+- dependency
+- environment
+- file
+- migration state
+- test
+- service
+- evidence
+
+cannot be obtained or verified.
+
+### `NEEDS_DECISION`
+
+A human/product/architecture/security/finance/compliance decision is required.
+
+### `FAIL`
+
+The implementation or verification did not satisfy the node contract.
+
+---
+
+# 9. Tests Are Evidence, Not Specification
+
+Passing tests establish evidence about current behavior.
+
+They do NOT automatically establish that the behavior is correct.
+
+If tests conflict with an approved specification:
+
+1. identify the conflict
+2. report the conflict
+3. determine whether the specification or tests require an approved change
+4. do not silently alter behavior merely to satisfy tests
+
+Similarly, do not change tests merely to make a new implementation pass unless the
+test itself is demonstrably inconsistent with the approved behavior.
+
+---
+
+# 10. Memory & Knowledge Policy
+
+## 10.1 Memory as a Routing Cache
+
+Repository memory, graph state, prior reports, and agent-maintained summaries
+are routing and context aids.
+
+They are NOT authoritative evidence of current implementation state.
+
+Use this model:
+
+    Memory = routing/index
+    Current repository = implementation truth
+    Tests = behavioral evidence
+    Specifications/ADRs = intended authority
+
+Agents SHOULD consult relevant memory before expensive exploration when it can
+identify:
+
+- affected files
+- previous decisions
+- known constraints
+- unresolved work
+- previous verification results
+- relevant graph nodes
+- likely ownership boundaries
+
+For `TRIVIAL` and `LOCAL` tasks, relevant memory may substantially reduce
+exploration.
+
+For `BEHAVIORAL`, `ARCHITECTURAL`, and `HIGH_RISK` tasks, memory may narrow the
+search but MUST NOT replace verification of current source and governing
+contracts.
+
+Memory MUST NOT be treated as proof that a file or behavior is unchanged.
+
+---
+
+## 10.2 Memory Updates
+
+Do NOT update memory after every task.
+
+Update durable project memory, ADRs, specifications, or `BACKLOG.md` only when
+the task:
+
+- creates reusable knowledge
+- changes an invariant
+- resolves an architectural decision
+- discovers a reusable constraint
+- changes ownership
+- resolves deferred work
+- creates important operational knowledge
+- changes a durable workflow
+- establishes a significant implementation decision
+
+Do NOT create memory entries for:
+
+- routine implementation details
+- temporary debugging observations
+- one-off commands
+- information already represented clearly by code
+- trivial documentation edits
+
+The goal is to make memory more useful over time, not larger after every task.
+
+---
+
+# 11. Deferred Work
+
+All identified but incomplete work that belongs in the system MUST be recorded
+in:
+
+    BACKLOG.md
+
+Do not silently leave unfinished work in conversation history.
+
+Record work when:
+
+- requested but out of scope
+- partially implemented
+- blocked
+- awaiting migration
+- awaiting another team
+- awaiting external dependency
+- awaiting security review
+- awaiting finance/compliance review
+- explicitly deferred
+
+Reference concrete:
+
+- files
+- models
+- routes
+- services
+- specifications
+- graph nodes
+
+Do NOT delete historical backlog entries.
+
+Resolved items should be marked:
+
+    Status: Done
+    Resolved: YYYY-MM-DD
+
+---
+
+# 11.5 Architecture at a Glance
+
+This section is a productivity map, not a new contract. Every rule below is
+already binding elsewhere in this document; read the cited section for the
+authoritative wording.
+
+## 11.5.1 Entry point and factory
+
+- `app.create_app(config_object=None)` in `app/__init__.py` is the Flask
+  application factory. It is large (~1800 lines) and uses deep lazy loading
+  to keep startup time low. Do not flatten the lazy imports without cause.
+- `app.py` is the development launcher (`python app.py`); it calls
+  `create_app()` and wires a few template filters and context processors.
+- Blueprints are registered centrally inside `create_app()`. Routes inside
+  gated modules are wrapped with the module guard (see §28 — Module
+  Toggles). A disabled module must fail safely without crashing unrelated
+  modules or creating partial state.
+
+## 11.5.2 Model registration
+
+- All models inherit `app.models.base.BaseModel` (or an approved protected
+  variant) — see §13.
+- Models are registered via `app/core/model_registry.py`, which
+  `create_app()` invokes during startup. A model that is not registered is
+  incomplete (see §19.2). New models must also be exported from the
+  relevant domain `__init__.py` when other modules import them.
+
+## 11.5.3 Configuration (layered environment)
+
+- `app/config.py:_load_env()` loads `.env` first, then `.env.{APP_ENV}`.
+  `APP_ENV` selects the overlay:
+
+    local  → `.env` + `.env.local`
+    docker → `.env` + `.env.docker`
+    prod   → `.env` + `.env.prod`
+
+- `get_config()` returns the matching config class. Never print or log
+  secret values (see §25). The `ENCRYPTION_KEY` guard runs inside
+  `create_app()` only after the overlay is loaded — do not move it back to
+  module level.
+
+## 11.5.4 Async, cache, and sessions
+
+- Celery is exposed as `app.celery_app`. Worker and beat handle webhooks,
+  media processing, notifications, reconciliation, and scheduled jobs
+  (see §37 for run commands).
+- Redis is used for caching (Flask-Caching), sessions (Flask-Session),
+  rate limiting (Flask-Limiter), and the Celery broker/backend. Set
+  `DISABLE_REDIS=true` only for a limited local run; gated features must
+  degrade, not crash (see §28).
+
+## 11.5.5 Testing
+
+- The canonical pytest runner is `tests/conftest.py`; the root `conftest.py`
+  only filters collection to the `tests/` directory. Plain `pytest`
+  auto-builds the schema via `db.create_all()` + `stamp head` (see §21.1).
+- PostgreSQL is the only supported application and test database. SQLite,
+  in-memory fallbacks, raw SQL strings, and test-time schema creation or
+  repair are not supported (see §20, §21).
+
+## 11.5.6 Module ownership and cross-module contracts
+
+- See §17 for ownership boundaries and the README "Modules" table for the
+  per-domain responsibility map.
+- Cross-module work uses explicit contracts, e.g.
+  `app/accommodation/AFCON360_SEAMLESS_BOOKING_SPEC.md` and
+  `app/events/events.md`. A module must continue to function when an
+  optional integration is unavailable (see §17, §18).
+
+---
+
+# 11.6 Distilled Quick Reference
+
+Productivity pointers distilled from the project's agent skills and rules
+(`.junie/`, `.kiro/steering/`, `.windsurf/`). These repeat no invariant;
+they name the concrete utilities, files, and gotchas an agent needs fast.
+Authoritative wording stays in the cited section.
+
+## 11.6.1 Standard utilities (prefer over custom code)
+
+- `app/utils/id_guard.py` — prevents incorrect internal-ID assignment/exposure
+- `app/utils/module_guard.py` — `@module_required('name')` route guard (§28)
+- `app/utils/idempotency.py` — idempotency keys for wallet/booking confirms
+  (§18.1)
+- `app/utils/validators.py` — common data-validation patterns
+- `app/utils/audit.py` — log sensitive actions to the audit trail (§29)
+
+## 11.6.2 Auth decorators and key files
+
+- Decorators: `@login_required`, `@admin_required`, `@require_role('x')`,
+  `@owner_only`; runtime checks `current_user.has_role(...)` and
+  `current_user.is_super_admin`.
+- Files: `app/auth/decorators.py`, `app/auth/roles.py`, `app/auth/policy.py`,
+  `app/auth/delegation.py`, `app/auth/ownership.py`.
+- The full ranked role hierarchy is NOT in this constitution — see
+  `app/Documentation/IDENTITY_POLICIES.md` (§18.2).
+
+## 11.6.3 Migration quick reference (Alembic gotchas)
+
+§20 is authoritative. Concrete fixes:
+
+| Problem | Fix |
+|---|---|
+| Multiple heads | `flask db merge heads -m "merge_<date>"` |
+| Revision ID too long | set `revision = 'short_id'` (< 32 chars — Postgres identifier limit) |
+| Create a revision | `python scripts/create_migration.py "<desc>"` (keeps IDs short) |
+| Migration fails / stuck state | `flask db current` / `flask db heads`; `flask db stamp <head_id>` only after fixing the root cause |
+| CHECK-constraint drift (Alembic blind spot — see §20.2) | `python scripts/sync_check_constraints.py --dry-run` → `--accept-model-truth --message "<desc>"` → `flask db upgrade` |
+
+`flask db migrate` does NOT detect CHECK-constraint changes. Any work that
+adds, removes, or edits a `CheckConstraint` (named `ck_*`), including
+enum-driven ones like `app/notifications/models.py`, MUST go through
+`scripts/sync_check_constraints.py`. See §20.2.
+
+Never patch a migration file as a workaround — fix the model/source first.
+
+## 11.6.4 Wallet sub-architecture map
+
+§18.1 is authoritative. File layout:
+
+- `app/wallet/models/` — ledger and account models (DO NOT modify without
+  authorization)
+- `app/wallet/services/` — business logic layer
+- `app/wallet/repositories/` — data access layer
+- `app/wallet/payments/` — gateway integrations (Flutterwave, Paystack,
+  Mobile Money MTN/Airtel, PayPal, Alipay, WeChat Pay, Visa) — match the
+  existing provider pattern, do not invent a new one
+- `app/wallet/api/` — wallet API endpoints
+- `app/wallet/middleware/` — wallet-specific middleware
+- `app/wallet/routes_pin.py` — PIN lockout logic (do not touch unless asked)
+- Async: `app/tasks/webhook_processor.py` (webhooks),
+  `app/tasks/reconcile.py` (reconciliation) — extra care on changes
+- FX rates UI: `templates/wallet/fx_rates.html`
+
+## 11.6.5 Forensic audit and compliance concrete
+
+§29 is authoritative. Concrete handles:
+
+- Service: `app/audit/forensic_audit.py` — `log_attempt()`,
+  `log_completion()`, `log_blocked()`, `get_audit_timeline()`,
+  `get_pending_reviews()`, `get_suspicious_patterns()`.
+- Audit columns: `attempted_at`, `status`, `reviewed_by_user_id`,
+  `reviewed_at`, `review_notes`, `ip_address`, `user_agent`, `session_id`,
+  `correlation_id`, `risk_score`.
+- Schedules: suspicious-pattern detection hourly; stale-review escalation
+  every 4 hours; daily compliance reports (Celery).
+- Thresholds: FIA Uganda — transactions > UGX 20M must be flagged; Bank of
+  Uganda — KYC timelines must be enforced.
+- `app/compliance/aml_service.py` changes require compliance review — flag,
+  do not proceed silently.
+- Known issue: `owner_audit_logs.is_deleted` may be absent — wrap queries on
+  that table in try/except.
+
+## 11.6.6 Testing extras
+
+§21 is authoritative. Additional handles:
+
+- Flags: `pytest -k "impersonation"` (filter by name),
+  `pytest --cov=app tests/` (coverage), `pytest --tb=short` (shorter
+  tracebacks).
+- Reset/rebuild: `python scripts/reset_test_db.py`,
+  `python scripts/setup_test_db_schema.py`.
+- Role/permission tests use `tests/setup_owner.py` helpers.
+- Mock external payment gateways — never call real Flutterwave/Paystack.
+- Mock Redis in unit tests — do not test against live Redis.
+- Wallet tests use isolated DB transactions and rollback after each test.
+
+## 11.6.7 Code conventions (crisp)
+
+Only items not already stated elsewhere; §22 covers frontend.
+
+- Log with `current_app.logger` — never `print()`.
+- Use absolute imports from the project root
+  (e.g. `from app.auth.models import User`).
+- Check existing `backref` names before adding relationships — duplicate
+  backrefs crash on startup. Never rename an existing `backref`.
+- A `@property` must not shadow a Column name — use `_flag` / `_status` /
+  `_computed` suffixes.
+- All new routes need CSRF protection (Flask-WTF) unless `@csrf.exempt` is
+  explicitly justified.
+- Use `db.session.rollback()` explicitly in route error handlers.
+- Extend `base.html` for user-facing pages; use `url_for()` (never hardcode
+  URLs); include `{{ form.hidden_tag() }}` / CSRF token in forms.
+
+## 11.6.8 Shell and environment
+
+- The default project terminal is PowerShell on Windows — chain with `;`,
+  not `&&`. CodeBuddy Code's Bash tool runs Git Bash and accepts `&&`; match
+  the shell you are actually running.
+- Mind CRLF vs LF, especially in `docker-entrypoint.sh`.
+- Activate the venv with `.venv\Scripts\Activate.ps1` (PowerShell) or
+  `source .venv/bin/activate` (bash).
+
+## 11.6.9 Context-pollution ignore list
+
+Do not read unless explicitly needed:
+
+    **/__pycache__/, **/.venv/, **/backups_today/, **/model_backups/,
+    **/templates_backup/, **/flask_session/, **/*.pyc, **/node_modules/,
+    backup_*.json, *.backup,
+    migrations/versions/*.py (unless reviewing schema history)
+
+## 11.6.10 Standard workflow checklists
+
+Reusable procedural checklists live in `.junie/workflows/` and
+`.windsurf/workflows/`. Consult the matching one before common tasks:
+
+- `add-endpoint` — scaffold an API route (dual ID, role check, module guard)
+- `add-model` — scaffold a model (BaseModel, dual ID, soft delete, registry)
+- `db-migration` — safe Alembic protocol (single head, short IDs, propose only)
+- `new-async-task` — scaffold a Celery task (idempotency, retry, JSON
+  serialization)
+- `wallet-change-review` — pre-flight checklist for `app/wallet` changes
+- `post-change-report` — end-of-task report + quality checklist (§39)
+
+---
+
+# 12. Core Architectural Invariants
+
+These rules are non-negotiable unless the governing architecture/specification is
+explicitly changed.
+
+---
+
+## 12.1 Dual ID System
+
+Every database entity uses two identifiers:
+
+- `id` — internal `BigInteger`
+- `public_id` — external UUID/approved public identifier representation
+
+### Internal ID
+
+Used only for:
+
+- database relations
+- foreign keys
+- joins
+- persistence
+
+NEVER expose it externally.
+
+### Public ID
+
+Used for:
+
+- APIs
+- URLs
+- external references
+- human-visible identifiers
+- approved external identity operations
+
+### Rules
+
+- Internal foreign keys use `id`.
+- External input should resolve through `public_id`.
+- API responses use `public_id`.
+- URLs use `public_id`.
+- Never serialize raw internal `id`.
+- Never expose `user.id` in APIs, logs, or templates.
+- Never introduce another public identifier scheme without approved
+  specification.
+
+**See:**
+
+    /app/identity/models/user.py:25-45
+
+---
+
+# 13. Base Models
+
+All models MUST inherit from:
+
+    app.models.base.BaseModel
+
+or an approved derived class such as:
+
+    ProtectedModel
+
+Do not introduce direct `db.Model` inheritance without explicit architectural
+approval.
+
+Verify repository conventions before treating any exception as intentional.
+
+---
+
+# 14. PostgreSQL ENUM Policy
+
+Do NOT introduce new PostgreSQL ENUM types.
+
+Use:
+
+- `String`
+- application-level validation
+- CHECK constraints where appropriate
+
+Existing ENUM migrations must follow the approved expand-contract strategy.
+
+**See:**
+
+    DATABASE_SCALABILITY_ROADMAP.md
+
+---
+
+# 15. Property Naming Safety
+
+Never define a Python `@property` with the same name as a SQLAlchemy
+`Column`.
+
+Use suffixes such as:
+
+- `_flag`
+- `_status`
+- `_computed`
+
+Example:
+
+    @property
+    def is_verified_status(self):
+        return self.email_verified and self.phone_verified
+
+---
+
+# 16. Import Style
+
+Use absolute imports from the project root.
+
+Example:
+
+    from app.identity.models.user import User
+    from app.wallet.models.transaction import Transaction
+
+Be especially careful with circular imports around:
+
+- identity
+- events
+- accommodation
+- wallet
+- services
+- model registration
+
+Verify startup where appropriate:
+
+    python -c "from app import create_app"
+
+---
+
+# 17. Ownership Boundaries
+
+Cross-module operations MUST respect domain ownership.
+
+A module MUST NOT silently become the owner of another module's domain state.
+
+| Domain | Owns |
+|---|---|
+| Identity | Users, organisations, identity relationships |
+| Auth | Authentication and session entry |
+| Events | Events, registrations, event lifecycle |
+| Accommodation | Properties, inventory, availability, reservations |
+| Transport | Vehicles, drivers, routes, transport assignments |
+| Wallet | Ledger, balances, financial transactions |
+| KYC | Identity verification workflows |
+| Compliance | Compliance rules and AML checks |
+| Audit | Forensic audit records |
+
+Cross-module operations MUST use explicit contracts.
+
+Do not directly manipulate another module's internal state merely because the
+database makes it technically possible.
+
+---
+
+# 18. High-Risk Areas
+
+## 18.1 Wallet
+
+The wallet is a high-risk financial subsystem.
+
+Treat wallet changes as:
+
+    CRITICAL
+
+unless explicitly classified otherwise by the governing process.
+
+Rules:
+
+- Preserve double-entry accounting.
+- Every debit must have a corresponding credit.
+- Do not mutate balances outside the ledger model.
+- Maintain idempotency.
+- Preserve transaction integrity.
+- Roll back failed database transactions.
+- Preserve audit trails.
+- Preserve reconciliation behavior.
+- Do not modify `app/wallet/models/` without explicit authorization.
+- Preserve compliance controls.
+- Preserve transaction references and idempotency keys.
+
+Wallet changes may require:
+
+- compliance review
+- financial review
+- additional tests
+- reconciliation verification
+
+---
+
+## 18.2 Identity, Roles & Personas
+
+Identity and authorization rules are governed by the approved identity
+specification and role/permission policy.
+
+Agents MUST NOT infer authority from role names alone.
+
+Where AFCON360 supports:
+
+- multiple roles
+- personas
+- organizational contexts
+- active-role switching
+- user/organization context
+
+authorization MUST respect the currently active authorized context.
+
+Role changes must be audit-logged.
+
+Owner cannot be:
+
+- deleted
+- impersonated
+- self-modified
+
+Super admin cannot modify:
+
+- another super admin
+- owner
+
+Do not introduce, remove, reorder, merge, or reinterpret roles without an
+approved identity/authorization specification.
+
+The detailed role matrix belongs in identity documentation, not this
+constitution.
+
+---
+
+# 19. Database Rules
+
+## 19.1 PostgreSQL Requirement
+
+PostgreSQL is the only supported production and test database.
+
+Do NOT introduce:
+
+- SQLite fallbacks
+- in-memory persistence fixtures
+
+---
+
+## 19.2 Model Registration
+
+When adding a model:
+
+1. Inherit from `BaseModel` or approved derived class.
+2. Define table/index/constraint requirements.
+3. Register it in `app/core/model_registry.py`.
+4. Export it from the relevant domain `__init__.py` when required.
+5. Verify Alembic can detect it.
+
+A model that is not correctly registered is incomplete.
+
+**See:**
+
+    app/core/model_registry.py
+    app/__init__.py:579-580
+
+---
+
+## 19.3 Soft Delete
+
+Where the model uses the standard soft-delete architecture, queries should
+exclude deleted records.
+
+Example:
+
+    Model.query.filter(Model.is_deleted == False)
+
+Use the repository's established soft-delete helper/query patterns where they
+exist.
+
+---
+
+# 20. Migration Law
+
+Schema changes are HIGH RISK.
+
+Agents MUST NOT create, patch, or apply migrations without explicit
+authorization.
+
+Agents MAY inspect:
+
+    flask db current
+    flask db heads
+    flask db history
+
+Agents MAY NOT create/apply migrations unless explicitly authorized:
+
+    flask db migrate
+    flask db upgrade
+    flask db downgrade
+    flask db merge
+
+The user controls migration execution.
+
+Agents MAY:
+
+- identify required schema changes
+- inspect migration state
+- inspect migration history
+- verify model metadata
+- propose exact commands
+
+Before proposing a new migration:
+
+1. inspect current migration state
+2. run `flask db heads`
+3. identify whether multiple heads exist
+4. verify model registration
+5. identify the intended schema delta
+6. review affected constraints
+7. propose commands without executing prohibited migration operations
+
+Never patch generated migrations as a workaround for a model/source problem.
+
+Known defect — missing baseline migration (RESOLVED):
+
+- `ab6dd422c152_initial_schema` (down_revision=None) was the effective root of
+  the migration graph but never created `users`, `events`, `accounts`,
+  `transactions`, or `accommodation_properties`, so `flask db upgrade` could
+  not build a database from scratch in ANY environment.
+- RESOLVED: it has been retired to `migrations/_retired_versions/` and replaced
+  by `migrations/versions/8a0deccce6f6_initial_full_schema_baseline.py` — a
+  single root migration (`down_revision=None`) that builds the entire schema
+  from the current SQLAlchemy models via `db.metadata.create_all()`, which
+  resolves FK ordering (including circular dependencies) automatically.
+- Verified: `flask db upgrade` from an EMPTY database now builds all 182
+  tables including `users`/`events`/`accounts`/`transactions`/
+  `accommodation_properties`, with `alembic_version` stamped at the new head
+  `8a0deccce6f6`.
+- The test environment still bootstraps via `db.create_all()` + `stamp head`
+  (see §21.1 / `scripts/setup_test_db_schema.py` / `tests/conftest.py`); both
+  paths use the same model metadata, so the resulting schema is identical.
+
+## 20.2 CHECK-constraint sync (Alembic blind spot)
+
+Alembic autogenerate (`flask db migrate`) does NOT detect CHECK-constraint
+changes — adding, dropping, or editing a `CheckConstraint` in a model is
+invisible to autogenerate. This is a hard Alembic limitation, not a bug.
+
+The project ships `scripts/sync_check_constraints.py` to close that gap.
+It compares SQLAlchemy model metadata (source of truth) against the live
+PostgreSQL database and emits a normal Alembic migration that reconciles
+them. It NEVER applies anything itself — it only writes a migration file
+for review; the user runs `flask db upgrade`.
+
+Any managed CHECK constraint has a name beginning `ck_`. Enum-driven
+constraints are generated from the model's enum classes, e.g.
+`app/notifications/models.py` builds `ck_notifications_type`,
+`ck_notifications_channel`, `ck_notifications_module`,
+`ck_notifications_status` from the `NotificationType` /
+`NotificationChannel` / `NotificationModule` / `NotificationStatus`
+enums. Adding a new enum value therefore changes a managed constraint and
+requires a sync.
+
+Agents MUST:
+
+1. Treat any task that adds, removes, or edits a `CheckConstraint`
+   (including enum-driven ones — a new enum value, a renamed enum value,
+   or a removed enum value) as requiring the CHECK-constraint sync path,
+   NOT `flask db migrate`.
+2. Tell the user explicitly that Alembic will not detect this change and
+   that the sync script must be run. Surface this the same way a pending
+   schema migration is surfaced — do not let the change ship silently.
+3. Propose (do not execute) the exact commands, in order:
+
+       python scripts/sync_check_constraints.py --dry-run
+       python scripts/sync_check_constraints.py --accept-model-truth --message "<desc>"
+       # review the file written to migrations/versions/
+       flask db upgrade
+
+4. After the user runs `flask db upgrade`, recommend a verification run
+   so the user can see the database is now in sync:
+
+       python scripts/sync_check_constraints.py --dry-run
+
+   The expected result is "No CHECK constraint migration required."
+
+Agents MUST NOT run the sync script's migration-generation
+(`--accept-model-truth`) or `flask db upgrade` themselves — the user
+controls migration execution, same as §20.
+
+When a CHECK-constraint change is pending or has been made in the model
+but not yet synced to the DB, the task is not done. State this plainly to
+the user, e.g. "model changed but the DB CHECK constraint has not been
+synced yet — run the sync script (§20.2) before this is live."
+
+A "representation-only" difference reported by the script (same
+semantics, different SQL form — e.g. `= ANY(ARRAY[...])` vs `IN (...)`)
+is NOT drift and needs no migration. Only `ADD` / `REPLACE` / `ORPHANED`
+(with `--prune-db`) require a migration.
+
+---
+
+# 21. Testing Contract
+
+PostgreSQL is the only supported database backend for application and
+persistence tests.
+
+Do NOT introduce:
+
+- SQLite test fallbacks
+- in-memory database fixtures
+
+Tests should use:
+
+- shared `TestingConfig`
+- project pytest fixtures
+- dedicated migration-managed `TEST_DATABASE_URL`
+
+Tests must fail fast when:
+
+- PostgreSQL is unavailable
+- schema is stale
+- required migrations are missing
+
+Application and test code should use SQLAlchemy models/Core expressions rather
+than handwritten SQL strings.
+
+Direct SQL persistence tests are not supported.
+
+## 21.1 Test Database Bootstrap (canonical, always-on)
+
+The PostgreSQL test database is bootstrapped **automatically by `tests/conftest.py`**
+every time `pytest` runs. Agents and developers MUST NOT perform any manual
+migration step before running tests; plain `pytest` is sufficient and is the
+only supported entry point.
+
+`tests/conftest.py` is the **single canonical pytest runner** (the root
+`conftest.py` only filters collection to `tests/`). The legacy root
+`_conftest.py` was removed — it is a dead duplicate and must not be revived.
+
+Why the test bootstrap uses `db.create_all()` + `stamp head` (and the
+migration baseline is now correct):
+
+- The migration history previously had a **missing baseline**:
+  `ab6dd422c152_initial_schema` (down_revision=None) never created `users`,
+  `events`, `accounts`, `transactions`, or `accommodation_properties`, so
+  `flask db upgrade` from an empty database failed.
+- **RESOLVED:** `ab6dd422c152_initial_schema` was retired to
+  `migrations/_retired_versions/` and replaced by
+  `migrations/versions/8a0deccce6f6_initial_full_schema_baseline.py` — a single
+  root migration (`down_revision=None`) that builds the entire schema from the
+  current models via `db.metadata.create_all()`, resolving FK ordering
+  automatically. `flask db upgrade` from an EMPTY database now builds all 182
+  tables in ANY environment (verified on a throwaway DB).
+- The test bootstrap still uses `db.create_all()` + `stamp head` because it is
+  fast, idempotent, and test-only. Both paths use the same model metadata, so
+  the resulting schema is identical. For a fresh database in a NON-test
+  environment, `flask db upgrade` is now the correct, supported path.
+
+What `tests/conftest.py` does (test-only, sanctioned):
+
+1. Creates the test database if it does not exist.
+2. If the schema is incomplete (no `users` table), builds it from the current
+   SQLAlchemy models via `db.create_all()`. This reflects model changes
+   including `use_alter` foreign keys, and correctly defers circular FKs.
+3. Stamps Alembic head so `tests/postgres_contract.py`'s check and any
+   `flask db upgrade` treat the DB as fully migrated.
+4. If the schema already exists, it is reused (fast path); no rebuild occurs.
+
+Canonical commands:
+
+    # Run the suite — conftest auto-builds/verifies the test DB:
+    pytest
+
+    # Force a clean rebuild of the test DB (drops + recreate + create_all + stamp):
+    python scripts/setup_test_db_schema.py
+
+Do NOT run `flask db upgrade` to provision the *test* database; `pytest`
+does it via `db.create_all()` + `stamp head` (idempotent, test-only). If the
+test DB is stale after a model/schema change, run
+`scripts/setup_test_db_schema.py` (which drops and rebuilds) rather than
+relying on migrations. For a fresh *non-test* database (new env, disaster
+recovery), `flask db upgrade` from empty now builds the full schema via the
+`8a0deccce6f6` baseline.
+
+**See:**
+
+    docs/POSTGRES_TESTING_CONTRACT.md
+    scripts/setup_test_db_schema.py
+    tests/postgres_contract.py
+    tests/conftest.py
+
+---
+
+# 22. Frontend Rules
+
+Frontend changes MUST preserve mobile-first behavior.
+
+Requirements:
+
+- no unintended horizontal overflow
+- touch targets ≥44×44px
+- responsive grids
+- fluid typography using `clamp()`
+- safe-area handling where required
+- no inappropriate fixed widths
+- no inline layout styles where prohibited
+
+Templates:
+
+- Use `{{ csrf_token() }}` for forms requiring CSRF protection.
+- Preserve `?_pane=1` behavior where used.
+- Avoid `overflow: hidden` on containers holding dropdowns unless safe.
+
+---
+
+## 22.1 JavaScript & CSP
+
+Use external scripts where possible.
+
+Do not use:
+
+- inline event handlers
+- unnecessary inline executable scripts
+
+Inline executable scripts require the application's appropriate CSP nonce.
+
+JSON-LD blocks must follow the application's CSP requirements.
+
+---
+
+## 22.2 Frontend Documentation
+
+When HTML, Jinja, or CSS changes, assess:
+
+    static/MOBILE_OPTIMIZATION.md
+
+Update it when the frontend change affects its documented:
+
+- file tree
+- responsive behavior
+- styling
+- branding
+- verification state
+- isolation plan
+
+A content-only change that does not affect documented scope does not require a
+no-op documentation update.
+
+---
+
+# 23. Security Rules
+
+Agents MUST:
+
+- never expose internal database IDs
+- validate ownership before returning sensitive data
+- preserve authentication boundaries
+- preserve authorization boundaries
+- preserve CSRF protections
+- preserve CSP requirements
+- never commit secrets
+- use database-safe/parameterized queries
+- preserve idempotency for critical operations
+- audit sensitive operations
+- avoid weakening security controls for convenience
+
+---
+
+# 24. Environment & Project Stack
+
+AFCON360's known project environment is:
+
+- **OS:** Windows / PowerShell
+- **Python:** 3.13.x
+- **Backend:** Flask 3.1.2
+- **Database ORM:** SQLAlchemy 2.0.44
+- **Database:** PostgreSQL
+- **Migrations:** Alembic / Flask-Migrate
+- **Async:** Celery 5.4.0
+- **Broker/cache:** Redis 7.1.0
+- **Authentication:** Flask-Login
+- **RBAC:** application role/permission system
+- **Caching:** Flask-Caching + Redis
+- **Rate Limiting:** Flask-Limiter + Redis
 - **Validation:** Pydantic 2.10.0
 - **Testing:** pytest 8.3.0
-- **External Services:** AWS (S3/OCR), Flutterwave, Paystack, PayPal, NIRA (KYC)
-- **Environment:** Windows / PowerShell (use `;` instead of `&&` for command chaining)
+
+External services include:
+
+- AWS S3/OCR
+- Flutterwave
+- Paystack
+- PayPal
+- NIRA
+- OCI storage
+- mobile money integrations
+- other approved payment and verification providers
+
+These values are maintained as project reference information.
 
 ---
 
-## 1. The Dual ID System ⚠️ CRITICAL CONCEPT
+## 24.1 Project Stack Freshness
 
-**This codebase uses TWO IDs for every database entity**:
+Agents MUST NOT verify dependency versions on every task.
 
-```python
-class User(UserMixin, ProtectedModel):
-    id = Column(BigInteger, primary_key=True)        # ← INTERNAL, never expose
-    public_id = Column(String(64), unique=True)      # ← UUID, for APIs/URLs
-```
+The stack information above should be periodically checked against the
+repository's actual dependency configuration.
 
-### Rule
-- **Internal ID (`id`)**: Used ONLY for database relations, foreign keys, joins. Never expose in APIs or URLs.
-- **Public ID (`public_id`)**: Used for Flask-Login sessions, REST APIs, URLs, human-visible identifiers.
+A stack-version review should normally occur approximately every **6 months**,
+or earlier when:
 
-### Impact on Development
-- When writing queries: filter by `public_id` when accepting external input
-- When creating relations: use `id` for ForeignKey definitions
-- Flask-Login: `current_user.public_id` for session tracking
-- URL routes: `/user/<public_id>` pattern
-- Never serialize raw `id` in API responses
+- a dependency upgrade is intentionally performed
+- a major environment change occurs
+- a compatibility problem is discovered
+- the project explicitly changes its supported versions
 
-**See**: `/app/identity/models/user.py:25-45`
+When a periodic review occurs, update this section and the `Last Updated`
+metadata if the actual supported versions changed.
 
----
+For ordinary feature work, agents may rely on this section without repeatedly
+inspecting dependency files merely to confirm versions.
 
-## 2. Reference Documents (Read First!)
+The goal is:
 
-Before implementing a feature or fix, use the task class and affected scope to
-load only the relevant reference documents:
-- **`DATABASE_SCALABILITY_ROADMAP.md`** — when touching database schema, types, or migrations
-- **`static/MOBILE_OPTIMIZATION.md`** — when adding or modifying HTML, Jinja, or CSS
-- **`app/Documentation/IDENTITY_POLICIES.md`** — when working with user or organisation data
-- **`app/accommodation/AFCON360_SEAMLESS_BOOKING_SPEC.md`** — when changing accommodation checkout, guest roster, payment, or event-assignment code
-- **`app/Documentation/`** and **`Readme's/`** — when the affected module or task requires their domain guidance
+    current enough to be useful
+    +
+    stable enough to avoid unnecessary context cost
 
 ---
 
-## 3. Core Architectural Rules (NON-NEGOTIABLE)
+# 25. Environment Configuration
 
-### Base Models
-- All models MUST inherit from `app.models.base.BaseModel`, not `db.Model` directly.
-- All internal IDs: `BigInteger`
-- All external IDs: `UUID`
+AFCON360 uses layered configuration.
 
-### Identity Separation (CRITICAL)
-- **Internal references/FKs**: Use `user.id` (BigInteger) for database relations only.
-- **External/API references**: Use `user.public_id` (UUID) for all public exposure.
-- **RULE**: Never expose `user.id` externally. See `app/Documentation/IDENTITY_POLICIES.md` for complete rules.
-- **ENFORCED**: Use `app.utils.id_guard` to protect against incorrect ID assignments.
+Conceptually:
 
-### Wallet Logic (HIGH RISK)
-- **Treat any changes to `app/wallet` as HIGH RISK** — be extremely conservative
-- Double-entry ledger — every debit must have a matching credit
-- NEVER modify `app/wallet/models/` without explicit user approval
-- All transactions require idempotency keys via `app.utils.idempotency`
-- Always `db.session.rollback()` in wallet error handlers
-- AML checks: `app/compliance/aml_service.py` — changes require compliance review
+    .env
+       ↓
+    .env.{APP_ENV}
+       ↓
+    application configuration
 
-### Database Types
-- **NO PostgreSQL ENUM types** — use `db.String` columns with application-level validation
-- Existing ENUM columns must be migrated to String columns using expand-contract pattern
-- See `DATABASE_SCALABILITY_ROADMAP.md` for full migration plan
-- CHECK constraints must be added for String columns replacing ENUMs
+Common environments include:
 
-### Circular Imports
-- Be cautious of circular imports, especially between `identity` and feature modules
-- Test imports with `python -c "from app import create_app"`
+    APP_ENV=local
+    APP_ENV=docker
+    APP_ENV=prod
 
-### PostgreSQL-only testing and SQLAlchemy query contract
-- PostgreSQL is the only supported database backend for application and pytest
-  execution; never add SQLite fallbacks or in-memory database fixtures.
-- Tests must use the shared `TestingConfig`/pytest fixtures and a dedicated,
-  migration-managed `TEST_DATABASE_URL` database.
-- Tests must fail fast when PostgreSQL is unavailable or the schema is stale;
-  do not hide database failures with skip flags.
-- New application and test code must use SQLAlchemy models or expressions,
-  never handwritten SQL strings or direct `text()` statements. Schema changes
-  belong in reviewed Alembic migrations, not in test setup.
-- The formal contract is `docs/POSTGRES_TESTING_CONTRACT.md`; update it when
-  changing this behavior.
-- Direct SQL tests are not supported. For PostgreSQL-specific behavior, use
-  SQLAlchemy model/Core expressions (`select`, `func`, `inspect`, reflected
-  tables) so SQL is generated for the configured PostgreSQL dialect. A test
-  may be database-free only when marked as a source/parser/configuration check;
-  persistence tests must use the PostgreSQL fixture.
+Key variables include:
+
+    APP_ENV
+    FLASK_ENV
+    DATABASE_URL
+    REDIS_URL
+    ENCRYPTION_KEY
+    DISABLE_REDIS
+
+Do not expose secrets.
+
+Do not inspect or print secret values merely for verification.
+
+Encryption/configuration values must be loaded according to the application's
+configuration lifecycle.
 
 ---
 
-## 4. Blueprint Map (Module Structure)
+# 26. Async Tasks
 
-Key modules and their locations — stay within the relevant subtree:
+Celery handles long-running and asynchronous operations such as:
 
-| Module | Purpose | Location | Risk Level |
-|--------|---------|----------|-----------|
-| **auth** | Authentication, OTP, email verification, onboarding | `app/auth/` | Low |
-| **identity** | User/Organization identity, roles, permissions, KYB | `app/identity/` | High |
-| **wallet** | Double-entry ledger, transfers, withdrawals, webhooks | `app/wallet/` | **CRITICAL** |
-| **accommodation** | Property listings, bookings, state machine | `app/accommodation/` | Medium |
-| **transport** | Drivers, vehicles, routes, fleet management | `app/transport/` | Medium |
-| **events** | Event lifecycle, registrations, attendee payments | `app/events/` | High |
-| **admin** | Admin, super_admin, owner, moderator, support, auditor | `app/admin/` | High |
-| **kyc** | KYC submissions, document verification | `app/kyc/` | High |
-| **profile** | User profiles, KYC immutable fields | `app/profile/` | Medium |
-| **compliance** | AML service | `app/compliance/` | High |
-| **audit** | Forensic audit service, compliance logging | `app/audit/` | High |
-| **media** | File upload/storage (local + OCI) | `app/media/` | Medium |
-| **fan** | Fan-specific models and routes | `app/fan/` | Low |
-| **tasks** | Celery tasks (webhook processor, reconciliation) | `app/tasks/` | High |
+- webhooks
+- media processing
+- reconciliation
+- notifications
+- scheduled operations
 
----
+Important principles:
 
-## 5. Coding Standards
+- idempotency
+- retry safety
+- application context
+- transaction integrity
+- bounded retries
+- safe serialization
+- correct task registration
 
-### Imports
-- Use absolute imports: `from app.auth.models import User`
-- Test imports with: `python -c "from app import create_app"`
-
-### Relationships
-- Explicitly check for existing `backref` names in the same model file to avoid startup crashes
-- Use `id` (BigInteger) for ForeignKey definitions, never `public_id`
-
-### Migrations (CRITICAL PROTOCOL)
-- **NEVER create, generate, write, or patch migration files manually**
-- **NEVER run `flask db migrate` or `flask db upgrade` automatically**
-- **The user handles all migrations manually** — propose commands only
-- **Let Alembic auto-generate migration files** when the user runs `flask db migrate`
-- **Never patch migration files** as workarounds — fix root causes in model/source files
-- **Do NOT run `flask db migrate` automatically** — always propose it to the user first
-- Follow the **Migration Agent Protocol** below to prevent multiple-head divergence
-
-### Migration Agent Protocol (Alembic Head Management)
-
-To prevent "multiple heads" fragmentation, ALL agents MUST follow this protocol:
-
-#### Core Principles
-- **Short revision IDs:** Keep under 32 characters (PostgreSQL limit is 63 bytes). Use timestamp IDs: `20260706_2018`
-- **Single-head enforcement:** Before creating any new migration, run `flask db heads`. If >1 head exists, merge first.
-- **Auto-merge:** Run `flask db merge heads -m "merge_<date>"` to collapse heads into linear history
-- **Never patch migrations:** Fix root causes in models. Never edit a generated migration as workaround.
-- **Propose, don't auto-migrate:** `flask db migrate` must be proposed to user. Scripts handle `flask db revision` and head-merging only.
-
-#### Tooling
-- `scripts/migration_agent_config.py` — central config: `MAX_REVISION_LENGTH`, `AUTO_MERGE_HEADS`, etc.
-- `scripts/create_migration.py` — run `python scripts/create_migration.py "message"` to safely create revision with short ID
-
-#### Pre-Migration Checklist
-1. Run `flask db heads` — confirm exactly one head
-2. If multiple heads: `flask db merge heads -m "merge_<date>"` then `flask db upgrade`
-3. **Register new models in `app/core/model_registry.py`** if any were added
-4. Create revision via `python scripts/create_migration.py "description"` (uses short timestamp ID)
-5. Review generated migration file for correctness before proposing `flask db upgrade` to user
-
-#### Quick Reference — Common Issues
-| Problem | Solution |
-|---------|----------|
-| Multiple heads | `flask db merge heads -m "merge_branches"` |
-| Revision ID too long | Edit file, set `revision = 'short_id'` (under 32 chars) |
-| Migration fails | `flask db stamp <head_id>` then fix root cause |
-| Confused state | `flask db current` and `flask db heads` to inspect |
+Do not introduce non-idempotent retry behavior into financial operations.
 
 ---
 
-## 6. Environment Configuration (Layered)
+# 27. Middleware & Request Lifecycle
 
-**Critical for running locally vs Docker vs production**:
+The application may use middleware/hooks for:
 
-```
-.env              ← Base defaults (shared, safe)
-.env.{APP_ENV}    ← Environment overrides (secrets, DB URLs)
-```
+- module toggles
+- session lifecycle
+- rate limiting
+- security headers
+- ID guard validation
 
-### Setup
-```bash
-export APP_ENV=local    # Loads .env + .env.local
-export APP_ENV=docker   # Loads .env + .env.docker
-export APP_ENV=prod     # Loads .env + .env.prod
-```
+Do not remove or bypass existing middleware protections without authorization.
 
-Key variables:
-```
-APP_ENV=local|docker|prod           # Controls which .env.X is loaded
-FLASK_ENV=development|production    # Flask mode
-DATABASE_URL=postgresql://...       # Auto-detected per APP_ENV
-REDIS_URL=redis://...               # Caching and Celery broker
-ENCRYPTION_KEY=...                  # Set BEFORE app init (in create_app)
-DISABLE_REDIS=false                 # Redis is optional; set true to disable
-```
-
-**Why it matters**: `config.py` uses `_load_env()` to bootstrap, then `get_config()` returns layered Config class. DO NOT check encrypted values at module level—they load in `create_app()`.
-
-**See**: `/app/config.py:31-67`, `/app/__init__.py:24-43`
+Module toggles must continue to prevent disabled modules from causing unrelated
+parts of the application to fail.
 
 ---
 
-## 7. Database Conventions
+# 28. Module Toggle System
 
-### Base Model Architecture
-All entities inherit from `BaseModel` (or `ProtectedModel` which wraps it):
+Modules may be enabled or disabled at runtime.
 
-```python
-class BaseModel(TimestampMixin, db.Model):
-    id = Column(BigInteger, primary_key=True)
-    created_at = Column(DateTime, default=datetime.utcnow, server_default=func.now())
-    updated_at = Column(DateTime, onupdate=datetime.utcnow, server_default=func.now())
-    is_deleted = Column(Boolean, default=False)      # Soft delete
-    deleted_at = Column(DateTime, nullable=True)
-```
+Examples include:
 
-### Soft Delete Pattern
-```python
-record.soft_delete()  # Marks is_deleted=True, doesn't remove from DB
-record.restore()      # Reverts soft delete
-```
+- events
+- accommodation
+- transport
+- wallet
+- tourism
+- tournament
 
-**Always filter queries**: `Model.query.filter(Model.is_deleted == False)`
+Use the established module guard:
 
-### Model Registration for Alembic Autodetection
-**CRITICAL:** Alembic `autogenerate` can only detect schema changes for models that are loaded into SQLAlchemy's `MetaData` before `db.init_app()` is called.
+    @module_required('module_name')
 
-**Required steps when adding ANY new model:**
-1. **Register in `app/core/model_registry.py`** — Add an explicit import for the new model in `register_all_models()`. This is the single source of truth for model loading.
-2. **Export from domain `__init__.py`** — If the model lives in a domain package (e.g., `app/accommodation/models/`), ensure it is exported from that package's `__init__.py`.
-3. **Verify with `flask db migrate`** — After updating the registry, run `flask db migrate` to confirm Alembic detects the new table/column. If it doesn't appear, the model is not properly registered.
+State is stored through the application's system configuration/toggle system.
 
-**Why this matters:** Models that are only imported lazily inside route handlers or service methods are invisible to Alembic's schema comparison. The `register_all_models()` function runs BEFORE `db.init_app(app)` in `app/__init__.py:579-580`, ensuring all tables are present in `db.metadata` at migration time.
+ALWAYS preserve existing module guards unless explicitly instructed otherwise.
 
-**See**: `app/core/model_registry.py`, `app/__init__.py:579-580`
+New routes within gated modules must inherit the applicable module guard.
 
-### Property Naming Safety
-**NEVER name a `@property` the same as a Column field**. Use suffixes:
-- `_flag` (boolean computed property)
-- `_status` (derived status)
-- `_computed` (any other computation)
-
-Example ❌ BAD:
-```python
-@property
-def is_verified(self):  # ← Conflicts with Column!
-    return self.email_verified and self.phone_verified
-```
-
-Example ✅ GOOD:
-```python
-@property
-def is_verified_status(self):  # ← Safe
-    return self.email_verified and self.phone_verified
-```
-
-**See**: `/app/models/base.py:1-19`
+Disabled modules should fail safely without crashing unrelated modules.
 
 ---
 
-## 8. API Endpoint Patterns
+# 29. Forensic Audit & Compliance
 
-Standard Flask blueprint + role-based access:
+Sensitive operations must use the established forensic audit architecture.
 
-```python
-from flask import Blueprint, jsonify
-from flask_login import login_required, current_user
+Sensitive actions include:
 
-api_bp = Blueprint('api', __name__, url_prefix='/api')
+- role changes
+- wallet transactions
+- KYC changes
+- security-sensitive administrative operations
+- other operations required by compliance policy
 
-@api_bp.route('/wallet/balance', methods=['GET'])
-@login_required
-def get_balance():
-    """Get wallet balance for current user"""
-    if not current_user.has_role('owner', 'fan'):
-        return jsonify({'error': 'Forbidden'}), 403
-    
-    wallet = Wallet.query.filter_by(user_id=current_user.id).first()
-    return jsonify({'balance': wallet.balance, 'user': current_user.public_id})
-```
+Use the existing forensic audit service and established audit mechanisms.
 
-### Key Patterns
-- **Filter by `id` internally, but serialize `public_id`** in responses
-- **Use `@login_required`** to enforce authentication
-- **Check roles via `current_user.has_role()`** or `current_user.is_super_admin`
-- **Always return `public_id` in API responses**, never raw `id`
-- **Validate soft-delete status**: Query explicitly with `is_deleted=False`
+Preserve:
 
-**See**: `/app/api/health.py`, `/app/routes.py:14-68`
+- correlation IDs
+- timestamps
+- actor information
+- status
+- risk information
+- relevant request context
+
+Do not bypass audit logging for convenience.
 
 ---
 
-## 9. Async Tasks with Celery
+# 30. Directory & Subtree Usage
 
-Celery tasks handle long-running operations (webhooks, media processing, reconciliation).
+When working on a specific module, prefer staying within that subtree.
 
-### Task Definition Pattern
-```python
-# app/tasks/webhook_processor.py
-from celery import shared_task
-from tenacity import retry, stop_after_attempt, wait_exponential
+Examples:
 
-@shared_task(bind=True, max_retries=3)
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-def process_webhook_event(self, event_id: int):
-    """Process a payment webhook event with idempotency and retry logic"""
-    from app.wallet.models import WebhookEvent
-    
-    event = WebhookEvent.query.filter_by(id=event_id).first()
-    if not event or event.is_processed:
-        return  # Idempotency check
-    
-    try:
-        # Process payment
-        provider_reference = event.data.get('reference')
-        if not Transaction.query.filter_by(provider_reference=provider_reference).first():
-            # Prevent double-credits
-            transaction = Transaction.create(...)
-        event.mark_processed()
-        db.session.commit()
-    except Exception as exc:
-        self.retry(exc=exc, countdown=5)
-```
+    app/events/
+    app/wallet/
+    app/accommodation/
+    app/transport/
+    app/identity/
 
-### Starting Workers
-```bash
-# Single worker (dev)
-celery -A app.celery_app worker --loglevel=info
+This minimizes:
 
-# With beat scheduler (periodic tasks)
-celery -A app.celery_app beat --loglevel=info
+- context pollution
+- unintended side effects
+- unrelated refactoring
+- unnecessary token consumption
 
-# Combined (dev only)
-celery -A app.celery_app worker --beat --loglevel=info
-```
-
-### Key Patterns
-- **Idempotency**: Check if task already ran (using unique reference IDs like `provider_reference`)
-- **Exponential backoff**: Use `tenacity` library for retry logic
-- **App context**: Tasks automatically bind Flask app context via `ContextTask` in `make_celery()`
-- **Serialization**: Config uses JSON (not pickle) for security
-- **Beat schedule**: Defined in `celery_app.py:beat_schedule`
-
-**See**: `/app/celery_app.py`, `/app/tasks/webhook_processor.py`
+Expand beyond the subtree only when evidence shows a dependency.
 
 ---
 
-## 10. Middleware & Request Lifecycle
+# 31. Context-Polluting Paths
 
-The app registers multiple `@app.before_request` hooks to manage:
+Ignore these during ordinary exploration unless explicitly required:
 
-1. **Module reloading** (`/app/middleware/reload_modules.py`): Dynamically enable/disable features via `ModuleToggleService`
-2. **Session lifecycle**: Flask-Session with Redis backend (layered cookie if Redis fails)
-3. **Rate limiting**: Applied via Flask-Limiter decorators
-4. **Security headers**: CSP, X-Frame-Options, etc. (consolidated in single `after_request` handler)
-5. **ID Guard validation**: Runtime ID mixing protection
+    **/__pycache__/**
+    **/.venv/**
+    **/backups_today/**
+    **/model_backups/**
+    **/templates_backup/**
+    **/flask_session/**
+    **/*.pyc
+    **/node_modules/**
+    **/docker/nginx/*.conf
+    backup_*.json
+    app.py.backup
+    docker-compose.yml.backup
 
-### Example: Module Toggle Middleware
-```python
-@app.before_request
-def check_module_toggle():
-    """Reload module status on each request (allows hot-disabling)"""
-    if request.path.startswith('/api/accommodation/'):
-        if not ModuleToggleService.is_module_enabled('accommodation'):
-            return jsonify({'error': 'Module disabled'}), 503
-```
+Migration history under:
 
-**See**: `/app/__init__.py:398-420`, `/app/middleware/reload_modules.py`
+    migrations/versions/*.py
 
----
-
-## 11. Critical Developer Workflows
-
-### Local Development Setup
-```bash
-# 1. Install dependencies
-pip install -r requirements.txt
-
-# 2. Set environment
-export APP_ENV=local
-export FLASK_ENV=development
-
-# 3. Initialize database (first time)
-flask db upgrade
-
-# 4. Run development server
-python app.py
-
-# 5. In another terminal, start Celery worker
-celery -A app.celery_app worker --loglevel=info
-```
-
-### Database Migrations
-```bash
-# Create a new migration
-flask db migrate -m "add user_tier column"
-
-# Review migration in migrations/versions/
-# (Alembic auto-generates, but you should review)
-
-# Apply migration
-flask db upgrade
-
-# Rollback one migration
-flask db downgrade
-```
-
-### Testing
-```bash
-# Run all tests
-pytest
-
-# Run specific test file
-pytest tests/test_auth.py
-
-# Coverage report
-pytest --cov=app tests/
-```
-
-### Debugging
-- **Enable path debug**: `export SHOW_PATH_DEBUG=true && python app.py`
-- **Log levels**: Set `LOG_LEVEL=DEBUG` in .env to see detailed logs
-- **Check Redis connection**: `redis-cli ping` (should return PONG)
-- **Check Celery**: `celery -A app.celery_app inspect active`
-
-### Common Issues
-| Issue | Solution |
-|-------|----------|
-| `Redis connection refused` | Set `DISABLE_REDIS=true` or start Redis (`redis-server`) |
-| `Encryption key not set` | Add `ENCRYPTION_KEY` to .env or .env.local BEFORE starting |
-| `Module toggle not working` | Check `SystemSetting` table in DB for `module_enable_*` keys |
-| `Celery tasks not running` | Ensure Redis is running, worker is started, and broker URL matches |
-| `ID Guard error: String FK` | Check for non-UUID fields in relationships; may need to add to `NON_FK_STRING_IDS` in `base.py` |
+may be inspected when migration analysis specifically requires it.
 
 ---
 
-## 12. Project-Specific Conventions
+# 32. Standard Utilities
 
-### Naming Patterns
-- **Table names**: Plural, lowercase (`users`, `accommodations`, `transactions`)
-- **Route prefixes**: `/api/<module>/<resource>` or `/<module>/<page>`
-- **Blueprints**: Snake_case with `_bp` suffix (`user_bp`, `auth_routes`)
-- **Database columns**: Snake_case (`password_hash`, `created_at`, `public_id`)
-- **Python vars**: Snake_case for everything
+Prefer existing AFCON360 utilities instead of creating duplicate solutions.
 
-### Role Hierarchy
-```python
-# Defined in app/identity/models/roles_permission.py
-owner = 1           # Highest privilege (system administrator)
-super_admin = 2
-admin = 3
-moderator = 4
-organizer = 5
-fan = 6
-```
+Important utilities include:
 
-### Import Style
-Use absolute imports from project root:
-```python
-from app.identity.models.user import User
-from app.wallet.models.transaction import Transaction
-from app.extensions import db, cache, redis_client
-```
+| Utility | Purpose |
+|---|---|
+| ID Guard | Incorrect ID assignment protection |
+| Module Guard | Module-level access control |
+| Idempotency | Critical operation protection |
+| Validators | Shared validation |
+| Audit | Audit logging |
 
-### Error Handling
-- Return Flask `jsonify()` for APIs (JSON responses)
-- Use `abort()` for standard HTTP errors: `abort(404)`, `abort(403)`, `abort(500)`
-- Log errors with context: `logger.error(f"Task failed for user {user_id}: {e}", exc_info=True)`
-
-### Security Rules
-1. **NEVER** expose raw `id` in APIs or URLs—use `public_id`
-2. **ALWAYS** validate user ownership before returning sensitive data
-3. **ALWAYS** set `ENCRYPTION_KEY` before starting the app
-4. **Use parametrized queries** (SQLAlchemy ORM prevents SQL injection)
-5. **Validate payment idempotency** with `provider_reference` to prevent double-charges
+Before creating a new utility, check whether an existing one already provides
+the required behavior.
 
 ---
 
-## 13. Key Files to Understand
+# 33. Role System
 
-| File | Purpose |
-|------|---------|
-| `/app/__init__.py` | App factory, extension initialization, middleware setup |
-| `/app/config.py` | Layered config system, environment validation |
-| `/app/extensions.py` | Shared Flask extensions (db, cache, limiter, redis_client) |
-| `/app/celery_app.py` | Celery factory, beat schedule, task routing |
-| `/app/models/base.py` | BaseModel, ProtectedModel, soft-delete patterns |
-| `/app/identity/models/user.py` | User model (Dual ID system, roles, auth methods) |
-| `/app/identity/models/roles_permission.py` | Role/permission helpers |
-| `/app/services/module_toggle_service.py` | Dynamic feature flag management |
-| `/app/utils/id_guard.py` | Runtime ID mixing protection |
-| `/app/routes.py` | Blueprint registration (entry point for all modules) |
+The project may support a hierarchical role and permission system.
 
----
+Current role definitions and ordering are governed by the identity/authorization
+implementation and approved identity specifications.
 
-## 14. External Dependencies & Integrations
+Agents MUST NOT assume that a role name automatically grants authority.
 
-### Payment Providers
-- **Flutterwave**: Webhook processing, payout management
-- **Paystack**: Transaction handling, settlement
-- **PayPal / Alipay / WeChat Pay / Mobile Money**: Various payment methods
-- **Visa**: Card payments
+Where active personas or contexts exist:
 
-### Verification Services
-- **NIRA**: Ugandan national ID verification for KYC
-- **AWS S3**: Media storage and OCR (document processing)
-- **OCI (Oracle Cloud Infrastructure)**: Alternative storage backend
+    active context → permission evaluation → authorized operation
 
-### Infrastructure
-- **Redis**: Session storage, caching, Celery broker
-- **PostgreSQL**: Primary database
-- **Alembic**: Migration management
+The active authorized context must be respected.
+
+Do not introduce or reinterpret roles without approval.
 
 ---
 
-## 15. Role System (Strictly Hierarchical, 15 Roles)
+# 34. Prohibited Actions
 
-From highest to lowest privilege:
-`owner` → `super_admin` → `admin` → `auditor` → `compliance_officer` → `moderator` → `support` → `event_manager` → `transport_admin` → `wallet_admin` → `accommodation_admin` → `tourism_admin` → `org_admin` → `org_member` → `user`
+Unless explicitly authorized, agents MUST NOT:
 
-### Key Files
-- `app/auth/decorators.py` — `@admin_required`, `@require_role('name')`, `@owner_only`
-- `app/auth/roles.py` — role definitions and hierarchy
-- `app/auth/policy.py` — permission policy enforcement
-
-### Critical Constraints
-- **Owner cannot be deleted, impersonated, or self-modified**
-- **Super admin cannot modify other super admins or the owner**
-- All role changes MUST be audit-logged
-- Global Persona Switcher: session tracks `active_role` — all permission checks must respect it
-
----
-
-## 16. Module Toggle System
-
-Modules (events, accommodation, transport, wallet, tourism, tournament) can be enabled/disabled at runtime:
-- **Guard decorator:** `@module_required('module_name')` in `app/utils/module_guard.py`
-- **Toggle service:** `app/services/module_toggle_service.py`
-- **State stored in:** `SystemConfig` model (`app/models/system_config.py`)
-- **ALWAYS PRESERVE** `@module_required` on existing routes — never remove it without instruction
-- **New routes** in gated modules must inherit the module guard
+- change `BaseModel`
+- change shared base classes
+- modify `app/wallet/models/`
+- create PostgreSQL ENUM types
+- expose internal `id`
+- run destructive database commands
+- silently change public API contracts
+- bypass authorization
+- create migrations
+- patch migrations
+- apply migrations
+- introduce SQLite testing fallbacks
+- perform unrelated refactors
+- delete deferred-work records
+- weaken security controls
+- invent unspecified business rules
+- silently expand graph-node scope
+- silently fix audit findings
+- silently remediate verification findings
 
 ---
 
-## 17. Forensic Audit & Compliance
+# 35. Command Success Evaluation
 
-All sensitive actions must be logged using the forensic audit service:
+For Python/Flask verification commands:
 
-### Key Components
-- **Service:** `app/audit/forensic_audit.py` — `log_attempt()`, `log_completion()`, `log_blocked()`
-- **Audit tables carry:** `attempted_at`, `status`, `ip_address`, `user_agent`, `session_id`, `correlation_id`, `risk_score`
-- **What to log:**
-  - Role changes → `OwnerAuditLog`
-  - Wallet transactions → `ForensicAuditService`
-  - KYC changes → `ForensicAuditService`
+- Exit code `0` means success unless the command's explicit contract says
+  otherwise.
+- Treat as failure when exit code != 0.
+- Also treat output containing `ERROR`, `Exception`, or `Traceback` as failure
+  evidence.
+- INFO/WARNING/DEBUG output does not automatically indicate failure.
 
-### Compliance Requirements
-- **Bank of Uganda:** KYC timelines enforcement
-- **FIA Uganda:** Transactions > UGX 20M must be flagged
-
-### Known Issues
-- `owner_audit_logs.is_deleted` may be absent — always wrap queries on this table in try/except
+Agents should interpret command output in context rather than treating all
+stderr as failure.
 
 ---
 
-## 18. UI/Templates Standards
+# 36. Canonical Database Verification
 
-### Mobile-First Responsive Design (MANDATORY)
-All HTML, Jinja templates, and CSS must be optimized for mobile devices (phones ≤480px, tablets 481px–1024px) before submission. This is not optional.
-- **No fixed-width layouts** that overflow on 320px viewports
-- **No fixed `min-width` constraints** on interactive components that cause horizontal scroll
-- **All touch targets** must be ≥44×44px (WCAG minimum)
-- **Use `clamp()`** for fluid typography and spacing instead of fixed `px` values
-- **Use `repeat(auto-fit, minmax(...))`** for responsive grids instead of hardcoded column counts
-- **Safe-area insets**: Use `env(safe-area-inset-bottom)` on fixed/sticky elements for notched phones
-- **Inline styles are forbidden** on layout containers; extract to CSS classes
+Use:
 
-### Template Conventions
-- Use `{{ csrf_token() }}` for CSRF protection in all forms
-- For AJAX/Pane loads, check for `?_pane=1` conditionals in `base.html`
-- Avoid `overflow: hidden` on containers that hold dropdowns (causes clipping issues)
+    & .venv/Scripts/python.exe verify_db.py
 
-### Content Security Policy and JavaScript
-- The application enforces a per-request Content Security Policy nonce through `app/__init__.py` (`g.csp_nonce` and the `csp_nonce` template variable).
-- Put page behavior in external files under `static/js/` and load them with `<script src="{{ url_for('static', filename='...') }}"></script>`; same-origin external scripts are permitted by the CSP without an inline nonce.
-- Do not use inline event handlers such as `onclick` or page behavior in inline `<script>` blocks. Use `data-*` attributes and event listeners in the external module instead.
-- Inline executable scripts are permitted only when unavoidable and must include `nonce="{{ csp_nonce }}"`; JSON-LD script blocks must also carry the nonce.
+Success requires:
 
-### Frontend Documentation Update (CONDITIONAL)
-When adding or modifying **any** HTML template, Jinja template, or CSS file,
-open `static/MOBILE_OPTIMIZATION.md` and update it only when the frontend
-change affects the documented file tree, responsive behavior, styling,
-branding, verification state, or isolation plan. A content-only, non-layout
-change may require only a focused review and no documentation entry.
+- output contains `DB_VERIFY_OK`
+- exit code is `0`
 
-If the file is updated, record the changed file under **Change Log by File**;
-update **File Tree**, **Verification Checklist**, or **Future Optimization
-Isolation Plan** only when those sections actually changed. Failure to assess
-the applicable frontend impact is a review issue; an unchanged frontend record
-does not require a no-op edit.
+This command does not authorize migrations.
 
 ---
 
-## 19. Directory Structure & Subtree Usage
+# 37. Common Commands
 
-### Subtree Focus (IMPORTANT)
-When working on a specific module (e.g., `app/events`), ALWAYS prefer staying within that subtree to:
-- Minimize context pollution
-- Avoid unintended side effects in other modules
-- Use the `--subtree-only` flag if using Aider
+Application (dev server):
 
-### Key Directories
-- **Architectural docs:** `app/Documentation/` and `Readme's/`
-- **Scripts:** `scripts/` — utility scripts for database audits, migrations, setup
-- **Tests:** `tests/` — test suite
+    python app.py
+    # or: flask run   (with APP_ENV / FLASK_ENV set)
 
----
+Startup import sanity check (no server started):
 
-## 20. Standard Utilities (Prefer Over Custom Solutions)
+    python -c "from app import create_app"
 
-Use existing utilities in `app/utils/` instead of rolling custom:
+Celery worker + beat (dev):
 
-| Utility | Purpose | Location |
-|---------|---------|----------|
-| **ID Guard** | Protect against incorrect ID assignments | `app.utils.id_guard` |
-| **Module Guard** | Enforce module-level access control | `app.utils.module_guard` |
-| **Idempotency** | Critical operations (wallet, bookings) | `app.utils.idempotency` |
-| **Validators** | Common data validation patterns | `app.utils.validators` |
-| **Audit** | Log sensitive actions | `app.utils.audit` |
+    celery -A app.celery_app worker --loglevel=info
+    celery -A app.celery_app beat  --loglevel=info
 
----
+Tests (conftest auto-bootstraps the PostgreSQL test DB; no manual step):
 
-## 21. Prohibited Actions (NO EXCEPTIONS)
+    pytest                                              # full suite
+    pytest tests/notifications                          # a directory
+    pytest tests/test_accommodation_checkout_processes.py                       # one file
+    pytest tests/test_accommodation_checkout_processes.py::TestClass::test_method  # one test
 
-❌ Do NOT change `BaseModel` or shared base classes without explicit approval  
-❌ Do NOT modify `app/wallet/models/` without explicit instructions  
-❌ Do NOT add new PostgreSQL ENUM types  
-❌ Do NOT run destructive database commands without verification  
-❌ Do NOT expose `user.id` (BIGINT) in API responses, logs, or templates — use `public_id` instead  
+Force a clean test-DB rebuild (drops + recreate + create_all + stamp head):
 
----
+    python scripts/setup_test_db_schema.py
 
-## 22. Quality Standards (Pre-Submission Checklist)
+Database verification (does NOT authorize migrations; success = exit 0
+AND output contains `DB_VERIFY_OK`):
 
-Before submitting any work, verify:
-- [ ] All models inherit from `BaseModel` (not `db.Model`)
-- [ ] All internal IDs use `BigInteger`; external IDs use `UUID`
-- [ ] No `user.id` exposed in API responses, templates, or logs
-- [ ] No PostgreSQL ENUM types in new code
-- [ ] All migrations tested on copy of production-like data
-- [ ] Rollback plan documented for every schema change
-- [ ] CHECK constraints added for String columns replacing ENUMs
-- [ ] All tests pass before considering work complete
-- [ ] Code follows existing patterns in the module (subtree focus)
-- [ ] No circular imports introduced
-- [ ] Wallet logic maintains double-entry ledger constraints
-- [ ] **Frontend changes are mobile-responsive** (phones ≤480px, tablets ≤1024px)
-- [ ] Frontend impact assessed; update `static/MOBILE_OPTIMIZATION.md` only if the change affects its documented scope
+    python verify_db.py            # or: .venv/Scripts/python.exe verify_db.py
 
----
+Database inspection only (agents must still obey migration restrictions):
 
-## 23. Pre-Implementation Checklist
+    flask db current
+    flask db heads
+    flask db history
 
-Before writing code, load only the applicable guidance:
-1. Read the relevant section of `DATABASE_SCALABILITY_ROADMAP.md` if touching database schema
-2. Read `static/MOBILE_OPTIMIZATION.md` if the frontend change affects documented responsive/layout behavior
-3. Read `app/Documentation/IDENTITY_POLICIES.md` if working with user/organisation data
-4. Check for existing `backref` names in the target model file
-5. Verify the module's existing patterns and conventions
-6. Confirm no circular imports will be introduced
-7. Plan migration strategy if schema changes are needed
+Seed / setup helpers (run only after a reviewed migration, by the operator):
+
+    python scripts/seed_roles.py
+    python scripts/seed_system_configs.py   # or scripts/init_settings.py
+
+ID-usage inspection (do not expose internal ids — see §12.1):
+
+    python scripts/check_id_usage.py
+    python scripts/db_audit.py
+
+Linting / formatting:
+
+    No project linter or formatter is configured. `.pre-commit-config.yaml`
+    runs only trailing-whitespace, end-of-file-fixer, check-yaml, and
+    check-added-large-files. Do not assume `ruff` / `flake8` / `black` /
+    `mypy` / `isort` are available unless they are explicitly added to
+    `requirements.txt` and the pre-commit config.
+
+Agents must still obey migration restrictions (see §20). Do NOT run
+`flask db upgrade` to provision the test database; `pytest` does it via
+`db.create_all()` + stamp. Do NOT use `flask db migrate` as an unattended
+workaround.
 
 ---
 
-## 24. Post-Implementation Verification
+# 38. Post-Change Verification
 
-After completing work, verify proportionally to the task class and changed
-scope. Run the affected module suite for substantive changes; use focused
-checks for trivial or local changes. Apply identity, model, ENUM, migration,
-frontend, and rollback checks only when those concerns are in scope.
+Verification must be proportional to task class and changed scope.
 
----
+### TRIVIAL
 
-## 25. Post-Change Report Format
+Use focused checks.
 
-After every implementation, provide a concise completion report, expanding it
-with the full evidence fields below for behavioral, architectural, or
-high-risk work:
-- **Files changed:** list every file modified
-- **What was done:** 2–3 sentence summary
-- **What changed / improved:** explicitly state what behavior changed, what bug was fixed, or what feature was added
-- **Migration needed?** yes/no — if yes: propose the exact `flask db migrate` / `flask db upgrade` commands, but do NOT run them automatically
-- **Manual steps:** anything that cannot be automated (env vars, server restarts, seed scripts, etc.)
-- **Risks/conflicts:** flag anything that could break existing behavior, circular imports, or convention violations
-- **Verification:** how to confirm the fix works (test command, manual steps, or both)
-- **Frontend documentation:** if HTML/CSS/Jinja was touched, report whether its documented scope was affected; do not make a no-op update
+### LOCAL
 
----
+Use targeted tests or focused validation.
 
-## 26. Ignore List (Context Management)
+### BEHAVIORAL
 
-When exploring the project, ignore these to avoid context pollution:
-- `**/__pycache__/**`
-- `**/.venv/**`
-- `**/backups_today/**`
-- `**/model_backups/**`
-- `**/templates_backup/**`
-- `**/flask_session/**`
-- `**/*.pyc`
-- `**/node_modules/**`
-- `**/docker/nginx/*.conf` (unless working on infra)
-- `**/migrations/versions/*.py` (unless reviewing schema history)
-- `backup_*.json`
-- `app.py.backup`
-- `docker-compose.yml.backup`
+Verify:
 
----
+- behavior
+- relevant transitions
+- authorization
+- negative cases
+- affected tests
 
-## 27. Quick Reference: Common Tasks
+### ARCHITECTURAL
 
-### Add a New API Endpoint
-1. Create route in `app/<module>/routes.py`
-2. Filter by `public_id` when accepting external input
-3. Serialize response with `public_id`, never raw `id`
-4. Add role check with `@login_required` + `current_user.has_role()`
+Verify:
 
-### Add a New Model
-1. Inherit from `BaseModel` or `ProtectedModel`
-2. Define `__tablename__` and indexes/constraints
-3. Add `public_id` field if user-facing
-4. Keep `@property` names distinct from columns (use suffixes)
+- affected contracts
+- cross-module boundaries
+- integration points
+- relevant test suites
+- architecture invariants
 
-### Add a New Async Task
-1. Create in `app/tasks/<module>.py`
-2. Use `@shared_task` decorator
-3. Add idempotency check (unique reference)
-4. Register in `app/celery_app.py:include`
+### HIGH_RISK
 
-### Add a New Environment Variable
-1. Add to `.env` (base defaults, safe)
-2. Add to `.env.{APP_ENV}` (overrides)
-3. Reference in `app/config.py` via `os.getenv()`
-4. Validate in `get_config()` if security-critical
+Verify:
+
+- invariants
+- security controls
+- financial correctness
+- identity correctness
+- migration implications
+- relevant tests
+- failure/recovery behavior
+- audit behavior
+
+Do not automatically run the entire repository test suite for every small
+change unless required by the task or affected contract.
 
 ---
 
-## Resources
-- Flask docs: https://flask.palletsprojects.com/
-- SQLAlchemy docs: https://docs.sqlalchemy.org/
-- Celery docs: https://docs.celeryproject.io/
-- Alembic docs: https://alembic.sqlalchemy.org/
-- agents.md guide: https://agents.md/
+# 39. Post-Change Report
+
+After implementation, provide a structured completion report.
+
+Use:
+
+    STATUS: PASS | PARTIAL | BLOCKED | NEEDS_DECISION | FAIL
+    NODE: <graph-node-id>
+    SCOPE: <authorized scope>
+
+Then report:
+
+- **Files changed:** every modified file
+- **Behavior change:** what actually changed
+- **Migration:** required yes/no; if yes, propose exact commands but do not
+  execute them automatically
+- **Manual steps:** environment changes, restarts, seeds, etc.
+- **Verification:** tests and manual verification performed
+- **Risks:** potential regressions or conflicts
+- **Deferred work:** anything identified but not completed
+- **Documentation:** relevant documentation updated or not required
+- **Memory updated:** yes/no, and what changed
+
+For audits, report:
+
+- evidence inspected
+- findings
+- severity/classification
+- missing coverage
+- affected files
+- recommended next node
+- confirmation that no implementation was performed unless authorized
+
+Do not report `PASS` merely because code was written.
 
 ---
 
-**Last Updated**: July 2026 | **AFCON360 v0.1.0**
+# 40. Reference Discovery
 
-**Note**: This is the authoritative consolidated AGENTS.md. A copy is maintained in `.junie/AGENTS.md` for tool-specific integration. Both reference the same standards.
+Agents should consult the relevant document rather than loading everything.
+
+Important references include:
+
+    DATABASE_SCALABILITY_ROADMAP.md
+    docs/POSTGRES_TESTING_CONTRACT.md
+    app/Documentation/IDENTITY_POLICIES.md
+    app/accommodation/AFCON360_SEAMLESS_BOOKING_SPEC.md
+    static/MOBILE_OPTIMIZATION.md
+    BACKLOG.md
+
+Additional domain specifications and ADRs take precedence for their specific
+domain.
+
+Agents MUST discover and use relevant:
+
+- skills
+- workflows
+- rules
+- ADRs
+- specifications
+- module documentation
+
+when applicable.
+
+Do NOT assume that only the documents explicitly named in this constitution
+exist.
 
 ---
 
-## 28. Command Success Evaluation
+# 41. Tool Adapters
 
-When running Python/Flask verification commands:
-- **Exit code 0 = SUCCESS**, regardless of stderr content
-- Only treat as failure if: exit code != 0, OR stderr contains "ERROR", "Exception", "Traceback"
-- INFO/WARNING/DEBUG logs in stderr do not indicate failure
+The repository root:
 
-**Canonical database verification command:**
-```powershell
-& .venv/Scripts/python.exe verify_db.py
-```
+    AGENTS.md
 
-Success criteria:
-- Output contains `DB_VERIFY_OK`
-- Exit code is `0`
+is the single engineering constitution.
 
-Ignore all Flask startup INFO/WARNING/DEBUG logs.
+Tool-specific files under:
+
+    .junie/
+    .kilocode/
+    .aider/
+    other agent-specific directories
+
+are adapters.
+
+They define:
+
+- how the tool discovers context
+- how the tool invokes workflows
+- how skills are loaded
+- how rules are selected
+- how commands are executed
+- tool-specific limitations
+
+They MUST NOT redefine or contradict:
+
+- ownership boundaries
+- wallet rules
+- identity rules
+- migration authority
+- security requirements
+- specification law
+- graph authority
+- prohibited actions
+- memory principles
+- scope rules
+
+If a tool adapter conflicts with this document, this document wins unless the
+current task explicitly establishes a higher-priority approved change.
 
 ---
 
-## 29. Deferred Work Backlog (CONDITIONAL)
+# 42. Junie & Kilo Interoperability
 
-**File:** `BACKLOG.md` at the repository root.
+Junie and Kilo may have different:
 
-Any agent (Code / Ask / Debug mode) MUST record work that is **identified but
-NOT completed in the current session** yet still belongs in the system. If no
-such work was identified, do not edit `BACKLOG.md`.
+- skills
+- rule systems
+- workflows
+- context mechanisms
+- command interfaces
+- agent execution models
 
-**When to add an entry (any of these):**
-- Something was discussed/requested but is out of scope for today.
-- A change was partially implemented and still needs finishing.
-- Work is blocked (needs migration, another team, external sign-off, dependency).
-- A feature needs review (e.g., finance/compliance/security sign-off) before go-live.
-- You explicitly decide "not for today" (e.g., a larger feature like adding a new status enum).
+These differences MUST NOT create different AFCON360 architectural rules.
 
-**Rules:**
-- When applicable, create the entry in `BACKLOG.md` (use the template at the top of that file) before ending your turn.
-- Reference concrete files/routes/models so the next agent can pick it up.
-- Do NOT remove an entry once it is resolved — instead mark its `Status:` as `Done` and add a `Resolved:` date.
-- This applies to every agent mode; treat `BACKLOG.md` as an authoritative hand-off artifact alongside this guide.
+Both must operate against the same:
 
-**Example (already present in `BACKLOG.md`):** the cancellation refund/fine policy for post-check-in cancellations — implemented in logic but explicitly deferred for finance/compliance review.
+    root AGENTS.md
+          ↓
+    specifications / ADRs
+          ↓
+    current repository
+          ↓
+    current graph node
 
+A Junie skill MUST NOT create a rule that Kilo is forbidden to follow when the
+root constitution permits it.
 
+A Kilo rule MUST NOT create behavior that Junie would be prohibited from
+performing under the root constitution.
 
+Tool-specific adapters may be more restrictive than the root constitution when
+necessary for the tool, but may not weaken root protections.
 
+---
 
+# 43. Agent Handoff
 
+When work moves from one agent/tool to another, the handoff should contain:
 
+- graph node
+- current status
+- authorized scope
+- files changed
+- files inspected
+- relevant specification
+- tests run
+- verification results
+- unresolved issues
+- deferred work
+- decisions required
 
+The next agent MUST NOT assume that conversation history is sufficient evidence.
 
+Durable decisions belong in the repository's appropriate documentation,
+specification, ADR, graph state, or backlog.
 
+---
 
+# 44. Periodic Constitution & Project-Fact Review
 
+The root `AGENTS.md` should be reviewed periodically rather than rewritten
+during ordinary development tasks.
 
+A review should normally occur approximately every **6 months**, or earlier
+when a major architectural or infrastructure change occurs.
 
+The review should check:
 
+- project stack versions
+- important paths
+- architectural invariants
+- reference documents
+- tool adapters
+- security rules
+- migration policy
+- testing contract
+- module ownership
+- command conventions
 
+Agents should not modify this constitution merely because a temporary
+implementation detail differs from it.
 
+A constitution update should reflect an intentional project-level change or
+verified durable fact.
+
+---
+
+# 45. Quality Principles
+
+All AFCON360 agent work should follow these principles:
+
+### Correctness over convenience
+
+Do not choose an easier implementation that violates architecture or
+specification.
+
+### Evidence over assumption
+
+Inspect the relevant evidence before making consequential decisions.
+
+### Minimal scope over opportunistic refactoring
+
+Fix what the node authorizes.
+
+### Memory for routing, repository for truth
+
+Use memory to find the right place. Verify against the current repository.
+
+### Specification over legacy behavior
+
+Legacy behavior is evidence, not authority.
+
+### Verification over confidence
+
+Do not report success without appropriate evidence.
+
+### Safety over speed
+
+For high-risk changes, additional verification is justified.
+
+### Proportionality over bureaucracy
+
+Small tasks should remain small.
+
+Do not apply high-risk process to trivial work unnecessarily.
+
+---
+
+# 46. Final Agent Execution Loop
+
+For ordinary work:
+
+    1. Read task
+       ↓
+    2. Identify graph node / task scope
+       ↓
+    3. Classify risk
+       ↓
+    4. Consult memory/routing information when useful
+       ↓
+    5. Identify affected module/subtree
+       ↓
+    6. Load only applicable rules/skills/workflows/specifications
+       ↓
+    7. Inspect current implementation
+       ↓
+    8. Inspect relevant tests
+       ↓
+    9. Determine smallest safe change
+       ↓
+    10. Implement only authorized work
+       ↓
+    11. Run proportional verification
+       ↓
+    12. Record deferred work if required
+       ↓
+    13. Update durable memory only if knowledge changed
+       ↓
+    14. Produce evidence-based completion report
+
+For audits:
+
+    task
+      ↓
+    graph node
+      ↓
+    scope
+      ↓
+    evidence
+      ↓
+    implementation/test inspection
+      ↓
+    findings
+      ↓
+    report
+      ↓
+    recommend next node
+
+For high-risk work:
+
+    task
+      ↓
+    specification
+      ↓
+    ownership/invariants
+      ↓
+    current implementation
+      ↓
+    current tests
+      ↓
+    implementation
+      ↓
+    targeted + high-risk verification
+      ↓
+    evidence report
+      ↓
+    human/graph decision
+
+---
+
+# 47. Final Rule
+
+When uncertain:
+
+    DO NOT GUESS.
+
+Instead:
+
+    inspect
+      ↓
+    identify the governing rule/specification
+      ↓
+    determine authority
+      ↓
+    determine scope
+      ↓
+    verify the current state
+      ↓
+    act only when authorized
+      ↓
+    report evidence
+
+AFCON360 agents are workers inside an engineering system.
+
+They are expected to be:
+
+- precise
+- conservative where risk is high
+- efficient where risk is low
+- evidence-driven
+- scope-aware
+- specification-driven
+- interoperable across tools
+
+They MUST NOT become independent architects merely because they can modify the
+codebase.
+
+---
+
+**Last Updated:** August 2026
+**AFCON360 Version:** v0.1.0
+
+**Status:** AUTHORITATIVE

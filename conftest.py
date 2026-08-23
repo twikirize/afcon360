@@ -1,21 +1,44 @@
-"""Expose the PostgreSQL contract to legacy root-level test probes."""
+"""
+Root-level pytest configuration.
+
+This project contains tests only inside the tests/ directory.
+We ignore everything else to prevent collection of .venv and other
+non-test files.
+"""
 
 import os
-import pytest
+from pathlib import Path
 
-os.environ['FLASK_ENV'] = 'testing'
-
-from app import create_app
-from app.config import TestingConfig
-from app.extensions import db
-from tests.postgres_contract import assert_migrated_postgres_database
+PROJECT_ROOT = Path(__file__).resolve().parent
+os.environ["FLASK_ENV"] = "testing"
 
 
-@pytest.fixture(scope='session')
-def db_session():
-    app = create_app(config_object=TestingConfig)
-    with app.app_context():
-        assert_migrated_postgres_database(db.engine)
-        yield db.session
-        db.session.rollback()
-        db.session.remove()
+def pytest_configure(config):
+    """Register custom markers."""
+    config.addinivalue_line(
+        "markers",
+        "no_database: source/configuration contract check that does not access the database",
+    )
+
+
+def pytest_ignore_collect(collection_path, config):
+    """
+    Ignore any path that is not inside the 'tests/' directory.
+    This prevents pytest from scanning .venv, root files, etc.
+    """
+    path = Path(collection_path)
+    try:
+        rel_path = path.resolve().relative_to(PROJECT_ROOT)
+    except ValueError:
+        # Path is outside the project root – ignore
+        return True
+
+    # Only allow collection from the 'tests/' directory
+    if rel_path.parts[0] != "tests":
+        return True
+
+    # Also ignore non-Python files (just in case)
+    if path.is_file() and path.suffix.lower() != ".py":
+        return True
+
+    return False

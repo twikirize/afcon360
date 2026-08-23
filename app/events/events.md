@@ -161,51 +161,131 @@ You can deploy with confidence! 🎉
 ## Event Host Guest Coordination Contract
 
 This section is the behavioral specification for the cross-module coordination
-layer implemented by `GuestCoordinationService`; the Event module coordinates
-attendees but does not own accommodation inventory or transport eligibility.
+layer implemented by `GuestCoordinationService`. Event Operations coordinates a
+guest journey; it does not own accommodation inventory, transport fulfilment,
+wallet funds, tourism inventory, or notification delivery.
 
 ### Entities, inputs, outputs, and invariants
 
 | Entity/state | Authority and invariant |
 |---|---|
 | `Event` | Events owns event scope and its host/organizer authorization. |
-| `EventRegistration` | Events owns attendee membership; only `confirmed` registrations may be assigned. |
-| `EventAssignment` | Events owns the link and audit actor; one active row per event/attendee. |
-| Accommodation booking | Accommodation owns status, dates, property, room capacity, and occupancy. It must belong to the event context. |
-| Transport booking | Transport owns status, driver, vehicle, time, and capacity. It must belong to the event and carry eligible resources. |
+| `EventGuest` | Stable public guest identity used by Event Operations; it may exist without an AFCON360 account and participate in multiple registrations or future experiences. |
+| `EventRegistration` | Events owns event participation and historical registration semantics; it links a guest to an event and is not the universal guest identity. Only `confirmed` registrations may receive coordination. |
+| `EventAssignment` | Events owns coordination references, requested allocation, capability status, and audit actor; it does not own provider fulfilment state. |
+| Provider capability | Accommodation, Transport, Wallet/Entitlements, Tourism, and Notifications remain authoritative for their resources, fulfilment, delivery, and account requirements. |
 | Public references | Routes, JSON, templates, notifications, and exports use `public_id`, `registration_ref`, or booking references; internal IDs remain persistence-only. |
 
-Assignment input is `(event_ref, registration_ref, booking_ref, actor)` and the
-output is a stable assignment reference plus capability/status. Browser values
-are always re-resolved and revalidated server-side.
+The preferred input is `(event_ref, guest_ref, capability, provider_reference,
+actor, idempotency_key)`. During migration, `registration_ref` is accepted and
+resolved to its guest, and legacy booking references are translated by the
+relevant provider adapter. Responses return stable guest and assignment
+references while retaining compatible legacy fields until deprecation is
+approved.
+
+Registration contact data (name, email, phone, QR/reference data, and
+notification eligibility) is sufficient for accountless event and service
+details, including secure public QR/reference links. An account is optional for
+coordination and is linked only when a provider capability requires authenticated
+user ownership, such as wallet access or authenticated self-service. Event
+Operations never creates a user implicitly.
+
+### Provider capabilities and ownership
+
+Provider adapters expose narrow, provider-agnostic contracts returning
+assignable resources, availability, allocation state, capability errors, and
+public references without exposing specialist model fields.
+
+Accommodation distinguishes reservation capacity, guest allocation, and
+specific room/unit allocation; it owns rooms, occupancy, availability, and
+allocation decisions. Event Operations stores only requested allocation and the
+provider coordination reference.
+
+Transport exposes journeys and journey legs, including assignment and dispatch
+status; it owns vehicles, drivers, routes, seats, and fulfilment. Legacy booking
+references may be translated through an adapter, but Event Operations must not
+inspect driver, vehicle, passenger-count, or implementation fields.
+
+Wallet and Tourism integrations are entitlement/reference contracts only.
+Coordination never tops up wallets, mutates ledger state, owns balances, or
+fulfils tourism inventory. Notifications may target verified accountless
+contacts, while delivery status remains provider state.
+
+Optional capabilities fail independently. An unavailable provider marks only
+that capability unavailable; event registration, guest identity, and unrelated
+capabilities remain usable. The guest journey is a derived operational view,
+not a central source of truth or mandatory synchronous orchestration mechanism.
 
 ### State transitions
 
 | Current capability state | Operation | Result |
 |---|---|---|
-| absent | assign valid resource | `assigned`, notification and audit event staged in the same transaction |
-| assigned | assign a different valid resource | `changed`, previous and new booking references recorded |
+| absent | assign valid provider capability | `assigned`, provider reference/status and audit event recorded idempotently |
+| assigned | assign a different valid capability | `changed`, previous and new public provider references recorded |
 | assigned | cancel | capability becomes unassigned; the other capability is preserved |
-| any | invalid scope, status, capacity, date, eligibility, authorization, or disabled module | no state change and transaction rollback |
+| any | invalid scope, provider status, allocation, authorization, idempotency, or disabled module | no local state change; only the failing capability reports the structured error |
 
-An assignment succeeds only when the resource is in an assignable state, the
-booking is event-scoped, dates cover the event, and the locked resource has
-remaining capacity. Repeated assignment to the same resource is idempotent.
+An assignment succeeds only when the provider confirms that the requested
+resource, allocation, or journey leg is assignable for the guest and event.
+Event Operations must not infer capacity from `num_guests` or
+`passenger_count`. Repeated operations with the same idempotency key are
+idempotent and return the original public result.
+
+### Staged persistence and provider adapter design
+
+The first persistence phase is additive. Introduce an Event-owned guest record
+with its own `public_id`, normalized contact/identity snapshot, optional
+`user_id` link, notification eligibility, and soft-delete state. Add a nullable
+guest link to `EventRegistration`; retain `registration_ref`, contact fields,
+and historical registration rows. Existing registrations are backfilled or
+resolved through a compatibility lookup before the guest-centric reference is
+made mandatory. Do not replace or remove `EventAssignment` in this phase.
+
+The compatibility assignment row remains an Event-owned coordination record,
+but its account-specific attendee link becomes optional in the target model.
+New coordination references should be public strings and provider references;
+legacy cross-module numeric columns are retained only as translation data until
+their removal is separately approved. Any new status or capability fields use
+validated strings, not PostgreSQL ENUMs. New models must inherit `BaseModel`,
+be loaded by `app/core/model_registry.py`, and use soft-delete-aware queries.
+
+Provider adapters expose these provider-agnostic operations:
+
+| Adapter | Required responses | Event Operations must not read |
+|---|---|---|
+| Accommodation | assignable reservation/unit references, date scope, remaining allocation, allocation status, capability errors | `num_guests`, room tables, property internals, occupancy implementation |
+| Transport | journey reference, leg references, pickup/drop-off summary, assignment/dispatch status, availability, capability errors | driver/vehicle fields, route tables, passenger-count implementation |
+| Wallet/Entitlements | entitlement reference, account-link requirement, entitlement status, provider errors | ledger entries, balances, transaction internals |
+| Tourism | experience reference, reservation status, availability, provider errors | activity inventory and fulfilment internals |
+| Notifications | verified-channel eligibility, public-link payload result, delivery status, provider errors | provider delivery implementation and secrets |
+
+Adapters may initially translate current accommodation booking and transport
+booking records, but the translation boundary must return only the contract
+above. Provider unavailability is represented as a capability result and must
+not prevent unrelated event or guest operations.
+
+Schema work is limited to model design in this phase. Before migration
+creation, verify model registration, PostgreSQL metadata, constraints,
+single-head state, public-ID exposure, and reversible expand-contract steps.
+No migration is created, applied, or used to alter wallet models here.
 
 ### Authority boundaries and failure contract
 
+`can_view_coordination` and `can_manage_coordination` are separate predicates.
 Authenticated event owners, authorized hosts, co-organizers, event managers,
-and platform administrators may view; assign or cancel permissions are checked
-by the corresponding Event permission predicate. Accommodation operators remain
-authoritative for accommodation capacity and Transport remains authoritative for
-driver/vehicle eligibility. Attendees and other users may observe only what the
-existing notification/access policy permits; they cannot initiate coordination.
+and platform administrators may view according to the view policy; mutations
+require the manage policy and canonical event ownership. Specialist modules
+remain authoritative for their own capability state. Guests may use public
+notification/QR links only within existing security policy and cannot initiate
+organizer coordination.
 
-Failures return a structured `success: false` response with a stable code such
-as `BOOKING_EVENT_MISMATCH`, `ACCOMMODATION_CAPACITY_EXCEEDED`,
-`DRIVER_NOT_APPROVED`, or `ACCOMMODATION_UNAVAILABLE`. No cross-module booking
-is created by the coordination layer, and notification/audit staging cannot
-commit without the assignment change.
+Failures return a structured `success: false` response with a stable,
+capability-scoped code such as `GUEST_NOT_FOUND`, `REGISTRATION_NOT_CONFIRMED`,
+`CAPABILITY_UNAVAILABLE`, `ALLOCATION_REJECTED`, `PROVIDER_TIMEOUT`, or
+`COORDINATION_FORBIDDEN`. Event Operations creates no cross-module inventory,
+booking, ledger, or fulfilment record. Audit/publication records use public
+references and must not commit a misleading success when a provider operation
+fails.
 
 ## Public Event Landing Ticket Availability Contract
 

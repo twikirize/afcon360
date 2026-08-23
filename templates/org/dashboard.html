@@ -206,6 +206,13 @@
 {% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/global/kyc-ribbon.css') }}">
+{# Global KYC ribbon — scoped to the organisation dashboard (not site-wide). #}
+{# NOTE: kyc_info currently reflects the viewing member's personal KYC; wiring #}
+{# the organisation's own KYB status into this ribbon is a separate follow-up.  #}
+{% include 'components/kyc_ribbon.html' %}
+<script src="{{ url_for('static', filename='js/modules/user/kyc-ribbon.js') }}"></script>
+
 <div class="container-fluid p-4">
     <!-- Organization Header -->
     <div class="dashboard-header">
@@ -236,6 +243,9 @@
             </div>
             <div class="col-md-4 text-md-end">
                 <div class="d-flex gap-2 justify-content-md-end mt-3 mt-md-0">
+                    <button class="btn btn-light quick-action-btn" onclick="window.location.href='{{ url_for('org.kyb', org_id=org.org_id) }}'">
+                        <i class="bi bi-shield-check me-2"></i> KYB
+                    </button>
                     <button class="btn btn-light quick-action-btn" onclick="window.location.href='{{ url_for('org.settings', org_id=org.org_id) }}'">
                         <i class="bi bi-gear me-2"></i> Settings
                     </button>

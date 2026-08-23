@@ -333,7 +333,20 @@ def _organisation_contexts(user: Any) -> list[ContextDescriptor]:
 
 
 def _event_contexts(user: Any) -> list[ContextDescriptor]:
+    """Build EVENT context descriptors for all event roles the user holds.
+
+    Sources:
+    1. EventRole assignments (co_organizer, steward, volunteer, owner, etc.)
+    2. Individual canonical ownership (Event.current_owner_type == 'individual'
+       and Event.current_owner_id == user.id)
+    3. Organization ownership (Event.organisation_id where user has org_owner/
+       org_admin role in that organisation)
+    """
+    from sqlalchemy import and_
     descriptors: list[ContextDescriptor] = []
+    seen_event_ids: set[int] = set()
+
+    # 1. EventRole-based contexts (staff + owner roles)
     for assignment in _loaded_event_roles(user):
         if not _role_is_live(assignment):
             continue
@@ -343,6 +356,10 @@ def _event_contexts(user: Any) -> list[ContextDescriptor]:
         role_name = getattr(assignment, "role", None)
         if not role_name:
             continue
+        event_id = getattr(event, "id", None)
+        if event_id in seen_event_ids:
+            continue
+        seen_event_ids.add(event_id)
         public_id = str(event.public_id)
         descriptors.append(
             ContextDescriptor(
@@ -352,11 +369,93 @@ def _event_contexts(user: Any) -> list[ContextDescriptor]:
                 role=str(role_name),
                 workspace_url=_workspace_url(ContextType.EVENT, public_id),
                 permission_lookup_metadata={
-                    "event_id": getattr(event, "id", None),
+                    "event_id": event_id,
                     "event_role_id": getattr(assignment, "id", None),
+                    "ownership_type": "event_role",
                 },
             )
         )
+
+    # 2. Individual canonical owners
+    try:
+        from app.events.models import Event
+
+        owned_events = Event.query.filter(
+            and_(
+                Event.current_owner_type == 'individual',
+                Event.current_owner_id == user.id,
+                Event.is_deleted == False,
+                Event.public_id.isnot(None)
+            )
+        ).all()
+
+        for event in owned_events:
+            event_id = getattr(event, "id", None)
+            if event_id in seen_event_ids:
+                continue
+            if not _event_is_live(event) or not getattr(event, "public_id", None):
+                continue
+            seen_event_ids.add(event_id)
+            public_id = str(event.public_id)
+            descriptors.append(
+                ContextDescriptor(
+                    type=ContextType.EVENT,
+                    public_id=public_id,
+                    label=f"{getattr(event, 'name', 'Event')} — Owner",
+                    role="owner",
+                    workspace_url=_workspace_url(ContextType.EVENT, public_id),
+                    permission_lookup_metadata={
+                        "event_id": event_id,
+                        "event_role_id": None,
+                        "ownership_type": "individual",
+                    },
+                )
+            )
+    except (ImportError, AttributeError, RuntimeError):
+        pass
+
+    # 3. Organization-owned events where user is org_owner/org_admin
+    try:
+        from app.events.models import Event
+
+        for membership in getattr(user, "organisations", []):
+            if not user.has_org_role(membership.organisation_id, "org_owner", "org_admin"):
+                continue
+
+            org_events = Event.query.filter(
+                and_(
+                    Event.organisation_id == membership.organisation_id,
+                    Event.is_deleted == False,
+                    Event.public_id.isnot(None)
+                )
+            ).all()
+
+            for event in org_events:
+                event_id = getattr(event, "id", None)
+                if event_id in seen_event_ids:
+                    continue
+                if not _event_is_live(event) or not getattr(event, "public_id", None):
+                    continue
+                seen_event_ids.add(event_id)
+                public_id = str(event.public_id)
+                descriptors.append(
+                    ContextDescriptor(
+                        type=ContextType.EVENT,
+                        public_id=public_id,
+                        label=f"{getattr(event, 'name', 'Event')} — Org Owner",
+                        role="org_owner",
+                        workspace_url=_workspace_url(ContextType.EVENT, public_id),
+                        permission_lookup_metadata={
+                            "event_id": event_id,
+                            "event_role_id": None,
+                            "ownership_type": "organization",
+                            "organisation_id": membership.organisation_id,
+                        },
+                    )
+                )
+    except (ImportError, AttributeError, RuntimeError):
+        pass
+
     return descriptors
 
 
@@ -651,4 +750,140 @@ def active_context_or_platform_required(context_type: ContextType):
 
         return wrapped
 
+    return decorator
+
+
+def event_owner_context_required():
+    """
+    Decorator for per-event organizer dashboards.
+    
+    Allows access if:
+    1. User is platform admin, OR
+    2. User owns the event (canonical owner or EventRole owner) - auto-switches context
+    3. User has EVENT context already selected for this event
+    """
+    def decorator(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            from flask_login import current_user
+            from flask import session, request
+            
+            # Extract event identifier from route kwargs
+            identifier = kwargs.get('identifier') or kwargs.get('event_id')
+            if not identifier:
+                # Fallback: try to get from URL path
+                import re
+                match = re.search(r'/events/organizer/dashboard/([^/]+)', request.path)
+                if match:
+                    identifier = match.group(1)
+            
+            if not identifier:
+                if request.is_json or request.path.startswith("/api/"):
+                    return jsonify({"error": "Event identifier required"}), 400
+                abort(400)
+            
+            # Get event model to check ownership
+            from app.events.services import EventService
+            from app.events.permissions import _is_event_owner
+            
+            event_model = EventService.get_event_model(identifier)
+            if not event_model or not _is_event_owner(current_user, event_model):
+                if request.is_json or request.path.startswith("/api/"):
+                    return jsonify({"error": "Unauthorized access"}), 403
+                abort(403)
+            
+            # Get event public_id for context switching
+            event_public_id = str(getattr(event_model, "public_id", None) or identifier)
+            
+            # Check current active context
+            active = get_active_context(current_user)
+            
+            # If already platform or correct EVENT context, proceed
+            if active.type == ContextType.PLATFORM or (
+                active.type == ContextType.EVENT and active.public_id == event_public_id
+            ):
+                return view(*args, **kwargs)
+            
+            # Check if user has this event context available (owner or EventRole)
+            from app.auth.context import _event_contexts
+            available_contexts = _event_contexts(current_user)
+            matching_ctx = next((ctx for ctx in available_contexts if ctx.public_id == event_public_id), None)
+            
+            if matching_ctx:
+                # Auto-switch context for this event
+                session['active_context_type'] = ContextType.EVENT.value
+                session['active_context_id'] = event_public_id
+                session['active_role'] = matching_ctx.role
+                return view(*args, **kwargs)
+            
+            # No access
+            if request.is_json or request.path.startswith("/api/"):
+                return jsonify({"error": "The requested operating context is not active."}), 403
+            abort(403)
+        
+        return wrapped
+    return decorator
+
+
+def event_hub_context_required():
+    """
+    Decorator for the events hub (/events/hub).
+    
+    Allows access only to users with COORDINATION AUTHORITY:
+    - Platform admins (owner, super_admin, admin, event_manager, moderator)
+    - Canonical event owners (individual or organization)
+    - org_owner/org_admin of the owning organization
+    
+    BLOCKS users with only operational roles (volunteers, stewards, etc.)
+    who only have specific permissions like check-in for assigned events.
+    """
+    def decorator(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            from flask_login import current_user
+            from flask import request
+            
+            if not current_user or not current_user.is_authenticated:
+                if request.is_json or request.path.startswith("/api/"):
+                    return jsonify({"error": "Authentication required"}), 401
+                abort(401)
+            
+            # Check current active context
+            active = get_active_context(current_user)
+            
+            # Platform admins always have access
+            if active.type == ContextType.PLATFORM:
+                return view(*args, **kwargs)
+            
+            # If user already has an EVENT context selected, check if they're a coordination authority
+            # for that specific event
+            if active.type == ContextType.EVENT and active.public_id:
+                from app.events.services import EventService
+                from app.events.permissions import _is_coordination_authority
+                
+                event_model = EventService.get_event_model_by_public_id(active.public_id)
+                if event_model and _is_coordination_authority(current_user, event_model):
+                    return view(*args, **kwargs)
+            
+            # Check if user has ANY coordination authority across their event roles
+            from app.auth.context import _event_contexts
+            from app.events.permissions import _is_coordination_authority
+            from app.events.services import EventService
+            
+            available_contexts = _event_contexts(current_user)
+            
+            for ctx in available_contexts:
+                if ctx.public_id:
+                    event_model = EventService.get_event_model_by_public_id(ctx.public_id)
+                    if event_model and _is_coordination_authority(current_user, event_model):
+                        # User has coordination authority for at least one event
+                        # Allow access to hub (they can see their managed events)
+                        return view(*args, **kwargs)
+            
+            # No coordination authority at all - block access
+            if request.is_json or request.path.startswith("/api/"):
+                return jsonify({"error": "You must have event coordination authority to access the events hub."}), 403
+            abort(403)
+        
+        return wrapped
     return decorator

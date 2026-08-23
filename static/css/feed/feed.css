@@ -1,0 +1,359 @@
+/* =============================================================
+   AFCON360 — Feed Styles (static/css/feed/feed.css)
+
+   Covers:
+   - .feed-item card (all types: post, event, ad, system_update,
+     property, transport)
+   - .feed-stream (mixed layout vertical scroll)
+   - .feed-sections / .feed-section (stacked sections layout)
+   - .feed-tabs (tabbed layout)
+   - .feed-sentinel / loading / end message
+   - Sidebar ad tile images (extends home.css .left-ad / .right-ad)
+
+   Color palette (matches home.css):
+   #2d5a2d green | #1a3a1a dark green | #ffcc00 gold
+   #f2f4f2 main bg | #fff card bg | #333 text | #666 muted
+   ============================================================= */
+
+/* ── Feed Item Card ──────────────────────────────────────────── */
+.feed-item {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+  margin-bottom: 0.85rem;
+  position: relative;
+  transition: box-shadow 0.2s, border-color 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.feed-item:hover {
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  border-color: #c5c5c5;
+}
+.feed-item.is-pinned {
+  border-left: 3px solid #ffcc00;
+  background: linear-gradient(to right, #fffdf5, #fff 40%);
+}
+
+/* Pinned badge */
+.feed-pin-badge {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.6rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #b8860b;
+  background: #fff3cd;
+  padding: 0.15rem 0.5rem;
+  border-radius: 12px;
+}
+
+/* Header */
+.feed-item-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.feed-item-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  background: #f0f0f0;
+}
+.feed-icon-post { background: #e3f2e3; }
+.feed-icon-event { background: #e8eaf6; }
+.feed-icon-ad { background: #fff3cd; }
+.feed-icon-system_update { background: #e3f2fd; }
+.feed-icon-property { background: #fce4ec; }
+.feed-icon-transport { background: #e0f2f1; }
+
+.feed-item-meta {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.feed-item-author {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #2d5a2d;
+}
+.feed-item-module {
+  font-size: 0.7rem;
+  color: #888;
+}
+.feed-sponsored-tag {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #b8860b;
+  background: #fff3cd;
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* Body */
+.feed-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.feed-item-title {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1a3a1a;
+  margin: 0;
+  line-height: 1.3;
+}
+.feed-item-text {
+  font-size: 0.85rem;
+  color: #444;
+  line-height: 1.5;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Image */
+.feed-item-image-wrap {
+  width: 100%;
+  max-height: 280px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #f5f5f5;
+}
+.feed-item-image-wrap img {
+  width: 100%;
+  height: auto;
+  max-height: 280px;
+  object-fit: cover;
+  display: block;
+}
+
+/* Metadata extras */
+.feed-item-extras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.8rem;
+}
+.feed-extra {
+  font-size: 0.73rem;
+  color: #666;
+  background: #f5f5f5;
+  padding: 0.18rem 0.55rem;
+  border-radius: 3px;
+}
+.feed-extra-highlight {
+  background: #fff3cd;
+  color: #b8860b;
+  font-weight: 600;
+}
+
+/* Footer */
+.feed-item-foot {
+  padding-top: 0.3rem;
+  border-top: 1px solid #f0f0f0;
+}
+.feed-item-link {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #2d5a2d;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.feed-item-link:hover {
+  color: #ffcc00;
+}
+
+/* ── Feed Stream (mixed layout) ──────────────────────────────── */
+.feed-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Feed Sections (stacked layout) ──────────────────────────── */
+.feed-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+.feed-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.feed-section .section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.feed-section .section-title {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1a3a1a;
+  margin: 0;
+}
+.feed-section-scroll {
+  display: flex;
+  gap: 0.85rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 0.5rem;
+  -webkit-overflow-scrolling: touch;
+}
+.feed-section-scroll .feed-item {
+  min-width: 280px;
+  max-width: 320px;
+  scroll-snap-align: start;
+  margin-bottom: 0;
+}
+/* Hide scrollbar but keep scrollable */
+.feed-section-scroll::-webkit-scrollbar { height: 5px; }
+.feed-section-scroll::-webkit-scrollbar-track { background: #f0f0f0; border-radius: 3px; }
+.feed-section-scroll::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+
+/* ── Feed Tabs (tabbed layout) ───────────────────────────────── */
+.feed-tabs {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #e0e0e0;
+  margin-bottom: 0.5rem;
+}
+.feed-tab {
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 20px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.78rem;
+  font-family: 'Open Sans', sans-serif;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.feed-tab:hover {
+  background: #e8e8e8;
+  border-color: #ccc;
+}
+.feed-tab.is-active {
+  background: #2d5a2d;
+  color: #fff;
+  border-color: #2d5a2d;
+}
+.feed-tab-wrapper {
+  display: block;
+}
+.feed-tab-wrapper.is-hidden {
+  display: none;
+}
+
+/* ── Sentinel / Loading / End ────────────────────────────────── */
+.feed-sentinel {
+  text-align: center;
+  padding: 1.2rem 0 2rem;
+  min-height: 40px;
+}
+.feed-loading-spinner {
+  font-size: 0.8rem;
+  color: #666;
+}
+.feed-loading-spinner::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #ddd;
+  border-top-color: #2d5a2d;
+  border-radius: 50%;
+  animation: feed-spin 0.7s linear infinite;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+}
+@keyframes feed-spin {
+  to { transform: rotate(360deg); }
+}
+.feed-end-message {
+  font-size: 0.85rem;
+  color: #888;
+  font-style: italic;
+}
+
+/* ── Sidebar Ad Images ────────────────────────────────────────── */
+/* Extends existing .left-ad / .right-ad from home.css */
+.left-ad-img,
+.right-ad-img-wrap img {
+  width: 100%;
+  height: auto;
+  max-height: 120px;
+  object-fit: cover;
+  border-radius: 4px;
+  display: block;
+}
+
+/* ── Admin Layout Toggle (in settings area) ──────────────────── */
+.feed-layout-toggle {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.feed-layout-toggle select {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  background: #fff;
+  cursor: pointer;
+}
+.feed-layout-toggle button {
+  background: #2d5a2d;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 0.4rem 1rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.feed-layout-toggle button:hover {
+  background: #1a3a1a;
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .feed-item {
+    padding: 0.8rem;
+  }
+  .feed-item-title {
+    font-size: 0.9rem;
+  }
+  .feed-item-text {
+    font-size: 0.8rem;
+    -webkit-line-clamp: 2;
+  }
+  .feed-section-scroll .feed-item {
+    min-width: 240px;
+    max-width: 280px;
+  }
+  .feed-tab {
+    font-size: 0.72rem;
+    padding: 0.3rem 0.7rem;
+  }
+}

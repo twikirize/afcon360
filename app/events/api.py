@@ -1,3 +1,4 @@
+#app/events/api.py
 """JSON API endpoints for attendee event preferences."""
 
 from flask import Blueprint, jsonify
@@ -31,3 +32,11 @@ def toggle_favorite(public_id):
         "favorited": favorited,
         "favorite_count": favorite_count,
     })
+
+
+@event_favorites_api_bp.route("/become-organizer/eligibility", methods=["GET"])
+@login_required
+def become_organizer_eligibility():
+    """Check if current user is eligible to become an organizer."""
+    result = EventService.check_organizer_eligibility(current_user.id)
+    return jsonify({"success": True, **result})

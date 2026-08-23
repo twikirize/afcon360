@@ -91,6 +91,51 @@ def owner_required(f):
     return decorated_function
 
 
+def owner_or_superadmin_required(f):
+    """Allow only Owner or Super Admin (highest privilege tiers)."""
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            flash('Please log in first', 'warning')
+            return redirect(url_for('auth_routes.login', next=request.url))
+
+        # Ensure clean session state before role checks.
+        try:
+            db.session.rollback()
+        except Exception:
+            try:
+                db.session.remove()
+            except Exception:
+                pass
+
+        is_owner = False
+        if hasattr(current_user, 'has_role'):
+            try:
+                is_owner = current_user.has_role('owner')
+            except Exception:
+                pass
+        if not is_owner and hasattr(current_user, 'has_global_role'):
+            try:
+                is_owner = current_user.has_global_role('owner')
+            except Exception:
+                pass
+
+        is_super = False
+        if hasattr(current_user, 'has_global_role'):
+            try:
+                is_super = current_user.has_global_role('super_admin')
+            except Exception:
+                pass
+
+        if not (is_owner or is_super):
+            abort(403)
+
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
 def owner_password_confirm_required(f):
     """Require recent password confirmation for danger zone"""
 

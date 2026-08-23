@@ -167,6 +167,26 @@ def community_hosts_list(slug):
     return render_template('events/organizer/community_hosts.html', event=event)
 
 
+@events_bp.route("/community-hosts")
+@login_required
+def community_hosts_universal():
+    """Universal community host management across all events the user organizes."""
+    events = EventService.get_organizer_event_models(current_user)
+    rows = []
+    for event in events:
+        regs = EventHostRegistration.query.filter_by(
+            event_id=event.id
+        ).order_by(EventHostRegistration.registered_at.desc()).all()
+        for reg in regs:
+            rows.append({
+                'event_slug': event.slug,
+                'event_name': event.name,
+                'reg': reg,
+            })
+    return render_template('events/organizer/community_hosts_universal.html',
+                           events=events, rows=rows)
+
+
 @events_bp.route("/api/<slug>/community-hosts")
 @login_required
 def api_community_hosts_list(slug):

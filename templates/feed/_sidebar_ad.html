@@ -1,0 +1,59 @@
+{# templates/feed/_sidebar_ad.html
+   Renders one sidebar ad tile.
+   Uses .left-ad or .right-ad CSS classes depending on ad.placement
+   so it matches the existing sidebar card style from home.css.
+   Expects: ad (dict from FeedService._ad_to_item)
+#}
+{% if ad.placement == 'home_left' %}
+<div class="left-ad">
+  <div class="left-ad-placeholder" style="position:relative;">
+    {% if ad.image_url %}
+    <img src="{{ ad.image_url }}" alt="{{ ad.title }}" class="left-ad-img" loading="lazy"
+         onerror="this.style.display='none'">
+    {% else %}
+    <div style="font-size:2.5rem;margin-bottom:0.4rem;">📣</div>
+    {% endif %}
+    <div class="left-ad-overlay">
+      <div class="left-ad-title">{{ ad.title }}</div>
+      {% if ad.body %}<div class="left-ad-sub">{{ ad.body[:80] }}</div>{% endif %}
+      {% if ad.link_url %}<a href="{{ ad.link_url }}" class="left-ad-btn">Learn More →</a>{% endif %}
+    </div>
+  </div>
+</div>
+
+{% elif ad.placement == 'home_right' %}
+<div class="right-ad">
+  {% if ad.image_url %}
+  <div class="right-ad-img-wrap">
+    <img src="{{ ad.image_url }}" alt="{{ ad.title }}" loading="lazy"
+         onerror="this.style.display='none'">
+  </div>
+  {% else %}
+  <div class="right-ad-img-wrap">📣</div>
+  {% endif %}
+  <div class="right-ad-head">
+    <div class="right-ad-title">{{ ad.title }}</div>
+    {% if ad.body %}<div class="right-ad-sub">{{ ad.body[:80] }}</div>{% endif %}
+  </div>
+  {% if ad.link_url %}
+  <div class="right-ad-foot">
+    <a href="{{ ad.link_url }}" class="right-ad-btn">Learn More <span>›</span></a>
+  </div>
+  {% endif %}
+</div>
+
+{% else %}
+{# Generic fallback for other placements (dashboard, etc.) #}
+<div class="right-ad">
+  <div class="right-ad-img-wrap">📣</div>
+  <div class="right-ad-head">
+    <div class="right-ad-title">{{ ad.title }}</div>
+    {% if ad.body %}<div class="right-ad-sub">{{ ad.body[:80] }}</div>{% endif %}
+  </div>
+  {% if ad.link_url %}
+  <div class="right-ad-foot">
+    <a href="{{ ad.link_url }}" class="right-ad-btn">Learn More <span>›</span></a>
+  </div>
+  {% endif %}
+</div>
+{% endif %}

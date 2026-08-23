@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AFCON360 Accommodation Assigned</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f4f6f8; margin: 0; padding: 20px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; border-top: 5px solid #c9772e;">
+    <h2 style="color: #c9772e; margin-top: 0;">Accommodation Assigned</h2>
+    <p>Dear <strong>{{ guest_name or 'Guest' }}</strong>,</p>
+    <p>You have been assigned accommodation for <strong>{{ event_name or 'the event' }}</strong>.</p>
+    
+    <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Event:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ event_name or 'Not specified' }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Property:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ property_title or 'To be confirmed' }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Location:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ property_city or '' }}{{ ', ' if property_city and property_country else '' }}{{ property_country or '' }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Check-in:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ check_in[:10] if check_in else 'To be confirmed' }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Check-out:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ check_out[:10] if check_out else 'To be confirmed' }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Duration:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">
+          {% if duration_nights is not none %}
+            {{ duration_nights }} night{{ 's' if duration_nights != 1 else '' }}
+          {% else %}
+            To be confirmed
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Booking Reference:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ booking_reference or 'Not available' }}</td>
+      </tr>
+    </table>
+    {% if link %}<p style="text-align: center;"><a href="{{ link }}" style="background-color: #c9772e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">Complete your accommodation details</a></p>{% endif %}
+    <p style="color: #555; font-size: 14px;">Please complete your guest registration using the link above. Your event organizer has pre-filled some details; please add any missing information.</p>
+  </div>
+</body>
+</html>

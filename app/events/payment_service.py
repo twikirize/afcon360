@@ -1,4 +1,3 @@
-# app/events/services/payment_service.py
 """
 Event Payment Service - Integration with wallet and mobile money systems
 """
@@ -24,12 +23,12 @@ logger = logging.getLogger(__name__)
 
 class EventPaymentService:
     """Payment service for event ticket purchases"""
-    
+
     def __init__(self):
         # Wallet services are created only when a paid flow selects wallet
         # payment or requires a compensating refund.
         self.wallet_service = None
-        
+
     def process_ticket_purchase(
         self,
         user_id: int,
@@ -46,24 +45,37 @@ class EventPaymentService:
         unit_price_override: Optional[Decimal] = None
     ) -> Dict:
         """
-        Process ticket purchase with payment integration
+        Process ticket purchase with payment integration.
         """
         try:
             # Get event and ticket type
             event = db.session.get(Event, event_id)
             ticket_type = db.session.get(TicketType, ticket_type_id)
-            
+
             if not event or not ticket_type:
                 return {"success": False, "error": "Event or ticket type not found"}
-            
+
             if ticket_type.event_id != event_id:
                 return {"success": False, "error": "Ticket type doesn't belong to this event"}
 
             from app.events.services import EventService
-            if EventService.is_event_expired(event):
+            gate_error = EventService._registration_gate_error(event, ticket_type_id)
+            if gate_error:
+                return {"success": False, "error": gate_error}
+
+            # Normalize and validate expected registration count.
+            # If create_primary_for_payer=True, the payer is included as the
+            # first registration and group_attendees are additional attendees.
+            # If create_primary_for_payer=False, quantity must match the number
+            # of group_attendees exactly.
+            attendee_count = len(group_attendees or [])
+            expected_registrations = quantity
+            if create_primary_for_payer:
+                expected_registrations += attendee_count
+            elif attendee_count != quantity:
                 return {
                     "success": False,
-                    "error": "Event registration closed. This event has already ended."
+                    "error": "Quantity must match the number of group attendees"
                 }
 
             if create_primary_for_payer:
@@ -76,25 +88,84 @@ class EventPaymentService:
                         "success": False,
                         "error": "You are already registered for this event"
                     }
-            
+
             # Calculate total price
-            # Discount applies per-seat - see REFACTOR_PLAN.md 4.3
             unit_price = unit_price_override if unit_price_override is not None else Decimal(str(ticket_type.price))
-            total_price = unit_price * quantity
-            
+            total_price = unit_price * expected_registrations
+
             # Create audit transaction ID
             audit_transaction_id = f"TKT-{uuid.uuid4().hex[:12].upper()}"
-            
-            # Check capacity
+
+            # Check capacity using correct remaining seats interpretation.
             if ticket_type.capacity and ticket_type.capacity > 0:
-                available = ticket_type.capacity - ticket_type.available_seats
-                if available < quantity:
+                available = (
+                    ticket_type.available_seats
+                    if ticket_type.available_seats is not None
+                    else ticket_type.capacity
+                )
+                if available < expected_registrations:
                     return {"success": False, "error": f"Only {available} tickets available"}
-            
+
+            # Pre-check duplicate group attendee emails before payment to avoid
+            # paying and then failing on unique constraint.
+            for attendee_data in group_attendees or []:
+                email = (attendee_data.get("email") or "").strip().lower()
+                if email and EventRegistration.query.filter_by(
+                    event_id=event_id,
+                    email=email,
+                ).first():
+                    return {
+                        "success": False,
+                        "error": f"{email} is already registered for this event"
+                    }
+
             # Free tickets are registrations, not financial transactions.
             is_free_purchase = total_price <= Decimal("0.00")
             payment_result = {"success": True, "payment_reference": None, "amount": 0}
             if not is_free_purchase:
+                # Validate payment method against event preferences and platform config.
+                event_preference = EventPaymentPreference.query.filter_by(event_id=event_id).first()
+                available_methods = PaymentMethodConfig.get_available_methods(event.currency)
+
+                if event_preference:
+                    accepted_methods = event_preference.accepted_methods or []
+                    if payment_method == "mobile_money":
+                        country = self._get_country_from_currency(event.currency)
+                        accepts_method = any(
+                            method.method_id in accepted_methods
+                            and method.method_type == "mobile_money"
+                            and method.provider_name.lower() == (mobile_money_operator or "").lower()
+                            and method.country_code.upper() == (country or "").upper()
+                            for method in available_methods
+                        )
+                    else:
+                        accepts_method = (
+                            payment_method in accepted_methods
+                            and any(method.method_id == payment_method for method in available_methods)
+                        )
+                    if not accepts_method:
+                        return {
+                            "success": False,
+                            "error": f"Payment method '{payment_method}' is not accepted for this event"
+                        }
+                elif payment_method == "mobile_money":
+                    country = self._get_country_from_currency(event.currency)
+                    if not any(
+                        method.method_type == "mobile_money"
+                        and method.provider_name.lower() == (mobile_money_operator or "").lower()
+                        and method.country_code.upper() == (country or "").upper()
+                        for method in available_methods
+                    ):
+                        return {
+                            "success": False,
+                            "error": f"Payment method '{payment_method}' is not available"
+                        }
+                elif not any(method.method_id == payment_method for method in available_methods):
+                    return {
+                        "success": False,
+                        "error": f"Payment method '{payment_method}' is not available"
+                    }
+
                 if payment_method == "wallet":
                     payment_result = self._process_wallet_payment(
                         user_id, total_price, event.currency, audit_transaction_id
@@ -108,19 +179,40 @@ class EventPaymentService:
                     )
                 else:
                     return {"success": False, "error": "Unsupported payment method"}
-            
+
             if not payment_result.get("success"):
                 return payment_result
-            
-            # Order invariant: capacity check -> payment -> registration creation
-            # On registration failure, refund is attempted (compensating refund)
+
+            # Atomic capacity reservation BEFORE creating registrations so we
+            # never oversell. Mirrors the reserve-then-pay invariant; on
+            # exhaustion we compensate with a refund instead of leaving a seat
+            # stuck or a registration orphaned.
+            if ticket_type.capacity and ticket_type.capacity > 0:
+                from app.events.inventory import decrement_capacity, ReservationInventoryError
+                try:
+                    decrement_capacity(
+                        ticket_type.id, expected_registrations, event_id=ticket_type.event_id
+                    )
+                except ReservationInventoryError as exc:
+                    if not is_free_purchase and payment_method == "wallet":
+                        self._refund_payment(
+                            user_id=user_id,
+                            amount=total_price,
+                            currency=event.currency,
+                            original_payment_ref=payment_result.get("payment_reference"),
+                            reason=f"Capacity exhausted: {exc}",
+                            audit_transaction_id=audit_transaction_id,
+                        )
+                    return {"success": False, "error": f"Capacity exhausted: {exc}"}
+
+            # Order invariant: capacity reservation -> payment -> registration creation.
+            # On registration failure, refund + release are attempted (compensating).
             try:
-                # Create registrations
                 registrations = self._create_registrations(
                     user_id=user_id,
                     event_id=event_id,
                     ticket_type_id=ticket_type_id,
-                    quantity=quantity,
+                    quantity=expected_registrations,
                     payment_reference=payment_result.get("payment_reference"),
                     group_attendees=group_attendees,
                     create_primary_for_payer=create_primary_for_payer,
@@ -128,14 +220,9 @@ class EventPaymentService:
                     group_label=group_label,
                     unit_price_override=unit_price_override
                 )
-                
-                # Update ticket type capacity
-                if ticket_type.capacity and ticket_type.capacity > 0:
-                    for _ in range(quantity):
-                        ticket_type.reserve_seat()
-                
+
                 db.session.commit()
-                
+
                 return {
                     "success": True,
                     "registrations": registrations,
@@ -147,10 +234,19 @@ class EventPaymentService:
                 db.session.rollback()
                 logger.error(f"Error creating registrations or reserving seats: {reg_exc}")
 
+                # Release the inventory we reserved above so the seat is not
+                # stranded after a failed registration (capacity is NOT lost).
+                if ticket_type.capacity and ticket_type.capacity > 0:
+                    from app.events.inventory import increment_capacity
+                    try:
+                        increment_capacity(ticket_type.id, expected_registrations)
+                    except Exception as rel_exc:
+                        logger.warning(f"Failed to release capacity after registration error: {rel_exc}")
+
                 if is_free_purchase:
                     return {"success": False, "error": f"Registration failed: {str(reg_exc)}"}
-                
-                # Compensating refund for wallet payment
+
+                # Compensating refund for wallet payment.
                 refund_result = None
                 if payment_method == "wallet":
                     refund_result = self._refund_payment(
@@ -173,7 +269,7 @@ class EventPaymentService:
                     }
 
                 return {"success": False, "error": "Payment processed but registration failed. Support notified."}
-            
+
         except Exception as e:
             db.session.rollback()
             logger.error(f"Error processing ticket purchase: {e}")
@@ -236,23 +332,19 @@ class EventPaymentService:
         currency: str,
         audit_transaction_id: str
     ) -> Dict:
-        """Process payment using wallet system"""
+        """Process payment using wallet system."""
         try:
-            # Get user's wallet account
             wallet_service = WalletService()
             account = wallet_service.account_repo.get_by_user_id(user_id, currency)
             if not account:
                 return {"success": False, "error": f"No wallet found for {currency}"}
-            
-            # Check balance (derived from ledger)
+
             balance = wallet_service.ledger_repo.get_balance(account.id, currency)
             if balance < amount:
                 return {"success": False, "error": "Insufficient wallet balance"}
-            
-            # Process wallet payment
+
             payment_reference = f"WALLET-{uuid.uuid4().hex[:12].upper()}"
-            
-            # Create audit record
+
             AuditService.financial(
                 transaction_id=audit_transaction_id,
                 transaction_type=TransactionType.PAYMENT,
@@ -270,8 +362,7 @@ class EventPaymentService:
                     "purpose": "event_ticket_purchase"
                 }
             )
-            
-            # Debit wallet using withdraw (requires account_id UUID)
+
             client_request_id = f"EVT-PAY-{audit_transaction_id}-{user_id}"
             debit_result = wallet_service.withdraw(
                 account_id=str(account.id),
@@ -280,9 +371,8 @@ class EventPaymentService:
                 client_request_id=client_request_id,
                 metadata={"event_ticket_purchase": True, "reference": payment_reference, "audit_transaction_id": audit_transaction_id}
             )
-            
+
             if debit_result.get("status") != "success":
-                # Update audit as failed
                 AuditService.financial(
                     transaction_id=audit_transaction_id,
                     transaction_type=TransactionType.PAYMENT,
@@ -298,8 +388,7 @@ class EventPaymentService:
                     metadata={"error": debit_result.get("error")}
                 )
                 return {"success": False, "error": debit_result.get("error")}
-            
-            # Update audit as completed
+
             new_balance = wallet_service.ledger_repo.get_balance(account.id, currency)
             AuditService.financial(
                 transaction_id=audit_transaction_id,
@@ -316,17 +405,17 @@ class EventPaymentService:
                 user_agent=request.user_agent.string if request else None,
                 metadata={"payment_reference": payment_reference}
             )
-            
+
             return {
                 "success": True,
                 "payment_reference": payment_reference,
                 "amount": float(amount)
             }
-            
+
         except Exception as e:
             logger.error(f"Wallet payment error: {e}")
             return {"success": False, "error": str(e)}
-    
+
     def _process_mobile_money_payment(
         self,
         user_id: int,
@@ -336,21 +425,18 @@ class EventPaymentService:
         phone: str,
         audit_transaction_id: str
     ) -> Dict:
-        """Process payment using mobile money"""
+        """Process payment using mobile money."""
         try:
-            # Determine country based on currency
             country = self._get_country_from_currency(currency)
             if not country:
                 return {"success": False, "error": "Unsupported currency for mobile money"}
-            
-            # Initialize mobile money service
+
             mobile_service = MobileMoneyService(operator, country)
-            
-            # Process mobile money deposit
+
             deposit_result = mobile_service.process_deposit(
                 user_id, amount, currency, phone, audit_transaction_id
             )
-            
+
             if deposit_result.get("success"):
                 return {
                     "success": True,
@@ -359,20 +445,20 @@ class EventPaymentService:
                 }
             else:
                 return deposit_result
-                
+
         except Exception as e:
             logger.error(f"Mobile money payment error: {e}")
             return {"success": False, "error": str(e)}
-    
+
     def _get_country_from_currency(self, currency: str) -> Optional[str]:
-        """Map currency to country for mobile money"""
+        """Map currency to country for mobile money."""
         currency_country_map = {
             "UGX": "UG",
-            "KES": "KE", 
+            "KES": "KE",
             "NGN": "NG"
         }
         return currency_country_map.get(currency.upper())
-    
+
     def _create_registrations(
         self,
         user_id: int,
@@ -386,19 +472,18 @@ class EventPaymentService:
         group_label: Optional[str] = None,
         unit_price_override: Optional[Decimal] = None
     ) -> List[Dict]:
-        """Create event registrations"""
+        """Create event registrations."""
         registrations = []
-        
-        # Primary registrant (payer) if requested (self-registration use case)
+
+        # Primary registrant (payer) if requested (self-registration use case).
         if create_primary_for_payer:
-            # Payer row is index 0 in the group if group booking is active
             primary_index = 0 if group_booking_id else None
             primary_registration = self._create_single_registration(
                 user_id=user_id,
                 event_id=event_id,
                 ticket_type_id=ticket_type_id,
                 payment_reference=payment_reference,
-                attendee_data=None,  # will be filled from User record
+                attendee_data=None,
                 booked_by_user_id=user_id,
                 booking_type=BookingType.SELF.value if not group_booking_id else BookingType.GROUP.value,
                 group_booking_id=group_booking_id,
@@ -407,8 +492,8 @@ class EventPaymentService:
                 unit_price_override=unit_price_override
             )
             registrations.append(primary_registration)
-        
-        # Group attendees
+
+        # Group attendees.
         if group_attendees:
             errors = []
             for idx, attendee_data in enumerate(group_attendees, start=1):
@@ -420,10 +505,14 @@ class EventPaymentService:
                     errors.append(f"Missing name or email for attendee #{idx}")
                     continue
 
+                # Resolve an existing attendee account, but do NOT auto-create
+                # one.  A paid group guest does not require an AFCON360 account;
+                # if no account exists, leave user_id/attendee_user_id as NULL.
                 attendee_user_id, error = find_or_create_attendee_user(
                     email=email,
                     name=name,
-                    phone=phone
+                    phone=phone,
+                    create_guest_account=False,
                 )
                 if error:
                     errors.append(f"{name}: {error}")
@@ -449,7 +538,7 @@ class EventPaymentService:
                 raise ValueError(f"Failed to create registrations: {'; '.join(errors)}")
 
         return registrations
-    
+
     def _create_single_registration(
         self,
         user_id: int,
@@ -464,8 +553,7 @@ class EventPaymentService:
         group_label: Optional[str] = None,
         unit_price_override: Optional[Decimal] = None
     ) -> Dict:
-        """Create a single event registration"""
-        # Ensure we have attendee details if attendee_data not provided (self case)
+        """Create a single event registration."""
         full_name = None
         email = None
         phone = None
@@ -476,7 +564,6 @@ class EventPaymentService:
             phone = attendee_data.get("phone")
             nationality = attendee_data.get("nationality")
         else:
-            # Load from User
             user = db.session.get(User, user_id)
             if user:
                 full_name = getattr(user, "username", None) or getattr(user, "full_name", None) or user.email
@@ -510,47 +597,41 @@ class EventPaymentService:
             wallet_txn_id=None if is_free_registration else payment_reference,
             registration_fee=float(price)
         )
-        
-        # Generate references - need event slug and sequence
+
         event = db.session.get(Event, event_id)
         if event:
-            # Get next sequence number
             reg_count = db.session.query(db.func.count(EventRegistration.id)).filter_by(
                 event_id=event_id
             ).scalar() or 0
             sequence = reg_count + 1
             registration.generate_refs(event.slug, sequence)
         else:
-            # Fallback - generate without proper refs
             registration.generate_refs("UNKNOWN", 1)
-        
+
         db.session.add(registration)
-        db.session.flush()  # Get the ID
-        
+        db.session.flush()
+
         return {
             "id": registration.id,
             "registration_ref": registration.registration_ref,
             "ticket_number": registration.ticket_number,
             "qr_token": registration.qr_token
         }
-    
+
     def get_available_payment_methods(self, event_currency: str, event_id: Optional[int] = None) -> List[Dict]:
-        """Get available payment methods for an event based on admin configuration"""
+        """Get available payment methods for an event based on admin configuration."""
         methods = []
-        
-        # Get event payment preferences if event_id is provided
+
         event_preference = None
         if event_id:
             event_preference = EventPaymentPreference.query.filter_by(event_id=event_id).first()
-        
-        # Get all available payment methods from admin configuration
+
         configured_methods = PaymentMethodConfig.get_available_methods(event_currency)
-        
+
         for method in configured_methods:
-            # Check if event owner accepts this method
             if event_preference and not event_preference.accepts_method(method.method_id):
                 continue
-            
+
             method_dict = {
                 "id": method.method_id,
                 "name": method.display_name,
@@ -559,18 +640,16 @@ class EventPaymentService:
                 "available": method.is_available,
                 "min_amount": float(method.min_amount),
                 "max_amount": float(method.max_amount),
-                "transaction_fee": method.calculate_fee(1.0)  # Fee percentage
+                "transaction_fee": method.calculate_fee(1.0)
             }
-            
-            # Add mobile money specific details
+
             if method.method_type == "mobile_money":
                 method_dict.update({
                     "operator": method.provider_name,
                     "country": method.country_code,
                     "requires_phone": method.requires_phone
                 })
-            
-            # Add disabled reason if not available
+
             if not method.is_available:
                 if not method.is_enabled:
                     method_dict["disabled_reason"] = "Payment method disabled by administrator"
@@ -580,23 +659,21 @@ class EventPaymentService:
                     method_dict["disabled_reason"] = f"Does not support {event_currency}"
                 else:
                     method_dict["disabled_reason"] = "Payment method unavailable"
-            
+
             methods.append(method_dict)
-        
-        # Add card payment (placeholder for future implementation)
+
         methods.append({
             "id": "card",
             "name": "Credit/Debit Card",
             "description": "Pay with credit or debit card",
             "icon": "💳",
-            "available": False,  # Not implemented yet
+            "available": False,
             "disabled_reason": "Card payments coming soon"
         })
-        
+
         return methods
-    
+
     def _get_method_icon(self, method_type: str) -> str:
-        """Get appropriate icon for payment method type"""
         icon_map = {
             "wallet": "💳",
             "mobile_money": "📱",
@@ -604,4 +681,3 @@ class EventPaymentService:
             "bank_transfer": "🏦"
         }
         return icon_map.get(method_type, "💳")
-

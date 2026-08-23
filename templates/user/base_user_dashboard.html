@@ -32,7 +32,7 @@
             </a>
             
             {% if modules.events.enabled %}
-            <a href="#" class="nav-item" data-pane-url="{{ safe_url('events.list') }}">
+            <a href="#" class="nav-item" data-section="events">
                 <i class="fas fa-ticket-alt" aria-hidden="true"></i><span>Events</span>
             </a>
             {% endif %}
@@ -83,28 +83,35 @@
         
         {# Header Area #}
         <div class="shell-header" id="shellHeader">
-            <i class="fas fa-search shell-header-icon" aria-hidden="true"></i>
-            <span class="shell-notification"><i class="fas fa-bell shell-header-icon" aria-hidden="true"></i><span class="shell-notification-dot"></span></span>
-            
-            <div class="context-switcher" data-context-switcher data-switch-url="{{ url_for('auth.switch_context') }}" data-csrf-token="{{ csrf_token() }}">
-                <button id="switcher-toggle" class="switcher-toggle" type="button" aria-expanded="false" aria-controls="switcher-panel">
-                    <span class="user-avatar">
-                        {{ current_user.username[0]|upper if current_user.username else '?' }}
-                    </span>
-                    <i class="fas fa-chevron-down" aria-hidden="true"></i>
-                </button>
-                
-                <div id="switcher-panel" class="switcher-panel" hidden>
-                    <p class="switcher-label">Operating as</p>
-                    <div class="context-options" role="listbox" aria-label="Operating context">
-                    {% for context in available_contexts|default([]) %}
-                        {% set context_type = context.type.value %}
-                        <button class="context-option{% if active_context and context.type == active_context.type and context.public_id == active_context.public_id and context.role == active_context.role %} active{% endif %}" type="button" role="option" aria-selected="{{ 'true' if active_context and context.type == active_context.type and context.public_id == active_context.public_id and context.role == active_context.role else 'false' }}" data-context-type="{{ context_type }}" data-context-id="{{ context.public_id or '' }}" data-context-role="{{ context.role or '' }}">
-                            <span class="context-icon context-icon-{{ context_type }}" aria-hidden="true"><i class="fas {% if context_type == 'personal' %}fa-user{% elif context_type == 'organisation' %}fa-building{% elif context_type == 'event' %}fa-calendar-star{% elif context_type == 'driver' %}fa-car{% elif context_type == 'accommodation_host' %}fa-bed{% else %}fa-shield-halved{% endif %}"></i></span>
-                            <span class="context-copy"><strong>{{ context.label }}</strong>{% if context.role %}<small>{{ context.role|replace('_', ' ')|title }}</small>{% endif %}</span>
-                            <i class="fas fa-check-circle context-check" aria-hidden="true"></i>
-                        </button>
-                    {% endfor %}
+            <div class="shell-greeting">
+                <h1 class="greeting-text">Welcome back, {{ current_user.username }}</h1>
+                <p class="sub-greeting">Your AFCON 360 overview for today</p>
+            </div>
+
+            <div class="shell-header-actions">
+                <i class="fas fa-search shell-header-icon" aria-hidden="true"></i>
+                <span class="shell-notification"><i class="fas fa-bell shell-header-icon" aria-hidden="true"></i><span class="shell-notification-dot"></span></span>
+
+                <div class="context-switcher" data-context-switcher data-switch-url="{{ url_for('auth.switch_context') }}" data-csrf-token="{{ csrf_token() }}">
+                    <button id="switcher-toggle" class="switcher-toggle" type="button" aria-expanded="false" aria-controls="switcher-panel">
+                        <span class="user-avatar">
+                            {{ current_user.username[0]|upper if current_user.username else '?' }}
+                        </span>
+                        <i class="fas fa-chevron-down" aria-hidden="true"></i>
+                    </button>
+
+                    <div id="switcher-panel" class="switcher-panel" hidden>
+                        <p class="switcher-label">Operating as</p>
+                        <div class="context-options" role="listbox" aria-label="Operating context">
+                        {% for context in available_contexts|default([]) %}
+                            {% set context_type = context.type.value %}
+                            <button class="context-option{% if active_context and context.type == active_context.type and context.public_id == active_context.public_id and context.role == active_context.role %} active{% endif %}" type="button" role="option" aria-selected="{{ 'true' if active_context and context.type == active_context.type and context.public_id == active_context.public_id and context.role == active_context.role else 'false' }}" data-context-type="{{ context_type }}" data-context-id="{{ context.public_id or '' }}" data-context-role="{{ context.role or '' }}">
+                                <span class="context-icon context-icon-{{ context_type }}" aria-hidden="true"><i class="fas {% if context_type == 'personal' %}fa-user{% elif context_type == 'organisation' %}fa-building{% elif context_type == 'event' %}fa-calendar-star{% elif context_type == 'driver' %}fa-car{% elif context_type == 'accommodation_host' %}fa-bed{% else %}fa-shield-halved{% endif %}"></i></span>
+                                <span class="context-copy"><strong>{{ context.label }}</strong>{% if context.role %}<small>{{ context.role|replace('_', ' ')|title }}</small>{% endif %}</span>
+                                <i class="fas fa-check-circle context-check" aria-hidden="true"></i>
+                            </button>
+                        {% endfor %}
+                        </div>
                     </div>
                 </div>
             </div>

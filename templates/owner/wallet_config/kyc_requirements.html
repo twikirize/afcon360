@@ -1,0 +1,76 @@
+{% extends "admin/admin.html" %}
+
+{% block title %}KYC Requirement Configuration{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h2 mb-1">KYC Requirement Configuration</h1>
+            <p class="text-muted mb-0">All KYC tunables are persisted in system configuration and applied across the platform</p>
+        </div>
+        <a href="{{ url_for('admin.owner.wallet_capabilities') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Back to Wallet Capabilities
+        </a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('admin.owner.wallet_kyc_requirements') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        {% for group in groups %}
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0"><i class="fas fa-sliders-h me-2"></i>{{ group }}</h5>
+                </div>
+                <div class="card-body">
+                    {% for item in grouped[group] %}
+                        <div class="mb-4 pb-3 border-bottom">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="me-3">
+                                    <strong>{{ item.label }}</strong>
+                                    <br>
+                                    <small class="text-muted">{{ item.description }}</small>
+                                </div>
+                                {% if item.type == 'bool' %}
+                                    <div class="form-check form-switch mt-1">
+                                        <input class="form-check-input" type="checkbox" id="{{ item.key }}"
+                                               name="{{ item.key }}" {% if item.value %}checked{% endif %}>
+                                    </div>
+                                {% elif item.type == 'int' %}
+                                    <input type="number" class="form-control" style="max-width:220px"
+                                           id="{{ item.key }}" name="{{ item.key }}"
+                                           value="{{ item.value if item.value is not none else '' }}">
+                                {% elif item.type == 'json' %}
+                                    <textarea class="form-control font-monospace" rows="4"
+                                              id="{{ item.key }}" name="{{ item.key }}"
+                                              style="font-size:.8rem;">{{ item.value | tojson }}</textarea>
+                                {% else %}
+                                    <input type="text" class="form-control" style="max-width:320px"
+                                           id="{{ item.key }}" name="{{ item.key }}" value="{{ item.value }}">
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endfor %}
+
+        <div class="d-flex justify-content-end">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-2"></i>Save KYC Configuration
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

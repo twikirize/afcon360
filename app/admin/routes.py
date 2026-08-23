@@ -238,6 +238,7 @@ def super_dashboard():
             # Accommodation dashboard widgets
             unclaimed_count=unclaimed_count,
             readiness_issues_count=readiness_issues_count,
+            home_feed_layout=_get_home_feed_layout(),
         )
     except Exception as e:
         db.session.rollback()
@@ -1209,11 +1210,13 @@ def update_withdraw_settings():
     return redirect(request.referrer or url_for("admin.super_dashboard"))
 
 
-@admin_bp.route("/update-transport-settings", methods=["POST"], endpoint="update_transport_settings")
+@admin_bp.route("/update-transport-settings", methods=["GET", "POST"], endpoint="update_transport_settings")
 @login_required
 @admin_required
 def update_transport_settings():
     """Update transport module settings."""
+    if request.method == "GET":
+        return redirect(url_for("admin.super_dashboard"))
     try:
         transport_features = current_app.config.get("TRANSPORT_FEATURES", {})
 

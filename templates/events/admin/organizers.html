@@ -1,0 +1,86 @@
+{#
+  FILE: templates/events/admin/organizers.html
+  PURPOSE: Admin — organizer (event owner) management
+  ACCESS: System Admin only
+  RELATED: events.admin_organizers route
+#}
+
+{% extends "base.html" %}
+
+{% block title %}Organizer Management — AFCON360 Admin{% endblock %}
+
+{% block module_styles %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/dashboard.css') }}">
+  <style>
+    .data-table { width:100%; border-collapse:collapse; margin-top:18px; }
+    .data-table th, .data-table td { padding:12px 16px; text-align:left; font-size:13px; border-bottom:1px solid var(--brand-border); }
+    .data-table th { font-family:var(--font-mono); font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--brand-muted); }
+    .data-table td { color:var(--brand-text); }
+    .data-table tr:hover td { background:var(--brand-surface); }
+    .org-name { font-weight:600; }
+    .org-sub { font-family:var(--font-mono); font-size:11px; color:var(--brand-muted); }
+    .count-badge {
+      display:inline-block; min-width:34px; text-align:center; padding:4px 10px; border-radius:999px;
+      background:var(--brand-accent); color:#000; font-family:var(--font-mono); font-size:12px; font-weight:700;
+    }
+    .empty-note { padding:40px; text-align:center; color:var(--brand-muted); font-size:14px; }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="afcon-admin">
+
+  <div class="topbar">
+    <div class="topbar-brand">
+      <div class="dot"></div>
+      AFCON360 &nbsp;/&nbsp; Organizers
+    </div>
+    <div class="topbar-right">
+      <span class="topbar-badge">SYSTEM ADMIN</span>
+    </div>
+  </div>
+
+  <div class="page-header">
+    <div>
+      <h1>Organizer <em>Management</em></h1>
+      <p>Users who own published events on the platform</p>
+    </div>
+    <div class="header-actions">
+      <a href="{{ safe_url('events.admin_dashboard') }}" class="btn-ghost">
+        <i class="fas fa-tachometer-alt"></i> Command Centre
+      </a>
+    </div>
+  </div>
+
+  <div class="main-content" style="padding-bottom:60px;">
+    <div class="panel" style="border-radius:12px;padding:8px 8px 18px;">
+      {% if organizers %}
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Organizer</th>
+              <th>Contact</th>
+              <th>Events Owned</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in organizers %}
+              <tr>
+                <td>
+                  <div class="org-name">{{ item.user.username or 'Unnamed' }}</div>
+                  <div class="org-sub">{{ item.user.public_id }}</div>
+                </td>
+                <td class="org-sub">{{ item.user.email }}</td>
+                <td><span class="count-badge">{{ item.event_count }}</span></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="empty-note">No organizers found.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -228,17 +228,56 @@ body {
     scrollbar-color: var(--border-2) var(--bg);
 }
 
-/* Persistent header (search, notifications, account switcher) */
+/* Persistent header (greeting + search, notifications, account switcher) */
 .shell-header {
     position: relative;
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    gap: 0.75rem;
+    justify-content: space-between;
+    gap: 1rem;
     padding: 0.875rem clamp(1rem, 3vw, 1.5rem);
     border-bottom: 1px solid var(--color-border-tertiary);
     background: var(--color-background-primary);
     flex-shrink: 0;
+}
+
+/* Greeting sits on the same row as the action icons */
+.shell-greeting {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+}
+
+.shell-greeting .greeting-text {
+    margin: 0;
+    line-height: 1.15;
+}
+
+.shell-greeting .sub-greeting {
+    margin: 2px 0 0;
+}
+
+/* Right-aligned action icons (search, notifications, profile) */
+.shell-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
+}
+
+.shell-kyc-badge {
+    margin-top: 6px;
+    align-self: flex-start;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 4px 10px;
+    background: rgba(var(--brand-primary-rgb), 0.1);
+    color: var(--brand-primary);
+    border-radius: 20px;
+    border: 1px solid rgba(var(--brand-primary-rgb), 0.1);
 }
 
 .shell-header-icon {
@@ -425,6 +464,15 @@ body {
     animation: fadeIn 0.25s ease-out;
 }
 
+/* Overview section needs a flex column layout when active.
+   This must live in CSS (not an inline style) so the section can be
+   hidden when another section is active. */
+#dashboard.content-section.active {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -551,13 +599,23 @@ body {
     }
 }
 
+@media (max-width: 600px) {
+    .shell-greeting .sub-greeting {
+        display: none;
+    }
+
+    .shell-greeting .greeting-text {
+        font-size: clamp(1.1rem, 5vw, 1.5rem);
+    }
+}
+
 @media (max-width: 480px) {
     .shell-header {
         gap: 0.25rem;
         padding-right: 0.5rem;
     }
 
-    .shell-header > .shell-header-icon {
+    .shell-header-actions .shell-header-icon {
         display: none;
     }
 

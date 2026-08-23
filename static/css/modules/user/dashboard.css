@@ -916,3 +916,143 @@ border-radius: var(--radius-lg);
 .status-pending   { background: var(--accent-lt); color: var(--accent-dk); }
 .status-cancelled { background: var(--red-lt); color: var(--red); }
 .status-checked_in { background: var(--blue-lt); color: var(--blue); }
+
+/* ═══ AFCON360 — Events dashboard components (calendar, reminders, posters) ═══ */
+/* Defined in the external stylesheet so they apply both on the full dashboard
+   page and when the events section is loaded as a pane. */
+
+/* ── Event Calendar ── */
+.afc-calendar-card { border: 1px solid rgba(27,67,50,0.15); padding: 12px; }
+.afc-cal-nav { width: 24px; height: 24px; border-radius: 7px; border: 1px solid var(--border-light); background: var(--color-background-secondary); color: var(--color-text-primary); cursor: pointer; font-size: 0.72rem; }
+.afc-cal-nav:hover { background: rgba(27,67,50,0.08); }
+.afc-cal-weekdays { display: grid; grid-template-columns: repeat(7,1fr); gap: 3px; margin-bottom: 5px; }
+.afc-cal-weekdays span { text-align: center; font-size: 0.58rem; font-weight: 700; color: var(--color-text-tertiary); text-transform: uppercase; }
+.afc-cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 3px; }
+.afc-cal-cell { min-height: 30px; border-radius: 6px; background: var(--color-background-secondary); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 0.65rem; color: var(--color-text-primary); position: relative; }
+.afc-cal-blank { background: transparent; }
+.afc-cal-has-event { background: rgba(216,243,220,0.7); border: 1px solid rgba(27,67,50,0.25); }
+.afc-cal-num { font-weight: 600; }
+.afc-cal-dots { display: flex; gap: 2px; }
+.afc-dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+.afc-dot-upcoming { background: #c9a227; }
+.afc-dot-past { background: #1b4332; }
+.afc-cal-legend { display: flex; gap: 12px; justify-content: center; margin-top: 8px; font-size: 0.62rem; color: var(--color-text-secondary); }
+
+/* ── Upcoming Reminders ── */
+.afc-reminders-card { border: 1px solid rgba(201,162,39,0.2); }
+.afc-reminder-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.afc-reminder-list li { display: flex; gap: 10px; align-items: flex-start; font-size: 0.8rem; color: var(--color-text-secondary); }
+.afc-reminder-list i { color: #c9a227; margin-top: 3px; }
+.afc-reminder-countdown { display: block; margin-top: 2px; font-size: 0.72rem; font-weight: 700; color: #1b4332; }
+.afc-manage-alerts { font-size: 0.72rem; font-weight: 700; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(201,162,0,0.45); background: rgba(201,162,39,0.12); color: #7a5e12; cursor: pointer; text-decoration: none; }
+.afc-manage-alerts:hover { background: rgba(201,162,39,0.2); }
+
+/* ── Countdown pill (next event) ── */
+.afc-countdown { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 0.8rem; font-weight: 700; color: #1b4332; background: rgba(216,243,220,0.7); padding: 4px 10px; border-radius: 8px; }
+
+/* ── Registration poster card ── */
+.reg-card {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    margin-bottom: 1rem;
+    overflow: hidden;
+    transition: box-shadow 0.2s, border-color 0.2s, transform 0.2s;
+    display: flex;
+    flex-direction: column;
+    box-shadow: var(--shadow);
+}
+.reg-card:hover { transform: translateY(-1px); border-color: var(--border-2); box-shadow: var(--shadow-md); }
+.reg-accent { width: 100%; height: 4px; flex-shrink: 0; }
+.reg-accent.confirmed { background: var(--green); }
+.reg-accent.checked_in { background: var(--blue); }
+.reg-accent.pending   { background: var(--orange); }
+.reg-accent.cancelled { background: var(--red); }
+
+.reg-media {
+    position: relative;
+    min-height: 116px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: flex-end;
+    background-size: cover;
+    background-position: center;
+    color: #fff;
+}
+.reg-media.no-flyer {
+    background-image: linear-gradient(135deg, #1b4332 0%, #2d6a4f 55%, #40916c 100%);
+}
+.reg-media.no-flyer::after {
+    content: "";
+    position: absolute; inset: 0;
+    background:
+        radial-gradient(circle at 78% 18%, rgba(255,255,255,0.16), transparent 42%),
+        linear-gradient(to top, rgba(0,0,0,0.42), transparent 62%);
+    pointer-events: none;
+}
+.reg-media.has-flyer::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.12) 55%, transparent 100%);
+    pointer-events: none;
+}
+.reg-media-overlay { position: relative; z-index: 1; width: 100%; text-align: center; }
+.reg-media-cat {
+    display: inline-block;
+    font-size: 0.6rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em;
+    background: rgba(255,255,255,0.2); padding: 3px 9px; border-radius: 999px; margin-bottom: 6px;
+}
+.reg-media-title { font-size: 1.05rem; font-weight: 800; margin: 0 0 4px; line-height: 1.2; text-shadow: 0 1px 4px rgba(0,0,0,0.55); }
+.reg-media-meta { font-size: 0.78rem; display: flex; gap: 0.8rem; justify-content: center; flex-wrap: wrap; }
+.reg-media-meta span { display: inline-flex; align-items: center; gap: 0.3rem; }
+
+.reg-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 0.75rem; }
+.reg-status-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+.reg-ref { font-size: 0.65rem; color: var(--text-muted); font-family: monospace; letter-spacing: 0.05em; }
+.reg-desc { font-size: 0.82rem; color: var(--text-muted); margin: 0; line-height: 1.45; }
+
+/* ── Recommended event poster cards ── */
+.afc-event-poster {
+    position: relative;
+    min-height: 132px;
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 2px;
+    padding: 12px;
+    text-decoration: none;
+    color: #fff;
+    background-size: cover;
+    background-position: center;
+    border: 1px solid rgba(27,67,50,0.18);
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+.afc-event-poster:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.afc-event-poster.no-flyer { background-image: linear-gradient(135deg, #1b4332 0%, #2d6a4f 60%, #40916c 100%); }
+.afc-event-poster::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.66), rgba(0,0,0,0.08) 60%, transparent);
+    pointer-events: none;
+}
+.afc-event-poster > * { position: relative; z-index: 1; }
+.afc-poster-cat { align-self: flex-start; font-size: 0.58rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; background: rgba(255,255,255,0.2); padding: 2px 7px; border-radius: 999px; }
+.afc-poster-title { font-size: 0.9rem; font-weight: 800; line-height: 1.2; text-shadow: 0 1px 4px rgba(0,0,0,0.55); }
+.afc-poster-meta { font-size: 0.7rem; opacity: 0.95; }
+
+/* ── Dashboard overview top layout: 75% calendar+next event / 25% reminders ── */
+.afc-top-grid {
+    display: grid;
+    grid-template-columns: 3fr 1fr;
+    gap: 20px;
+    align-items: start;
+}
+.afc-top-left { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+@media (max-width: 1100px) {
+    .afc-top-left { grid-template-columns: 1fr; }
+}
+@media (max-width: 860px) {
+    .afc-top-grid { grid-template-columns: 1fr; }
+}

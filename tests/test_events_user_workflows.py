@@ -302,6 +302,10 @@ def test_free_ticket_purchase_does_not_require_wallet_activity(monkeypatch):
     payment_service_module = importlib.import_module("app.events.payment_service")
     from app.events.models import Event, TicketType
     from app.events.payment_service import EventPaymentService
+    monkeypatch.setattr(
+        "app.events.services.EventService._registration_gate_error",
+        lambda event, ticket_type_id=None: None,
+    )
 
     event = SimpleNamespace(id=41, currency="UGX", end_date=None)
     ticket_type = SimpleNamespace(
@@ -359,6 +363,7 @@ def test_free_ticket_purchase_does_not_require_wallet_activity(monkeypatch):
             user_id=7,
             event_id=event.id,
             ticket_type_id=ticket_type.id,
+            quantity=0,
             payment_method=payment_method,
             create_primary_for_payer=False,
             **payment_kwargs,
@@ -382,6 +387,7 @@ def test_free_ticket_purchase_does_not_require_wallet_activity(monkeypatch):
         user_id=7,
         event_id=event.id,
         ticket_type_id=ticket_type.id,
+        quantity=0,
         payment_method="wallet",
         create_primary_for_payer=False,
     )

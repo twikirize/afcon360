@@ -135,7 +135,23 @@ class OrganizationRegistrationService:
         is_valid, errors = OrganizationRegistrationService.validate_registration_data(data, org_settings)
         if not is_valid:
             return None, errors
-        
+
+        # Gate: the creator must have completed basic personal KYC
+        # (verified phone + verified email + verified national ID) before an
+        # organisation can be registered. No source-of-funds documentation is
+        # required at this initial registration step.
+        from app.auth.kyc_compliance import calculate_kyc_tier
+        _kyc = calculate_kyc_tier(creator_user.id)
+        if not (
+            getattr(creator_user, "phone_verified", False)
+            and getattr(creator_user, "email_verified", False)
+            and (_kyc.get("tier", 0) or 0) >= 2
+        ):
+            return None, [
+                "Complete your personal KYC (verify your phone number, email address "
+                "and national ID) before registering an organisation."
+            ]
+
         try:
             # Create organization
             org = Organisation(

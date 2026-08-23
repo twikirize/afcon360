@@ -37,6 +37,30 @@ from uuid import uuid4
 wallet_bp = Blueprint('wallet', __name__, url_prefix='/wallet')
 
 
+# Sources of funds for deposits. Mirrors the configured payment platforms in the
+# wallet system (PaymentProviderConfig / PaymentMethodConfig). Deposits MUST
+# declare a real source so the ledger can trace where money originated.
+DEPOSIT_SOURCES = {
+    'mobile_money': 'Mobile Money',
+    'flutterwave': 'Flutterwave',
+    'agent': 'Authorized Agent',
+}
+
+# Map supported deposit currencies to the mobile-money operator/country used to
+# route the push request. Agent deposits bypass providers entirely.
+_CURRENCY_COUNTRY = {'UGX': 'UG', 'KES': 'KE', 'NGN': 'NG', 'TZS': 'TZ', 'USD': 'UG'}
+_DEFAULT_OPERATOR = {'UG': 'mtn', 'KE': 'safaricom', 'NG': 'mtn', 'TZ': 'mtn'}
+
+
+def _country_from_currency(currency):
+    return _CURRENCY_COUNTRY.get((currency or '').upper())
+
+
+def _default_operator(currency):
+    country = _country_from_currency(currency)
+    return _DEFAULT_OPERATOR.get(country, 'mtn')
+
+
 def calculate_transaction_usage(user_id):
     """Calculate transaction usage for a user using correct model fields."""
     from app.wallet.models.transaction import TransactionModel
@@ -685,58 +709,186 @@ def wallet_create():
 @require_deposit_access
 def deposit_page():
     """GET: Show deposit form"""
+    from app.wallet.models.payment_method import PaymentMethodConfig
+    from app.wallet.services.kyc_limit_service import KYCLimitService
+    
     account = get_account(current_user.id)
-    if request.args.get('_pane') == '1':
-        return render_template('wallet/deposit_pane.html', account=account, balance=Decimal('0'))
     if not account:
+        if request.args.get('_pane') == '1':
+            return render_template('wallet/deposit_pane.html', account=None, balance=Decimal('0'))
         flash('You need to create a wallet first.', 'warning')
         return redirect(url_for('wallet.wallet_dashboard'))
-    return render_template('wallet/deposit.html', account=account, balance=Decimal('0'))
-
+        
+    limits = KYCLimitService.get_transaction_limits(current_user.id)
+    available_methods = PaymentMethodConfig.get_available_methods(account.currency)
+    
+    if request.args.get('_pane') == '1':
+        return render_template('wallet/deposit_pane.html', account=account, balance=account.balance, limits=limits, methods=available_methods)
+    return render_template('wallet/deposit.html', account=account, balance=account.balance, limits=limits, methods=available_methods)
 
 @wallet_bp.route('/deposit', methods=['POST'])
 @login_required
 @require_deposit_access
 @require_fresh_user
 def deposit_form():
-    """POST: Process deposit request"""
+    """POST: Process deposit request
+
+    Deposits must declare a real source of funds (mobile money, Flutterwave,
+    or an authorized agent). This is enforced here and recorded on the ledger.
+    """
     try:
+        from app.wallet.services.kyc_limit_service import KYCLimitService
         amount = request.form.get('amount')
         currency = request.form.get('currency', 'UGX')
-        
+
+        # Payment method selected (mobile_money, flutterwave, agent, bank_transfer)
+        source = (request.form.get('source') or '').strip()
+        if source not in DEPOSIT_SOURCES:
+            flash('Please select a valid payment method.', 'danger')
+            return redirect(url_for('wallet.deposit'))
+
         if not amount:
             flash('Amount is required', 'danger')
             return redirect(url_for('wallet.deposit'))
-        
+
         try:
             amount = Decimal(amount)
         except:
             flash('Invalid amount', 'danger')
             return redirect(url_for('wallet.deposit'))
-        
+
         if amount <= 0:
             flash('Amount must be greater than zero', 'danger')
             return redirect(url_for('wallet.deposit'))
-        
-        # Get existing account (do NOT auto-create)
+            
+        # 1. Enforce KYC limits
+        limit_check = KYCLimitService.check_transaction_allowed(
+            user_id=current_user.id,
+            amount=amount,
+            action='deposit',
+            currency=currency
+        )
+        if not limit_check['allowed']:
+            flash(limit_check['reason'], 'danger')
+            return redirect(url_for('wallet.deposit'))
+            
+        # Get existing account
         account = get_account(current_user.id, currency)
         if not account:
             flash('You need to create a wallet first.', 'warning')
             return redirect(url_for('wallet.wallet_dashboard'))
-        
-        # Process deposit using WalletService
-        service = WalletService()
-        transaction = service.deposit(
-            account_id=account.id,  # UUID - correct per Alipay model
+            
+        # Enforce volume limits
+        volume_check = KYCLimitService.check_volume_limits(
+            account_id=str(account.id),
             amount=amount,
             currency=currency,
-            client_request_id=str(uuid4()),  # Required parameter
-            metadata={'source': 'web_form'}
+            period='daily'
         )
+        if not volume_check['allowed']:
+            flash(volume_check['reason'], 'danger')
+            return redirect(url_for('wallet.deposit'))
+
+        # 2. Source of Wealth / Compliance metadata
+        source_of_funds = request.form.get('source_of_funds')
+        if amount > 10000000 and not source_of_funds:  # Example threshold for SOF
+            flash('Source of Funds declaration is required for large deposits.', 'danger')
+            return redirect(url_for('wallet.deposit'))
+
+        metadata = {
+            'source': source,
+            'source_label': DEPOSIT_SOURCES[source],
+            'channel': 'web_form',
+            'regulatory': {
+                'declared_source_of_funds': source_of_funds,
+                'kyc_tier_at_deposit': limit_check.get('kyc_level', KYCLimitService.get_user_kyc_level(current_user.id))
+            }
+        }
         
-        flash(f'Deposit of {amount} {currency} initiated successfully!', 'success')
-        return redirect(url_for('wallet.wallet_dashboard'))
-        
+        if source == 'agent':
+            agent_id = (request.form.get('agent_id') or '').strip()
+            if not agent_id:
+                flash('Agent ID is required when depositing via an authorized agent.', 'danger')
+                return redirect(url_for('wallet.deposit'))
+            metadata['agent_id'] = agent_id
+
+        # ---- Route by source of funds --------------------------------------
+        if source == 'agent':
+            # Agent cash-in: Generate pending reference for the user to take to the agent
+            from app.wallet.services.deposit_intent import save_deposit_intent, generate_deposit_reference
+            
+            reference = generate_deposit_reference("AGT")
+            audit_transaction_id = f"DEP-{uuid4().hex[:12].upper()}"
+            
+            # Save pending intent (Agent will resolve this later)
+            save_deposit_intent(reference, {
+                'account_id': str(account.id),
+                'user_id': int(current_user.id),
+                'amount': str(amount),
+                'currency': currency,
+                'source': 'agent',
+                'agent_id': metadata.get('agent_id'),
+                'reference': reference,
+                'audit_transaction_id': audit_transaction_id,
+                'status': 'pending',
+                'metadata': metadata
+            })
+            
+            flash(f'Cash deposit initiated. Please give Reference Code {reference} to your agent to complete the top-up.', 'info')
+            return redirect(url_for('wallet.wallet_dashboard'))
+
+        if source == 'mobile_money':
+            from app.wallet.payments.mobile_money import MobileMoneyService
+            phone = (request.form.get('phone_number') or '').strip()
+            if not phone:
+                flash('Mobile money phone number is required.', 'danger')
+                return redirect(url_for('wallet.deposit'))
+            operator = (request.form.get('operator') or '').strip() or _default_operator(currency)
+            country = _country_from_currency(currency)
+            if not country:
+                flash('Mobile money is not supported for this currency.', 'danger')
+                return redirect(url_for('wallet.deposit'))
+            svc = MobileMoneyService(operator, country)
+            result = svc.initiate_deposit(
+                user_id=current_user.id,
+                account_id=str(account.id),
+                amount=amount,
+                currency=currency,
+                phone_number=phone,
+                idempotency_key=str(uuid4()),
+            )
+            if result.get('success') and result.get('status') == 'pending':
+                flash('Mobile money request sent. Check your phone and enter your PIN to approve.', 'success')
+                return redirect(url_for('wallet.wallet_dashboard'))
+            flash(f"Could not start mobile money deposit: {result.get('error', 'provider error')}", 'danger')
+            return redirect(url_for('wallet.deposit'))
+
+        if source == 'flutterwave':
+            from app.wallet.payments.flutterwave import FlutterwaveService
+            payment_method = (request.form.get('payment_method') or 'mobilemoney').strip()
+            redirect_url = url_for('wallet.flutterwave_deposit_callback', _external=True)
+            result = FlutterwaveService().initiate_deposit(
+                user_id=current_user.id,
+                account_id=str(account.id),
+                amount=amount,
+                currency=currency,
+                payment_method=payment_method,
+                redirect_url=redirect_url,
+                idempotency_key=str(uuid4()),
+            )
+            if result.get('success') and result.get('status') == 'pending':
+                auth_url = result.get('authorization_url')
+                if auth_url:
+                    return redirect(auth_url)
+                flash('Flutterwave checkout started. We will confirm shortly.', 'success')
+                return redirect(url_for('wallet.wallet_dashboard'))
+            flash(f"Could not start Flutterwave deposit: {result.get('error', 'provider error')}", 'danger')
+            return redirect(url_for('wallet.deposit'))
+
+        # Fallback (unreachable given DEPOSIT_SOURCES validation above)
+        flash('Unsupported source of funds.', 'danger')
+        return redirect(url_for('wallet.deposit'))
+
     except LimitExceededError as e:
         flash(f'Deposit limit exceeded: {str(e)}', 'danger')
         return redirect(url_for('wallet.deposit'))
@@ -750,6 +902,61 @@ def deposit_form():
         )
         flash('Unable to process deposit. Please try again later.', 'warning')
         return redirect(url_for('wallet.deposit'))
+
+
+# =============================================================================
+# PROVIDER WEBHOOKS / CALLBACKS (public, no auth)
+# =============================================================================
+# These endpoints are called by payment providers (or the user's browser on
+# redirect back from a checkout). They do NOT credit the wallet directly; they
+# delegate to the gateway which resolves the pending deposit intent and credits
+# the ledger via WalletService.deposit(system_initiated=True). This keeps the
+# wallet as the single source of truth and prevents balance inflation from
+# unanswered pushes / abandoned checkouts.
+
+@wallet_bp.route('/webhook/mobile_money', methods=['POST'])
+def mobile_money_deposit_webhook():
+    """Provider webhook for mobile money deposits."""
+    from app.wallet.payments.mobile_money import handle_mobile_money_webhook
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    headers = dict(request.headers)
+    raw_payload = request.get_data()
+    result = handle_mobile_money_webhook(payload, headers, raw_payload=raw_payload)
+    return jsonify(result), 200
+
+
+@wallet_bp.route('/webhook/flutterwave', methods=['POST'])
+def flutterwave_deposit_webhook():
+    """Provider webhook for Flutterwave deposits."""
+    from app.wallet.payments.flutterwave import FlutterwaveService
+    
+    # Validate webhook signature
+    signature = request.headers.get('verif-hash')
+    expected_signature = current_app.config.get('FLUTTERWAVE_WEBHOOK_HASH')
+    if expected_signature and signature != expected_signature:
+        return jsonify({'status': 'failed', 'message': 'Invalid signature'}), 401
+        
+    data = request.get_json(silent=True) or request.form.to_dict()
+    reference = (
+        request.args.get('tx_ref')
+        or (data.get('data') or {}).get('tx_ref')
+        or data.get('tx_ref')
+    )
+    result = FlutterwaveService().verify_and_credit(reference)
+    return jsonify(result), 200
+
+
+@wallet_bp.route('/deposit/flutterwave/callback')
+def flutterwave_deposit_callback():
+    """Browser redirect back from Flutterwave checkout."""
+    from app.wallet.payments.flutterwave import FlutterwaveService
+    reference = request.args.get('tx_ref')
+    result = FlutterwaveService().verify_and_credit(reference)
+    if result.get('success'):
+        flash('Deposit completed successfully.', 'success')
+    else:
+        flash('Deposit could not be confirmed yet. We will reconcile it shortly.', 'warning')
+    return redirect(url_for('wallet.wallet_dashboard'))
 
 
 # =============================================================================

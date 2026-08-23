@@ -36,7 +36,6 @@ LIFECYCLE
                    admin  │  hard_remove()
                      ┌────▼──────┐
                      │  DELETED  │  soft-only, never physical
-
                      └───────────┘
 
 
@@ -78,10 +77,17 @@ Examples:
       current_owner_type=SYSTEM, current_owner_id=0
       is_system_event=True
 """
-"""Event Status Constants - Production-grade single source of truth"""
 
 from enum import Enum
 from typing import List, Tuple, Set
+
+
+def _status_value(value):
+    """
+    Normalize either an EventStatus enum member or a plain string to the
+    database string value used in ALLOWED_TRANSITIONS.
+    """
+    return getattr(value, "value", value)
 
 
 class EventStatus(str, Enum):
@@ -112,51 +118,81 @@ class EventStatus(str, Enum):
     ARCHIVED = "archived"
     DELETED = "deleted"
 
-
     # Legacy (kept for backward compatibility)
     ACTIVE = "active"
 
     @classmethod
     def choices(cls) -> List[Tuple[str, str]]:
-        """Return list of (value, label) pairs for form selects"""
+        """Return list of (value, label) pairs for form selects."""
         return [(status.value, status.value.replace('_', ' ').title())
                 for status in cls if status != cls.ACTIVE]
 
     @classmethod
     def values(cls) -> List[str]:
-        """Return all valid status values"""
+        """Return all valid status values."""
         return [s.value for s in cls]
 
     @classmethod
     def is_valid(cls, value: str) -> bool:
-        """Check if a string value is a valid status"""
+        """Check if a string value is a valid status."""
         return value in cls.values()
 
     @classmethod
     def get_publishable_statuses(cls) -> List[str]:
-        """Return statuses that can be published"""
+        """Return statuses that can eventually be published."""
         return [cls.APPROVED.value, cls.DRAFT.value]
 
     @classmethod
     def get_active_statuses(cls) -> List[str]:
-        """Return statuses that represent active/live events"""
+        """Return statuses that represent active/live events."""
         return [cls.PUBLISHED.value, cls.APPROVED.value]
 
     @classmethod
     def get_terminal_statuses(cls) -> Set[str]:
-        """Return statuses that are terminal (no further changes)"""
-        return {cls.COMPLETED.value, cls.CANCELLED.value,
-                cls.ARCHIVED.value, cls.DELETED.value}
+        """Return statuses that are terminal (no further changes)."""
+        return {
+            cls.COMPLETED.value,
+            cls.CANCELLED.value,
+            cls.ARCHIVED.value,
+            cls.DELETED.value,
+        }
 
     @classmethod
     def can_register(cls, status: str) -> bool:
-        """Check if event accepts new registrations"""
+        """Check if event accepts new registrations."""
         return status == cls.PUBLISHED.value
 
     @classmethod
     def needs_moderation(cls, status: str) -> bool:
-        """Check if event needs moderator review"""
+        """Check if event needs moderator review."""
         return status == cls.PENDING_APPROVAL.value
+
+    @classmethod
+    def get_archivable_from(cls) -> List[str]:
+        """
+        Return statuses from which ARCHIVED is allowed.
+
+        Useful for the service layer when the current route wants an organiser
+        soft-delete (target_status=ARCHIVED).
+        """
+        return [
+            status
+            for status, targets in ALLOWED_TRANSITIONS.items()
+            if cls.ARCHIVED.value in targets
+        ]
+
+    @classmethod
+    def get_hard_deletable_from(cls) -> List[str]:
+        """
+        Return statuses from which DELETED is allowed.
+
+        Useful for service-level super-admin hard-delete paths.
+        """
+        return [
+            status
+            for status, targets in ALLOWED_TRANSITIONS.items()
+            if cls.DELETED.value in targets
+        ]
 
 
 class RegistrationAvailability(str, Enum):
@@ -169,7 +205,10 @@ class RegistrationAvailability(str, Enum):
     EXPIRED = "expired"
 
 
-# Allowed state transitions - single source of truth
+# Allowed state transitions - single source of truth.
+#
+# The service layer must NOT define its own copy of this map.
+# Import ALLOWED_TRANSITIONS and validate_transition from this module instead.
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     EventStatus.DRAFT.value: {
         EventStatus.PENDING_APPROVAL.value,
@@ -237,8 +276,14 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
 def validate_transition(current: str, target: str) -> tuple[bool, str]:
     """
     Validate whether a status transition is permitted.
-    Returns (allowed: bool, reason: str)
+
+    Accepts either EventStatus enum members or database string values.
+
+    Returns (allowed: bool, reason: str).
     """
+    current = _status_value(current)
+    target = _status_value(target)
+
     if current == target:
         return False, f"Event is already in status '{current}'."
 
@@ -247,7 +292,7 @@ def validate_transition(current: str, target: str) -> tuple[bool, str]:
 
     allowed = ALLOWED_TRANSITIONS[current]
     if target not in allowed:
-        allowed_str = ', '.join(allowed) if allowed else 'none (terminal)'
+        allowed_str = ', '.join(sorted(allowed)) if allowed else 'none (terminal)'
         return False, f"Cannot transition from '{current}' to '{target}'. Allowed: {allowed_str}"
 
     return True, ""

@@ -17,6 +17,62 @@ from app.identity.models.organisation import Organisation
 from app.identity.models.organisation_member import OrganisationMember
 from app.audit.comprehensive_audit import AuditService, SecurityEventLog
 
+# Live, owner-configurable KYC settings. All tunables are described in
+# app/kyc_config_schema and persisted in system_configs (category='kyc').
+from app.kyc_config_schema import (
+    DEFAULT_TIER_REQUIREMENTS,
+    DEFAULT_ACTIVITY_TIER_REQUIREMENTS,
+    get_tier_requirements,
+    get_activity_tier_requirements,
+    get_thresholds,
+    is_requirement_enabled,
+)
+from collections.abc import Mapping
+
+
+class _ConfigMapping(Mapping):
+    """Read-only mapping backed by a live loader (refreshed from DB)."""
+
+    def __init__(self, loader):
+        self._loader = loader
+
+    def __getitem__(self, key):
+        return self._loader()[key]
+
+    def __iter__(self):
+        return iter(self._loader())
+
+    def __len__(self):
+        return len(self._loader())
+
+
+# Proxies so existing call sites (including external modules and tests) keep
+# working while always reflecting the current owner configuration.
+TIER_REQUIREMENTS = _ConfigMapping(get_tier_requirements)
+ACTIVITY_TIER_REQUIREMENTS = _ConfigMapping(get_activity_tier_requirements)
+DAILY_LIMITS = _ConfigMapping(
+    lambda: {t: get_tier_requirements()[t]["daily_limit"] for t in range(6)})
+MONTHLY_LIMITS = _ConfigMapping(
+    lambda: {t: get_tier_requirements()[t]["monthly_limit"] for t in range(6)})
+TRANSACTION_LIMITS = _ConfigMapping(
+    lambda: {t: get_tier_requirements()[t]["transaction_limit"] for t in range(6)})
+
+# Maps a KYC requirement name to the scope flag produced by _aggregate_kyc_scope.
+_KYC_SCOPE_MAP = {
+    "phone_verified": "phone",
+    "national_id": "national_id",
+    "selfie": "biometric",
+    "proof_of_address": "address",
+    "tin": "tax",
+    "income_source": "financial",
+    "bank_reference": "financial",
+    "organisation_registration": "kyb",
+    "tin_certificate": "tax",
+    "trading_license": "license",
+    "directors_list": "ubo",
+    "beneficial_owners": "ubo",
+}
+
 # ─────────────────────────────────────────────────────────────────
 # IDENTITY RULE - internal vs external IDs
 # ─────────────────────────────────────────────────────────────────
@@ -43,79 +99,12 @@ TIER_3_ENHANCED = 3      # + Proof of Address (TIN configurable for individuals)
 TIER_4_PREMIUM = 4       # + Income source + Bank ref (UGX 20M daily limit)
 TIER_5_CORPORATE = 5     # + KYB + License (Custom limits)
 
-# Individual TIN collection is configurable for future regulatory changes.
-# Organisation KYB keeps its own corporate TIN-certificate requirement.
-INDIVIDUAL_TIN_REQUIRED = False
+# Individual TIN requirement is controlled by the kyc_require_tin toggle
+# (see app/kyc_config_schema). It defaults to OFF (optional for individuals).
 
-# ============================================================================
-# Tier Requirements
-# ============================================================================
-
-TIER_REQUIREMENTS = {
-    TIER_0_UNREGISTERED: {
-        "name": "Unregistered",
-        "description": "Email verification only",
-        "required_documents": [],
-        "required_scope": {},
-        "aml_required": False,
-    },
-    TIER_1_BASIC: {
-        "name": "Basic",
-        "description": "Phone number and full name verification",
-        "required_documents": ["phone_verified"],
-        "required_scope": {"identity": True},
-        "aml_required": False,
-        "daily_limit": 400000,
-        "monthly_limit": 2000000,
-        "transaction_limit": 100000,
-    },
-    TIER_2_STANDARD: {
-        "name": "Standard",
-        "description": "National ID and selfie verification",
-        "required_documents": ["national_id", "selfie"],
-        "required_scope": {"identity": True, "national_id": True, "biometric": True},
-        "aml_required": True,
-        "daily_limit": 2000000,
-        "monthly_limit": 10000000,
-        "transaction_limit": 500000,
-    },
-    TIER_3_ENHANCED: {
-        "name": "Enhanced",
-        "description": "Proof of address verification; TIN is optional for individuals",
-        "required_documents": ["proof_of_address"],
-        "required_scope": {"identity": True, "national_id": True, "biometric": True, "address": True},
-        "aml_required": True,
-        "pep_screening": True,
-        "daily_limit": 7000000,
-        "monthly_limit": 35000000,
-        "transaction_limit": 2000000,
-    },
-    TIER_4_PREMIUM: {
-        "name": "Premium",
-        "description": "Income source and bank reference",
-        "required_documents": ["income_source", "bank_reference"],
-        "required_scope": {"identity": True, "national_id": True, "biometric": True, "address": True, "financial": True},
-        "aml_required": True,
-        "pep_screening": True,
-        "sanctions_check": True,
-        "daily_limit": 20000000,
-        "monthly_limit": 100000000,
-        "transaction_limit": 5000000,
-    },
-    TIER_5_CORPORATE: {
-        "name": "Corporate",
-        "description": "KYB and business license verification",
-        "required_documents": ["organisation_registration", "tin_certificate", "trading_license", "directors_list", "beneficial_owners"],
-        "required_scope": {"kyb": True, "business_registration": True, "tax": True, "license": True},
-        "aml_required": True,
-        "pep_screening": True,
-        "sanctions_check": True,
-        "ubo_screening": True,
-        "daily_limit": None,  # Custom limits
-        "monthly_limit": None,
-        "transaction_limit": None,
-    }
-}
+# Tier requirements are provided live via the TIER_REQUIREMENTS proxy (defined
+# at the top of this file) which reads owner configuration from system_configs.
+# The canonical defaults live in app/kyc_config_schema.
 
 REQUIREMENT_LABELS = {
     "phone_verified": "Phone verification",
@@ -132,49 +121,11 @@ REQUIREMENT_LABELS = {
     "beneficial_owners": "Beneficial owners",
 }
 
-ACTIVITY_TIER_REQUIREMENTS = {
-    "wallet_send": 1,
-    "wallet_receive": 1,
-    "event_registration": 1,
-    "event_payment": 2,
-    "accommodation_booking": 2,
-    "transport_booking": 2,
-    "high_value_transaction": 3,
-    "ticket_purchase": 2,
-    "organiser_payouts": 3,
-    "kyb_operations": 5,
-}
+# Activity -> minimum tier is provided live via the ACTIVITY_TIER_REQUIREMENTS
+# proxy (defined at the top of this file).
 
-# ============================================================================
-# Limit Configuration (BoU Compliant)
-# ============================================================================
-
-DAILY_LIMITS = {
-    TIER_0_UNREGISTERED: 0,
-    TIER_1_BASIC: 400000,
-    TIER_2_STANDARD: 2000000,
-    TIER_3_ENHANCED: 7000000,
-    TIER_4_PREMIUM: 20000000,
-    TIER_5_CORPORATE: None  # Custom limits
-}
-
-MONTHLY_LIMITS = {
-    TIER_0_UNREGISTERED: 0,
-    TIER_1_BASIC: 2000000,
-    TIER_2_STANDARD: 10000000,
-    TIER_3_ENHANCED: 35000000,
-    TIER_4_PREMIUM: 100000000,
-    TIER_5_CORPORATE: None  # Custom limits
-}
-
-TRANSACTION_LIMITS = {
-    TIER_0_UNREGISTERED: 0,
-    TIER_1_BASIC: 100000,
-    TIER_2_STANDARD: 500000,
-    TIER_3_ENHANCED: 2000000,
-    TIER_4_PREMIUM: 5000000,
-    TIER_5_CORPORATE: None  # Custom limits
-}
+# Transaction limits are provided live via the DAILY_LIMITS / MONTHLY_LIMITS /
+# TRANSACTION_LIMITS proxies (defined at the top of this file).
 
 # ============================================================================
 # Core KYC Functions
@@ -340,10 +291,8 @@ def calculate_kyc_tier(user_identifier) -> Dict[str, Any]:
             id=manual_record.id,
             status=manual_status,
             requested_at=manual_record.created_at,
-            scope={
-                "national_id": bool(manual_record.document_url),
-                "biometric": bool(manual_record.selfie_url),
-            },
+            # Harmonised scope across all document types (see helper above).
+            scope=_aggregate_kyc_scope(user.id),
         )
 
     # Check requirements for each tier starting from highest
@@ -370,41 +319,26 @@ def calculate_kyc_tier(user_identifier) -> Dict[str, Any]:
             15 if getattr(user, "phone", None) else 0,
         )
 
-    # Check Tier 2: National ID and selfie. Phone is already satisfied by Tier 1.
+    # Tiers 2-4 are evaluated against the live, owner-configurable requirement
+    # definitions. National ID verified also auto-satisfies proof-of-residence
+    # (handled in _aggregate_kyc_scope). Each requirement is skipped when the
+    # Owner/Super Admin has relaxed it via its kyc_require_<req> toggle.
     if verification and verification.status in {"verified", "approved"}:
         scope = verification.scope or {}
-        if scope.get("national_id") and scope.get("biometric"):
-            achieved_tier = TIER_2_STANDARD
-        else:
-            if not scope.get("national_id"):
-                missing_requirements.append("national_id")
-            if not scope.get("biometric"):
-                missing_requirements.append("selfie")
+        for tier in (TIER_2_STANDARD, TIER_3_ENHANCED, TIER_4_PREMIUM):
+            tier_missing = []
+            for req in TIER_REQUIREMENTS[tier]["required_documents"]:
+                if not is_requirement_enabled(req):
+                    continue
+                if not scope.get(_KYC_SCOPE_MAP.get(req, req)):
+                    tier_missing.append(req)
+            if not tier_missing:
+                achieved_tier = tier
+            else:
+                missing_requirements.extend(tier_missing)
+                break
 
-    # Check Tier 3: address; individual TIN is an optional policy toggle.
-    if achieved_tier >= TIER_2_STANDARD and verification:
-        scope = verification.scope or {}
-        if scope.get("address") and (
-            not INDIVIDUAL_TIN_REQUIRED or scope.get("tax")
-        ):
-            achieved_tier = TIER_3_ENHANCED
-        else:
-            if not scope.get("address"):
-                missing_requirements.append("proof_of_address")
-            if INDIVIDUAL_TIN_REQUIRED and not scope.get("tax"):
-                missing_requirements.append("tin")
-
-    # Check Tier 4: Financial information
-    if achieved_tier >= TIER_3_ENHANCED and verification:
-        scope = verification.scope or {}
-        if scope.get("financial"):
-            achieved_tier = TIER_4_PREMIUM
-        else:
-            missing_requirements.append("income_source")
-            missing_requirements.append("bank_reference")
-
-    # Check Tier 5: Corporate KYB (organization-based)
-    # This requires separate organization verification
+    # Tier 5 (Corporate) is reached via separate KYB verification.
 
     # Calculate fulfillment percentage
     # Tiers: 0=0%, 1=25%, 2=50%, 3=75%, 4=100%
@@ -419,6 +353,79 @@ def calculate_kyc_tier(user_identifier) -> Dict[str, Any]:
         profile,
         fulfillment_percentage,
     )
+
+def _kyc_requirement_enabled(requirement: str) -> bool:
+    """
+    Whether a given KYC document requirement is currently enforced.
+
+    Delegates to the owner-configurable toggle ``kyc_require_<requirement>``
+    (see app/kyc_config_schema). When no config row exists the requirement
+    defaults to ENABLED (enforced), preserving the previous behaviour.
+    """
+    return is_requirement_enabled(requirement)
+
+
+def _aggregate_kyc_scope(user_id: int) -> Dict[str, bool]:
+    """
+    Build a consolidated KYC scope across ALL of a user's KYC records.
+
+    The upload flow accepts several document types (national_id, passport,
+    proof_of_address, tin, income_source, bank_reference, ...). Previously the
+    tier calculator only inspected the *latest* record and could only derive
+    ``national_id`` + ``biometric``, so a verified proof-of-address never
+    advanced the user to Tier 3.
+
+    This helper harmonises the logic:
+      * ``national_id`` — any verified National ID record (NIRA or uploaded).
+      * ``biometric``    — any record carrying a selfie.
+      * ``address``      — an explicit proof-of-address record, OR auto-satisfied
+                          from a verified National ID, because the Uganda NIN
+                          card carries the holder's registered address.
+      * ``tax``/``financial`` stay False here — they require their own uploads
+        (TIN / income source / bank reference) and are intentionally separate.
+    """
+    from app.kyc.models import KycRecord
+
+    VERIFIED = {"verified", "approved"}
+    scope = {
+        "national_id": False,
+        "biometric": False,
+        "address": False,
+        "tax": False,
+        "financial": False,
+    }
+
+    for record in KycRecord.query.filter_by(user_id=user_id).all():
+        if (record.status or "pending").lower() not in VERIFIED:
+            continue
+        has_doc = bool(record.document_url)
+        rt = (record.record_type or "").lower()
+        it = (record.id_type or "").lower()
+
+        is_national_id = it == "national_id" or rt.endswith("national_id")
+        is_address_doc = (
+            it in ("address_proof", "proof_of_address")
+            or rt in ("address_verification", "proof_of_address_verification")
+        )
+
+        if is_national_id and has_doc:
+            scope["national_id"] = True
+        if bool(record.selfie_url):
+            scope["biometric"] = True
+        if is_address_doc and has_doc:
+            scope["address"] = True
+        # Tier 4 financial evidence: either an income-source or bank-reference
+        # document (verified) satisfies the single "financial" scope flag.
+        if it in ("income_source", "bank_reference") and has_doc:
+            scope["financial"] = True
+
+    # Uganda NIN carries the holder's registered address: a verified National ID
+    # satisfies the Tier 3 proof-of-residence requirement.
+    if scope["national_id"]:
+        scope["address"] = True
+
+    return scope
+
 
 def get_limits_for_tier(tier: int) -> Dict[str, Optional[int]]:
     """Get limits for a specific tier."""
@@ -529,11 +536,12 @@ def check_transaction_allowed(user_identifier, amount: float) -> Tuple[bool, str
     if user_limits["monthly_remaining"] is not None and amount > user_limits["monthly_remaining"]:
         return False, f"Transaction would exceed monthly limit of UGX {limits['monthly']:,}"
 
-    # AML/CFT checks for large transactions
-    if amount >= 5000000:  # UGX 5M threshold
+    # AML/CFT checks for large transactions (thresholds are owner-configurable).
+    thresholds = get_thresholds()
+    if amount >= thresholds["aml_review"]:
         flag_for_aml_review(user.id, amount, "transaction")
 
-    if amount >= 20000000:  # UGX 20M threshold (FIA reporting)
+    if amount >= thresholds["fia_report"]:
         report_to_fia(user.id, amount, "transaction")
 
     return True, "Transaction allowed"
@@ -666,6 +674,7 @@ def flag_for_aml_review(user_id: int, amount: float, transaction_type: str):
     if not user:
         raise ValueError(f"User with id {user_id} not found")
 
+    threshold = get_thresholds()["aml_review"]
     AuditService.security(
         event_type="aml_review_flagged",
         severity="medium",
@@ -675,7 +684,7 @@ def flag_for_aml_review(user_id: int, amount: float, transaction_type: str):
         extra_data={
             "amount": amount,
             "transaction_type": transaction_type,
-            "threshold": 5000000
+            "threshold": threshold
         }
     )
 
@@ -689,6 +698,7 @@ def report_to_fia(user_id: int, amount: float, transaction_type: str):
     if not user:
         raise ValueError(f"User with id {user_id} not found")
 
+    threshold = get_thresholds()["fia_report"]
     AuditService.security(
         event_type="fia_report_generated",
         severity="high",
@@ -698,7 +708,7 @@ def report_to_fia(user_id: int, amount: float, transaction_type: str):
         extra_data={
             "amount": amount,
             "transaction_type": transaction_type,
-            "threshold": 20000000,
+            "threshold": threshold,
             "report_time": datetime.now(timezone.utc).isoformat()
         }
     )
@@ -772,27 +782,17 @@ def get_missing_requirements(user_identifier, target_tier: int) -> List[str]:
     current_info = calculate_kyc_tier(user.id)  # Pass internal BIGINT id
     target_reqs = TIER_REQUIREMENTS[target_tier]["required_documents"]
 
-    # Get current verification scope
-    verification = IndividualVerification.query.filter_by(
-        user_id=user.id  # Use internal BIGINT id
-    ).order_by(IndividualVerification.requested_at.desc()).first()
-
-    current_scope = verification.scope if verification and verification.scope else {}
+    # Use the consolidated scope so a verified National ID also satisfies
+    # proof-of-residence, exactly as calculate_kyc_tier does.
+    current_scope = _aggregate_kyc_scope(user.id)
 
     missing = []
     for req in target_reqs:
-        # Map requirement to scope key
-        scope_key = {
-            "phone_verified": "phone",
-            "national_id": "national_id",
-            "selfie": "biometric",
-            "proof_of_address": "address",
-            "tin": "tax",
-            "income_source": "financial",
-            "bank_reference": "financial"
-        }.get(req, req)
-
-        if scope_key not in current_scope or not current_scope[scope_key]:
+        # Skip requirements the Owner/Super Admin have disabled platform-wide.
+        if not is_requirement_enabled(req):
+            continue
+        scope_key = _KYC_SCOPE_MAP.get(req, req)
+        if not current_scope.get(scope_key):
             missing.append(req)
 
     return missing

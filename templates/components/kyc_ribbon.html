@@ -1,0 +1,70 @@
+{# ───────────────────────────────────────────────────────────────────────── #}
+{# Global KYC ribbon — app-wide, dismissible, reappears when KYC state changes. #}
+{# Server-side decides the mode; client-side (kyc-ribbon.js) handles the      #}
+{# dismiss/localStorage signature so the ribbon keeps reminding until the     #}
+{# user's KYC issues are actually resolved, and reappears on KYC-gated actions. #}
+{#                                                                              #}
+{# Excluded from admin/owner/auditor/compliance blueprints so it never shows   #}
+{# on back-office panels.                                                       #}
+{# ───────────────────────────────────────────────────────────────────────── #}
+{% if kyc_info and current_user.is_authenticated %}
+{% set _bp = request.blueprint or '' %}
+{% if not (_bp.startswith('admin') or _bp.startswith('owner') or _bp.startswith('auditor') or _bp.startswith('compliance')) %}
+{% set _tier = kyc_info.tier|default(0) %}
+{% set _complete = (_tier >= 2) %}
+<div id="kycRibbon"
+     class="kyc-ribbon {% if _complete %}kyc-ribbon--soft{% else %}kyc-ribbon--urgent{% endif %}"
+     data-tier="{{ _tier }}"
+     data-fulfillment="{{ kyc_info.fulfillment_percentage|default(0) }}"
+     data-missing="{{ kyc_info.missing_requirements|join(',') }}"
+     data-complete="{{ '1' if _complete else '0' }}"
+     role="alert" aria-live="polite">
+  <div class="kyc-ribbon__inner">
+    <div class="kyc-ribbon__icon">
+      <i class="fas {% if _complete %}fa-circle-check{% else %}fa-shield-alt{% endif %}"></i>
+    </div>
+
+    <div class="kyc-ribbon__body">
+      {% if not _complete %}
+      <p class="kyc-ribbon__title">Complete your identity verification</p>
+      <p class="kyc-ribbon__text">
+        You're at <strong>{{ kyc_info.tier_name }} (Tier {{ _tier }})</strong>.
+        Verify your identity to unlock higher limits across Events, Wallet, Transport &amp; more.
+      </p>
+      {% if kyc_info.missing_requirements_labels %}
+      <ul class="kyc-ribbon__list">
+        {% for _req in kyc_info.missing_requirements_labels %}
+        <li><i class="fas fa-circle-exclamation me-1"></i>{{ _req }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% else %}
+      <p class="kyc-ribbon__title">KYC {{ kyc_info.tier_name }} · {{ kyc_info.fulfillment_percentage }}% complete</p>
+      <p class="kyc-ribbon__text">
+        Your identity is verified.
+        {% if kyc_info.next_tier %}
+        Reach <strong>{{ kyc_info.next_tier_name }}</strong> by adding:
+        <span class="kyc-ribbon__chips">
+          {% for _req in kyc_info.next_tier_requirements_labels %}<span class="kyc-chip">{{ _req }}</span>{% endfor %}
+        </span>
+        {% else %}
+        You've reached the highest individual tier.
+        {% endif %}
+      </p>
+      {% endif %}
+
+      <div class="kyc-ribbon__progress" aria-hidden="true">
+        <div class="kyc-ribbon__bar" style="width:{{ kyc_info.fulfillment_percentage|default(0) }}%"></div>
+      </div>
+    </div>
+
+    <div class="kyc-ribbon__actions">
+      <a href="{{ safe_url('kyc.index') }}" class="kyc-ribbon__btn">
+        {% if _complete %}Manage KYC{% else %}Complete Verification{% endif %}
+      </a>
+      <button type="button" class="kyc-ribbon__close" aria-label="Dismiss" data-kyc-dismiss>&times;</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endif %}

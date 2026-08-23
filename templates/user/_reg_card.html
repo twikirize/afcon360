@@ -1,70 +1,65 @@
 {# templates/user/_reg_card.html — reg is a dict from EventService #}
 {% set status = reg.status|default('confirmed') %}
+{% set ev = reg.event %}
+{% set ns = namespace(flyer='') %}
+{% set _meta = ev.event_metadata if ev.event_metadata else {} %}
+{% for _k in ['flyer_url', 'flyer', 'poster_url', 'banner_image', 'cover_image', 'image_url'] %}
+    {% if not ns.flyer and _meta.get(_k) %}{% set ns.flyer = _meta.get(_k) %}{% endif %}
+{% endfor %}
+{% set desc = ev.description|default('') %}
+
 <div class="reg-card">
-    {# Accent bar #}
+    {# Status accent bar #}
     <div class="reg-accent {{ status }}"></div>
 
+    {# Flyer / gradient banner with footer overlay #}
+    <div class="reg-media {% if ns.flyer %}has-flyer{% else %}no-flyer{% endif %}"
+         {% if ns.flyer %}style="background-image:url('{{ ns.flyer }}');"{% endif %}>
+        <div class="reg-media-overlay">
+            <span class="reg-media-cat">{{ ev.category|default('Event')|title }}</span>
+            <h4 class="reg-media-title">{{ ev.name|default('Event') }}</h4>
+            <div class="reg-media-meta">
+                {% if ev.start_date %}
+                <span><i class="fas fa-calendar-alt" aria-hidden="true"></i>{{ ev.start_date[:10] }}</span>
+                {% endif %}
+                {% if ev.venue or ev.city %}
+                <span><i class="fas fa-map-marker-alt" aria-hidden="true"></i>{{ ev.venue or ev.city }}</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# Body: status, description, journey #}
     <div class="reg-body">
-        {# Icon #}
-        <div class="reg-icon">
-            {% set cat = reg.event.category|default('')|lower %}
-            {% if 'sport' in cat or 'football' in cat or 'soccer' in cat %}
-                <i class="fas fa-futbol reg-icon-sport"></i>
-            {% elif 'music' in cat or 'concert' in cat %}
-                <i class="fas fa-music reg-icon-gold"></i>
-            {% elif 'conference' in cat or 'summit' in cat %}
-                <i class="fas fa-users reg-icon-blue"></i>
-            {% else %}
-                <i class="fas fa-ticket-alt reg-icon-gold"></i>
-            {% endif %}
-        </div>
-
-        {# Info #}
-        <div class="reg-info">
-            <div class="reg-title">
-                {{ reg.event.name|default('Event') }}
-            </div>
-            <div class="reg-meta">
-                {% if reg.event.start_date %}
-                <span><i class="fas fa-calendar-alt"></i>{{ reg.event.start_date[:10] }}</span>
-                {% endif %}
-                {% if reg.event.venue or reg.event.city %}
-                <span><i class="fas fa-map-marker-alt"></i>{{ reg.event.venue or reg.event.city }}</span>
-                {% endif %}
-                <span><i class="fas fa-ticket-alt"></i>{{ reg.ticket_type|default('General Admission') }}</span>
-                {% if reg.registration_fee and reg.registration_fee > 0 %}
-                <span><i class="fas fa-dollar-sign"></i>{{ "%.2f"|format(reg.registration_fee) }}</span>
-                {% else %}
-                <span><i class="fas fa-gift"></i>Free</span>
-                {% endif %}
-            </div>
-        </div>
-
-        {# Status badge + ref #}
-        <div class="reg-status">
+        <div class="reg-status-row">
             <span class="status-badge status-{{ status }}">
-                {% if status == 'confirmed' %}<i class="fas fa-check-circle me-1"></i> Confirmed
-                {% elif status == 'checked_in' %}<i class="fas fa-door-open me-1"></i> Checked In
-                {% elif status == 'pending' %}<i class="fas fa-clock me-1"></i> Pending
-                {% elif status == 'cancelled' %}<i class="fas fa-times-circle me-1"></i> Cancelled
+                {% if status == 'confirmed' %}<i class="fas fa-check-circle me-1" aria-hidden="true"></i> Confirmed
+                {% elif status == 'checked_in' %}<i class="fas fa-door-open me-1" aria-hidden="true"></i> Checked In
+                {% elif status == 'pending' %}<i class="fas fa-clock me-1" aria-hidden="true"></i> Pending
+                {% elif status == 'cancelled' %}<i class="fas fa-times-circle me-1" aria-hidden="true"></i> Cancelled
                 {% else %}{{ status|title }}{% endif %}
             </span>
             <span class="reg-ref">{{ reg.registration_ref }}</span>
         </div>
+
+        {% if desc %}
+        <p class="reg-desc">{{ desc }}</p>
+        {% endif %}
 
         {# Journey Section #}
         <div class="reg-journey">
             {% if status != 'cancelled' %}
                 <div class="journey-main">
                     <a href="{{ url_for('events.registration_confirmation', reg_ref=reg.registration_ref) }}" class="btn btn-ticket">
-                        <i class="fas fa-qrcode me-2"></i>View Ticket
+                        <i class="fas fa-qrcode me-2" aria-hidden="true"></i>View Ticket
                     </a>
                     {% if status not in ['cancelled', 'checked_in'] %}
-                    <button class="btn btn-cancel-sm" 
-                            data-action="cancel-reg" 
-                            data-reg-ref="{{ reg.registration_ref }}" 
-                            data-event-name="{{ reg.event.name|default('this event') }}">
-                        <i class="fas fa-times me-2"></i>Cancel
+                    <button class="btn btn-cancel-sm"
+                            data-action="cancel-reg"
+                            data-reg-ref="{{ reg.registration_ref }}"
+                            data-event-name="{{ ev.name|default('this event') }}"
+                            aria-label="Cancel registration for {{ ev.name|default('this event') }}">
+                        <i class="fas fa-times me-2" aria-hidden="true"></i>Cancel
                     </button>
                     {% endif %}
                 </div>
@@ -74,26 +69,26 @@
                     <div class="extras-label">Complete your journey:</div>
                     <div class="extras-grid">
                         {% if module_enabled('transport') %}
-                        <a href="{{ safe_url('transport.home', event_id=reg.event.id, event_participation_id=reg.id) }}" class="extra-link">
-                            <i class="fas fa-bus"></i> Add Travel
+                        <a href="{{ safe_url('transport.home', event_id=ev.id, event_participation_id=reg.id) }}" class="extra-link">
+                            <i class="fas fa-bus" aria-hidden="true"></i> Add Travel
                         </a>
                         {% endif %}
-                        
+
                         {% if module_enabled('accommodation') %}
-                        <a href="{{ safe_url('accommodation.guest_search', city=reg.event.city) }}" class="extra-link">
-                            <i class="fas fa-bed"></i> Find a Stay
+                        <a href="{{ safe_url('accommodation.guest_search', city=ev.city) }}" class="extra-link">
+                            <i class="fas fa-bed" aria-hidden="true"></i> Find a Stay
                         </a>
                         {% endif %}
 
                         <a href="#" class="extra-link">
-                            <i class="fas fa-share-alt"></i> Invite Friends
+                            <i class="fas fa-share-alt" aria-hidden="true"></i> Invite Friends
                         </a>
                     </div>
                 </div>
                 {% endif %}
             {% else %}
                 <span class="status-badge badge-cancelled">
-                    <i class="fas fa-ban me-1"></i> Registration Cancelled
+                    <i class="fas fa-ban me-1" aria-hidden="true"></i> Registration Cancelled
                 </span>
             {% endif %}
         </div>

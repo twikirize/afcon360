@@ -124,8 +124,15 @@ class KycRecord(ProtectedModel):
             'risk_factors': risk_factors
         }
     
-    def is_expiring_soon(self, days: int = 30) -> bool:
-        """Check if document is expiring soon."""
+    def is_expiring_soon(self, days: int = None) -> bool:
+        """Check if document is expiring soon.
+
+        The warning window defaults to the owner-configured
+        ``kyc_document_expiry_warning_days`` value.
+        """
+        if days is None:
+            from app.kyc_config_schema import get_kyc_settings
+            days = get_kyc_settings().get("kyc_document_expiry_warning_days", 30)
         if not self.expiry_date:
             return False
         return (self.expiry_date - datetime.now(timezone.utc)).days <= days

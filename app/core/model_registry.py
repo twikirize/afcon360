@@ -60,7 +60,9 @@ def register_all_models():
 
     # Events domain
     try:
-        from app.events.models import Event
+        from app.events.models import Event, EventGroup, EventGroupMember
+        from app.events.inventory import TicketHold
+        from app.events.models import OrganizerProfile
     except ImportError:
         pass
 

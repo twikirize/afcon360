@@ -78,6 +78,12 @@ class GuestRegistration(BaseModel):
     host_override_reason = Column(Text, nullable=True)
     host_override_at = Column(DateTime(timezone=True), nullable=True)
     host_override_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    event_assignment_id = Column(
+        BigInteger,
+        ForeignKey("event_assignments.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # -------------------------------
     # Metadata

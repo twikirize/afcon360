@@ -1,0 +1,29 @@
+{# templates/feed/_layout_tabbed.html
+   Tabbed interface — all items in the DOM on load, tabs filter by type.
+   Client-side JS (feed.js) handles tab switching via display:none.
+   Expects: feed_items (list of item dicts)
+#}
+<div class="feed-tabs" id="feed-tabs">
+  <button class="feed-tab is-active" data-tab="all">All</button>
+  <button class="feed-tab" data-tab="event">🏟️ Events</button>
+  <button class="feed-tab" data-tab="system_update">🔔 Updates</button>
+  <button class="feed-tab" data-tab="post">💬 Posts</button>
+  <button class="feed-tab" data-tab="property">🏨 Stays</button>
+  <button class="feed-tab" data-tab="transport">🚌 Transport</button>
+  <button class="feed-tab" data-tab="ad">📣 Sponsored</button>
+</div>
+
+<div class="feed-stream" id="feed-stream">
+  {% for item in feed_items %}
+  <div class="feed-tab-wrapper" data-type="{{ item.type }}">
+    {% include 'feed/_item_card.html' %}
+  </div>
+  {% endfor %}
+</div>
+
+<div id="feed-sentinel" class="feed-sentinel">
+  <span class="feed-loading-spinner" id="feed-loading-spinner" style="display:none;">Loading more…</span>
+  <span class="feed-end-message" id="feed-end-message" style="display:none;">
+    You're all caught up! 🎉
+  </span>
+</div>

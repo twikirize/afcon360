@@ -79,6 +79,7 @@ def make_celery(app=None):
             "app.notifications.tasks",
             "app.notifications.events.tasks",
             "app.tasks.backup_tasks",
+            "app.events.tasks",
             # add future task modules here
         ],
     )
@@ -147,6 +148,12 @@ def make_celery(app=None):
         "events-cleanup-ledger": {
             "task": "events.cleanup_ledger",
             "schedule": 86400.0,  # daily retention pruning
+        },
+
+        # --- Events onsale: auto-release expired ticket holds ---
+        "release-expired-ticket-holds": {
+            "task": "events.release_expired_ticket_holds",
+            "schedule": 60.0,  # every minute: tight enough to honour the 10-min TTL
         },
 
         # --- Database backup & disaster recovery ---

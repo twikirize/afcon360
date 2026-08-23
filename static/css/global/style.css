@@ -191,7 +191,7 @@ body.afcon-root {
 
 .menu { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; flex-wrap: nowrap; gap: 0.25rem; }
 .menu-item { position: relative; display: flex; align-items: center; }
-.menu-item > a {
+.menu-item > a:not(.afc-msgbtn) {
   font-family: var(--font-head); font-weight: 600; font-size: 0.8rem;
   color: rgba(255,255,255,0.88); text-decoration: none;
   padding: 0.38rem 0.6rem; border-radius: 4px; white-space: nowrap;
@@ -205,9 +205,11 @@ body.afcon-root {
 }
 
 /* Right-side group (notifications + user menu): never shrink, give it room */
-.nav-notif-item { flex-shrink: 0; margin-left: 0.35rem; display: flex; align-items: center; }
+.nav-notif-item { flex-shrink: 0; margin-left: 0.35rem; display: flex; align-items: center; gap: 0.15rem; }
+/* Ensure the bell wrapper aligns with the message button inside the flex nav */
+.nav-notif-item .afc-notif { display: inline-flex; align-items: center; }
 .nav-user-menu { flex-shrink: 0; margin-left: 0.35rem; }
-.menu-item > a:hover, .menu-item > a:focus { background: rgba(255,204,0,0.15); color: var(--gold); }
+.menu-item > a:not(.afc-msgbtn):hover, .menu-item > a:not(.afc-msgbtn):focus { background: rgba(255,204,0,0.15); color: var(--gold); }
 
 /* Auth pills */
 .menu-item.auth > a {
