@@ -49,6 +49,8 @@ def register_all_models():
             BlockedDate,
             AccommodationComplaint,
             AccommodationBookingAmendment,
+            CancellationPolicy,
+            CancellationPenalty,
         )
     except ImportError as e:
         # Deliberately NOT silent: if this fails, test/CI schema setup will
@@ -74,7 +76,17 @@ def register_all_models():
 
     # Transport domain
     try:
-        from app.transport.models import Transport
+        from app.transport.models import (
+            DriverProfile,
+            OrganisationTransportProfile,
+            Vehicle,
+            DriverVehicleHistory,
+            Booking,
+            BookingPayment,
+            Rating,
+            ScheduledRoute,
+            ContingencyPlan,
+        )
     except ImportError:
         pass
 
@@ -91,9 +103,15 @@ def register_all_models():
     except ImportError:
         pass
 
-    # Auth domain
+    # Auth / KYC domain
     try:
-        from app.auth.models import KYCRecord, IndividualVerification
+        from app.kyc.models import KycRecord
+    except ImportError:
+        pass
+
+    # Identity domain - IndividualVerification
+    try:
+        from app.identity.individuals.individual_verification import IndividualVerification
     except ImportError:
         pass
 
@@ -145,9 +163,9 @@ def register_all_models():
             f"[model_registry] Failed to import event backbone models: {e}"
         )
 
-    # KYC domain
+    # Feed domain
     try:
-        from app.kyc.models import KycRecord
+        from app.feed.models import Post, Advertisement
     except ImportError:
         pass
 

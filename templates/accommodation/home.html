@@ -9,6 +9,7 @@
 <meta property="og:type" content="website">
 
 <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/home.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/search.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -22,29 +23,89 @@
 
                 <!-- Search Bar -->
                 <div class="search-card">
-                    <form method="GET" action="{{ url_for('accommodation.explore') }}" class="search-form">
-                        <div class="row g-3">
-                            <div class="col-md-4">
-                                <label class="form-label">📍 Where to?</label>
-                                <input type="text" name="city" class="form-control" placeholder="City, area, or property name">
+                    <form method="GET" action="{{ url_for('accommodation.guest_search') }}" class="search-form">
+                        <div class="ota-search-bar">
+                            <!-- Destination -->
+                            <div class="search-field search-field--destination">
+                                <label for="destinationInput">Where are you going?</label>
+                                <input
+                                    type="text"
+                                    id="destinationInput"
+                                    name="query"
+                                    autocomplete="off"
+                                    placeholder="City, area, or property name"
+                                    class="search-input"
+                                    aria-autocomplete="list"
+                                    aria-controls="autocompleteList"
+                                />
+                                <ul id="autocompleteList" class="autocomplete-list" role="listbox" hidden></ul>
                             </div>
-                            <div class="col-md-2">
-                                <label class="form-label">📅 Check-in</label>
-                                <input type="date" name="check_in" class="form-control">
+
+                            <!-- Check-in -->
+                            <div class="search-field">
+                                <label for="checkIn">Check-in</label>
+                                <input type="date" id="checkIn" name="check_in"
+                                       class="search-input"
+                                       min="{{ today | default('') }}" />
                             </div>
-                            <div class="col-md-2">
-                                <label class="form-label">📅 Check-out</label>
-                                <input type="date" name="check_out" class="form-control">
+
+                            <!-- Check-out -->
+                            <div class="search-field">
+                                <label for="checkOut">Check-out</label>
+                                <input type="date" id="checkOut" name="check_out"
+                                       class="search-input"
+                                       min="{{ request.args.get('check_in', today | default('')) }}" />
                             </div>
-                            <div class="col-md-2">
-                                <label class="form-label">👥 Guests</label>
-                                <input type="number" name="guests" class="form-control" value="2" min="1" max="30">
+
+                            <!-- Guests -->
+                            <div class="search-field search-field--guests">
+                                <label for="guestTrigger">Guests</label>
+                                <div class="guest-picker-container">
+                                    <div class="guest-picker-trigger" id="guestTrigger" tabindex="0" role="button" aria-expanded="false" aria-haspopup="dialog" aria-label="Select number of guests and rooms">
+                                        <div class="guest-picker-summary" id="guestSummary">
+                                            1 Guest · 1 Room
+                                        </div>
+                                    </div>
+
+                                    <div class="guest-dropdown" id="guestDropdown" role="dialog" aria-label="Guest selector">
+                                        <div class="guest-row">
+                                            <div class="guest-info">
+                                                <span class="guest-title">Guests</span>
+                                                <span class="guest-subtitle">Total number of guests</span>
+                                            </div>
+                                            <div class="counter-controls">
+                                                <button type="button" class="btn-count" id="btnGuestsDec" aria-label="Decrease guests">-</button>
+                                                <span class="count-value" id="countGuests">1</span>
+                                                <button type="button" class="btn-count" id="btnGuestsInc" aria-label="Increase guests">+</button>
+                                            </div>
+                                        </div>
+
+                                        <div class="guest-row">
+                                            <div class="guest-info">
+                                                <span class="guest-title">Rooms</span>
+                                                <span class="guest-subtitle">Total rooms needed</span>
+                                            </div>
+                                            <div class="counter-controls">
+                                                <button type="button" class="btn-count" id="btnRoomsDec" aria-label="Decrease rooms">-</button>
+                                                <span class="count-value" id="countRooms">1</span>
+                                                <button type="button" class="btn-count" id="btnRoomsInc" aria-label="Increase rooms">+</button>
+                                            </div>
+                                        </div>
+
+                                        <button type="button" class="btn-done" id="btnDone">Done</button>
+                                    </div>
+
+                                    <input type="hidden" name="guests" id="inputGuests" value="1">
+                                    <input type="hidden" name="rooms" id="inputRooms" value="1">
+                                </div>
                             </div>
-                            <div class="col-md-2">
-                                <button type="submit" class="search-btn">
-                                    <i class="fas fa-search me-2"></i>Search
-                                </button>
-                            </div>
+
+                            <button type="submit" class="search-submit">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                </svg>
+                                Search
+                            </button>
                         </div>
                     </form>
                 </div>
@@ -223,4 +284,8 @@
         </a>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/modules/accommodation/search.js') }}"></script>
 {% endblock %}

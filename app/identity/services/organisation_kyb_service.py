@@ -15,6 +15,7 @@ type rather than a new check_type.
 """
 
 from typing import Dict, Any, List, Optional
+from datetime import datetime, timezone
 
 from decimal import Decimal
 
@@ -68,7 +69,28 @@ class OrganisationKYBService:
         ubo = OrganisationUBO.query.filter_by(
             organisation_id=org_id, is_deleted=False
         ).first()
-        ubo_done = bool(ubo and ubo.verified_at)
+        
+        # Check UBO effective dates - UBO must be currently effective
+        now = datetime.now(timezone.utc)
+        ubo_done = False
+        if ubo and ubo.verified_at:
+            effective_from = ubo.effective_from
+            effective_to = ubo.effective_to
+            
+            # Normalize dates for comparison
+            if effective_from and effective_from.tzinfo is None:
+                effective_from = effective_from.replace(tzinfo=timezone.utc)
+            if effective_to and effective_to.tzinfo is None:
+                effective_to = effective_to.replace(tzinfo=timezone.utc)
+            
+            # UBO is effective if:
+            # - verified_at exists
+            # - effective_from is in the past (or None)
+            # - effective_to is in the future (or None)
+            from_ok = effective_from is None or effective_from <= now
+            to_ok = effective_to is None or effective_to >= now
+            ubo_done = from_ok and to_ok
+        
         sanctions = OrganisationKYBCheck.query.filter_by(
             organisation_id=org_id, check_type="sanctions", status="passed"
         ).first()

@@ -61,6 +61,11 @@
             </a>
             {% endif %}
 
+            {# ── NEW: Become a Partner ─────────────────────── #}
+            <a href="{{ safe_url('onboarding.choose_individual') }}" class="nav-link nav-link--partner">
+                <i class="fas fa-user-plus" aria-hidden="true"></i><span>Become a Partner</span>
+            </a>
+
             <div class="shell-account-links">
                 <a href="#" class="nav-item" data-pane-url="{{ safe_url('profile.my_public_profile') }}">
                     <i class="fas fa-id-card" aria-hidden="true"></i><span>Public Profile</span>

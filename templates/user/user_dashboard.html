@@ -7,6 +7,20 @@
 {% include 'components/kyc_ribbon.html' %}
 <script src="{{ url_for('static', filename='js/modules/user/kyc-ribbon.js') }}"></script>
 
+{# ── BECOME A PARTNER CARD ──────────────────────────────────────────── #}
+<div class="dash-card" style="background: linear-gradient(135deg, #1D9E75, #0F5C4A); color: white; border: none; margin-bottom: 20px;">
+    <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+        <i class="fas fa-handshake" style="font-size: 2.4rem;"></i>
+        <div style="flex: 1;">
+            <h4 style="font-weight: 700; margin: 0; color: white;">🚀 Become a Platform Partner</h4>
+            <p style="margin: 4px 0 0; opacity: 0.9; font-size: 14px;">Offer transport, list your property, or organise events – expand your role on AFCON 360.</p>
+        </div>
+        <a href="{{ safe_url('onboarding.choose_individual') }}" class="btn-banner" style="background: white; color: #1D9E75; font-weight: 700; padding: 10px 24px; border-radius: 30px; text-decoration: none;">
+            Get Started →
+        </a>
+    </div>
+</div>
+
 {# ── DASHBOARD MODE CONTEXT ─────────────────────────────────────────── #}
 {# dashboard_mode is passed from the view: 'standard' or 'tournament'   #}
 

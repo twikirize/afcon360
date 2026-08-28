@@ -18,8 +18,9 @@ def module_enabled(f):
     """Check if accommodation module is enabled."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        module_config = current_app.config.get('FEATURE_FLAGS', {}).get('accommodation', {})
-        if not module_config.get('enabled', False):
+        # Use MODULE_FLAGS like the rest of the system (module_guard.py)
+        modules = current_app.config.get('MODULE_FLAGS', {})
+        if not modules.get('accommodation', False):
             abort(404, description="Accommodation module is disabled")
         return f(*args, **kwargs)
     return decorated_function

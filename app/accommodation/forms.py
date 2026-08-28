@@ -137,7 +137,16 @@ class PropertyForm(FlaskForm):
         default="11:00",
     )
 
-    instant_book = BooleanField("Enable instant booking")
+    booking_mode = SelectField(
+        "Booking Mode",
+        choices=[
+            ("instant", "Instant Book - Automatically confirm bookings"),
+            ("host_approval", "Host Approval Required - Manually approve each booking"),
+        ],
+        default="instant",
+        validators=[DataRequired()],
+    )
+    instant_book = BooleanField("Enable instant booking (legacy)")
     allow_pets = BooleanField("Pets allowed")
     allow_smoking = BooleanField("Smoking allowed")
     allow_events = BooleanField("Events allowed")

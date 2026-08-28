@@ -39,6 +39,7 @@ from app.utils.db_retry import retry_on_deadlock
 from app.utils.id_validator import assert_internal_id
 from app.wallet.services.currency_service import CurrencyService
 from app.wallet.services.commission_service import CommissionService
+from app.wallet.models.config import WalletSystemConfig
 
 # Money precision
 getcontext().prec = 28
@@ -268,29 +269,17 @@ class WalletService:
 
     def get_wallet_limits(self, wallet_type: str, currency: str) -> Dict[str, Any]:
         """Get configured limits for wallet type and currency."""
-        from app.wallet.models.wallet import WalletLimit
-        limits = WalletLimit.query.filter_by(
-            wallet_type=wallet_type,
-            currency=currency
-        ).first()
-
-        if not limits:
-            return {
-                'min_transaction': Decimal("100.00"),
-                'max_transaction': Decimal("10000000.00"),
-                'daily_limit': Decimal("5000000.00"),
-                'monthly_limit': Decimal("20000000.00"),
-                'requires_kyc_level': 2,
-                'requires_mfa': True
-            }
-
+        # WalletLimit model does not exist; use WalletSystemConfig for operational ceilings
+        system_config = WalletSystemConfig.get_config()
+        
+        # Provide sensible defaults for wallet creation (not authorization)
         return {
-            'min_transaction': limits.min_transaction,
-            'max_transaction': limits.max_transaction,
-            'daily_limit': limits.daily_limit,
-            'monthly_limit': limits.monthly_limit,
-            'requires_kyc_level': limits.requires_kyc_level,
-            'requires_mfa': limits.requires_mfa
+            'min_transaction': Decimal("100.00"),
+            'max_transaction': system_config.max_transfer_amount,
+            'daily_limit': system_config.max_transfer_amount,  # WalletSystemConfig has no separate daily limit
+            'monthly_limit': system_config.max_transfer_amount,  # WalletSystemConfig has no separate monthly limit
+            'requires_kyc_level': 2,
+            'requires_mfa': True
         }
 
     def create_wallet(self, user_id: int, name: str, wallet_type: str,

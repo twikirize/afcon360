@@ -46,9 +46,11 @@ class EventTrustService:
             elif has_global_role(user, 'event_manager') or has_global_role(user, 'moderator'):
                 score += 25
 
-        # 2. KYC verification
+        # 2. KYC verification (use dynamic calculation - canonical authority)
         if settings.enable_kyc_boost:
-            kyc_level = getattr(user, 'kyc_level', 0)
+            from app.auth.kyc_compliance import calculate_kyc_tier
+            kyc_info = calculate_kyc_tier(user.id)
+            kyc_level = kyc_info["tier"]
             if kyc_level >= 2:
                 score += 30
             elif kyc_level >= 1:
@@ -151,7 +153,7 @@ class EventTrustService:
             'reason': reason,
             'factors': {
                 'roles': [role.role.name for role in user.roles] if hasattr(user, 'roles') else [],
-                'kyc_level': getattr(user, 'kyc_level', 0),
+                'kyc_level': (calculate_kyc_tier(user.id)["tier"] if user else 0),
                 'is_verified': getattr(user, 'is_verified', False),
                 'account_age_days': account_age_days,
                 'successful_events': successful_events,

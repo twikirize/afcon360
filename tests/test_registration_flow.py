@@ -95,7 +95,7 @@ class TestRegistrationFlow(unittest.TestCase):
             }
 
             # First registration
-            with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
+            with patch('app.events.services.SIGNALS_AVAILABLE', False):
                 reg1, qr1, err1 = EventService.register_for_event_optimistic(
                     event_slug, self.user1_id, registration_data, key
                 )

@@ -700,14 +700,19 @@
         {% endif %}
       </div>
 
-      <div class="form-row">
-        <div class="form-group">
-          <div class="checkbox-group">
-            {{ form.instant_book(id="instant_book") }}
-            <label for="instant_book">Enable Instant Booking</label>
-          </div>
-          <div class="form-text">Guests can book without waiting for approval</div>
+      <div class="form-group">
+        <label for="booking_mode" class="form-label">Booking Mode <span class="required">*</span></label>
+        {{ form.booking_mode(class="form-select", id="booking_mode") }}
+        {% if form.booking_mode.errors %}
+          <div class="invalid-feedback d-block">{{ form.booking_mode.errors[0] }}</div>
+        {% endif %}
+        <div class="form-text">
+          <strong>Instant Book:</strong> Bookings are automatically confirmed after payment.<br>
+          <strong>Host Approval Required:</strong> You must manually approve each booking within 24 hours.
         </div>
+      </div>
+
+      <div class="form-row">
         <div class="form-group">
           <div class="checkbox-group">
             {{ form.allow_pets(id="allow_pets") }}

@@ -1546,6 +1546,146 @@ class NotificationService:
         )
 
     @classmethod
+    def notify_booking_pending_approval(cls, booking):
+        """Booking submitted, awaiting host approval → notify guest + host."""
+        module = cls.module_for_booking(booking)
+        ref = getattr(booking, 'booking_reference', getattr(booking, 'booking_code', 'N/A'))
+
+        guest_id = getattr(booking, 'guest_user_id', None) or getattr(booking, 'customer_id', None)
+        if guest_id:
+            cls.send_booking_notification(guest_id, booking, 'pending_approval', channel='email')
+
+        host_id = getattr(booking, 'host_user_id', None)
+        if host_id:
+            cls.send(
+                user_id=host_id,
+                notification_type=NotificationType.BOOKING_PENDING_APPROVAL,
+                title="New Booking Request",
+                message=f"You have a new booking request (ref: {ref}) awaiting your approval.",
+                data={'booking_id': getattr(booking, 'public_id', booking.id)},
+                channels=['email', 'in_app', 'push'],
+                link="/accommodation/host/bookings",
+                priority='high',
+                module=module,
+            )
+
+        cls._notify_admins(
+            notification_type=NotificationType.BOOKING_PENDING_APPROVAL,
+            title=f"{MODULE_LABELS.get(module, 'Booking')} Booking Pending Approval",
+            message=f"Booking {ref} is awaiting host approval.",
+            data={'booking_id': getattr(booking, 'public_id', booking.id)},
+            link=cls.MODULE_ADMIN_LINKS.get(module, '/admin'),
+            channels=['in_app'],
+            domain=module,
+            module=module,
+        )
+
+    @classmethod
+    def notify_booking_approved(cls, booking):
+        """Host approved booking → notify guest + host."""
+        module = cls.module_for_booking(booking)
+        ref = getattr(booking, 'booking_reference', getattr(booking, 'booking_code', 'N/A'))
+
+        guest_id = getattr(booking, 'guest_user_id', None) or getattr(booking, 'customer_id', None)
+        if guest_id:
+            cls.send_booking_notification(guest_id, booking, 'approved', channel='email')
+
+        host_id = getattr(booking, 'host_user_id', None)
+        if host_id:
+            cls.send(
+                user_id=host_id,
+                notification_type=NotificationType.BOOKING_APPROVED,
+                title="Booking Approved",
+                message=f"You approved booking {ref}.",
+                data={'booking_id': getattr(booking, 'public_id', booking.id)},
+                channels=['email', 'in_app'],
+                link="/accommodation/host/bookings",
+                priority='normal',
+                module=module,
+            )
+
+        cls._notify_admins(
+            notification_type=NotificationType.BOOKING_APPROVED,
+            title=f"{MODULE_LABELS.get(module, 'Booking')} Booking Approved",
+            message=f"Booking {ref} was approved by host.",
+            data={'booking_id': getattr(booking, 'public_id', booking.id)},
+            link=cls.MODULE_ADMIN_LINKS.get(module, '/admin'),
+            channels=['in_app'],
+            domain=module,
+            module=module,
+        )
+
+    @classmethod
+    def notify_booking_rejected(cls, booking, rejection_reason: str = None):
+        """Host rejected booking → notify guest (with refund info) + host."""
+        module = cls.module_for_booking(booking)
+        ref = getattr(booking, 'booking_reference', getattr(booking, 'booking_code', 'N/A'))
+
+        guest_id = getattr(booking, 'guest_user_id', None) or getattr(booking, 'customer_id', None)
+        if guest_id:
+            cls.send_booking_notification(guest_id, booking, 'rejected', channel='email', rejection_reason=rejection_reason)
+
+        host_id = getattr(booking, 'host_user_id', None)
+        if host_id:
+            cls.send(
+                user_id=host_id,
+                notification_type=NotificationType.BOOKING_REJECTED,
+                title="Booking Declined",
+                message=f"You declined booking {ref}.",
+                data={'booking_id': getattr(booking, 'public_id', booking.id)},
+                channels=['email', 'in_app'],
+                link="/accommodation/host/bookings",
+                priority='normal',
+                module=module,
+            )
+
+        cls._notify_admins(
+            notification_type=NotificationType.BOOKING_REJECTED,
+            title=f"{MODULE_LABELS.get(module, 'Booking')} Booking Declined",
+            message=f"Booking {ref} was declined by host.",
+            data={'booking_id': getattr(booking, 'public_id', booking.id)},
+            link=cls.MODULE_ADMIN_LINKS.get(module, '/admin'),
+            channels=['in_app'],
+            domain=module,
+            module=module,
+        )
+
+    @classmethod
+    def notify_booking_payment_received_pending_approval(cls, booking):
+        """Payment received for host-approval booking → notify guest + host."""
+        module = cls.module_for_booking(booking)
+        ref = getattr(booking, 'booking_reference', getattr(booking, 'booking_code', 'N/A'))
+
+        guest_id = getattr(booking, 'guest_user_id', None) or getattr(booking, 'customer_id', None)
+        if guest_id:
+            cls.send_booking_notification(guest_id, booking, 'payment_received_pending_approval', channel='email')
+
+        host_id = getattr(booking, 'host_user_id', None)
+        if host_id:
+            cls.send(
+                user_id=host_id,
+                notification_type=NotificationType.BOOKING_PAYMENT_RECEIVED_PENDING_APPROVAL,
+                title="Payment Received - Awaiting Your Approval",
+                message=f"Guest has paid for booking {ref}. Please approve or decline within 24 hours.",
+                data={'booking_id': getattr(booking, 'public_id', booking.id)},
+                channels=['email', 'in_app', 'push'],
+                link="/accommodation/host/bookings",
+                priority='high',
+                module=module,
+            )
+
+        cls._notify_admins(
+            notification_type=NotificationType.BOOKING_PAYMENT_RECEIVED_PENDING_APPROVAL,
+            title=f"{MODULE_LABELS.get(module, 'Booking')} Payment Received - Pending Approval",
+            message=f"Payment received for booking {ref}, awaiting host approval.",
+            data={'booking_id': getattr(booking, 'public_id', booking.id)},
+            link=cls.MODULE_ADMIN_LINKS.get(module, '/admin'),
+            channels=['in_app'],
+            domain=module,
+            module=module,
+        )
+
+    @classmethod
     def notify_check_in(cls, booking):
         module = cls.module_for_booking(booking)
         ref = getattr(booking, 'booking_reference', getattr(booking, 'booking_code', 'N/A'))

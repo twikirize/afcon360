@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AFCON360 Booking Approved</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f4f6f8; margin: 0; padding: 20px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; border-top: 5px solid #008751;">
+    <h2 style="color: #008751; margin-top: 0;">✅ Your Booking Has Been Approved!</h2>
+    <p>Dear <strong>{{ user_name or 'Valued Guest' }}</strong>,</p>
+    <p>Great news! The host has approved your reservation for <strong>{{ item_name or 'your booking' }}</strong>.</p>
+    <p style="background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 6px; padding: 16px; margin: 16px 0;">
+      <strong style="color: #065f46;">✅ Booking Confirmed</strong> - Your stay is now officially confirmed.
+    </p>
+    <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Booking Reference:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ reference_id or 'N/A' }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Property:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ item_name or 'N/A' }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Check-in:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ check_in_date or 'TBD' }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Check-out:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ check_out_date or 'TBD' }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Total Amount:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ total_ugx or '0' }} UGX</td>
+      </tr>
+    </table>
+    {% if data.qr_data_uri %}
+    <div style="text-align: center; margin: 24px 0;">
+      <p style="color: #555; font-size: 14px; margin-bottom: 8px;">Your Booking Pass &mdash; present this at check-in</p>
+      <img src="{{ data.qr_data_uri }}" alt="Booking pass QR code" width="200" height="200" style="width: 200px; height: 200px; max-width: 100%;">
+    </div>
+    {% endif %}
+    {% if link %}<p style="text-align: center;"><a href="{{ link }}" style="background-color: #008751; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">View Booking Pass</a></p>{% endif %}
+    <p style="color: #555; font-size: 14px;">We look forward to welcoming you! Contact the host if you have any questions.</p>
+  </div>
+</body>
+</html>

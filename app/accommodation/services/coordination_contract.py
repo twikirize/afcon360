@@ -45,14 +45,34 @@ class AccommodationCoordinationContract:
         """
         from app.accommodation.models.booking import AccommodationBooking
         from app.accommodation.models.guest_registration import GuestRegistration
+        from sqlalchemy import text
 
+        # Lock the booking row to prevent race conditions while enforcing capacity
         booking = AccommodationBooking.query.filter_by(
             booking_reference=booking_reference, is_deleted=False
-        ).first()
+        ).with_for_update().first()
         if not booking:
             raise CoordinationContractError(
                 "BOOKING_NOT_FOUND", "Accommodation booking was not found"
             )
+
+        # Acquire advisory lock on booking ID to serialize capacity checks
+        # This works correctly with REPEATABLE_READ isolation level
+        db.session.execute(text("SELECT pg_advisory_xact_lock(:bid)"), {"bid": booking.id})
+
+        # Idempotent check: if an active slot already exists for this assignment, return it
+        if event_assignment_id is not None:
+            slot = GuestRegistration.query.filter_by(
+                booking_id=booking.id,
+                event_assignment_id=event_assignment_id,
+                is_active=True,
+            ).first()
+            if slot:
+                return {
+                    "slot_id": slot.id,
+                    "status": slot.status,
+                    "email_present": bool(slot.guest_email),
+                }
 
         email_norm = (email or "").strip().lower() or None
         slot = None
@@ -83,6 +103,18 @@ class AccommodationCoordinationContract:
         slot.is_placeholder = not bool(email_norm)
         slot.status = "in_progress" if (slot.guest_name and slot.guest_email) else "pending"
         db.session.flush()
+
+        # Enforce authoritative capacity: active guest slots must not exceed the booking's allowed guests
+        active_count = GuestRegistration.query.filter_by(
+            booking_id=booking.id, is_active=True
+        ).count()
+        allowed = booking.num_guests or 0
+        if active_count > allowed:
+            raise CoordinationContractError(
+                "BOOKING_CAPACITY_EXCEEDED",
+                "Accommodation booking capacity exceeded",
+            )
+
         return {
             "slot_id": slot.id,
             "status": slot.status,

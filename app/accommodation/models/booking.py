@@ -276,6 +276,9 @@ class AccommodationBooking(BaseModel):
     # NEW: Payment Timing & Amounts
     # ==========================================
     payment_timing = Column(String(30), nullable=True)  # pay_now, deposit, pay_on_arrival, invoice
+    # Booking flow type determined at creation from host policies + guest choices
+    # Determines the booking approval path: instant_approval, host_approval, pay_on_arrival_approval, etc.
+    booking_flow_type = Column(String(30), nullable=True)
     amount_paid = Column(Numeric(10, 2), default=0)
     amount_due = Column(Numeric(10, 2), default=0)
     deposit_amount = Column(Numeric(10, 2), default=0)
@@ -494,9 +497,136 @@ class AccommodationBooking(BaseModel):
         AccommodationBookingStatus.CHECKED_IN,
     ]
 
+    def _get_effective_cancellation_policy(self):
+        """
+        Resolve the effective CancellationPolicy for this booking.
+        
+        Precedence:
+          1. Policy snapshot taken at booking time (immutable for the guest)
+          2. Property-specific CancellationPolicy override
+          3. System default CancellationPolicy
+        
+        Returns CancellationPolicy instance or None.
+        """
+        # 1. Check snapshot first
+        if isinstance(self.policy_snapshot, dict):
+            snapshot_policy_name = self.policy_snapshot.get("cancellation_policy")
+            if snapshot_policy_name:
+                # Try to get the exact policy from snapshot
+                from app.accommodation.models.cancellation_policy import CancellationPolicy
+                # For snapshot, we try to get property-specific first, then system default
+                policy = CancellationPolicy.query.filter_by(
+                    property_id=self.property_id,
+                    name=snapshot_policy_name,
+                    is_active=True
+                ).first()
+                if policy:
+                    return policy
+                # Fall back to system default
+                return CancellationPolicy.query.filter_by(
+                    property_id=None,
+                    name=snapshot_policy_name,
+                    is_active=True
+                ).first()
+        
+        # 2. Use new CancellationPolicy resolution
+        from app.accommodation.models.cancellation_policy import CancellationPolicy
+        return CancellationPolicy.get_effective_policy(self.property_id)
+
+    def get_cancellation_quote(self, cancellation_date=None, cancelled_by_user_type="guest") -> dict:
+        """
+        Single source of truth for cancellation outcomes (pre- and post-check-in).
+        
+        Args:
+            cancellation_date: Date of cancellation (defaults to today)
+            cancelled_by_user_type: "guest", "host", or "platform"
+            
+        Returns a dict:
+          allowed, message, phase, policy, refundable_base, refund, fine,
+          nights_remaining / days_until_checkin
+        The FINE is the explicit penalty line item = refundable_base - refund.
+        """
+        from app.accommodation.models.cancellation_policy import CancellationPhase, CancellationPolicy
+        
+        def _q(v):
+            return Decimal(v or 0).quantize(Decimal("0.01"))
+
+        quote = {
+            "allowed": False,
+            "message": "Cannot cancel at this stage",
+            "phase": "none",
+            "policy": None,
+            "refundable_base": Decimal("0.00"),
+            "refund": Decimal("0.00"),
+            "fine": Decimal("0.00"),
+            "nights_remaining": 0,
+            "days_until_checkin": 0,
+        }
+
+        if self.status_enum not in self.CANCELLABLE_STATUSES:
+            return quote
+
+        # Get the effective policy
+        policy = self._get_effective_cancellation_policy()
+        
+        # Fall back to legacy policy name if no CancellationPolicy found
+        if policy is None:
+            # Use legacy resolution for backwards compatibility
+            return self._get_legacy_cancellation_quote()
+
+        quote["policy"] = policy.name
+        
+        # Use provided date or default to today
+        if cancellation_date is None:
+            from datetime import date as date_cls
+            cancellation_date = date_cls.today()
+        
+        total = Decimal(self.total_amount or 0)
+        paid = Decimal(self.amount_paid or 0)
+        payment_timing = self.payment_timing or "pay_now"
+        
+        # Determine phase
+        is_checked_in = self.status_enum == AccommodationBookingStatus.CHECKED_IN
+        
+        if is_checked_in or (cancellation_date >= self.check_in and cancellation_date < self.check_out):
+            quote["phase"] = CancellationPhase.MID_STAY
+            nights_remaining = (self.check_out - cancellation_date).days
+            quote["nights_remaining"] = max(nights_remaining, 0)
+        elif cancellation_date >= self.check_in:
+            quote["phase"] = CancellationPhase.NO_SHOW
+        else:
+            quote["phase"] = CancellationPhase.PRE_CHECKIN
+            days_until = (self.check_in - cancellation_date).days
+            quote["days_until_checkin"] = max(days_until, 0)
+        
+        # Use the policy's calculate_quote method
+        quote_result = policy.calculate_quote(
+            total_amount=total,
+            amount_paid=paid,
+            payment_timing=payment_timing,
+            check_in=self.check_in,
+            check_out=self.check_out,
+            cancellation_date=cancellation_date,
+            is_checked_in=is_checked_in,
+            nights_remaining=quote["nights_remaining"],
+        )
+        
+        # Merge results
+        quote.update(quote_result)
+        
+        # Permission enforcement based on user type
+        if cancelled_by_user_type == "guest" and not quote.get("allowed", False):
+            # Guest cannot cancel if not allowed by policy
+            pass  # allowed stays False
+        elif cancelled_by_user_type in ("host", "platform"):
+            # Host/platform can always cancel (but policy still determines refund/fine)
+            quote["allowed"] = True
+        
+        return quote
+
     def _cancellation_policy_context(self):
         """
-        Resolve the effective cancellation policy for this booking.
+        Resolve the effective cancellation policy for this booking (legacy).
 
         Precedence:
           1. Policy snapshot taken at booking time (immutable for the guest)
@@ -549,15 +679,8 @@ class AccommodationBooking(BaseModel):
             return Decimal("0.00")
         return Decimal("0.00")
 
-    def get_cancellation_quote(self) -> dict:
-        """
-        Single source of truth for cancellation outcomes (pre- and post-check-in).
-
-        Returns a dict:
-          allowed, message, phase, policy, refundable_base, refund, fine,
-          nights_remaining / days_until_checkin
-        The FINE is the explicit penalty line item = refundable_base - refund.
-        """
+    def _get_legacy_cancellation_quote(self) -> dict:
+        """Fallback to legacy policy resolution for backwards compatibility."""
         def _q(v):
             return Decimal(v or 0).quantize(Decimal("0.01"))
 
@@ -580,7 +703,7 @@ class AccommodationBooking(BaseModel):
         quote["policy"] = policy_name
         total = Decimal(self.total_amount or 0)
 
-        # -------- Mid-stay cancellation (already checked in) --------
+        # Mid-stay cancellation
         if self.status_enum == AccommodationBookingStatus.CHECKED_IN:
             nights_remaining = (self.check_out - date.today()).days
             quote["phase"] = "mid_stay"
@@ -595,9 +718,6 @@ class AccommodationBooking(BaseModel):
                 (total * Decimal(nights_remaining)) / Decimal(self.num_nights or 1),
                 total,
             )
-            # Mid-stay tiers (see BACKLOG.md — pending finance sign-off):
-            # flexible = full remaining, moderate = full remaining (>=1 night),
-            # strict = 50% of remaining, super_strict/non_refundable = 0.
             if policy_name in ("flexible", "moderate"):
                 refund = base
             elif policy_name == "strict":
@@ -617,7 +737,7 @@ class AccommodationBooking(BaseModel):
             )
             return quote
 
-        # -------- Pre-check-in cancellation --------
+        # Pre-check-in cancellation
         days_until = (self.check_in - date.today()).days
         quote["phase"] = "pre_checkin"
         quote["days_until_checkin"] = days_until

@@ -13,6 +13,7 @@ import enum
 import logging
 
 from sqlalchemy import or_, select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
@@ -94,9 +95,11 @@ def check_cash_eligibility(guest_user, property_id, booking_amount):
 
     if SystemConfig.get('payment_cash_requires_kyc', True):
         min_kyc = SystemConfig.get('payment_cash_min_kyc_level', 2)
-        checks['kyc_level'] = guest_user.kyc_level >= min_kyc
+        from app.auth.kyc_compliance import calculate_kyc_tier
+        guest_kyc_info = calculate_kyc_tier(guest_user.id)
+        checks['kyc_level'] = guest_kyc_info["tier"] >= min_kyc
         if not checks['kyc_level']:
-            return {'allowed': False, 'reason': f'KYC level {guest_user.kyc_level} is below minimum required ({min_kyc}).'}
+            return {'allowed': False, 'reason': f'KYC tier {guest_kyc_info["tier"]} is below minimum required ({min_kyc}).'}
 
     if SystemConfig.get('payment_cash_requires_verified_phone', True):
         checks['phone_verified'] = guest_user.phone_verified
@@ -154,6 +157,74 @@ class BookingService:
     - Full state machine integration
     - Audit logging via logger
     """
+
+    @staticmethod
+    def _determine_booking_flow_type(
+        property,
+        payment_timing: str = None,
+        payment_method: str = None,
+        payment_guaranteed: bool = None,
+    ) -> str:
+        """
+        Determine the booking approval flow type from host policies + guest choices.
+        
+        This SEPARATES booking approval flow from payment processing.
+        The flow type is determined ONCE at booking creation and stored on the booking.
+        
+        Flow types:
+        - 'instant': Host has instant_book=True, guest pays now/deposit -> auto-confirm
+        - 'host_approval': Host requires approval (booking_mode='host_approval') -> host must approve
+        - 'pay_on_arrival_approval': Guest chooses pay_on_arrival -> host must approve (cash risk)
+        - 'deposit_approval': Guest chooses deposit -> payment required before confirm
+        - 'invoice_approval': Guest chooses invoice -> host must approve
+        
+        Payment processing is SEPARATE and runs independently.
+        Payment guarantee (wallet/card authorization) is the only payment concern
+        that affects booking confirmation - it's handled in confirm_booking().
+        """
+        # 1. Host policy: instant book vs host approval
+        if property.booking_mode == 'host_approval':
+            return 'host_approval'
+        
+        # 2. Host has instant_book enabled - check guest payment timing
+        if not payment_timing:
+            # No timing specified, default to instant if host allows pay_now
+            from app.accommodation.services.payment_policy_service import PaymentPolicyService
+            policy = PaymentPolicyService.get_or_create_policy(property.id)
+            if policy.allow_pay_now:
+                return 'instant'
+            return 'host_approval'  # fallback
+        
+        timing = payment_timing.lower()
+        
+        # 3. Pay-on-arrival ALWAYS requires host approval (cash risk)
+        if timing == 'pay_on_arrival':
+            return 'pay_on_arrival_approval'
+        
+        # 4. Invoice always requires host approval (deferred payment)
+        if timing == 'invoice':
+            return 'invoice_approval'
+        
+        # 5. Deposit - check if host requires payment guarantee
+        if timing == 'deposit':
+            from app.accommodation.services.payment_policy_service import PaymentPolicyService
+            policy = PaymentPolicyService.get_or_create_policy(property.id)
+            if policy.require_payment_guarantee:
+                return 'deposit_approval'  # Host must verify guarantee
+            # If deposit is small or no guarantee required, could be instant
+            # For now, require approval for deposit to be safe
+            return 'deposit_approval'
+        
+        # 6. pay_now with instant_book enabled
+        if timing == 'pay_now':
+            from app.accommodation.services.payment_policy_service import PaymentPolicyService
+            policy = PaymentPolicyService.get_or_create_policy(property.id)
+            if policy.allow_pay_now:
+                return 'instant'
+            return 'host_approval'
+        
+        # Default fallback
+        return 'host_approval'
 
     # -------------------------
     # CREATE BOOKING
@@ -214,17 +285,7 @@ class BookingService:
         from app.accommodation.models.room import RoomType
 
         try:
-            # 1. IDEMPOTENCY CHECK
-            if idempotency_key:
-                existing = AccommodationBooking.query.filter_by(
-                    idempotency_key=idempotency_key,
-                    guest_user_id=guest_user_id
-                ).first()
-                if existing:
-                    logger.info(f"Duplicate booking prevented: {idempotency_key}")
-                    return existing, None
-
-            # 2. BASIC VALIDATION
+            # 1. BASIC VALIDATION
             if check_out <= check_in:
                 return None, "Check-out must be after check-in"
             if rooms_requested < 1:
@@ -238,6 +299,16 @@ class BookingService:
 
             if not property.can_be_booked():
                 return None, "Property is not available for booking"
+
+            # 2. IDEMPOTENCY CHECK (after property lock to serialize with concurrent creates)
+            if idempotency_key:
+                existing = AccommodationBooking.query.filter_by(
+                    idempotency_key=idempotency_key,
+                    guest_user_id=guest_user_id
+                ).first()
+                if existing:
+                    logger.info(f"Duplicate booking prevented: {idempotency_key}")
+                    return existing, None
 
             # Resolve room_type_id if not provided
             if not room_type_id:
@@ -339,7 +410,14 @@ class BookingService:
             # 6. CREATE BOOKING
             # New bookings always start in DRAFT and then move through the
             # state machine so audit history is complete.
-            requires_host_approval = (not property.instant_book or property.require_host_approval)
+            # Determine booking flow type from host policies + guest choices
+            # This SEPARATES booking approval flow from payment processing
+            booking_flow_type = BookingService._determine_booking_flow_type(
+                property=property,
+                payment_timing=payment_timing,
+                payment_method=payment_method,
+                payment_guaranteed=payment_guaranteed,
+            )
             initial_status = AccommodationBookingStatus.DRAFT.value
 
             # Resolve booker identity for snapshots
@@ -391,6 +469,7 @@ class BookingService:
                 guest_instructions=guest_instructions,
                 payment_method=payment_method,
                 payment_timing=payment_timing,
+                booking_flow_type=booking_flow_type,
                 payment_guaranteed=payment_guaranteed if payment_guaranteed is not None else False,
                 guarantee_type=guarantee_type or 'none',
                 # Booking Owner (D-003, D-004)
@@ -474,7 +553,23 @@ class BookingService:
                 metadata={"hold_expires_at": booking.expires_at.isoformat() if booking.expires_at else None},
             )
 
-            if requires_host_approval:
+            # Use booking_flow_type to determine approval flow (SEPARATE from payment processing)
+            flow_type = booking.booking_flow_type or 'host_approval'
+            
+            # Flow types requiring host approval:
+            # - host_approval: host requires approval for all bookings
+            # - pay_on_arrival_approval: guest pays on arrival (cash risk)
+            # - deposit_approval: deposit required, host verifies guarantee
+            # - invoice_approval: guest pays later via invoice
+            approval_required_flows = {
+                'host_approval',
+                'pay_on_arrival_approval',
+                'deposit_approval',
+                'invoice_approval',
+            }
+            
+            if flow_type in approval_required_flows:
+                # HOST_APPROVAL mode: transition to PENDING_APPROVAL
                 BookingStateMachine.transition(
                     booking,
                     AccommodationBookingStatus.PENDING_APPROVAL,
@@ -483,6 +578,17 @@ class BookingService:
                     ip_address=ip_address,
                     user_agent=user_agent,
                     trigger="host_approval_required",
+                )
+            else:
+                # INSTANT mode: already in HELD state, transition to PENDING_PAYMENT for payment processing
+                BookingStateMachine.transition(
+                    booking,
+                    AccommodationBookingStatus.PENDING_PAYMENT,
+                    changed_by_user_id=guest_user_id,
+                    reason="Awaiting payment confirmation",
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    trigger="booking_created",
                 )
 
             # 8. UPDATE GUEST PROFILE (create if not exists)
@@ -513,6 +619,18 @@ class BookingService:
             db.session.add(payment_event)
             db.session.commit()
 
+            # Send notifications based on booking mode
+            try:
+                from app.notifications.services import NotificationService
+                if requires_host_approval:
+                    NotificationService.notify_booking_pending_approval(booking)
+                else:
+                    # For INSTANT bookings, send created notification
+                    # (will send confirmed notification after payment)
+                    pass
+            except Exception as ne:
+                logger.warning(f"Failed to send booking creation notification: {ne}")
+
             logger.info(
                 f"Booking created: {booking.booking_reference} | "
                 f"Property: {property_id} | Guest: {guest_user_id} | "
@@ -536,6 +654,9 @@ class BookingService:
 
         except Exception as e:
             db.session.rollback()
+            import traceback
+            print(f"DEBUG: Create booking exception: {type(e).__name__}: {e}")
+            traceback.print_exc()
             logger.error(f"Create booking failed for property {property_id}: {e}", exc_info=True)
             return None, "Unable to create booking. Please try again."
 
@@ -825,22 +946,18 @@ class BookingService:
     @staticmethod
     def _check_in_block_reason(booking) -> str:
         """Explain why a booking cannot be checked in, for front-desk staff."""
+        from app.accommodation.state_machine import BookingPolicyEvaluator
+        
         if booking.status != AccommodationBookingStatus.CONFIRMED.value:
             return f"Booking must be confirmed to check in (currently {booking.status})."
 
         if booking.check_in > date.today():
             return f"Check-in date is {booking.check_in.strftime('%b %d, %Y')} - too early to check in."
 
-        if booking.payment_status == AccommodationPaymentStatus.UNPAID.value:
-            if not BookingStateMachine._cash_eligible_at_checkin(booking):
-                return "Booking is unpaid and not eligible for pay-on-arrival. Please collect payment first."
-
-        if not BookingStateMachine._registration_satisfied(booking):
-            return (
-                "Guest registration is incomplete and the registration deadline "
-                "has not passed yet. Ask the guest to complete registration online, "
-                "or register them here and check in."
-            )
+        # Use policy evaluator for comprehensive check-in validation
+        checkin_decision = BookingPolicyEvaluator.can_check_in(booking)
+        if not checkin_decision.allowed:
+            return checkin_decision.reason
 
         return "Booking is not ready for check-in."
 
@@ -888,9 +1005,16 @@ class BookingService:
                     return False, f"Could not adjust check-in to today: {err}", None
                 adjust_info = result
 
-            # Enforce state-machine readiness (payment, registration, date).
+            # Enforce state-machine readiness (registration, date).
+            # Payment is checked separately via policy evaluator.
             if not BookingStateMachine._can_check_in(booking):
                 return False, BookingService._check_in_block_reason(booking), adjust_info
+
+            # Check payment policy for check-in (independent evaluation)
+            from app.accommodation.state_machine import BookingPolicyEvaluator
+            checkin_decision = BookingPolicyEvaluator.can_check_in(booking)
+            if not checkin_decision.allowed:
+                return False, checkin_decision.reason, adjust_info
 
             # Assign exactly the number of requested physical rooms.  Lock all
             # candidates before selecting them so concurrent check-ins cannot
@@ -1084,36 +1208,41 @@ class BookingService:
     ) -> Tuple[bool, Optional[str]]:
         """
         Confirm a booking after successful payment.
-        Converts temporary hold to permanent booked status.
+        
+        NEW ARCHITECTURE:
+        1. Evaluate booking policy (host approval, payment requirements) via BookingPolicyEvaluator
+        2. Transition payment state via PaymentStateMachine (independent)
+        3. Transition booking state via BookingStateMachine (independent)
+        
+        Payment and booking are separate state machines. Policy evaluator bridges them.
         """
+        from app.accommodation.models.property import Property
+        from app.accommodation.state_machine import (
+            BookingPolicyEvaluator,
+            PaymentStateMachine,
+            PaymentState,
+        )
+        from app.accommodation.models.booking_payment import AccommodationBookingPayment
+        from decimal import Decimal
+        
         booking = db.session.execute(
-            select(AccommodationBooking).where(AccommodationBooking.id == booking_id).with_for_update()
+            select(AccommodationBooking)
+            .options(selectinload(AccommodationBooking.accommodation_property))
+            .where(AccommodationBooking.id == booking_id)
+            .with_for_update()
         ).scalar_one()
 
         if not booking:
             return False, "Booking not found"
 
-        if (
-            booking.status == AccommodationBookingStatus.CONFIRMED.value
-            and booking.payment_status == AccommodationPaymentStatus.PAID.value
-        ):
-            return False, "Booking already paid and confirmed"
+        if booking.status == AccommodationBookingStatus.CONFIRMED.value:
+            return False, "Booking already confirmed"
 
-        confirmable_statuses = {
-            AccommodationBookingStatus.DRAFT.value,
-            AccommodationBookingStatus.HELD.value,
-            AccommodationBookingStatus.PENDING.value,
-            AccommodationBookingStatus.PENDING_PAYMENT.value,
-            AccommodationBookingStatus.PAYMENT_PARTIAL.value,
-        }
-        if booking.status not in confirmable_statuses:
-            return False, f"Cannot confirm booking in {booking.status!r} state"
-
+        # Check if booking has expired
         expires_at = booking.expires_at
         if expires_at:
             if expires_at.tzinfo is None:
                 expires_at = expires_at.replace(tzinfo=timezone.utc)
-
             if expires_at < datetime.now(timezone.utc):
                 return False, "Booking has expired. Please create a new booking."
 
@@ -1143,15 +1272,20 @@ class BookingService:
             # Guard: cannot confirm booking if there are open ContentFlag records
             _assert_no_open_flags("accommodation_booking", booking.id)
 
-            # 2. CONVERT TEMPORARY HOLD → PERMANENT BOOKED
+            # 2. EVALUATE BOOKING POLICY - This is the policy bridge
+            # Payment is being made if wallet_transaction_id is provided
+            payment_being_made = wallet_transaction_id is not None
+            policy_decision = BookingPolicyEvaluator.can_confirm(booking, payment_being_made=payment_being_made)
+            if not policy_decision.allowed:
+                return False, policy_decision.reason
+
+            # 3. CONVERT TEMPORARY HOLD → PERMANENT BOOKED
             from app.accommodation.models.availability import BlockedDate
             BlockedDate.query.filter_by(booking_id=booking.id).update(
                 {"reason": enum_value(AccommodationBlockedReason.BOOKED)}
             )
 
             # Release temporary InventoryBlock for room type bookings.
-            # A confirmed booking is represented only by AccommodationBooking.rooms_requested,
-            # so the temporary hold must not remain in the inventory ledger.
             if booking.room_type_id:
                 InventoryBlock.query.filter(
                     InventoryBlock.room_type_id == booking.room_type_id,
@@ -1160,70 +1294,68 @@ class BookingService:
                     InventoryBlock.booking_id == booking.id,
                 ).delete(synchronize_session=False)
 
-            # 3. UPDATE PAYMENT STATUS
-            booking.payment_status = AccommodationPaymentStatus.PAID.value
+            # 4. TRANSITION PAYMENT STATE (independent state machine)
+            payment_amount = Decimal(str(booking.total_amount or 0))
+            payment_event = None
+            
+            # Get or create payment event
+            payment_event = AccommodationBookingPayment.query.filter_by(
+                booking_id=booking.id
+            ).order_by(AccommodationBookingPayment.created_at.desc()).first()
+            
+            if not payment_event:
+                payment_event = AccommodationBookingPayment(
+                    booking_id=booking.id,
+                    wallet_txn_id=wallet_transaction_id,
+                    payment_reference=AccommodationBookingPayment.generate_payment_reference(),
+                    payment_status=PaymentState.PENDING.value,
+                    payment_method=booking.payment_method or "wallet",
+                    idempotency_key=booking.idempotency_key,
+                )
+                db.session.add(payment_event)
+                db.session.flush()
+            
+            # Transition payment to PAID
+            PaymentStateMachine.mark_paid(
+                payment_event,
+                amount=payment_amount,
+                wallet_txn_id=wallet_transaction_id,
+                changed_by_user_id=booking.guest_user_id,
+            )
+            
+            # Sync booking payment fields (for backward compatibility and queries)
+            booking.payment_status = PaymentState.PAID.value
             booking.wallet_txn_id = wallet_transaction_id
             booking.paid_at = datetime.now(timezone.utc)
             booking.payment_guaranteed = True
+            booking.amount_paid = payment_amount
+            booking.amount_due = Decimal('0')
             if not booking.guarantee_type or booking.guarantee_type == 'none':
                 booking.guarantee_type = 'payment_confirmed'
 
-            # Update payment event ledger (thin wallet-linked index)
-            try:
-                BookingService.update_payment_event(
-                    booking_id=booking.id,
-                    payment_status="success",
-                    payment_method=booking.payment_method,
-                    payment_gateway="wallet" if booking.payment_method == "wallet" else booking.payment_method,
-                    gateway_transaction_id=wallet_transaction_id,
-                    wallet_txn_id=wallet_transaction_id,
-                    idempotency_key=booking.idempotency_key,
-                )
-            except Exception as ledger_error:
-                logger.warning(f"Failed to update payment event for booking {booking_id}: {ledger_error}")
-
-            # 4. STATE TRANSITION (→ PENDING_PAYMENT → CONFIRMED)
-            if booking.status in [
-                AccommodationBookingStatus.DRAFT.value,
-                AccommodationBookingStatus.HELD.value,
-                AccommodationBookingStatus.PENDING.value,
-            ]:
-                if booking.status == AccommodationBookingStatus.DRAFT.value:
-                    BookingStateMachine.transition(
-                        booking,
-                        AccommodationBookingStatus.HELD,
-                        changed_by_user_id=booking.guest_user_id,
-                        reason="Inventory held before payment confirmation",
-                        ip_address=ip_address,
-                        user_agent=user_agent,
-                        trigger="payment_confirmation",
-                    )
-                BookingStateMachine.transition(
-                    booking,
-                    AccommodationBookingStatus.PENDING_PAYMENT,
-                    changed_by_user_id=booking.guest_user_id,
-                    reason="Payment received; awaiting confirmation",
-                    ip_address=ip_address,
-                    user_agent=user_agent,
-                    trigger="payment_confirmation",
-                )
-
+            # 5. TRANSITION BOOKING STATE (independent state machine)
+            # Policy evaluator already validated that confirmation is allowed
             BookingStateMachine.transition(
                 booking,
                 AccommodationBookingStatus.CONFIRMED,
                 changed_by_user_id=booking.guest_user_id,
-                reason="Payment confirmed",
+                reason="Booking confirmed",
                 ip_address=ip_address,
                 user_agent=user_agent,
-                trigger="payment_confirmation",
-                metadata={"wallet_transaction_id": wallet_transaction_id},
+                trigger="booking_confirmed",
+                metadata={
+                    "wallet_transaction_id": wallet_transaction_id,
+                    "payment_amount": str(payment_amount),
+                    "payment_timing": booking.payment_timing,
+                },
             )
 
             db.session.commit()
             logger.info(
                 f"Booking confirmed: {booking.booking_reference} | "
                 f"Transaction: {wallet_transaction_id} | "
-                f"Amount: ${booking.total_amount}"
+                f"Amount: ${booking.total_amount} | "
+                f"Payment timing: {booking.payment_timing}"
             )
 
             # Emit notification signal (listener notifies guest + host)
@@ -1241,8 +1373,10 @@ class BookingService:
             return False, str(e)
         except Exception as e:
             db.session.rollback()
-            logger.error(f"Confirm booking failed for {booking_id}: {e}", exc_info=True)
-            return False, "Unable to confirm booking. Please contact support."
+            import traceback
+            logger.error(f"Confirm booking failed for {booking_id}: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False, f"Unable to confirm booking: {e}"
 
     # -------------------------
     # HOST APPROVAL
@@ -1305,6 +1439,13 @@ class BookingService:
                 f"Booking approved: {booking.booking_reference} | "
                 f"By: {approved_by_user_id} | Reason: {reason}"
             )
+
+            # Send notification
+            try:
+                from app.notifications.services import NotificationService
+                NotificationService.notify_booking_approved(booking)
+            except Exception as ne:
+                logger.warning(f"Failed to send booking approved notification: {ne}")
 
             # Emit notification signal (listener notifies guest + host)
             try:
@@ -1384,6 +1525,14 @@ class BookingService:
                 f"Booking rejected: {booking.booking_reference} | "
                 f"By: {rejected_by_user_id} | Reason: {reason}"
             )
+
+            # Send notification
+            try:
+                from app.notifications.services import NotificationService
+                NotificationService.notify_booking_rejected(booking, rejection_reason=reason)
+            except Exception as ne:
+                logger.warning(f"Failed to send booking rejected notification: {ne}")
+
             return True, None
 
         except InvalidStateTransition as e:
@@ -1436,10 +1585,19 @@ class BookingService:
         cancelled_by_user_id: int,
         reason: str = None,
         ip_address: str = None,
-        user_agent: str = None
+        user_agent: str = None,
+        idempotency_key: str = None
     ) -> Tuple[bool, Optional[str], Optional[Decimal]]:
         """
-        Cancel a booking and process refund if applicable.
+        Cancel a booking and process refund/debt based on payment method and policy.
+        
+        Payment method handling:
+        - pay_now: Process refund via wallet (idempotent)
+        - pay_on_arrival: Create CancellationPenalty debt if fine > 0
+        - deposit: Refund deposit if eligible per policy
+        
+        Idempotency: Uses booking.id + idempotency_key to prevent duplicate processing.
+        Concurrency: Row locking via select_for_update() on booking.
         """
         booking = db.session.execute(
             select(AccommodationBooking).where(AccommodationBooking.id == booking_id).with_for_update()
@@ -1453,14 +1611,19 @@ class BookingService:
         if cancelled_by_user_id not in (owner_id, booking.host_user_id):
             return False, "You are not authorised to cancel this booking.", None
 
-        quote = booking.get_cancellation_quote()
+        # Get cancellation quote with user type for permission enforcement
+        user_type = "host" if cancelled_by_user_id == booking.host_user_id else "guest"
+        quote = booking.get_cancellation_quote(cancelled_by_user_type=user_type)
         can_cancel, msg, refund = quote["allowed"], quote["message"], quote["refund"]
+        fine = quote.get("fine", Decimal("0.00"))
+        
         if not can_cancel:
             return False, msg, None
 
         try:
             old_status = booking.status
             from app.accommodation.models.availability import BlockedDate
+            from app.accommodation.models.cancellation_policy import CancellationPenalty, CancellationPhase
 
             # 1. RELEASE ALL BLOCKED DATES
             BlockedDate.query.filter_by(booking_id=booking.id).delete()
@@ -1519,11 +1682,21 @@ class BookingService:
                     reason=f"Host cancelled booking {booking.booking_reference}: {reason}",
                 )
 
-            # 3. PROCESS REFUND IF APPLICABLE
-            if refund and refund > 0:
+            # 3. PROCESS PAYMENT METHOD SPECIFIC OUTCOMES
+            payment_timing = booking.payment_timing or "pay_now"
+            
+            if payment_timing == "pay_now" and refund and refund > 0:
+                # Pay Now: Process refund via wallet (idempotent)
                 booking.refund_amount = refund
                 booking.payment_status = AccommodationPaymentStatus.REFUNDED.value
                 booking.refunded_at = datetime.now(timezone.utc)
+                
+                # Check if already refunded (idempotency)
+                if not booking.wallet_txn_id:
+                    # Will be processed by caller (route) after commit
+                    # The wallet transaction ID will be stored after refund succeeds
+                    pass
+                
                 BookingStateMachine.transition(
                     booking,
                     AccommodationBookingStatus.REFUNDED,
@@ -1533,13 +1706,50 @@ class BookingService:
                     user_agent=user_agent,
                     trigger="refund_processed"
                 )
-                logger.info(f"Refund of ${refund} processed for booking {booking.booking_reference}")
+                logger.info(f"Refund of ${refund} queued for booking {booking.booking_reference}")
+                
+            elif payment_timing == "deposit" and refund and refund > 0:
+                # Deposit Only: Refund deposit portion
+                booking.refund_amount = refund
+                booking.payment_status = AccommodationPaymentStatus.REFUNDED.value
+                booking.refunded_at = datetime.now(timezone.utc)
+                logger.info(f"Deposit refund of ${refund} queued for booking {booking.booking_reference}")
+                
+            elif payment_timing == "pay_on_arrival" and fine and fine > 0:
+                # Pay on Arrival: Create CancellationPenalty debt record (idempotent)
+                from time import time_ns
+                penalty_key = idempotency_key or f"cancel-{booking.id}-{time_ns()}"
+                
+                existing_penalty = CancellationPenalty.query.filter_by(
+                    idempotency_key=penalty_key
+                ).first()
+                
+                if not existing_penalty:
+                    penalty = CancellationPenalty(
+                        booking_id=booking.id,
+                        amount=fine,
+                        currency=booking.currency or "USD",
+                        status="PENDING",
+                        idempotency_key=penalty_key,
+                        penalty_metadata={
+                            "policy": quote["policy"],
+                            "phase": quote["phase"],
+                            "refundable_base": str(quote["refundable_base"]),
+                            "cancelled_by": cancelled_by_user_id,
+                            "cancelled_at": booking.cancelled_at.isoformat(),
+                        }
+                    )
+                    db.session.add(penalty)
+                    logger.info(f"Cancellation penalty of ${fine} created for booking {booking.booking_reference}")
+                else:
+                    logger.info(f"Cancellation penalty already exists for booking {booking.booking_reference} (idempotent)")
 
             db.session.commit()
             logger.info(
                 f"Booking cancelled: {booking.booking_reference} | "
                 f"Cancelled by: {cancelled_by_user_id} | "
-                f"Refund: ${refund if refund else 0} | Fine: ${quote['fine']} | Reason: {reason}"
+                f"Refund: ${refund if refund else 0} | Fine: ${fine} | "
+                f"Payment: {payment_timing} | Reason: {reason}"
             )
 
             return True, msg, refund

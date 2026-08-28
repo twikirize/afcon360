@@ -187,14 +187,69 @@
                         <!-- Payment Methods -->
                         <h5 class="mb-3">Accepted Payment Methods</h5>
                         <div class="mb-4">
+                            <p class="text-muted small">Select which payment methods to accept. For each enabled method, configure allowed payment timings.</p>
                             {% for m in payment_options.payment_methods %}
-                            <div class="form-check mb-2">
-                                <input type="checkbox" name="payment_methods" value="{{ m.method_id }}" id="method_{{ m.method_id }}" class="form-check-input"
-                                {% set pm = property.payment_methods|selectattr('wallet_method_id', 'equalto', m.id)|first %}
-                                {{ 'checked' if pm and pm.enabled else '' }}>
-                                <label class="form-check-label" for="method_{{ m.method_id }}">
-                                    <i class="fas fa-{{ m.icon }}"></i> {{ m.display_name }}
-                                </label>
+                            <div class="card mb-3">
+                                <div class="card-body py-2">
+                                    <div class="row align-items-center">
+                                        <div class="col-md-3">
+                                            <div class="form-check mb-2">
+                                                <input type="checkbox" name="payment_methods" value="{{ m.method_id }}" id="method_{{ m.method_id }}" class="form-check-input"
+                                                {{ 'checked' if m.enabled else '' }}>
+                                                <label class="form-check-label fw-semibold" for="method_{{ m.method_id }}">
+                                                    <i class="fas fa-{{ m.icon }} me-2"></i> {{ m.display_name }}
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-9">
+                                            <label class="form-label fw-semibold mb-2">Allowed Payment Timings</label>
+                                            <div class="row">
+                                                <div class="col-md-3">
+                                                    <div class="form-check mb-2">
+                                                        <input type="checkbox" name="method_timing_{{ m.method_id }}" value="pay_now" id="timing_{{ m.method_id }}_pay_now" class="form-check-input"
+                                                        {{ 'checked' if 'pay_now' in (m.property_allowed_timings or m.global_allowed_timings or []) else '' }}>
+                                                        <label class="form-check-label" for="timing_{{ m.method_id }}_pay_now">Pay Now</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="form-check mb-2">
+                                                        <input type="checkbox" name="method_timing_{{ m.method_id }}" value="pay_on_arrival" id="timing_{{ m.method_id }}_pay_on_arrival" class="form-check-input"
+                                                        {{ 'checked' if 'pay_on_arrival' in (m.property_allowed_timings or m.global_allowed_timings or []) else '' }}>
+                                                        <label class="form-check-label" for="timing_{{ m.method_id }}_pay_on_arrival">Pay on Arrival</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="form-check mb-2">
+                                                        <input type="checkbox" name="method_timing_{{ m.method_id }}" value="deposit" id="timing_{{ m.method_id }}_deposit" class="form-check-input"
+                                                        {{ 'checked' if 'deposit' in (m.property_allowed_timings or m.global_allowed_timings or []) else '' }}>
+                                                        <label class="form-check-label" for="timing_{{ m.method_id }}_deposit">Deposit</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="form-check mb-2">
+                                                        <input type="checkbox" name="method_timing_{{ m.method_id }}" value="invoice" id="timing_{{ m.method_id }}_invoice" class="form-check-input"
+                                                        {{ 'checked' if 'invoice' in (m.property_allowed_timings or m.global_allowed_timings or []) else '' }}>
+                                                        <label class="form-check-label" for="timing_{{ m.method_id }}_invoice">Invoice</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="row mt-2">
+                                                <div class="col-md-4">
+                                                    <label class="form-label">Preferred Currency</label>
+                                                    <select name="method_currency_{{ m.method_id }}" class="form-select">
+                                                        <option value="">Property Default ({{ property.currency }})</option>
+                                                        <option value="UGX" {{ 'selected' if (m.property_preferred_currency or '') == 'UGX' else '' }}>UGX</option>
+                                                        <option value="USD" {{ 'selected' if (m.property_preferred_currency or '') == 'USD' else '' }}>USD</option>
+                                                        <option value="KES" {{ 'selected' if (m.property_preferred_currency or '') == 'KES' else '' }}>KES</option>
+                                                        <option value="NGN" {{ 'selected' if (m.property_preferred_currency or '') == 'NGN' else '' }}>NGN</option>
+                                                        <option value="EUR" {{ 'selected' if (m.property_preferred_currency or '') == 'EUR' else '' }}>EUR</option>
+                                                        <option value="GBP" {{ 'selected' if (m.property_preferred_currency or '') == 'GBP' else '' }}>GBP</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             {% endfor %}
                         </div>

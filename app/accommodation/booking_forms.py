@@ -32,7 +32,15 @@ class GuestRosterEntryForm(FlaskForm):
     guest_email = StringField(validators=[Optional(), Email(), Length(max=255)])
     guest_phone_country_code = StringField(validators=[DataRequired(), Length(min=1, max=6)])
     guest_phone_national = StringField(validators=[DataRequired(), Length(min=3, max=30)])
-    id_document_type = SelectField(choices=[], validators=[Optional(), Length(max=30)])
+    id_document_type = SelectField(
+        choices=[
+            ("passport", "Passport"),
+            ("national_id", "National ID"),
+            ("driver_license", "Driver's License"),
+            ("other", "Other"),
+        ],
+        validators=[Optional(), Length(max=30)],
+    )
 
 
 class SpecialRequestsForm(FlaskForm):

@@ -2,7 +2,8 @@ from decimal import Decimal
 from typing import Optional, Tuple, Dict, Any
 from app.accommodation.services.payment_processors.base import PaymentProcessor
 from app.accommodation.services.marketplace_service import MarketplaceService
-from app.wallet.models.ledger import AccountModel
+from app.wallet.models.ledger import AccountModel, AccountOwnerType
+from app.wallet.services.wallet_service import WalletService
 
 
 class WalletProcessor(PaymentProcessor):
@@ -38,8 +39,9 @@ class WalletProcessor(PaymentProcessor):
         if not account:
             return False, None, "Wallet account not found. Please create a wallet first."
 
-        if account.balance < amount:
-            return False, None, f"Insufficient wallet balance. Available: {account.balance}, Required: {amount}"
+        balance = WalletService.get_balance(account.id)
+        if balance.get('balance', 0) < amount:
+            return False, None, f"Insufficient wallet balance. Available: {balance.get('balance', 0)}, Required: {amount}"
 
         success, txn_id, error = MarketplaceService.charge_guest(
             booking=booking,

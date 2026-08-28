@@ -268,7 +268,7 @@ class OrganizationRegistrationService:
         from app.wallet.models.ledger import AccountModel, AccountOwnerType
         
         account = AccountModel(
-            user_id=org.id,
+            owner_id=org.id,
             owner_type=AccountOwnerType.ORGANISATION,
             account_name=f"{org.legal_name} Wallet",
             currency='UGX',  # Default to Ugandan Shillings

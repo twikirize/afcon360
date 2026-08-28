@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload, joinedload
 # FIX 1: Was `PropertyStatus` - that name does not exist. Correct name is AccommodationPropertyStatus.
 # This bad import was the root cause of the duplicate-table crash on startup.
 from app.accommodation.models.property import Property, AccommodationPropertyStatus, PropertyAmenity
+from app.accommodation.models.room import RoomType
 from app import db
 import logging
 
@@ -93,6 +94,9 @@ def search_properties(params: dict = None) -> dict:
             Property.is_active == True,
             Property.is_publicly_visible == True
         )
+        
+        # Only show properties that have at least one active room type
+        q = q.filter(Property.room_types.any(RoomType.is_active == True))
 
         # FULL-TEXT SEARCH using PostgreSQL tsvector (no Elasticsearch needed)
         if params.get('query'):

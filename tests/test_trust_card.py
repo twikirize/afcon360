@@ -7,7 +7,9 @@ def test_trust_security_card():
     """Test that the Trust Security card is properly integrated"""
     
     # Read the owner settings template
-    with open('../templates/owner/settings.html', 'r', encoding='utf-8') as f:
+    from pathlib import Path
+    template_path = Path(__file__).resolve().parents[1] / 'templates' / 'owner' / 'settings.html'
+    with open(template_path, 'r', encoding='utf-8') as f:
         template_content = f.read()
     
     print('Testing Trust Security Card Integration:')

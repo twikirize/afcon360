@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AFCON360 Booking Declined</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f4f6f8; margin: 0; padding: 20px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; border-top: 5px solid #ef4444;">
+    <h2 style="color: #ef4444; margin-top: 0;">❌ Your Booking Request Was Declined</h2>
+    <p>Dear <strong>{{ user_name or 'Valued Guest' }}</strong>,</p>
+    <p>We're sorry to inform you that the host has declined your reservation request for <strong>{{ item_name or 'your booking' }}</strong>.</p>
+    {% if rejection_reason %}
+    <div style="background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px; padding: 16px; margin: 16px 0;">
+      <strong style="color: #b91c1c;">Host's reason:</strong>
+      <p style="margin: 8px 0 0 0; color: #7f1d1d;">{{ rejection_reason }}</p>
+    </div>
+    {% endif %}
+    <div style="background: #fef3c7; border: 1px solid #fcd34d; border-radius: 6px; padding: 16px; margin: 16px 0;">
+      <strong style="color: #b45309;">💰 Automatic Refund</strong>
+      <p style="margin: 8px 0 0 0; color: #78350f;">Your payment of <strong>{{ total_ugx or '0' }} UGX</strong> will be automatically refunded to your original payment method within 3-5 business days.</p>
+    </div>
+    <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Booking Reference:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ reference_id or 'N/A' }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Property:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ item_name or 'N/A' }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Requested Dates:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ check_in_date or 'TBD' }} to {{ check_out_date or 'TBD' }}</td>
+      </tr>
+    </table>
+    {% if link %}<p style="text-align: center;"><a href="{{ link }}" style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">Find Alternative Accommodation</a></p>{% endif %}
+    <p style="color: #555; font-size: 14px;">We apologize for the inconvenience. Please explore other available properties for your dates.</p>
+  </div>
+</body>
+</html>

@@ -2350,20 +2350,48 @@ class EventService:
     def create_participation(cls, user_id: int, identifier: str, role: str = 'attendee',
                              control_mode: str = 'self_managed') -> Tuple[Optional[Dict], Optional[str]]:
         try:
-            from app.events.models import Event, EventRegistration
+            from app.events.models import Event, EventRegistration, TicketType
+            from sqlalchemy import func
             event = Event.query.filter_by(slug=identifier).first()
             if not event:
                 return None, "Event not found"
             existing = EventRegistration.query.filter_by(event_id=event.id, user_id=user_id).first()
             if existing:
                 return cls._registration_to_dict(existing), "Participation already exists"
+            
+            # Get or create a default ticket type for the event
+            ticket_type = TicketType.query.filter_by(event_id=event.id, is_active=True).first()
+            if not ticket_type:
+                ticket_type = TicketType(
+                    event_id=event.id,
+                    name="General",
+                    price=0,
+                    capacity=0,
+                    is_active=True,
+                )
+                db.session.add(ticket_type)
+                db.session.flush()
+            
+            # Generate sequence number for refs
+            count = db.session.query(func.count(EventRegistration.id)).filter_by(event_id=event.id).scalar()
+            sequence = (count if count else 0) + 1
+            
             registration = EventRegistration(
-                event_id=event.id, user_id=user_id,
-                full_name=getattr(user_id, 'full_name', 'Guest'),
-                email=getattr(user_id, 'email', ''),
-                status='confirmed'
+                event_id=event.id,
+                user_id=user_id,
+                ticket_type_id=ticket_type.id,
+                full_name=getattr(user_id, 'full_name', 'Guest') if hasattr(user_id, 'full_name') else 'Guest',
+                email=getattr(user_id, 'email', '') if hasattr(user_id, 'email') else '',
+                status='confirmed',
+                ticket_type=ticket_type.name,
+                registration_fee=float(ticket_type.price),
+                payment_status='free' if ticket_type.price == 0 else 'pending',
+                registered_by='self',
+                booking_type='self',
             )
+            registration.generate_refs(event.slug, sequence)
             db.session.add(registration)
+            db.session.flush()
             db.session.commit()
             logger.info(f"Participation created: user {user_id} for event {identifier} as {role}")
             return cls._registration_to_dict(registration), None

@@ -72,7 +72,7 @@ def _forensic_audit(action, event, registration, actor, *, status, details):
         ) from exc
 
 
-@dataclass(frozen=True)
+@dataclass
 class CoordinationError(Exception):
     code: str
     message: str
@@ -328,6 +328,7 @@ class GuestCoordinationService:
                 registration_id=registration.id,
             )
             db.session.add(assignment)
+            db.session.flush()  # Ensure assignment.id is available for bridge/contract
 
         return assignment
 
@@ -574,17 +575,9 @@ class GuestCoordinationService:
         registration = GuestCoordinationService._registration(event, registration_ref)
         try:
             booking = GuestCoordinationService._resolve_accommodation_booking(event, booking_ref, actor)
+            # Capacity check is owned by AccommodationCoordinationContract.
+            # It locks the booking row, creates the slot, and verifies capacity atomically.
             from app.accommodation.models.guest_registration import GuestRegistration
-            registered_count = GuestRegistration.query.filter_by(
-                booking_id=booking.id,
-                is_active=True,
-            ).count()
-            max_guests = int(booking.num_guests or 1)
-            if registered_count >= max_guests:
-                raise CoordinationError(
-                    "ACCOMMODATION_BOOKING_FULL",
-                    f"Booking is full ({registered_count}/{max_guests} guests already assigned)"
-                )
             assignment = GuestCoordinationService._assignment(event, registration)
             previous = assignment.accommodation_booking_id
             if previous == booking.id:
@@ -607,14 +600,27 @@ class GuestCoordinationService:
                 ).first()
                 if old_slot:
                     old_slot.remove(actor.id, "reassigned")
+            # Ensure the guest slot exists before committing the assignment.
+            # The bridge will set the token hash/expiry but will not commit.
+            from app.events.accommodation_bridge import issue_accommodation_for_assignment
+            from app.accommodation.services.coordination_contract import CoordinationContractError
+            try:
+                issue_accommodation_for_assignment(event, registration, booking, assignment)
+            except CoordinationContractError as exc:
+                db.session.rollback()
+                if exc.code == "BOOKING_CAPACITY_EXCEEDED":
+                    raise CoordinationError(
+                        "ACCOMMODATION_BOOKING_FULL",
+                        "Accommodation booking capacity exceeded"
+                    ) from exc
+                raise CoordinationError("BRIDGE_FAILED", "Accommodation bridge failed") from exc
+            except Exception as exc:
+                db.session.rollback()
+                raise CoordinationError("BRIDGE_FAILED", "Accommodation bridge failed") from exc
+
             assignment = GuestCoordinationService._commit_assignment(
                 event, actor, registration, assignment, "accommodation", booking.booking_reference, previous_ref
             )
-            try:
-                from app.events.accommodation_bridge import issue_accommodation_for_assignment
-                issue_accommodation_for_assignment(event, registration, booking, assignment)
-            except Exception:
-                current_app.logger.exception("Accommodation bridge post-assignment failed")
             return assignment
         except CoordinationError:
             db.session.rollback()
@@ -687,6 +693,8 @@ class GuestCoordinationService:
             ).first()
             if slot:
                 slot.remove(actor.id, "assignment cancelled")
+                # Ensure slot change is flushed before continuing
+                db.session.flush()
             # Clear the token on the assignment
             assignment.acc_link_token_hash = None
             assignment.acc_link_expires_at = None
@@ -730,6 +738,11 @@ class GuestCoordinationService:
                             "guest_name": registration.full_name,
                         },
                     )
+                # NotificationService.send() does a flush that expires the slot and reloads from DB
+                # (which still has is_active=True since we haven't committed yet).
+                # Re-apply our change by calling remove() again to set all fields properly.
+                if slot:
+                    slot.remove(actor.id, "assignment cancelled")
             except Exception:
                 current_app.logger.exception("Failed to send accommodation cancellation notification to %r", email)
         else:

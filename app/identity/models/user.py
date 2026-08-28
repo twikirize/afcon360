@@ -224,53 +224,21 @@ class User(UserMixin, ProtectedModel):
     # Password helpers
     # ---------------------------
     def set_password(self, password: str, changed_by_user_id: int = None):
-        # Audit password change
-        from app.audit.comprehensive_audit import AuditService, DataChangeLog
-        from flask import request
-
-        old_hash = self.password_hash
-
+        """
+        Hash the password and schedule an audit entry.
+        The actual audit is performed after the User row is persisted,
+        guaranteeing a non‑NULL ``entity_id``.
+        """
+        # Hash the password and update timestamps
         self.password_hash = generate_password_hash(password)
         self.password_changed_at = datetime.now(timezone.utc)
         self.password_expires_at = datetime.now(timezone.utc) + timedelta(days=90)
 
-        # Log the password change
-        try:
-            # Use public_id which is always available, even for new users
-            # self.id may be None for new users before they're saved to the database
-            entity_id = self.public_id
-            # changed_by needs to be an integer, but if self.id is None, we need to handle it
-            # Since changed_by_user_id is provided, use it, or fallback to self.id if available
-            changed_by = changed_by_user_id or self.id
-            # If both are None, we can't log a user id, but we should still log the change
-            # In that case, use a placeholder
-            if changed_by is None:
-                changed_by = 0  # System or unknown user
-
-            AuditService.data_change(
-                entity_type="user",
-                entity_id=entity_id,
-                operation="password_change",
-                old_value={"password_changed_at": str(self.password_changed_at)},
-                new_value={"password_changed_at": str(datetime.now(timezone.utc))},
-                changed_by=changed_by,
-                ip_address=request.remote_addr if request else None,
-                user_agent=request.user_agent.string if request and request.user_agent else None,
-                extra_data={
-                    "password_changed": True,
-                    "changed_by_self": changed_by_user_id is None or changed_by_user_id == self.id
-                }
-            )
-        except Exception as e:
-            # Don't fail password change if audit fails
-            import logging
-            logging.error(f"Failed to audit password change: {e}")
-        # Invalidate user cache after password change
-        try:
-            from app.extensions import cache
-            cache.delete(f"user:{self.public_id}")
-        except Exception:
-            pass
+        # Store pending audit information on the instance.
+        # It will be consumed by the ``after_insert`` listener defined later.
+        self._pending_password_audit = {
+            "changed_by_user_id": changed_by_user_id,
+        }
 
     # ---------------------------
     # Transaction PIN helpers
@@ -882,6 +850,45 @@ def user_before_insert(mapper, connection, target):
     if not target.public_id:
         target.public_id = str(uuid_lib.uuid4())
     check_user_duplicates(connection, target, is_update=False)
+
+
+@event.listens_for(User, "after_insert")
+def user_after_insert_audit_password_change(mapper, connection, target):
+    """
+    After a new User row is inserted, emit the password‑change audit
+    (if ``set_password`` was called before the INSERT).
+    """
+    pending = getattr(target, "_pending_password_audit", None)
+    if not pending:
+        return
+
+    # Perform the audit now that ``target.id`` (the internal PK) is available.
+    from app.audit.comprehensive_audit import AuditService, DataChangeLog
+    from flask import request
+
+    try:
+        AuditService.data_change(
+            entity_type="user",
+            entity_id=target.id,
+            operation="password_change",
+            old_value={"password_changed_at": str(target.password_changed_at)},
+            new_value={"password_changed_at": str(datetime.now(timezone.utc))},
+            changed_by=pending.get("changed_by_user_id") or target.id,
+            ip_address=request.remote_addr if request else None,
+            user_agent=request.user_agent.string if request and request.user_agent else None,
+            extra_data={
+                "password_changed": True,
+                "changed_by_self": pending.get("changed_by_user_id") is None
+                or pending.get("changed_by_user_id") == target.id,
+            },
+        )
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to audit password change (after insert): {e}")
+    finally:
+        # Clean up the temporary attribute so it does not leak to later sessions.
+        if hasattr(target, "_pending_password_audit"):
+            delattr(target, "_pending_password_audit")
 
 
 @event.listens_for(User, "before_update")

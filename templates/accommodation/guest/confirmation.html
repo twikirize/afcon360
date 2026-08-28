@@ -93,11 +93,11 @@
                         <input type="hidden" name="return_to_confirmation" value="1">
                         <div class="col-md-6">
                             <label class="form-label small" for="confirmationCheckIn">New check-in</label>
-                            <input id="confirmationCheckIn" type="date" name="requested_check_in" class="form-control" value="{{ booking.check_in.isoformat() }}" min="{{ now.date().isoformat() }}" required>
+                            <input id="confirmationCheckIn" type="date" name="requested_check_in" class="form-control" value="{{ booking.check_in.isoformat() }}" min="" required>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label small" for="confirmationCheckOut">New check-out</label>
-                            <input id="confirmationCheckOut" type="date" name="requested_check_out" class="form-control" value="{{ booking.check_out.isoformat() }}" min="{{ now.date().isoformat() }}" required>
+                            <input id="confirmationCheckOut" type="date" name="requested_check_out" class="form-control" value="{{ booking.check_out.isoformat() }}" min="" required>
                         </div>
                         <div class="col-12">
                             <label class="form-label small" for="confirmationChangeReason">Reason (optional)</label>

@@ -103,30 +103,28 @@ class WalletStatusService:
         # Get the owner ID
         if owner_type == AccountOwnerType.USER:
             owner_id = user.id
-            user_kyc_level = getattr(user, 'kyc_level', 0)
+            # Use dynamic KYC tier calculation (canonical authority) instead of static kyc_level column
+            from app.auth.kyc_compliance import calculate_kyc_tier
+            kyc_info = calculate_kyc_tier(user.id)
+            user_kyc_level = kyc_info["tier"]
             has_pin = bool(getattr(user, 'transaction_pin_hash', None))
             # For organisations, check verification_status instead of kyc_level
             org_verification_status = None
         else:
             # For organisations, user is the organisation id
             owner_id = user if isinstance(user, int) else int(user)
-            # Load organisation to get verification status
+            # Load organisation to get KYB status
+            from app.extensions import db
             from app.identity.models.organisation import Organisation
+            from app.identity.services.organisation_kyb_service import OrganisationKYBService
             org = db.session.get(Organisation, owner_id)
             if org:
-                org_verification_status = org.verification_status
-                # Map verification status to KYC level equivalent
-                if org_verification_status == 'verified':
-                    user_kyc_level = 2  # Treat verified org as Tier 2
-                elif org_verification_status == 'pending':
-                    user_kyc_level = 1  # Treat pending org as Tier 1
-                else:
-                    user_kyc_level = 0
+                kyb_status = OrganisationKYBService.compute_status(org)
+                user_kyc_level = kyb_status["kyb_level"]
                 has_pin = True  # Organisations don't use PIN
             else:
                 user_kyc_level = 0
                 has_pin = False
-                org_verification_status = 'unverified'
 
         # Check if owner has wallet
         account = AccountModel.query.filter_by(

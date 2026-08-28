@@ -133,7 +133,10 @@ class AccommodationIdentityService:
         # FIX 2: Was `and` - that requires BOTH conditions to be true to block a user,
         # meaning a user who is NOT fully verified but has kyc_level >= 1 would pass through.
         # Using `or` correctly blocks anyone who fails either check.
-        if not user.is_fully_verified() or user.kyc_level < 1:
+        # Use dynamic KYC tier calculation (canonical authority) instead of static kyc_level column.
+        from app.auth.kyc_compliance import calculate_kyc_tier
+        kyc_info = calculate_kyc_tier(user.id)
+        if not user.is_fully_verified() or kyc_info["tier"] < 1:
             return False, "Account not verified. Please complete basic KYC to book."
 
         # Check if user has wallet

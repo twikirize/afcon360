@@ -175,9 +175,13 @@ class SuspiciousActivityService:
 
     @classmethod
     def _get_user_kyc_level(cls, user_id: int) -> int:
-        """Get user's KYC level."""
-        user = db.session.get(User, user_id)
-        return getattr(user, 'kyc_level', 0) or 0
+        """Get user's KYC level using dynamic calculation (canonical authority)."""
+        from app.auth.kyc_compliance import calculate_kyc_tier
+        try:
+            kyc_info = calculate_kyc_tier(user_id)
+            return kyc_info["tier"]
+        except Exception:
+            return 0
 
     @classmethod
     def _get_kyc_per_txn_limit(cls, kyc_level: int) -> Decimal:

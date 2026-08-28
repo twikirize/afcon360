@@ -6,6 +6,7 @@ Scheduled reminder tasks for the accommodation module:
 - Registration deadline enforcement (block check-in if incomplete)
 - Approval deadline warnings
 - Pre-check-in reminders
+- Property completeness notifications (NEW)
 """
 
 from celery import shared_task
@@ -14,8 +15,10 @@ from app.extensions import db
 from app.accommodation.models.booking import AccommodationBooking, AccommodationBookingStatus
 from app.accommodation.models.guest_registration import GuestRegistration
 from app.accommodation.models.availability import RoomHold
+from app.accommodation.models.property import Property
 from app.models.system_config import SystemConfig
 from app.accommodation.state_machine.booking_states import BookingStateMachine
+from app.accommodation.services.readiness_service import AccommodationReadinessService
 
 
 @shared_task(name="accommodation.send_registration_reminders")
@@ -284,3 +287,68 @@ def _send_notification(booking, notification_type: str, title: str, message: str
         )
     except Exception as e:
         print(f"Notification failed for booking {booking.booking_reference}: {e}")
+
+
+@shared_task(name="accommodation.notify_incomplete_properties")
+def notify_incomplete_properties():
+    """
+    Notify hosts about incomplete properties that cannot be published/booked.
+    
+    Runs daily to check for properties in draft/pending_review status
+    that are missing required fields (room types, photos, etc.).
+    Sends a notification to the host with a list of what's missing.
+    """
+    # Only notify about properties that are not yet published/active
+    incomplete_properties = Property.query.filter(
+        Property.status.in_(["draft", "submitted", "pending_review", "needs_information"]),
+        Property.is_deleted == False,
+    ).all()
+
+    notified_count = 0
+    for prop in incomplete_properties:
+        # Check if we've already notified recently (avoid spam)
+        # You could add a last_notified_at column to Property for this
+        
+        readiness = AccommodationReadinessService.get_completeness_score(prop)
+        
+        # Only notify if score is below 80% (significant missing items)
+        if readiness["score"] < 80 and readiness["missing"]:
+            _send_property_notification(
+                prop,
+                "property_incomplete",
+                f"Your listing '{prop.title}' needs attention",
+                f"Your property is {readiness['score']}% complete. "
+                f"Missing: {', '.join(readiness['missing'][:3])}"
+                f"{'...' if len(readiness['missing']) > 3 else ''}. "
+                f"Complete these to publish and start earning.",
+            )
+            notified_count += 1
+
+    return f"Notified {notified_count} hosts about incomplete properties"
+
+
+def _send_property_notification(property_obj: Property, notification_type: str, title: str, message: str):
+    """Send notification to property owner/host."""
+    try:
+        from app.notifications.services import NotificationService
+        # Notify owner_user_id or owner_org_id
+        recipient_id = property_obj.owner_user_id
+        if not recipient_id and property_obj.owner_org_id:
+            # For org-owned, find org admins (simplified - just use first member)
+            from app.identity.models.organisation import Organisation
+            org = Organisation.query.filter_by(id=property_obj.owner_org_id).first()
+            if org:
+                # For now, just use a placeholder - you'd want to notify all org admins
+                recipient_id = org.owner_user_id if hasattr(org, 'owner_user_id') else None
+        
+        if recipient_id:
+            NotificationService.send(
+                user_id=recipient_id,
+                notification_type=notification_type,
+                title=title,
+                message=message,
+                channels=["in_app", "email"],
+                data={"property_id": property_obj.id, "property_title": property_obj.title},
+            )
+    except Exception as e:
+        print(f"Property notification failed for property {property_obj.id}: {e}")

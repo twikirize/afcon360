@@ -195,7 +195,8 @@ def api_verification_state():
 @login_required
 def upgrade():
     effective = RequestContext.get_effective_user()
-    current_tier = getattr(effective, "kyc_level", TIER_0_UNREGISTERED)
+    from app.auth.kyc_compliance import calculate_kyc_tier
+    current_tier = calculate_kyc_tier(effective.id)["tier"] if effective else TIER_0_UNREGISTERED
     available_upgrades = {
         k: v for k, v in TIER_INFO.items() if k > current_tier
     }
@@ -212,7 +213,8 @@ def upgrade():
 @kyc_bp.route("/limits", methods=["GET"])
 @login_required
 def limits():
-    current_tier = getattr(current_user, "kyc_level", TIER_0_UNREGISTERED)
+    from app.auth.kyc_compliance import calculate_kyc_tier
+    current_tier = calculate_kyc_tier(current_user.id)["tier"]
     return render_template(
         "kyc/limits.html",
         current_tier=current_tier,

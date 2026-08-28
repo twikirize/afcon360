@@ -55,6 +55,10 @@ class BaseModel(TimestampMixin, db.Model):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
 
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
     # Soft Delete Fields
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
     deleted_at = Column(DateTime, nullable=True)

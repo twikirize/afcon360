@@ -171,6 +171,7 @@ class Property(BaseModel):
     check_out_time = Column(String(20), default="11:00")
     instant_book = Column(Boolean, default=False)
     require_host_approval = Column(Boolean, default=False)
+    booking_mode = Column(String(20), default="instant", nullable=False)  # instant, host_approval
 
     # -------------------------------
     # Policy Violation Tracking
@@ -299,6 +300,12 @@ class Property(BaseModel):
         "PropertyBookingPolicy",
         back_populates="property",
         uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    cancellation_policies = relationship(
+        "CancellationPolicy",
+        back_populates="property",
         cascade="all, delete-orphan",
     )
 

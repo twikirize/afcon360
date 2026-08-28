@@ -30,8 +30,14 @@ class SessionManager:
         if hasattr(user, 'is_app_owner') and user.is_app_owner():
             return self.max_timeout_minutes
         
-        # Shorter timeout for high-risk operations
-        if hasattr(user, 'kyc_level') and user.kyc_level < 2:
+        # Shorter timeout for high-risk operations (use dynamic KYC tier)
+        from app.auth.kyc_compliance import calculate_kyc_tier
+        try:
+            kyc_info = calculate_kyc_tier(user.id)
+            if kyc_info["tier"] < 2:
+                return 15
+        except Exception:
+            # If we can't calculate KYC tier, use conservative short timeout
             return 15
         
         # Default timeout

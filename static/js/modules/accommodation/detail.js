@@ -128,11 +128,11 @@ function closeAllPhotos() {
         const checkButton = availabilityForm?.querySelector('button[type="submit"]');
         const propertyId = availabilityForm?.dataset.propertyId;
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayStr = today.toISOString().split('T')[0];
+        const todayStr = today.toLocaleDateString('en-CA');
 
         function formatDate(value) {
-            return value.toISOString().split('T')[0];
+            const d = new Date(`${value}T00:00:00`);
+            return d.toLocaleDateString('en-CA');
         }
 
         function addDays(value, days) {
@@ -261,10 +261,29 @@ function closeAllPhotos() {
             }
 
             liveContent.innerHTML = html;
+
             if (checkButton) {
-                checkButton.disabled = !data.tier0_exact_match?.length;
+                const isAvailable = !!data.tier0_exact_match?.length;
+                checkButton.disabled = !isAvailable;
                 checkButton.title = checkButton.disabled ? 'Select different dates to check availability' : '';
+                checkButton.textContent = isAvailable ? 'Continue to Checkout' : 'Check Availability';
             }
+        }
+
+        function redirectToCheckout() {
+            const checkIn = checkInInput?.value || '';
+            const checkOut = checkOutInput?.value || '';
+            const guests = document.querySelector('input[name="guests"]')?.value || '2';
+            const roomTypeId = roomTypeIdInput?.value || '';
+            if (!propertyId || !checkIn || !checkOut) return;
+            const params = new URLSearchParams({
+                property_id: propertyId,
+                check_in: checkIn,
+                check_out: checkOut,
+                num_guests: guests,
+            });
+            if (roomTypeId) params.append('room_type_id', roomTypeId);
+            window.location.href = `/accommodation/guest/checkout?${params.toString()}`;
         }
 
         function checkLiveAvailability() {
@@ -337,6 +356,9 @@ function closeAllPhotos() {
             if (checkInInput.value && checkOutInput?.value && checkOutInput.value > checkInInput.value) checkLiveAvailability();
         });
         checkInInput?.addEventListener('blur', validateCheckIn);
+        checkInInput?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') e.preventDefault();
+        });
         checkOutInput?.addEventListener('change', () => {
             validateCheckOut();
             if (checkInInput?.value && checkOutInput.value) checkLiveAvailability();
@@ -346,16 +368,29 @@ function closeAllPhotos() {
             if (checkInInput?.value && checkOutInput.value > checkInInput.value) checkLiveAvailability();
         });
         checkOutInput?.addEventListener('blur', validateCheckOut);
+        checkOutInput?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') e.preventDefault();
+        });
         document.querySelector('input[name="guests"]')?.addEventListener('change', checkLiveAvailability);
 
         availabilityForm?.addEventListener('submit', event => {
-            if (!validateCheckIn() || !validateCheckOut()) event.preventDefault();
+            event.preventDefault();
+            if (!validateCheckIn() || !validateCheckOut()) return;
+            redirectToCheckout();
         });
 
-        if (checkInInput?.value) {
-            validateCheckIn();
-        } else if (checkOutInput) {
-            checkOutInput.disabled = true;
+        checkButton?.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (!checkButton.disabled) redirectToCheckout();
+        });
+
+        if (checkInInput) {
+            checkInInput.min = todayStr;
+            if (checkInInput?.value) {
+                validateCheckIn();
+            } else if (checkOutInput) {
+                checkOutInput.disabled = true;
+            }
         }
         if (checkInInput?.value && checkOutInput?.value) setTimeout(checkLiveAvailability, 500);
     });

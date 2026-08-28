@@ -53,7 +53,7 @@ def pytest_collection_modifyitems(session, config, items):
         if rel_path.parts[0] == 'tests':
             kept.append(item)
     items[:] = kept
-    print(f"✅ Kept {len(kept)} test items from 'tests/' directory.")
+    print(f"[OK] Kept {len(kept)} test items from 'tests/' directory.")
 
 
 # ---------- 3. Load environment variables from .env.testing ----------
@@ -69,7 +69,7 @@ if env_file.exists():
             if '=' in line:
                 key, value = line.split('=', 1)
                 os.environ[key.strip()] = value.strip().strip('"\'')
-    print("✅ Loaded .env.testing")
+    print("[OK] Loaded .env.testing")
 else:
     env_file = project_root / ".env.test"
     if env_file.exists():
@@ -78,7 +78,7 @@ else:
                 if '=' in line:
                     key, value = line.strip().split('=', 1)
                     os.environ[key] = value.strip().strip('"\'')
-        print("✅ Loaded .env.test")
+        print("[OK] Loaded .env.test")
 
 # ---------- 4. Validate the test database URL and mask password ----------
 TEST_DATABASE_URL = os.getenv('TEST_DATABASE_URL') or os.getenv('DATABASE_URL')
@@ -95,7 +95,7 @@ masked_url = (
     + (f":{parsed.port}" if parsed.port else "")
     + parsed.path
 )
-print(f"🔗 Using test database: {masked_url}")
+print(f"Using test database: {masked_url}")
 
 
 # ---------- 5. Session‑scoped fixture: create DB and build schema ----------
@@ -129,11 +129,11 @@ def setup_database():
         engine_test = create_engine(db_url)
         with engine_test.connect() as conn:
             conn.execute(text("SELECT 1"))
-        print(f"✅ Test database '{db_name}' already exists.")
+        print(f"[OK] Test database '{db_name}' already exists.")
     except Exception:
         with engine_default.connect() as conn:
             conn.execute(text(f"CREATE DATABASE {db_name}"))
-        print(f"✅ Test database '{db_name}' created.")
+        print(f"[OK] Test database '{db_name}' created.")
 
     app = create_app(config_object=TestingConfig)
     app.config['SQLALCHEMY_DATABASE_URI'] = db_url
@@ -144,9 +144,9 @@ def setup_database():
         if "users" not in inspector.get_table_names():
             # Empty/incomplete DB: build the full schema from current models.
             db.create_all()
-            print("✅ Schema built from current SQLAlchemy models (db.create_all).")
+            print("[OK] Schema built from current SQLAlchemy models (db.create_all).")
         else:
-            print("✅ Test database schema already present; skipping rebuild.")
+            print("[OK] Test database schema already present; skipping rebuild.")
 
         # Stamp Alembic head so the postgres_contract check
         # (tests/postgres_contract.py) and any `flask db upgrade` treat the DB
@@ -154,7 +154,7 @@ def setup_database():
         # by a retired/renamed revision (e.g. the old ab6dd422c152 baseline),
         # which would otherwise make stamp fail with "Can't locate revision".
         alembic_stamp(revision="head", purge=True)
-        print("✅ Alembic head stamped.")
+        print("[OK] Alembic head stamped.")
 
     yield
 
@@ -171,7 +171,7 @@ def app(setup_database):
     with app.app_context():
         # Verify the schema is complete
         table_count = assert_migrated_postgres_database(db.engine)
-        print(f"✅ PostgreSQL test database verified (tables count: {table_count})")
+        print(f"[OK] PostgreSQL test database verified (tables count: {table_count})")
 
         # Optional seeding (if SEED_TEST_DB=1)
         if os.getenv('SEED_TEST_DB', '') == '1':
@@ -197,7 +197,7 @@ def app(setup_database):
                 db.session.add(UserRole(user_id=admin.id, role_id=owner_role.id))
 
             db.session.commit()
-            print(f"✅ Seeded test admin {admin_email} with owner role")
+            print(f"[OK] Seeded test admin {admin_email} with owner role")
 
     return app
 

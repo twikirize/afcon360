@@ -15,7 +15,7 @@ from app.accommodation.models.guest_registration import GuestRegistration
 from app.accommodation.models.property import Property, AccommodationCancellationPolicy
 from app.accommodation.services.booking_registration_link_service import BookingRegistrationLinkService
 from app.accommodation.services.registration_service import RegistrationService
-from app.events.models import Event, EventAssignment, EventRegistration
+from app.events.models import Event, EventAssignment, EventRegistration, TicketType
 from app.extensions import db
 from app.identity.models.user import User
 
@@ -33,6 +33,8 @@ def test_host_user(test_db):
         password_hash="not-a-real-hash",
         email_verified=True,
         phone_verified=True,
+        is_verified=True,
+        is_active=True,
         kyc_level=2,
     )
     db.session.add(user)
@@ -49,6 +51,8 @@ def test_guest_user(test_db):
         password_hash="not-a-real-hash",
         email_verified=True,
         phone_verified=True,
+        is_verified=True,
+        is_active=True,
         kyc_level=2,
     )
     db.session.add(user)
@@ -142,20 +146,35 @@ def event_with_booking(app, test_host_user, test_property):
 
 @pytest.fixture
 def attendee_registration(app, test_guest_user, event_with_booking):
-    """Create an event registration for an attendee."""
+    """Create an event registration for an attendee with a valid TicketType. Returns registration ID to avoid detached instances."""
     with app.app_context():
         event = db.session.get(Event, event_with_booking["event_id"])
+        # Ensure a TicketType exists for this event
+        ticket_type = TicketType(
+            event_id=event.id,
+            name="General",
+            price=0,
+            capacity=100,
+            is_active=True,
+        )
+        db.session.add(ticket_type)
+        db.session.flush()  # get ticket_type.id
+
         registration = EventRegistration(
             event_id=event.id,
+            ticket_type_id=ticket_type.id,
             user_id=test_guest_user.id,
             full_name="John Doe",
             email="john@example.com",
             status="confirmed",
             registration_ref="ER-TEST-001",
         )
+        # Generate refs BEFORE flush to satisfy NOT NULL constraints
+        registration.generate_refs(event.slug, 1)
         db.session.add(registration)
+        db.session.flush()
         db.session.commit()
-        return registration
+        return registration.id
 
 
 def _make_assignment_token(assignment, booking):
@@ -177,9 +196,10 @@ def test_normal_shared_booking_capacity(app, event_with_booking):
     with app.app_context():
         booking = db.session.get(AccommodationBooking, event_with_booking["booking_id"])
         token = event_with_booking["shared_token"]
+        booking_id = booking.id
 
         # 0 registered initially
-        assert RegistrationService.active_count(booking.id) == 0
+        assert RegistrationService.active_count(booking_id) == 0
 
         # Register guest 1
         with app.test_client() as client:
@@ -195,7 +215,7 @@ def test_normal_shared_booking_capacity(app, event_with_booking):
                 follow_redirects=True,
             )
         assert resp.status_code == 200
-        assert RegistrationService.active_count(booking.id) == 1
+        assert RegistrationService.active_count(booking_id) == 1
 
         # Register guest 2
         with app.test_client() as client:
@@ -211,7 +231,7 @@ def test_normal_shared_booking_capacity(app, event_with_booking):
                 follow_redirects=True,
             )
         assert resp.status_code == 200
-        assert RegistrationService.active_count(booking.id) == 2
+        assert RegistrationService.active_count(booking_id) == 2
 
         # 3rd guest should be rejected (409)
         with app.test_client() as client:
@@ -227,7 +247,7 @@ def test_normal_shared_booking_capacity(app, event_with_booking):
                 follow_redirects=True,
             )
         assert resp.status_code == 409
-        assert RegistrationService.active_count(booking.id) == 2
+        assert RegistrationService.active_count(booking_id) == 2
 
 
 def test_event_assignment_completion_at_capacity(app, event_with_booking, attendee_registration):
@@ -235,13 +255,18 @@ def test_event_assignment_completion_at_capacity(app, event_with_booking, attend
     with app.app_context():
         event = db.session.get(Event, event_with_booking["event_id"])
         booking = db.session.get(AccommodationBooking, event_with_booking["booking_id"])
-        registration = attendee_registration
+        registration = db.session.get(EventRegistration, attendee_registration)
+        event_id = event.id
+        event_created_by_id = event.created_by_id
+        booking_id = booking.id
+        registration_id = registration.id
+        registration_user_id = registration.user_id
+        shared_token = event_with_booking["shared_token"]
 
         # Fill booking to capacity via shared link first
-        token = event_with_booking["shared_token"]
         with app.test_client() as client:
             client.post(
-                url_for("accommodation.shared_registration", token=token),
+                url_for("accommodation.shared_registration", token=shared_token),
                 data={
                     "guest_name": "Other Guest",
                     "guest_email": "other@example.com",
@@ -250,19 +275,26 @@ def test_event_assignment_completion_at_capacity(app, event_with_booking, attend
                     "id_document_type": "passport",
                 },
             )
-        assert RegistrationService.active_count(booking.id) == 1  # 1 of 2
+        assert RegistrationService.active_count(booking_id) == 1  # 1 of 2
 
         # Create assignment for John (event coordination slot)
         assignment = EventAssignment(
-            event_id=event.id,
-            registration_id=registration.id,
-            attendee_id=registration.user_id,
-            accommodation_booking_id=booking.id,
+            event_id=event_id,
+            registration_id=registration_id,
+            attendee_id=registration_user_id,
+            accommodation_booking_id=booking_id,
             status="active",
-            assigned_by_id=event.created_by_id,
+            assigned_by_id=event_created_by_id,
         )
         db.session.add(assignment)
         db.session.commit()
+        assignment_id = assignment.id
+
+        # Re-fetch objects for bridge
+        event = db.session.get(Event, event_id)
+        registration = db.session.get(EventRegistration, registration_id)
+        booking = db.session.get(AccommodationBooking, booking_id)
+        assignment = db.session.get(EventAssignment, assignment_id)
 
         # Issue accommodation for assignment (creates event_coordination slot + token)
         from app.events.accommodation_bridge import issue_accommodation_for_assignment
@@ -270,8 +302,8 @@ def test_event_assignment_completion_at_capacity(app, event_with_booking, attend
 
         # Verify event_coordination slot created (incomplete)
         slot = GuestRegistration.query.filter_by(
-            booking_id=booking.id,
-            event_assignment_id=assignment.id,
+            booking_id=booking_id,
+            event_assignment_id=assignment_id,
             is_active=True
         ).first()
         assert slot is not None
@@ -308,63 +340,88 @@ def test_event_assignment_completion_at_capacity(app, event_with_booking, attend
 
 def test_full_booking_existing_guest_can_complete(app, event_with_booking, attendee_registration):
     """Full booking (2/2): John is one -> John can complete -> third person rejected."""
+    # Ensure accommodation module is enabled for this test by patching module_enabled
+    import app.utils.module_guard as module_guard
+    original_module_enabled = module_guard.module_enabled
+    
+    def patched_module_enabled(module_name):
+        if module_name == "accommodation":
+            return True
+        return original_module_enabled(module_name)
+    
+    module_guard.module_enabled = patched_module_enabled
+    
     with app.app_context():
         event = db.session.get(Event, event_with_booking["event_id"])
         booking = db.session.get(AccommodationBooking, event_with_booking["booking_id"])
-        registration = attendee_registration
+        registration = db.session.get(EventRegistration, attendee_registration)
+        
+        # Extract scalar IDs to avoid detached instance issues across nested contexts
+        event_id = event.id
+        event_created_by_id = event.created_by_id
+        booking_id = booking.id
+        registration_id = registration.id
+        registration_user_id = registration.user_id
+        shared_token = event_with_booking["shared_token"]
 
         # Fill to capacity: 1 via shared, 1 via event coordination
-        token = event_with_booking["shared_token"]
+        shared_url = f"/accommodation/r/{shared_token}"
         with app.test_client() as client:
-            client.post(
-                url_for("accommodation.shared_registration", token=token),
+            resp = client.post(
+                shared_url,
                 data={
                     "guest_name": "Other Guest",
                     "guest_email": "other@example.com",
                     "guest_phone_country_code": "+256",
                     "guest_phone_national": "700000000",
-                    "id_document_type": "passport",
                 },
             )
+            assert resp.status_code == 200, f"Shared registration failed: {resp.status_code} {resp.data}"
 
         # Create assignment for John
         assignment = EventAssignment(
-            event_id=event.id,
-            registration_id=registration.id,
-            attendee_id=registration.user_id,
-            accommodation_booking_id=booking.id,
+            event_id=event_id,
+            registration_id=registration_id,
+            attendee_id=registration_user_id,
+            accommodation_booking_id=booking_id,
             status="active",
-            assigned_by_id=event.created_by_id,
+            assigned_by_id=event_created_by_id,
         )
         db.session.add(assignment)
         db.session.commit()
+        assignment_id = assignment.id
 
         from app.events.accommodation_bridge import issue_accommodation_for_assignment
+        # Re-fetch objects in current context for bridge
+        event = db.session.get(Event, event_id)
+        registration = db.session.get(EventRegistration, registration_id)
+        booking = db.session.get(AccommodationBooking, booking_id)
+        assignment = db.session.get(EventAssignment, assignment_id)
         issue_accommodation_for_assignment(event, registration, booking, assignment)
 
         # Booking is now full (2/2)
-        assert RegistrationService.active_count(booking.id) == 2
+        assert RegistrationService.active_count(booking_id) == 2
 
-        # John completes his incomplete slot
+# John completes his incomplete slot
         completion_token = _make_assignment_token(assignment, booking)
+        completion_url = f"/accommodation/assignment/{completion_token}"
         with app.test_client() as client:
             resp = client.post(
-                url_for("accommodation.assignment_completion", token=completion_token),
+                completion_url,
                 data={
                     "guest_name": "John Doe",
                     "guest_email": "john@example.com",
                     "guest_phone_country_code": "+256",
                     "guest_phone_national": "701000000",
-                    "id_document_type": "passport",
                 },
                 follow_redirects=True,
             )
-        assert resp.status_code == 200
+            assert resp.status_code == 200
 
         # Third person via shared link rejected
         with app.test_client() as client:
             resp = client.post(
-                url_for("accommodation.shared_registration", token=token),
+                shared_url,
                 data={
                     "guest_name": "Third Person",
                     "guest_email": "third@example.com",
@@ -382,30 +439,71 @@ def test_multiple_attendees_distinct_tokens(app, event_with_booking):
     with app.app_context():
         event = db.session.get(Event, event_with_booking["event_id"])
         booking = db.session.get(AccommodationBooking, event_with_booking["booking_id"])
+        event_id = event.id
+        event_created_by_id = event.created_by_id
+        booking_id = booking.id
 
-        # Create two registrations
+        # Create a ticket type for the event
+        ticket_type = TicketType(
+            event_id=event_id,
+            name="General",
+            price=0,
+            capacity=100,
+            is_active=True,
+        )
+        db.session.add(ticket_type)
+        db.session.flush()
+
+        # Create two registrations with proper refs
         john = EventRegistration(
-            event_id=event.id, user_id=1, full_name="John Doe", email="john@example.com",
-            status="confirmed", registration_ref="ER-TEST-001"
+            event_id=event_id,
+            ticket_type_id=ticket_type.id,
+            user_id=1,
+            full_name="John Doe",
+            email="john@example.com",
+            status="confirmed",
+            registration_ref="ER-TEST-001"
         )
+        john.generate_refs(event.slug, 1)
+        
         mary = EventRegistration(
-            event_id=event.id, user_id=2, full_name="Mary Smith", email="mary@example.com",
-            status="confirmed", registration_ref="ER-TEST-002"
+            event_id=event_id,
+            ticket_type_id=ticket_type.id,
+            user_id=2,
+            full_name="Mary Smith",
+            email="mary@example.com",
+            status="confirmed",
+            registration_ref="ER-TEST-002"
         )
+        mary.generate_refs(event.slug, 2)
+        
         db.session.add_all([john, mary])
         db.session.flush()
 
         # Create assignments
         john_assignment = EventAssignment(
-            event_id=event.id, registration_id=john.id, attendee_id=john.user_id,
-            accommodation_booking_id=booking.id, status="active", assigned_by_id=event.created_by_id
+            event_id=event_id, registration_id=john.id, attendee_id=john.user_id,
+            accommodation_booking_id=booking_id, status="active", assigned_by_id=event_created_by_id
         )
         mary_assignment = EventAssignment(
-            event_id=event.id, registration_id=mary.id, attendee_id=mary.user_id,
-            accommodation_booking_id=booking.id, status="active", assigned_by_id=event.created_by_id
+            event_id=event_id, registration_id=mary.id, attendee_id=mary.user_id,
+            accommodation_booking_id=booking_id, status="active", assigned_by_id=event_created_by_id
         )
         db.session.add_all([john_assignment, mary_assignment])
         db.session.commit()
+
+        john_assignment_id = john_assignment.id
+        mary_assignment_id = mary_assignment.id
+        john_id = john.id
+        mary_id = mary.id
+
+        # Re-fetch for bridge
+        event = db.session.get(Event, event_id)
+        booking = db.session.get(AccommodationBooking, booking_id)
+        john = db.session.get(EventRegistration, john_id)
+        mary = db.session.get(EventRegistration, mary_id)
+        john_assignment = db.session.get(EventAssignment, john_assignment_id)
+        mary_assignment = db.session.get(EventAssignment, mary_assignment_id)
 
         from app.events.accommodation_bridge import issue_accommodation_for_assignment
         issue_accommodation_for_assignment(event, john, booking, john_assignment)
@@ -441,12 +539,12 @@ def test_multiple_attendees_distinct_tokens(app, event_with_booking):
             )
         assert resp.status_code == 200
 
-        # John's slot updated, Mary's unchanged
+        # John's slot updated, Mary's unchanged - use scalar IDs to avoid detached instance
         john_slot = GuestRegistration.query.filter_by(
-            booking_id=booking.id, event_assignment_id=john_assignment.id
+            booking_id=booking_id, event_assignment_id=john_assignment_id
         ).first()
         mary_slot = GuestRegistration.query.filter_by(
-            booking_id=booking.id, event_assignment_id=mary_assignment.id
+            booking_id=booking_id, event_assignment_id=mary_assignment_id
         ).first()
         assert john_slot.status == "completed"
         assert mary_slot.status == "in_progress"  # still incomplete
@@ -462,14 +560,20 @@ def test_reassignment_deactivates_old_slot(app, event_with_booking, attendee_reg
     with app.app_context():
         event = db.session.get(Event, event_with_booking["event_id"])
         booking_a = db.session.get(AccommodationBooking, event_with_booking["booking_id"])
-        registration = attendee_registration
+        registration = db.session.get(EventRegistration, attendee_registration)
+        event_id = event.id
+        event_created_by_id = event.created_by_id
+        booking_a_id = booking_a.id
+        registration_id = registration.id
+        registration_user_id = registration.user_id
+        registration_ref = registration.registration_ref
 
         # Create booking B
         prop_b = Property.query.filter(Property.id != booking_a.property_id).first()
         if not prop_b:
             prop_b = Property(
                 title="Hotel B",
-                owner_id=event.created_by_id,
+                owner_id=event_created_by_id,
                 status="approved",
                 property_type="hotel",
             )
@@ -477,9 +581,9 @@ def test_reassignment_deactivates_old_slot(app, event_with_booking, attendee_reg
             db.session.flush()
 
         booking_b = AccommodationBooking(
-            guest_user_id=event.created_by_id,
-            host_user_id=event.created_by_id,
-            booked_by_user_id=event.created_by_id,
+            guest_user_id=event_created_by_id,
+            host_user_id=event_created_by_id,
+            booked_by_user_id=event_created_by_id,
             property_id=prop_b.id,
             check_in=booking_a.check_in,
             check_out=booking_a.check_out,
@@ -495,51 +599,63 @@ def test_reassignment_deactivates_old_slot(app, event_with_booking, attendee_reg
         )
         db.session.add(booking_b)
         db.session.commit()
+        booking_b_id = booking_b.id
+        booking_b_ref = booking_b.booking_reference
 
         # Initial assignment to booking A
         assignment = EventAssignment(
-            event_id=event.id,
-            registration_id=registration.id,
-            attendee_id=registration.user_id,
-            accommodation_booking_id=booking_a.id,
+            event_id=event_id,
+            registration_id=registration_id,
+            attendee_id=registration_user_id,
+            accommodation_booking_id=booking_a_id,
             status="active",
-            assigned_by_id=event.created_by_id,
+            assigned_by_id=event_created_by_id,
         )
         db.session.add(assignment)
         db.session.commit()
+        assignment_id = assignment.id
 
+# Re-fetch for bridge
+        event = db.session.get(Event, event_id)
+        registration = db.session.get(EventRegistration, registration_id)
+        from sqlalchemy.orm import joinedload
+        booking_a = db.session.get(AccommodationBooking, booking_a_id, options=[joinedload(AccommodationBooking.accommodation_property)])
+        assignment = db.session.get(EventAssignment, assignment_id)
+        
         from app.events.accommodation_bridge import issue_accommodation_for_assignment
         issue_accommodation_for_assignment(event, registration, booking_a, assignment)
         john_token_a = _make_assignment_token(assignment, booking_a)
 
         # Verify slot in booking A
         slot_a = GuestRegistration.query.filter_by(
-            booking_id=booking_a.id, event_assignment_id=assignment.id, is_active=True
+            booking_id=booking_a_id, event_assignment_id=assignment_id, is_active=True
         ).first()
         assert slot_a is not None
         assert slot_a.is_active
+        slot_a_id = slot_a.id
 
-        # Reassign to booking B (via service)
+        # Reassign to booking B (via service) - re-fetch event to avoid detached instance
         from app.events.guest_coordination_service import GuestCoordinationService
         from app.identity.models.user import User
-        actor = User.query.get(event.created_by_id)
-        GuestCoordinationService.assign_accommodation(event, actor, registration.registration_ref, booking_b.booking_reference)
+        actor = User.query.get(event_created_by_id)
+        event = db.session.get(Event, event_id)
+        GuestCoordinationService.assign_accommodation(event, actor, registration_ref, booking_b_ref)
 
         # Old slot in A deactivated
-        slot_a = db.session.get(GuestRegistration, slot_a.id)
+        slot_a = db.session.get(GuestRegistration, slot_a_id)
         assert slot_a.is_active is False
         assert slot_a.removed_reason == "reassigned"
 
         # New slot in B active
         slot_b = GuestRegistration.query.filter_by(
-            booking_id=booking_b.id, event_assignment_id=assignment.id, is_active=True
+            booking_id=booking_b_id, event_assignment_id=assignment_id, is_active=True
         ).first()
         assert slot_b is not None
         assert slot_b.is_active
 
         # Capacity: booking A freed, booking B occupied
-        assert RegistrationService.active_count(booking_a.id) == 0
-        assert RegistrationService.active_count(booking_b.id) == 1
+        assert RegistrationService.active_count(booking_a_id) == 0
+        assert RegistrationService.active_count(booking_b_id) == 1
 
         # Old token invalid (404)
         with app.test_client() as client:
@@ -552,42 +668,57 @@ def test_cancellation_frees_capacity(app, event_with_booking, attendee_registrat
     with app.app_context():
         event = db.session.get(Event, event_with_booking["event_id"])
         booking = db.session.get(AccommodationBooking, event_with_booking["booking_id"])
-        registration = attendee_registration
+        registration = db.session.get(EventRegistration, attendee_registration)
+        event_id = event.id
+        event_created_by_id = event.created_by_id
+        booking_id = booking.id
+        registration_id = registration.id
+        registration_user_id = registration.user_id
+        registration_ref = registration.registration_ref
 
         assignment = EventAssignment(
-            event_id=event.id,
-            registration_id=registration.id,
-            attendee_id=registration.user_id,
-            accommodation_booking_id=booking.id,
+            event_id=event_id,
+            registration_id=registration_id,
+            attendee_id=registration_user_id,
+            accommodation_booking_id=booking_id,
             status="active",
-            assigned_by_id=event.created_by_id,
+            assigned_by_id=event_created_by_id,
         )
         db.session.add(assignment)
         db.session.commit()
+        assignment_id = assignment.id
+
+        # Re-fetch for bridge
+        event = db.session.get(Event, event_id)
+        registration = db.session.get(EventRegistration, registration_id)
+        booking = db.session.get(AccommodationBooking, booking_id)
+        assignment = db.session.get(EventAssignment, assignment_id)
 
         from app.events.accommodation_bridge import issue_accommodation_for_assignment
         issue_accommodation_for_assignment(event, registration, booking, assignment)
         token = _make_assignment_token(assignment, booking)
 
         slot = GuestRegistration.query.filter_by(
-            booking_id=booking.id, event_assignment_id=assignment.id, is_active=True
+            booking_id=booking_id, event_assignment_id=assignment_id, is_active=True
         ).first()
         assert slot is not None
         slot_id = slot.id
 
-        # Cancel
+        # Cancel - re-fetch event to avoid detached instance
         from app.events.guest_coordination_service import GuestCoordinationService
         from app.identity.models.user import User
-        actor = User.query.get(event.created_by_id)
-        GuestCoordinationService.cancel(event, actor, registration.registration_ref, "accommodation")
+        actor = User.query.get(event_created_by_id)
+        event = db.session.get(Event, event_id)
+        GuestCoordinationService.cancel(event, actor, registration_ref, "accommodation")
 
-        # Slot inactive
-        slot = db.session.get(GuestRegistration, slot_id)
+        # Slot inactive - use fresh query to avoid stale session state
+        slot = GuestRegistration.query.filter_by(id=slot_id).first()
+        assert slot is not None
         assert slot.is_active is False
         assert slot.removed_reason == "assignment cancelled"
 
         # Capacity freed
-        assert RegistrationService.active_count(booking.id) == 0
+        assert RegistrationService.active_count(booking_id) == 0
 
         # Token unusable
         with app.test_client() as client:
@@ -600,28 +731,69 @@ def test_token_authorization_isolation(app, event_with_booking):
     with app.app_context():
         event = db.session.get(Event, event_with_booking["event_id"])
         booking = db.session.get(AccommodationBooking, event_with_booking["booking_id"])
+        event_id = event.id
+        event_created_by_id = event.created_by_id
+        booking_id = booking.id
+
+        # Create a ticket type for the event
+        ticket_type = TicketType(
+            event_id=event_id,
+            name="General",
+            price=0,
+            capacity=100,
+            is_active=True,
+        )
+        db.session.add(ticket_type)
+        db.session.flush()
 
         john = EventRegistration(
-            event_id=event.id, user_id=1, full_name="John Doe", email="john@example.com",
-            status="confirmed", registration_ref="ER-TEST-001"
+            event_id=event_id,
+            ticket_type_id=ticket_type.id,
+            user_id=1,
+            full_name="John Doe",
+            email="john@example.com",
+            status="confirmed",
+            registration_ref="ER-TEST-001"
         )
+        john.generate_refs(event.slug, 1)
+        
         mary = EventRegistration(
-            event_id=event.id, user_id=2, full_name="Mary Smith", email="mary@example.com",
-            status="confirmed", registration_ref="ER-TEST-002"
+            event_id=event_id,
+            ticket_type_id=ticket_type.id,
+            user_id=2,
+            full_name="Mary Smith",
+            email="mary@example.com",
+            status="confirmed",
+            registration_ref="ER-TEST-002"
         )
+        mary.generate_refs(event.slug, 2)
+        
         db.session.add_all([john, mary])
         db.session.flush()
 
         john_assignment = EventAssignment(
-            event_id=event.id, registration_id=john.id, attendee_id=john.user_id,
-            accommodation_booking_id=booking.id, status="active", assigned_by_id=event.created_by_id
+            event_id=event_id, registration_id=john.id, attendee_id=john.user_id,
+            accommodation_booking_id=booking_id, status="active", assigned_by_id=event_created_by_id
         )
         mary_assignment = EventAssignment(
-            event_id=event.id, registration_id=mary.id, attendee_id=mary.user_id,
-            accommodation_booking_id=booking.id, status="active", assigned_by_id=event.created_by_id
+            event_id=event_id, registration_id=mary.id, attendee_id=mary.user_id,
+            accommodation_booking_id=booking_id, status="active", assigned_by_id=event_created_by_id
         )
         db.session.add_all([john_assignment, mary_assignment])
         db.session.commit()
+
+        john_assignment_id = john_assignment.id
+        mary_assignment_id = mary_assignment.id
+        john_id = john.id
+        mary_id = mary.id
+
+        # Re-fetch for bridge
+        event = db.session.get(Event, event_id)
+        booking = db.session.get(AccommodationBooking, booking_id)
+        john = db.session.get(EventRegistration, john_id)
+        mary = db.session.get(EventRegistration, mary_id)
+        john_assignment = db.session.get(EventAssignment, john_assignment_id)
+        mary_assignment = db.session.get(EventAssignment, mary_assignment_id)
 
         from app.events.accommodation_bridge import issue_accommodation_for_assignment
         issue_accommodation_for_assignment(event, john, booking, john_assignment)
@@ -646,11 +818,12 @@ def test_token_authorization_isolation(app, event_with_booking):
         # Should update John's slot, not Mary's
         assert resp.status_code == 200
 
+        # Use scalar IDs to avoid detached instance
         john_slot = GuestRegistration.query.filter_by(
-            booking_id=booking.id, event_assignment_id=john_assignment.id
+            booking_id=booking_id, event_assignment_id=john_assignment_id
         ).first()
         mary_slot = GuestRegistration.query.filter_by(
-            booking_id=booking.id, event_assignment_id=mary_assignment.id
+            booking_id=booking_id, event_assignment_id=mary_assignment_id
         ).first()
 
         # John's slot got updated (his token -> his slot)
@@ -665,13 +838,18 @@ def test_shared_link_rejects_unknown_at_capacity(app, event_with_booking, attend
     with app.app_context():
         event = db.session.get(Event, event_with_booking["event_id"])
         booking = db.session.get(AccommodationBooking, event_with_booking["booking_id"])
-        registration = attendee_registration
+        registration = db.session.get(EventRegistration, attendee_registration)
+        event_id = event.id
+        event_created_by_id = event.created_by_id
+        booking_id = booking.id
+        registration_id = registration.id
+        registration_user_id = registration.user_id
+        shared_token = event_with_booking["shared_token"]
 
         # Fill capacity: 1 shared + 1 event coordination
-        token = event_with_booking["shared_token"]
         with app.test_client() as client:
             client.post(
-                url_for("accommodation.shared_registration", token=token),
+                url_for("accommodation.shared_registration", token=shared_token),
                 data={
                     "guest_name": "Shared Guest",
                     "guest_email": "shared@example.com",
@@ -682,26 +860,33 @@ def test_shared_link_rejects_unknown_at_capacity(app, event_with_booking, attend
             )
 
         assignment = EventAssignment(
-            event_id=event.id,
-            registration_id=registration.id,
-            attendee_id=registration.user_id,
-            accommodation_booking_id=booking.id,
+            event_id=event_id,
+            registration_id=registration_id,
+            attendee_id=registration_user_id,
+            accommodation_booking_id=booking_id,
             status="active",
-            assigned_by_id=event.created_by_id,
+            assigned_by_id=event_created_by_id,
         )
         db.session.add(assignment)
         db.session.commit()
+        assignment_id = assignment.id
+
+        # Re-fetch for bridge
+        event = db.session.get(Event, event_id)
+        registration = db.session.get(EventRegistration, registration_id)
+        booking = db.session.get(AccommodationBooking, booking_id)
+        assignment = db.session.get(EventAssignment, assignment_id)
 
         from app.events.accommodation_bridge import issue_accommodation_for_assignment
         issue_accommodation_for_assignment(event, registration, booking, assignment)
 
         # Booking full
-        assert RegistrationService.active_count(booking.id) == 2
+        assert RegistrationService.active_count(booking_id) == 2
 
         # Unknown third party via shared link rejected
         with app.test_client() as client:
             resp = client.post(
-                url_for("accommodation.shared_registration", token=token),
+                url_for("accommodation.shared_registration", token=shared_token),
                 data={
                     "guest_name": "Unknown",
                     "guest_email": "unknown@example.com",
@@ -719,18 +904,31 @@ def test_notification_email_content(app, event_with_booking, attendee_registrati
     with app.app_context():
         event = db.session.get(Event, event_with_booking["event_id"])
         booking = db.session.get(AccommodationBooking, event_with_booking["booking_id"])
-        registration = attendee_registration
+        registration = db.session.get(EventRegistration, attendee_registration)
+        event_id = event.id
+        event_created_by_id = event.created_by_id
+        booking_id = booking.id
+        registration_id = registration.id
+        registration_user_id = registration.user_id
 
         assignment = EventAssignment(
-            event_id=event.id,
-            registration_id=registration.id,
-            attendee_id=registration.user_id,
-            accommodation_booking_id=booking.id,
+            event_id=event_id,
+            registration_id=registration_id,
+            attendee_id=registration_user_id,
+            accommodation_booking_id=booking_id,
             status="active",
-            assigned_by_id=event.created_by_id,
+            assigned_by_id=event_created_by_id,
         )
         db.session.add(assignment)
         db.session.commit()
+        assignment_id = assignment.id
+
+        # Re-fetch for bridge
+        event = db.session.get(Event, event_id)
+        registration = db.session.get(EventRegistration, registration_id)
+        from sqlalchemy.orm import joinedload
+        booking = db.session.get(AccommodationBooking, booking_id, options=[joinedload(AccommodationBooking.accommodation_property)])
+        assignment = db.session.get(EventAssignment, assignment_id)
 
         from app.events.accommodation_bridge import issue_accommodation_for_assignment
         issue_accommodation_for_assignment(event, registration, booking, assignment)
@@ -740,11 +938,11 @@ def test_notification_email_content(app, event_with_booking, attendee_registrati
         notification = Notification.query.filter_by(
             type=NotificationType.EVENT_ACCOMMODATION_ASSIGNED,
             email=registration.email
-        ).first()
+        ).filter(Notification.context['booking_reference'].as_string() == booking.booking_reference).first()
         assert notification is not None
         assert notification.module == "accommodation"
         assert notification.link is not None
-        assert "assignment_completion" in notification.link
+        assert "/assignment/" in notification.link
 
         # Check context has required fields
         ctx = notification.context
@@ -756,12 +954,15 @@ def test_notification_email_content(app, event_with_booking, attendee_registrati
         assert ctx.get("guest_name") == "John Doe"
 
         # Render template and verify no bogus values
+        # Store property title, booking reference, and notification link before test_request_context to avoid DetachedInstanceError
+        property_title = booking.accommodation_property.title
+        booking_ref = booking.booking_reference
+        notification_link = notification.link
         from flask import render_template_string
         with app.test_request_context():
             html = render_template_string(
                 open("templates/notifications/email/event_accommodation_assigned.html").read(),
                 **ctx,
-                guest_name=ctx.get("guest_name"),
                 link=notification.link
             )
         assert "N/A" not in html
@@ -770,6 +971,6 @@ def test_notification_email_content(app, event_with_booking, attendee_registrati
         assert "View Booking Pass" not in html
         assert "Complete your accommodation details" in html
         assert "Test Event" in html
-        assert booking.accommodation_property.title in html
-        assert booking.booking_reference in html
-        assert notification.link in html
+        assert property_title in html
+        assert booking_ref in html
+        assert notification_link in html

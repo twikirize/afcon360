@@ -1,4 +1,4 @@
-# AFCON360 Project Tree (generated: 2026-08-11 13:00:44)
+# AFCON360 Project Tree (generated: 2026-08-26 14:30:00)
 
 ├───_engineering_verification/
 ├───app/
@@ -156,6 +156,9 @@
 ├───auth/
 │   ├───services/
 │   │   └───org.py
+│   ├───models/
+│   │   ├───__init__.py
+│   │   └───delegation.py
 │   ├───__init__.py
 │   ├───config_model.py
 │   ├───decorators.py
@@ -195,6 +198,8 @@
 │   ├───context.py
 │   └───model_registry.py
 ├───Documentation/
+│   ├───adr/
+│   │   └───ADR-001-events-organizer-semantics.md
 │   ├───ADMIN_CSP_MIGRATION_SUMMARY.md
 │   ├───ARCHITECTURE_PASS_5_FINAL.md
 │   ├───AUTH_SYSTEM_ARCHITECTURE.md
@@ -257,6 +262,15 @@
 │   ├───tasks.py
 │   ├───trust_service.py
 │   └───view_models.py
+├───feed/
+│   ├───__init__.py
+│   ├───models.py
+│   ├───routes.py
+│   └───services.py
+├───monitor/
+│   ├───__init__.py
+│   ├───broadcaster.py
+│   └───routes.py
 ├───fan/
 │   ├───services/
 │   │   └───fan_profile_service.py
@@ -679,6 +693,7 @@
 │   ├───0e5655df8acd_add_accommodation_architecture_.py
 │   ├───100e8db8a57f_enforce_inventory_block_reason_enum_at_.py
 │   ├───15a1f8d5f2bb_after_fixing_mgration_errors_clean_up.py
+│   ├───1787438348_sync_check_constraints.py
 │   ├───18288f7196e0_add_accommodation_query_performance_.py
 │   ├───1d30290f4f67_add_room_types_and_inventory_blocks_.py
 │   ├───20260627_add_media_tables.py
@@ -688,6 +703,7 @@
 │   ├───20260718_1951_make_organisations_compliance_case_id_.py
 │   ├───20260724_1040_add_status_check_constraint.py
 │   ├───20260811_1125_sync_compliance_notification_.py
+│   ├───23a2748dc5d1_add_organizer_profiles_table.py
 │   ├───2459945a58a4_add_fan_profiles_and_dashboard_contexts.py
 │   ├───2499ed67dc8c_add_email_verified_at_and_phone_.py
 │   ├───273c374bade0_add_missing_columns_to_system_configs.py
@@ -699,6 +715,7 @@
 │   ├───3395bb381c6a_add_accommodation_room_holds_guest_.py
 │   ├───366d06e59f9c_add_guest_complaints_and_booking_.py
 │   ├───396efe6667ff_add_verification_level_security_deposit_.py
+│   ├───4855a635e4fd_add_acc_link_token_hash_and_acc_link_.py
 │   ├───4f9a33fc2475_add_wallet_creation_events_table.py
 │   ├───5582ce532c6f_add_agents_enabled_to_wallet_config.py
 │   ├───5661738e7748_add_archived_columns_to_property.py
@@ -715,9 +732,12 @@
 │   ├───8120b21c333e_add_booking_approval_and_property_.py
 │   ├───87f479367218_add_organizer_messages_table.py
 │   ├───88d91ff49abe_add_platform_account_fields.py
+│   ├───8a0deccce6f6_initial_full_schema_baseline.py
+│   ├───91911883eb58_drop_redundant_organizer_profiles_.py
 │   ├───961bd8f150b3_aml_regulatory_and_biginteger_pk.py
 │   ├───978aa0c43706_add_published_status_to_property_.py
 │   ├───978f0c336ca4_add_cash_protection_fields_to_property_.py
+│   ├───9a0b1c2d3e4f_backfill_event_owner_roles.py
 │   ├───a7c3e91b4d28_add_users_email_format_check.py
 │   ├───a8dda837031d_add_aggregator_sandbox_live_mode_and_.py
 │   ├───a976e4599bfe_merge_final_heads.py
@@ -1584,14 +1604,144 @@
 ├───verify.html
 └───view.html
 ├───tests/
-├───notifications/
+│   ├───notifications/
+│   │   ├───__init__.py
+│   │   ├───test_events.py
+│   │   ├───test_models.py
+│   │   └───test_user_controls.py
+│   ├───wallet/
+│   │   ├───__init__.py
+│   │   ├───conftest.py
+│   │   └───test_ledger_concurrency.py
 │   ├───__init__.py
-│   ├───test_events.py
-│   └───test_models.py
-├───wallet/
-│   ├───__init__.py
+│   ├───backup_db.py
+│   ├───check_alembic.py
+│   ├───check_bugs.py
+│   ├───check_db.py
+│   ├───check_db_schema.py
+│   ├───check_db_status.py
+│   ├───check_enum_detail.py
+│   ├───check_model.py
+│   ├───check_schema.py
+│   ├───check_settings_table.py
+│   ├───check_table.py
+│   ├───check_tables.py
+│   ├───clear_cache.py
+│   ├───compare_model_db.py
 │   ├───conftest.py
-│   └───test_ledger_concurrency.py
+│   ├───db_connector.py
+│   ├───ERRORS_RESOLVED.md
+│   ├───find_wallet_relationship.py
+│   ├───fix_enum_issue.py
+│   ├───fix_events_schema.py
+│   ├───fix_geometry_issue.py
+│   ├───fix_migration_gist.py
+│   ├───fix_owner.py
+│   ├───full_db_audit.py
+│   ├───generate_migration.py
+│   ├───hooks_web_unit_tests.py
+│   ├───init_settings.py
+│   ├───inspect_db.py
+│   ├───list_endpoints.py
+│   ├───manage.py
+│   ├───phase_1.py
+│   ├───phase_2.py
+│   ├───postgres_contract.py
+│   ├───read_llater.txt
+│   ├───run_event_tests.py
+│   ├───sample_users.py
+│   ├───scanner.py
+│   ├───seed_roles.py
+│   ├───seed_roles_simple.py
+│   ├───setup_owner.py
+│   ├───simple_template_check.py
+│   ├───simpletests.py
+│   ├───temp_fix.py
+│   ├───test roles.py
+│   ├───test_accommodation_booking.py
+│   ├───test_accommodation_capacity_rules.py
+│   ├───test_accommodation_checkout_processes.py
+│   ├───test_accommodation_date_range_rules.py
+│   ├───test_accommodation_home.py
+│   ├───test_accommodation_lifecycle_verification.py
+│   ├───test_accommodation_modify_booking_dates.py
+│   ├───test_accommodation_physical_room_assignment.py
+│   ├───test_accommodation_roomtype.py
+│   ├───test_accommodation_transaction_recovery.py
+│   ├───test_addendum2_registration.py
+│   ├───test_alipay_model.py
+│   ├───test_audit_system.py
+│   ├───test_auth_context.py
+│   ├───test_auth_import.py
+│   ├───test_boot.py
+│   ├───test_compliance_kyc_action.py
+│   ├───test_concurrency.py
+│   ├───test_concurrency_simple.py
+│   ├───test_current.py
+│   ├───test_database_contract.py
+│   ├───test_db_public_id.py
+│   ├───test_dead_letter_alert.py
+│   ├───test_event_accommodation_assignment_flow.py
+│   ├───test_event_inventory_concurrency.py
+│   ├───test_event_registration_availability.py
+│   ├───test_event_transfer_lifecycle.py
+│   ├───test_event_workflow.py
+│   ├───test_events.py
+│   ├───test_events_ownership_characterization.py
+│   ├───test_events_user_workflows.py
+│   ├───test_fan_kyc.py
+│   ├───test_fix_accommodation_unit_availability.py
+│   ├───test_forensic_audit.py
+│   ├───test_get_organizer_metrics_canonical.py
+│   ├───test_global_transaction_recovery.py
+│   ├───test_guest_assignment_account_optional.py
+│   ├───test_guest_coordination_accommodation.py
+│   ├───test_guest_coordination_contract.py
+│   ├───test_identity_events.py
+│   ├───test_idguard.py
+│   ├───test_impersonation.py
+│   ├───test_impersonation_simple.py
+│   ├───test_imports.py
+│   ├───test_kyc_compliance.py
+│   ├───test_kyc_integration.py
+│   ├───test_kyc_reupload.py
+│   ├───test_kyc_status_consistency.py
+│   ├───test_kyc_upload_validation.py
+│   ├───test_live_module_isolation.py
+│   ├───test_load.py
+│   ├───test_loose_coupling.py
+│   ├───test_module_integration.py
+│   ├───test_module_integration_simple.py
+│   ├───test_module_isolation.py
+│   ├───test_onboarding.py
+│   ├───test_org_workspace.py
+│   ├───test_owner_trust_integration.py
+│   ├───test_payment_flow.py
+│   ├───test_payment_method_capabilities.py
+│   ├───test_phone_verification.py
+│   ├───test_pin_lockout_and_transfer_and_idempotency.py
+│   ├───test_process_webhook_dead_letter.py
+│   ├───test_registration_flow.py
+│   ├───test_services.py
+│   ├───test_simple.py
+│   ├───test_simple_imports.py
+│   ├───test_template_fix.py
+│   ├───test_template_rendering.py
+│   ├───test_trust_card.py
+│   ├───test_trust_system.py
+│   ├───testing12.py
+│   ├───tests_alone.py
+│   ├───transport_model.py
+│   ├───update_models_no_geometry.py
+│   ├───user_roles_id.py
+│   ├───verify_architecture.py
+│   ├───verify_concurrency.py
+│   ├───verify_db.py
+│   ├───verify_fix.py
+│   ├───verify_obed.py
+│   ├───verify_tables.py
+│   ├───verify_template.py
+│   └───verify_transport_tables.py
 ├───__init__.py
 ├───backup_db.py
 ├───check_alembic.py

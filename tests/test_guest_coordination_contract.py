@@ -100,11 +100,13 @@ def test_accommodation_assignment_passes_booking_reference_and_emits_no_internal
         accommodation_booking_id=None,
         transport_booking_id=None,
         status="active",
+        id=123,
     )
     booking = SimpleNamespace(id=99, booking_reference="ACC-PUBLIC-1", num_guests=1)
     fake_assignment_model = SimpleNamespace(
         query=_Query(count=0),
         registration_id=_Field(),
+        id=123,  # provide an id attribute expected by the bridge
     )
     fake_db = _DB()
     committed = {}
@@ -118,6 +120,19 @@ def test_accommodation_assignment_passes_booking_reference_and_emits_no_internal
         coordination.GuestCoordinationService,
         "_commit_assignment",
         lambda *args: (committed.setdefault("args", args), assignment)[1],
+    )
+    monkeypatch.setattr(coordination.GuestCoordinationService, "_module_available", lambda *args: True)
+    # Mock the accommodation bridge's contract call to avoid DB access
+    monkeypatch.setattr(
+        "app.accommodation.services.coordination_contract.AccommodationCoordinationContract.ensure_event_guest_slot",
+        lambda *args, **kwargs: {"slot_id": 1, "status": "in_progress", "email_present": True},
+    )
+    # Mock the capacity check query (GuestRegistration.query.filter_by(...).count())
+    from app.accommodation.models.guest_registration import GuestRegistration as AccommodationGuestRegistration
+    monkeypatch.setattr(
+        AccommodationGuestRegistration,
+        "query",
+        _Query(count=0),  # No registered guests, capacity available
     )
 
     result = coordination.GuestCoordinationService.assign_accommodation(

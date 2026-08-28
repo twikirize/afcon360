@@ -34,7 +34,7 @@ def test_alert_owner_dead_letter(monkeypatch):
         sms_called["ok"] = True
         assert "AFCON360 ALERT" in message
 
-    monkeypatch.setattr("app.services.sms_service.send_sms", fake_send_sms, raising=False)
+    monkeypatch.setattr("app.transport.services.sms_service.send_sms", fake_send_sms, raising=False)
 
     # Patch email sender
     email_called = {"ok": False}

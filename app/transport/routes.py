@@ -18,7 +18,8 @@ from flask import render_template, jsonify, request, url_for, flash, redirect, s
 from flask_login import login_required, current_user
 
 from app.transport.decorator import module_enabled_required, role_required, rate_limit
-from app.auth.decorators import require_profile_completion, require_kyc_tier, require_moderator
+from app.auth.kyc_compliance import require_kyc_tier
+from app.auth.decorators import require_profile_completion, require_moderator
 from app.auth.context import ContextType, active_context_required
 from app.transport import transport_bp, transport_admin_bp
 from app.utils.module_guard import module_enabled as check_module_enabled
@@ -27,7 +28,6 @@ from app.utils.audit import audit_log
 from app.transport.services import get_booking_service, get_provider_service, get_dashboard_service
 from app.transport.models import Booking, DriverProfile, Vehicle
 from app.extensions import db
-from app.auth.decorators import require_profile_completion, require_kyc_tier, require_moderator
 
 logger = logging.getLogger(__name__)
 

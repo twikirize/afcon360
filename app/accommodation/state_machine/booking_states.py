@@ -1,18 +1,18 @@
 """
-Booking State Machine - Manages booking lifecycle transitions.
+Booking State Machine - Manages booking lifecycle transitions independently from payment.
 
-State Flow (Specification compliant):
-DRAFT → HELD → PENDING_PAYMENT → CONFIRMED → [READY_FOR_CHECKIN] → CHECKED_IN → CHECKED_OUT → CLOSED
-                                          ↘                          ↘            ↘
-                                           CANCELLED                  NO_SHOW      CLOSED
-                                               ↓                          ↑
-                                         EXPIRED                (after review)
-
-Where [READY_FOR_CHECKIN] is a computed state, not stored in DB.
+State Flow:
+DRAFT → HELD → PENDING_APPROVAL → CONFIRMED → CHECKED_IN → CHECKED_OUT → CLOSED
+              ↘         ↘             ↘
+               EXPIRED   CANCELLED     NO_SHOW
+               
+Where READY_FOR_CHECKIN is a computed state, not stored in DB.
+Payment state is handled by PaymentStateMachine separately.
 """
 
-from app.accommodation.models.booking import AccommodationBookingStatus, AccommodationPaymentStatus
+from app.accommodation.models.booking import AccommodationBookingStatus
 from datetime import date, datetime, timezone
+from decimal import Decimal
 import logging
 
 logger = logging.getLogger(__name__)
@@ -26,9 +26,14 @@ class InvalidStateTransition(Exception):
 class BookingStateMachine:
     """
     Manages booking state transitions with validation and history logging.
+    
+    This state machine is INDEPENDENT from payment state.
+    Payment requirements for transitions are evaluated by BookingPolicyEvaluator.
     """
 
-    # Valid state transitions (stored states only)
+    # Valid state transitions (stored states only) - NO PAYMENT DEPENDENCIES
+    # PENDING_PAYMENT is a valid booking state meaning "awaiting payment" but
+    # payment is NOT required to transition to CONFIRMED - policy evaluator handles that
     VALID_TRANSITIONS = {
         AccommodationBookingStatus.DRAFT: [
             AccommodationBookingStatus.HELD,
@@ -70,10 +75,9 @@ class BookingStateMachine:
         AccommodationBookingStatus.NO_SHOW: [],
         # Legacy states (maintained for backward compatibility)
         AccommodationBookingStatus.PENDING: [
-            AccommodationBookingStatus.PENDING_PAYMENT,
+            AccommodationBookingStatus.PENDING_APPROVAL,
             AccommodationBookingStatus.CONFIRMED,
             AccommodationBookingStatus.CANCELLED,
-            AccommodationBookingStatus.PENDING_APPROVAL,
             AccommodationBookingStatus.EXPIRED,
         ],
         AccommodationBookingStatus.PAYMENT_PARTIAL: [
@@ -89,8 +93,10 @@ class BookingStateMachine:
             new_status: AccommodationBookingStatus
     ) -> bool:
         """
-        Check if booking can transition to new_status.
-        Includes computed state logic for READY_FOR_CHECKIN.
+        Check if booking can transition to new_status based on booking lifecycle ONLY.
+        
+        Payment requirements are NOT checked here - they are evaluated by
+        BookingPolicyEvaluator.can_confirm() before calling transition().
         """
         current_enum = AccommodationBookingStatus(booking.status)
 
@@ -101,29 +107,10 @@ class BookingStateMachine:
         if new_status == AccommodationBookingStatus.CHECKED_IN:
             return cls._can_check_in(booking)
 
-        # Payment-confirmed transitions must have a settled/guaranteed payment.
-        if (
-            new_status == AccommodationBookingStatus.CONFIRMED
-            and current_enum in [
-                AccommodationBookingStatus.PENDING_PAYMENT,
-                AccommodationBookingStatus.PAYMENT_PARTIAL,
-            ]
-        ):
-            return cls._payment_satisfied(booking)
-
-        # Host-approval transitions require the approval marker to be set first.
-        if (
-            new_status == AccommodationBookingStatus.CONFIRMED
-            and current_enum == AccommodationBookingStatus.PENDING_APPROVAL
-        ):
-            return bool(getattr(booking, "host_approved_at", None))
-
-        # Refunds must have a positive refund amount and a refunded payment status.
+        # Refunds require a positive refund amount (financial check, not payment state)
         if new_status == AccommodationBookingStatus.REFUNDED:
-            return (
-                getattr(booking, "refund_amount", 0)
-                and booking.payment_status == AccommodationPaymentStatus.REFUNDED.value
-            )
+            refund_amt = getattr(booking, "refund_amount", 0)
+            return bool(refund_amt and Decimal(str(refund_amt or 0)) > 0)
 
         return True
 
@@ -175,6 +162,14 @@ class BookingStateMachine:
         """
         Computed READY_FOR_CHECKIN status.
         Not stored in DB - always derived from current state.
+        
+        Payment status is NOT checked here. Check-in eligibility is based on:
+        - Booking status is CONFIRMED
+        - Check-in date has arrived
+        - Registration requirements satisfied
+        
+        Payment policy requirements for check-in are evaluated by
+        BookingPolicyEvaluator.can_check_in() before calling this.
         """
         if booking.status != AccommodationBookingStatus.CONFIRMED.value:
             return False
@@ -182,49 +177,8 @@ class BookingStateMachine:
         if booking.check_in > date.today():
             return False
 
-        # Paid / deposit-paid bookings are always eligible.
-        if booking.payment_status in [
-            AccommodationPaymentStatus.PAID.value,
-            AccommodationPaymentStatus.PARTIALLY_PAID.value,
-        ]:
-            return cls._registration_satisfied(booking)
-
-        # Pay-on-arrival / cash bookings: allow UNPAID if guest/cash is eligible.
-        if booking.payment_status == AccommodationPaymentStatus.UNPAID.value:
-            return cls._cash_eligible_at_checkin(booking) and cls._registration_satisfied(booking)
-
-        return False
-
-    @classmethod
-    def _cash_eligible_at_checkin(cls, booking) -> bool:
-        """Return True when an UNPAID booking is allowed to check in with cash."""
-        from app.accommodation.services.booking_service import check_cash_eligibility
-        from app.identity.models.user import User
-        from app.extensions import db
-        guest_user_id = getattr(booking, "guest_user_id", None)
-        if not guest_user_id:
-            return False
-        try:
-            guest_user = db.session.get(User, guest_user_id)
-            result = check_cash_eligibility(
-                guest_user=guest_user,
-                property_id=booking.property_id,
-                booking_amount=booking.total_amount or 0,
-            )
-            return bool(result.get("allowed")) if isinstance(result, dict) else False
-        except Exception:
-            return False
-
-    @classmethod
-    def _payment_satisfied(cls, booking) -> bool:
-        """Return True when the booking has enough payment signal to confirm."""
-        return (
-            booking.payment_status in [
-                AccommodationPaymentStatus.PAID.value,
-                AccommodationPaymentStatus.PARTIALLY_PAID.value,
-            ]
-            or bool(getattr(booking, "payment_guaranteed", False))
-        )
+        # Registration check only - NO payment status check
+        return cls._registration_satisfied(booking)
 
     @classmethod
     def _all_guests_registered(cls, booking) -> bool:
@@ -294,6 +248,7 @@ class BookingStateMachine:
         """
         from app.extensions import db
         from app.accommodation.models.booking import BookingStatusHistory
+        from decimal import Decimal
 
         # Validate transition
         if not cls.can_transition(booking, new_status):
@@ -333,4 +288,3 @@ class BookingStateMachine:
         )
 
         return booking
-

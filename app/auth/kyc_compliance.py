@@ -131,62 +131,6 @@ REQUIREMENT_LABELS = {
 # Core KYC Functions
 # ============================================================================
 
-def calculate_kyc_tier(user_identifier) -> Dict[str, Any]:
-    """
-    Calculate user's KYC tier based on user identifier.
-    Accepts either internal user ID (BIGINT) or public_id (UUID string).
-    """
-    from app.identity.models.user import User
-
-    # Determine if identifier is integer (BIGINT id) or string (public_id)
-    if isinstance(user_identifier, int):
-        # It's an internal ID
-        user = db.session.get(User, user_identifier)
-    else:
-        # Assume it's a public_id (UUID string)
-        user = User.query.filter_by(public_id=user_identifier).first()
-
-    if not user:
-        raise ValueError(f"User with identifier {user_identifier} not found")
-
-    # Get user profile using public_id (UUID string)
-    profile = get_profile_by_user(user.public_id)
-
-    # Get latest verification - this expects INTEGER user_id (BIGINT)
-    verification = IndividualVerification.query.filter_by(
-        user_id=user.id  # Use internal BIGINT id
-    ).order_by(IndividualVerification.requested_at.desc()).first()
-
-    # Manual KYC submissions are the source reviewed by compliance. Prefer a
-    # newer manual decision over an older provider/profile verification row so
-    # rejection or revocation is visible everywhere immediately.
-    from app.kyc.models import KycRecord
-
-    manual_record = KycRecord.query.filter_by(user_id=user.id).order_by(
-        KycRecord.created_at.desc(), KycRecord.id.desc()
-    ).first()
-
-    def _verification_time(value):
-        if value is None:
-            return datetime.min.replace(tzinfo=timezone.utc)
-        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
-
-    if manual_record and (
-        verification is None
-        or _verification_time(manual_record.created_at)
-        >= _verification_time(verification.requested_at)
-    ):
-        manual_status = (manual_record.status or "pending").lower()
-        verification = SimpleNamespace(
-            id=manual_record.id,
-            status=manual_status,
-            requested_at=manual_record.created_at,
-            scope={
-                "national_id": bool(manual_record.document_url),
-                "biometric": bool(manual_record.selfie_url),
-            },
-        )
-
 def _label_requirements(reqs: List[str]) -> List[str]:
     return [REQUIREMENT_LABELS.get(r, r.replace("_", " ").title()) for r in reqs]
 
@@ -385,6 +329,7 @@ def _aggregate_kyc_scope(user_id: int) -> Dict[str, bool]:
         (TIN / income source / bank reference) and are intentionally separate.
     """
     from app.kyc.models import KycRecord
+    from datetime import datetime, timezone
 
     VERIFIED = {"verified", "approved"}
     scope = {
@@ -395,9 +340,19 @@ def _aggregate_kyc_scope(user_id: int) -> Dict[str, bool]:
         "financial": False,
     }
 
+    now = datetime.now(timezone.utc)
+
     for record in KycRecord.query.filter_by(user_id=user_id).all():
         if (record.status or "pending").lower() not in VERIFIED:
             continue
+        # Exclude expired documents
+        if record.expiry_date:
+            # Normalize to timezone-aware for comparison
+            expiry = record.expiry_date
+            if expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=timezone.utc)
+            if expiry < now:
+                continue
         has_doc = bool(record.document_url)
         rt = (record.record_type or "").lower()
         it = (record.id_type or "").lower()
@@ -624,7 +579,12 @@ def require_kyc_tier_for_amount(amount_param: str = 'amount'):
     return decorator
 
 def require_org_kyc_tier(min_tier: int, org_id_param: str = 'org_id'):
-    """Decorator for organization-scoped operations requiring KYC tier."""
+    """Decorator for organization-scoped operations requiring KYB level.
+    
+    Args:
+        min_tier: Minimum KYB level required (1 = operational KYB, 2 = full KYB)
+        org_id_param: Parameter name for organization ID
+    """
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
@@ -638,7 +598,7 @@ def require_org_kyc_tier(min_tier: int, org_id_param: str = 'org_id'):
             if not org_id:
                 abort(400, description="Organization ID required")
 
-            # Check organization KYC status (simplified - implement full KYB later)
+            # Check organization KYB status
             org = db.session.get(Organisation, org_id)
             if not org:
                 abort(404, description="Organization not found")
@@ -653,11 +613,18 @@ def require_org_kyc_tier(min_tier: int, org_id_param: str = 'org_id'):
             if not membership:
                 abort(403, description="Not a member of this organization")
 
-            # TODO: Implement organization KYB tier checking
-            # For now, check user's personal tier
-            kyc_info = calculate_kyc_tier(current_user.id)  # Use internal BIGINT id
-            if kyc_info["tier"] < min_tier:
-                abort(403, description=f"Requires KYC tier {min_tier} for organization operations")
+            # Check organisation KYB status (authoritative source)
+            from app.identity.services.organisation_kyb_service import OrganisationKYBService
+            kyb_status = OrganisationKYBService.compute_status(org)
+            
+            # Map min_tier to KYB level requirements
+            # min_tier 1 = operational KYB (L1), min_tier 2 = full KYB (L2)
+            if min_tier <= 1:
+                if not kyb_status["is_operational_kyb"]:
+                    abort(403, description="Organisation requires operational KYB (business registration, identity, tax verification) to perform this operation")
+            elif min_tier >= 2:
+                if not kyb_status["is_full_kyb"]:
+                    abort(403, description="Organisation requires full KYB (including UBO, sanctions screening, source of funds) to perform this operation")
 
             return f(*args, **kwargs)
         return decorated_function
@@ -715,36 +682,49 @@ def report_to_fia(user_id: int, amount: float, transaction_type: str):
 
     # TODO: Generate FIA report and store for submission
     current_app.logger.warning(f"FIA Report Required: User {user.public_id}, Amount UGX {amount:,}")
-
-def check_pep_status(user_id: int) -> bool:
-    """Check if user is a Politically Exposed Person."""
+def check_pep_status(user_id: int) -> str:
+    """Check if user is a Politically Exposed Person.
+    
+    Returns:
+        'NOT_SCREENED' - No screening performed (no provider configured)
+        'CLEAR' - Screened and no match found
+        'MATCH' - Potential PEP match found
+        'MANUAL_REVIEW' - Requires manual review
+        'ERROR' - Screening error
+    
+    NOTE: Currently no real PEP screening provider is integrated.
+    This function returns 'NOT_SCREENED' to avoid false compliance representation.
+    """
     from app.identity.models.user import User
     user = db.session.get(User, user_id)
     if not user:
         raise ValueError(f"User with id {user_id} not found")
 
-    # TODO: Integrate with PEP database
-    # For now, check against known indicators
-    profile = get_profile_by_user(user.public_id)
-    if profile and profile.full_name:
-        # Simple check for titles indicating political position
-        pep_titles = ["minister", "mp", "mps", "honorable", "honourable", "ambassador", "mayor"]
-        full_name_lower = profile.full_name.lower()
-        for title in pep_titles:
-            if title in full_name_lower:
-                return True
-    return False
+    # No real PEP screening provider integrated
+    # Name-based check is NOT a compliance control - it's a placeholder
+    return "NOT_SCREENED"
 
-def check_sanctions_list(user_id: int) -> bool:
-    """Check if user appears on sanctions lists."""
+
+def check_sanctions_list(user_id: int) -> str:
+    """Check if user appears on sanctions lists.
+    
+    Returns:
+        'NOT_SCREENED' - No screening performed (no provider configured)
+        'CLEAR' - Screened and no match found
+        'MATCH' - Potential sanctions match found
+        'MANUAL_REVIEW' - Requires manual review
+        'ERROR' - Screening error
+    
+    NOTE: Currently no real sanctions screening provider is integrated.
+    This function returns 'NOT_SCREENED' to avoid false compliance representation.
+    """
     from app.identity.models.user import User
     user = db.session.get(User, user_id)
     if not user:
         raise ValueError(f"User with id {user_id} not found")
 
-    # TODO: Integrate with sanctions databases
-    # For now, return False (not on sanctions list)
-    return False
+    # No real sanctions screening provider integrated
+    return "NOT_SCREENED"
 
 # ============================================================================
 # Utility Functions

@@ -125,7 +125,7 @@ class Config:
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
-        "isolation_level": os.getenv("DB_ISOLATION_LEVEL", "REPEATABLE_READ"),
+        "isolation_level": os.getenv("DB_ISOLATION_LEVEL", "READ_COMMITTED"),
         "pool_size":        int(os.getenv("DB_POOL_SIZE",     "10")),
         "max_overflow":     int(os.getenv("DB_MAX_OVERFLOW",  "15")),
         "pool_timeout":     int(os.getenv("DB_POOL_TIMEOUT",  "30")),
@@ -463,6 +463,11 @@ class TestingConfig(Config):
         "agents":         False,
         "admin":          True,
     }
+
+    # Disable strict email validation for tests
+    EMAIL_VALIDATE_MX = False
+    EMAIL_ALLOW_ROLE_ACCOUNTS = True
+    EMAIL_ALLOW_DISPOSABLE = True
 
 
 # ============================================================================

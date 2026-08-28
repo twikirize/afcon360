@@ -1010,7 +1010,10 @@ def guest_search():
     city = request.args.get('city')
     check_in = request.args.get('check_in')
     check_out = request.args.get('check_out')
-    guests = request.args.get('guests', 2, type=int)
+    
+    # Simplified guest parameters: guests (1-1000) and rooms (1-1000)
+    guests = request.args.get('guests', 1, type=int)
+    rooms = request.args.get('rooms', 1, type=int)
 
     properties = search_service.search_properties({
         'city': city,
@@ -1026,7 +1029,8 @@ def guest_search():
         city=city,
         check_in=check_in,
         check_out=check_out,
-        guests=guests
+        guests=guests,
+        rooms=rooms
     )
 
 
@@ -1037,7 +1041,10 @@ def guest_api_search():
     city = request.args.get('city')
     check_in = request.args.get('check_in')
     check_out = request.args.get('check_out')
-    guests = request.args.get('guests', 2, type=int)
+    
+    # Simplified guest parameters: guests (1-1000) and rooms (1-1000)
+    guests = request.args.get('guests', 1, type=int)
+    rooms = request.args.get('rooms', 1, type=int)
 
     properties = search_service.search_properties({
         'city': city,
@@ -1138,6 +1145,10 @@ def guest_detail(identifier):
 
     if property_model:
         _increment_view_count(property_model.id)
+        
+        # Check if property has active room types (incomplete if not)
+        has_active_room_types = any(rt.is_active for rt in property_model.room_types)
+        
         from app.accommodation.services.media_service import AccommodationMediaService
         from app.media.service import MediaService
         gallery_media = []
@@ -1266,7 +1277,8 @@ def guest_detail(identifier):
         selected_guests=guests,
         selected_room_type_id=selected_room_type_id,
         urgency=urgency,
-        now=datetime.now(timezone.utc)
+        now=datetime.now(timezone.utc),
+        has_active_room_types=has_active_room_types
     )
 # app/accommodation/routes.py - Add after host routes
 
@@ -1299,6 +1311,10 @@ def host_booking_policy(property_id):
         PaymentMethodConfig.is_active == True,
     ).all()
 
+    # Get property's current payment method config with allowed_timings
+    property_methods = PropertyPaymentMethod.query.filter_by(property_id=property_id).all()
+    property_method_config = {pm.wallet_method_id: pm for pm in property_methods}
+
     payment_options = {
         'payment_methods': [
             {
@@ -1307,6 +1323,10 @@ def host_booking_policy(property_id):
                 'display_name': m.display_name,
                 'method_type': m.method_type,
                 'icon': m.method_type,
+                'global_allowed_timings': m.allowed_timings or [],
+                'property_allowed_timings': property_method_config.get(m.id, PropertyPaymentMethod()).allowed_timings or [],
+                'property_preferred_currency': property_method_config.get(m.id, PropertyPaymentMethod()).preferred_currency or '',
+                'enabled': property_method_config.get(m.id, PropertyPaymentMethod()).enabled if m.id in property_method_config else False,
             }
             for m in all_payment_methods
         ],
@@ -1373,6 +1393,12 @@ def host_booking_policy(property_id):
                 if config and config.method_id in selected_methods:
                     pm.enabled = True
                     selected_method_ids.add(config.method_id)
+                    # Save per-method allowed timings
+                    timing_key = f'method_timing_{config.method_id}'
+                    pm.allowed_timings = request.form.getlist(timing_key)
+                    # Save preferred currency
+                    currency_key = f'method_currency_{config.method_id}'
+                    pm.preferred_currency = request.form.get(currency_key, '').strip() or None
                 else:
                     pm.enabled = False
 
@@ -1382,10 +1408,15 @@ def host_booking_policy(property_id):
                 config = PaymentMethodConfig.query.filter_by(method_id=method_id_str).first()
                 if not config:
                     continue
+                # Get timings and currency for new method
+                timing_key = f'method_timing_{config.method_id}'
+                currency_key = f'method_currency_{config.method_id}'
                 pm = PropertyPaymentMethod(
                     property_id=property_id,
                     wallet_method_id=config.id,
-                    enabled=True
+                    enabled=True,
+                    allowed_timings=request.form.getlist(timing_key),
+                    preferred_currency=request.form.get(currency_key, '').strip() or None
                 )
                 db.session.add(pm)
 
@@ -1568,6 +1599,15 @@ def guest_checkout():
                 f"{booking_data.get('check_out')}, guests={booking_data.get('num_guests')}"
             )
             flash('Booking data is incomplete or corrupted. Please restart your booking.', 'danger')
+            session.pop('pending_booking', None)
+            return redirect(url_for('accommodation.guest_search'))
+
+        # Check if property has active room types
+        from app.accommodation.models.property import Property as _Prop
+        _prop = db.session.get(_Prop, property_id)
+        if not _prop or not any(rt.is_active for rt in _prop.room_types):
+            current_app.logger.warning(f"Checkout blocked: property {property_id} has no active room types")
+            flash('This property is not ready for booking yet. Please contact the host.', 'warning')
             session.pop('pending_booking', None)
             return redirect(url_for('accommodation.guest_search'))
 
@@ -1993,10 +2033,17 @@ def guest_checkout():
 
         # Check wallet balance if needed
         if payment_method == 'wallet' and charge_amount > 0:
+            from app.wallet.services.wallet_service import WalletService
             account = AccountModel.query.filter_by(user_id=current_user.id).first()
-            if account.balance < charge_amount:
+            if not account:
                 AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
-                flash(f'Insufficient wallet balance. Your balance is {account.balance} {property_obj.currency} but the required amount is {charge_amount} {property_obj.currency}.', 'danger')
+                flash('You don\'t have a wallet account. Please choose another payment method or create a wallet first.', 'warning')
+                return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+            
+            balance = WalletService.get_balance(account.id)
+            if balance.get('balance', 0) < charge_amount:
+                AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
+                flash(f'Insufficient wallet balance. Your balance is {balance.get("balance", 0)} {property_obj.currency} but the required amount is {charge_amount} {property_obj.currency}.', 'danger')
                 return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
 
         # ============================================================
@@ -2187,13 +2234,6 @@ def guest_checkout():
         booking.amount_due = amount_due
         booking.balance_due_date = balance_due_date
 
-        if charge_amount > 0:
-            booking.payment_status = AccommodationPaymentStatus.PAID.value
-            booking.wallet_txn_id = txn_id
-            booking.paid_at = datetime.now(timezone.utc)
-        else:
-            booking.payment_status = AccommodationPaymentStatus.PENDING.value
-
         # Store policy snapshot
         policy_obj = PropertyBookingPolicy.query.filter_by(property_id=property_obj.id).first()
         if policy_obj:
@@ -2206,87 +2246,95 @@ def guest_checkout():
                 'balance_due_days_before_checkin': policy_obj.balance_due_days_before_checkin,
             }
 
-        # 6.5 UPDATE PAYMENT LEDGER (thin wallet-linked index)
-        try:
-            BookingService.update_payment_event(
+        # 6.5 UPDATE PAYMENT LEDGER via PaymentStateMachine
+        from app.accommodation.state_machine import PaymentStateMachine, PaymentState
+        from app.accommodation.models.booking_payment import AccommodationBookingPayment
+        from decimal import Decimal
+        
+        payment_event = AccommodationBookingPayment.query.filter_by(
+            booking_id=booking.id
+        ).order_by(AccommodationBookingPayment.created_at.desc()).first()
+        
+        if not payment_event:
+            payment_event = AccommodationBookingPayment(
                 booking_id=booking.id,
-                payment_status="success" if charge_amount > 0 else "pending",
                 wallet_txn_id=txn_id,
+                payment_reference=AccommodationBookingPayment.generate_payment_reference(),
+                payment_status=PaymentState.PENDING.value,
                 payment_method=payment_method,
-                payment_gateway=payment_method,
-                gateway_transaction_id=txn_id,
                 idempotency_key=idempotency_key,
             )
-        except Exception as ledger_error:
-            current_app.logger.warning(f"Payment ledger write failed: {ledger_error}")
+            db.session.add(payment_event)
+            db.session.flush()
+        
+        if charge_amount > 0:
+            # Mark payment as paid via PaymentStateMachine
+            PaymentStateMachine.mark_paid(
+                payment_event,
+                amount=Decimal(str(charge_amount)),
+                wallet_txn_id=txn_id,
+                changed_by_user_id=current_user.id,
+            )
+            # Sync booking fields for backward compatibility
+            booking.payment_status = PaymentState.PAID.value
+            booking.wallet_txn_id = txn_id
+            booking.paid_at = datetime.now(timezone.utc)
+            booking.payment_guaranteed = True
+        else:
+            # Payment pending (pay_on_arrival, invoice)
+            PaymentStateMachine.transition(
+                payment_event,
+                PaymentState.PENDING,
+                changed_by_user_id=current_user.id,
+                reason=f"Payment timing: {payment_timing}",
+                trigger="checkout_payment_pending",
+                metadata={"payment_timing": payment_timing, "payment_method": payment_method},
+            )
+            booking.payment_status = PaymentState.PENDING.value
 
         db.session.flush()
 
         # ============================================================
-        # STEP 7: Confirm booking
+        # STEP 7: Confirm booking via policy evaluator
         # ============================================================
-        if payment_timing in ('pay_now', 'deposit'):
-            if booking.status == AccommodationBookingStatus.PENDING_APPROVAL.value:
-                # Request-to-book properties remain pending host approval even
-                # when a deposit/full payment has been captured.
+        # BookingService.confirm_booking now handles all payment timings
+        # and evaluates policy (host approval, payment requirements) internally
+        success, confirm_error = BookingService.confirm_booking(
+            booking.id,
+            wallet_transaction_id=txn_id,
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get('User-Agent')
+        )
+
+        if not success:
+            current_app.logger.error(f"❌ BOOKING CONFIRMATION FAILED: {confirm_error}")
+            flash(f'Booking confirmation failed: {confirm_error}', 'danger')
+            return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+
+        current_app.logger.info(f"✅ Booking confirmed: {booking.booking_reference}")
+
+        # For pay_on_arrival/invoice bookings that need host approval,
+        # the policy evaluator will have kept them in PENDING_APPROVAL
+        # Extend hold expiration for approval bookings
+        if booking.status == AccommodationBookingStatus.PENDING_APPROVAL.value:
+            from app.accommodation.models.availability import RoomHold
+            from datetime import timedelta
+            hold = RoomHold.query.filter(
+                RoomHold.property_id == booking.property_id,
+                RoomHold.check_in == booking.check_in,
+                RoomHold.check_out == booking.check_out,
+                RoomHold.guest_user_id == current_user.id,
+                RoomHold.status == "active",
+            ).order_by(RoomHold.created_at.desc()).first()
+            if hold and hold.hold_type == "payment":
+                hold.hold_type = "approval"
+                hold.approval_sla_hours = 48
+                hold.expires_at = datetime.now(timezone.utc) + timedelta(hours=48)
+                hold.hold_minutes = 48 * 60
                 db.session.commit()
                 current_app.logger.info(
-                    f"✅ Booking paid and awaiting host approval: {booking.booking_reference}"
+                    f"Extended hold to 48h approval SLA for booking {booking.booking_reference}"
                 )
-            else:
-                # Already paid - confirm immediately
-                success, confirm_error = BookingService.confirm_booking(
-                    booking.id,
-                    wallet_transaction_id=txn_id,
-                    ip_address=request.remote_addr,
-                    user_agent=request.headers.get('User-Agent')
-                )
-
-                if not success:
-                    current_app.logger.error(f"❌ BOOKING CONFIRMATION FAILED: {confirm_error}")
-                    flash(f'Booking confirmation failed: {confirm_error}', 'danger')
-                    return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
-
-                current_app.logger.info(f"✅ Booking confirmed: {booking.booking_reference}")
-        else:
-            # pay_on_arrival or invoice - move through the state machine so
-            # host approval requests are audited.
-            from app.accommodation.state_machine.booking_states import BookingStateMachine
-
-            if booking.status != AccommodationBookingStatus.PENDING_APPROVAL.value:
-                BookingStateMachine.transition(
-                    booking,
-                    AccommodationBookingStatus.PENDING_APPROVAL,
-                    changed_by_user_id=current_user.id,
-                    reason="Pay-on-arrival/invoice booking requires host approval",
-                    ip_address=request.remote_addr,
-                    user_agent=request.headers.get('User-Agent'),
-                    trigger="checkout_pending_approval",
-                    metadata={"payment_timing": payment_timing, "payment_method": payment_method},
-                )
-            db.session.commit()
-            current_app.logger.info(f"✅ Booking created (pending approval): {booking.booking_reference}")
-
-            # Extend hold expiration for approval bookings (48h SLA instead of 15min)
-            if booking.status == AccommodationBookingStatus.PENDING_APPROVAL.value:
-                from app.accommodation.models.availability import RoomHold
-                from datetime import timedelta
-                hold = RoomHold.query.filter(
-                    RoomHold.property_id == booking.property_id,
-                    RoomHold.check_in == booking.check_in,
-                    RoomHold.check_out == booking.check_out,
-                    RoomHold.guest_user_id == current_user.id,
-                    RoomHold.status == "active",
-                ).order_by(RoomHold.created_at.desc()).first()
-                if hold and hold.hold_type == "payment":
-                    hold.hold_type = "approval"
-                    hold.approval_sla_hours = 48
-                    hold.expires_at = datetime.now(timezone.utc) + timedelta(hours=48)
-                    hold.hold_minutes = 48 * 60
-                    db.session.commit()
-                    current_app.logger.info(
-                        f"Extended hold to 48h approval SLA for booking {booking.booking_reference}"
-                    )
 
         # Group bookings and third-party bookings without known guest details
         # receive one capped link that can be shared with the whole party.
@@ -3580,12 +3628,22 @@ def guest_cancel_booking(reference):
 
     if success:
         if refund > 0:
-            WalletService.refund_wallet(
-                user_id=current_user.id,
+            # Determine which user gets the refund (booker or guest)
+            refund_user_id = booking.booked_by_user_id or booking.guest_user_id
+            if not refund_user_id:
+                refund_user_id = current_user.id
+            
+            refund_result = WalletService.refund_wallet(
+                user_id=refund_user_id,
                 amount=refund,
                 description=f"Refund for cancelled booking: {reference}",
-                original_transaction_id=booking.wallet_txn_id
+                original_transaction_id=booking.wallet_txn_id,
+                currency=booking.currency or "USD",
             )
+            # Store refund transaction ID for idempotency
+            if refund_result.get("transaction_id"):
+                booking.wallet_txn_id = refund_result["transaction_id"]
+                db.session.commit()
             flash(f'{message} Refund of ${refund} has been processed.', 'success')
         else:
             flash(message, 'info')

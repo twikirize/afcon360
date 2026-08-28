@@ -39,6 +39,12 @@ from app.accommodation.models.booking_payment import AccommodationBookingPayment
 from app.accommodation.models.guest_identity import GuestIdentityProfile
 from app.accommodation.models.platform_override import PlatformBookingPolicyOverride
 from app.accommodation.models.commission import BookingCommission
+from app.accommodation.models.cancellation_policy import (
+    CancellationPolicy,
+    CancellationPolicyType,
+    CancellationPhase,
+    CancellationPenalty,
+)
 from app.accommodation.models.host_profile import HostProfile, HostOrganisationProfile
 from app.accommodation.models.property_document import PropertyDocument
 
@@ -110,6 +116,11 @@ __all__ = [
     'GuestIdentityProfile',
     'PlatformBookingPolicyOverride',
     'BookingCommission',
+    # Cancellation Policy
+    'CancellationPolicy',
+    'CancellationPolicyType',
+    'CancellationPhase',
+    'CancellationPenalty',
     'HostProfile',
     'HostOrganisationProfile',
     'PropertyDocument',

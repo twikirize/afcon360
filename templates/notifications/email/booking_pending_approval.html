@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AFCON360 Booking Pending Approval</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f4f6f8; margin: 0; padding: 20px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; border-top: 5px solid #f59e0b;">
+    <h2 style="color: #f59e0b; margin-top: 0;">AFCON360 Booking Submitted - Awaiting Host Approval</h2>
+    <p>Dear <strong>{{ user_name or 'Valued Guest' }}</strong>,</p>
+    <p>Your reservation request for <strong>{{ item_name or 'your booking' }}</strong> has been received and is awaiting host approval.</p>
+    <p style="background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px; padding: 16px; margin: 16px 0;">
+      <strong style="color: #b45309;">⏳ Your booking is not yet confirmed.</strong> The host has 24 hours to review and approve. You will be notified once the host responds.
+    </p>
+    <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Booking Reference:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ reference_id or 'N/A' }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Property:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ item_name or 'N/A' }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Check-in:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ check_in_date or 'TBD' }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Check-out:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ check_out_date or 'TBD' }}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Total Amount:</strong></td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ total_ugx or '0' }} UGX</td>
+      </tr>
+    </table>
+    {% if link %}<p style="text-align: center;"><a href="{{ link }}" style="background-color: #f59e0b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">View Booking Details</a></p>{% endif %}
+    <p style="color: #555; font-size: 14px;">If the host declines or doesn't respond within 24 hours, your payment will be automatically refunded.</p>
+  </div>
+</body>
+</html>

@@ -68,7 +68,9 @@ def issue_accommodation_for_assignment(event, registration, booking, assignment)
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     assignment.acc_link_token_hash = token_hash
     assignment.acc_link_expires_at = _link_expiry(event, booking)
-    db.session.commit()  # persist slot and token hash before sending email
+    # Commit is handled by the outer transaction (GuestCoordinationService).
+    # The bridge no longer commits independently to keep the assignment and
+    # guest-slot creation atomic.
 
     # 3. Email the attendee an account-free completion link (best-effort).
     _email_invite(event, registration, booking, token)

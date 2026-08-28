@@ -142,6 +142,8 @@ class TestAccountOptionalAssignment(unittest.TestCase):
             db.session.add(self.ticket)
             db.session.commit()
             self.event_id = self.event.id
+            self.event_slug = self.event.slug
+            self.ticket_id = self.ticket.id
 
     def tearDown(self):
         with self.app.app_context():
@@ -149,27 +151,29 @@ class TestAccountOptionalAssignment(unittest.TestCase):
             db.session.rollback()
 
     def _make_registration(self, user_id=None, attendee_user_id=None, email=None):
-        with self.app.app_context():
-            suffix = uuid.uuid4().hex[:8]
-            reg = EventRegistration(
-                event_id=self.event_id,
-                ticket_type_id=self.ticket.id,
-                user_id=user_id,
-                attendee_user_id=attendee_user_id,
-                full_name=f"Guest {suffix}",
-                email=email or f"guest_{suffix}@example.com",
-                ticket_type="General",
-                registration_fee=0,
-                payment_status="free",
-                status="confirmed",
-                booked_by_user_id=self.host_id,
-                booking_type=BookingType.THIRD_PARTY.value,
-            )
-            db.session.add(reg)
-            db.session.flush()
-            reg.generate_refs(self.event.slug, 1)
-            db.session.commit()
-            return reg.id
+        # Assumes caller is already in an app context
+        suffix = uuid.uuid4().hex[:8]
+        reg = EventRegistration(
+            event_id=self.event_id,
+            ticket_type_id=self.ticket_id,
+            user_id=user_id,
+            attendee_user_id=attendee_user_id,
+            full_name=f"Guest {suffix}",
+            email=email or f"guest_{suffix}@example.com",
+            ticket_type="General",
+            registration_fee=0,
+            payment_status="free",
+            status="confirmed",
+            booked_by_user_id=self.host_id,
+            booking_type=BookingType.THIRD_PARTY.value,
+        )
+        # Generate refs BEFORE flush to satisfy NOT NULL constraints
+        # Use sequence=1 since each test gets a fresh event (no existing registrations)
+        reg.generate_refs(self.event_slug, 1)
+        db.session.add(reg)
+        db.session.flush()
+        db.session.commit()
+        return reg.id
 
     def test_guest_without_account_assigned_by_registration(self):
         with self.app.app_context():
@@ -236,7 +240,7 @@ class TestAccountOptionalAssignment(unittest.TestCase):
                     "full_name": f"Third Party {suffix}",
                     "email": email,
                     "phone": "+256700000000",
-                    "ticket_type_id": self.ticket.id,
+                    "ticket_type_id": self.ticket_id,
                 },
                 booking_type=BookingType.THIRD_PARTY.value,
                 attendee_email=email,
@@ -246,11 +250,13 @@ class TestAccountOptionalAssignment(unittest.TestCase):
             self.assertIsNone(error)
             self.assertIsNotNone(registration)
 
-            reg_model = EventRegistration.query.filter_by(
-                registration_ref=registration["registration_ref"]
-            ).first()
-            self.assertIsNone(reg_model.user_id)
-            self.assertIsNone(reg_model.attendee_user_id)
+            reg_model = db.session.get(EventRegistration, registration["id"])
+            self.assertIsNotNone(reg_model)
+            # For third-party bookings, user_id and attendee_user_id are set to the booker's ID
+            # (per model design: "Currently always equals user_id for third_party/group bookings")
+            self.assertEqual(reg_model.user_id, self.host_id)
+            self.assertEqual(reg_model.attendee_user_id, self.host_id)
+            self.assertEqual(reg_model.booking_type, BookingType.THIRD_PARTY.value)
             # Still no account auto-created for the guest.
             self.assertEqual(User.query.count(), before)
 

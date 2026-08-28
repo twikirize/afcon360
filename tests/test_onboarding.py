@@ -2,6 +2,7 @@
 Onboarding flow integration tests.
 Run with: pytest tests/test_onboarding.py -v
 """
+import uuid
 import pytest
 from app import create_app
 from app.config import TestingConfig
@@ -30,7 +31,7 @@ def registered_user(app):
     """Create a registered but not-yet-onboarded user."""
     with app.app_context():
         user = User(
-            public_id="test-uuid-1234",
+            public_id=str(uuid.uuid4()),
             username="testuser",
             email="test@example.com",
         )
@@ -210,7 +211,7 @@ class TestWalletActivation:
         with app.app_context():
             from app.wallet.models.ledger import AccountModel, AccountOwnerType
             account = AccountModel.query.filter_by(
-                user_id=registered_user.id,
+                owner_id=registered_user.id,
                 owner_type=AccountOwnerType.USER
             ).first()
             assert account is None
@@ -229,7 +230,7 @@ class TestWalletActivation:
         with app.app_context():
             from app.wallet.models.ledger import AccountModel, AccountOwnerType
             account = AccountModel.query.filter_by(
-                user_id=registered_user.id,
+                owner_id=registered_user.id,
                 owner_type=AccountOwnerType.USER
             ).first()
             assert account is not None
