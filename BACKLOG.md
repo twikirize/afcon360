@@ -291,3 +291,191 @@
 - **Owner/area:** Events + identity/permissions + finance/compliance (for refund policy)
 - **Links:** `app/events/models.py:657-662`, `app/events/models.py:204-205`, `app/events/services.py:2237-2262`, `app/events/services.py:1455-1514`, `app/events/permissions.py` (`can_manage_registration`), `templates/events/events_hub.html` (attendee table actions), AGENTS.md §6, §19, §20, §29, §34
 - **Links:** `app/accommodation/models/room.py`, `app/accommodation/services/media_service.py`, `app/media/routes.py`, `templates/accommodation/host/edit_listing.html`, `templates/accommodation/guest/detail.html`
+
+---
+
+## KYC/KYB authorization � regulatory vs operational daily/monthly limit fusion (Agent 2 finding)
+- **Status:** Partial - regulatory daily/monthly now ENFORCED in WalletService hot path (Agent 3, ledger-derived volume via KYCLimitService.check_regulatory_cumulative_limits); operational ceilings remain; canonical volume-source decision = ledger-derived for authorization, stored account.daily_volume/monthly_volume display-only. See Future Architecture sec 2/9/10.
+- **Raised:** 2026-08-28
+- **Context:** Frozen architecture states KYC owns regulatory limits, Wallet owns operational ceilings, and the effective applicable limit uses restrictive precedence (min). Today the effective per-transaction limit correctly applies restricted precedence (regulatory per-txn vs action-specific WalletSystemConfig ceiling). However, the daily/monthly regulatory KYC limits (kyc_config_schema `kyc_tier_{t}_daily_limit` / `monthly_limit`) are NOT enforced inside `WalletService.deposit/withdraw/transfer`. The transaction hot path enforces daily via Flask config `WALLET_DAILY_LIMIT_HOME/LOCAL` (`WalletService._check_daily_limit`) and monthly via per-account `AccountModel.monthly_volume_limit` (`WalletService._check_monthly_limit`). Separately, `KYCLimitService.check_volume_limits` enforces the regulatory daily/monthly limit against the stored `account.daily_volume`/`monthly_volume` columns, but only in the web-form route (`app/wallet/routes.py:782`), not in the API/admin/payment-gateway paths that call `WalletService` directly. Two distinct volume sources are also used: stored `account.daily_volume` (incremented by `account_repo.update_volume`) vs ledger-derived volume (`ledger_repo.get_daily_volume`).
+- **What needs to happen:** Decide the single canonical volume source and fuse regulatory+operational daily/monthly with restrictive precedence in the `WalletService` transaction path (or formally declare operational-only as the intended design and deprecate the regulatory KYC daily/monthly columns for transaction authorization). Avoid double-counting across the two volume mechanisms. This is an ARCHITECTURE DECISION, not a local fix.
+- **Owner/area:** Wallet + KYC/Compliance
+- **Links:** `app/wallet/services/wallet_service.py:119-194`, `app/wallet/services/kyc_limit_service.py:259-312`, `app/wallet/routes.py:782`, `app/kyc_config_schema.py`, `app/wallet/models/ledger.py` (`daily_volume`, `monthly_volume_limit`), AGENTS.md A18.1, A17
+
+## KYC/KYB authorization � AML threshold ownership conflict (Agent 2 finding)
+- **Status:** Not started � needs architecture decision
+- **Raised:** 2026-08-28
+- **Context:** Two competing AML threshold authorities exist: (1) `kyc_config_schema.get_thresholds()` returns `aml_review`=5,000,000 and `fia_report`=20,000,000 (owner-configurable, used by `check_transaction_allowed`/`flag_for_aml_review`/`report_to_fia` in `app/auth/kyc_compliance.py`); (2) `WalletSystemConfig.aml_threshold` (default 10,000) is persisted and editable in the admin UI but is NOT referenced anywhere in the authorization/compliance path; (3) `ComplianceEngine`/`AMLTransactionMonitor` hard-codes `DAILY_REPORTING_THRESHOLD = 10000`. These three values can disagree and create contradictory behavior. Per AGENTS.md the two systems must not be silently merged.
+- **What needs to happen:** Decide the single authoritative AML threshold owner. Either wire `WalletSystemConfig.aml_threshold` into the compliance path (and remove the hard-coded 10000) or formally deprecate `WalletSystemConfig.aml_threshold` as dead config. Do NOT silently merge the two systems.   [Agent 3, 2026-08-28: confirmed WalletSystemConfig.aml_threshold is DEAD/unused; authoritative = kyc_config_schema.get_thresholds(); documented in Future Architecture sec 3. No production change made; removing dead config needs a migration (owner action).]
+- **Owner/area:** Wallet + Compliance
+- **Links:** `app/kyc_config_schema.py:373-378`, `app/wallet/models/config.py:293` (`aml_threshold`), `app/wallet/services/compliance_engine.py:196,311`, `app/auth/kyc_compliance.py:494-500`, AGENTS.md A18.1, A29
+
+## KYC/KYB authorization � broken `WalletService.create_wallet` / `get_wallet_limits` (Agent 2 finding)
+- **Status:** Not started � out of scope (dead/broken code, not in hot path)
+- **Raised:** 2026-08-28
+- **Context:** `WalletService.create_wallet()` imports a non-existent module `app.wallet.models.wallet` (no `Wallet`/`WalletAuditLog` model exists; ledger-based `AccountModel` is the real account entity). `get_wallet_limits()` returns `max_transfer_amount` for `daily_limit`/`monthly_limit`, conflating per-transaction and cumulative ceilings. `create_wallet` is currently not called anywhere in the app, so this is dead code, but it must not be re-activated without fixing the model reference and the ceiling semantics. Do NOT invent a `WalletLimit` model.
+- **What needs to happen:** If wallet-creation limits are needed, derive them from `WalletSystemConfig` action-specific ceilings and KYC regulatory limits; use `AccountModel` (not a `Wallet` model) for persistence. Otherwise leave as-is and document.
+- **Owner/area:** Wallet
+- **Links:** `app/wallet/services/wallet_service.py:270-317`, `app/wallet/models/__init__.py`, AGENTS.md A18.1, A34
+
+## KYC/KYB authorization � individual PEP/sanctions screening lifecycle (Agent 2 finding)
+- **Status:** Deferred (per frozen spec) � MISSING ARCHITECTURAL COMPONENTS for individuals
+- **Raised:** 2026-08-28
+- **Context:** Organisation KYB supports sanctions screening state via `OrganisationKYBCheck(check_type="sanctions")` (state persistence exists; provider integration deferred). Individuals have NO PEP/sanctions model fields; `check_pep_status()`/`check_sanctions_list()` in `app/auth/kyc_compliance.py` return `"NOT_SCREENED"`. No periodic re-screening mechanism exists for either owner type. External screening must remain OUTSIDE the transaction authorization hot path (frozen spec).
+- **What needs to happen:** When separately authorized, add individual PEP/sanctions screening state persistence, a re-screening scheduler, and a compliance-review hook. Do NOT add screening provider calls to the transaction path.
+- **Owner/area:** Identity + Compliance
+- **Links:** `app/identity/models/kyb.py`, `app/auth/kyc_compliance.py:685-727`, `app/identity/services/organisation_kyb_service.py:40,94-95`, AGENTS.md A18.2, A29
+
+---
+
+# Future Financial Compliance & Authorization Architecture (Agent 3 -- 2026-08-28)
+
+Consolidated design target derived from the Agent-2 KYC/KYB authorization findings and the frozen
+architecture invariants (AGENTS.md A17, A18.1, A18.2, A29). Each subsection names the current gap,
+the proposed design, and the ownership boundary. NOT yet implemented unless noted.
+
+## 1. Jurisdiction Policy Engine
+- Current: per-tier limits/activity constants live in app/kyc_config_schema.py; ComplianceEngine /
+  AMLTransactionMonitor hard-code DAILY_REPORTING_THRESHOLD = 10000.
+- Target: a jurisdiction-keyed policy store (owner-configurable) so AML/regulatory thresholds and
+  activity tiers are selected by jurisdiction rather than a single global constant set.
+- Owner: KYC/Compliance + Config. Must NOT introduce PostgreSQL ENUM types (AGENTS.md A14).
+
+## 2. Regulatory vs Operational Limits (restrictive precedence)
+- Regulatory (KYC, jurisdiction) and operational (Wallet) ceilings are SEPARATE sources.
+- Effective per-transaction = min(regulatory per-txn, action-specific WalletSystemConfig ceiling)
+  -- already implemented in KYCLimitService.check_transaction_allowed.
+- Effective daily/monthly = min(regulatory daily/monthly, operational daily/monthly).
+  - Regulatory daily/monthly: ENFORCED (Agent 3) via KYCLimitService.check_regulatory_cumulative_limits
+    in WalletService.deposit/withdraw/transfer, using ledger-derived volume.
+  - Operational ceilings: Flask config WALLET_DAILY_LIMIT_HOME/LOCAL (WalletService._check_daily_limit)
+    and AccountModel.monthly_volume_limit (WalletService._check_monthly_limit).
+- Do NOT clamp regulatory by operational or vice versa (explicit Task A decision).
+
+## 3. AML Architecture Separation
+- Authoritative AML/monitoring thresholds: kyc_config_schema.get_thresholds() (aml_review=5,000,000,
+  fia_report=20,000,000) -- owner-configurable; consumed by app/auth/kyc_compliance.py.
+- WalletSystemConfig.aml_threshold (default 10,000) is DEAD/unused -- must be deprecated (needs a
+  migration to remove the column; out of Agent 3 scope).
+- ComplianceEngine.DAILY_REPORTING_THRESHOLD = 10000 is SEPARATE regulatory reporting, not AML screening.
+- Decision required: single authoritative AML owner; do NOT silently merge the two systems (AGENTS.md A18.1).
+
+## 4. Risk-Based Monitoring
+- Risk score per transaction/account derived from policy-engine thresholds; separate from the binary
+  authorization pass/fail. Surfaces for compliance review, not for blocking the hot path.
+
+## 5. PEP/Sanctions Lifecycle
+- Organisation: OrganisationKYBCheck(check_type=sanctions) state persistence exists; provider
+  integration deferred.
+- Individual: NO persistence; check_pep_status()/check_sanctions_list() return NOT_SCREENED.
+- External screening MUST remain OUTSIDE the transaction authorization hot path (frozen spec).
+
+## 6. Individual Screening Persistence
+- Add PEP/sanctions state fields to the individual identity models, mirroring the organisation pattern
+  (app/identity/models/kyb.py). Currently MISSING for individuals.
+
+## 7. Re-Screening
+- Periodic Celery job keyed by last_screened_at + risk band, for BOTH individual and organisation
+  owners; triggers a compliance-review hook on change.
+
+## 8. Compliance Review Workflow
+- Flag -> review -> decision, with forensic audit (AGENTS.md A29): correlation id, actor, status,
+  risk, request context. Owner-reviewed states; no silent auto-clear.
+
+## 9. Canonical Transaction Volume Source
+- CHOSEN (Agent 3): ledger-derived volume (LedgerRepository.get_daily_volume / get_monthly_volume,
+  DEBITS, rolling windows) is the authoritative source for cumulative regulatory limits.
+- Stored AccountModel.daily_volume / monthly_volume are retained for DISPLAY ONLY and are NOT
+  authoritative for authorization. This divergence is intentional and documented here.
+
+## 10. Operational Daily/Monthly Ceilings
+- Flask config WALLET_DAILY_LIMIT_HOME / WALLET_DAILY_LIMIT_LOCAL (deposit/withdraw) and
+  AccountModel.monthly_volume_limit (transfer/monthly) remain the operational ceilings.
+- They are enforced independently of, and not clamped by, the regulatory cumulative limits.
+
+## 11. Authorization Decision Engine
+- Single entrypoint: KYCLimitService.check_transaction_allowed (individual) +
+  KYCLimitService._check_org_transaction_allowed (org via OrganisationKYBService.compute_status).
+- Returns a dict: allowed, reason, limit_type, kyc_level, aml_flag.
+- WalletService._check_kyc_limits enforces regulatory cumulative limits and delegates operational
+  ceilings to the existing _check_daily_limit / _check_monthly_limit.
+- FROZEN (unchanged): AccountOwnerType, AccountModel.owner_type, wallet ownership FKs,
+  User.kyc_level schema, Organisation.verification_status semantics, no new Wallet model,
+  no migrations in Agent 3 scope.
+
+---
+
+## KYC/KYB authorization -- Agent 3 bounded remediation (2026-08-28)
+- Status: Partial -- Task A implemented + tested; Task B documented (needs decision); Task C tests fixed; stale test scaffold classified
+- Raised: 2026-08-28
+- Context: Bounded remediation of the Agent-2 KYC/KYB authorization findings, constrained by the frozen wallet-ownership architecture.
+- What was done (Task A): KYCLimitService.check_regulatory_cumulative_limits(account_id, currency, amount, kyc_level) added -- uses ledger-derived volume (rolling daily/monthly), no commit in hot path, tier-5 unbounded, skips when no account. WalletService._check_kyc_limits now accepts account_id and raises LimitExceededError (limit_type kyc_daily/kyc_monthly); wired into deposit/withdraw/transfer. Regulatory daily/monthly are NOT clamped by operational ceilings.
+- Verification (Task A): 13 new tests in tests/test_kyc_limit_authorization.py PASS (daily enforced, daily within-limit, monthly enforced, daily NOT clamped by operational ceiling, missing-account skip, tier-5 unbounded, WalletService raises on cumulative daily).
+- Task B (AML conflict): Analyzed; documented above (AML Architecture Separation). No production change. WalletSystemConfig.aml_threshold is dead; authoritative = kyc_config_schema.get_thresholds(). Removing dead config needs a migration (owner action).
+- Task C (regressions in kyc_compliance.py): Determined NONE -- calculate_kyc_tier is correct/canonical. Only the STALE test mocks were broken: tests/test_kyc_compliance.py patched app.auth.kyc_compliance.KycRecord (not a module attribute) -> fixed to app.kyc.models.KycRecord; 9/9 now pass.
+- Stale test scaffold: tests/test_wallet_authorization_limits.py (519 lines) was a pre-existing broken scaffold. It patched module-level symbols (calculate_kyc_tier, OrganisationKYBService, LedgerRepository, KycRecord) that the implementation imports INSIDE methods, and had API mismatches (per_transaction key, expects 10000 daily, assumed _check_daily_limit enforced regulatory KYC). RESOLVED 2026-08-28: repaired to 34/34 passing after fixing mock targets, the org/account mock shape, tier-0 handling, and aligning with the real architecture (operational daily ceiling in _check_daily_limit; regulatory cumulative in _check_kyc_limits via check_regulatory_cumulative_limits). The broader authorization suite (test_wallet_authorization_limits + test_kyc_limit_authorization + test_kyc_compliance) is now 58/58 green.
+- Dead/broken code confirmed: WalletService.create_wallet() / get_wallet_limits() import non-existent app.wallet.models.wallet and conflate per-transaction/cumulative ceilings. Dead (not in hot path). Documented; not reactivated. get_effective_cumulative_limit referenced at wallet_service.py:148,190 does not exist (same dead path).
+- Owner/area: Wallet + KYC/Compliance
+- Links: app/wallet/services/kyc_limit_service.py, app/wallet/services/wallet_service.py, tests/test_kyc_limit_authorization.py, tests/test_kyc_compliance.py, tests/test_wallet_authorization_limits.py, app/kyc_config_schema.py, app/wallet/models/config.py, app/auth/kyc_compliance.py, AGENTS.md A18.1, A17, A29, A34
+
+---
+
+## 4. Operational Daily/Monthly Wallet Configuration (deferred from audit)
+- **Status:** Open (decision required)
+- **Raised:** 2026-08-28
+- **Context:** The wallet currently enforces operational per-transaction ceilings via `WalletSystemConfig.max_deposit/withdrawal/transfer_amount` and an operational daily ceiling via Flask config `WALLET_DAILY_LIMIT_HOME`/`WALLET_DAILY_LIMIT_LOCAL`. There is NO operational *monthly* ceiling and no owner UI to review/override the effective (regulatory-min-operational) daily/monthly bound.
+- **What needs to happen:** Decide whether owners should be able to lower (never raise above regulatory) the operational daily/monthly ceilings through `WalletSystemConfig`, and whether an operational monthly ceiling should be introduced. Requires an approved spec + migration (constitution A19.2/A20 — owner/operator action). Do NOT modify wallet models without authorization.
+- **Owner/area:** Wallet + Owner/Compliance
+
+## 5. Authorization Volume Performance (deferred from audit)
+- **Status:** Open (monitor)
+- **Raised:** 2026-08-28
+- **Context:** `WalletService._check_kyc_limits` now calls `KYCLimitService.check_regulatory_cumulative_limits` on every deposit/withdraw/transfer. That helper computes ledger-derived rolling daily/monthly volume via `LedgerRepository.get_daily_volume`/`get_monthly_volume` (DB aggregations) plus `calculate_kyc_tier`. Under high authorization throughput this adds DB load per transaction.
+- **What needs to happen:** Confirm via load testing that the per-transaction volume aggregation is acceptable; if not, introduce a cached/denormalized rolling counter or materialized summary with a bounded refresh, behind the existing `WalletService` path (no model/migration change without approval). The helper performs no `commit`, so it is safe to call inside the atomic hot path.
+- **Owner/area:** Wallet performance
+- **Links:** app/wallet/services/kyc_limit_service.py (`check_regulatory_cumulative_limits`), app/wallet/repositories/ledger_repository.py (`get_daily_volume`/`get_monthly_volume`), app/wallet/services/wallet_service.py (`_check_kyc_limits`)
+
+---
+
+## 6. Owner-Configurable Operational Daily/Monthly Ceilings in WalletSystemConfig (deferred from this pass)
+- **Status:** Open (decision required)
+- **Raised:** 2026-08-29
+- **Context:** The wallet currently enforces operational per-transaction ceilings via `WalletSystemConfig.max_deposit/withdrawal/transfer_amount` and an operational daily ceiling via Flask config `WALLET_DAILY_LIMIT_HOME`/`WALLET_DAILY_LIMIT_LOCAL`. There is NO operational *monthly* ceiling in `WalletSystemConfig` and no owner UI to review/override the effective (regulatory-min-operational) daily/monthly bound through the database-backed config.
+- **What needs to happen:** Decide whether owners should be able to lower (never raise above regulatory) the operational daily/monthly ceilings through `WalletSystemConfig`, and whether an operational monthly ceiling should be introduced. Requires an approved spec + migration (constitution A19.2/A20 — owner/operator action). Do NOT modify wallet models without authorization.
+- **Owner/area:** Wallet + Owner/Compliance
+
+---
+
+## 7. Request-Scoped Memoization for `calculate_kyc_tier` (deferred from this pass)
+- **Status:** Open (performance optimization)
+- **Raised:** 2026-08-29
+- **Context:** `calculate_kyc_tier(user_id)` is called multiple times per request (by `WalletService._check_kyc_limits`, `KYCLimitService.get_user_kyc_level`, `WalletStatusService.get_wallet_status`, etc.). Each call executes the full KYC pipeline (DB queries, document scope aggregation). Under load this is repeated per transaction.
+- **What needs to happen:** Add request-scoped memoization (e.g., `flask.g._kyc_tier_cache[user_id]`) to avoid redundant KYC queries within a single request. Must be safe for the authorization semantics (no stale tier within a request).
+- **Owner/area:** Wallet + Auth performance
+- **Links:** app/auth/kyc_compliance.py (`calculate_kyc_tier`), app/wallet/services/kyc_limit_service.py (`get_user_kyc_level`), app/wallet/services/wallet_service.py (`_check_kyc_limits`), app/wallet/services/wallet_status_service.py (`get_wallet_status`)
+
+---
+
+## 8. Frontend KYC/KYB Status Synchronization (deferred from this pass)
+- **Status:** Partial (dashboard updated; other pages may need review)
+- **Raised:** 2026-08-29
+- **Context:** The wallet dashboard now displays effective limits from `KYCLimitService.get_transaction_limits`. The deposit page uses `limits.per_transaction.deposit` for per-transaction limit validation. Other wallet pages (withdraw, send, settings) may still use stale logic or not display effective limits.
+- **What needs to happen:** Audit all wallet frontend pages (withdraw, send, transactions, settings) to ensure they display effective limits from the backend (`get_transaction_limits` or equivalent) and do not independently calculate authorization rules.
+- **Owner/area:** Wallet frontend
+- **Links:** templates/wallet/deposit.html, templates/wallet/withdraw.html, templates/wallet/send.html, templates/wallet/wallet_dashboard.html
+
+---
+
+## F3 — Ledger Volume Semantics for Regulatory Cumulative Limits
+- **Status:** Open (decision required)
+- **Raised:** 2026-08-29
+- **Context:** `LedgerRepository.get_daily_volume` and `get_monthly_volume` compute volume as SUM of DEBIT entries over rolling 24h/30d windows. This is the authoritative source for regulatory KYC daily/monthly cumulative limits. However, the semantics have unresolved questions:
+  1. Rolling window (24h/30d) vs calendar day/month — regulatory limits are typically calendar-based.
+  2. No filter by transaction status — includes entries from COMPLETED transactions only (since failed txns roll back), but if a transaction fails after ledger post but before status update, the debit would count.
+  3. No exclusion of refund/reversal CREDIT entries from the DEBIT sum — refunds are CREDIT entries so they don't affect DEBIT volume, but a reversal posted as a DEBIT would incorrectly increase volume.
+  4. No exclusion of internal/platform account DEBITs — platform accounts may have different regulatory treatment.
+  5. Currency isolation is per-account (correct).
+- **What needs to happen:** Product/compliance decision on intended semantics. If calendar-based windows are required, migrate to calendar-day/month aggregation. If status filtering is needed, join to TransactionModel.status. If reversal handling is needed, add reversal flag to ledger entries. Requires approved spec + potential migration (constitution A19.2/A20).
+- **Owner/area:** Wallet + Compliance
+- **Links:** app/wallet/repositories/ledger_repository.py (`get_daily_volume`/`get_monthly_volume`), app/wallet/services/kyc_limit_service.py (`check_regulatory_cumulative_limits`), app/wallet/services/wallet_service.py (`_check_kyc_limits`), tests/test_kyc_limit_authorization.py (regulatory cumulative tests)
+

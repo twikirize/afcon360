@@ -37,6 +37,7 @@ from app.wallet.services.commission_service import CommissionService
 from app.wallet.services.payout_service import PayoutService
 from app.wallet.services.commission_service import CommissionService
 from app.wallet.services.payout_service import PayoutService
+from app.wallet.services.payment_identity_service import resolve_payment_recipient
 
 # Create blueprint
 wallet_api_bp = Blueprint('wallet_api', __name__, url_prefix='/api/wallet')
@@ -178,6 +179,99 @@ def create_wallet():
             "status": "error",
             "code": "INTERNAL_ERROR",
             "message": "Unable to create wallet. Please try again."
+        }), 500
+
+
+# ============================================================================
+# RECIPIENT RESOLUTION ENDPOINTS
+# ============================================================================
+
+@wallet_api_bp.route('/recipients/resolve', methods=['POST'])
+@login_required
+def resolve_recipient():
+    """
+    Resolve a payment recipient from a human-supplied identifier.
+
+    POST /api/wallet/recipients/resolve
+
+    Body:
+        {"identifier": "+256700123456"}
+
+    Response (success):
+        {
+          "found": true,
+          "trusted": true,
+          "recipient": {
+            "recipient_type": "user",
+            "display_name": "Alice Kagisha",
+            "identity_type": "PHONE",
+            "masked_identifier": "+256 *** ***456",
+            "account_number": "ACC-UGX-7F42K9",
+            "currency": "UGX"
+          }
+        }
+
+    Security:
+        - This endpoint ONLY answers "WHO IS THIS?" (address resolution).
+        - It does NOT debit, authorize, or expose internal account IDs.
+        - Unverified/inactive identities are returned with trusted=false and
+          must not be used as transfer destinations.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        identifier = (data.get('identifier') or '').strip()
+        if not identifier:
+            return jsonify({
+                "status": "error",
+                "code": "INVALID_REQUEST",
+                "message": "identifier is required"
+            }), 400
+
+        result = resolve_payment_recipient(identifier)
+
+        if not result.get('found'):
+            return jsonify({
+                "status": "success",
+                "found": False,
+                "reason": result.get('reason', 'not_found')
+            }), 404
+
+        if not result.get('trusted'):
+            # Found but not a trusted destination (unverified/inactive/no account).
+            return jsonify({
+                "status": "success",
+                "found": True,
+                "trusted": False,
+                "reason": result.get('reason', 'not_trusted'),
+                "recipient": {
+                    "identity_type": result.get('identity_type'),
+                    "masked_identifier": result.get('masked_identifier'),
+                    "account_number": result.get('account_number'),
+                    "status": result.get('status'),
+                }
+            }), 200
+
+        return jsonify({
+            "status": "success",
+            "found": True,
+            "trusted": True,
+            "recipient": {
+                "recipient_type": result.get('recipient_type'),
+                "display_name": result.get('display_name'),
+                "identity_type": result.get('identity_type'),
+                "masked_identifier": result.get('masked_identifier'),
+                "account_number": result.get('account_number'),
+                "currency": result.get('currency'),
+                "status": result.get('status'),
+            }
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Recipient resolution error: {e}")
+        return jsonify({
+            "status": "error",
+            "code": "INTERNAL_ERROR",
+            "message": "Unable to resolve recipient"
         }), 500
 
 

@@ -189,7 +189,17 @@ def calculate_kyc_tier(user_identifier) -> Dict[str, Any]:
     """
     Calculate user's KYC tier based on user identifier.
     Accepts either internal user ID (BIGINT) or public_id (UUID string).
+    
+    Uses request-scoped memoization via flask.g to avoid redundant DB queries
+    within a single request.
     """
+    from flask import g
+    
+    # Request-scoped cache key
+    cache_key = f"_kyc_tier_cache_{user_identifier}"
+    if hasattr(g, cache_key):
+        return getattr(g, cache_key)
+    
     from app.identity.models.user import User
 
     # Determine if identifier is integer (BIGINT id) or string (public_id)
@@ -290,13 +300,39 @@ def calculate_kyc_tier(user_identifier) -> Dict[str, Any]:
     if achieved_tier == 0 and getattr(user, "phone", None):
         fulfillment_percentage = 15  # phone entered but not verified yet
 
-    return _build_tier_response(
+    result = _build_tier_response(
         achieved_tier,
         missing_requirements,
         verification,
         profile,
         fulfillment_percentage,
     )
+
+    # Store in request-scoped cache
+    from flask import g
+    setattr(g, cache_key, result)
+    return result
+
+
+def clear_kyc_tier_cache(user_identifier=None):
+    """
+    Clear the request-scoped KYC tier cache.
+    
+    Args:
+        user_identifier: If provided, clear cache only for this user.
+                        If None, clear cache for all users in current request.
+    """
+    from flask import g
+    if user_identifier is not None:
+        cache_key = f"_kyc_tier_cache_{user_identifier}"
+        if hasattr(g, cache_key):
+            delattr(g, cache_key)
+    else:
+        # Clear all KYC tier caches
+        for attr in list(g.__dict__.keys()):
+            if attr.startswith("_kyc_tier_cache_"):
+                delattr(g, attr)
+
 
 def _kyc_requirement_enabled(requirement: str) -> bool:
     """

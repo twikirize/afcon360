@@ -23,7 +23,7 @@ from app.extensions import db
 from app.wallet.services.wallet_service import WalletService
 from app.wallet.repositories.ledger_repository import LedgerRepository
 from app.wallet.repositories.account_repository import AccountRepository
-from app.wallet.models.ledger import AccountModel, LedgerEntryModel, EntryType, AccountOwnerType
+from app.wallet.models.ledger import AccountModel, LedgerEntryModel, EntryType, AccountOwnerType, AccountType, AccountStatus
 from app.wallet.models.transaction import TransactionModel, TransactionType, TransactionStatus
 from app.wallet.exceptions import (
     InsufficientBalanceError,
@@ -82,7 +82,8 @@ def test_user(app):
 @pytest.fixture
 def funded_account(app, test_user):
     """Create a funded account for testing."""
-    account = AccountRepository().get_or_create(test_user.id, AccountOwnerType.USER, 'USD')
+    from app.wallet.routes import get_or_create_account
+    account = get_or_create_account(test_user.id, 'USD')
     
     # Create a transaction first (required for ledger entry FK)
     tx = TransactionModel(
@@ -222,7 +223,8 @@ class TestFrozenWallet:
             )
             db.session.add(recipient)
             db.session.commit()
-            recipient_account = AccountRepository().get_or_create(recipient.id, AccountOwnerType.USER, 'USD')
+            from app.wallet.routes import get_or_create_account
+            recipient_account = get_or_create_account(recipient.id, 'USD')
             
             with pytest.raises(WalletFrozenError):
                 service.transfer(
@@ -318,7 +320,8 @@ class TestTransferAtomicity:
             
             # Get initial balances
             sender_balance_before = LedgerRepository().get_balance(funded_account.id, 'USD')
-            recipient_account = AccountRepository().get_or_create(recipient.id, AccountOwnerType.USER, 'USD')
+            from app.wallet.routes import get_or_create_account
+            recipient_account = get_or_create_account(recipient.id, 'USD')
             recipient_balance_before = LedgerRepository().get_balance(recipient_account.id, 'USD')
             
             # Mock to raise error during transaction
@@ -465,9 +468,10 @@ class TestWalletOwnershipTypes:
 
     def test_user_wallet_ownership(self, app, test_user):
         """Test that a user can own a wallet."""
-        account = AccountRepository().get_or_create(test_user.id, AccountOwnerType.USER, 'USD')
+        from app.wallet.routes import get_or_create_account
+        account = get_or_create_account(test_user.id, 'USD')
         
-        assert account.owner_id == test_user.id
+        assert account.user_id == test_user.id
         assert account.owner_type == AccountOwnerType.USER
         assert account.account_type in ('user_wallet', 'org_wallet')
         
@@ -480,10 +484,12 @@ class TestWalletOwnershipTypes:
     def test_organisation_wallet_ownership(self, app):
         """Test that an organisation can own a wallet."""
         from app.identity.models.organisation import Organisation
+        from app.wallet.models.ledger import AccountModel, AccountOwnerType, AccountType, AccountStatus
+        from decimal import Decimal
         
         org = Organisation(
             org_id=str(uuid4()),
-            legal_name="Test Organisation",
+            legal_name="Test Organisation " + str(uuid4()),
             country="UG",
             primary_contact_user_id=None,
             lifecycle_state="registered",
@@ -492,9 +498,20 @@ class TestWalletOwnershipTypes:
         db.session.add(org)
         db.session.flush()
         
-        account = AccountRepository().get_or_create(org.id, AccountOwnerType.ORGANISATION, 'UGX')
+        # Create account directly with ORGANISATION owner_type
+        account = AccountModel(
+            user_id=org.id,
+            currency="UGX",
+            owner_type=AccountOwnerType.ORGANISATION,
+            account_type=AccountType.ORG_WALLET,
+            account_name=f"OrgWallet_UGX_{org.id}",
+            status=AccountStatus.ACTIVE,
+            verified=False
+        )
+        db.session.add(account)
+        db.session.commit()
         
-        assert account.owner_id == org.id
+        assert account.user_id == org.id
         assert account.owner_type == AccountOwnerType.ORGANISATION
         assert account.account_type in ('user_wallet', 'org_wallet')
         
@@ -505,10 +522,12 @@ class TestWalletOwnershipTypes:
     def test_user_and_org_wallets_separate(self, app, test_user):
         """Test that user wallet and org wallet are separate."""
         from app.identity.models.organisation import Organisation
+        from app.wallet.models.ledger import AccountModel, AccountOwnerType, AccountType, AccountStatus
+        from app.wallet.routes import get_or_create_account
         
         org = Organisation(
             org_id=str(uuid4()),
-            legal_name="Test Org",
+            legal_name="Test Org " + str(uuid4()),
             country="UG",
             primary_contact_user_id=None,
             lifecycle_state="registered",
@@ -517,14 +536,27 @@ class TestWalletOwnershipTypes:
         db.session.add(org)
         db.session.flush()
         
-        user_account = AccountRepository().get_or_create(test_user.id, AccountOwnerType.USER, 'USD')
-        org_account = AccountRepository().get_or_create(org.id, AccountOwnerType.ORGANISATION, 'UGX')
+        # Create user wallet
+        user_account = get_or_create_account(test_user.id, 'USD')
+        
+        # Create org wallet directly with ORGANISATION owner_type
+        org_account = AccountModel(
+            user_id=org.id,
+            currency="UGX",
+            owner_type=AccountOwnerType.ORGANISATION,
+            account_type=AccountType.ORG_WALLET,
+            account_name=f"OrgWallet_UGX_{org.id}",
+            status=AccountStatus.ACTIVE,
+            verified=False
+        )
+        db.session.add(org_account)
+        db.session.commit()
         
         assert user_account.id != org_account.id
         assert user_account.owner_type == AccountOwnerType.USER
         assert org_account.owner_type == AccountOwnerType.ORGANISATION
-        assert user_account.owner_id == test_user.id
-        assert org_account.owner_id == org.id
+        assert user_account.user_id == test_user.id
+        assert org_account.user_id == org.id
 
 
 if __name__ == '__main__':

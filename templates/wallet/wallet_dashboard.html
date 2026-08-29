@@ -184,11 +184,69 @@
         </div>
         <div>
           <div class="form-label">KYC Status</div>
-          <span class="badge badge-verified"><i class="fas fa-shield-alt"></i> Verified</span>
+          {% if limits %}
+            <span class="badge badge-verified">
+              <i class="fas fa-shield-alt"></i> {{ limits.kyc_label }}
+            </span>
+          {% else %}
+            <span class="badge badge-verified"><i class="fas fa-shield-alt"></i> Verified</span>
+          {% endif %}
         </div>
       </div>
     </div>
   </div>
+
+  {% if limits %}
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <i class="fas fa-chart-line panel-title-icon blue"></i>
+        Transaction Limits
+      </div>
+    </div>
+    <div class="panel-body" style="padding:20px;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;">
+        <div>
+          <div class="form-label">Per-Transaction Limit</div>
+          <div class="stat-value">{{ "{:,.0f}".format(limits.per_transaction_limit) }} {{ account.currency }}</div>
+          <div class="form-text" style="font-size:11px;">Effective = min(KYC, operational ceiling)</div>
+        </div>
+        <div>
+          <div class="form-label">Daily Limit</div>
+          <div class="stat-value">{{ "{:,.0f}".format(limits.daily_limit) }} {{ account.currency }}</div>
+          <div class="form-text" style="font-size:11px;">Effective = min(KYC daily, operational daily)</div>
+        </div>
+        <div>
+          <div class="form-label">Monthly Limit</div>
+          <div class="stat-value">{{ "{:,.0f}".format(limits.monthly_limit) }} {{ account.currency }}</div>
+          <div class="form-text" style="font-size:11px;">Regulatory KYC monthly (ledger-derived)</div>
+        </div>
+        <div>
+          <div class="form-label">KYC Level</div>
+          <div class="stat-value">{{ limits.kyc_label }}</div>
+        </div>
+      </div>
+      
+      <details style="margin-top:16px;">
+        <summary style="cursor:pointer;color:var(--muted);font-size:13px;">Per-Action Limits</summary>
+        <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;">
+          <div>
+            <div class="form-label">Deposit</div>
+            <div class="stat-value">{{ "{:,.0f}".format(limits.per_transaction.deposit) }} {{ account.currency }}</div>
+          </div>
+          <div>
+            <div class="form-label">Withdrawal</div>
+            <div class="stat-value">{{ "{:,.0f}".format(limits.per_transaction.withdraw) }} {{ account.currency }}</div>
+          </div>
+          <div>
+            <div class="form-label">Transfer</div>
+            <div class="stat-value">{{ "{:,.0f}".format(limits.per_transaction.transfer) }} {{ account.currency }}</div>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+  {% endif %}
 
   <div class="panel" style="background:linear-gradient(135deg,var(--blue),#1d4ed8);color:#fff;">
     <div style="padding:20px;">

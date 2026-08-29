@@ -53,7 +53,7 @@ except ImportError:
 from app.extensions import db, redis_client
 from app.events.tasks import process_event_registration
 from sqlalchemy import func
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timezone, timedelta
 import logging
 import html
 import uuid
@@ -2868,7 +2868,7 @@ def become_organizer():
     """Create an OrganizerProfile for the current user after eligibility check."""
     try:
         from app.events.models import OrganizerProfile
-        from datetime import datetime
+        from datetime import datetime, timezone
         
         # Check eligibility first
         eligibility = EventService.check_organizer_eligibility(current_user.id)
@@ -2898,7 +2898,7 @@ def become_organizer():
             total_registrations=metrics.get("total_registrations", 0),
             status="approved",
             eligibility_passed=True,
-            approved_at=datetime.utcnow()
+            approved_at=datetime.now(timezone.utc)
         )
         db.session.add(profile)
         db.session.commit()

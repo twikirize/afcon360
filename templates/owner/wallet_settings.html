@@ -536,36 +536,123 @@
                     <div class="alert-text">
                         Changes to wallet limits will affect all new transactions immediately. 
                         Existing transactions will continue with their original settings.
+                        <br><strong>Per-transaction limits use restrictive precedence:</strong> 
+                        effective limit = min(regulatory KYC limit, operational ceiling).
                     </div>
                 </div>
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Minimum Transaction Amount (UGX)</label>
-                        <input type="number" id="min_transaction" value="{{ config.wallet.min_transaction or 10000 }}" step="100">
+                        <label>Maximum Deposit Amount (UGX)</label>
+                        <input type="number" id="max_deposit_amount" value="{{ config.wallet.max_deposit_amount or 1000000 }}" step="1000">
+                        <div class="form-text">Operational ceiling for deposit transactions</div>
                     </div>
                     
                     <div class="form-group">
-                        <label>Maximum Transaction Amount (UGX)</label>
-                        <input type="number" id="max_transaction" value="{{ config.wallet.max_transaction or 10000000 }}" step="1000">
-                    </div>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Daily Transaction Limit (UGX)</label>
-                        <input type="number" id="daily_limit" value="{{ config.wallet.daily_limit or 5000000 }}" step="1000">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Monthly Transaction Limit (UGX)</label>
-                        <input type="number" id="monthly_limit" value="{{ config.wallet.monthly_limit or 50000000 }}" step="1000">
+                        <label>Maximum Withdrawal Amount (UGX)</label>
+                        <input type="number" id="max_withdrawal_amount" value="{{ config.wallet.max_withdrawal_amount or 500000 }}" step="1000">
+                        <div class="form-text">Operational ceiling for withdrawal transactions</div>
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label>Maximum Wallet Balance (UGX)</label>
-                    <input type="number" id="max_balance" value="{{ config.wallet.max_balance or 100000000 }}" step="10000">
+                    <label>Maximum Transfer Amount (UGX)</label>
+                    <input type="number" id="max_transfer_amount" value="{{ config.wallet.max_transfer_amount or 1000000 }}" step="1000">
+                    <div class="form-text">Operational ceiling for transfer/send transactions</div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Operational Daily Limit (UGX)</label>
+                        <input type="number" id="max_daily_amount" value="{{ config.wallet.max_daily_amount or 5000000 }}" step="1000">
+                        <div class="form-text">Platform-wide operational daily ceiling (further restricts regulatory daily)</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Operational Monthly Limit (UGX)</label>
+                        <input type="number" id="max_monthly_amount" value="{{ config.wallet.max_monthly_amount or 50000000 }}" step="1000">
+                        <div class="form-text">Platform-wide operational monthly ceiling (further restricts regulatory monthly)</div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Deposit Fee (%)</label>
+                        <input type="number" id="deposit_fee_percent" value="{{ config.fees.deposit_fee_percent or 0 }}" step="0.01" min="0" max="100">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Withdrawal Fee (%)</label>
+                        <input type="number" id="withdrawal_fee_percent" value="{{ config.fees.withdrawal_fee_percent or 1 }}" step="0.01" min="0" max="100">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Transfer Fee (%)</label>
+                        <input type="number" id="transfer_fee_percent" value="{{ config.fees.transfer_fee_percent or 0.5 }}" step="0.01" min="0" max="100">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>FX Spread (%)</label>
+                        <input type="number" id="fx_spread_percent" value="{{ config.fees.fx_spread_percent or 1.5 }}" step="0.01" min="0" max="100">
+                    </div>
+                </div>
+
+                <hr style="margin: 1.5rem 0;">
+
+                <h4 style="margin-bottom: 1rem;">KYC Requirements</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="require_kyc_for_deposits" {% if config.wallet.require_kyc_for_deposits %}checked{% endif %}>
+                            Require KYC for Deposits
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="require_kyc_for_withdrawals" {% if config.wallet.require_kyc_for_withdrawals %}checked{% endif %}>
+                            Require KYC for Withdrawals
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="require_kyc_for_transfers" {% if config.wallet.require_kyc_for_transfers %}checked{% endif %}>
+                        Require KYC for Transfers
+                    </label>
+                </div>
+
+                <hr style="margin: 1.5rem 0;">
+
+                <h4 style="margin-bottom: 1rem;">Feature Flags</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="deposits_enabled" {% if config.wallet.deposits_enabled %}checked{% endif %}>
+                            Deposits Enabled
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="withdrawals_enabled" {% if config.wallet.withdrawals_enabled %}checked{% endif %}>
+                            Withdrawals Enabled
+                        </label>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="transfers_enabled" {% if config.wallet.transfers_enabled %}checked{% endif %}>
+                            Transfers Enabled
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="fx_enabled" {% if config.wallet.fx_enabled %}checked{% endif %}>
+                            FX Conversion Enabled
+                        </label>
+                    </div>
                 </div>
             </div>
 
@@ -805,11 +892,22 @@ function savePaymentGateways() {
 // Save wallet limits
 function saveWalletLimits() {
     const settings = {
-        min_transaction: parseFloat(document.getElementById('min_transaction').value),
-        max_transaction: parseFloat(document.getElementById('max_transaction').value),
-        daily_limit: parseFloat(document.getElementById('daily_limit').value),
-        monthly_limit: parseFloat(document.getElementById('monthly_limit').value),
-        max_balance: parseFloat(document.getElementById('max_balance').value)
+        max_deposit_amount: parseFloat(document.getElementById('max_deposit_amount').value),
+        max_withdrawal_amount: parseFloat(document.getElementById('max_withdrawal_amount').value),
+        max_transfer_amount: parseFloat(document.getElementById('max_transfer_amount').value),
+        max_daily_amount: parseFloat(document.getElementById('max_daily_amount').value),
+        max_monthly_amount: parseFloat(document.getElementById('max_monthly_amount').value),
+        deposit_fee_percent: parseFloat(document.getElementById('deposit_fee_percent').value),
+        withdrawal_fee_percent: parseFloat(document.getElementById('withdrawal_fee_percent').value),
+        transfer_fee_percent: parseFloat(document.getElementById('transfer_fee_percent').value),
+        fx_spread_percent: parseFloat(document.getElementById('fx_spread_percent').value),
+        require_kyc_for_deposits: document.getElementById('require_kyc_for_deposits').checked,
+        require_kyc_for_withdrawals: document.getElementById('require_kyc_for_withdrawals').checked,
+        require_kyc_for_transfers: document.getElementById('require_kyc_for_transfers').checked,
+        deposits_enabled: document.getElementById('deposits_enabled').checked,
+        withdrawals_enabled: document.getElementById('withdrawals_enabled').checked,
+        transfers_enabled: document.getElementById('transfers_enabled').checked,
+        fx_enabled: document.getElementById('fx_enabled').checked
     };
     
     fetch('/owner/wallet/save-limits', {

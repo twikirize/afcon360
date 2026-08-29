@@ -265,14 +265,21 @@ class OrganizationRegistrationService:
     @staticmethod
     def create_org_wallet(org: Organisation) -> AccountModel:
         """Create wallet account for organization"""
-        from app.wallet.models.ledger import AccountModel, AccountOwnerType
+        from app.wallet.models.ledger import (
+            AccountModel, AccountOwnerType, AccountStatus, AccountType
+        )
+        from decimal import Decimal
         
         account = AccountModel(
-            owner_id=org.id,
+            user_id=org.id,
             owner_type=AccountOwnerType.ORGANISATION,
+            account_type=AccountType.ORG_WALLET,
             account_name=f"{org.legal_name} Wallet",
             currency='UGX',  # Default to Ugandan Shillings
-            is_active=True
+            status=AccountStatus.ACTIVE,
+            is_active=True,
+            daily_volume=Decimal('0'),
+            monthly_volume=Decimal('0'),
         )
         
         db.session.add(account)

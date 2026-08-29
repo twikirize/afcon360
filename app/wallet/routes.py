@@ -406,6 +406,10 @@ def wallet_dashboard():
         transaction_count = calculate_transaction_usage(current_user.id)
         commission = Decimal('0')
 
+        # 7. Get effective transaction limits for display
+        from app.wallet.services.kyc_limit_service import KYCLimitService
+        limits = KYCLimitService.get_transaction_limits(current_user.id, account.currency)
+
         logger.info("Step 5: Rendering dashboard...")
         return render_template(
             'wallet/wallet_dashboard.html',
@@ -417,7 +421,8 @@ def wallet_dashboard():
             no_wallet=False,
             wallet_activated=wallet_status.is_activated if wallet_status else False,
             show_create_prompt=False,
-            wallet_creation_status={}
+            wallet_creation_status={},
+            limits=limits
         )
 
     except Exception as e:
@@ -778,16 +783,10 @@ def deposit_form():
             flash('You need to create a wallet first.', 'warning')
             return redirect(url_for('wallet.wallet_dashboard'))
             
-        # Enforce volume limits
-        volume_check = KYCLimitService.check_volume_limits(
-            account_id=str(account.id),
-            amount=amount,
-            currency=currency,
-            period='daily'
-        )
-        if not volume_check['allowed']:
-            flash(volume_check['reason'], 'danger')
-            return redirect(url_for('wallet.deposit'))
+        # NOTE: cumulative daily/monthly regulatory limits are now enforced
+        # authoritatively inside WalletService.deposit (ledger-derived volume,
+        # no commit). A duplicate route-level check here was removed to keep a
+        # single cumulative-limit decision in the transaction service path.
 
         # 2. Source of Wealth / Compliance metadata
         source_of_funds = request.form.get('source_of_funds')

@@ -348,3 +348,41 @@ class AccountModel(db.Model):
         self.frozen_reason = None
         self.frozen_by = None
 
+
+# ---------------------------------------------------------------------------
+# Account number auto-generation
+# ---------------------------------------------------------------------------
+# Account numbers are stable, human-facing identifiers that MUST NOT be derived
+# from internal DB IDs. They are generated on insert when not already provided
+# (existing platform/escrow accounts keep their manually-assigned numbers).
+import secrets
+from sqlalchemy import event, select, text
+
+
+@event.listens_for(AccountModel, 'before_insert')
+def _generate_account_number(mapper, connection, target):
+    if target.account_number:
+        return
+    from app.wallet.utils.account_number import generate_account_number
+    # Retry briefly on the (vanishingly rare) random collision.
+    for _ in range(5):
+        candidate = generate_account_number(
+            owner_type=target.owner_type,
+            currency=target.currency,
+            account_type=target.account_type,
+        )
+        exists = connection.execute(
+            select(text('1')).select_from(text('accounts'))
+            .where(text('account_number = :an')),
+            {'an': candidate}
+        ).first()
+        if not exists:
+            target.account_number = candidate
+            return
+    # Extremely unlikely fallback: lengthen entropy
+    target.account_number = generate_account_number(
+        owner_type=target.owner_type,
+        currency=target.currency,
+        account_type=target.account_type,
+    ) + secrets.token_hex(2).upper()
+

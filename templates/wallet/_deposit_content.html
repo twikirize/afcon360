@@ -39,36 +39,39 @@
             </select>
           </div>
 
-          <div class="form-group">
-            <label class="form-label">Amount</label>
-            <input type="number" step="0.01" name="amount" x-model.number="amount" class="form-control" placeholder="0.00" required>
-            
-            <div x-show="currency !== baseCurrency && amount" style="margin-top: 10px;">
-                <template x-if="fxLoading">
-                    <small class="form-help text-muted"><i class="fas fa-spinner fa-spin"></i> Fetching live exchange rate...</small>
-                </template>
-                <template x-if="fxError">
-                    <small class="form-help text-danger" style="color: red;" x-text="fxError"></small>
-                </template>
-                <template x-if="!fxLoading && !fxError && fxRate">
-                    <div class="alert alert-info" style="padding: 10px; margin-top: 5px; font-size: 13px;">
-                        <i class="fas fa-exchange-alt"></i> 
-                        <strong>Cross-Border Deposit:</strong> You are depositing <span x-text="formatCurrency(amount, currency)"></span>. 
-                        Based on the live exchange rate (1 <span x-text="currency"></span> = <span x-text="fxRate"></span> <span x-text="baseCurrency"></span>), 
-                        your wallet will be credited with <strong><span x-text="formatCurrency(convertedAmount, baseCurrency)"></span></strong>.
-                    </div>
-                </template>
-            </div>
-            
-            <small class="form-help" :style="(convertedAmount || amount) > limit ? 'color: red;' : ''" style="display: block; margin-top: 8px;">
-              Your Daily Limit: <span x-text="formatCurrency(limit, baseCurrency)"></span> (KYC Level {{ limits.kyc_level }})
-            </small>
-          </div>
-          
-          <button type="button" class="btn btn-primary" style="width:100%;" @click="nextStep(1)" :disabled="amount <= 0 || (convertedAmount || amount) > limit || fxLoading || fxError">
-            Continue <i class="fas fa-arrow-right"></i>
-          </button>
-        </div>
+<div class="form-group">
+             <label class="form-label">Amount</label>
+             <input type="number" step="0.01" name="amount" x-model.number="amount" class="form-control" placeholder="0.00" required>
+             
+             <div x-show="currency !== baseCurrency && amount" style="margin-top: 10px;">
+                 <template x-if="fxLoading">
+                     <small class="form-help text-muted"><i class="fas fa-spinner fa-spin"></i> Fetching live exchange rate...</small>
+                 </template>
+                 <template x-if="fxError">
+                     <small class="form-help text-danger" style="color: red;" x-text="fxError"></small>
+                 </template>
+                 <template x-if="!fxLoading && !fxError && fxRate">
+                     <div class="alert alert-info" style="padding: 10px; margin-top: 5px; font-size: 13px;">
+                         <i class="fas fa-exchange-alt"></i> 
+                         <strong>Cross-Border Deposit:</strong> You are depositing <span x-text="formatCurrency(amount, currency)"></span>. 
+                         Based on the live exchange rate (1 <span x-text="currency"></span> = <span x-text="fxRate"></span> <span x-text="baseCurrency"></span>), 
+                         your wallet will be credited with <strong><span x-text="formatCurrency(convertedAmount, baseCurrency)"></span></strong>.
+                     </div>
+                 </template>
+             </div>
+             
+             <small class="form-help" :style="(convertedAmount || amount) > limit ? 'color: red;' : ''" style="display: block; margin-top: 8px;">
+               Per-Transaction Deposit Limit: <span x-text="formatCurrency(perTxnDepositLimit, baseCurrency)"></span>
+             </small>
+             <small class="form-help" :style="(convertedAmount || amount) > limit ? 'color: red;' : ''" style="display: block; margin-top: 4px;">
+               Daily Cumulative Limit: <span x-text="formatCurrency(limit, baseCurrency)"></span> (KYC Level {{ limits.kyc_level }})
+             </small>
+           </div>
+           
+           <button type="button" class="btn btn-primary" style="width:100%;" @click="nextStep(1)" :disabled="amount <= 0 || (convertedAmount || amount) > limit || (convertedAmount || amount) > perTxnDepositLimit || fxLoading || fxError">
+             Continue <i class="fas fa-arrow-right"></i>
+           </button>
+         </div>
 
         <!-- STEP 2: Compliance (Source of Funds) -->
         <div x-show="step === 2" style="display:none;">
@@ -198,6 +201,7 @@ function depositWizard() {
     currency: '{{ account.currency if account else "UGX" }}',
     baseCurrency: '{{ account.currency if account else "UGX" }}',
     limit: {{ limits.daily_limit }},
+    perTxnDepositLimit: {{ limits.per_transaction.deposit }},
     sourceOfFunds: '',
     method: '',
     fxRate: null,

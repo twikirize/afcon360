@@ -43,6 +43,9 @@ class IDGuard:
         ('LedgerEntryModel', 'transaction_id'): 'transactions.id',
         ('LedgerEntryModel', 'account_id'): 'accounts.id',
         ('TransactionModel', 'account_id'): 'accounts.id',
+        ('LedgerReversalReference', 'original_entry_id'): 'ledger_entries.id',
+        ('LedgerReversalReference', 'reversal_entry_id'): 'ledger_entries.id',
+        ('LedgerReversalReference', 'original_transaction_id'): 'transactions.id',
     }
 
     # Foreign keys that should be checked even if they don't end with '_id'

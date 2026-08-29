@@ -14,6 +14,7 @@ from flask import Blueprint, render_template, request, jsonify, current_app, red
 from functools import wraps
 from flask_login import login_required, current_user
 from app.extensions import db
+from datetime import datetime, timezone
 
 from app.auth.delegation import DelegationService, DelegationScope
 from app.audit.comprehensive_audit import AuditService
@@ -73,6 +74,10 @@ def inject_media_stats():
 @require_owner_role
 def wallet_settings():
     """Wallet settings page"""
+    from app.wallet.models.config import WalletSystemConfig
+    
+    wallet_config = WalletSystemConfig.get_config()
+    
     # Get current wallet configuration
     config = {
         'paypal': {
@@ -105,11 +110,18 @@ def wallet_settings():
             'environment': current_app.config.get('WECHAT_ENVIRONMENT', 'sandbox')
         },
         'wallet': {
-            'min_transaction': current_app.config.get('WALLET_MIN_TRANSACTION', 10000),
-            'max_transaction': current_app.config.get('WALLET_MAX_TRANSACTION', 10000000),
-            'daily_limit': current_app.config.get('WALLET_DAILY_LIMIT', 5000000),
-            'monthly_limit': current_app.config.get('WALLET_MONTHLY_LIMIT', 50000000),
-            'max_balance': current_app.config.get('WALLET_MAX_BALANCE', 100000000)
+            'max_deposit_amount': float(wallet_config.max_deposit_amount),
+            'max_withdrawal_amount': float(wallet_config.max_withdrawal_amount),
+            'max_transfer_amount': float(wallet_config.max_transfer_amount),
+            'max_daily_amount': float(wallet_config.max_daily_amount) if wallet_config.max_daily_amount is not None else 5000000,
+            'max_monthly_amount': float(wallet_config.max_monthly_amount) if wallet_config.max_monthly_amount is not None else 50000000,
+            'require_kyc_for_deposits': wallet_config.require_kyc_for_deposits,
+            'require_kyc_for_withdrawals': wallet_config.require_kyc_for_withdrawals,
+            'require_kyc_for_transfers': wallet_config.require_kyc_for_transfers,
+            'deposits_enabled': wallet_config.deposits_enabled,
+            'withdrawals_enabled': wallet_config.withdrawals_enabled,
+            'transfers_enabled': wallet_config.transfers_enabled,
+            'fx_enabled': wallet_config.fx_enabled,
         },
         'fees': {
             'paypal_fee': current_app.config.get('PAYPAL_FEE', 2.9),
@@ -117,7 +129,11 @@ def wallet_settings():
             'alipay_fee': current_app.config.get('ALIPAY_FEE', 0.6),
             'flutterwave_fee': current_app.config.get('FLUTTERWAVE_FEE', 1.4),
             'paystack_fee': current_app.config.get('PAYSTACK_FEE', 1.5),
-            'mobile_money_fee': current_app.config.get('MOBILE_MONEY_FEE', 1.0)
+            'mobile_money_fee': current_app.config.get('MOBILE_MONEY_FEE', 1.0),
+            'deposit_fee_percent': float(wallet_config.deposit_fee_percent),
+            'withdrawal_fee_percent': float(wallet_config.withdrawal_fee_percent),
+            'transfer_fee_percent': float(wallet_config.transfer_fee_percent),
+            'fx_spread_percent': float(wallet_config.fx_spread_percent),
         },
         'security': {
             'pin_threshold': current_app.config.get('WALLET_PIN_THRESHOLD', 100000),
@@ -340,21 +356,56 @@ def save_payment_gateways():
 @require_owner_role
 def save_wallet_limits():
     """Save wallet transaction limits"""
+    from app.wallet.models.config import WalletSystemConfig
+    
     try:
         data = request.get_json()
         
-        current_app.config['WALLET_MIN_TRANSACTION'] = data.get('min_transaction', 10000)
-        current_app.config['WALLET_MAX_TRANSACTION'] = data.get('max_transaction', 10000000)
-        current_app.config['WALLET_DAILY_LIMIT'] = data.get('daily_limit', 5000000)
-        current_app.config['WALLET_MONTHLY_LIMIT'] = data.get('monthly_limit', 50000000)
-        current_app.config['WALLET_MAX_BALANCE'] = data.get('max_balance', 100000000)
+        wallet_config = WalletSystemConfig.get_config()
+        
+        # Update transaction limits (per-action operational ceilings)
+        if 'max_deposit_amount' in data:
+            wallet_config.max_deposit_amount = float(data.get('max_deposit_amount', 1000000))
+        if 'max_withdrawal_amount' in data:
+            wallet_config.max_withdrawal_amount = float(data.get('max_withdrawal_amount', 500000))
+        if 'max_transfer_amount' in data:
+            wallet_config.max_transfer_amount = float(data.get('max_transfer_amount', 1000000))
+        
+        # Update operational cumulative ceilings
+        if 'max_daily_amount' in data:
+            wallet_config.max_daily_amount = float(data.get('max_daily_amount', 5000000))
+        if 'max_monthly_amount' in data:
+            wallet_config.max_monthly_amount = float(data.get('max_monthly_amount', 50000000))
+        
+        # Update KYC requirements
+        if 'require_kyc_for_deposits' in data:
+            wallet_config.require_kyc_for_deposits = bool(data.get('require_kyc_for_deposits', False))
+        if 'require_kyc_for_withdrawals' in data:
+            wallet_config.require_kyc_for_withdrawals = bool(data.get('require_kyc_for_withdrawals', True))
+        if 'require_kyc_for_transfers' in data:
+            wallet_config.require_kyc_for_transfers = bool(data.get('require_kyc_for_transfers', False))
+        
+        # Update feature flags
+        if 'deposits_enabled' in data:
+            wallet_config.deposits_enabled = bool(data.get('deposits_enabled', True))
+        if 'withdrawals_enabled' in data:
+            wallet_config.withdrawals_enabled = bool(data.get('withdrawals_enabled', True))
+        if 'transfers_enabled' in data:
+            wallet_config.transfers_enabled = bool(data.get('transfers_enabled', True))
+        if 'fx_enabled' in data:
+            wallet_config.fx_enabled = bool(data.get('fx_enabled', True))
+        
+        wallet_config.updated_at = datetime.now(timezone.utc)
+        wallet_config.updated_by = getattr(current_user, 'id', 1)
+        
+        db.session.commit()
         
         # Log the changes
         AuditService.compliance(
             action="wallet_limits_updated",
             limits=data,
             metadata={
-                "updated_by": getattr(request, 'user_id', 1),
+                "updated_by": getattr(current_user, 'id', 1),
                 "ip_address": request.remote_addr
             }
         )

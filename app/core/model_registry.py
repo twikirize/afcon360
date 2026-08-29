@@ -25,6 +25,7 @@ def register_all_models():
     from app.wallet.models.transaction import TransactionModel
     from app.wallet.models.audit import AuditLogModel
     from app.wallet.models.fx import FXRateModel, FXTransactionModel
+    from app.wallet.models.payment_identity import PaymentIdentityModel
 
     # Accommodation domain
     # NOTE: previously this domain had NO entry here at all (not even a

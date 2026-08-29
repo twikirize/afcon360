@@ -126,7 +126,12 @@ class WalletService:
         """
         Check daily limit for operation.
 
-        This is a REAL query against ledger entries, not a placeholder.
+        The operational daily ceiling is from WalletSystemConfig.max_daily_amount.
+        Falls back to Flask-config WALLET_DAILY_LIMIT_HOME (USD) /
+        WALLET_DAILY_LIMIT_LOCAL (other currencies) for backward compatibility.
+        The regulatory KYC daily cumulative limit is enforced separately in
+        _check_kyc_limits. Volume is derived from the ledger (never from stored
+        account.daily_volume).
 
         Args:
             account_id: Account UUID
@@ -137,10 +142,18 @@ class WalletService:
         Raises:
             LimitExceededError: If limit would be exceeded
         """
-        daily_limit_key = f"WALLET_DAILY_LIMIT_{'HOME' if currency == 'USD' else 'LOCAL'}"
-        daily_limit = current_app.config.get(daily_limit_key, Decimal("10000"))
+        from app.wallet.models.config import WalletSystemConfig
+        operational_config = WalletSystemConfig.get_config()
+        
+        # Use WalletSystemConfig operational daily ceiling (platform-wide, currency-agnostic)
+        # Falls back to Flask config for backward compatibility
+        if operational_config.max_daily_amount is not None:
+            daily_limit = Decimal(str(operational_config.max_daily_amount))
+        else:
+            daily_limit_key = f"WALLET_DAILY_LIMIT_{'HOME' if currency == 'USD' else 'LOCAL'}"
+            daily_limit = current_app.config.get(daily_limit_key, Decimal("10000"))
 
-        # Get actual daily volume from ledger
+        # Authoritative volume = ledger-derived (outgoing debits over the window).
         daily_volume = self.ledger_repo.get_daily_volume(account_id, currency)
 
         if daily_volume + amount > daily_limit:
@@ -160,6 +173,12 @@ class WalletService:
         """
         Check monthly limit for operation.
 
+        The operational monthly ceiling is from WalletSystemConfig.max_monthly_amount.
+        Falls back to per-account monthly_volume_limit for backward compatibility.
+        The regulatory KYC monthly cumulative limit is enforced separately in
+        _check_kyc_limits. Volume is derived from the ledger (never from stored
+        account.monthly_volume counters).
+
         Args:
             account_id: Account UUID
             amount: Transaction amount
@@ -168,28 +187,29 @@ class WalletService:
         Raises:
             LimitExceededError: If limit would be exceeded
         """
-        account = self.account_repo.get_by_id(account_id)
-        if not account:
-            return
+        from app.wallet.models.config import WalletSystemConfig
+        operational_config = WalletSystemConfig.get_config()
         
-        monthly_limit = account.monthly_volume_limit
-        if not monthly_limit:
-            return
-        
-        monthly_volume = account.monthly_volume or Decimal('0')
-        
-        # Reset if period has elapsed
-        if account.monthly_volume_reset_at and datetime.now(timezone.utc) > account.monthly_volume_reset_at:
-            monthly_volume = Decimal('0')
-            account.monthly_volume = Decimal('0')
-            account.monthly_volume_reset_at = datetime.now(timezone.utc) + timedelta(days=30)
-            db.session.commit()
-        
-        if monthly_volume + amount > monthly_limit:
+        # Use WalletSystemConfig operational monthly ceiling (platform-wide)
+        # Falls back to per-account monthly_volume_limit for backward compatibility
+        if operational_config.max_monthly_amount is not None:
+            limit = Decimal(str(operational_config.max_monthly_amount))
+        else:
+            account = self.account_repo.get_by_id(account_id)
+            if not account:
+                return
+            limit = account.monthly_volume_limit
+            if not limit:
+                return
+
+        # Authoritative volume = ledger-derived (outgoing debits over the window).
+        monthly_volume = self.ledger_repo.get_monthly_volume(account_id, currency)
+
+        if monthly_volume + amount > limit:
             raise LimitExceededError(
                 limit_type="monthly",
                 currency=currency,
-                limit=float(monthly_limit),
+                limit=float(limit),
                 current=float(monthly_volume)
             )
 
@@ -199,7 +219,8 @@ class WalletService:
         amount: Decimal,
         action: str,
         currency: str = 'UGX',
-        recipient_user_id: Optional[int] = None
+        recipient_user_id: Optional[int] = None,
+        account_id: Optional[str] = None
     ) -> None:
         """
         Check KYC-based transaction limits.
@@ -210,7 +231,11 @@ class WalletService:
             action: 'send', 'receive', 'withdraw', 'deposit'
             currency: Currency code
             recipient_user_id: Optional recipient owner id, used to detect a
-                     "personal transfer" (org -> individual) for org KYB gating.
+                      "personal transfer" (org -> individual) for org KYB gating.
+            account_id: Account UUID. When supplied, regulatory KYC daily/monthly
+                      cumulative limits are also enforced (Task A). The volume is
+                      derived from the ledger (rolling windows), so no cached
+                      counter reset and no extra commit occurs here.
 
         Raises:
             LimitExceededError: If KYC limits exceeded
@@ -230,6 +255,24 @@ class WalletService:
         # Store reason in exception message if needed
         if 'reason' in result:
             current_app.logger.info(f"KYC check passed: {result['reason']}")
+
+        # Regulatory cumulative (daily/monthly) enforcement. The authoritative
+        # KYC/KYB tier is returned by check_transaction_allowed; fall back to the
+        # canonical authority only if it is somehow absent.
+        kyc_level = result.get('kyc_level')
+        if kyc_level is None:
+            kyc_level = KYCLimitService.get_user_kyc_level(user_id)
+        if account_id is not None:
+            vol = KYCLimitService.check_regulatory_cumulative_limits(
+                account_id, currency, amount, kyc_level
+            )
+            if not vol['allowed']:
+                raise LimitExceededError(
+                    limit_type=f"kyc_{vol.get('limit_type', 'cumulative')}",
+                    currency=currency,
+                    limit=0,
+                    current=float(amount)
+                )
 
     def _check_fraud_risk(
         self,
@@ -597,7 +640,7 @@ class WalletService:
                 })
 
             # 3. KYC limit check
-            self._check_kyc_limits(account.user_id, amount, 'deposit', currency)
+            self._check_kyc_limits(account.user_id, amount, 'deposit', currency, account_id=str(account.id))
             
             # 4. Fraud risk check
             self._check_fraud_risk(account.user_id, amount, currency, ip_address=self._get_ip_address())
@@ -789,7 +832,7 @@ class WalletService:
                 )
 
             # 3. KYC limit check
-            self._check_kyc_limits(account.user_id, amount, 'withdraw', currency)
+            self._check_kyc_limits(account.user_id, amount, 'withdraw', currency, account_id=str(account.id))
             
             # 4. Fraud risk check
             self._check_fraud_risk(account.user_id, amount, currency, ip_address=self._get_ip_address())
@@ -1043,7 +1086,8 @@ class WalletService:
             # "personal transfers" are gated by full organisation KYB.
             self._check_kyc_limits(
                 from_account.user_id, amount, 'send', currency,
-                recipient_user_id=to_account.user_id
+                recipient_user_id=to_account.user_id,
+                account_id=str(from_account.id)
             )
             
             # 4. Fraud risk check (sender)
@@ -1628,7 +1672,6 @@ class WalletService:
     @staticmethod
     def create_commission(data: Dict[str, Any]) -> Any:
         """Create a new commission rule."""
-        from app.wallet.models.wallet import WalletLimit # Assuming it's related
         # Placeholder for actual commission model
         return True
 

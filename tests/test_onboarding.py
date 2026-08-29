@@ -32,8 +32,8 @@ def registered_user(app):
     with app.app_context():
         user = User(
             public_id=str(uuid.uuid4()),
-            username="testuser",
-            email="test@example.com",
+            username=f"testuser_{uuid.uuid4().hex[:8]}",
+            email=f"test_{uuid.uuid4().hex[:8]}@example.com",
         )
         user.set_password("TestPassword123!")
         user.is_active = True

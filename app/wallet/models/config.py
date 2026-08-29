@@ -265,10 +265,16 @@ class WalletSystemConfig(BaseModel):
     fx_enabled = Column(Boolean, default=True, nullable=False)
     agents_enabled = Column(Boolean, default=False, nullable=False)  # Mobile banking agents service
     
-    # Transaction limits
+    # Transaction limits (per-transaction operational ceilings)
     max_deposit_amount = Column(db.Numeric(18, 2), default=1000000)  # Default 1M
     max_withdrawal_amount = Column(db.Numeric(18, 2), default=500000)  # Default 500K
     max_transfer_amount = Column(db.Numeric(18, 2), default=1000000)  # Default 1M
+    
+    # Operational cumulative ceilings (platform-wide, NOT regulatory)
+    # These are platform operational restrictions that further restrict regulatory limits.
+    # Regulatory KYC daily/monthly limits remain in kyc_config_schema.
+    max_daily_amount = Column(db.Numeric(18, 2), default=5000000)  # Default 5M UGX
+    max_monthly_amount = Column(db.Numeric(18, 2), default=50000000)  # Default 50M UGX
     
     # Fee settings (percentage)
     deposit_fee_percent = Column(db.Numeric(5, 2), default=0)  # No fee
@@ -290,6 +296,10 @@ class WalletSystemConfig(BaseModel):
     sanctions_screening = Column(Boolean, default=True, nullable=False)
     country_specific_kyc = Column(Boolean, default=True, nullable=False)
     transaction_monitoring = Column(Boolean, default=True, nullable=False)
+    # DEPRECATED/DEAD: legacy AML threshold. Regulatory AML/FIA thresholds are
+    # owned by kyc_config_schema.get_thresholds() (aml_review / fia_report). This
+    # column is NOT consulted by any authorization or compliance path and must
+    # not become a competing threshold. Do not wire it into transaction logic.
     aml_threshold = Column(BigInteger, default=10000, nullable=False)
     kyc_tier_required = Column(String(20), default='tier_2', nullable=False)
 
@@ -318,6 +328,8 @@ class WalletSystemConfig(BaseModel):
             "max_deposit_amount": float(self.max_deposit_amount),
             "max_withdrawal_amount": float(self.max_withdrawal_amount),
             "max_transfer_amount": float(self.max_transfer_amount),
+            "max_daily_amount": float(self.max_daily_amount),
+            "max_monthly_amount": float(self.max_monthly_amount),
             "deposit_fee_percent": float(self.deposit_fee_percent),
             "withdrawal_fee_percent": float(self.withdrawal_fee_percent),
             "transfer_fee_percent": float(self.transfer_fee_percent),

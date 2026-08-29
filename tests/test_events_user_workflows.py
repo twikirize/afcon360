@@ -330,6 +330,9 @@ def test_free_ticket_purchase_does_not_require_wallet_activity(monkeypatch):
         def rollback(self):
             return None
 
+        def remove(self):
+            return None
+
     class FakeWalletService:
         def __init__(self):
             raise AssertionError("Free registration must not initialize wallet services")
@@ -449,6 +452,12 @@ def test_free_registration_has_no_wallet_transaction_reference(monkeypatch):
             return None
 
         def flush(self):
+            return None
+
+        def remove(self):
+            return None
+
+        def rollback(self):
             return None
 
     monkeypatch.setattr(payment_service_module.db, "session", FakeSession())
