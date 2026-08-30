@@ -240,14 +240,33 @@ class OTPService:
         verification_link = "/"
         try:
             from flask import url_for
-            link_map = {
-                "signup_verification": "auth.verify_signup",
-                "email_verification": "auth.verify_email_code",
-                "phone_verification": "auth.verify_phone",
-            }
-            endpoint = link_map.get(purpose)
-            if endpoint:
-                verification_link = url_for(endpoint, _external=True)
+
+            if purpose == "email_verification":
+                # Magic-link: a signed, single-use token lets the user verify
+                # with one click straight from the email. The 6-digit code
+                # remains the fallback for users who prefer to type it in-app
+                # (the /verify-email form we render on GET).
+                import uuid
+                from app.auth.tokens import generate_email_token
+                from app.extensions import db
+                from app.identity.models.user import User
+
+                _user = db.session.get(User, user_id) if user_id else None
+                if _user is not None:
+                    _nonce = uuid.uuid4().hex
+                    if hasattr(_user, "email_verify_nonce"):
+                        _user.email_verify_nonce = _nonce
+                        db.session.commit()
+                    _token = generate_email_token(str(_user.public_id), nonce=_nonce)
+                    verification_link = url_for("auth.verify", token=_token, _external=True)
+            else:
+                link_map = {
+                    "signup_verification": "auth.verify_signup",
+                    "phone_verification": "auth.verify_phone",
+                }
+                endpoint = link_map.get(purpose)
+                if endpoint:
+                    verification_link = url_for(endpoint, _external=True)
         except Exception:
             verification_link = "/"
 
@@ -272,14 +291,17 @@ class OTPService:
                     subject="AFCON360 Email Verification Code",
                     body=(
                         f"Your AFCON360 verification code is: {otp}\n"
-                        f"Or click this link to verify: {verification_link}\n"
-                        f"This code expires shortly. If you didn't request it, ignore this email."
+                        f"Or verify in one click: {verification_link}\n"
+                        f"This code expires in 30 minutes. If you didn't request it, ignore this email."
                     ),
                     context={
                         'otp': otp,
                         'verification_code': otp,
                         'user_name': email.split('@')[0],
                         'verification_link': verification_link,
+                        # Matches EMAIL_OTP_TTL (1800s) in app/auth/email.py;
+                        # the magic-link token lasts longer (EMAIL_VERIFY_EXPIRY).
+                        'expires_in_minutes': 30,
                     },
                     priority='high',
                     link=verification_link,

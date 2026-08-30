@@ -34,7 +34,7 @@ from app.auth.otp_service import otp_service
 # Constants
 # ----------------------------
 PASSWORD_RESET_EXPIRY = 3600  # 1 hour
-EMAIL_VERIFY_EXPIRY = 86400  # 24 hours
+EMAIL_VERIFY_EXPIRY = 3600  # 1 hour (magic-link bearer token lifetime)
 
 # ----------------------------
 # Hook Registry
@@ -548,6 +548,8 @@ def verify_email(token: str) -> bool:
         return False
 
     user.is_verified = True
+    if hasattr(user, "email_verified"):
+        user.email_verified = True
     if hasattr(user, "email_verified_at"):
         user.email_verified_at = datetime.now(timezone.utc)
     if hasattr(user, "email_verify_nonce"):

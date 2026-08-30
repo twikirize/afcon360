@@ -8,17 +8,19 @@
   <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; border-top: 5px solid #1e88e5;">
     <h2 style="color: #1e88e5; margin-top: 0;">AFCON360 Email Verification</h2>
     <p>Dear <strong>{{ data.user_name }}</strong>,</p>
-    <p>Please verify your email address using the verification code below:</p>
+    <p>Thanks for joining AFCON360 — East Africa Pamoja! Confirm your email to
+      activate your account.</p>
 
     <p style="text-align: center; margin: 20px 0; font-size: 28px; font-weight: bold; letter-spacing: 8px; color: #1e88e5;">
       {{ data.verification_code }}
     </p>
 
     <p style="text-align: center; margin: 20px 0;">
-      <a href="{{ data.verification_link }}" style="background-color: #008751; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px;">Or click here to verify</a>
+      <a href="{{ data.verification_link }}" style="background-color: #008751; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px;">Verify Email</a>
     </p>
+    <p style="text-align: center; font-size: 13px; color: #555;">One click confirms your address — no typing needed. Prefer to type it? Open the verification page and enter the code above.</p>
 
-    <p>This code expires in 24 hours. If you did not create an account, please ignore this email.</p>
+    <p>This code expires in {{ data.expires_in_minutes }} minutes. For your security, never share it — AFCON360 will never ask for it.</p>
     <p style="color: #555; font-size: 14px;">AFCON360 East Africa Pamoja!</p>
   </div>
 </body>

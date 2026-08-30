@@ -2363,6 +2363,43 @@ codebase.
 
 ---
 
+## 48. Email & Phone Verification (AFCON360)
+
+Two verification mechanisms are offered per channel, so users can verify
+either by clicking a link in the message or by typing a code in the app.
+
+- **Magic-link (one-click):** a signed, single-use token embedded in the
+  email/SMS "Verify" button. Handled by `GET /verify?token=<signed>` →
+  `verify_email()` in `app/auth/services.py`. The token is purpose-bound
+  (`verify`), carries a `nonce` (single-use — cleared on success), and expires
+  after `EMAIL_VERIFY_EXPIRY` (1 hour).
+- **OTP code (fallback):** a 6-digit code the user types on the in-app form.
+  Email: `POST /verify-email` (GET renders the form) →
+  `verify_email_code()` in `app/auth/email.py`. Phone: `GET/POST /verify-phone`
+  → `PhoneVerificationService`. Codes are stored with a TTL (email
+  `EMAIL_OTP_TTL` = 30 min; SMS `sms_verification` = 5 min).
+
+Design rules:
+
+- Email/SMS templates MUST contain BOTH the code and a verify link. For email
+  the link MUST be the magic-link token URL (`url_for('auth.verify',
+  token=...)`); for phone it is the channel verify page (`/verify-phone`).
+- Expiry copy in templates MUST match the real TTL — do **not** hardcode 24h.
+  The email context provides `expires_in_minutes` (derived from
+  `EMAIL_OTP_TTL`).
+- `verify_email()` sets `is_verified`, `email_verified`, and
+  `email_verified_at`; it is idempotent for already-verified accounts.
+- Magic-link tokens are bearer credentials: keep `EMAIL_VERIFY_EXPIRY` short
+  and ensure the nonce is regenerated on each send.
+- The token is generated in `app/auth/otp_service.py`
+  `send_email_otp_checked()` (sets `email_verify_nonce` + commits, then builds
+  the link). `app/auth/email.py send_verification_email()` is the caller for
+  existing-account resends.
+- Altering this lifecycle (adding magic links, changing expiry, merging the
+  two mechanisms) is a BEHAVIORAL change — specify before implementing (§6).
+
+---
+
 **Last Updated:** August 2026
 **AFCON360 Version:** v0.1.0
 
