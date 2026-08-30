@@ -80,6 +80,7 @@ except ImportError:
     logging.warning("[ENV] Flask-Session not available — using fallback sessions")
 
 from flask_wtf.csrf import CSRFError
+from flask_limiter.errors import RateLimitExceeded
 from typing import Dict
 from app.config import get_config  # layered config with env validation
 from app.extensions import db, migrate, login_manager, csrf, limiter, cache, redis_client, mail, socketio
@@ -521,6 +522,24 @@ def create_app(config_object=None) -> Flask:
 
         return render_template('errors/404.html'), 404
 
+    # Rate-limit breaches must stay HTTP 429 — Flask-Limiter 4.x raises
+    # RateLimitExceeded but registers no error handler, so without this the
+    # generic Exception handler below would convert it into HTTP 500 and
+    # break callers (e.g. the Docker healthcheck that relies on a clean 429).
+    @app.errorhandler(RateLimitExceeded)
+    def handle_rate_limit_exceeded(error):
+        """Preserve HTTP 429 for rate-limit breaches — never convert to 500."""
+        from app.notifications.events.context import get_correlation_id
+
+        correlation_id = get_correlation_id(create=False)
+        response = jsonify({
+            "error": "Too Many Requests",
+            "status": 429,
+            "correlation_id": correlation_id,
+        })
+        response.status_code = 429
+        return response
+
     # Keep 500 handler for errors
     @app.errorhandler(Exception)
     def handle_exception(e):
@@ -529,9 +548,9 @@ def create_app(config_object=None) -> Flask:
         from flask_login import current_user
         from app.audit.models import AuditLog
 
-        # Log to console/file
-        logger.error(f"💥 Exception: {type(e).__name__}: {str(e)}")
-        logger.debug(f"Full traceback:", exc_info=True)
+        # Log to console/file (exc_info attached so the production console
+        # event carries the full traceback for remote diagnosis)
+        logger.error(f"💥 Exception: {type(e).__name__}: {str(e)}", exc_info=True)
 
         # Reset the failed PostgreSQL transaction before attempting audit
         # logging, otherwise the audit query/write hides the original error.

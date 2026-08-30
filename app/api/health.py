@@ -1,14 +1,22 @@
 """Health check endpoint for module status monitoring."""
 from flask import Blueprint, jsonify
 from flask_login import login_required, current_user
+from app.extensions import limiter
 from app.utils.module_toggle_service import ModuleToggleService
 
 health_bp = Blueprint('health', __name__, url_prefix='/api/health')
 
 
 @health_bp.route('/ping', methods=['GET'])
+@limiter.exempt
 def ping():
-    """Public health check — no auth required. Used by Docker and Nginx."""
+    """Public health check — no auth required. Used by Docker and Nginx.
+
+    Explicitly exempt from the global request rate limit so the Docker
+    healthcheck (and other authorized internal checks) can poll this endpoint
+    indefinitely without exhausting the application-wide quota or being
+    converted into a 429/500.
+    """
     return jsonify({'status': 'ok'}), 200
 
 
