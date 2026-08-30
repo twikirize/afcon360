@@ -56,8 +56,10 @@ class MockGatewayProcessor(PaymentProcessor):
         account = get_or_create_account(user_id, currency)
 
         wallet = WalletService()
-        if account.balance < amount:
-            deposit_amount = amount - account.balance + Decimal("10.00")
+        balance_data = wallet.get_balance(account.user_id)
+        current_balance = balance_data.get('balance', Decimal('0'))
+        if current_balance < amount:
+            deposit_amount = amount - current_balance + Decimal("10.00")
             wallet.deposit(
                 account_id=str(account.id),
                 amount=deposit_amount,

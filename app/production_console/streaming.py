@@ -399,6 +399,15 @@ def init_production_console_logging(app):
     
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
-    
+
+    # Flask attaches its own StreamHandler to the "app" logger and disables
+    # propagation, so app-level records (including the 500 exception handler
+    # at app/__init__.py and every app.* module logger) never reach the root
+    # handler. Attach directly to the "app" logger and stop it re-propagating
+    # to root to avoid duplicate events in the console stream.
+    app_logger = logging.getLogger("app")
+    app_logger.addHandler(handler)
+    app_logger.propagate = False
+
     app.logger.info("Production console logging initialized")
     return handler

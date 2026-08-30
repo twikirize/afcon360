@@ -79,7 +79,7 @@ def set_layout():
     """
     from app.events.permissions import is_super_admin
 
-    if not is_super_admin(current_user):
+    if not (is_super_admin(current_user) or current_user.is_app_owner()):
         return jsonify({"status": "error", "message": "Permission denied"}), 403
 
     data = request.get_json(silent=True) or {}

@@ -720,7 +720,7 @@ def deposit_page():
     account = get_account(current_user.id)
     if not account:
         if request.args.get('_pane') == '1':
-            return render_template('wallet/deposit_pane.html', account=None, balance=Decimal('0'))
+            return render_template('wallet/deposit_pane.html', account=None)
         flash('You need to create a wallet first.', 'warning')
         return redirect(url_for('wallet.wallet_dashboard'))
         
@@ -728,8 +728,8 @@ def deposit_page():
     available_methods = PaymentMethodConfig.get_available_methods(account.currency)
     
     if request.args.get('_pane') == '1':
-        return render_template('wallet/deposit_pane.html', account=account, balance=account.balance, limits=limits, methods=available_methods)
-    return render_template('wallet/deposit.html', account=account, balance=account.balance, limits=limits, methods=available_methods)
+        return render_template('wallet/deposit_pane.html', account=account, limits=limits, methods=available_methods)
+    return render_template('wallet/deposit.html', account=account, limits=limits, methods=available_methods)
 
 @wallet_bp.route('/deposit', methods=['POST'])
 @login_required
@@ -967,19 +967,22 @@ def flutterwave_deposit_callback():
 @require_send_access
 def send_page():
     """GET: Show send funds form"""
+    from app.wallet.services.wallet_service import WalletService
+    
     account = get_account(current_user.id)
-    if request.args.get('_pane') == '1':
-        balance = Decimal('0')
-        if account:
-            try:
-                balance = WalletService().get_balance(account.user_id).get('balance', Decimal('0'))
-            except Exception:
-                balance = Decimal('0')
-        return render_template('wallet/send_pane.html', account=account, balance=balance)
     if not account:
+        if request.args.get('_pane') == '1':
+            return render_template('wallet/send_pane.html', account=None, balance=Decimal('0'))
         flash('You need to create a wallet first.', 'warning')
         return redirect(url_for('wallet.wallet_dashboard'))
-    return render_template('wallet/send.html', account=account, balance=Decimal('0'))
+    
+    # Get balance from canonical ledger-derived provider
+    balance_data = WalletService().get_balance(account.user_id)
+    balance = balance_data.get('balance', Decimal('0'))
+    
+    if request.args.get('_pane') == '1':
+        return render_template('wallet/send_pane.html', account=account, balance=balance)
+    return render_template('wallet/send.html', account=account, balance=balance)
 
 
 @wallet_bp.route('/send', methods=['POST'])
@@ -1089,11 +1092,18 @@ def send_funds():
 @require_withdraw_access
 def withdraw_page():
     """GET: Show withdraw form"""
+    from app.wallet.services.wallet_service import WalletService
+    
     account = get_account(current_user.id)
     if not account:
         flash('You need to create a wallet first.', 'warning')
         return redirect(url_for('wallet.wallet_dashboard'))
-    return render_template('wallet/withdraw.html', account=account, balance=Decimal('0'))
+    
+    # Get balance from canonical ledger-derived provider
+    balance_data = WalletService().get_balance(account.user_id)
+    balance = balance_data.get('balance', Decimal('0'))
+    
+    return render_template('wallet/withdraw.html', account=account, balance=balance)
 
 
 @wallet_bp.route('/withdraw', methods=['POST'])

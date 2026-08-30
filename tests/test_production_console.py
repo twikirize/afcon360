@@ -246,6 +246,39 @@ class TestProductionConsoleSocketIO:
 
 
 # Note: Template rendering and integration tests are excluded due to a pre-existing
+
+
+class TestFeedLayoutAuthorization:
+    """Owner and super_admin may set the homepage feed theme; others may not."""
+
+    def test_owner_can_set_feed_layout(self, app, client, logged_in_owner):
+        _set_user_session(client, logged_in_owner)
+        response = client.post('/api/home/feed/layout',
+                              json={'layout': 'tabbed'})
+        assert response.status_code == 200
+        assert response.get_json()['status'] == 'ok'
+
+    def test_super_admin_can_set_feed_layout(self, app, client, logged_in_super_admin):
+        _set_user_session(client, logged_in_super_admin)
+        response = client.post('/api/home/feed/layout',
+                              json={'layout': 'sections'})
+        assert response.status_code == 200
+        assert response.get_json()['status'] == 'ok'
+
+    def test_regular_user_cannot_set_feed_layout(self, app, client, logged_in_user):
+        _set_user_session(client, logged_in_user)
+        response = client.post('/api/home/feed/layout',
+                              json={'layout': 'mixed'})
+        assert response.status_code in (401, 403)
+
+    def test_invalid_layout_rejected(self, app, client, logged_in_owner):
+        _set_user_session(client, logged_in_owner)
+        response = client.post('/api/home/feed/layout',
+                              json={'layout': 'bogus'})
+        assert response.status_code == 400
+
+
+# Note: Template rendering and integration tests are excluded due to a pre-existing
 # detached instance issue in the context processor (inject_user_role_info) that
 # affects template rendering but not the API endpoints. The core functionality
 # (streaming service, SocketIO namespace, API endpoints, authorization) works correctly.

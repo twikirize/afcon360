@@ -479,3 +479,22 @@ the proposed design, and the ownership boundary. NOT yet implemented unless note
 - **Owner/area:** Wallet + Compliance
 - **Links:** app/wallet/repositories/ledger_repository.py (`get_daily_volume`/`get_monthly_volume`), app/wallet/services/kyc_limit_service.py (`check_regulatory_cumulative_limits`), app/wallet/services/wallet_service.py (`_check_kyc_limits`), tests/test_kyc_limit_authorization.py (regulatory cumulative tests)
 
+---
+
+## D1 — Org Admin page action routes missing (removed dead controls)
+- **Status:** Not started
+- **Raised:** 2026-08-30
+- **Context:** Fixing production-console error #2 (`'Organisation' object has no attribute 'owner'`) in `manage_orgs()` revealed the org list page was a stub. It referenced four backend endpoints that do not exist: `admin.transfer_org_owner`, `admin.deactivate_org`, `admin.activate_org`, `admin.view_org_audit`. The route only queries orgs; no action handlers exist. To make the page render (clearing "Error loading organisations"), the four dead, route-less controls were removed and replaced with a "Actions pending backend routes" placeholder. The `owner`->`primary_contact_user`, `name`->`legal_name`, `members`->`users`, `roles`->`custom_roles` attribute fixes and stat-card bindings were applied.
+- **What needs to happen:** Implement a dedicated node for org-admin actions. `transfer_org_ownership` service already exists at `app/auth/services/org.py` and can back `transfer_org_owner`. Ownership transfer is HIGH sensitivity (constitution 18.2) and requires audit logging + authorization (owner/super_admin). Activate/Deactivate should toggle `is_active` with audit. Audit Logs needs a real endpoint (org-scoped forensic audit). Add CSRF-protected routes + tests.
+- **Owner/area:** Admin module
+- **Links:** app/admin/routes.py (`manage_orgs`), templates/admin/manage_orgs.html, app/auth/services/org.py (`transfer_org_ownership`), app/auth/ownership.py (`transfer_ownership`)
+
+---
+
+## D2 — `org_members.html` owner reference + member loop
+- **Status:** Partial
+- **Raised:** 2026-08-30
+- **Context:** Orphaned template (no route currently renders it). Its `org.owner.username` was fixed to `org.primary_contact_user.username`. The member loop still iterates `org.members` (Organisation has no `members`; members live in `org.users` as `OrganisationMember` join rows exposing `.user`). If this page is ever wired up, fix the loop to iterate `org.users` and render `member.user.*` fields.
+- **Owner/area:** Admin module
+- **Links:** templates/admin/org_members.html, app/identity/models/organisation.py (`Organisation.users`), app/identity/models/organisation.py (`OrganisationMember`)
+

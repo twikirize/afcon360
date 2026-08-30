@@ -3,7 +3,7 @@
 {% block content %}
 <section class="container py-5">
   <h1 class="mb-4">Organisation: {{ org.name }}</h1>
-  <p class="lead mb-4">Owner: <span class="badge bg-info">{{ org.owner.username }}</span></p>
+  <p class="lead mb-4">Owner: <span class="badge bg-info">{{ org.primary_contact_user.username if org.primary_contact_user else 'N/A' }}</span></p>
 
   <!-- =========================
        MEMBERS LIST

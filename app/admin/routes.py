@@ -125,6 +125,7 @@ def super_dashboard():
         from app.identity.models.user import User
         from app.identity.models.licence_document import OrganisationAuditLog
         from app.admin.models import ManageableCategory, ManageableItem
+        from app.models.system_config import SystemConfig
     except ImportError as e:
         logger.error(f"Import error in super_dashboard: {e}")
         flash("Error loading dashboard components", "danger")
@@ -238,7 +239,7 @@ def super_dashboard():
             # Accommodation dashboard widgets
             unclaimed_count=unclaimed_count,
             readiness_issues_count=readiness_issues_count,
-            home_feed_layout=_get_home_feed_layout(),
+            home_feed_layout=SystemConfig.get('home_feed_layout', 'mixed'),
         )
     except Exception as e:
         db.session.rollback()

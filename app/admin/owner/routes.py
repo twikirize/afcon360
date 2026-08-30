@@ -660,10 +660,13 @@ def dashboard():
                                owner_username=current_user.username,
                                owner_is_verified=current_user.is_verified,
 
-                               # Module controls
-                               modules=modules,
-                               module_health=module_health,
-                               super_admin_can_toggle_modules=super_admin_can_toggle_modules,
+                                # Module controls
+                                modules=modules,
+                                module_health=module_health,
+                                super_admin_can_toggle_modules=super_admin_can_toggle_modules,
+
+                                # Feed theme management
+                                home_feed_layout=SystemConfig.get('home_feed_layout', 'mixed'),
 
                                # Compliance metrics
                                pending_reviews_count=pending_reviews_count,
@@ -700,9 +703,10 @@ def dashboard():
                                owner_is_verified=current_user.is_verified,
                                modules={},
                                module_health=[],
-                               super_admin_can_toggle_modules=False,
-                               total_revenue=0,
-                               # Event statistics with defaults
+                                super_admin_can_toggle_modules=False,
+                                home_feed_layout=SystemConfig.get('home_feed_layout', 'mixed'),
+                                total_revenue=0,
+                                # Event statistics with defaults
                                total_events=0,
                                active_events=0,
                                pending_events=0,
