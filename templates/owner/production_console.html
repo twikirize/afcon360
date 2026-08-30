@@ -1,0 +1,1288 @@
+{% extends "base.html" %}
+
+{% block title %}Production Console - AFCON 360{% endblock %}
+
+{% block styles %}
+<style>
+    :root {
+        --bg: var(--bg-body);
+        --panel: var(--bg-surface);
+        --panel2: var(--bg-surface-alt);
+        --border: var(--border-medium);
+        --text: var(--text-primary);
+        --muted: var(--text-muted);
+        --red: var(--danger);
+        --yellow: var(--warning);
+        --blue: var(--info);
+        --green: var(--success);
+        --purple: #8250df;
+        --cyan: #0a7ea4;
+        --orange: var(--orange);
+    }
+
+    /* Dark mode: preserve the console's high-contrast GitHub-dark palette */
+    @media (prefers-color-scheme: dark) {
+        :root:not(.light-mode) {
+            --bg: #0d1117;
+            --panel: #161b22;
+            --panel2: #21262d;
+            --border: #30363d;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --green: #3fb950;
+            --red: #f85149;
+            --yellow: #d29922;
+            --blue: #58a6ff;
+            --purple: #a371f7;
+            --cyan: #39c5cf;
+            --orange: #f0883e;
+        }
+    }
+
+    body.dark-mode {
+        --bg: #0d1117;
+        --panel: #161b22;
+        --panel2: #21262d;
+        --border: #30363d;
+        --text: #e6edf3;
+        --muted: #8b949e;
+        --green: #3fb950;
+        --red: #f85149;
+        --yellow: #d29922;
+        --blue: #58a6ff;
+        --purple: #a371f7;
+        --cyan: #39c5cf;
+        --orange: #f0883e;
+    }
+
+    /* Light mode: crisp, readable console on a light surface */
+    body.light-mode {
+        --bg: #ffffff;
+        --panel: #f6f8fa;
+        --panel2: #eaeef2;
+        --border: #d0d7de;
+        --text: #1f2328;
+        --muted: #59636e;
+        --green: #1a7f37;
+        --red: #cf222e;
+        --yellow: #9a6700;
+        --blue: #0969da;
+        --purple: #8250df;
+        --cyan: #0a7ea4;
+        --orange: #bc4c00;
+    }
+
+    /* High-contrast modes: honour global accessibility contrast settings */
+    body.contrast-yellow-black .console-container {
+        --bg: #000000;
+        --panel: #000000;
+        --panel2: #000000;
+        --border: #ffff00;
+        --text: #ffff00;
+        --muted: #ffff00;
+        --red: #ffff00;
+        --yellow: #ffff00;
+        --blue: #ffff00;
+        --green: #ffff00;
+        --purple: #ffff00;
+        --cyan: #ffff00;
+        --orange: #ffff00;
+    }
+
+    body.contrast-white-black .console-container {
+        --bg: #ffffff;
+        --panel: #ffffff;
+        --panel2: #ffffff;
+        --border: #000000;
+        --text: #000000;
+        --muted: #000000;
+        --red: #000000;
+        --yellow: #000000;
+        --blue: #000000;
+        --green: #000000;
+        --purple: #000000;
+        --cyan: #000000;
+        --orange: #000000;
+    }
+
+    * { box-sizing: border-box; }
+    
+    .console-container {
+        height: calc(100vh - 120px);
+        min-height: 600px;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+        font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Monospace';
+        font-size: 13px;
+        line-height: 1.5;
+    }
+    
+    .console-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        background: var(--panel);
+        border-bottom: 1px solid var(--border);
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .console-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text);
+    }
+    
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .status-badge.live {
+        background: rgba(63, 185, 80, 0.15);
+        border: 1px solid var(--green);
+        color: var(--green);
+    }
+    
+    .status-badge.disconnected {
+        background: rgba(248, 81, 73, 0.15);
+        border: 1px solid var(--red);
+        color: var(--red);
+    }
+    
+    .status-badge.paused {
+        background: rgba(210, 153, 34, 0.15);
+        border: 1px solid var(--yellow);
+        color: var(--yellow);
+    }
+    
+    .status-indicator {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: currentColor;
+        animation: pulse 2s infinite;
+    }
+    
+    .status-badge.live .status-indicator { animation: pulse 2s infinite; }
+    .status-badge.disconnected .status-indicator { animation: none; opacity: 0.5; }
+    .status-badge.paused .status-indicator { animation: none; opacity: 0.7; }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
+    
+    .env-badges {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+    
+    .env-badge {
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        border: 1px solid;
+    }
+    
+    .env-badge.prod { background: rgba(248, 81, 73, 0.15); border-color: var(--red); color: var(--red); }
+    .env-badge.docker { background: rgba(88, 166, 255, 0.15); border-color: var(--blue); color: var(--blue); }
+    .env-badge.local { background: rgba(63, 185, 80, 0.15); border-color: var(--green); color: var(--green); }
+    .env-badge.staging { background: rgba(210, 153, 34, 0.15); border-color: var(--yellow); color: var(--yellow); }
+    
+    .console-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 16px;
+        background: var(--panel2);
+        border-bottom: 1px solid var(--border);
+        flex-wrap: wrap;
+    }
+    
+    .filter-group {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+    }
+    
+    .filter-select, .search-input {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        padding: 6px 10px;
+        font-size: 12px;
+        font-family: inherit;
+        min-width: 140px;
+    }
+    
+    .filter-select:focus, .search-input:focus {
+        outline: none;
+        border-color: var(--blue);
+        box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+    }
+    
+    .search-input {
+        min-width: 200px;
+    }
+    
+    .toolbar-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 12px;
+        font-family: inherit;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    
+    .toolbar-btn:hover {
+        background: var(--panel);
+        border-color: var(--blue);
+    }
+    
+    .toolbar-btn.active {
+        background: var(--blue);
+        border-color: var(--blue);
+        color: var(--bg);
+    }
+    
+    .toolbar-btn.danger:hover {
+        background: var(--red);
+        border-color: var(--red);
+        color: white;
+    }
+    
+    .toolbar-divider {
+        width: 1px;
+        height: 24px;
+        background: var(--border);
+        margin: 0 4px;
+    }
+    
+    .console-output {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px 16px;
+        background: var(--bg);
+    }
+    
+    .log-line {
+        display: flex;
+        gap: 12px;
+        padding: 2px 0;
+        border-bottom: 1px solid var(--border);
+        white-space: pre-wrap;
+        word-break: break-word;
+        transition: background 0.1s ease;
+    }
+    
+    .log-line:hover {
+        background: rgba(88, 166, 255, 0.03);
+    }
+    
+    .log-line.error { border-left: 3px solid var(--red); }
+    .log-line.warning { border-left: 3px solid var(--yellow); }
+    .log-line.info { border-left: 3px solid var(--blue); }
+    .log-line.debug { border-left: 3px solid var(--muted); }
+    .log-line.critical { border-left: 3px solid var(--red); background: rgba(248, 81, 73, 0.05); }
+    .log-line.frontend { border-left: 3px solid var(--orange); }
+    .log-line.performance { border-left: 3px solid var(--cyan); }
+    .log-line.network { border-left: 3px solid var(--purple); }
+    
+    .log-time {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+        min-width: 70px;
+        flex-shrink: 0;
+    }
+    
+    .log-severity {
+        font-weight: 600;
+        min-width: 70px;
+        flex-shrink: 0;
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.5px;
+    }
+    
+    .log-severity.DEBUG { color: var(--muted); }
+    .log-severity.INFO { color: var(--blue); }
+    .log-severity.WARNING { color: var(--yellow); }
+    .log-severity.ERROR { color: var(--red); }
+    .log-severity.CRITICAL { color: var(--red); }
+    
+    .log-category {
+        color: var(--purple);
+        font-size: 11px;
+        min-width: 100px;
+        flex-shrink: 0;
+        font-weight: 500;
+    }
+    .log-category.FRONTEND { color: var(--orange); }
+    .log-category.PERFORMANCE { color: var(--cyan); }
+    .log-category.NETWORK { color: var(--purple); }
+    .log-category.ERROR { color: var(--red); }
+    
+    .log-message {
+        flex: 1;
+        color: var(--text);
+        word-break: break-word;
+    }
+    
+    .log-message .http-info {
+        color: var(--cyan);
+    }
+    
+    .log-message .correlation-id {
+        color: var(--orange);
+        font-variant-numeric: tabular-nums;
+    }
+    
+    .log-message .task-info {
+        color: var(--purple);
+    }
+    
+    .log-exception {
+        margin-top: 8px;
+        padding: 12px;
+        background: rgba(248, 81, 73, 0.1);
+        border: 1px solid rgba(248, 81, 73, 0.3);
+        border-radius: 6px;
+        font-size: 12px;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        color: var(--red);
+    }
+    
+    .log-exception summary {
+        cursor: pointer;
+        font-weight: 600;
+        color: var(--red);
+        margin-bottom: 8px;
+    }
+    
+    .log-exception pre {
+        margin: 0;
+        font-family: inherit;
+        font-size: 11px;
+        line-height: 1.5;
+    }
+    
+    .log-line.hidden { display: none; }
+    
+    .details-modal {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.2s ease;
+    }
+    
+    .details-modal.show {
+        opacity: 1;
+        visibility: visible;
+    }
+    
+    .details-content {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        width: 90%;
+        max-width: 900px;
+        max-height: 85vh;
+        display: flex;
+        flex-direction: column;
+        transform: scale(0.95);
+        transition: transform 0.2s ease;
+    }
+    
+    .details-modal.show .details-content {
+        transform: scale(1);
+    }
+    
+    .details-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+    }
+    
+    .details-title { font-size: 14px; font-weight: 600; }
+    
+    .details-close {
+        background: none;
+        border: none;
+        color: var(--muted);
+        font-size: 24px;
+        cursor: pointer;
+        padding: 0 8px;
+        line-height: 1;
+    }
+    
+    .details-close:hover { color: var(--text); }
+    
+    .details-body {
+        padding: 20px;
+        overflow-y: auto;
+        flex: 1;
+    }
+    
+    .detail-row {
+        display: flex;
+        gap: 16px;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border);
+    }
+    
+    .detail-label {
+        color: var(--muted);
+        min-width: 140px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+    
+    .detail-value {
+        flex: 1;
+        color: var(--text);
+        font-family: inherit;
+        word-break: break-all;
+    }
+    
+    .detail-value code { background: var(--bg); padding: 2px 6px; border-radius: 3px; }
+    
+    .details-traceback {
+        margin-top: 16px;
+        padding: 16px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        overflow-x: auto;
+    }
+    
+    .details-traceback pre {
+        margin: 0;
+        font-family: inherit;
+        font-size: 11px;
+        line-height: 1.5;
+        color: var(--red);
+        white-space: pre-wrap;
+    }
+    
+    .health-bar {
+        display: flex;
+        gap: 16px;
+        padding: 8px 16px;
+        background: var(--panel);
+        border-top: 1px solid var(--border);
+        font-size: 12px;
+        flex-wrap: wrap;
+    }
+    
+    .health-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    
+    .health-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+    }
+    
+    .health-dot.healthy { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .health-dot.error { background: var(--red); box-shadow: 0 0 8px var(--red); }
+    .health-dot.warning { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+    .health-dot.unknown { background: var(--muted); }
+    
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--muted);
+        text-align: center;
+        padding: 40px;
+    }
+    
+    .empty-state .icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+    
+    .severity-legend {
+        display: flex;
+        gap: 12px;
+        margin-left: auto;
+        flex-wrap: wrap;
+    }
+    
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: var(--muted);
+    }
+    
+    .legend-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+    }
+    
+    @media (max-width: 768px) {
+        .console-header { flex-direction: column; align-items: flex-start; }
+        .severity-legend { margin-left: 0; margin-top: 8px; }
+        .console-toolbar { justify-content: center; }
+        .filter-group { width: 100%; justify-content: space-between; }
+        .search-input { flex: 1; }
+    }
+</style>
+{% endblock %}
+
+{% macro render_log_line(event) %}
+<div class="log-line {{ (event.severity or 'INFO').lower() }}" 
+     data-id="{{ event.id }}" 
+     data-severity="{{ event.severity or 'INFO' }}" 
+     data-category="{{ event.category or 'GENERAL' }}"
+     data-searchable="{{ (event.message or '') ~ ' ' ~ (event.logger or '') ~ ' ' ~ 
+         ((event.http.path or '') ~ ' ' ~ (event.http.method or '') if event.http else '') ~ ' ' ~
+         (event.correlation_id or '') ~ ' ' ~ 
+         ((event.exception.exception_type or '') ~ ' ' ~ (event.exception.exception_message or '') if event.exception else '') ~
+         (' ' ~ event.task_name if event.task_name else '') ~
+         (' ' ~ (event.frontend.action or '') ~ ' ' ~ (event.frontend.url or '') ~ ' ' ~ (event.frontend.selector or '') if event.frontend else '') }}">
+    <span class="log-time">{{ event.timestamp_display or event.timestamp[11:19] if event.timestamp else '' }}</span>
+    <span class="log-severity {{ event.severity or 'INFO' }}">{{ event.severity or 'INFO' }}</span>
+    <span class="log-category {{ event.category or 'GENERAL' }}">{{ event.category or 'GENERAL' }}</span>
+    <span class="log-message">
+        {{ event.message|e }}
+        {% if event.http %}
+            <span class="http-info">[{{ event.http.method }} {{ event.http.path }}]</span>
+            {% if event.http.status_code %}
+                <span style="color: {{ 'var(--red)' if event.http.status_code >= 500 else ('var(--yellow)' if event.http.status_code >= 400 else 'var(--green)') }};">{{ event.http.status_code }}</span>
+            {% endif %}
+        {% endif %}
+        {% if event.correlation_id %}
+            <span class="correlation-id">corr:{{ event.correlation_id }}</span>
+        {% endif %}
+        {% if event.task_name %}
+            <span class="task-info">[task:{{ event.task_name }}]</span>
+        {% endif %}
+        {% if event.frontend %}
+            <span class="frontend-info">[{{ event.frontend.action }}]</span>
+            {% if event.frontend.url %}
+                <span style="color: var(--cyan);">{{ event.frontend.url }}</span>
+            {% endif %}
+            {% if event.frontend.duration_ms %}
+                <span style="color: var(--muted);">{{ event.frontend.duration_ms }}ms</span>
+            {% endif %}
+            {% if event.frontend.selector %}
+                <span style="color: var(--orange);">{{ event.frontend.selector }}</span>
+            {% endif %}
+            {% if event.frontend.state %}
+                <span style="color: var(--muted);">{{ event.frontend.state }}</span>
+            {% endif %}
+        {% endif %}
+        {% if event.exception %}
+            <span style="color: var(--red);">→ {{ event.exception.exception_type|e }}: {{ event.exception.exception_message|e }}</span>
+        {% endif %}
+    </span>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="container-fluid px-3 px-md-4 py-3 py-md-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="mb-0"><i class="fas fa-terminal me-2"></i>Production Console</h2>
+        <a href="{{ url_for('admin.owner.dashboard') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+        </a>
+    </div>
+    
+    <div class="console-container" id="consoleContainer">
+        <!-- Header -->
+        <div class="console-header">
+            <div class="console-title">
+                <span>AFCON360 PRODUCTION CONSOLE</span>
+                <span id="connectionStatus" class="status-badge disconnected">
+                    <span class="status-indicator"></span>
+                    <span id="statusText">DISCONNECTED</span>
+                </span>
+            </div>
+            
+            <div class="env-badges">
+                <span class="env-badge {{ 'prod' if app_env == 'prod' else ('docker' if app_env == 'docker' else ('local' if app_env == 'local' else 'staging')) }}">
+                    ENV: {{ app_env }}
+                </span>
+                <span class="env-badge" style="background: rgba(139, 148, 158, 0.15); border-color: var(--muted); color: var(--muted);">
+                    FLASK: {{ flask_env }}
+                </span>
+                <span class="env-badge" style="background: rgba(163, 113, 247, 0.15); border-color: var(--purple); color: var(--purple);">
+                    {{ async_mode|upper }}
+                </span>
+            </div>
+            
+            <div class="severity-legend">
+                <span class="legend-item" style="cursor: pointer;" onclick="document.getElementById('severityFilter').value='ERROR'; document.getElementById('severityFilter').dispatchEvent(new Event('change'));"><span class="legend-color" style="background: var(--red);"></span>ERROR</span>
+                <span class="legend-item" style="cursor: pointer;" onclick="document.getElementById('severityFilter').value='WARNING'; document.getElementById('severityFilter').dispatchEvent(new Event('change'));"><span class="legend-color" style="background: var(--yellow);"></span>WARN</span>
+                <span class="legend-item" style="cursor: pointer;" onclick="document.getElementById('severityFilter').value='INFO'; document.getElementById('severityFilter').dispatchEvent(new Event('change'));"><span class="legend-color" style="background: var(--blue);"></span>INFO</span>
+                <span class="legend-item" style="cursor: pointer;" onclick="document.getElementById('severityFilter').value='DEBUG'; document.getElementById('severityFilter').dispatchEvent(new Event('change'));"><span class="legend-color" style="background: var(--muted);"></span>DEBUG</span>
+                <span class="legend-item" style="cursor: pointer; text-decoration: underline;" onclick="document.getElementById('severityFilter').value=''; document.getElementById('severityFilter').dispatchEvent(new Event('change'));">ALL</span>
+            </div>
+        </div>
+        
+        <!-- Toolbar -->
+        <div class="console-toolbar">
+            <div class="filter-group">
+                <label for="severityFilter" style="font-size: 11px; color: var(--muted); margin-right: 6px;">Severity:</label>
+                <select id="severityFilter" class="filter-select">
+                    <option value="">ALL</option>
+                    <option value="CRITICAL">CRITICAL</option>
+                    <option value="ERROR">ERROR</option>
+                    <option value="WARNING">WARNING</option>
+                    <option value="INFO">INFO</option>
+                    <option value="DEBUG">DEBUG</option>
+                </select>
+                
+                <label for="categoryFilter" style="font-size: 11px; color: var(--muted); margin: 0 6px;">Category:</label>
+                <select id="categoryFilter" class="filter-select">
+                    <option value="">ALL</option>
+                    <option value="HTTP">HTTP</option>
+                    <option value="DATABASE">DATABASE</option>
+                    <option value="SECURITY">SECURITY</option>
+                    <option value="PAYMENT">PAYMENT</option>
+                    <option value="WALLET">WALLET</option>
+                    <option value="CELERY">CELERY</option>
+                    <option value="REDIS">REDIS</option>
+                    <option value="AUTH">AUTH</option>
+                    <option value="EVENTS">EVENTS</option>
+                    <option value="ACCOMMODATION">ACCOMMODATION</option>
+                    <option value="TRANSPORT">TRANSPORT</option>
+                    <option value="NOTIFICATIONS">NOTIFICATIONS</option>
+                    <option value="GENERAL">GENERAL</option>
+                    <option value="FRONTEND">FRONTEND</option>
+                    <option value="PERFORMANCE">PERFORMANCE</option>
+                    <option value="NETWORK">NETWORK</option>
+                    <option value="ERROR">ERROR</option>
+                </select>
+            </div>
+            
+            <div class="toolbar-divider"></div>
+            
+            <div class="filter-group" style="flex: 1; max-width: 400px;">
+                <input type="text" id="searchInput" class="search-input" placeholder="Search logs... (message, route, correlation ID, exception)">
+            </div>
+            
+            <div class="toolbar-divider"></div>
+            
+            <button id="pauseBtn" class="toolbar-btn" title="Pause/Resume (Space)">
+                <i class="fas fa-pause"></i><span id="pauseText">Pause</span>
+            </button>
+            
+            <button id="clearBtn" class="toolbar-btn danger" title="Clear View (Ctrl+L)">
+                <i class="fas fa-trash"></i>Clear
+            </button>
+            
+            <button id="downloadBtn" class="toolbar-btn" title="Download Logs">
+                <i class="fas fa-download"></i>Download
+            </button>
+            
+            <div class="toolbar-divider"></div>
+            
+            <div class="filter-group">
+                <label for="autoScroll" style="font-size: 11px; color: var(--muted);">
+                    <input type="checkbox" id="autoScroll" checked style="margin-right: 4px;"> Auto-scroll
+                </label>
+            </div>
+        </div>
+        
+        <!-- Output Area -->
+        <div class="console-output" id="consoleOutput">
+            {% if initial_history %}
+                {% for event in initial_history|reverse %}
+                    {{ render_log_line(event) }}
+                {% endfor %}
+            {% else %}
+                <div class="empty-state">
+                    <div class="icon">▼</div>
+                    <div>Waiting for live events...</div>
+                    <div style="font-size: 11px; margin-top: 8px;">Connect status: <span id="initialStatus">CONNECTING</span></div>
+                </div>
+            {% endif %}
+        </div>
+        
+        <!-- Health Bar -->
+        <div class="health-bar" id="healthBar">
+            <div class="health-item">
+                <span class="health-dot" id="healthWeb" data-status="{{ health.database.status if health else 'unknown' }}"></span>
+                <span>WEB</span>
+            </div>
+            <div class="health-item">
+                <span class="health-dot" id="healthDb" data-status="{{ health.database.status if health else 'unknown' }}"></span>
+                <span>DATABASE</span>
+            </div>
+            <div class="health-item">
+                <span class="health-dot" id="healthRedis" data-status="{{ health.redis.status if health else 'unknown' }}"></span>
+                <span>REDIS</span>
+            </div>
+            <div class="health-item">
+                <span class="health-dot" id="healthCelery" data-status="unknown"></span>
+                <span>CELERY</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Details Modal -->
+    <div class="details-modal" id="detailsModal">
+        <div class="details-content">
+            <div class="details-header">
+                <span class="details-title">Error Details</span>
+                <button class="details-close" onclick="closeDetails()">&times;</button>
+            </div>
+            <div class="details-body" id="detailsBody">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<script nonce="{{ csp_nonce }}">
+    // SocketIO connection
+    var socket = null;
+    var isPaused = false;
+    var autoScroll = true;
+    var currentFilters = { severity: '', category: '', search: '' };
+    var logBuffer = [];
+    var maxVisibleLines = 2000;
+    var reconnectAttempts = 0;
+    var maxReconnectAttempts = 10;
+    
+    // Initialize SocketIO
+    function initSocket() {
+        if (typeof io === 'undefined') {
+            updateStatus('disconnected', 'SocketIO unavailable');
+            showBanner('Realtime client unavailable: SocketIO client library not loaded');
+            return;
+        }
+        
+        try {
+            socket = io('/console', {
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionAttempts: maxReconnectAttempts,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000,
+                timeout: 10000,
+            });
+        } catch (e) {
+            updateStatus('error', 'Connection error: ' + e.message);
+            return;
+        }
+        
+        socket.on('connect', function() {
+            reconnectAttempts = 0;
+            updateStatus('live', 'LIVE');
+            var initialStatusEl = document.getElementById('initialStatus');
+            if (initialStatusEl) initialStatusEl.textContent = 'CONNECTED';
+            console.log('Production console connected');
+        });
+        
+        socket.on('disconnect', function(reason) {
+            updateStatus('disconnected', 'DISCONNECTED - ' + reason);
+        });
+        
+        socket.on('connect_error', function(err) {
+            reconnectAttempts++;
+            updateStatus('error', 'Connection error (attempt ' + reconnectAttempts + ')');
+            if (reconnectAttempts >= maxReconnectAttempts) {
+                showBanner('Failed to connect after ' + maxReconnectAttempts + ' attempts. Check server.');
+            }
+        });
+        
+        socket.on('connected', function(data) {
+            console.log('Console authorized:', data);
+        });
+        
+        socket.on('console_event', function(event) {
+            if (!isPaused) {
+                appendLogLine(event);
+            } else {
+                logBuffer.push(event);
+                if (logBuffer.length > 1000) logBuffer.shift();
+            }
+        });
+        
+        socket.on('history', function(data) {
+            if (data.events && data.events.length) {
+                // Replace empty state if present
+                var emptyState = document.querySelector('.empty-state');
+                if (emptyState) emptyState.remove();
+                
+                // Prepend history (oldest first)
+                data.events.slice().reverse().forEach(function(event) {
+                    prependLogLine(event);
+                });
+            }
+        });
+        
+        socket.on('history_cleared', function() {
+            clearDisplay();
+        });
+        
+        socket.on('error', function(data) {
+            showBanner(data.message || 'Server error');
+        });
+    }
+    
+    function updateStatus(state, text) {
+        var badge = document.getElementById('connectionStatus');
+        var statusText = document.getElementById('statusText');
+        
+        badge.className = 'status-badge ' + state;
+        statusText.textContent = text;
+    }
+    
+    function showBanner(msg) {
+        // Could add a toast notification here
+        console.warn('Console banner:', msg);
+    }
+    
+    function renderLogLine(event) {
+        var line = document.createElement('div');
+        line.className = 'log-line ' + (event.severity || 'INFO').toLowerCase();
+        line.dataset.id = event.id;
+        line.dataset.severity = event.severity || 'INFO';
+        line.dataset.category = event.category || 'GENERAL';
+        line.dataset.searchable = (event.message || '') + ' ' + (event.logger || '') + ' ' + 
+            (event.http ? (event.http.path || '') + ' ' + (event.http.method || '') : '') + ' ' +
+            (event.correlation_id || '') + ' ' + 
+            (event.exception ? (event.exception.exception_type || '') + ' ' + (event.exception.exception_message || '') : '') +
+            (event.task_name ? ' ' + event.task_name : '') +
+            (event.frontend ? ' ' + (event.frontend.action || '') + ' ' + (event.frontend.url || '') + ' ' + (event.frontend.selector || '') : '');
+        
+        var time = event.timestamp_display || new Date(event.timestamp).toLocaleTimeString();
+        var severity = event.severity || 'INFO';
+        var category = event.category || 'GENERAL';
+        var message = escapeHtml(event.message || '');
+        
+        // Build message with highlights
+        var fullMessage = message;
+        
+        if (event.http) {
+            fullMessage += ' <span class="http-info">[' + (event.http.method || '') + ' ' + (event.http.path || '') + ']</span>';
+            if (event.http.status_code) {
+                fullMessage += ' <span style="color: ' + (event.http.status_code >= 500 ? 'var(--red)' : event.http.status_code >= 400 ? 'var(--yellow)' : 'var(--green)') + ';">' + event.http.status_code + '</span>';
+            }
+        }
+        
+        if (event.correlation_id) {
+            fullMessage += ' <span class="correlation-id">corr:' + event.correlation_id + '</span>';
+        }
+        
+        if (event.task_name) {
+            fullMessage += ' <span class="task-info">[task:' + event.task_name + ']</span>';
+        }
+        
+        if (event.frontend) {
+            fullMessage += ' <span class="frontend-info">[' + escapeHtml(event.frontend.action || '') + ']</span>';
+            if (event.frontend.url) {
+                fullMessage += ' <span style="color: var(--cyan);">' + escapeHtml(event.frontend.url) + '</span>';
+            }
+            if (event.frontend.duration_ms) {
+                fullMessage += ' <span style="color: var(--muted);">' + event.frontend.duration_ms + 'ms</span>';
+            }
+            if (event.frontend.selector) {
+                fullMessage += ' <span style="color: var(--orange);">' + escapeHtml(event.frontend.selector) + '</span>';
+            }
+            if (event.frontend.state) {
+                fullMessage += ' <span style="color: var(--muted);">' + escapeHtml(event.frontend.state) + '</span>';
+            }
+        }
+        
+        if (event.exception) {
+            fullMessage += ' <span style="color: var(--red);">→ ' + escapeHtml(event.exception.exception_type) + ': ' + escapeHtml(event.exception.exception_message) + '</span>';
+        }
+        
+        line.innerHTML = 
+            '<span class="log-time">' + time + '</span>' +
+            '<span class="log-severity ' + severity + '">' + severity + '</span>' +
+            '<span class="log-category">' + category + '</span>' +
+            '<span class="log-message">' + fullMessage + '</span>';
+        
+        // Add click handler for errors
+        if (event.exception || severity === 'ERROR' || severity === 'CRITICAL') {
+            line.style.cursor = 'pointer';
+            line.onclick = function() { showDetails(event); };
+        }
+        
+        return line;
+    }
+    
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    function appendLogLine(event) {
+        var output = document.getElementById('consoleOutput');
+        var emptyState = output.querySelector('.empty-state');
+        if (emptyState) emptyState.remove();
+        
+        var line = renderLogLine(event);
+        
+        // Apply filters
+        if (!matchesFilters(line)) {
+            line.classList.add('hidden');
+        }
+        
+        output.appendChild(line);
+        
+        // Trim old lines
+        while (output.children.length > maxVisibleLines) {
+            output.removeChild(output.firstChild);
+        }
+        
+        if (autoScroll) {
+            output.scrollTop = output.scrollHeight;
+        }
+    }
+    
+    function prependLogLine(event) {
+        var output = document.getElementById('consoleOutput');
+        var emptyState = output.querySelector('.empty-state');
+        if (emptyState) emptyState.remove();
+        
+        var line = renderLogLine(event);
+        
+        if (!matchesFilters(line)) {
+            line.classList.add('hidden');
+        }
+        
+        output.insertBefore(line, output.firstChild);
+        
+        while (output.children.length > maxVisibleLines) {
+            output.removeChild(output.lastChild);
+        }
+    }
+    
+    function matchesFilters(line) {
+        if (currentFilters.severity && line.dataset.severity !== currentFilters.severity) return false;
+        if (currentFilters.category && line.dataset.category !== currentFilters.category) return false;
+        if (currentFilters.search) {
+            var searchText = currentFilters.search.toLowerCase();
+            var lineText = (line.dataset.searchable || '').toLowerCase();
+            if (!lineText.includes(searchText)) return false;
+        }
+        return true;
+    }
+    
+    function applyFilters() {
+        var lines = document.querySelectorAll('#consoleOutput .log-line');
+        var visibleCount = 0;
+        
+        lines.forEach(function(line) {
+            if (matchesFilters(line)) {
+                line.classList.remove('hidden');
+                visibleCount++;
+            } else {
+                line.classList.add('hidden');
+            }
+        });
+        
+        return visibleCount;
+    }
+    
+    function clearDisplay() {
+        var output = document.getElementById('consoleOutput');
+        output.innerHTML = '';
+        logBuffer = [];
+        
+        var emptyState = document.createElement('div');
+        emptyState.className = 'empty-state';
+        emptyState.innerHTML = '<div class="icon">▼</div><div>Console cleared. Waiting for events...</div>';
+        output.appendChild(emptyState);
+    }
+    
+    function showDetails(event) {
+        var modal = document.getElementById('detailsModal');
+        var body = document.getElementById('detailsBody');
+        
+        var html = '';
+        
+        html += '<div class="detail-row"><span class="detail-label">Timestamp</span><span class="detail-value">' + (event.timestamp || '') + '</span></div>';
+        html += '<div class="detail-row"><span class="detail-label">Severity</span><span class="detail-value"><span class="log-severity ' + (event.severity || 'INFO') + '">' + (event.severity || 'INFO') + '</span></span></div>';
+        html += '<div class="detail-row"><span class="detail-label">Category</span><span class="detail-value">' + (event.category || 'GENERAL') + '</span></div>';
+        html += '<div class="detail-row"><span class="detail-label">Logger</span><span class="detail-value"><code>' + (event.logger || '') + '</code></span></div>';
+        html += '<div class="detail-row"><span class="detail-label">Message</span><span class="detail-value">' + escapeHtml(event.message || '') + '</span></div>';
+        
+        if (event.http) {
+            html += '<div class="detail-row"><span class="detail-label">HTTP Method</span><span class="detail-value"><code>' + (event.http.method || '') + '</code></span></div>';
+            html += '<div class="detail-row"><span class="detail-label">HTTP Path</span><span class="detail-value"><code>' + (event.http.path || '') + '</code></span></div>';
+            if (event.http.status_code) {
+                html += '<div class="detail-row"><span class="detail-label">Status Code</span><span class="detail-value">' + event.http.status_code + '</span></div>';
+            }
+            if (event.http.remote_addr) {
+                html += '<div class="detail-row"><span class="detail-label">Remote IP</span><span class="detail-value"><code>' + event.http.remote_addr + '</code></span></div>';
+            }
+        }
+        
+        if (event.correlation_id) {
+            html += '<div class="detail-row"><span class="detail-label">Correlation ID</span><span class="detail-value"><code>' + event.correlation_id + '</code></span></div>';
+        }
+        
+        if (event.task_id) {
+            html += '<div class="detail-row"><span class="detail-label">Task ID</span><span class="detail-value"><code>' + event.task_id + '</code></span></div>';
+        }
+        
+        if (event.task_name) {
+            html += '<div class="detail-row"><span class="detail-label">Task Name</span><span class="detail-value">' + event.task_name + '</span></div>';
+        }
+        
+        if (event.frontend) {
+            html += '<div class="detail-row"><span class="detail-label">Frontend Action</span><span class="detail-value">' + escapeHtml(event.frontend.action || '') + '</span></div>';
+            if (event.frontend.url) {
+                html += '<div class="detail-row"><span class="detail-label">Frontend URL</span><span class="detail-value">' + escapeHtml(event.frontend.url) + '</span></div>';
+            }
+            if (event.frontend.selector) {
+                html += '<div class="detail-row"><span class="detail-label">Element</span><span class="detail-value">' + escapeHtml(event.frontend.selector) + '</span></div>';
+            }
+            if (event.frontend.status) {
+                html += '<div class="detail-row"><span class="detail-label">HTTP Status</span><span class="detail-value">' + event.frontend.status + '</span></div>';
+            }
+            if (event.frontend.target) {
+                html += '<div class="detail-row"><span class="detail-label">Target</span><span class="detail-value">' + escapeHtml(event.frontend.target) + '</span></div>';
+            }
+            if (event.frontend.duration_ms) {
+                html += '<div class="detail-row"><span class="detail-label">Duration</span><span class="detail-value">' + event.frontend.duration_ms + 'ms</span></div>';
+            }
+            if (event.frontend.state) {
+                html += '<div class="detail-row"><span class="detail-label">State</span><span class="detail-value">' + escapeHtml(event.frontend.state) + '</span></div>';
+            }
+            if (event.frontend.text) {
+                html += '<div class="detail-row"><span class="detail-label">Console Output</span><span class="detail-value">' + escapeHtml(event.frontend.text) + '</span></div>';
+            }
+            if (event.frontend.error) {
+                html += '<div class="detail-row"><span class="detail-label">Error</span><span class="detail-value">' + escapeHtml(event.frontend.error) + '</span></div>';
+            }
+        }
+        
+        if (event.exception) {
+            html += '<div class="detail-row"><span class="detail-label">Exception Type</span><span class="detail-value"><code>' + escapeHtml(event.exception.exception_type || '') + '</code></span></div>';
+            html += '<div class="detail-row"><span class="detail-label">Exception Message</span><span class="detail-value">' + escapeHtml(event.exception.exception_message || '') + '</span></div>';
+            
+            if (event.exception.traceback) {
+                html += '<div class="details-traceback"><strong>Traceback:</strong><pre>' + escapeHtml(event.exception.traceback) + '</pre></div>';
+            }
+        }
+        
+        body.innerHTML = html;
+        modal.classList.add('show');
+        document.body.style.overflow = 'hidden';
+    }
+    
+    function closeDetails() {
+        var modal = document.getElementById('detailsModal');
+        modal.classList.remove('show');
+        document.body.style.overflow = '';
+    }
+    
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', function() {
+        initSocket();
+        
+        // Severity filter
+        document.getElementById('severityFilter').addEventListener('change', function(e) {
+            currentFilters.severity = e.target.value;
+            applyFilters();
+        });
+        
+        // Category filter
+        document.getElementById('categoryFilter').addEventListener('change', function(e) {
+            currentFilters.category = e.target.value;
+            applyFilters();
+        });
+        
+        // Search input
+        var searchInput = document.getElementById('searchInput');
+        var searchDebounce = null;
+        searchInput.addEventListener('input', function(e) {
+            clearTimeout(searchDebounce);
+            searchDebounce = setTimeout(function() {
+                currentFilters.search = e.target.value;
+                applyFilters();
+            }, 150);
+        });
+        
+        // Pause/Resume
+        document.getElementById('pauseBtn').addEventListener('click', function() {
+            isPaused = !isPaused;
+            var btn = this;
+            var text = document.getElementById('pauseText');
+            
+            if (isPaused) {
+                btn.classList.add('active');
+                text.textContent = 'Resume';
+                btn.innerHTML = '<i class="fas fa-play"></i><span id="pauseText">Resume</span>';
+                updateStatus('paused', 'PAUSED');
+            } else {
+                btn.classList.remove('active');
+                text.textContent = 'Pause';
+                btn.innerHTML = '<i class="fas fa-pause"></i><span id="pauseText">Pause</span>';
+                updateStatus('live', 'LIVE');
+                
+                // Flush buffer
+                logBuffer.forEach(function(event) {
+                    appendLogLine(event);
+                });
+                logBuffer = [];
+            }
+        });
+        
+        // Space key to pause/resume
+        document.addEventListener('keydown', function(e) {
+            if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'SELECT') {
+                e.preventDefault();
+                document.getElementById('pauseBtn').click();
+            }
+            // Ctrl+L to clear
+            if (e.ctrlKey && e.code === 'KeyL') {
+                e.preventDefault();
+                document.getElementById('clearBtn').click();
+            }
+        });
+        
+        // Clear button
+        document.getElementById('clearBtn').addEventListener('click', function() {
+            if (confirm('Clear visible console output?')) {
+                clearDisplay();
+            }
+        });
+        
+        // Download button
+        document.getElementById('downloadBtn').addEventListener('click', function() {
+            downloadLogs();
+        });
+        
+        // Auto-scroll checkbox
+        document.getElementById('autoScroll').addEventListener('change', function(e) {
+            autoScroll = e.target.checked;
+            if (autoScroll && !isPaused) {
+                var output = document.getElementById('consoleOutput');
+                output.scrollTop = output.scrollHeight;
+            }
+        });
+        
+        // Modal close on backdrop click
+        document.getElementById('detailsModal').addEventListener('click', function(e) {
+            if (e.target === this) closeDetails();
+        });
+        
+        // ESC to close modal
+        document.addEventListener('keydown', function(e) {
+            if (e.code === 'Escape') closeDetails();
+        });
+        
+        // Update health indicators
+        updateHealthIndicators();
+        
+        // Polling fallback: catches events already stored in history and any
+        // missed by the live SocketIO stream. Safe under rate limits (6 req/min).
+        pollHistory();
+        setInterval(pollHistory, 10000);
+    });
+    
+    function pollHistory() {
+        if (isPaused) return;
+        fetch('/admin/owner/production-console/history?limit=50')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data || !data.events) return;
+                // API returns newest-first; append oldest->newest so newest sits at bottom
+                data.events.slice().reverse().forEach(function(event) {
+                    if (!event || !event.id) return;
+                    var existing = document.querySelector('#consoleOutput [data-id="' + event.id + '"]');
+                    if (!existing) appendLogLine(event);
+                });
+            })
+            .catch(function() {});
+    }
+    
+    function updateHealthIndicators() {
+        var health = {{ health|tojson }};
+        if (!health) return;
+        
+        var indicators = {
+            'healthWeb': 'database',  // Web health inferred from DB
+            'healthDb': 'database',
+            'healthRedis': 'redis',
+            'healthCelery': null,  // Not in health check yet
+        };
+        
+        Object.keys(indicators).forEach(function(id) {
+            var el = document.getElementById(id);
+            var key = indicators[id];
+            var status = key ? health[key]?.status : 'unknown';
+            
+            el.className = 'health-dot ' + (status === 'connected' ? 'healthy' : 
+                           status === 'error' ? 'error' : 
+                           status === 'not_configured' ? 'warning' : 'unknown');
+            el.title = key + ': ' + status + (health[key]?.latency ? ' (' + health[key].latency + 'ms)' : '');
+        });
+    }
+    
+    function downloadLogs() {
+        var lines = document.querySelectorAll('#consoleOutput .log-line:not(.hidden)');
+        var logs = [];
+        
+        lines.forEach(function(line) {
+            var time = line.querySelector('.log-time')?.textContent || '';
+            var severity = line.querySelector('.log-severity')?.textContent || '';
+            var category = line.querySelector('.log-category')?.textContent || '';
+            var message = line.querySelector('.log-message')?.textContent || '';
+            logs.push(time + ' [' + severity + '] ' + category + ': ' + message);
+        });
+        
+        var blob = new Blob([logs.join('\n')], { type: 'text/plain' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'afcon360-console-' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.log';
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+</script>
+{% endblock %}

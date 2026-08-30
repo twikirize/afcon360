@@ -142,6 +142,28 @@ def _compute_verification_state(user_id):
     }
 
 
+# ── Requirement display metadata (static lookup maps) ──────────────────
+REQUIREMENT_ICONS = {
+    'income_source': 'bi-cash-stack',
+    'bank_reference': 'bi-bank',
+    'proof_of_address': 'bi-house',
+    'tin': 'bi-hash',
+    'national_id': 'bi-card-text',
+    'passport': 'bi-passport',
+    'driver_license': 'bi-license',
+    'selfie': 'bi-camera',
+}
+REQUIREMENT_HELPS = {
+    'income_source': 'Upload proof of income source',
+    'bank_reference': 'Provide a bank reference letter',
+    'proof_of_address': 'Upload proof of address',
+    'tin': 'Submit Tax Identification Number',
+    'national_id': 'Upload your national ID',
+    'passport': 'Upload your passport',
+    'driver_license': 'Upload your driver license',
+    'selfie': 'Submit a selfie verification',
+}
+
 # ── /kyc/ ───────────────────────────────────────────────────────────────────
 @kyc_bp.route("/", methods=["GET"])
 @login_required
@@ -171,7 +193,9 @@ def index():
                            verification_message=state["message"],
                            in_org_context=in_org_context,
                            show_individual=show_individual,
-                           show_organization=show_organization)
+                           show_organization=show_organization,
+                           requirement_icons=REQUIREMENT_ICONS,
+                           requirement_helps=REQUIREMENT_HELPS)
 
 
 # ── /kyc/api/state ──────────────────────────────────────────────────────────
@@ -763,6 +787,8 @@ def verify_upload():
     individual_reupload_requests = _get_individual_reupload_requests(records)
     organisation_reupload_requests = _get_organisation_reupload_requests(user_orgs)
 
+    preselect_id_type = request.args.get('preselect', '').strip().lower() if request.method == 'GET' else ''
+
     if request.method == 'POST':
         replacement_token = request.form.get('reupload_token', '').strip()
         if replacement_token:
@@ -1034,7 +1060,8 @@ def verify_upload():
                             accepted_id_types=accepted_id_types,
                             reupload_requests=individual_reupload_requests,
                             organisation_reupload_requests=organisation_reupload_requests,
-                            requested_reupload=requested_reupload)
+                            requested_reupload=requested_reupload,
+                            preselect_id_type=preselect_id_type)
 
 
 # ============================================================================

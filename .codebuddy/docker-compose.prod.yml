@@ -1,0 +1,54 @@
+﻿services:
+  db:
+    deploy:
+      resources:
+        limits:
+          memory: 280M
+          cpus: "0.35"
+
+  redis:
+    command: >
+      redis-server
+      --maxmemory 96mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD}
+    deploy:
+      resources:
+        limits:
+          memory: 120M
+          cpus: "0.15"
+
+  web:
+    ports:
+      - "127.0.0.1:5000:5000"
+    environment:
+      GUNICORN_WORKERS: 1
+      GUNICORN_THREADS: 2
+      GUNICORN_TIMEOUT: 120
+    deploy:
+      resources:
+        limits:
+          memory: 280M
+          cpus: "0.35"
+
+  celery:
+    deploy:
+      resources:
+        limits:
+          memory: 160M
+          cpus: "0.20"
+    environment:
+      CELERY_CONCURRENCY: 1
+
+  celery-beat:
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.05"
+
+  nginx:
+    profiles:
+      - disabled

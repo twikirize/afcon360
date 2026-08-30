@@ -66,6 +66,7 @@ class PaymentPolicyService:
         policy_timings = {
             'pay_now': policy.allow_pay_now,
             'pay_on_arrival': policy.allow_pay_on_arrival,
+            'pay_at_checkout': policy.allow_pay_at_checkout,
             'deposit': policy.allow_deposit_payment,
             'invoice': True,
         }
@@ -77,6 +78,7 @@ class PaymentPolicyService:
             'timing': {
                 'pay_now': policy.allow_pay_now,
                 'pay_on_arrival': policy.allow_pay_on_arrival,
+                'pay_at_checkout': policy.allow_pay_at_checkout,
                 'deposit': policy.allow_deposit_payment,
                 'deposit_percentage': float(policy.deposit_percentage) if policy.deposit_percentage else 0,
             },

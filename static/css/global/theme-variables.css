@@ -149,6 +149,12 @@
   --color-text-danger: var(--danger);
   --color-text-warning: var(--brand-accent-dark);
 
+  /* ===== SEMANTIC ACTION TOKENS (mode-agnostic) ===== */
+  --color-primary: var(--brand-primary);
+  --color-primary-hover: var(--brand-primary-hover);
+  --color-on-primary: var(--text-light);
+  --ring-color: var(--brand-accent);
+
   --color-border-tertiary: var(--border-light);
   
   --border-radius-sm: var(--radius-sm);
@@ -174,9 +180,11 @@
 /* ===== DARK MODE SUPPORT ===== */
 @media (prefers-color-scheme: dark) {
   :root:not(.light-mode) {
+    --text: #e0e0e0;
     --text-primary: #e0e0e0;
     --text-secondary: #b0b0b0;
     --text-muted: #8a8a8a;
+    --bg: #121212;
     --bg-body: #121212;
     --bg-surface: #1e1e1e;
     --bg-surface-alt: #2d2d2d;
@@ -185,14 +193,18 @@
     --border-medium: #404040;
     --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    --color-primary: #3a7a3a;
+    --color-primary-hover: #4e9a4e;
   }
 }
 
 /* Force dark mode - only applied when user explicitly enables via theme settings */
 body.dark-mode {
+  --text: #e0e0e0;
   --text-primary: #e0e0e0;
   --text-secondary: #b0b0b0;
   --text-muted: #8a8a8a;
+  --bg: #121212;
   --bg-body: #121212;
   --bg-surface: #1e1e1e;
   --bg-surface-alt: #2d2d2d;
@@ -201,6 +213,8 @@ body.dark-mode {
   --border-medium: #404040;
   --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+  --color-primary: #3a7a3a;
+  --color-primary-hover: #4e9a4e;
 }
 
 /* Force light mode - default theme */

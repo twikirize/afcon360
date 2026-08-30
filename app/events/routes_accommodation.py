@@ -105,6 +105,19 @@ def api_accommodation_inventory(slug):
         )
     ).all()
 
+    # Build payment info lookup from AccommodationBookingPayment
+    from app.accommodation.models.booking_payment import AccommodationBookingPayment
+    payment_status_map = {}
+    if hotel_bookings:
+        booking_ids = [b.id for b in hotel_bookings]
+        payments = AccommodationBookingPayment.query.filter(
+            AccommodationBookingPayment.booking_id.in_(booking_ids)
+        ).all()
+        for p in payments:
+            # Keep the latest payment record per booking
+            if p.booking_id not in payment_status_map or p.created_at > payment_status_map[p.booking_id].created_at:
+                payment_status_map[p.booking_id] = p
+
     hotels = [{
         'id': booking.id,
         'type': 'hotel',
@@ -116,6 +129,11 @@ def api_accommodation_inventory(slug):
         'max_guests': booking.num_guests or 1,
         'nightly_rate': float(booking.nightly_rate) if booking.nightly_rate else 0.0,
         'is_assigned': booking.id in assigned_booking_ids,
+        # Payment visibility fields
+        'payment_timing': booking.payment_timing,
+        'payment_status': payment_status_map.get(booking.id).payment_status if payment_status_map.get(booking.id) else 'unpaid',
+        'amount_paid': float(booking.amount_paid) if booking.amount_paid is not None else 0.0,
+        'amount_due': float(booking.total_amount) - (float(booking.amount_paid) if booking.amount_paid is not None else 0.0),
     } for booking in hotel_bookings]
     return jsonify({'success': True, 'inventory': {'hotels': hotels, 'community_hosts': []}})
 

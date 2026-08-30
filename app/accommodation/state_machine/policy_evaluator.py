@@ -148,12 +148,12 @@ class BookingPolicyEvaluator:
                 reason="Payment being processed in this confirmation"
             )
         
-        # If payment is pay_on_arrival or invoice, no upfront payment required
-        if payment_timing in ('pay_on_arrival', 'invoice'):
+        # If payment is pay_on_arrival, pay_at_checkout, or invoice, no upfront payment required
+        if payment_timing in ('pay_on_arrival', 'pay_at_checkout', 'invoice'):
             return PaymentRequirement(
                 required=False,
                 timing=payment_timing,
-                reason="Payment on arrival/invoice - no upfront payment required"
+                reason="Payment on arrival/at checkout/invoice - no upfront payment required"
             )
         
         # If payment is deposit, check deposit percentage
@@ -234,16 +234,17 @@ class BookingPolicyEvaluator:
         if not BookingStateMachine._registration_satisfied(booking):
             missing.append("Guest registration incomplete")
         
-        # Payment policy check for check-in
+# Payment policy check for check-in
         policy = PropertyBookingPolicy.query.filter_by(property_id=booking.property_id).first()
         payment_timing = getattr(booking, 'payment_timing', 'pay_now') or 'pay_now'
-        
+
         # If payment policy requires payment before check-in
+        # pay_at_checkout means payment is due at checkout, not check-in
         if policy and policy.require_payment_guarantee and payment_timing == 'pay_now':
             payment_state = PaymentState(getattr(booking, 'payment_status', 'unpaid'))
             if payment_state not in (PaymentState.PAID, PaymentState.PARTIALLY_PAID):
                 # Check cash eligibility for pay-on-arrival
-                if payment_timing != 'pay_on_arrival':
+                if payment_timing != 'pay_on_arrival' and payment_timing != 'pay_at_checkout':
                     missing.append("Payment required before check-in per property policy")
         
         if missing:
@@ -284,6 +285,7 @@ class BookingPolicyEvaluator:
                 "required_deposit_amount": (Decimal(str(booking.total_amount or 0)) * Decimal(str(policy.deposit_percentage or 0))) / Decimal('100') if payment_timing == 'deposit' else Decimal('0'),
                 "requires_payment_before_checkin": policy.require_payment_guarantee and payment_timing == 'pay_now',
                 "allow_pay_on_arrival": policy.allow_pay_on_arrival,
+                "allow_pay_at_checkout": policy.allow_pay_at_checkout,
             },
             "financial_summary": {
                 "total_amount": Decimal(str(booking.total_amount or 0)),
@@ -300,7 +302,7 @@ class PaymentPolicyEvaluator:
     """
     Evaluates payment policy requirements independently.
     """
-    
+
     @staticmethod
     def get_required_payment_for_confirmation(booking: AccommodationBooking) -> PaymentRequirement:
         """Get payment requirement for booking confirmation"""
@@ -308,19 +310,21 @@ class PaymentPolicyEvaluator:
         if not policy:
             policy = PropertyBookingPolicy(property_id=booking.property_id)
         return BookingPolicyEvaluator._evaluate_payment_requirement(booking, policy)
-    
+
     @staticmethod
     def get_allowed_payment_timings(property_id: int) -> list:
         """Get allowed payment timings for a property"""
         policy = PropertyBookingPolicy.query.filter_by(property_id=property_id).first()
         if not policy:
-            return ['pay_now', 'pay_on_arrival', 'deposit', 'invoice']
-        
+            return ['pay_now', 'pay_on_arrival', 'pay_at_checkout', 'deposit', 'invoice']
+
         timings = []
         if policy.allow_pay_now:
             timings.append('pay_now')
         if policy.allow_pay_on_arrival:
             timings.append('pay_on_arrival')
+        if policy.allow_pay_at_checkout:
+            timings.append('pay_at_checkout')
         if policy.allow_deposit_payment:
             timings.append('deposit')
         timings.append('invoice')  # Always available as fallback

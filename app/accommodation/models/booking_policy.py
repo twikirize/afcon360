@@ -60,6 +60,7 @@ class PropertyBookingPolicy(BaseModel):
     # -------------------------------
     allow_pay_now = Column(Boolean, default=True)
     allow_pay_on_arrival = Column(Boolean, default=False)
+    allow_pay_at_checkout = Column(Boolean, default=False)
     allow_deposit_payment = Column(Boolean, default=False)
     deposit_percentage = Column(Numeric(5, 2), default=0)  # 0-100
     balance_due_days_before_checkin = Column(Integer, default=0)

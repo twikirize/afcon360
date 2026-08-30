@@ -302,7 +302,9 @@ jane@example.com,456,community_host</pre>
                                 <p class="mb-1"><strong>Room:</strong> <span id="confirmRoomType"></span></p>
                                 <p class="mb-1"><strong>Check-in:</strong> <span id="confirmCheckIn"></span></p>
                                 <p class="mb-1"><strong>Check-out:</strong> <span id="confirmCheckOut"></span></p>
-                                <p class="mb-0"><strong>Rate:</strong> <span id="confirmNightlyRate"></span></p>
+                                <p class="mb-1"><strong>Rate:</strong> <span id="confirmNightlyRate"></span></p>
+                                <p class="mb-1"><strong>Payment Timing:</strong> <span id="confirmPaymentTiming"></span></p>
+                                <p class="mb-0"><strong>Payment Status:</strong> <span id="confirmPaymentStatus"></span></p>
                             </div>
                         </div>
                     </div>
@@ -509,12 +511,22 @@ function renderHotelInventory() {
                 <div class="flex-grow-1">
                     <div class="fw-bold">🏨 ${escapeHtml(room.property_name)}</div>
                     <div class="small text-muted">${escapeHtml(room.room_type)}</div>
-                    <div class="small text-muted">
-                        <i class="fas fa-calendar"></i> ${room.check_in || '?'} → ${room.check_out || '?'}
-                    </div>
-                    <div class="small">
-                        <i class="fas fa-user"></i> ${room.max_guests} guests
-                    </div>
+<div class="small text-muted">
+                <i class="fas fa-calendar"></i> ${room.check_in || '?'} → ${room.check_out || '?'}
+            </div>
+            <div class="small">
+                <i class="fas fa-user"></i> ${room.max_guests} guests
+            </div>
+            <div class="small">
+                <i class="fas fa-credit-card"></i> ${room.payment_timing || 'pay_now'}
+            </div>
+            <div class="small">
+                <span class="badge ${room.payment_status === 'paid' ? 'bg-success' : room.payment_status === 'pending' ? 'bg-warning text-dark' : room.payment_status === 'partially_paid' ? 'bg-info' : 'bg-secondary'}">
+                    ${room.payment_status || 'unpaid'}
+                </span>
+                ${room.amount_paid > 0 ? ` · Paid: $${Number(room.amount_paid).toFixed(2)}` : ''}
+                ${room.amount_due > 0 ? ` · Due: $${Number(room.amount_due).toFixed(2)}` : ''}
+            </div>
                 </div>
                 <div class="text-end">
                     <div class="fw-bold text-primary">$${room.nightly_rate}/night</div>
@@ -648,6 +660,23 @@ function showAssignConfirmModal() {
     document.getElementById('confirmCheckIn').textContent = booking.check_in ? new Date(booking.check_in).toLocaleDateString() : 'TBD';
     document.getElementById('confirmCheckOut').textContent = booking.check_out ? new Date(booking.check_out).toLocaleDateString() : 'TBD';
     document.getElementById('confirmNightlyRate').textContent = booking.nightly_rate ? `$${Number(booking.nightly_rate).toFixed(2)}/night` : (booking.price_per_night ? `$${Number(booking.price_per_night).toFixed(2)}/night` : '—');
+    document.getElementById('confirmPaymentTiming').textContent = booking.payment_timing || 'pay_now';
+    const paymentStatus = booking.payment_status || 'unpaid';
+    const statusEl = document.getElementById('confirmPaymentStatus');
+    statusEl.textContent = paymentStatus;
+    statusEl.className = paymentStatus === 'paid' ? 'badge bg-success' : paymentStatus === 'pending' ? 'badge bg-warning text-dark' : paymentStatus === 'partially_paid' ? 'badge bg-info' : 'badge bg-secondary';
+    if (booking.amount_paid > 0) {
+        const paidEl = document.createElement('small');
+        paidEl.className = 'text-success ms-2';
+        paidEl.textContent = `Paid: $${Number(booking.amount_paid).toFixed(2)}`;
+        statusEl.parentNode.appendChild(paidEl);
+    }
+    if (booking.amount_due > 0) {
+        const dueEl = document.createElement('small');
+        dueEl.className = 'text-warning ms-2';
+        dueEl.textContent = `Due: $${Number(booking.amount_due).toFixed(2)}`;
+        statusEl.parentNode.appendChild(dueEl);
+    }
     
     new bootstrap.Modal(document.getElementById('assignConfirmModal')).show();
 }

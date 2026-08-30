@@ -2980,3 +2980,306 @@ def api_check_registration(slug):
         'registered': existing is not None,
         'message': 'Already registered' if existing else 'Available'
     })
+
+
+# ============================================================================
+# ATTENDEE ACCOMMODATION BOOKING ROUTES
+# ============================================================================
+
+@events_bp.route("/api/<slug>/accommodation/available-properties")
+@login_required
+def api_attendee_accommodation_available_properties(slug):
+    """
+    List properties available for the event dates that the attendee can book.
+    
+    Query params:
+      - check_in (required): Check-in date (YYYY-MM-DD)
+      - check_out (required): Check-out date (YYYY-MM-DD)
+      - num_guests (optional): Number of guests (default 1)
+      - rooms_requested (optional): Number of rooms (default 1)
+    """
+    from app.events.accommodation_booking_service import AttendeeAccommodationBookingService
+    from app.events.models import Event
+    
+    event = Event.query.filter_by(slug=slug).first()
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+    
+    try:
+        check_in_str = request.args.get('check_in')
+        check_out_str = request.args.get('check_out')
+        if not check_in_str or not check_out_str:
+            return jsonify({'success': False, 'error': 'check_in and check_out are required'}), 400
+        
+        from datetime import date
+        check_in = date.fromisoformat(check_in_str)
+        check_out = date.fromisoformat(check_out_str)
+        
+        num_guests = request.args.get('num_guests', 1, type=int)
+        rooms_requested = request.args.get('rooms_requested', 1, type=int)
+        
+        properties = AttendeeAccommodationBookingService.list_available_properties_for_event(
+            event, check_in, check_out, num_guests, rooms_requested
+        )
+        
+        return jsonify({
+            'success': True,
+            'properties': properties,
+            'count': len(properties),
+        })
+    except ValueError as e:
+        return jsonify({'success': False, 'error': 'Invalid date format, use YYYY-MM-DD'}), 400
+    except Exception as e:
+        current_app.logger.error(f"Available properties error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to fetch available properties'}), 500
+
+
+@events_bp.route("/api/<slug>/accommodation/book", methods=['POST'])
+@login_required
+def api_attendee_accommodation_book(slug):
+    """
+    Create an accommodation booking for the current attendee.
+    
+    Expected JSON payload:
+    {
+        "property_id": 123,
+        "check_in": "2026-10-01",
+        "check_out": "2026-10-05",
+        "num_guests": 2,
+        "rooms_requested": 1,
+        "room_type_id": 456,  # optional
+        "payment_timing": "pay_now",  # optional: pay_now, deposit, pay_on_arrival, pay_at_checkout, invoice
+        "payment_method": "wallet",  # optional
+        "special_requests": "Late check-in",  # optional
+        "guest_name": "John Doe",  # optional (defaults to registration name)
+        "guest_email": "john@example.com",  # optional (defaults to registration email)
+        "guest_phone": "+256700000000",  # optional
+        "idempotency_key": "optional-key"  # optional
+    }
+    """
+    from app.events.accommodation_booking_service import AttendeeAccommodationBookingService, AttendeeAccommodationBookingError
+    from app.events.models import Event, EventRegistration
+    
+    event = Event.query.filter_by(slug=slug).first()
+    if not event:
+        return jsonify({'success': False, 'error': 'Event not found'}), 404
+    
+    # Find the current user's registration for this event
+    registration = EventRegistration.query.filter_by(
+        event_id=event.id,
+        user_id=current_user.id,
+        is_deleted=False,
+    ).first()
+    
+    if not registration:
+        # Check for third-party registration where current_user booked for attendee
+        registration = EventRegistration.query.filter_by(
+            event_id=event.id,
+            booked_by_user_id=current_user.id,
+            is_deleted=False,
+        ).first()
+    
+    if not registration:
+        return jsonify({'success': False, 'error': 'No registration found for this event'}), 404
+    
+    try:
+        data = request.get_json(silent=True) or {}
+        
+        property_id = data.get('property_id')
+        check_in_str = data.get('check_in')
+        check_out_str = data.get('check_out')
+        
+        if not property_id or not check_in_str or not check_out_str:
+            return jsonify({'success': False, 'error': 'property_id, check_in, and check_out are required'}), 400
+        
+        from datetime import date
+        check_in = date.fromisoformat(check_in_str)
+        check_out = date.fromisoformat(check_out_str)
+        
+        num_guests = data.get('num_guests', 1)
+        rooms_requested = data.get('rooms_requested', 1)
+        room_type_id = data.get('room_type_id')
+        payment_timing = data.get('payment_timing')
+        payment_method = data.get('payment_method')
+        special_requests = data.get('special_requests')
+        guest_name = data.get('guest_name')
+        guest_email = data.get('guest_email')
+        guest_phone = data.get('guest_phone')
+        idempotency_key = data.get('idempotency_key')
+        
+        result = AttendeeAccommodationBookingService.create_booking_for_attendee(
+            event=event,
+            registration=registration,
+            property_id=property_id,
+            check_in=check_in,
+            check_out=check_out,
+            num_guests=num_guests,
+            rooms_requested=rooms_requested,
+            room_type_id=room_type_id,
+            payment_timing=payment_timing,
+            payment_method=payment_method,
+            special_requests=special_requests,
+            guest_name=guest_name,
+            guest_email=guest_email,
+            guest_phone=guest_phone,
+            idempotency_key=idempotency_key,
+        )
+        
+        return jsonify({
+            'success': True,
+            'booking': {
+                'id': result.booking.id,
+                'booking_reference': result.booking.booking_reference,
+                'property_id': result.booking.property_id,
+                'check_in': result.booking.check_in.isoformat() if result.booking.check_in else None,
+                'check_out': result.booking.check_out.isoformat() if result.booking.check_out else None,
+                'num_guests': result.booking.num_guests,
+                'rooms_requested': result.booking.rooms_requested,
+                'total_amount': float(result.booking.total_amount),
+                'currency': result.booking.currency,
+                'status': result.booking.status,
+                'payment_status': result.booking.payment_status,
+                'payment_timing': result.payment_timing,
+                'payment_required': result.payment_required,
+                'required_amount': float(result.required_amount) if result.required_amount else None,
+                'payment_options': result.payment_options,
+            },
+            'assignment': {
+                'id': result.assignment.id,
+                'accommodation_booking_id': result.assignment.accommodation_booking_id,
+            },
+        }), 201
+        
+    except ValueError as e:
+        return jsonify({'success': False, 'error': 'Invalid date format, use YYYY-MM-DD'}), 400
+    except AttendeeAccommodationBookingError as e:
+        return jsonify({'success': False, 'code': e.code, 'error': e.message, 'details': e.details}), 400
+    except Exception as e:
+        current_app.logger.error(f"Attendee accommodation booking error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to create accommodation booking'}), 500
+
+
+@events_bp.route("/api/registration/<reg_ref>/accommodation/requirements")
+@login_required
+def api_attendee_accommodation_requirements(reg_ref):
+    """
+    Get payment and policy requirements for an attendee's accommodation booking.
+    """
+    from app.events.accommodation_booking_service import AttendeeAccommodationBookingService
+    from app.events.models import EventRegistration
+    
+    registration = EventRegistration.query.filter_by(registration_ref=reg_ref).first()
+    if not registration:
+        return jsonify({'success': False, 'error': 'Registration not found'}), 404
+    
+    # Permission check: attendee, booker, or organizer
+    from app.events.permissions import can_manage_registration
+    if not can_manage_registration(current_user, registration):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    event = registration.event
+    requirements = AttendeeAccommodationBookingService.get_booking_requirements(event, registration)
+    
+    return jsonify({'success': True, 'requirements': requirements})
+
+
+@events_bp.route("/api/registration/<reg_ref>/accommodation/fund", methods=['POST'])
+@login_required
+def api_attendee_accommodation_fund(reg_ref):
+    """
+    Organizer funds attendee's accommodation booking via wallet transfer.
+    
+    Expected JSON payload:
+    {
+        "amount": 500.00,
+        "currency": "USD",
+        "idempotency_key": "optional-key"
+    }
+    
+    Uses WalletService.transfer() - the ONLY wallet movement primitive.
+    No "top-up" subsystem.
+    """
+    from app.events.accommodation_booking_service import AttendeeAccommodationBookingService, AttendeeAccommodationBookingError
+    from app.events.models import EventRegistration
+    from decimal import Decimal
+    
+    registration = EventRegistration.query.filter_by(registration_ref=reg_ref).first()
+    if not registration:
+        return jsonify({'success': False, 'error': 'Registration not found'}), 404
+    
+    event = registration.event
+    
+    # Verify current user is the event organizer
+    from app.events.permissions import _is_event_owner
+    if not _is_event_owner(current_user, event):
+        return jsonify({'success': False, 'error': 'Only the event organizer can fund attendee bookings'}), 403
+    
+    try:
+        data = request.get_json(silent=True) or {}
+        
+        amount = data.get('amount')
+        currency = data.get('currency', 'USD')
+        idempotency_key = data.get('idempotency_key')
+        
+        if amount is None:
+            return jsonify({'success': False, 'error': 'amount is required'}), 400
+        
+        amount = Decimal(str(amount))
+        
+        result = AttendeeAccommodationBookingService.fund_attendee_booking_from_organizer(
+            event=event,
+            registration=registration,
+            amount=amount,
+            currency=currency,
+            idempotency_key=idempotency_key,
+        )
+        
+        return jsonify({
+            'success': True,
+            'transfer': result,
+        })
+        
+    except AttendeeAccommodationBookingError as e:
+        return jsonify({'success': False, 'code': e.code, 'error': e.message, 'details': e.details}), 400
+    except Exception as e:
+        current_app.logger.error(f"Attendee accommodation funding error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to fund accommodation booking'}), 500
+
+
+@events_bp.route("/api/registration/<reg_ref>/accommodation/cancel", methods=['POST'])
+@login_required
+def api_attendee_accommodation_cancel(reg_ref):
+    """
+    Cancel an attendee's accommodation booking.
+    
+    Delegates to AccommodationBooking.cancel() which handles
+    refunds according to the booking's cancellation policy.
+    """
+    from app.events.accommodation_booking_service import AttendeeAccommodationBookingService
+    from app.events.models import EventRegistration
+    
+    registration = EventRegistration.query.filter_by(registration_ref=reg_ref).first()
+    if not registration:
+        return jsonify({'success': False, 'error': 'Registration not found'}), 404
+    
+    # Permission check: attendee, booker, or organizer
+    from app.events.permissions import can_manage_registration
+    if not can_manage_registration(current_user, registration):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    event = registration.event
+    reason = None
+    if request.is_json:
+        reason = request.get_json(silent=True).get('reason')
+    
+    success = AttendeeAccommodationBookingService.cancel_attendee_booking(
+        event=event,
+        registration=registration,
+        actor_user_id=current_user.id,
+        reason=reason,
+    )
+    
+    if success:
+        return jsonify({'success': True, 'message': 'Accommodation booking cancelled'})
+    else:
+        return jsonify({'success': False, 'error': 'Failed to cancel accommodation booking'}), 400

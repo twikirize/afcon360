@@ -15,6 +15,66 @@
         We only ask for information needed for identity, fraud, and financial-crime screening.
     </p>
 
+    {# ── Action cards: directly below the heading ─────────────────── %}
+    <div class="panel mb-4" id="kyc-requirements">
+        <div class="panel-header">
+            <div class="panel-title">What you need to complete</div>
+            <span>{{ fulfillment_percentage }}% complete</span>
+        </div>
+        <div class="panel-body">
+            <div class="alert alert-info d-flex align-items-start gap-2" role="alert">
+                <i class="bi bi-info-circle-fill mt-1"></i>
+                <div>
+                    Each item below is a <strong>clickable card</strong>.
+                    Tap one to open the upload form — your progress is
+                    <strong>auto-saved</strong>, so you can fill one item per day and resume exactly where you left off.
+                </div>
+            </div>
+            <p style="color:var(--text-secondary);">
+                {% if next_tier_name %}To reach {{ next_tier_name }}, complete the following:{% else %}Your current verification level is the highest available level.{% endif %}
+            </p>
+            <ul class="kyc-requirement-card-list" id="kyc-requirement-list">
+                {% for requirement in (missing_requirements or next_tier_requirements) %}
+                    {% set req_lower = requirement|lower|replace(' ', '_') %}
+                    {% if req_lower in ['income_source', 'bank_reference', 'proof_of_address', 'tin', 'national_id', 'passport', 'driver_license', 'selfie'] %}
+                        <li>
+                            <a href="{{ url_for('kyc.upload', preselect=req_lower) }}"
+                               class="kyc-requirement-card-link"
+                               data-req="{{ req_lower }}">
+                                <span class="kyc-req-icon"><i class="bi {{ requirement_icons[req_lower] }}"></i></span>
+                                <span class="kyc-req-body">
+                                    <span class="kyc-req-name">{{ requirement }}</span>
+                                    <span class="kyc-req-help">{{ requirement_helps[req_lower] }}</span>
+                                </span>
+                                <span class="kyc-req-arrow"><i class="bi bi-arrow-right"></i></span>
+                                <span class="kyc-draft-badge badge rounded-pill bg-warning text-dark d-none">Draft saved</span>
+                            </a>
+                        </li>
+                    {% else %}
+                        <li>
+                            <span class="kyc-requirement-card-link kyc-requirement-card-disabled">
+                                <span class="kyc-req-body">
+                                    <span class="kyc-req-name">{{ requirement }}</span>
+                                </span>
+                                <span class="kyc-req-arrow"><i class="bi bi-check-lg text-success"></i></span>
+                            </span>
+                        </li>
+                    {% endif %}
+                {% else %}
+                    <li>
+                        <span class="kyc-requirement-card-link kyc-requirement-card-disabled">
+                            <span class="kyc-req-body">
+                                <span class="kyc-req-name"><i class="bi bi-check-circle text-success me-2"></i>All required checks are complete.</span>
+                            </span>
+                            <span class="kyc-req-arrow"><i class="bi bi-check-circle text-success"></i></span>
+                        </span>
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    {# ── Verification decision ────────────────────────────────── %}
     <div class="panel mb-4">
         <div class="panel-header">
             <div>
@@ -37,25 +97,6 @@
                     Your submission is in compliance review. We will notify you if clarification or replacement evidence is required.
                 </div>
             {% endif %}
-        </div>
-    </div>
-
-    <div class="panel mb-4">
-        <div class="panel-header">
-            <div class="panel-title">Requirements for your next level</div>
-            <span>{{ fulfillment_percentage }}% complete</span>
-        </div>
-        <div class="panel-body">
-            <p style="color:var(--text-secondary);">
-                {% if next_tier_name %}To reach {{ next_tier_name }}, complete the following:{% else %}Your current verification level is the highest available level.{% endif %}
-            </p>
-            <ul class="list-unstyled mb-0">
-                {% for requirement in (missing_requirements or next_tier_requirements) %}
-                    <li class="mb-2"><i class="bi bi-exclamation-circle text-warning me-2"></i>{{ requirement }}</li>
-                {% else %}
-                    <li><i class="bi bi-check-circle text-success me-2"></i>All required checks are complete.</li>
-                {% endfor %}
-            </ul>
         </div>
     </div>
 
@@ -150,4 +191,29 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  // Show "Draft saved" badges for any requirement the user has an auto-saved
+  // (localStorage) draft for. Keyed per document type so progress persists
+  // across days / page reloads on the same device.
+  try {
+    document.querySelectorAll('#kyc-requirement-list .kyc-requirement-card-link').forEach(function (link) {
+      var req = link.getAttribute('data-req');
+      var key = 'afcon_kyc_draft_' + req;
+      var raw = localStorage.getItem(key);
+      if (!raw) return;
+      var draft;
+      try { draft = JSON.parse(raw); } catch (e) { return; }
+      if (draft && (draft.id_number || draft.document_url || draft.selfie_url ||
+                    draft.address_line1 || draft.city || draft.country)) {
+        var badge = link.querySelector('.kyc-draft-badge');
+        if (badge) badge.classList.remove('d-none');
+      }
+    });
+  } catch (e) { /* localStorage unavailable — ignore */ }
+})();
+</script>
 {% endblock %}

@@ -714,45 +714,48 @@
           </div>
 
           <!-- Quick Actions Grid -->
-          <div class="card">
-            <div class="card-header">
-              <h3><i class="bi bi-lightning-charge"></i> Quick Actions</h3>
-            </div>
-            <div class="card-body">
-              <div class="actions-grid">
-                <a href="{{ safe_url('admin.owner.users') }}" class="action-btn">
-                  <i class="bi bi-people"></i> Manage Users
-                </a>
-                <a href="{{ safe_url('admin.owner.audit_logs') }}" class="action-btn">
-                  <i class="bi bi-journal-bookmark-fill"></i> Audit Logs
-                </a>
-                <a href="{{ safe_url('admin.owner.settings') }}" class="action-btn">
-                  <i class="bi bi-gear"></i> Settings
-                </a>
-                <a href="{{ url_for('theme.preferences_page') }}" class="action-btn">
-                  <i class="bi bi-palette"></i> Theme
-                </a>
-                <a href="{{ safe_url('admin.owner.system_health') }}" class="action-btn">
-                  <i class="bi bi-graph-up"></i> System Health
-                </a>
-                <a href="{{ safe_url('monitor.monitor_dashboard') }}" class="action-btn" style="border-left:3px solid #36d399;">
-                  <i class="bi bi-broadcast"></i> Live Monitor
-                </a>
-                <a href="{{ safe_url('admin.owner.manage_roles') }}" class="action-btn">
-                  <i class="bi bi-shield"></i> Manage Roles
-                </a>
-                <a href="{{ safe_url('admin.owner.compliance_dashboard') }}" class="action-btn primary">
-                  <i class="bi bi-shield-check"></i> Compliance
-                </a>
-                <a href="{{ safe_url('admin.owner.danger_zone') }}" class="action-btn danger">
-                  <i class="bi bi-exclamation-triangle"></i> Danger Zone
-                </a>
-                <a href="{{ safe_url('admin.owner.impersonate_page') }}" class="action-btn">
-                  <i class="bi bi-mask"></i> Overseer Key
-                </a>
+<div class="card">
+              <div class="card-header">
+                <h3><i class="bi bi-lightning-charge"></i> Quick Actions</h3>
+              </div>
+              <div class="card-body">
+                <div class="actions-grid">
+                  <a href="{{ safe_url('admin.owner.users') }}" class="action-btn">
+                    <i class="bi bi-people"></i> Manage Users
+                  </a>
+                  <a href="{{ safe_url('admin.owner.audit_logs') }}" class="action-btn">
+                    <i class="bi bi-journal-bookmark-fill"></i> Audit Logs
+                  </a>
+                  <a href="{{ safe_url('admin.owner.settings') }}" class="action-btn">
+                    <i class="bi bi-gear"></i> Settings
+                  </a>
+                  <a href="{{ url_for('theme.preferences_page') }}" class="action-btn">
+                    <i class="bi bi-palette"></i> Theme
+                  </a>
+                  <a href="{{ safe_url('admin.owner.system_health') }}" class="action-btn">
+                    <i class="bi bi-graph-up"></i> System Health
+                  </a>
+                  <a href="{{ safe_url('monitor.monitor_dashboard') }}" class="action-btn" style="border-left:3px solid #36d399;">
+                    <i class="bi bi-broadcast"></i> Live Monitor
+                  </a>
+                  <a href="{{ safe_url('admin.owner.manage_roles') }}" class="action-btn">
+                    <i class="bi bi-shield"></i> Manage Roles
+                  </a>
+                  <a href="{{ safe_url('admin.owner.compliance_dashboard') }}" class="action-btn primary">
+                    <i class="bi bi-shield-check"></i> Compliance
+                  </a>
+                  <a href="{{ safe_url('admin.owner.danger_zone') }}" class="action-btn danger">
+                    <i class="bi bi-exclamation-triangle"></i> Danger Zone
+                  </a>
+                  <a href="{{ safe_url('admin.owner.impersonate_page') }}" class="action-btn">
+                    <i class="bi bi-mask"></i> Overseer Key
+                  </a>
+                  <a href="{{ url_for('production_console.production_console') }}" class="action-btn" style="border-left:3px solid #3fb950;">
+                    <i class="bi bi-terminal"></i> Production Console
+                  </a>
+                </div>
               </div>
             </div>
-          </div>
         </div>
       </div>
 

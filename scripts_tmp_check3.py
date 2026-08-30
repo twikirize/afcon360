@@ -1,0 +1,5 @@
+s = open('app/kyc/routes.py', encoding='utf-8').read()
+i = s.find('def index')
+out = open('scripts_tmp_out.txt', 'w', encoding='utf-8')
+out.write(s[i:i+1600])
+out.close()

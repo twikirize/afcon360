@@ -131,6 +131,12 @@ def get_highest_role(user) -> str:
             user = db.session.merge(user, load=False)
         except Exception as e:
             log.debug(f"Could not merge user in get_highest_role: {e}")
+            # If merge fails, try to load fresh user from database
+            try:
+                from app.identity.models.user import User
+                user = db.session.get(User, user.id)
+            except Exception:
+                pass
 
     role_hierarchy = [
         "owner",
@@ -152,6 +158,22 @@ def get_highest_role(user) -> str:
             if role in user_roles:
                 return role
     except Exception as e:
+        # Handle detached instance errors by loading fresh user
+        from sqlalchemy.orm.exc import DetachedInstanceError
+        if isinstance(e, DetachedInstanceError):
+            try:
+                from app.identity.models.user import User
+                fresh_user = db.session.get(User, user.id)
+                if fresh_user:
+                    user_roles = set()
+                    for user_role in fresh_user.roles:
+                        if user_role.role:
+                            user_roles.add(user_role.role.name)
+                    for role in role_hierarchy:
+                        if role in user_roles:
+                            return role
+            except Exception:
+                pass
         log.warning(f"Error getting highest role: {e}")
 
     return "user"  # Default

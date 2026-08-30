@@ -40,6 +40,7 @@ logger.info(f"App starting at: {time.time()}")
 
 from app import create_app
 from app.config import Config
+from app.extensions import socketio
 
 try:
     app = create_app()
@@ -78,7 +79,8 @@ if __name__ == "__main__":
     logger.info(f"Port: {os.getenv('FLASK_PORT', '5000')}")
 
     try:
-        app.run(
+        socketio.run(
+            app,
             debug=debug_mode,
             use_reloader=False,
             host=os.getenv('FLASK_HOST', '127.0.0.1'),

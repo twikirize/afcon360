@@ -225,6 +225,7 @@ from app.extensions import db
 from app.events.models import Event, EventRegistration, EventAssignment
 from app.events.permissions import (
     can_view_coordination,
+    can_manage_coordination,
     can_assign_accommodation,
     can_assign_transport,
     can_cancel_assignment,
@@ -527,6 +528,11 @@ def assign_accommodation(event_ref):
     """
     event = _event_for_ref(event_ref)
     event_id = event.id
+    # Mutation requires management authority
+    allowed, message = can_manage_coordination(current_user, event)
+    if not allowed:
+        return jsonify({'success': False, 'code': 'EVENT_COORDINATION_FORBIDDEN', 'error': message}), 403
+    # Plus capability-specific check
     allowed, message = can_assign_accommodation(current_user, event)
     if not allowed:
         return jsonify({'success': False, 'code': 'EVENT_COORDINATION_FORBIDDEN', 'error': message}), 403
@@ -582,6 +588,11 @@ def assign_transport(event_ref):
     """
     event = _event_for_ref(event_ref)
     event_id = event.id
+    # Mutation requires management authority
+    allowed, message = can_manage_coordination(current_user, event)
+    if not allowed:
+        return jsonify({'success': False, 'code': 'EVENT_COORDINATION_FORBIDDEN', 'error': message}), 403
+    # Plus capability-specific check
     allowed, message = can_assign_transport(current_user, event)
     if not allowed:
         return jsonify({'success': False, 'code': 'EVENT_COORDINATION_FORBIDDEN', 'error': message}), 403
@@ -627,6 +638,10 @@ def bulk_coordination(event_ref, capability):
     """
     event = _event_for_ref(event_ref)
     data = request.get_json(silent=True) or {}
+    # Mutation requires management authority
+    allowed, message = can_manage_coordination(current_user, event)
+    if not allowed:
+        return jsonify({'success': False, 'code': 'EVENT_COORDINATION_FORBIDDEN', 'error': message}), 403
     if capability == 'accommodation':
         allowed, message = can_assign_accommodation(current_user, event)
     elif capability == 'transport':
@@ -663,6 +678,11 @@ def cancel_coordination(event_ref, registration_ref, capability):
     released back to the owning booking.
     """
     event = _event_for_ref(event_ref)
+    # Mutation requires management authority
+    allowed, message = can_manage_coordination(current_user, event)
+    if not allowed:
+        return jsonify({'success': False, 'code': 'EVENT_COORDINATION_FORBIDDEN', 'error': message}), 403
+    # Plus capability-specific check
     allowed, message = can_cancel_assignment(current_user, event, capability)
     if not allowed:
         return jsonify({'success': False, 'code': 'EVENT_COORDINATION_FORBIDDEN', 'error': message}), 403

@@ -1140,6 +1140,25 @@ def create_app(config_object=None) -> Flask:
         app.logger.error(f"❌ Failed to register monitor blueprint: {e}")
 
     # ------------------------------------------------------------------
+    # Production Console (/admin/owner/production-console)
+    # ------------------------------------------------------------------
+    try:
+        from app.production_console import production_console_bp, register_production_console_namespace
+        app.register_blueprint(production_console_bp)
+        register_production_console_namespace(socketio)
+        app.logger.info("✅ Production Console blueprint and SocketIO namespace registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register Production Console: {e}")
+
+    # Initialize production console logging handler (after socketio is ready)
+    try:
+        from app.production_console.streaming import init_production_console_logging
+        init_production_console_logging(app)
+        app.logger.info("✅ Production Console logging handler initialized")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to initialize Production Console logging: {e}")
+
+    # ------------------------------------------------------------------
     # Template helpers for module isolation
     # ------------------------------------------------------------------
     from app.utils.template_helpers import register_template_helpers

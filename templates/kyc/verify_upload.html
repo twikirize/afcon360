@@ -129,14 +129,14 @@
                 <div class="kyc-field-group">
                   <label for="id_type" class="kyc-label">Document Type <span class="kyc-req">*</span></label>
                   <select class="kyc-select" id="id_type" name="id_type" required>
-                    <option value="" selected disabled>Select document type…</option>
-                    <option value="national_id" {% if 'national_id' in verified_id_types %}disabled{% endif %}{% if accepted_id_types is defined and 'national_id' not in accepted_id_types %}disabled{% endif %}>National ID (NIRA){% if 'national_id' in verified_id_types %} — verified{% elif accepted_id_types is defined and 'national_id' not in accepted_id_types %} — not accepted{% endif %}</option>
-                    <option value="passport" {% if 'passport' in verified_id_types %}disabled{% endif %}{% if accepted_id_types is defined and 'passport' not in accepted_id_types %}disabled{% endif %}>Passport{% if 'passport' in verified_id_types %} — verified{% elif accepted_id_types is defined and 'passport' not in accepted_id_types %} — not accepted{% endif %}</option>
-                    <option value="driver_license" {% if 'driver_license' in verified_id_types %}disabled{% endif %}{% if accepted_id_types is defined and 'driver_license' not in accepted_id_types %}disabled{% endif %}>Driver's License{% if 'driver_license' in verified_id_types %} — verified{% elif accepted_id_types is defined and 'driver_license' not in accepted_id_types %} — not accepted{% endif %}</option>
-                    <option value="proof_of_address" {% if 'proof_of_address' in verified_id_types %}disabled{% endif %}>Proof of Address{% if 'proof_of_address' in verified_id_types %} — verified{% endif %}</option>
-                    <option value="tin" {% if 'tin' in verified_id_types %}disabled{% endif %}>Tax ID (TIN){% if 'tin' in verified_id_types %} — verified{% endif %}</option>
-                    <option value="income_source" {% if 'income_source' in verified_id_types %}disabled{% endif %}>Income Source Proof{% if 'income_source' in verified_id_types %} — verified{% endif %}</option>
-                    <option value="bank_reference" {% if 'bank_reference' in verified_id_types %}disabled{% endif %}>Bank Reference Letter{% if 'bank_reference' in verified_id_types %} — verified{% endif %}</option>
+                    <option value="" {% if not preselect_id_type %}selected{% endif %} disabled>Select document type…</option>
+                    <option value="national_id" {% if preselect_id_type == 'national_id' %}selected{% endif %}{% if 'national_id' in verified_id_types %}disabled{% endif %}{% if accepted_id_types is defined and 'national_id' not in accepted_id_types %}disabled{% endif %}>National ID (NIRA){% if 'national_id' in verified_id_types %} — verified{% elif accepted_id_types is defined and 'national_id' not in accepted_id_types %} — not accepted{% endif %}</option>
+                    <option value="passport" {% if preselect_id_type == 'passport' %}selected{% endif %}{% if 'passport' in verified_id_types %}disabled{% endif %}{% if accepted_id_types is defined and 'passport' not in accepted_id_types %}disabled{% endif %}>Passport{% if 'passport' in verified_id_types %} — verified{% elif accepted_id_types is defined and 'passport' not in accepted_id_types %} — not accepted{% endif %}</option>
+                    <option value="driver_license" {% if preselect_id_type == 'driver_license' %}selected{% endif %}{% if 'driver_license' in verified_id_types %}disabled{% endif %}{% if accepted_id_types is defined and 'driver_license' not in accepted_id_types %}disabled{% endif %}>Driver's License{% if 'driver_license' in verified_id_types %} — verified{% elif accepted_id_types is defined and 'driver_license' not in accepted_id_types %} — not accepted{% endif %}</option>
+                    <option value="proof_of_address" {% if preselect_id_type == 'proof_of_address' %}selected{% endif %}{% if 'proof_of_address' in verified_id_types %}disabled{% endif %}>Proof of Address{% if 'proof_of_address' in verified_id_types %} — verified{% endif %}</option>
+                    <option value="tin" {% if preselect_id_type == 'tin' %}selected{% endif %}{% if 'tin' in verified_id_types %}disabled{% endif %}>Tax ID (TIN){% if 'tin' in verified_id_types %} — verified{% endif %}</option>
+                    <option value="income_source" {% if preselect_id_type == 'income_source' %}selected{% endif %}{% if 'income_source' in verified_id_types %}disabled{% endif %}>Income Source Proof{% if 'income_source' in verified_id_types %} — verified{% endif %}</option>
+                    <option value="bank_reference" {% if preselect_id_type == 'bank_reference' %}selected{% endif %}{% if 'bank_reference' in verified_id_types %}disabled{% endif %}>Bank Reference Letter{% if 'bank_reference' in verified_id_types %} — verified{% endif %}</option>
                   </select>
                   <span class="kyc-help">Select the document you are uploading.</span>
                 </div>
@@ -217,10 +217,14 @@
                   </div>
                 </div>
 
-                <div class="kyc-submit-wrap">
-                  <button type="submit" class="kyc-submit-btn">
-                    <i class="bi bi-cloud-upload me-1"></i> Submit Individual KYC Document
+                <div class="kyc-submit-wrap d-flex flex-column gap-2">
+                  <button type="submit" class="kyc-submit-btn" id="kycSubmitBtn">
+                    <i class="bi bi-cloud-upload me-1"></i> Submit / Update for Review
                   </button>
+                  <button type="button" class="kyc-draft-btn" id="kycSaveDraftBtn">
+                    <i class="bi bi-save me-1"></i> Save draft
+                  </button>
+                  <small class="kyc-draft-status text-muted" id="kycDraftStatus"></small>
                 </div>
               </form>
             </div>
@@ -561,6 +565,31 @@
     transform: translateY(1px);
     box-shadow: 0 2px 8px rgba(15, 23, 42, 0.2);
   }
+  .kyc-draft-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.7rem 1.75rem;
+    background: #ffffff;
+    color: #1e293b;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-align: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .kyc-draft-btn:hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
+  }
+  .kyc-draft-status {
+    font-size: 0.825rem;
+    text-align: center;
+  }
   .kyc-alert-info {
     padding: 1.25rem;
     background: #f0fdf4;
@@ -574,6 +603,7 @@
 </style>
 {% endblock %}
 
+{% block scripts %}
 <script>
 /**
  * Clean Custom KYC Script (No Bootstrap Collide/Collapse JS dependencies).
@@ -770,5 +800,111 @@
   if (orgForm) {
     orgForm.addEventListener('submit', handlePresignedUpload);
   }
+
+  /* ── KYC draft auto-save + resume ───────────────────────────────────────
+     Persists the individual upload form to localStorage (keyed per document
+     type) so a user can fill one requirement per day and resume an incomplete
+     submission later. Files cannot be serialised, so only text/URL fields are
+     saved; the user re-attaches the file on resume. Draft state never touches
+     the compliance backend until the user submits for review. */
+  (function () {
+    var form = document.getElementById('individualForm');
+    if (!form) return;
+
+    // Prefer the server-provided value, but fall back to the URL query param so
+    // the draft key stays consistent even after a POST re-render (validation
+    // error) where the server clears preselect_id_type.
+    var params = new URLSearchParams(window.location.search);
+    var preselect = '{{ preselect_id_type|default('') }}' || params.get('preselect') || '';
+    if (preselect) preselect = preselect.trim().toLowerCase();
+    var draftKey = 'afcon_kyc_draft_' + (preselect || 'individual');
+    var statusEl = document.getElementById('kycDraftStatus');
+    var saveBtn = document.getElementById('kycSaveDraftBtn');
+
+    // TextField ids we persist.
+    var FIELDS = ['id_number', 'document_url', 'selfie_url', 'address_line1',
+                  'address_line2', 'city', 'state', 'country', 'postal_code'];
+
+    function readDraft() {
+      try {
+        var raw = localStorage.getItem(draftKey);
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) { return null; }
+    }
+
+    function writeDraft() {
+      var data = { saved_at: new Date().toISOString() };
+      FIELDS.forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) data[id] = el.value;
+      });
+      var idType = document.getElementById('id_type');
+      if (idType) data.id_type = idType.value;
+      try {
+        localStorage.setItem(draftKey, JSON.stringify(data));
+        return true;
+      } catch (e) { return false; }
+    }
+
+    function applyDraft(draft) {
+      if (!draft) return;
+      FIELDS.forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el && draft[id] != null) el.value = draft[id];
+      });
+      var idType = document.getElementById('id_type');
+      if (idType && draft.id_type) idType.value = draft.id_type;
+    }
+
+    function setStatus(msg) {
+      if (statusEl) statusEl.textContent = msg || '';
+    }
+
+    // Prefill + focus when arriving from a preselected requirement.
+    if (preselect) {
+      var idType = document.getElementById('id_type');
+      if (idType && idType.value !== preselect) {
+        // The option exists (not disabled) — select it.
+        var opt = idType.querySelector('option[value="' + preselect + '"]');
+        if (opt && !opt.disabled) idType.value = preselect;
+      }
+      var draft = readDraft();
+      applyDraft(draft);
+      if (draft) setStatus('Resumed your saved draft for this requirement.');
+      // Scroll the form into view so the user lands on the right field.
+      setTimeout(function () {
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 200);
+    }
+
+    // Debounced auto-save on any input/change.
+    var t;
+    form.addEventListener('input', function () {
+      clearTimeout(t);
+      t = setTimeout(function () {
+        if (writeDraft()) setStatus('Draft auto-saved ' + new Date().toLocaleTimeString());
+      }, 600);
+    });
+    form.addEventListener('change', function () {
+      if (writeDraft()) setStatus('Draft auto-saved ' + new Date().toLocaleTimeString());
+    });
+
+    if (saveBtn) {
+      saveBtn.addEventListener('click', function () {
+        if (writeDraft()) {
+          setStatus('Draft saved ' + new Date().toLocaleTimeString() +
+                    ' — you can safely leave and return later.');
+        } else {
+          setStatus('Could not save draft on this device.');
+        }
+      });
+    }
+
+    // Clear the draft once a real submission succeeds (form submits away).
+    form.addEventListener('submit', function () {
+      try { localStorage.removeItem(draftKey); } catch (e) {}
+    });
+  })();
 })();
 </script>
+{% endblock %}

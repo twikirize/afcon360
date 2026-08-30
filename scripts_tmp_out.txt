@@ -1,0 +1,11 @@
+len: 12126
+count ul: 3
+count kyc-requirement-card-list: 0
+count kyc-req-icon: 0
+count kyc-requirement-card-link: 1
+ul: '<ul class="menu">'
+ul: '<ul class="drop-menu" role="menu">'
+ul: '<ul class="progress-steps">'
+--- first 200 chars after resume ---NOT FOUND
+--- around your verification ---NOT FOUND
+--- draft saved context ---' bootstrap.Tooltip(tooltipTriggerEl);\n        });\n    });\n  </script>\n\n  <!-- Theme Manager -->\n  <script src="/static/js/global/theme-manager.js"></script>\n\n   \n  \n<script>\n(function () {\n  // Show "Draft saved" badges for any requirement the user h'

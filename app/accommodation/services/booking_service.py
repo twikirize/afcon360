@@ -285,6 +285,12 @@ class BookingService:
         from app.accommodation.models.room import RoomType
 
         try:
+            # 0. ADVISORY LOCK on property_id to serialize concurrent booking attempts
+            # This prevents deadlocks when multiple threads try to book the same property simultaneously.
+            # The lock is held for the duration of the transaction.
+            from sqlalchemy import text
+            db.session.execute(text("SELECT pg_advisory_xact_lock(:pid)"), {"pid": property_id})
+
             # 1. BASIC VALIDATION
             if check_out <= check_in:
                 return None, "Check-out must be after check-in"
@@ -292,7 +298,7 @@ class BookingService:
                 return None, "At least one room must be requested"
 
             property = db.session.execute(
-                select(Property).where(Property.id == property_id).with_for_update()
+                select(Property).where(Property.id == property_id)
             ).scalar_one()
             if not property:
                 return None, "Property not found"

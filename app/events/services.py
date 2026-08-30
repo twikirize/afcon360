@@ -551,11 +551,52 @@ class EventService:
         try:
             db.session.commit()
             logger.info(f"Event {event.slug} status changed from {old_status.value} to {new_status.value} by user {user_id}")
+            
+            # If event is cancelled, cancel associated accommodation bookings
+            if action == 'cancel':
+                cls._cancel_event_accommodation_bookings(event, user_id, reason)
+            
             return True, None
         except Exception as e:
             db.session.rollback()
             logger.error(f"Failed to change event status: {e}")
             return False, str(e)
+
+    @classmethod
+    def _cancel_event_accommodation_bookings(cls, event, user_id: int, reason: str = None) -> None:
+        """
+        Cancel all accommodation bookings associated with this event.
+        
+        This is called when an event is cancelled to ensure attendees' 
+        accommodation bookings are properly cancelled with refunds processed
+        according to the booking's cancellation policy.
+        """
+        try:
+            from app.accommodation.models.booking import AccommodationBooking
+            from app.accommodation.services.booking_service import BookingService
+            
+            # Find all accommodation bookings linked to this event
+            bookings = AccommodationBooking.query.filter(
+                AccommodationBooking.event_id == event.id,
+                AccommodationBooking.is_deleted.is_(False),
+                AccommodationBooking.status.notin_(['cancelled', 'checked_out', 'closed'])
+            ).all()
+            
+            for booking in bookings:
+                try:
+                    # Use the booking service's cancel method which handles
+                    # refunds according to the booking's cancellation policy
+                    success, msg, refund = booking.cancel(user_id, reason or f"Event '{event.name}' was cancelled")
+                    if success:
+                        logger.info(f"Cancelled accommodation booking {booking.booking_reference} for cancelled event {event.slug}: {msg}")
+                    else:
+                        logger.warning(f"Failed to cancel accommodation booking {booking.booking_reference} for event {event.slug}: {msg}")
+                except Exception as e:
+                    logger.error(f"Error cancelling accommodation booking {booking.booking_reference} for event {event.slug}: {e}")
+                    # Continue with other bookings
+        except Exception as e:
+            logger.error(f"Error in _cancel_event_accommodation_bookings for event {event.slug}: {e}")
+            # Don't raise - event cancellation should succeed even if accommodation cleanup has issues
 
     @classmethod
     def create_event(cls, data: Dict, user_id: int, creator_type: str = 'individual', organization_id: int = None) -> Tuple[Optional[Dict], Optional[str]]:

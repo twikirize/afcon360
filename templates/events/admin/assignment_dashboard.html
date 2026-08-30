@@ -163,6 +163,7 @@
                         <tr>
                             <th>Attendee</th>
                             <th>Accommodation</th>
+                            <th>Payment</th>
                             <th>Transport</th>
                             <th>Assigned At</th>
                         </tr>
@@ -178,8 +179,39 @@
                             <td>
                                 {% if assignment.accommodation_booking_id %}
                                     <span class="badge bg-success">Booked</span>
+                                    {% if assignment.accommodation %}
+                                        <br>
+                                        <small class="text-muted">
+                                            <i class="fas fa-hotel me-1"></i>{{ assignment.accommodation.property_name }}
+                                            {% if assignment.accommodation.check_in %}({{ assignment.accommodation.check_in }} → {{ assignment.accommodation.check_out or '?' }}){% endif %}
+                                        </small>
+                                        {% if assignment.accommodation.payment_timing %}
+                                            <br>
+                                            <small class="text-muted">
+                                                <i class="fas fa-credit-card me-1"></i>{{ assignment.accommodation.payment_timing }}
+                                            </small>
+                                        {% endif %}
+                                    {% endif %}
                                 {% else %}
                                     <span class="badge bg-secondary">Not Assigned</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if assignment.accommodation_booking_id and assignment.accommodation %}
+                                    {% set payment_status = assignment.accommodation.payment_status or 'unpaid' %}
+                                    <span class="badge {% if payment_status == 'paid' %}bg-success{% elif payment_status == 'pending' %}bg-warning text-dark{% elif payment_status == 'partially_paid' %}bg-info{% else %}bg-secondary{% endif %}">
+                                        {{ payment_status }}
+                                    </span>
+                                    {% if assignment.accommodation.amount_paid and assignment.accommodation.amount_paid > 0 %}
+                                        <br>
+                                        <small class="text-success">Paid: ${{ "%.2f"|format(assignment.accommodation.amount_paid) }}</small>
+                                    {% endif %}
+                                    {% if assignment.accommodation.amount_due and assignment.accommodation.amount_due > 0 %}
+                                        <br>
+                                        <small class="text-warning">Due: ${{ "%.2f"|format(assignment.accommodation.amount_due) }}</small>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="badge bg-secondary">N/A</span>
                                 {% endif %}
                             </td>
                             <td>
@@ -195,7 +227,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="4" class="text-center text-muted py-4">
+                            <td colspan="5" class="text-center text-muted py-4">
                                 No assignments yet. Start by viewing the attendee list.
                             </td>
                         </tr>
