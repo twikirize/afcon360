@@ -566,15 +566,24 @@ def verify():
 # Email verification via OTP code
 # ---------------------------------------------------------------------------
 
-@auth_bp.route("/verify-email", methods=["POST"], endpoint="verify_email_code")
+@auth_bp.route("/verify-email", methods=["GET", "POST"], endpoint="verify_email_code")
 @login_required
 @limiter.limit("10 per hour")
 @require_fresh_user
 def verify_email_code():
     """
     Verify email using 6-digit OTP code.
+
+    GET renders the code-entry form (so a clicked "verify" link / push
+    notification no longer hits a 405). POST validates the submitted code.
     """
     from app.auth.email import verify_email_code as verify_code
+    from app.identity.models.user import User
+
+    if request.method == "GET":
+        user = db.session.get(User, current_user.id)
+        email = getattr(user, "email", None) if user else None
+        return render_template("auth/verify_email.html", email=email)
 
     code = request.form.get("code", "").strip()
 

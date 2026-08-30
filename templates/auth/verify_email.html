@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container d-flex justify-content-center align-items-center" style="min-height: 80vh;">
+  <div class="card shadow-sm" style="width: 100%; max-width: 480px; border-radius: 12px; border: none; border-top: 4px solid #ffcc00;">
+    <div class="card-body p-4 p-md-5">
+
+      <h2 class="card-title text-center mb-2">Verify your email</h2>
+      <p class="text-center text-secondary mb-4">
+        We sent a 6-digit code to<br>
+        <strong>{{ email or 'your email address' }}</strong>
+      </p>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, msg in messages %}
+            <div class="alert alert-{{ 'danger' if category == 'danger' else ('success' if category == 'success' else 'info') }}" role="alert">
+              {{ msg }}
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <div id="toast-area"></div>
+
+      <form method="POST" action="{{ url_for('auth.verify_email_code') }}" id="verify-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="mb-3">
+          <label for="code" class="form-label">Verification code</label>
+          <input type="text"
+                 class="form-control form-control-lg text-center"
+                 id="code"
+                 name="code"
+                 inputmode="numeric"
+                 autocomplete="one-time-code"
+                 pattern="[0-9]{6}"
+                 maxlength="6"
+                 placeholder="000000"
+                 style="letter-spacing: 0.5em; font-size: 1.5rem;"
+                 required
+                 autofocus>
+        </div>
+
+        <div class="d-grid mb-3">
+          <button type="submit" class="btn btn-lg" style="background-color: #006400; color: #fff;">
+            Verify email
+          </button>
+        </div>
+      </form>
+
+      <div class="text-center">
+        <a href="{{ url_for('auth.resend_verification') }}" class="btn btn-link text-decoration-none">
+          Didn't get it? Resend code
+        </a>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var codeInput = document.getElementById('code');
+  if (codeInput) {
+    codeInput.addEventListener('input', function () {
+      codeInput.value = codeInput.value.replace(/\D/g, '');
+      if (codeInput.value.length === 6) {
+        document.getElementById('verify-form').submit();
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}
