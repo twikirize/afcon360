@@ -543,7 +543,25 @@ def create_app(config_object=None) -> Flask:
     # Keep 500 handler for errors
     @app.errorhandler(Exception)
     def handle_exception(e):
-        """Clean error logging with full traceback for debugging"""
+        """Clean error logging with full traceback for debugging.
+
+        HTTPException subclasses (e.g. 405 Method Not Allowed, 403 Forbidden,
+        409 Conflict) keep their intended status code instead of being
+        collapsed to HTTP 500. Only genuinely unhandled exceptions become 500.
+        This mirrors the dedicated 404 and RateLimitExceeded handlers above.
+        """
+        from werkzeug.exceptions import HTTPException
+
+        if isinstance(e, HTTPException):
+            status = e.code or 500
+            if request.path.startswith('/api/'):
+                return jsonify({
+                    "error": e.description or str(e),
+                    "status": status,
+                }), status
+            # For browser-facing routes, let Flask render the standard HTTP error.
+            return e
+
         import traceback
         from flask_login import current_user
         from app.audit.models import AuditLog

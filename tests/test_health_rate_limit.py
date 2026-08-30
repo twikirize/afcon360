@@ -146,3 +146,15 @@ def test_health_functionality_intact(rl_app):
     resp = client.get("/api/health/ping")
     assert resp.status_code == 200
     assert resp.get_json().get("status") == "ok"
+
+
+def test_method_not_allowed_returns_405_not_500(rl_app):
+    # A POST-only route hit with GET must stay 405, not be collapsed to 500
+    # by the generic Exception handler (the /verify-email class of bug).
+    @rl_app.route("/rl_post_only", methods=["POST"])
+    def rl_post_only():
+        return jsonify({"ok": True}), 200
+
+    client = rl_app.test_client()
+    resp = client.get("/rl_post_only")
+    assert resp.status_code == 405
