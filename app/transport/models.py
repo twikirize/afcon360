@@ -2,6 +2,27 @@
 """
 AFCON360 Transport Module - Production Ready Models
 All production features implemented but disabled by default settings
+
+TERMINOLOGY (CRITICAL):
+  System User Account = User (app/identity/models/user.py)
+                        - Core platform identity (authentication, roles, profile)
+                        - Internal ID: user.id (BIGINT) - for DB relations/FKs only
+                        - External ID: user.public_id (UUID) - for URLs/APIs
+
+  Financial Account = AccountModel (app/wallet/models/ledger.py)
+                      - Money/ledger account (balances, transactions, double-entry)
+                      - Owned by User via User.wallet relationship (optional)
+
+  Transport Participant Identity:
+    Booking.user_id           → FK to User.id (System User Account who booked - NOT NULL currently)
+    Booking.passenger_details → JSON list of passengers (can include non-User participants)
+    Booking.group_leader_id   → FK to User.id (group booking leader)
+    DriverProfile.user_id     → FK to User.id (System User Account of driver)
+
+  Wallet/Payment Relationship:
+    Booking.wallet_transaction_id → Transaction reference
+    Booking.wallet_balance_used   → Amount paid from wallet
+    NEVER use wallet balance for booking eligibility
 """
 
 from datetime import datetime, timezone

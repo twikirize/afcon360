@@ -1,0 +1,164 @@
+{#agent_requirements.html#}
+{% extends "wallet/base_wallet.html" %}
+
+{% block title %}Become an Agent — AFCON360{% endblock %}
+
+{% block topbar_title %}Become an Agent{% endblock %}
+
+{% block content %}
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Become an Agent</h1>
+    <p class="page-subheading">Unlock the AFCON360 agent network and earn commissions</p>
+  </div>
+</div>
+
+{% if is_agent %}
+<div class="panel" style="margin-bottom:24px;">
+  <div class="panel-body" style="padding:24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+    <div>
+      <h3 style="font-weight:700;margin-bottom:4px;">
+        <i class="fas fa-check-circle text-green-600" style="color:var(--green);"></i>
+        You are already an AFCON360 Agent
+      </h3>
+      <p style="font-size:13px;color:var(--muted);">Access your agent tools from the portal below.</p>
+    </div>
+    <a href="{{ url_for('wallet.agent_portal') }}" class="btn btn-primary">
+      <i class="fas fa-user-shield"></i> Open Agent Portal
+    </a>
+  </div>
+</div>
+{% else %}
+<div class="col-layout-2-1">
+  <div style="display:grid;gap:16px;">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-clipboard-check panel-title-icon green"></i>
+          Requirements
+        </div>
+      </div>
+      <div style="padding:20px;display:grid;gap:12px;">
+        <div style="display:flex;align-items:center;gap:12px;padding:14px;background:var(--bg);border-radius:var(--radius);">
+          <div style="width:36px;height:36px;background:var(--green-lt);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--green);">
+            <i class="fas fa-id-card"></i>
+          </div>
+          <div>
+            <div style="font-weight:600;font-size:13px;">Valid Government ID</div>
+            <div style="font-size:12px;color:var(--muted);">National ID, Passport, or Driver's License</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:14px;background:var(--bg);border-radius:var(--radius);">
+          <div style="width:36px;height:36px;background:var(--green-lt);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--green);">
+            <i class="fas fa-user-check"></i>
+          </div>
+          <div>
+            <div style="font-weight:600;font-size:13px;">Verified Account</div>
+            <div style="font-size:12px;color:var(--muted);">Complete KYC verification on your AFCON360 wallet</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:14px;background:var(--bg);border-radius:var(--radius);">
+          <div style="width:36px;height:36px;background:var(--green-lt);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--green);">
+            <i class="fas fa-mobile-alt"></i>
+          </div>
+          <div>
+            <div style="font-weight:600;font-size:13px;">Active Phone &amp; Email</div>
+            <div style="font-size:12px;color:var(--muted);">For secure communications and transaction alerts</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:14px;background:var(--bg);border-radius:var(--radius);">
+          <div style="width:36px;height:36px;background:var(--green-lt);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--green);">
+            <i class="fas fa-money-bill-wave"></i>
+          </div>
+          <div>
+            <div style="font-weight:600;font-size:13px;">Initial Float Deposit</div>
+            <div style="font-size:12px;color:var(--muted);">Pre-fund your agent float to start serving customers</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-coins panel-title-icon purple"></i>
+          Earning Potential
+        </div>
+      </div>
+      <div style="padding:20px;display:grid;gap:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:var(--bg);border-radius:var(--radius);">
+          <span style="font-size:13px;">Cash-In Commissions</span>
+          <span class="badge badge-verified">Earn on each deposit</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:var(--bg);border-radius:var(--radius);">
+          <span style="font-size:13px;">Cash-Out Commissions</span>
+          <span class="badge badge-verified">Earn on each withdrawal</span>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin-top:8px;">
+          <i class="fas fa-info-circle"></i>
+          Exact commission rates are set by the platform owner via agent terms and may vary.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:grid;gap:16px;">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-rocket panel-title-icon blue"></i>
+          How It Works
+        </div>
+      </div>
+      <div style="padding:20px;display:grid;gap:16px;">
+        <div style="display:flex;gap:12px;">
+          <div style="width:28px;height:28px;background:var(--blue-lt);color:var(--blue);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">1</div>
+          <div>
+            <div style="font-weight:600;font-size:13px;">Meet the requirements</div>
+            <div style="font-size:12px;color:var(--muted);">Ensure you have a verified account and valid ID</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;">
+          <div style="width:28px;height:28px;background:var(--blue-lt);color:var(--blue);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">2</div>
+          <div>
+            <div style="font-weight:600;font-size:13px;">Pre-fund your float</div>
+            <div style="font-size:12px;color:var(--muted);">Deposit funds that you will use to serve customers</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;">
+          <div style="width:28px;height:28px;background:var(--blue-lt);color:var(--blue);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">3</div>
+          <div>
+            <div style="font-weight:600;font-size:13px;">Start serving customers</div>
+            <div style="font-size:12px;color:var(--muted);">Process cash-in and cash-out for wallet users</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;">
+          <div style="width:28px;height:28px;background:var(--blue-lt);color:var(--blue);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">4</div>
+          <div>
+            <div style="font-weight:600;font-size:13px;">Earn and withdraw</div>
+            <div style="font-size:12px;color:var(--muted);">Earn commissions and request payouts anytime</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-question-circle panel-title-icon amber"></i>
+          Need Help?
+        </div>
+      </div>
+      <div style="padding:20px;">
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">
+          To start the application process, please ensure you meet the requirements and your wallet is active. Contact support for any questions about becoming an agent.
+        </p>
+        <a href="{{ url_for('wallet.wallet_terms') }}" class="btn btn-outline btn-sm">
+          <i class="fas fa-file-contract"></i> View Terms
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -3,6 +3,7 @@ app/wallet/repositories/commission_repository.py
 Repository for AgentCommission model.
 """
 from typing import List, Dict, Any, Optional
+from decimal import Decimal
 from app.extensions import db
 from app.wallet.models.commission import AgentCommission
 from sqlalchemy import func
@@ -49,24 +50,34 @@ class CommissionRepository:
             'total_paid': str(q2.total_paid)
         }
 
-    def get_by_ref(self, commission_ref: str):
-        return self.db.query(AgentCommission).filter(AgentCommission.commission_ref == commission_ref, AgentCommission.is_deleted == False).first()
-
-    def mark_paid(self, commission_ref: str, paid_by: int = None):
-        commission = self.get_by_ref(commission_ref)
-        if not commission:
-            return None
-        commission.status = 'paid'
-        commission.paid_by = paid_by
-        commission.paid_at = func.now()
-        self.db.add(commission)
+    def settle_for_payout(self, agent_id: int, currency: str, amount: Decimal) -> None:
+        """Mark unpaid commissions for an agent/currency as paid, settling up to
+        ``amount`` total (oldest first). Idempotent: rows already paid are skipped."""
+        rows = (
+            self.db.query(AgentCommission)
+            .filter(
+                AgentCommission.agent_id == agent_id,
+                AgentCommission.currency == currency,
+                AgentCommission.status != 'paid',
+                AgentCommission.is_deleted == False,
+            )
+            .order_by(AgentCommission.created_at.asc())
+            .all()
+        )
+        remaining = Decimal(amount)
+        for commission in rows:
+            if remaining <= Decimal('0'):
+                break
+            commission.status = 'paid'
+            commission.paid_at = func.now()
+            self.db.add(commission)
+            remaining -= Decimal(str(commission.amount))
         self.db.flush()
-        return commission
 
     def get_by_ref(self, commission_ref: str):
         return self.db.query(AgentCommission).filter(AgentCommission.commission_ref == commission_ref, AgentCommission.is_deleted == False).first()
 
-    def mark_paid(self, commission_ref: str, paid_by: int = None):
+    def mark_paid(self, commission_ref: str, paid_by: Optional[int] = None):
         commission = self.get_by_ref(commission_ref)
         if not commission:
             return None

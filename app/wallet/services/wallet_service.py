@@ -768,7 +768,9 @@ class WalletService:
         payment_method: Optional[str] = None,
         payment_provider: Optional[str] = None,
         tx_type: TransactionType = TransactionType.WITHDRAW,
-        actor_id: Optional[int] = None
+        actor_id: Optional[int] = None,
+        agent_on_behalf: bool = False,
+        system_initiated: bool = False
     ) -> Dict[str, Any]:
         """
         Process a withdrawal with full atomicity.
@@ -786,6 +788,8 @@ class WalletService:
             destination_details: Destination details
             payment_method: Payment method
             payment_provider: Payment provider
+            agent_on_behalf: Allow authorized agent to debit user's account
+            system_initiated: Skip ownership check for system-initiated transactions
 
         Returns:
             Dict with transaction result
@@ -820,7 +824,12 @@ class WalletService:
                 raise WalletNotFoundError(wallet_ref=str(account_id))
 
             # Ownership validation - defense in depth
-            if account.user_id != current_user.id and not self._is_admin():
+            # agent_on_behalf allows an authorized agent to debit a user's
+            # account only when the user has generated an explicit, idempotent
+            # withdrawal reference (agency-banking cash-out). Normal users and
+            # all other callers still require ownership or admin.
+            # system_initiated skips ownership check for system-initiated transactions
+            if not system_initiated and (not agent_on_behalf) and account.user_id != current_user.id and not self._is_admin():
                 current_app.logger.warning(f"Ownership violation attempt on account {account.id} by user {current_user.id}")
                 raise PermissionError("You do not have permission to operate on this account")
 
@@ -971,7 +980,8 @@ class WalletService:
         metadata: Optional[Dict] = None,
         platform_fee: Optional[Decimal] = None,
         fee_currency: Optional[str] = None,
-        pin: Optional[str] = None
+        pin: Optional[str] = None,
+        system_initiated: bool = False
     ) -> Dict[str, Any]:
         """
         Transfer funds with full atomicity.
@@ -992,6 +1002,7 @@ class WalletService:
             platform_fee: Optional platform fee to deduct
             fee_currency: Currency for platform fee
             pin: Transaction PIN for verification
+            system_initiated: Skip ownership check for system-initiated transactions
 
         Returns:
             Dict with transaction result
@@ -1066,7 +1077,8 @@ class WalletService:
             to_account = accounts[to_account_id]
 
             # Ownership validation - defense in depth (sender only)
-            if from_account.user_id != current_user.id and not self._is_admin():
+            # system_initiated skips ownership check for system-initiated transactions
+            if not system_initiated and from_account.user_id != current_user.id and not self._is_admin():
                 current_app.logger.warning(f"Ownership violation attempt on account {from_account.id} by user {current_user.id}")
                 raise PermissionError("You do not have permission to operate on this account")
 

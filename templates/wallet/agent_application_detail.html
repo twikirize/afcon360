@@ -1,0 +1,103 @@
+{#agent_application_detail.html#}
+{% extends "wallet/base_wallet.html" %}
+
+{% block title %}Application Detail — AFCON360{% endblock %}
+
+{% block topbar_title %}Application Detail{% endblock %}
+
+{% block content %}
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Agent Application</h1>
+    <p class="page-subheading">Reference: <span class="mono">{{ application.reference }}</span></p>
+  </div>
+  <a href="{{ url_for('wallet.agent_applications') }}" class="btn btn-ghost">
+    <i class="fas fa-arrow-left"></i> My Applications
+  </a>
+</div>
+
+{# ── Status Summary ── #}
+<div class="stat-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));">
+  <div class="stat-card">
+    <div class="stat-label">Status</div>
+    <div class="stat-value" style="font-size:18px;">{{ application.status | replace('_', ' ') | title }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Stage</div>
+    <div class="stat-value" style="font-size:18px;">{{ application.current_stage | replace('_', ' ') | title }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Type</div>
+    <div class="stat-value" style="font-size:18px;">{{ application.agent_type | title }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Submitted</div>
+    <div class="stat-value" style="font-size:18px;">{{ application.created_at.strftime('%Y-%m-%d') if application.created_at else '—' }}</div>
+  </div>
+</div>
+
+{# ── Applicant Data ── #}
+<div class="panel" style="margin-top:20px;max-width:720px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-id-card panel-title-icon blue"></i>
+      Applicant Information
+    </div>
+  </div>
+  <div style="padding:24px;display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    {% for key, value in application.applicant_data.items() %}
+    <div>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);">{{ key | replace('_', ' ') }}</div>
+      <div style="font-weight:600;font-size:14px;margin-top:2px;">{{ value if value else '—' }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{# ── Milestones ── #}
+<div class="panel" style="margin-top:20px;max-width:720px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-tasks panel-title-icon green"></i>
+      Review Milestones
+    </div>
+  </div>
+  <div style="padding:20px;">
+    <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--bg);">
+      <i class="fas fa-{% if application.status in ['submitted','wallet_approved','compliance_approved','active'] %}check-circle{% else %}circle{% endif %}" style="color:{% if application.status in ['submitted','wallet_approved','compliance_approved','active'] %}var(--green){% else %}var(--muted-2){% endif %};"></i>
+      <span style="font-size:13px;">Submitted</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--bg);">
+      <i class="fas fa-{% if application.status in ['wallet_approved','compliance_approved','active'] %}check-circle{% else %}circle{% endif %}" style="color:{% if application.status in ['wallet_approved','compliance_approved','active'] %}var(--green){% else %}var(--muted-2){% endif %};"></i>
+      <span style="font-size:13px;">Wallet Approval</span>
+      <span style="font-size:11px;color:var(--muted);margin-left:auto;">{{ application.reviewed_by_wallet_admin_at.strftime('%Y-%m-%d') if application.reviewed_by_wallet_admin_at else 'pending' }}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--bg);">
+      <i class="fas fa-{% if application.status == 'active' %}check-circle{% else %}circle{% endif %}" style="color:{% if application.status == 'active' %}var(--green){% else %}var(--muted-2){% endif %};"></i>
+      <span style="font-size:13px;">Compliance Approval</span>
+      <span style="font-size:11px;color:var(--muted);margin-left:auto;">{{ application.reviewed_by_compliance_at.strftime('%Y-%m-%d') if application.reviewed_by_compliance_at else 'pending' }}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;padding:8px 0;">
+      <i class="fas fa-{% if application.status == 'active' %}check-circle{% else %}circle{% endif %}" style="color:{% if application.status == 'active' %}var(--green){% else %}var(--muted-2){% endif %};"></i>
+      <span style="font-size:13px;">Final Approval / Active</span>
+      <span style="font-size:11px;color:var(--muted);margin-left:auto;">{{ application.activated_at.strftime('%Y-%m-%d') if application.activated_at else 'pending' }}</span>
+    </div>
+  </div>
+</div>
+
+{% if application.status == 'rejected' %}
+<div class="panel" style="margin-top:20px;max-width:720px;border-color:var(--red);">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-times-circle panel-title-icon red"></i>
+      Rejected
+    </div>
+  </div>
+  <div style="padding:20px;">
+    <p style="font-size:13px;color:var(--red);">
+      {{ application.rejection_reason or 'No reason was provided.' }}
+    </p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

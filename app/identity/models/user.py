@@ -1,12 +1,35 @@
 # app/identity/user.py
-
-from datetime import datetime, timezone, timedelta, timezone
+#
+# =============================================================================
+# AFCON360 SYSTEM USER ACCOUNT - Core Identity Model
+# =============================================================================
+# 
+# This file defines the System User Account - the persistent platform identity.
+#
+# TERMINOLOGY (CRITICAL):
+#   User = AFCON360 System User Account = Core Identity
+#         - Internal identifier: User.id (BIGINT) - for DB relations/FKs only
+#         - External identifier: User.public_id (UUID string) - for URLs/APIs
+#
+# DO NOT CONFUSE WITH:
+#   AccountModel = Financial Account (app/wallet/models/ledger.py)
+#         - Used for money/ledger operations
+#         - Owned by User (one-to-one relationship via User.wallet)
+#         - Relationship: User → AccountModel (via wallet property)
+#
+# The relationship is NOT 1:1:
+#   One System User Account (User) may have ONE Financial Account (AccountModel)
+#   One Financial Account belongs to ONE User (or Organisation/Platform)
+#
+# Never write: User.account = AccountModel (they are conceptually different)
+# =============================================================================
 import json
 import uuid as uuid_lib
+from datetime import datetime, timezone, timedelta
 from typing import List
 from sqlalchemy import (
     Column, BigInteger, String, Boolean, DateTime, ForeignKey, JSON,
-    Index, UniqueConstraint, CheckConstraint, event, Text, select
+    Index, UniqueConstraint, CheckConstraint, event, Text, select, false
 )
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship, validates
@@ -76,6 +99,10 @@ class User(UserMixin, ProtectedModel):
     locked_until = Column(DateTime, nullable=True)
     last_login = Column(DateTime, nullable=True)
     mfa_enabled = Column(Boolean, default=False, nullable=False)
+
+    # Agent (Authorized Cash Agent) flags - agents ARE users with this flag set.
+    is_agent = Column(Boolean, default=False, server_default=false(), nullable=False, index=True)
+    agent_code = Column(String(32), nullable=True, unique=True, index=True)
 
     # Transaction PIN (hashed) + anti-brute-force fields
     transaction_pin_hash = Column(String(512), nullable=True)
@@ -161,7 +188,14 @@ class User(UserMixin, ProtectedModel):
         "AccountModel",
         primaryjoin="and_(User.id == foreign(AccountModel.user_id), AccountModel.owner_type == 'user')",
         foreign_keys="[AccountModel.user_id]",
-        uselist=False
+        uselist=False,
+        # BOUNDARY: User ↔ AccountModel relationship
+        # User = AFCON360 System User Account (core identity, Dual ID: id/public_id)
+        # AccountModel = Financial Account (ledger, balances, money operations)
+        # One User may have ONE AccountModel (or none); AccountModel belongs to ONE User
+        # NEVER serialize User.id in API responses — always use User.public_id
+        # NEVER treat User.account as equivalent to AccountModel — they are different concepts
+        # Wallet/payment eligibility is checked via WalletService, NOT in identity checks
     )
     controllers = relationship(
         "OrganisationController",
@@ -363,10 +397,23 @@ class User(UserMixin, ProtectedModel):
         return self.is_app_owner() or "super_admin" in self.role_names
 
     def has_global_role(self, *role_names: str) -> bool:
+        """
+        Check if user has any of the specified global roles.
+        
+        DEPRECATED: This method now delegates to helpers.has_global_role()
+        which respects the active role context (session["active_global_role"]).
+        
+        For new code, prefer:
+        - policy.can(user, permission) for permission checks
+        - helpers.has_global_role(user, *role_names) for context-aware role checks
+        - context.can_in_context(user, permission) for context-aware permission checks
+        
+        This maintains backward compatibility while ensuring consistent
+        context-aware authorization semantics.
+        """
         try:
-            if self.is_app_owner():
-                return True
-            return any(rn in role_names for rn in self.role_names)
+            from app.auth.helpers import has_global_role as helpers_has_global_role
+            return helpers_has_global_role(self, *role_names)
         except Exception as e:
             current_app.logger.error(f"RBAC Error for user {self.public_id}: {e}")
             return False

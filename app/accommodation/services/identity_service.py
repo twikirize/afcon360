@@ -123,30 +123,55 @@ class AccommodationIdentityService:
     @staticmethod
     def can_book(user: User) -> Tuple[bool, str]:
         """
-        Check if user can book accommodation.
-
+        Check if user has the eligibility to book accommodation.
+        
+        This checks user verification status and KYC tier - NOT wallet balance.
+        Wallet/payment capability is checked at payment time via can_pay_for_booking().
+        
+        Important: Property availability and pricing are checked separately
+        in AccommodationReadinessService/check_property_readiness().
+        
         Returns: (can_book, reason)
         """
         if not user or not user.is_active or user.is_deleted:
             return False, "Invalid account"
 
-        # FIX 2: Was `and` - that requires BOTH conditions to be true to block a user,
-        # meaning a user who is NOT fully verified but has kyc_level >= 1 would pass through.
-        # Using `or` correctly blocks anyone who fails either check.
-        # Use dynamic KYC tier calculation (canonical authority) instead of static kyc_level column.
+        # Use canonical KYC tier calculation (authoritative source)
         from app.auth.kyc_compliance import calculate_kyc_tier
         kyc_info = calculate_kyc_tier(user.id)
-        if not user.is_fully_verified() or kyc_info["tier"] < 1:
+        
+        # Require at least basic KYC tier (phone + name verified)
+        if kyc_info["tier"] < 1:
             return False, "Account not verified. Please complete basic KYC to book."
 
-        # Check if user has wallet
-        if not user.wallet:
-            return False, "No wallet found. Please set up your wallet first."
-
-        if user.wallet.balance <= 0:
-            return False, "Insufficient wallet balance to book. Please add funds."
-
         return True, "OK"
+    
+    @staticmethod
+    def can_pay_for_booking(user: User) -> Tuple[bool, str, dict]:
+        """
+        Check if user has the financial capability to complete a booking payment.
+        
+        This is called at payment time, NOT during booking eligibility check.
+        
+        Returns: (can_pay, reason, wallet_info)
+        """
+        if not user:
+            return False, "No user account", {}
+        
+        if not user.wallet:
+            return False, "No wallet found. Please set up your wallet first.", {}
+        
+        from app.wallet.services.wallet_service import WalletService
+        from decimal import Decimal
+        try:
+            balance_data = WalletService().get_balance(str(user.wallet.user_id))
+            current_balance = balance_data.get('balance', Decimal('0'))
+            if current_balance <= 0:
+                return False, "Insufficient wallet balance to pay. Please add funds.", {'balance': 0}
+            return True, "OK", {'balance': float(current_balance)}
+        except Exception as e:
+            current_app.logger.error(f"Wallet balance check failed for user {user.id}: {e}")
+            return False, "Unable to verify payment balance. Please try again.", {}
 
     @staticmethod
     def can_manage_property(user: User, property_owner_user_id=None, property_owner_org_id=None) -> bool:

@@ -1,0 +1,66 @@
+{#admin/agent_mgmt/onboarding_list.html#}
+{% extends "admin/admin.html" %}
+
+{% block admin_title %}Agent Applications{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+<div class="d-flex justify-content-between align-items-center flex-wrap mb-4">
+  <div>
+    <h4 class="mb-0">Agent Applications</h4>
+    <span class="text-muted">Review onboarding applications at your approval stage ({{ reviewer_role or '—' }})</span>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('agent_mgmt.agent_directory') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="fas fa-users"></i> Agent Directory
+    </a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header bg-white py-3">
+    <i class="fas fa-clipboard-check text-primary"></i>
+    <strong>Applications awaiting {{ (expects or '').replace('_', ' ') }}</strong>
+    <span class="badge bg-light text-dark ms-2">{{ applications|length }} pending</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Reference</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>Stage</th>
+          <th>Submitted</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for app in applications %}
+        <tr>
+          <td><span class="font-monospace small">{{ app.reference }}</span></td>
+          <td>{{ app.agent_type | title }}</td>
+          <td><span class="badge bg-secondary">{{ app.status.replace('_', ' ') }}</span></td>
+          <td>{{ app.current_stage.replace('_', ' ') }}</td>
+          <td>{{ app.created_at.strftime('%Y-%m-%d') if app.created_at else '—' }}</td>
+          <td class="text-end">
+            <a href="{{ url_for('agent_mgmt.agent_admin_application_detail', onboarding_id=app.id) }}"
+               class="btn btn-sm btn-outline-primary">
+              <i class="fas fa-eye"></i> Review
+            </a>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center py-5 text-muted">
+            <i class="fas fa-clipboard-check d-block mb-2" style="font-size:2rem;"></i>
+            No applications awaiting your review.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+{% endblock %}

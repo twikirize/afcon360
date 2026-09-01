@@ -622,7 +622,7 @@ def create_app(config_object=None) -> Flask:
 
     _boot_t1 = time.time()
     db.init_app(app)
-    socketio.init_app(app)
+    socketio.init_app(app, message_queue=app.config.get('REDIS_URL'))
     migrate.init_app(app, db)
     login_manager.init_app(app)
     csrf.init_app(app)
@@ -1066,6 +1066,19 @@ def create_app(config_object=None) -> Flask:
     except Exception as e:
         app.logger.error(f"❌ Failed to register wallet module: {e}")
 
+    # Owner wallet configuration (terms, provider config) + agent management console.
+    # init_wallet_config also registers the owner wallet-config blueprint, which
+    # exposes the Agent Terms panel; it was previously defined but never called.
+    try:
+        from app.admin.owner.wallet_config import init_wallet_config
+        from app.admin.agent_mgmt import init_agent_mgmt
+
+        init_wallet_config(app)
+        init_agent_mgmt(app)
+        app.logger.info("✅ Owner wallet config + agent management console registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register owner wallet config / agent management: {e}")
+
     # Notifications module
     try:
         from app.notifications import notifications_api
@@ -1393,6 +1406,14 @@ def create_app(config_object=None) -> Flask:
         return {
             'raw_csrf_token': token,  # For meta tags and JavaScript
             'csrf_token': csrf_token_func  # Callable - use {{ csrf_token() }}
+        }
+
+    @app.context_processor
+    def inject_transaction_intents():
+        """Inject active transaction intent count for template access."""
+        from app.utils.transaction_intent import get_active_intent_count
+        return {
+            "active_intent_count": get_active_intent_count(),
         }
 
     @app.context_processor
@@ -1772,6 +1793,10 @@ def create_app(config_object=None) -> Flask:
                         'username': user.username,
                         'is_active': user.is_active,
                         'is_verified': user.is_verified,
+                        # LEGACY FIELD: User.kyc_level may not reflect canonical KYC tier.
+                        # Canonical tier is calculated via calculate_kyc_tier() from
+                        # verifications and documents. This cached value is for
+                        # backward compatibility only.
                         'kyc_level': user.kyc_level,
                         'mfa_enabled': user.mfa_enabled,
                     }, timeout=300)

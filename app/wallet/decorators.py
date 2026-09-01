@@ -5,7 +5,9 @@ This enforces Alipay model across all wallet operations.
 """
 
 from functools import wraps
+from decimal import Decimal
 from flask import jsonify, current_app, flash, redirect, url_for
+from flask_login import current_user
 from uuid import UUID
 
 from app.wallet.exceptions import WalletNotFoundError

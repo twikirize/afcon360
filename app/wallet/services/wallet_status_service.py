@@ -273,12 +273,24 @@ class WalletStatusService:
             items.append(
                 {"name": "Create Wallet", "url": "wallet.wallet_create_page", "icon": "fa-wallet", "feature": None})
 
-        # Agent/Payout items (require wallet + KYC)
-        if status.exists and status.can_view_commissions:
+        # Agent items: activated agents get the full agent portal; others with a
+        # wallet can apply to become an agent. The whole agent service is gated
+        # by the owner "Agents" toggle (agents_enabled) upstream.
+        is_agent = bool(getattr(user, "is_agent", False))
+        if status.exists and is_agent:
             items.extend([
+                {"name": "Agent Portal", "url": "wallet.agent_portal", "icon": "fa-user-shield",
+                 "feature": None},
+                {"name": "Agent Statement", "url": "wallet.agent_statement", "icon": "fa-file-invoice-dollar",
+                 "feature": None},
                 {"name": "Agent Payout", "url": "wallet.agent_payout_history", "icon": "fa-coins",
                  "feature": WalletFeature.VIEW_PAYOUT_HISTORY},
             ])
+        elif status.exists:
+            items.append(
+                {"name": "Become an Agent", "url": "wallet.agent_requirements", "icon": "fa-user-plus",
+                 "feature": None},
+            )
 
         # Account items (always visible)
         items.extend([

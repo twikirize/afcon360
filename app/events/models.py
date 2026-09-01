@@ -12,6 +12,30 @@ Design principles
 5.  Soft-delete hierarchy:
       organiser action  →  ARCHIVED  (is_deleted=True, still queried by admins)
       admin removal     →  DELETED   (is_deleted=True, excluded from all normal queries)
+
+TERMINOLOGY (CRITICAL):
+  System User Account = User (app/identity/models/user.py)
+                        - Core platform identity (authentication, roles, profile)
+                        - Internal ID: user.id (BIGINT) - for DB relations/FKs only
+                        - External ID: user.public_id (UUID) - for URLs/APIs
+                        - Contains: is_verified, email_verified, phone_verified, kyc_level, roles
+
+  Financial Account = AccountModel (app/wallet/models/ledger.py)
+                      - Money/ledger account (balances, transactions, double-entry)
+                      - Owned by User via User.wallet relationship (optional)
+
+  Event Participant Identity:
+    EventRegistration.user_id     → FK to User.id (System User Account who registered)
+    EventRegistration.guest_id    → FK to EventGuest.id (account-independent participant)
+    EventRegistration.attendee_user_id → FK to User.id (actual attendee, may differ from booker)
+    EventRegistration.booked_by_user_id → FK to User.id (who made the booking)
+    EventGuest.user_id            → FK to User.id (linked System User Account, nullable)
+    EventAssignment.attendee_id   → FK to User.id (assigned attendee)
+    EventAssignment.guest_id      → FK to EventGuest.id (assigned guest)
+
+  Wallet/Payment Relationship:
+    EventRegistration.wallet_txn_id → Transaction reference
+    NEVER use wallet balance for registration eligibility
 """
 
 import uuid

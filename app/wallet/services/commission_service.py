@@ -40,6 +40,20 @@ class CommissionService:
         self.repo = CommissionRepository(self.db)
 
     def _get_rule(self, source_type: str) -> Dict[str, Decimal]:
+        # Agent cash-in / cash-out commission rates are owner-configured via
+        # the agent terms (SystemConfig). This keeps the "contracted terms"
+        # the platform owner sets as the single source of truth for agent
+        # commissions, without affecting transfer/other commission rules.
+        if source_type in ("deposit", "withdraw"):
+            try:
+                from app.wallet.services.agent_terms_service import get_direction_terms
+
+                direction = "cashin" if source_type == "deposit" else "cashout"
+                dt = get_direction_terms(direction)
+                rate = Decimal(str(dt.get("commission_rate", 0))) / Decimal("100")
+                return {"rate": rate, "agent_share": Decimal("1")}
+            except Exception:
+                pass
         rules = current_app.config.get('COMMISSION_RULES', {})
         r = rules.get(source_type, {})
         return {

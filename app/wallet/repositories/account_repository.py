@@ -230,8 +230,8 @@ class AccountRepository:
             return False
         
         if volume_type == 'daily':
-            account.daily_volume += amount
+            account.daily_volume += Decimal(str(amount))
         elif volume_type == 'monthly':
-            account.monthly_volume += amount
+            account.monthly_volume += Decimal(str(amount))
         
         return True

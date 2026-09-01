@@ -260,8 +260,8 @@ class TestPaymentFlow(unittest.TestCase):
                 'ticket_type_id': ticket.id
             }
 
-            with patch('app.events.services._legacy.WalletService', None):
-                with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
+            with patch('app.events.services.WalletService', None):
+                with patch('app.events.services.SIGNALS_AVAILABLE', False):
                     registration, qr_code, error = EventService.register_for_event_with_payment(
                         f'wallet-down-event-{self.slug_suffix}', self.user_id, registration_data
                     )

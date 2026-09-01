@@ -1,0 +1,103 @@
+{#agent_apply.html#}
+{% extends "wallet/base_wallet.html" %}
+
+{% block title %}Become an Agent — AFCON360{% endblock %}
+
+{% block topbar_title %}Become an Agent{% endblock %}
+
+{% block content %}
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Apply to Become an Agent</h1>
+    <p class="page-subheading">Submit an application to join the AFCON360 agent network.</p>
+  </div>
+</div>
+
+{% if agency_available %}
+<div class="panel" style="max-width:720px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-user-plus panel-title-icon green"></i>
+      Agent Application
+    </div>
+  </div>
+  <div style="padding:24px;">
+    <p style="font-size:13px;color:var(--muted);margin-bottom:18px;">
+      Your application goes through a staged review (wallet → compliance →
+      final approval). Once approved, you will receive an agent code and a
+      float account.
+    </p>
+    <form method="post" action="{{ url_for('wallet.agent_apply_submit') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div style="margin-bottom:16px;">
+        <label class="field-label">Agent type</label>
+        <div style="display:flex;gap:16px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:14px;">
+            <input type="radio" name="agent_type" value="individual" checked> Individual
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:14px;">
+            <input type="radio" name="agent_type" value="organisation"> Organisation
+          </label>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div>
+          <label class="field-label" for="full_name">Full name</label>
+          <input type="text" id="full_name" name="full_name" class="text-input">
+        </div>
+        <div>
+          <label class="field-label" for="organisation_name">Organisation name <span style="color:var(--muted);">(optional)</span></label>
+          <input type="text" id="organisation_name" name="organisation_name" class="text-input">
+        </div>
+        <div>
+          <label class="field-label" for="phone">Phone</label>
+          <input type="tel" id="phone" name="phone" class="text-input">
+        </div>
+        <div>
+          <label class="field-label" for="email">Email</label>
+          <input type="email" id="email" name="email" class="text-input">
+        </div>
+        <div>
+          <label class="field-label" for="id_number">National ID / Passport</label>
+          <input type="text" id="id_number" name="id_number" class="text-input">
+        </div>
+        <div>
+          <label class="field-label" for="agent_code">Preferred agent code <span style="color:var(--muted);">(optional)</span></label>
+          <input type="text" id="agent_code" name="agent_code" class="text-input">
+        </div>
+      </div>
+
+      <div style="margin-top:16px;">
+        <label class="field-label" for="notes">Notes <span style="color:var(--muted);">(optional)</span></label>
+        <textarea id="notes" name="notes" class="text-input" rows="3"></textarea>
+      </div>
+
+      <div style="margin-top:24px;display:flex;gap:10px;">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-paper-plane"></i> Submit Application
+        </button>
+        <a href="{{ url_for('wallet.agent_requirements') }}" class="btn btn-ghost">Requirements</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% else %}
+<div class="panel" style="max-width:720px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-exclamation-triangle panel-title-icon orange"></i>
+      Agent Programme Unavailable
+    </div>
+  </div>
+  <div style="padding:24px;">
+    <p style="font-size:14px;color:var(--muted);">
+      The agent programme is not currently available in your region. Please
+      check back later.
+    </p>
+    <a href="{{ url_for('wallet.wallet_dashboard') }}" class="btn btn-ghost" style="margin-top:16px;">Back to Wallet</a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

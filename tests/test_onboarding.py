@@ -211,7 +211,7 @@ class TestWalletActivation:
         with app.app_context():
             from app.wallet.models.ledger import AccountModel, AccountOwnerType
             account = AccountModel.query.filter_by(
-                owner_id=registered_user.id,
+                user_id=registered_user.id,
                 owner_type=AccountOwnerType.USER
             ).first()
             assert account is None
@@ -219,7 +219,7 @@ class TestWalletActivation:
     def test_wallet_created_after_activation(self, client, app, registered_user):
         """Wallet is created only after user accepts terms."""
         with client.session_transaction() as sess:
-            sess["_user_id"] = registered_user.public_id
+            sess["_user_id"] = registered_user.id
         
         response = client.post("/wallet/activate", data={
             "accept_terms": "on"
@@ -230,7 +230,7 @@ class TestWalletActivation:
         with app.app_context():
             from app.wallet.models.ledger import AccountModel, AccountOwnerType
             account = AccountModel.query.filter_by(
-                owner_id=registered_user.id,
+                user_id=registered_user.id,
                 owner_type=AccountOwnerType.USER
             ).first()
             assert account is not None

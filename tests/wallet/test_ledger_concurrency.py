@@ -32,6 +32,7 @@ from app.wallet.exceptions import (
 )
 from flask_login import login_user
 from app.identity.models.user import User
+from unittest.mock import patch
 
 
 @pytest.fixture
@@ -68,22 +69,23 @@ def account_repo(app):
 
 @pytest.fixture
 def test_user(app):
-    """Create a test user."""
-    user = User(
-        email=f'test_{uuid.uuid4().hex[:8]}@example.com',
-        username=f'testuser_{uuid.uuid4().hex[:8]}',
-        password_hash='hashed_password'
-    )
-    db.session.add(user)
-    db.session.commit()
-    return user
+    """Create a test user and return user ID."""
+    with app.app_context():
+        user = User(
+            email=f'test_{uuid.uuid4().hex[:8]}@example.com',
+            username=f'testuser_{uuid.uuid4().hex[:8]}',
+            password_hash='hashed_password'
+        )
+        db.session.add(user)
+        db.session.commit()
+        return user.id
 
 
 @pytest.fixture
 def funded_account(app, test_user):
     """Create a funded account for testing."""
     from app.wallet.routes import get_or_create_account
-    account = get_or_create_account(test_user.id, 'USD')
+    account = get_or_create_account(test_user, 'USD')
     
     # Create a transaction first (required for ledger entry FK)
     tx = TransactionModel(
@@ -93,7 +95,7 @@ def funded_account(app, test_user):
         amount=Decimal('1000'),
         currency='USD',
         status=TransactionStatus.COMPLETED,
-        user_id=test_user.id,
+        user_id=test_user,
     )
     db.session.add(tx)
     db.session.flush()
@@ -120,15 +122,10 @@ def logged_in_user(app, test_user):
         yield test_user
 
 
-def _run_with_user(app, user, func):
-    """Helper to run a function with a specific user logged in."""
-    with app.test_client() as client:
-        with client.session_transaction() as sess:
-            sess['_user_id'] = user.public_id
-            sess['_fresh'] = True
-        with app.test_request_context():
-            # The session from the test client will be used
-            return func()
+def _run_with_user(app, user_id, func):
+    """Helper to run a function within app context (no auth needed - tests use system_initiated)."""
+    with app.app_context():
+        return func()
 
 
 class TestIdempotency:
@@ -141,44 +138,55 @@ class TestIdempotency:
         Expected: Only 1 transaction row exists.
         Expected: Balance credited exactly once.
         """
+        account_id = funded_account.id
+        
         def _run_test():
-            client_request_id = f"idempotency_test_{uuid4().hex}"
-            initial_balance = LedgerRepository().get_balance(funded_account.id, 'USD')
+            # Re-fetch to avoid detached instance
+            from app.wallet.models.ledger import AccountModel
+            funded_account = db.session.get(AccountModel, account_id)
             
-            # First deposit
-            result1 = service.deposit(
-                user_id=funded_account.owner_id,
-                amount=Decimal('100'),
-                currency='USD',
-                client_request_id=client_request_id
-            )
-            
-            balance_after_first = LedgerRepository().get_balance(funded_account.id, 'USD')
-            assert balance_after_first == initial_balance + Decimal('100')
-            
-            # Second deposit with same idempotency key
-            result2 = service.deposit(
-                user_id=funded_account.owner_id,
-                amount=Decimal('100'),
-                currency='USD',
-                client_request_id=client_request_id
-            )
-            
-            balance_after_second = LedgerRepository().get_balance(funded_account.id, 'USD')
-            
-            # Verify balance unchanged (not double-credited)
-            assert balance_after_second == balance_after_first, \
-                "Balance should not be double-credited"
-            
-            # Verify only 1 transaction exists
-            tx_count = db.session.query(TransactionModel).filter(
-                TransactionModel.client_request_id == client_request_id
-            ).count()
-            
-            assert tx_count == 1, f"Expected 1 transaction, found {tx_count}"
-            
-            # Verify result2 indicates already processed
-            assert result2.get('already_processed') == True
+            # Mock KYC check to allow transactions for testing
+            with patch('app.wallet.services.kyc_limit_service.KYCLimitService.check_transaction_allowed',
+                       return_value={'allowed': True, 'kyc_level': 4}):
+                client_request_id = f"idempotency_test_{uuid4().hex}"
+                initial_balance = LedgerRepository().get_balance(funded_account.id, 'USD')
+                
+                # First deposit
+                result1 = service.deposit(
+                    account_id=str(funded_account.id),
+                    amount=Decimal('100'),
+                    currency='USD',
+                    client_request_id=client_request_id,
+                    system_initiated=True
+                )
+                
+                balance_after_first = LedgerRepository().get_balance(funded_account.id, 'USD')
+                assert balance_after_first == initial_balance + Decimal('100')
+                
+                # Second deposit with same idempotency key
+                result2 = service.deposit(
+                    account_id=str(funded_account.id),
+                    amount=Decimal('100'),
+                    currency='USD',
+                    client_request_id=client_request_id,
+                    system_initiated=True
+                )
+                
+                balance_after_second = LedgerRepository().get_balance(funded_account.id, 'USD')
+                
+                # Verify balance unchanged (not double-credited)
+                assert balance_after_second == balance_after_first, \
+                    "Balance should not be double-credited"
+                
+                # Verify only 1 transaction exists
+                tx_count = db.session.query(TransactionModel).filter(
+                    TransactionModel.client_request_id == client_request_id
+                ).count()
+                
+                assert tx_count == 1, f"Expected 1 transaction, found {tx_count}"
+                
+                # Verify result2 indicates already processed
+                assert result2.get('already_processed') == True
         
         _run_with_user(app, test_user, _run_test)
 
@@ -192,48 +200,61 @@ class TestFrozenWallet:
         
         Expected: All operations raise WalletFrozenError.
         """
+        account_id = funded_account.id
+        
         def _run_test():
-            # Freeze the account
-            AccountRepository().freeze_account(funded_account.id, "Test freeze")
+            # Re-fetch to avoid detached instance
+            from app.wallet.models.ledger import AccountModel
+            funded_account = db.session.get(AccountModel, account_id)
             
-            # Test deposit
-            with pytest.raises(WalletFrozenError):
-                service.deposit(
-                    user_id=funded_account.owner_id,
-                    amount=Decimal('100'),
-                    currency='USD',
-                    client_request_id=f"deposit_test_{uuid4().hex}"
+            # Mock KYC check to allow transactions for testing
+            with patch('app.wallet.services.kyc_limit_service.KYCLimitService.check_transaction_allowed',
+                       return_value={'allowed': True, 'kyc_level': 4}):
+                # Freeze the account
+                AccountRepository().freeze_account(funded_account.id, "Test freeze")
+                db.session.commit()
+                
+                # Test deposit
+                with pytest.raises(WalletFrozenError):
+                    service.deposit(
+                        account_id=str(funded_account.id),
+                        amount=Decimal('100'),
+                        currency='USD',
+                        client_request_id=f"deposit_test_{uuid4().hex}",
+                        system_initiated=True
+                    )
+                
+                # Test withdraw
+                with pytest.raises(WalletFrozenError):
+                    service.withdraw(
+                        account_id=str(funded_account.id),
+                        amount=Decimal('10'),
+                        currency='USD',
+                        client_request_id=f"withdraw_test_{uuid4().hex}",
+                        system_initiated=True
+                    )
+                
+                # Test transfer
+                from app.identity.models.user import User
+                recipient = User(
+                    email=f'recipient_{uuid4().hex}@example.com',
+                    username=f'recipient_{uuid4().hex}',
+                    password_hash='hashed_password'
                 )
-            
-            # Test withdraw
-            with pytest.raises(WalletFrozenError):
-                service.withdraw(
-                    user_id=funded_account.owner_id,
-                    amount=Decimal('10'),
-                    currency='USD',
-                    client_request_id=f"withdraw_test_{uuid4().hex}"
-                )
-            
-            # Test transfer
-            from app.identity.models.user import User
-            recipient = User(
-                email=f'recipient_{uuid4().hex}@example.com',
-                username=f'recipient_{uuid4().hex}',
-                password_hash='hashed_password'
-            )
-            db.session.add(recipient)
-            db.session.commit()
-            from app.wallet.routes import get_or_create_account
-            recipient_account = get_or_create_account(recipient.id, 'USD')
-            
-            with pytest.raises(WalletFrozenError):
-                service.transfer(
-                    from_account_id=str(funded_account.id),
-                    to_account_id=str(recipient_account.id),
-                    amount=Decimal('10'),
-                    currency='USD',
-                    client_request_id=f"transfer_test_{uuid4().hex}"
-                )
+                db.session.add(recipient)
+                db.session.commit()
+                from app.wallet.routes import get_or_create_account
+                recipient_account = get_or_create_account(recipient.id, 'USD')
+                
+                with pytest.raises(WalletFrozenError):
+                    service.transfer(
+                        from_account_id=str(funded_account.id),
+                        to_account_id=str(recipient_account.id),
+                        amount=Decimal('10'),
+                        currency='USD',
+                        client_request_id=f"transfer_test_{uuid4().hex}",
+                        system_initiated=True
+                    )
         
         _run_with_user(app, test_user, _run_test)
 
@@ -247,52 +268,61 @@ class TestDailyLimit:
         
         Expected: Next transaction raises DailyLimitExceededError.
         """
+        account_id = funded_account.id
+        
         def _run_test():
-            # Set daily limit to 500
-            from flask import current_app
-            current_app.config['WALLET_DAILY_LIMIT_HOME'] = Decimal('500')
+            # Re-fetch to avoid detached instance
+            from app.wallet.models.ledger import AccountModel
+            funded_account = db.session.get(AccountModel, account_id)
             
-            # Create 5 transactions with ledger entries totaling 500
-            for i in range(5):
-                # Create transaction first (required for ledger entry FK)
-                tx = TransactionModel(
-                    id=uuid4(),
-                    client_request_id=f"daily_limit_test_{i}_{uuid4().hex}",
-                    tx_type=TransactionType.WITHDRAW,
-                    amount=Decimal('100'),
-                    currency='USD',
-                    status=TransactionStatus.COMPLETED,
-                    user_id=funded_account.owner_id,
-                )
-                db.session.add(tx)
-                db.session.flush()
+            # Mock KYC check to allow transactions for testing
+            with patch('app.wallet.services.kyc_limit_service.KYCLimitService.check_transaction_allowed',
+                       return_value={'allowed': True, 'kyc_level': 4}), \
+                 patch('app.wallet.services.wallet_service.WalletSystemConfig.get_config') as mock_config:
+                mock_config.return_value = type('Config', (), {'max_daily_amount': Decimal('500')})()
                 
-                # Create ledger entry
-                ledger_entry = LedgerEntryModel(
-                    transaction_id=tx.id,
-                    account_id=funded_account.id,
-                    entry_type=EntryType.DEBIT,
-                    amount=Decimal('100'),
-                    currency='USD',
-                    created_at=datetime.now(timezone.utc)  # Within 24 hours
-                )
-                db.session.add(ledger_entry)
-            db.session.commit()
-            
-            # Verify daily volume is 500
-            daily_volume = LedgerRepository().get_daily_volume(funded_account.id, 'USD')
-            assert daily_volume == Decimal('500')
-            
-            # Attempt another withdrawal - should exceed limit
-            with pytest.raises(LimitExceededError) as exc_info:
-                service.withdraw(
-                    account_id=str(funded_account.id),
-                    amount=Decimal('10'),
-                    currency='USD',
-                    client_request_id=f"limit_test_{uuid4().hex}"
-                )
-            
-            assert exc_info.value.limit_type == 'daily'
+                # Create 5 transactions with ledger entries totaling 500
+                for i in range(5):
+                    # Create transaction first (required for ledger entry FK)
+                    tx = TransactionModel(
+                        id=uuid4(),
+                        client_request_id=f"daily_limit_test_{i}_{uuid4().hex}",
+                        tx_type=TransactionType.WITHDRAW,
+                        amount=Decimal('100'),
+                        currency='USD',
+                        status=TransactionStatus.COMPLETED,
+                        user_id=funded_account.user_id,
+                    )
+                    db.session.add(tx)
+                    db.session.flush()
+                    
+                    # Create ledger entry
+                    ledger_entry = LedgerEntryModel(
+                        transaction_id=tx.id,
+                        account_id=funded_account.id,
+                        entry_type=EntryType.DEBIT,
+                        amount=Decimal('100'),
+                        currency='USD',
+                        created_at=datetime.now(timezone.utc)  # Within 24 hours
+                    )
+                    db.session.add(ledger_entry)
+                db.session.commit()
+                
+                # Verify daily volume is 500
+                daily_volume = LedgerRepository().get_daily_volume(funded_account.id, 'USD')
+                assert daily_volume == Decimal('500')
+                
+                # Attempt another withdrawal - should exceed limit
+                with pytest.raises(LimitExceededError) as exc_info:
+                    service.withdraw(
+                        account_id=str(funded_account.id),
+                        amount=Decimal('10'),
+                        currency='USD',
+                        client_request_id=f"limit_test_{uuid4().hex}",
+                        system_initiated=True
+                    )
+                
+                assert exc_info.value.limit_type == 'daily'
         
         _run_with_user(app, test_user, _run_test)
 
@@ -307,62 +337,72 @@ class TestTransferAtomicity:
         Expected: Sender balance unchanged, receiver balance unchanged.
         Expected: Zero ledger entries committed.
         """
+        account_id = funded_account.id
+        
         def _run_test():
-            # Create recipient
-            from app.identity.models.user import User
-            recipient = User(
-                email=f'recipient_{uuid4().hex}@example.com',
-                username=f'recipient_{uuid4().hex}',
-                password_hash='hashed_password'
-            )
-            db.session.add(recipient)
-            db.session.commit()
+            # Re-fetch to avoid detached instance
+            from app.wallet.models.ledger import AccountModel
+            funded_account = db.session.get(AccountModel, account_id)
             
-            # Get initial balances
-            sender_balance_before = LedgerRepository().get_balance(funded_account.id, 'USD')
-            from app.wallet.routes import get_or_create_account
-            recipient_account = get_or_create_account(recipient.id, 'USD')
-            recipient_balance_before = LedgerRepository().get_balance(recipient_account.id, 'USD')
-            
-            # Mock to raise error during transaction
-            original_add = db.session.add
-            
-            def mock_add_with_error(obj):
-                if isinstance(obj, LedgerEntryModel):
-                    # After first entry, raise error
-                    original_add(obj)
-                    raise Exception("Simulated DB error")
-                return original_add(obj)
-            
-            db.session.add = mock_add_with_error
-            
-            try:
-                # Attempt transfer
-                service.transfer(
-                    from_account_id=str(funded_account.id),
-                    to_account_id=str(recipient_account.id),
-                    amount=Decimal('100'),
-                    currency='USD',
-                    client_request_id=f"atomic_test_{uuid4().hex}"
+            # Mock KYC check to allow transactions for testing
+            with patch('app.wallet.services.kyc_limit_service.KYCLimitService.check_transaction_allowed',
+                       return_value={'allowed': True, 'kyc_level': 4}):
+                # Create recipient
+                from app.identity.models.user import User
+                recipient = User(
+                    email=f'recipient_{uuid4().hex}@example.com',
+                    username=f'recipient_{uuid4().hex}',
+                    password_hash='hashed_password'
                 )
-                assert False, "Transfer should have raised exception"
-            except Exception as e:
-                assert "Simulated DB error" in str(e)
-            
-            # Restore original
-            db.session.add = original_add
-            
-            # Verify balances unchanged
-            sender_balance_after = LedgerRepository().get_balance(funded_account.id, 'USD')
-            recipient_balance_after = LedgerRepository().get_balance(recipient_account.id, 'USD')
-            
-            assert sender_balance_after == sender_balance_before, \
-                "Sender balance should be unchanged"
-            assert recipient_balance_after == recipient_balance_before, \
-                "Receiver balance should be unchanged"
-            
-            # Verify no ledger entries for this transaction
-            # (All entries should have rolled back)
+                db.session.add(recipient)
+                db.session.commit()
+                
+                # Get initial balances
+                sender_balance_before = LedgerRepository().get_balance(funded_account.id, 'USD')
+                from app.wallet.routes import get_or_create_account
+                recipient_account = get_or_create_account(recipient.id, 'USD')
+                recipient_balance_before = LedgerRepository().get_balance(recipient_account.id, 'USD')
+                
+                # Mock to raise error during transaction
+                original_add = db.session.add
+                
+                def mock_add_with_error(obj):
+                    if isinstance(obj, LedgerEntryModel):
+                        # After first entry, raise error
+                        original_add(obj)
+                        raise Exception("Simulated DB error")
+                    return original_add(obj)
+                
+                db.session.add = mock_add_with_error
+                
+                try:
+                    # Attempt transfer
+                    service.transfer(
+                        from_account_id=str(funded_account.id),
+                        to_account_id=str(recipient_account.id),
+                        amount=Decimal('100'),
+                        currency='USD',
+                        client_request_id=f"atomic_test_{uuid4().hex}",
+                        system_initiated=True
+                    )
+                    assert False, "Transfer should have raised exception"
+                except Exception as e:
+                    assert "Simulated DB error" in str(e)
+                
+                # Restore original
+                db.session.add = original_add
+                
+                # Verify balances unchanged
+                sender_balance_after = LedgerRepository().get_balance(funded_account.id, 'USD')
+                recipient_balance_after = LedgerRepository().get_balance(recipient_account.id, 'USD')
+                
+                assert sender_balance_after == sender_balance_before, \
+                    "Sender balance should be unchanged"
+                assert recipient_balance_after == recipient_balance_before, \
+                    "Receiver balance should be unchanged"
+                
+                # Verify no ledger entries for this transaction
+                # (All entries should have rolled back)
         
         _run_with_user(app, test_user, _run_test)
 
@@ -411,25 +451,35 @@ class TestTransactionStatus:
         """
         Test: Transaction starts as PENDING, becomes COMPLETED on success.
         """
+        account_id = funded_account.id
+        
         def _run_test():
-            client_request_id = f"status_test_{uuid4().hex}"
+            # Re-fetch to avoid detached instance
+            from app.wallet.models.ledger import AccountModel
+            funded_account = db.session.get(AccountModel, account_id)
             
-            # Deposit
-            result = service.deposit(
-                user_id=funded_account.owner_id,
-                amount=Decimal('100'),
-                currency='USD',
-                client_request_id=client_request_id
-            )
-            
-            # Get transaction
-            tx = db.session.query(TransactionModel).filter(
-                TransactionModel.client_request_id == client_request_id
-            ).first()
-            
-            assert tx is not None
-            assert tx.status == TransactionStatus.COMPLETED
-            assert tx.completed_at is not None
+            # Mock KYC check to allow transactions for testing
+            with patch('app.wallet.services.kyc_limit_service.KYCLimitService.check_transaction_allowed',
+                       return_value={'allowed': True, 'kyc_level': 4}):
+                client_request_id = f"status_test_{uuid4().hex}"
+                
+                # Deposit
+                result = service.deposit(
+                    account_id=str(funded_account.id),
+                    amount=Decimal('100'),
+                    currency='USD',
+                    client_request_id=client_request_id,
+                    system_initiated=True
+                )
+                
+                # Get transaction
+                tx = db.session.query(TransactionModel).filter(
+                    TransactionModel.client_request_id == client_request_id
+                ).first()
+                
+                assert tx is not None
+                assert tx.status == TransactionStatus.COMPLETED
+                assert tx.completed_at is not None
         
         _run_with_user(app, test_user, _run_test)
 
@@ -469,15 +519,15 @@ class TestWalletOwnershipTypes:
     def test_user_wallet_ownership(self, app, test_user):
         """Test that a user can own a wallet."""
         from app.wallet.routes import get_or_create_account
-        account = get_or_create_account(test_user.id, 'USD')
+        account = get_or_create_account(test_user, 'USD')
         
-        assert account.user_id == test_user.id
+        assert account.user_id == test_user
         assert account.owner_type == AccountOwnerType.USER
         assert account.account_type in ('user_wallet', 'org_wallet')
         
         # Verify the user's wallet relationship works
         from app.identity.models.user import User
-        user = db.session.get(User, test_user.id)
+        user = db.session.get(User, test_user)
         assert user.wallet is not None
         assert user.wallet.id == account.id
 
@@ -537,7 +587,7 @@ class TestWalletOwnershipTypes:
         db.session.flush()
         
         # Create user wallet
-        user_account = get_or_create_account(test_user.id, 'USD')
+        user_account = get_or_create_account(test_user, 'USD')
         
         # Create org wallet directly with ORGANISATION owner_type
         org_account = AccountModel(
@@ -555,7 +605,7 @@ class TestWalletOwnershipTypes:
         assert user_account.id != org_account.id
         assert user_account.owner_type == AccountOwnerType.USER
         assert org_account.owner_type == AccountOwnerType.ORGANISATION
-        assert user_account.user_id == test_user.id
+        assert user_account.user_id == test_user
         assert org_account.user_id == org.id
 
 

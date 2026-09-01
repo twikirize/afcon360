@@ -577,12 +577,21 @@ def verify_email_code():
     GET renders the code-entry form (so a clicked "verify" link / push
     notification no longer hits a 405). POST validates the submitted code.
     """
-    from app.auth.email import verify_email_code as verify_code
+    from app.auth.email import verify_email_code as verify_code, send_verification_email
     from app.identity.models.user import User
 
     if request.method == "GET":
         user = db.session.get(User, current_user.id)
         email = getattr(user, "email", None) if user else None
+        
+        # If user was redirected from login due to unverified email,
+        # automatically send a new verification email
+        if session.get("requires_email_verification"):
+            if user and user.email and not getattr(user, "email_verified", False):
+                send_verification_email(user)
+                flash("A new verification code has been sent to your email.", "info")
+            session.pop("requires_email_verification", None)
+        
         return render_template("auth/verify_email.html", email=email)
 
     code = request.form.get("code", "").strip()
@@ -764,8 +773,6 @@ def is_safe_url(target):
 def login():
     from app.auth.services import authenticate_user, AuthResult
 
-    require_verification = current_app.config.get("REQUIRE_EMAIL_VERIFICATION", False)
-
     if request.method == "POST":
         identifier = (request.form.get("username") or "").strip()[:64]
         password   = (request.form.get("password") or "")[:128]
@@ -793,6 +800,16 @@ def login():
             if not getattr(user, "is_active", True):
                 flash("Please activate your account before logging in.", "warning")
                 return render_template("auth/login.html", username=identifier)
+
+            # Enforce email verification if required by configuration
+            require_verification = current_app.config.get("REQUIRE_EMAIL_VERIFICATION", False)
+            if require_verification and not getattr(user, "email_verified", False):
+                # Allow login but mark session as requiring verification
+                # User will be redirected to verification page after login
+                login_user(user, remember="remember" in request.form)
+                session["requires_email_verification"] = True
+                flash("Please verify your email address to continue. A verification code has been sent to your email.", "warning")
+                return redirect(url_for("auth.verify_email_code"))
 
             # SECURITY: Owner login with optional MFA (configurable)
             if user.is_app_owner():
@@ -1354,6 +1371,9 @@ def complete_profile():
         from app.identity.models.user import User
         db_user = User.query.filter_by(id=user.id).first()
         if db_user:
+            # LEGACY FIELD USAGE: Direct assignment to User.kyc_level.
+            # The canonical KYC tier is calculated via calculate_kyc_tier() from
+            # verifications and documents. This field may drift out of sync.
             if hasattr(db_user, 'kyc_level'):
                 db_user.kyc_level = 2
             else:

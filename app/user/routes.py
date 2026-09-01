@@ -1,4 +1,5 @@
 # app/user/routes.py
+from decimal import Decimal
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
 from flask_login import login_required, current_user
 from app.extensions import db
@@ -71,12 +72,23 @@ def _get_wallet(context='individual', org_id=None):
             from app.identity.models.organisation import Organisation
             org = Organisation.query.filter_by(org_id=org_id).first()
             if org:
-                wallet = WalletService.get_wallet_by_org_id(org.id)
-                return wallet if hasattr(wallet, 'balance') else None
-        wallet = WalletService.get_wallet_by_user_id(current_user.id)
-        return wallet if hasattr(wallet, 'balance') else None
+                return WalletService.get_wallet_by_org_id(org.id)
+        return WalletService.get_wallet_by_user_id(current_user.id)
     except Exception:
         return None
+
+
+def _get_wallet_balance(wallet):
+    """Get wallet balance from canonical ledger-derived provider."""
+    if not wallet:
+        return Decimal('0')
+    try:
+        from app.wallet.services.wallet_service import WalletService
+        from decimal import Decimal
+        balance_data = WalletService().get_balance(str(wallet.user_id))
+        return balance_data.get('balance', Decimal('0'))
+    except Exception:
+        return Decimal('0')
 
 
 def _get_modules():
@@ -344,7 +356,7 @@ def dashboard():
         upcoming_regs, past_regs = _split_registrations(all_regs)
 
         wallet = _get_wallet(current_context, current_org_id)
-        wallet_balance = wallet.balance if wallet else 0.0
+        wallet_balance = _get_wallet_balance(wallet)
 
         upcoming_count = len(upcoming_regs)
         attended_count = sum(1 for r in past_regs if r.get('status') == 'checked_in')
@@ -516,7 +528,7 @@ def my_registrations():
             attended_count=sum(1 for r in past_regs if r.get('status') == 'checked_in'),
             total_spent="%.2f" % sum((r.get('registration_fee') or 0) for r in all_regs if r.get('status') != 'cancelled'),
             wallet=wallet,
-            wallet_balance=wallet.balance if wallet else 0.0,
+            wallet_balance=_get_wallet_balance(wallet),
             current_date=date.today().isoformat(),
             kyc_info={},
             tourism_listings=[],

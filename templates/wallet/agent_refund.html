@@ -1,0 +1,63 @@
+{#agent_refund.html#}
+{% extends "wallet/base_wallet.html" %}
+
+{% block title %}Agent Refund — AFCON360{% endblock %}
+
+{% block topbar_title %}Cash-In Refund{% endblock %}
+
+{% block content %}
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Cash-In Refund</h1>
+    <p class="page-subheading">Reverse a previously confirmed agent cash-in.</p>
+  </div>
+  <a href="{{ url_for('wallet.agent_portal') }}" class="btn btn-ghost">
+    <i class="fas fa-arrow-left"></i> Back to Portal
+  </a>
+</div>
+
+{# ── Float Balance ── #}
+<div class="stat-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
+  <div class="stat-card" style="background:linear-gradient(135deg,var(--accent),var(--accent-dk));color:#fff;border:none;">
+    <div class="stat-label" style="color:rgba(255,255,255,0.7);">Current Float</div>
+    <div class="stat-value" style="color:#fff;">UGX {{ '{:,.0f}'.format(float_balance | float) }}</div>
+  </div>
+</div>
+
+{# ── Refund Form ── #}
+<div class="panel" style="margin-top:20px;max-width:640px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-undo panel-title-icon orange"></i>
+      Process a Refund
+    </div>
+  </div>
+  <div style="padding:24px;">
+    <p style="font-size:13px;color:var(--muted);margin-bottom:18px;">
+      If a customer's agent cash-in must be reversed, enter the original
+      cash-in reference code. Refunding reverses the customer's wallet credit
+      and returns your float stake, then marks the original cash-in as
+      refunded. Re-submitting an already-refunded reference is a no-op.
+    </p>
+    <form method="post" action="{{ url_for('wallet.agent_refund_submit') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field-label" for="reference">Cash-in reference code</label>
+      <input
+        type="text"
+        id="reference"
+        name="reference"
+        class="text-input"
+        placeholder="DEP-XXXXXXXXXX"
+        required
+        autocomplete="off"
+      >
+      <div style="margin-top:20px;display:flex;gap:10px;">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-undo"></i> Process Refund
+        </button>
+        <a href="{{ url_for('wallet.agent_portal') }}" class="btn btn-ghost">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

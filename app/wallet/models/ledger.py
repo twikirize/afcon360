@@ -2,9 +2,39 @@
 app/wallet/models/ledger.py
 Double-entry ledger models - the source of truth for all balances.
 
+TERMINOLOGY (CRITICAL):
+  System User Account = User (app/identity/models/user.py)
+                        - Core platform identity
+                        - Internal ID: user.id (BIGINT) - DB relations only
+                        - External ID: user.public_id (UUID) - URLs/APIs
+  
+  Financial Account = AccountModel (this file, class AccountModel)
+                      - Money/ledger account
+                      - Each User may have ONE AccountModel (via User.wallet relationship)
+                      - AccountOwnerType can be USER, ORGANISATION, PLATFORM, or SYSTEM
+  
+  Relationship:
+    User (System User Account)
+        │
+        ├── optional financial relationship
+        ▼
+    AccountModel (Financial Account)
+        │
+        ▼
+      LEDGER (via LedgerEntryModel)
+
 RULE #1: NEVER update a balance column directly.
 RULE #2: Balance = derived from ledger_entries at query time.
 RULE #3: Every financial op = ONE transaction, zero compensation.
+
+DON'T CONFUSE:
+  - User.is_verified (email/phone verification status) 
+  - User.kyc_level (KYC tier)
+  - AccountModel.verified (account-specific verification)
+
+Domain ownership:
+  Wallet module owns all AccountModel, LedgerEntryModel, TransactionModel
+  Identity module owns User - don't modify wallet models without authorization
 """
 
 import uuid

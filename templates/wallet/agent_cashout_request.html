@@ -1,0 +1,62 @@
+{#agent_cashout_request.html#}
+{% extends "wallet/base_wallet.html" %}
+
+{% block title %}Agent Cash-Out — AFCON360{% endblock %}
+
+{% block topbar_title %}Cash-Out{% endblock %}
+
+{% block content %}
+<div class="heading-row">
+  <div>
+    <h1 class="page-heading">Agent Cash-Out</h1>
+    <p class="page-subheading">Confirm a customer's withdrawal reference code to credit your float.</p>
+  </div>
+  <a href="{{ url_for('wallet.agent_portal') }}" class="btn btn-ghost">
+    <i class="fas fa-arrow-left"></i> Back to Portal
+  </a>
+</div>
+
+{# ── Float Balance ── #}
+<div class="stat-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
+  <div class="stat-card" style="background:linear-gradient(135deg,var(--accent),var(--accent-dk));color:#fff;border:none;">
+    <div class="stat-label" style="color:rgba(255,255,255,0.7);">Current Float</div>
+    <div class="stat-value" style="color:#fff;">UGX {{ '{:,.0f}'.format(float_balance | float) }}</div>
+  </div>
+</div>
+
+{# ── Cash-Out Confirm Form ── #}
+<div class="panel" style="margin-top:20px;max-width:640px;">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fas fa-hand-holding-usd panel-title-icon green"></i>
+      Confirm a Cash-Out
+    </div>
+  </div>
+  <div style="padding:24px;">
+    <p style="font-size:13px;color:var(--muted);margin-bottom:18px;">
+      When a customer withdraws cash through you, they give you a withdrawal
+      reference code. Enter it below to confirm the cash-out. Confirming debits
+      the customer's wallet and credits your float.
+    </p>
+    <form method="post" action="{{ url_for('wallet.agent_cashout_confirm') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field-label" for="reference">Withdrawal reference code</label>
+      <input
+        type="text"
+        id="reference"
+        name="reference"
+        class="text-input"
+        placeholder="WDR-XXXXXXXXXX"
+        required
+        autocomplete="off"
+      >
+      <div style="margin-top:20px;display:flex;gap:10px;">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-check"></i> Confirm Cash-Out
+        </button>
+        <a href="{{ url_for('wallet.agent_portal') }}" class="btn btn-ghost">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

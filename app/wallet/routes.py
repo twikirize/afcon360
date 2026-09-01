@@ -1349,6 +1349,368 @@ def payout_request_form():
 
 
 # =============================================================================
+# AGENT PORTAL / STATEMENT / REQUIREMENTS
+# =============================================================================
+
+@wallet_bp.route('/agent/portal')
+@login_required
+def agent_portal():
+    """Agent portal dashboard: float balance, recent ledger, quick links."""
+    try:
+        if not getattr(current_user, 'is_agent', False):
+            flash('You are not registered as an agent.', 'warning')
+            return redirect(url_for('wallet.wallet_dashboard'))
+
+        from app.wallet.services.agent_float_service import AgentFloatService
+        from app.wallet.services.agent_statement_service import AgentStatementService
+        from app.wallet.services.commission_service import CommissionService
+
+        float_svc = AgentFloatService()
+        stmt_svc = AgentStatementService()
+        commission_svc = CommissionService()
+
+        float_balance = float_svc.get_balance(current_user.id, 'UGX')
+        statement = stmt_svc.generate(current_user.id, 'UGX')
+        summary = commission_svc.get_commission_summary(current_user.id)
+        recent_ledger = float_svc.ledgers_for(current_user.id, 'UGX', limit=10)
+
+        return render_template(
+            'wallet/agent_portal.html',
+            float_balance=float_balance,
+            statement=statement,
+            summary=summary,
+            recent_ledger=recent_ledger,
+        )
+    except Exception as e:
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="AGENT_PORTAL_ERROR",
+            error_message=str(e),
+            context={"component": "agent_portal"},
+        )
+        flash('Unable to load agent portal.', 'warning')
+        return redirect(url_for('wallet.wallet_dashboard'))
+
+
+@wallet_bp.route('/agent/statement')
+@login_required
+def agent_statement():
+    """Agent financial statement page."""
+    try:
+        if not getattr(current_user, 'is_agent', False):
+            flash('You are not registered as an agent.', 'warning')
+            return redirect(url_for('wallet.wallet_dashboard'))
+
+        from app.wallet.services.agent_statement_service import AgentStatementService
+        from app.wallet.services.agent_float_service import AgentFloatService
+
+        stmt_svc = AgentStatementService()
+        float_svc = AgentFloatService()
+
+        statement = stmt_svc.generate(current_user.id, 'UGX')
+        float_balance = float_svc.get_balance(current_user.id, 'UGX')
+
+        return render_template(
+            'wallet/agent_statement.html',
+            statement=statement,
+            float_balance=float_balance,
+        )
+    except Exception as e:
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="AGENT_STATEMENT_ERROR",
+            error_message=str(e),
+            context={"component": "agent_statement"},
+        )
+        flash('Unable to load agent statement.', 'warning')
+        return redirect(url_for('wallet.wallet_dashboard'))
+
+
+@wallet_bp.route('/agent/requirements')
+@login_required
+def agent_requirements():
+    """Informational page about becoming an AFCON360 agent."""
+    try:
+        is_agent = getattr(current_user, 'is_agent', False)
+        return render_template(
+            'wallet/agent_requirements.html',
+            is_agent=is_agent,
+        )
+    except Exception as e:
+        flash('Unable to load requirements page.', 'warning')
+        return redirect(url_for('wallet.wallet_dashboard'))
+
+
+# =============================================================================
+# AGENT CASH-OUT / REFUND / ONBOARDING (reconstructed flows)
+# These handlers call the recovered agent services with their exact signatures.
+# Financial services are CRITICAL (§18.1); money movement is done entirely by
+# the services (AgentCashOutService / AgentRefundService), never in templates.
+# =============================================================================
+
+
+@wallet_bp.route('/agent/cashout', methods=['GET'])
+@login_required
+def agent_cashout_request():
+    """Agent cash-out page: enter a user's WDR reference code to confirm cash-out."""
+    try:
+        if not getattr(current_user, 'is_agent', False):
+            flash('You are not registered as an agent.', 'warning')
+            return redirect(url_for('wallet.agent_requirements'))
+        from app.wallet.services.agent_float_service import AgentFloatService
+        float_balance = AgentFloatService().get_balance(current_user.id, 'UGX')
+        return render_template(
+            'wallet/agent_cashout_request.html',
+            float_balance=float_balance,
+        )
+    except Exception as e:
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="AGENT_CASHOUT_PAGE_ERROR",
+            error_message=str(e),
+            context={"component": "agent_cashout_request"},
+        )
+        flash('Unable to load cash-out page.', 'warning')
+        return redirect(url_for('wallet.agent_portal'))
+
+
+@wallet_bp.route('/agent/cashout', methods=['POST'])
+@login_required
+@require_fresh_user
+def agent_cashout_confirm():
+    """Confirm an agent cash-out using the recovered AgentCashOutService."""
+    try:
+        if not getattr(current_user, 'is_agent', False):
+            flash('You are not registered as an agent.', 'warning')
+            return redirect(url_for('wallet.agent_requirements'))
+
+        reference = (request.form.get('reference') or '').strip()
+        if not reference:
+            flash('A withdrawal reference code is required.', 'danger')
+            return redirect(url_for('wallet.agent_cashout_request'))
+
+        from app.wallet.services.agent_cashout_service import AgentCashOutService
+        result = AgentCashOutService().confirm(reference, current_user)
+        if result.get('success'):
+            flash(
+                f"Cash-out {reference} confirmed: {result.get('amount')} {result.get('currency')} credited to float.",
+                'success',
+            )
+        else:
+            flash(result.get('error', 'Could not confirm cash-out.'), 'danger')
+        return redirect(url_for('wallet.agent_cashout_request'))
+    except Exception as e:
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="AGENT_CASHOUT_CONFIRM_ERROR",
+            error_message=str(e),
+            context={"component": "agent_cashout_confirm"},
+        )
+        flash('Unable to confirm cash-out. Please try again later.', 'warning')
+        return redirect(url_for('wallet.agent_cashout_request'))
+
+
+@wallet_bp.route('/agent/refund', methods=['GET'])
+@login_required
+def agent_refund():
+    """Agent refund page: reverse a previously confirmed agent cash-in."""
+    try:
+        if not getattr(current_user, 'is_agent', False):
+            flash('You are not registered as an agent.', 'warning')
+            return redirect(url_for('wallet.agent_requirements'))
+        from app.wallet.services.agent_float_service import AgentFloatService
+        float_balance = AgentFloatService().get_balance(current_user.id, 'UGX')
+        return render_template(
+            'wallet/agent_refund.html',
+            float_balance=float_balance,
+        )
+    except Exception as e:
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="AGENT_REFUND_PAGE_ERROR",
+            error_message=str(e),
+            context={"component": "agent_refund"},
+        )
+        flash('Unable to load refund page.', 'warning')
+        return redirect(url_for('wallet.agent_portal'))
+
+
+@wallet_bp.route('/agent/refund', methods=['POST'])
+@login_required
+@require_fresh_user
+def agent_refund_submit():
+    """Submit an agent cash-in refund using the recovered AgentRefundService."""
+    try:
+        if not getattr(current_user, 'is_agent', False):
+            flash('You are not registered as an agent.', 'warning')
+            return redirect(url_for('wallet.agent_requirements'))
+
+        reference = (request.form.get('reference') or '').strip()
+        if not reference:
+            flash('A cash-in reference code is required.', 'danger')
+            return redirect(url_for('wallet.agent_refund'))
+
+        from app.wallet.services.agent_refund_service import AgentRefundService
+        result = AgentRefundService().refund(reference, current_user)
+        if result.get('success'):
+            if result.get('already_refunded'):
+                flash(f"Cash-in {reference} was already refunded.", 'info')
+            else:
+                flash(
+                    f"Refund for {reference}: {result.get('amount')} {result.get('currency')} returned to float.",
+                    'success',
+                )
+        else:
+            flash(result.get('error', 'Could not process refund.'), 'danger')
+        return redirect(url_for('wallet.agent_refund'))
+    except Exception as e:
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="AGENT_REFUND_SUBMIT_ERROR",
+            error_message=str(e),
+            context={"component": "agent_refund_submit"},
+        )
+        flash('Unable to process refund. Please try again later.', 'warning')
+        return redirect(url_for('wallet.agent_refund'))
+
+
+@wallet_bp.route('/agent/apply', methods=['GET'])
+@login_required
+def agent_apply():
+    """Agent onboarding application form."""
+    try:
+        if getattr(current_user, 'is_agent', False):
+            flash('You are already registered as an agent.', 'info')
+            return redirect(url_for('wallet.agent_portal'))
+
+        from app.wallet.services.agent_onboarding_service import is_agency_available_for_country
+        available = is_agency_available_for_country(None)
+        return render_template(
+            'wallet/agent_apply.html',
+            agency_available=available,
+        )
+    except Exception as e:
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="AGENT_APPLY_PAGE_ERROR",
+            error_message=str(e),
+            context={"component": "agent_apply"},
+        )
+        flash('Unable to load application page.', 'warning')
+        return redirect(url_for('wallet.wallet_dashboard'))
+
+
+@wallet_bp.route('/agent/apply', methods=['POST'])
+@login_required
+@require_fresh_user
+def agent_apply_submit():
+    """Submit an agent onboarding application via AgentOnboardingService."""
+    try:
+        if getattr(current_user, 'is_agent', False):
+            flash('You are already registered as an agent.', 'info')
+            return redirect(url_for('wallet.agent_portal'))
+
+        agent_type = request.form.get('agent_type') or 'individual'
+        applicant_data = {
+            'full_name': (request.form.get('full_name') or '').strip(),
+            'phone': (request.form.get('phone') or '').strip(),
+            'email': (request.form.get('email') or '').strip(),
+            'id_number': (request.form.get('id_number') or '').strip(),
+            'agent_code': (request.form.get('agent_code') or '').strip(),
+            'organisation_name': (request.form.get('organisation_name') or '').strip(),
+            'notes': (request.form.get('notes') or '').strip(),
+        }
+
+        from app.wallet.services.agent_onboarding_service import AgentOnboardingService
+        result = AgentOnboardingService().submit(current_user, agent_type, applicant_data)
+        if result.get('success'):
+            flash(
+                f"Application submitted. Reference: {result.get('reference')}.",
+                'success',
+            )
+            return redirect(url_for('wallet.agent_applications'))
+        else:
+            flash(result.get('error', 'Could not submit application.'), 'danger')
+            return redirect(url_for('wallet.agent_apply'))
+    except Exception as e:
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="AGENT_APPLY_SUBMIT_ERROR",
+            error_message=str(e),
+            context={"component": "agent_apply_submit"},
+        )
+        flash('Unable to submit application. Please try again later.', 'warning')
+        return redirect(url_for('wallet.agent_apply'))
+
+
+@wallet_bp.route('/agent/applications')
+@login_required
+def agent_applications():
+    """List the current user's agent onboarding applications."""
+    try:
+        from app.wallet.models.agent_onboarding import AgentOnboarding
+        applications = (
+            AgentOnboarding.query
+            .filter(
+                AgentOnboarding.user_id == current_user.id,
+                AgentOnboarding.is_deleted == False,
+            )
+            .order_by(AgentOnboarding.created_at.desc())
+            .all()
+        )
+        return render_template(
+            'wallet/agent_applications.html',
+            applications=applications,
+            is_admin=False,
+        )
+    except Exception as e:
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="AGENT_APPLICATIONS_ERROR",
+            error_message=str(e),
+            context={"component": "agent_applications"},
+        )
+        flash('Unable to load your applications.', 'warning')
+        return redirect(url_for('wallet.wallet_dashboard'))
+
+
+@wallet_bp.route('/agent/applications/<int:onboarding_id>')
+@login_required
+def agent_application_detail(onboarding_id):
+    """Show one of the current user's agent onboarding applications."""
+    try:
+        from app.wallet.services.agent_onboarding_service import AgentOnboardingService
+        onboarding = AgentOnboardingService().get(onboarding_id)
+        if not onboarding or onboarding.is_deleted or onboarding.user_id != current_user.id:
+            flash('Application not found.', 'danger')
+            return redirect(url_for('wallet.agent_applications'))
+        return render_template(
+            'wallet/agent_application_detail.html',
+            application=onboarding,
+            is_agent_view=True,
+        )
+    except Exception as e:
+        from app.utils.error_handler import log_error_to_audit
+        log_error_to_audit(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            error_type="AGENT_APPLICATION_DETAIL_ERROR",
+            error_message=str(e),
+            context={"component": "agent_application_detail"},
+        )
+        flash('Unable to load application.', 'warning')
+        return redirect(url_for('wallet.agent_applications'))
+
+
+# =============================================================================
 # ADDITIONAL WALLET ROUTES
 # =============================================================================
 

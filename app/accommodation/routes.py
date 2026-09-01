@@ -786,6 +786,10 @@ def admin_properties():
     elif missing_info == 'no_rooms':
         q = q.filter(or_(Property.max_guests.is_(None), Property.max_guests < 1))
     elif missing_info == 'no_kyc':
+        # LEGACY FIELD USAGE: This query uses User.kyc_level directly instead of
+        # the canonical calculate_kyc_tier(). The kyc_level field may not reflect
+        # the current KYC tier calculated from verifications and documents.
+        # TODO: Replace with canonical KYC tier calculation in a future phase.
         from app.identity.models.user import User
         q = q.join(User, Property.owner_user_id == User.id).filter(
             or_(User.kyc_level == 0, User.kyc_level.is_(None))

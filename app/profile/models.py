@@ -156,6 +156,9 @@ class UserProfile(BaseModel):
             "phone_number": self.phone_number,
             "email": self.email,
             "verification_status": self.verification_status,
+            # LEGACY FIELD: UserProfile.kyc_level may not reflect canonical KYC tier.
+            # Canonical tier is calculated via calculate_kyc_tier() from
+            # verifications and documents. This field is for backward compatibility.
             "kyc_level": self.kyc_level,
         }
 
@@ -164,6 +167,9 @@ class UserProfile(BaseModel):
         return {
             "full_name": self.full_name,
             "verification_status": self.verification_status,
+            # LEGACY FIELD: UserProfile.kyc_level may not reflect canonical KYC tier.
+            # Canonical tier is calculated via calculate_kyc_tier() from
+            # verifications and documents. This field is for backward compatibility.
             "kyc_level": self.kyc_level,
         }
 

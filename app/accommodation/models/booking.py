@@ -1,6 +1,29 @@
 # app/accommodation/models/booking.py
 """
 Booking models - High-standard, using Python Enums with String DB storage
+
+TERMINOLOGY (CRITICAL):
+  System User Account = User (app/identity/models/user.py)
+                        - Core platform identity (authentication, roles, profile)
+                        - Internal ID: user.id (BIGINT) - for DB relations/FKs only
+                        - External ID: user.public_id (UUID) - for URLs/APIs
+                        - Contains: is_verified, email_verified, phone_verified, kyc_level, roles
+
+  Financial Account = AccountModel (app/wallet/models/ledger.py)
+                      - Money/ledger account (balances, transactions, double-entry)
+                      - Owned by User via User.wallet relationship (optional)
+                      - AccountOwnerType: USER, ORGANISATION, PLATFORM, SYSTEM
+
+  Booking Guest Fields:
+    guest_user_id       → FK to User.id (System User Account of the guest staying)
+    booking_owner_id    → FK to User.id (System User Account who legally owns booking)
+    booked_by_user_id   → FK to User.id (System User Account who created the booking)
+    primary_guest_id    → FK to User.id (System User Account of primary guest)
+    host_user_id        → FK to User.id (System User Account of the host)
+
+  Wallet/Payment Relationship:
+    Booking → WalletService.can_pay_for_booking() → User.wallet → AccountModel
+    NEVER use wallet balance for booking eligibility (see AccommodationIdentityService.can_book)
 """
 
 from datetime import datetime, timezone, date, timedelta

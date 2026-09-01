@@ -320,15 +320,17 @@ def organizer_dashboard(identifier):
 @login_required
 def service_provider_dashboard():
     """Service Provider Dashboard"""
+    from decimal import Decimal
     from app.wallet.services.wallet_service import WalletService
 
     data = EventService.get_service_provider_dashboard_data(current_user.id)
 
-    wallet_balance = 0
+    wallet_balance = Decimal('0')
     try:
         wallet = WalletService.get_wallet_by_user_id(current_user.id)
         if wallet:
-            wallet_balance = wallet.balance
+            balance_data = WalletService().get_balance(str(wallet.user_id))
+            wallet_balance = balance_data.get('balance', Decimal('0'))
     except Exception:
         pass
 

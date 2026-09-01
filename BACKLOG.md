@@ -498,3 +498,50 @@ the proposed design, and the ownership boundary. NOT yet implemented unless note
 - **Owner/area:** Admin module
 - **Links:** templates/admin/org_members.html, app/identity/models/organisation.py (`Organisation.users`), app/identity/models/organisation.py (`OrganisationMember`)
 
+---
+
+## D3 — Nigeria mobile-money API keys never wired into Owner settings
+- **Status:** Not started
+- **Raised:** 2026-08-30
+- **Context:** `MobileMoneyService._mtn_nigeria_deposit` / `_airtel_nigeria_deposit` read `current_app.config["MTN_NG_API_KEY"]` / `AIRTEL_NG_API_KEY`, but `app/owner/routes/settings.py` only wires `mtn_ug_api_key`, `airtel_ug_api_key`, and `mpesa_api_key`. NG operators therefore hit a missing-config failure (now surfaced cleanly via `_require_api_key`). Uganda + M-Pesa are configurable; NG is not.
+- **What needs to happen:** Add `mtn_ng_api_key` / `airtel_ng_api_key` fields to the Owner wallet settings form + persistence (`settings.py` save/load and `templates/owner/wallet_settings.html`), consistent with the existing UG fields, so NG mobile-money deposits can be configured. Verify against `PaymentMethodConfig` NG entries (`mobile_money_mtn_ng`, `mobile_money_airtel_ng`).
+- **Owner/area:** Wallet / Owner settings
+- **Links:** app/wallet/payments/mobile_money.py:375,402, app/owner/routes/settings.py:318-320, templates/owner/wallet_settings.html:427-437, app/wallet/models/payment_method.py:192,209
+
+---
+
+## Agent System — external integrations & deep KYB deferred (Phase 2 follow-ups)
+- **Status:** Partial (core engine built; provider/external pieces deferred)
+- **Raised:** 2026-08-30
+- **Context:** The full agent subsystem is now implemented in `app/wallet`: onboarding (tiered KYC/KYB: wallet_admin → compliance_officer → super_admin/owner), float + float ledger, cash-in, refunds, statements, per-agent reconciliation, and a completed payout flow (request/approve/reject/pay that settles commissions). It is gated by the existing owner "Agents" toggle (`WalletSystemConfig.agents_enabled`). The following remain intentionally separate authorized nodes because they require real provider credentials, financial rules, and compliance sign-off.
+- **What needs to happen (deferred nodes):**
+  1. Real document uploads for onboarding (currently stores document *references*; needs a secure doc store).
+  2. Automated KYB verdict wired to `OrganisationKYBCheck` / real `Organisation` entities for org agents (Phase 2 stores KYB data for human review).
+  3. Automated sanctions/PEP screening provider integration.
+  4. External provider agent onboarding + ongoing monitoring/SAR (MTN/Flutterwave/bank agent portals).
+  5. Real payout disbursement to agent bank/mobile-money (Phase 2 records internal settlement only; `PayoutService.pay` is a stub for external disbursement).
+- **Owner/area:** Wallet / Compliance / KYC
+- **Links:** app/wallet/services/agent_onboarding_service.py, agent_float_service.py, agent_refund_service.py, agent_statement_service.py, agent_reconciliation_service.py, payout_service.py, app/wallet/models/agent_float.py, app/wallet/routes.py (wallet.agent_* , wallet.admin_agent_*), templates/wallet/agent_*.html
+- **Migration:** New tables `agent_float_ledgers`, `agent_onboardings`, `agent_onboarding_approvals`, `agent_commissions`, `payout_requests` and `users.is_agent`/`users.agent_code` columns require a user-run migration before going live.
+
+---
+
+## LSP legacy `Column()` typing noise — Phase 2Mapped/mapped_column migration is the only cure
+- **Status:** Not started
+- **Raised:** 2026-09-01
+- **Context:** Pyright 1.1.413 (via `npx`) reports project-wide `reportAttributeAccessIssue` / `reportReturnType` / `reportArgumentType` noise on any model using the legacy SQLAlchemy 1.x `Column(...)` class-attribute style (e.g. `app/models/base.py`, `app/identity/models/user.py`, `app/wallet/models/*`, and the recovered agent services). The noise comes from pyright inferring instance attributes as `Column[T]` instead of `T`. **Empirically verified (isolated repro):** `sqlalchemy2-stubs` does NOT heal this — it only relabels `Column[bool]`→`Column[Boolean]` — and it is a **discontinued** package that even breaks `mapped_column`. `typeCheckingMode: "standard"` alone also does not help. The only real cure is migrating models to SQLAlchemy 2.0 `Mapped[...]` / `mapped_column(...)` style, which reduces columns to native Python types (repro showed only 1 *genuine* error vs 2 false ones for an identical model).
+- **What needs to happen:** Long-term convention — migrate a model's columns to `Mapped`/`mapped_column` **only while the model is already being touched for other work** (do not do a bulk migration). Re-run `npx pyright` on `tests/test_agent_system_full.py`, `app/wallet/repositories/commission_repository.py`, `app/wallet/services/agent_float_service.py` to confirm the systemic noise clears. Do NOT install `sqlalchemy2-stubs` (discontinued, blocks `mapped_column`). This is the agreed Phase 2C plan (Phase 1A abandoned by user decision 2026-09-01).
+- **Owner/area:** Wallet models + project-wide models
+- **Links:** app/models/base.py, app/identity/models/user.py, app/wallet/models/*, tests/test_agent_system_full.py, app/wallet/repositories/commission_repository.py, app/wallet/services/agent_float_service.py, pyrightconfig.json
+- **Note:** `commission_repository.py` duplicate `get_by_ref`/`mark_paid` removed and `mark_paid` signature fixed to `paid_by: Optional[int] = None` (Phase 1B, done 2026-09-01) — the remaining reported errors there are all systemic `Column()` noise, not genuine.
+
+---
+
+## test_payment_flow.py — 3 pre-existing failures (stale `app.events.services._legacy` mock target)
+- **Status:** Not started
+- **Raised:** 2026-09-01
+- **Context:** `tests/test_payment_flow.py::TestPaymentFlow::{test_free_registration_no_payment, test_paid_registration_insufficient_funds, test_paid_registration_success}` fail with `AttributeError: module 'app.events.services' has no attribute '_legacy'` (the mocked target no longer exists; also `mock_wallet_service.withdraw` is not called). These are **pre-existing and unrelated** to the agent/payout recovery work — the whole suite passes `3 passed` minus exactly these 3.
+- **What needs to happen:** Update the mock targets in `tests/test_payment_flow.py` to the current `app.events.services` API (remove stale `_legacy` patch, align `mock_wallet_service.withdraw` expectations). Verify against unaffected `tests/wallet` (33 passed) and `tests/test_agent_system_full.py` (2 passed).
+- **Owner/area:** Tests / Events / Wallet
+- **Links:** tests/test_payment_flow.py, app/events/services.py, app/wallet/services/*
+
