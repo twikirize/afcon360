@@ -124,7 +124,7 @@
                     {% if booking.customer_name %}
                       {{ booking.customer_name }}
                     {% else %}
-                      Customer #{{ booking.customer_id }}
+                      Customer #{{ booking.user_id }}
                     {% endif %}
                   </div>
                   <div class="customer-contact">
@@ -148,8 +148,8 @@
               </td>
               <td>
                 <div class="driver-info">
-                  {% if booking.driver_id %}
-                    <div class="driver-name">Driver #{{ booking.driver_id }}</div>
+{% if booking.assigned_driver_id %}
+<div class="driver-name">Driver #{{ booking.assigned_driver_id }}</div>
                     <div class="driver-status">Assigned</div>
                   {% else %}
                     <div class="driver-name">Unassigned</div>

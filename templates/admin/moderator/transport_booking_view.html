@@ -189,7 +189,7 @@
               {% if booking.customer_name %}
                 {{ booking.customer_name }}
               {% else %}
-                Customer #{{ booking.customer_id }}
+                Customer #{{ booking.user_id }}
               {% endif %}
             </div>
             {% if booking.customer_email %}
@@ -204,7 +204,7 @@
     </div>
 
     <!-- Driver Information -->
-    {% if booking.driver_id %}
+    {% if booking.assigned_driver_id %}
     <div class="panel">
       <div class="panel-header">
         <div class="panel-title">
@@ -218,7 +218,7 @@
             <i class="fas fa-user-tie"></i>
           </div>
           <div class="driver-details">
-            <div class="driver-name">Driver #{{ booking.driver_id }}</div>
+            <div class="driver-name">Driver #{{ booking.assigned_driver_id }}</div>
             <div class="driver-status">Assigned to this booking</div>
             <a href="#" class="driver-link">View Driver Profile</a>
           </div>
@@ -328,14 +328,14 @@
           </div>
           {% endif %}
           
-          {% if booking.driver_id %}
+          {% if booking.assigned_driver_id %}
           <div class="timeline-item {% if booking.status in ['assigned', 'driver_en_route', 'in_progress', 'completed'] %}completed{% endif %}">
             <div class="timeline-icon">
               <i class="fas fa-user-tie"></i>
             </div>
             <div class="timeline-content">
               <div class="timeline-title">Driver Assigned</div>
-              <div class="timeline-time">Driver #{{ booking.driver_id }}</div>
+              <div class="timeline-time">Driver #{{ booking.assigned_driver_id }}</div>
             </div>
           </div>
           {% endif %}

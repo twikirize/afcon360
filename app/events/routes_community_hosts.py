@@ -64,7 +64,7 @@ def community_host_register(slug):
         # Check if user already has a property (reuse existing if possible)
         existing_property = Property.query.filter_by(
             owner_user_id=current_user.id,
-            property_type=AccommodationPropertyType.COMMUNITY_HOST,
+            property_type=AccommodationPropertyType.COMMUNITY_HOST.value,
             is_deleted=False
         ).first()
         
@@ -89,7 +89,7 @@ def community_host_register(slug):
                 slug=unique_slug,
                 description=data.get('description', ''),
                 summary=data.get('summary', '')[:500],
-                property_type=AccommodationPropertyType.COMMUNITY_HOST,
+                property_type=AccommodationPropertyType.COMMUNITY_HOST.value,
                 address_line1=data['address_line1'],
                 address_line2=data.get('address_line2'),
                 city=data['city'],
@@ -113,7 +113,7 @@ def community_host_register(slug):
                 gallery=data.get('gallery_urls', '').split('\n') if data.get('gallery_urls') else [],
                 is_active=False,
                 is_verified=False,
-                status=AccommodationPropertyStatus.PENDING_REVIEW,
+                status=AccommodationPropertyStatus.PENDING_REVIEW.value,
             )
             db.session.add(property)
             db.session.flush()

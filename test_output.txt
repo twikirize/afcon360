@@ -1,0 +1,363 @@
+﻿[OK] Loaded .env.testing
+Using test database: postgresql://israeli:****@localhost:5432/afcon360_test
+============================= test session starts =============================
+platform win32 -- Python 3.13.14, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\OBED\Desktop\afcon360_app\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\OBED\Desktop\afcon360_app
+plugins: locust-2.46.3, cov-6.0.0, flask-1.3.0
+collecting ... [OK] Kept 1 test items from 'tests/' directory.
+collected 1 item
+
+python : 2026-09-04 11:09:20,085 [INFO] app.admin: \u2705 Registered owner blueprint
+At line:2 char:78
++ ... vate.ps1" ; python -m pytest tests/test_verify_detached_diagnosis.py: ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (2026-09-04 11:0...owner blueprint:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+2026-09-04 11:09:20,284 [INFO] app.admin: \u2705 Registered moderator blueprint
+2026-09-04 11:09:20,284 [INFO] app.admin: \u2705 Registered compliance blueprint
+2026-09-04 11:09:20,285 [INFO] app.admin: \u2705 Registered support blueprint
+2026-09-04 11:09:20,286 [INFO] app.admin: \u2705 Registered auditor blueprint
+2026-09-04 11:09:20,331 [INFO] app.admin: \u2705 Registered trust_settings blueprint
+2026-09-04 11:09:20,339 [INFO] app.admin: \u2705 Registered role-based admin route modules
+2026-09-04 11:09:20,403 [INFO] app.events: Events settings routes registered
+2026-09-04 11:09:20,403 [INFO] app.events: Events admin pages registered
+2026-09-04 11:09:20,537 [INFO] app: \u23f1 register_all_models() took 0.86s
+2026-09-04 11:09:20,589 [INFO] app: \u23f1 core extension init_app calls took 0.05s
+2026-09-04 11:09:20,589 [INFO] app: \u23f1 mail + socketio namespace init took 0.00s
+2026-09-04 11:09:20,589 [INFO] app: \u2705 Mail extension initialized
+2026-09-04 11:09:20,590 [INFO] app: \U0001f6e1\ufe0f IDGuard enabled with 1 String FK exceptions
+2026-09-04 11:09:20,590 [INFO] app: \u2705 IDGuard initialized for runtime ID mixing protection
+2026-09-04 11:09:20,599 [INFO] app: \u23f1 lazy model imports (identity/profile/audit/roles/admin/event_accommodation) 
+took 0.01s
+2026-09-04 11:09:20,748 [INFO] app.events.signal_handlers: Events module signal handlers connected
+2026-09-04 11:09:20,748 [INFO] app: Events module signal handlers connected
+2026-09-04 11:09:20,788 [INFO] app: \u2705 Media admin blueprint registered
+2026-09-04 11:09:20,790 [INFO] app: \u2705 Tournament module registered
+2026-09-04 11:09:20,792 [INFO] app: \u2705 Tourism module registered with routes
+2026-09-04 11:09:20,812 [INFO] app.transport.api.routes: \u2705 Transport API resources registered (32 endpoints)
+2026-09-04 11:09:20,943 [INFO] app: \u2705 Transport API initialized - /api/transport/* routes live
+2026-09-04 11:09:20,943 [INFO] app: \u2705 Transport module initialized (Deep Lazy)
+2026-09-04 11:09:20,963 [INFO] app: \u2705 Transport module registered
+2026-09-04 11:09:20,990 [INFO] app: \u2705 Accommodation module registered
+2026-09-04 11:09:20,990 [INFO] app: \u2705 Feed module registered
+2026-09-04 11:09:20,990 [INFO] app: \u2705 Event Accommodation module registered
+2026-09-04 11:09:21,000 [INFO] app: \u2705 Wallet module registered
+2026-09-04 11:09:21,388 [WARNING] app: Could not initialize payment provider defaults: __init__() got an unexpected 
+keyword argument 'config_json'
+2026-09-04 11:09:21,426 [INFO] app: \u2705 Owner wallet config + agent management console registered
+2026-09-04 11:09:21,433 [INFO] app: \u2705 Notifications module registered
+2026-09-04 11:09:21,434 [INFO] app.notifications.listeners: \u2705 Notification listeners registered
+2026-09-04 11:09:21,438 [INFO] app: \u2705 Event backbone API registered
+2026-09-04 11:09:21,438 [INFO] app: \u2705 Event correlation middleware registered
+2026-09-04 11:09:21,439 [INFO] app: \u2705 CSP status routes registered
+2026-09-04 11:09:21,500 [DEBUG] app: CLI commands not found � skipping
+2026-09-04 11:09:21,500 [INFO] app: \u2705 IDGuard CLI commands registered
+2026-09-04 11:09:21,502 [INFO] app: \u2705 Module disabled page handler registered
+2026-09-04 11:09:21,505 [INFO] app: \u2705 Monitor blueprint registered
+2026-09-04 11:09:21,509 [INFO] app.production_console.sockets: Production console SocketIO namespace registered
+2026-09-04 11:09:21,509 [INFO] app: \u2705 Production Console blueprint and SocketIO namespace registered
+2026-09-04 11:09:21,509 [INFO] app: Production console logging initialized
+2026-09-04 11:09:23,546 [INFO] app: \u2705 Production Console logging handler initialized
+2026-09-04 11:09:23,549 [INFO] app: \u2705 Template helpers registered (safe_url, module_enabled)
+2026-09-04 11:09:23,557 [INFO] app: \u2705 Module API blueprint registered
+2026-09-04 11:09:23,561 [INFO] app: \u2705 Health API blueprint registered
+2026-09-04 11:09:23,564 [INFO] app: \u2705 Module reload hooks initialized (Instant Effect)
+2026-09-04 11:09:23,569 [INFO] app.endpoint_validator: \u2705 All known endpoint references validated successfully
+2026-09-04 11:09:23,569 [INFO] app: \u2705 App factory completed in 5.95 seconds
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running stamp_revision  -> 20260902_2255
+tests/test_verify_detached_diagnosis.py::test_two_request_user_identity [OK] Test database 'afcon360_test' already exists.
+[OK] Test database schema already present; skipping rebuild.
+[OK] Alembic head stamped.
+[OK] PostgreSQL test database verified (tables count: 193)
+
+================================================================================
+REQUEST 1 DIAGNOSTICS
+================================================================================
+Path taken: C_full_query
+User ID (PK): 473
+User object id(): 2746670840592
+Session ID: 2748326948080
+Session bound to User: 2746671672080
+Detached: False
+Persistent: True
+Expired: False
+
+--- REQUEST 1 ENDPOINT STATE ---
+{
+  "detached": false,
+  "is_authenticated_check": true,
+  "object_id": 2748320760160,
+  "persistent": true,
+  "session_id": 2746671672080
+}
+
+--- REQUEST 1 g STATE ---
+{
+  "g_id": 2748287518992,
+  "has_login_user": true,
+  "login_user_id": 2746670840592
+}
+
+--- REQUEST 1 SESSION STATE ---
+{
+  "_fresh": false,
+  "_user_id": "b8c2a72e-99b2-4f5c-adfa-62e52131ff3b",
+  "keys": [
+    "_permanent",
+    "_user_id",
+    "_fresh"
+  ]
+}
+
+*** REQUEST 2 FAILED WITH 500 ***
+Response: {
+  "endpoint_state": {
+    "detached": true,
+    "is_authenticated_check": null,
+    "object_id": 2748320760160,
+    "persistent": false,
+    "session_id": null
+  },
+  "error": "Instance <User at 0x27f8256fb10> is not bound to a Session; attribute refresh operation cannot proceed (Background on this error at: https://sqlalche.me/e/20/bhk3)",
+  "g_state": {
+    "g_id": 2748287518992,
+    "has_login_user": true,
+    "login_user_id": 2746670840592
+  },
+  "session_state": {
+    "_fresh": false,
+    "_user_id": "b8c2a72e-99b2-4f5c-adfa-62e52131ff3b",
+    "keys": [
+      "_permanent",
+      "_user_id",
+      "_fresh"
+    ]
+  },
+  "status": "error"
+}
+
+================================================================================
+REQUEST 2 DIAGNOSTICS
+================================================================================
+Path taken: None
+User ID (PK): None
+User object id(): None
+Session ID: None
+Session bound to User: None
+Detached: None
+Persistent: None
+Expired: None
+
+--- REQUEST 2 ENDPOINT STATE ---
+{
+  "detached": true,
+  "is_authenticated_check": null,
+  "object_id": 2748320760160,
+  "persistent": false,
+  "session_id": null
+}
+
+--- REQUEST 2 g STATE ---
+{
+  "g_id": 2748287518992,
+  "has_login_user": true,
+  "login_user_id": 2746670840592
+}
+
+--- REQUEST 2 SESSION STATE ---
+{
+  "_fresh": false,
+  "_user_id": "b8c2a72e-99b2-4f5c-adfa-62e52131ff3b",
+  "keys": [
+    "_permanent",
+    "_user_id",
+    "_fresh"
+  ]
+}
+
+================================================================================
+COMPARISON
+================================================================================
+
+A. Same User object instance: False
+   Request 1: 2746670840592
+   Request 2: None
+
+B. Same db.session() object: False
+   Request 1: 2748326948080
+   Request 2: None
+
+C. Was User detached in Request 2: None
+
+D. Request 2 path: None
+FAILED
+
+================================== FAILURES ===================================
+_______________________ test_two_request_user_identity ________________________
+
+app = <Flask 'app'>, app_with_test_route = <Flask 'app'>
+instrumented_user_loader = <function instrumented_user_loader.<locals>.instrumented_load_user at 0x0000027F825ECC20>
+diagnosed_user = namespace(id=473, public_id='b8c2a72e-99b2-4f5c-adfa-62e52131ff3b')
+
+    def test_two_request_user_identity(app, app_with_test_route, instrumented_user_loader, diagnosed_user):
+        """
+        Minimal two-request reproduction.
+    
+        Proves or disproves:
+        - Is it the SAME User object across requests?
+        - Is it DETACHED on Request 2?
+        - At what point does detachment occur?
+        """
+        global request_diagnostics
+        request_diagnostics = []
+    
+        from app.extensions import cache
+    
+        client = app_with_test_route.test_client()
+    
+        # \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+        # REQUEST 1: Authenticate and trigger user_loader
+        # \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+    
+        # Set session directly
+        with client.session_transaction() as sess:
+            sess["_user_id"] = str(diagnosed_user.public_id)
+            sess["_fresh"] = True
+    
+        # Clear any request-level cache from previous test
+        request_diagnostics = []
+    
+        # Make first request to test endpoint
+        resp1 = client.get("/test_user_loader")
+        assert resp1.status_code in (200, 401), f"Unexpected status on request 1: {resp1.status_code}"
+    
+        # Capture endpoint response
+        import json
+        resp1_data = json.loads(resp1.data) if resp1.status_code in (200, 500) else {}
+    
+        # Capture Request 1 diagnostic
+        diag_req1 = request_diagnostics[-1] if request_diagnostics else {}
+        print("\n" + "="*80)
+        print("REQUEST 1 DIAGNOSTICS")
+        print("="*80)
+        print(f"Path taken: {diag_req1.get('path_taken')}")
+        print(f"User ID (PK): {diag_req1.get('user_id')}")
+        print(f"User object id(): {diag_req1.get('user_object_id')}")
+        print(f"Session ID: {diag_req1.get('db_session_id')}")
+        print(f"Session bound to User: {diag_req1.get('session_id_if_bound')}")
+        print(f"Detached: {diag_req1.get('detached')}")
+        print(f"Persistent: {diag_req1.get('persistent')}")
+        print(f"Expired: {diag_req1.get('expired')}")
+    
+        print("\n--- REQUEST 1 ENDPOINT STATE ---")
+        print(json.dumps(resp1_data.get('endpoint_state', {}), indent=2))
+        print("\n--- REQUEST 1 g STATE ---")
+        print(json.dumps(resp1_data.get('g_state', {}), indent=2))
+        print("\n--- REQUEST 1 SESSION STATE ---")
+        print(json.dumps(resp1_data.get('session_state', {}), indent=2))
+    
+        req1_user_object_id = diag_req1.get('user_object_id')
+        req1_session_id = diag_req1.get('db_session_id')
+    
+        # \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+        # REQUEST 2: Make second request - should trigger cache hit
+        # \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+    
+        request_diagnostics = []
+    
+        # DO NOT clear cache - let Path B execute naturally
+        # Use the test endpoint again
+        resp2 = client.get("/test_user_loader")
+    
+        # Capture endpoint response
+        resp2_data = json.loads(resp2.data) if resp2.status_code in (200, 500) else {}
+    
+        if resp2.status_code == 500:
+            print("\n*** REQUEST 2 FAILED WITH 500 ***")
+            print("Response:", json.dumps(resp2_data, indent=2))
+    
+        assert resp2.status_code in (200, 401, 500), f"Unexpected status on request 2: {resp2.status_code}"
+    
+        diag_req2 = request_diagnostics[-1] if request_diagnostics else {}
+        print("\n" + "="*80)
+        print("REQUEST 2 DIAGNOSTICS")
+        print("="*80)
+        print(f"Path taken: {diag_req2.get('path_taken')}")
+        print(f"User ID (PK): {diag_req2.get('user_id')}")
+        print(f"User object id(): {diag_req2.get('user_object_id')}")
+        print(f"Session ID: {diag_req2.get('db_session_id')}")
+        print(f"Session bound to User: {diag_req2.get('session_id_if_bound')}")
+        print(f"Detached: {diag_req2.get('detached')}")
+        print(f"Persistent: {diag_req2.get('persistent')}")
+        print(f"Expired: {diag_req2.get('expired')}")
+    
+        print("\n--- REQUEST 2 ENDPOINT STATE ---")
+        print(json.dumps(resp2_data.get('endpoint_state', {}), indent=2))
+        print("\n--- REQUEST 2 g STATE ---")
+        print(json.dumps(resp2_data.get('g_state', {}), indent=2))
+        print("\n--- REQUEST 2 SESSION STATE ---")
+        print(json.dumps(resp2_data.get('session_state', {}), indent=2))
+    
+        req2_user_object_id = diag_req2.get('user_object_id')
+        req2_session_id = diag_req2.get('db_session_id')
+    
+        # \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+        # ANALYSIS
+        # \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+    
+        print("\n" + "="*80)
+        print("COMPARISON")
+        print("="*80)
+    
+        # Question A: Same object?
+        same_object = req1_user_object_id == req2_user_object_id
+        print(f"\nA. Same User object instance: {same_object}")
+        print(f"   Request 1: {req1_user_object_id}")
+        print(f"   Request 2: {req2_user_object_id}")
+    
+        # Question B: Same session scope?
+        same_session = req1_session_id == req2_session_id
+        print(f"\nB. Same db.session() object: {same_session}")
+        print(f"   Request 1: {req1_session_id}")
+        print(f"   Request 2: {req2_session_id}")
+    
+        # Question C: Was it detached in Request 2?
+        req2_detached = diag_req2.get('detached')
+        print(f"\nC. Was User detached in Request 2: {req2_detached}")
+    
+        # Question D: Which path did Request 2 take?
+        req2_path = diag_req2.get('path_taken')
+        print(f"\nD. Request 2 path: {req2_path}")
+        if req2_path == 'B_redis_cache_hit':
+            print("   \u2713 Path B (cache hit) was executed")
+        elif req2_path == 'C_full_query':
+            print("   \u2713 Path C (full query) was executed (cache miss)")
+        else:
+>           print(f"   \u26a0 Unexpected path: {req2_path}")
+
+tests\test_verify_detached_diagnosis.py:375: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <encodings.cp1252.IncrementalEncoder object at 0x0000027FDE624AD0>
+input = '   \u26a0 Unexpected path: None', final = False
+
+    def encode(self, input, final=False):
+>       return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       UnicodeEncodeError: 'charmap' codec can't encode character '\u26a0' in position 3: character maps to <undefined>
+
+..\..\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1252.py:19: UnicodeEncodeError
+============================== warnings summary ===============================
+tests/test_verify_detached_diagnosis.py::test_two_request_user_identity
+tests/test_verify_detached_diagnosis.py::test_two_request_user_identity
+  C:\Users\OBED\Desktop\afcon360_app\migrations\env.py:42: DeprecationWarning: 'get_engine' is deprecated and will be removed in Flask-SQLAlchemy 3.2. Use 'engine' or 'engines[key]' instead. If you're using Flask-Migrate or Alembic, you'll need to update your 'env.py' file.
+    return current_app.extensions['migrate'].db.get_engine()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_verify_detached_diagnosis.py::test_two_request_user_identity
+======================= 1 failed, 2 warnings in 11.10s ========================

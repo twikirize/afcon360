@@ -326,9 +326,9 @@ def seed_roles(*, verbose: bool = True) -> Dict[str, Role]:
 
     if verbose:
         if created:
-            print(f"✅  Roles created: {', '.join(created)}")
+            print(f"OK  Roles created: {', '.join(created)}")
         else:
-            print("ℹ️   Roles: all already exist")
+            print("INFO  Roles: all already exist")
 
     return seeded
 
@@ -352,9 +352,9 @@ def seed_permissions(*, verbose: bool = True) -> Dict[str, Permission]:
 
     if verbose:
         if created:
-            print(f"✅  Permissions created: {len(created)}")
+            print(f"OK  Permissions created: {len(created)}")
         else:
-            print("ℹ️   Permissions: all already exist")
+            print("INFO  Permissions: all already exist")
 
     return seeded
 
@@ -390,23 +390,23 @@ def seed_role_permissions(
     db.session.commit()
 
     if verbose:
-        print(f"✅  Role-permission links: {created} new")
+        print(f"OK  Role-permission links: {created} new")
 
     return created
 
 
 def seed_all(*, verbose: bool = True) -> None:
-    """Full idempotent seed: roles → permissions → role-permission links."""
-    print("\n── Seeding roles ───────────────────────────────────────")
+    """Full idempotent seed: roles -> permissions -> role-permission links."""
+    print("\n-- Seeding roles ---------------------------------------")
     roles = seed_roles(verbose=verbose)
 
-    print("\n── Seeding permissions ─────────────────────────────────")
+    print("\n-- Seeding permissions ---------------------------------")
     permissions = seed_permissions(verbose=verbose)
 
-    print("\n── Linking permissions to roles ────────────────────────")
+    print("\n-- Linking permissions to roles ------------------------")
     seed_role_permissions(roles, permissions, verbose=verbose)
 
-    print("\n✅  Seed complete.\n")
+    print("\nOK  Seed complete.\n")
 
 
 # ============================================================================

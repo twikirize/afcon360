@@ -22,7 +22,7 @@ import logging
 from typing import List, Optional
 
 from app.extensions import db
-from app.identity.models.organisation_member import OrgUserRole, OrganisationMember
+from app.identity.models.organisation_member import OrgUserRole, OrgRole, OrganisationMember
 from app.identity.models.roles_permission import Role, get_or_create_role
 from app.identity.models.user import UserRole
 from app.utils.transactions import db_transaction
@@ -248,6 +248,14 @@ def assign_org_role(
     """
     Assign an organisation-scoped role to a user.
 
+    Resolves the per-organisation ``OrgRole`` instance (``org_roles``) for
+    the target organisation and creates an ``OrgUserRole`` assignment
+    referencing that instance's PK.
+
+    If the organisation has not yet been provisioned with its standard role
+    instances, this function provisions them on demand via
+    :func:`~app.identity.services.organisation_role_provisioning.provision_organisation_roles`.
+
     Idempotent - returns the existing ``OrgUserRole`` if already assigned.
 
     Args:
@@ -260,10 +268,10 @@ def assign_org_role(
         The ``OrgUserRole`` instance (new or existing).
 
     Raises:
-        ValueError: If the role does not exist or the user is not a member.
+        ValueError: If the user is not a member, the ``OrgRole`` cannot be
+                    resolved, or the ``OrgRole`` does not belong to the
+                    target organisation.
     """
-    role = _get_role(role_name, scope="org")
-
     membership = OrganisationMember.query.filter_by(
         user_id=user_id,
         organisation_id=org_id,
@@ -275,31 +283,81 @@ def assign_org_role(
             "Add them as a member before assigning an org role."
         )
 
+    # ------------------------------------------------------------------
+    # Resolve the per-organisation OrgRole instance.
+    # ------------------------------------------------------------------
+    org_role = (
+        OrgRole.query.filter_by(
+            organisation_id=org_id,
+            name=role_name,
+        ).first()
+    )
+
+    if org_role is None:
+        # Not provisioned yet - provision on demand.
+        from app.identity.services.organisation_role_provisioning import (
+            provision_organisation_roles,
+        )
+        from app.identity.models.organisation import Organisation
+
+        organisation = db.session.get(Organisation, org_id)
+        if organisation is None:
+            raise ValueError(
+                f"Organisation {org_id} not found."
+            )
+        provision_organisation_roles(
+            organisation, roles={role_name}
+        )
+        db.session.expire_all()
+        org_role = (
+            OrgRole.query.filter_by(
+                organisation_id=org_id,
+                name=role_name,
+            ).first()
+        )
+
+    if org_role is None:
+        raise ValueError(
+            f"Organisation role {role_name!r} could not be resolved "
+            f"for organisation {org_id}."
+        )
+
+    # Organisation boundary: the resolved OrgRole must belong to the
+    # target organisation.
+    if org_role.organisation_id != org_id:
+        raise ValueError(
+            f"Organisation role {role_name!r} (org_role_id={org_role.id}) "
+            f"belongs to organisation {org_role.organisation_id}, not "
+            f"the requested organisation {org_id}."
+        )
+
+    # ------------------------------------------------------------------
+    # Idempotent assignment.
+    # ------------------------------------------------------------------
     existing = OrgUserRole.query.filter_by(
         organisation_member_id=membership.id,
-        role_id=role.id,
+        role_id=org_role.id,
     ).first()
     if existing:
         return existing
 
-    our = OrgUserRole(
-        organisation_member_id=membership.id,
-        role_id=role.id,
-        assigned_by=assigned_by_id,
-    )
-    try:
+    with db_transaction(
+        f"Assign org role '{role_name}' (org_role_id={org_role.id}) "
+        f"to user {user_id} in org {org_id}"
+    ):
+        our = OrgUserRole(
+            organisation_member_id=membership.id,
+            role_id=org_role.id,
+            assigned_by=assigned_by_id,
+        )
         db.session.add(our)
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        log.error("Failed to assign org role %s in org %s: %s", role_name, org_id, e)
-        raise
 
     log.info(
         "org_role_assigned",
         extra={
             "user_id":     user_id,
             "org_id":      org_id,
+            "org_role_id": org_role.id,
             "role":        role_name,
             "assigned_by": assigned_by_id,
         },
@@ -318,6 +376,10 @@ def revoke_org_role(
     """
     Revoke an org-scoped role from a user.
 
+    Resolves the per-organisation ``OrgRole`` instance (``org_roles``) for
+    the target organisation and removes the ``OrgUserRole`` assignment
+    referencing that instance's PK.
+
     Args:
         user_id:       Primary key of the target ``User``.
         org_id:        Primary key of the target ``Organisation``.
@@ -326,13 +388,12 @@ def revoke_org_role(
 
     Returns:
         ``True`` if the assignment was found and removed, ``False``
-        if it did not exist.
+        if it did not exist or the ``OrgRole`` was not provisioned.
 
     Raises:
-        ValueError: If the role does not exist in the database.
+        ValueError: If the resolved ``OrgRole`` does not belong to the
+                    target organisation.
     """
-    role = _get_role(role_name, scope="org")
-
     membership = OrganisationMember.query.filter_by(
         user_id=user_id,
         organisation_id=org_id,
@@ -341,27 +402,44 @@ def revoke_org_role(
     if not membership:
         return False
 
+    # ------------------------------------------------------------------
+    # Resolve the per-organisation OrgRole instance.
+    # ------------------------------------------------------------------
+    org_role = OrgRole.query.filter_by(
+        organisation_id=org_id,
+        name=role_name,
+    ).first()
+
+    if org_role is None:
+        return False
+
+    if org_role.organisation_id != org_id:
+        raise ValueError(
+            f"Organisation role {role_name!r} (org_role_id={org_role.id}) "
+            f"belongs to organisation {org_role.organisation_id}, not "
+            f"the requested organisation {org_id}."
+        )
+
     our = OrgUserRole.query.filter_by(
         organisation_member_id=membership.id,
-        role_id=role.id,
+        role_id=org_role.id,
     ).first()
 
     if not our:
         return False
 
-    try:
+    with db_transaction(
+        f"Revoke org role '{role_name}' (org_role_id={org_role.id}) "
+        f"from user {user_id} in org {org_id}"
+    ):
         db.session.delete(our)
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        log.error("Failed to revoke org role %s in org %s: %s", role_name, org_id, e)
-        raise
 
     log.info(
         "org_role_revoked",
         extra={
             "user_id":    user_id,
             "org_id":     org_id,
+            "org_role_id": org_role.id,
             "role":       role_name,
             "revoked_by": revoked_by_id,
         },

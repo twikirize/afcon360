@@ -455,15 +455,39 @@ def has_org_permission(
         return False
 
     from app.extensions import db
-    from app.identity.models.roles_permission import Permission, RolePermission
+    from app.identity.models.organisation_member import (
+        OrgRolePermission,
+        OrgMemberPermission,
+    )
+    from app.identity.models.roles_permission import Permission
 
-    match = (
+    # 1. Direct grant / deny overrides (checked first — these win over
+    #    role-based permissions, matching OrganisationMember.effective_permissions
+    #    semantics where direct denies remove role-granted permissions).
+    direct = (
+        OrgMemberPermission.query.filter_by(member_id=member.id)
+        .all()
+    )
+    if direct:
+        perm_ids = [dp.permission_id for dp in direct]
+        perm_names = dict(
+            db.session.query(Permission.id, Permission.name)
+            .filter(Permission.id.in_(perm_ids))
+            .all()
+        )
+        for dp in direct:
+            name = perm_names.get(dp.permission_id)
+            if name == permission_name:
+                return dp.granted
+
+    # 2. Role-based permissions via org_role_permissions (NOT role_permissions).
+    role_match = (
         db.session.query(Permission)
-        .join(RolePermission, RolePermission.permission_id == Permission.id)
+        .join(OrgRolePermission, OrgRolePermission.permission_id == Permission.id)
         .filter(
             Permission.name == permission_name,
-            RolePermission.role_id.in_(org_role_ids),
+            OrgRolePermission.org_role_id.in_(org_role_ids),
         )
         .first()
     )
-    return match is not None
+    return role_match is not None

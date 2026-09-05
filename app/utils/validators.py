@@ -292,10 +292,8 @@ class TransportValidators:
         """
         errors = []
 
-        # Required fields
         required_fields = [
-            'pickup_location', 'dropoff_location',
-            'passenger_count', 'service_type', 'preferred_vehicle_class'
+            'pickup_location', 'dropoff_location', 'pickup_time', 'service_type'
         ]
 
         for field in required_fields:
@@ -319,30 +317,42 @@ class TransportValidators:
         if 'passenger_count' in data:
             try:
                 count = int(data['passenger_count'])
-                if count < 1 or count > 20:
-                    errors.append("Passenger count must be between 1 and 20")
+                if count < 1 or count > 100:
+                    errors.append("Passenger count must be between 1 and 100")
             except ValueError:
                 errors.append("Passenger count must be a valid number")
 
-        # Validate service type
-        valid_service_types = ['INSTANT', 'SCHEDULED', 'CHARTER', 'SHUTTLE']
+        # Validate service type (canonical ServiceType enum values)
+        valid_service_types = [
+            'airport_arrival', 'airport_departure', 'stadium_shuttle',
+            'hotel_transfer', 'city_tour', 'on_demand',
+            'scheduled_route', 'custom_tour'
+        ]
         if 'service_type' in data and data['service_type']:
-            if data['service_type'].upper() not in valid_service_types:
+            st = data['service_type'].lower()
+            if st not in valid_service_types:
                 errors.append(f"Service type must be one of: {', '.join(valid_service_types)}")
 
-        # Validate vehicle class
-        valid_classes = ['ECONOMY', 'COMFORT', 'PREMIUM', 'LUXURY', 'VAN', 'BUS']
-        if 'preferred_vehicle_class' in data and data['preferred_vehicle_class']:
-            if data['preferred_vehicle_class'].upper() not in valid_classes:
+        # Validate vehicle class (canonical VehicleClass enum values)
+        valid_classes = ['economy', 'comfort', 'premium', 'luxury', 'van', 'bus']
+        vehicle_class_key = 'vehicle_class' if data.get('vehicle_class') else 'preferred_vehicle_class'
+        if vehicle_class_key in data and data[vehicle_class_key]:
+            vc = data[vehicle_class_key].lower()
+            if vc not in valid_classes:
                 errors.append(f"Vehicle class must be one of: {', '.join(valid_classes)}")
 
-        # Validate scheduled time if provided
+        # Validate scheduled/pickup time if provided
         if 'scheduled_time' in data and data['scheduled_time']:
             is_valid, time_error = TransportValidators.validate_future_datetime(
                 data['scheduled_time']
             )
-            if not is_valid:
+            if time_error:
                 errors.append(f"Scheduled time: {time_error}")
+        elif 'pickup_time' in data and data.get('pickup_time'):
+            try:
+                datetime.fromisoformat(str(data['pickup_time']))
+            except ValueError:
+                errors.append("Pickup time must be a valid datetime")
 
         # Validate special requirements
         if 'special_requirements' in data and data['special_requirements']:

@@ -33,6 +33,7 @@ from sqlalchemy.dialects.postgresql import TSVECTOR
 
 import hashlib
 import secrets
+import uuid as uuid_lib
 
 from sqlalchemy import (
     Index, UniqueConstraint, CheckConstraint, Enum as SQLEnum,
@@ -97,6 +98,21 @@ class PaymentStatus(str, Enum):
     REFUNDED = 'refunded'
     PARTIALLY_REFUNDED = 'partially_refunded'
     FAILED = 'failed'
+    CANCELLED = 'cancelled'
+
+
+class PassengerStatus(str, Enum):
+    """Transport passenger lifecycle.
+
+    Distinguishes a Transport participant that is still linked to a System
+    User Account (LINKED) from one that exists accountless pending a secure
+    claim (PENDING / CLAIMED).
+    """
+    PENDING = 'pending'
+    CONFIRMED = 'confirmed'
+    ASSIGNED = 'assigned'
+    CLAIMED = 'claimed'
+    LINKED = 'linked'
     CANCELLED = 'cancelled'
 
 
@@ -1060,6 +1076,12 @@ class Booking(TransportBase):
     rating = relationship("Rating", back_populates="booking", uselist=False)
     incidents = relationship("TransportIncident", back_populates="booking")
     payments = relationship("BookingPayment", back_populates="booking")
+    passengers = relationship(
+        "TransportPassenger",
+        back_populates="booking",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     def generate_booking_reference(self):
         """Generate unique booking reference"""
@@ -1109,6 +1131,102 @@ class Booking(TransportBase):
             return self.final_price * Decimal('0.25')  # 25% fee
         else:
             return self.final_price * Decimal('0.50')  # 50% fee
+
+
+# ===========================================================================
+# TRANSPORT PARTICIPANT (PASSENGER)
+# ===========================================================================
+
+class TransportPassenger(TransportBase):
+    """A Transport passenger (participant) attached to a Booking.
+
+    Follows the AFCON360 participant pattern used by Events and Accommodation:
+
+        DOMAIN PARTICIPANT  ->  optional  ->  SYSTEM USER ACCOUNT (User)
+
+    A passenger may exist WITHOUT a System User Account (accountless) using the
+    name / email / phone snapshot columns. It becomes a System User only after
+    the accountless passenger authenticates and performs a secure claim/link.
+
+    The passenger is explicitly related to a Booking (its vehicle / slot).
+    Capacity is a Transport-domain concern (see PassengerService.assign_vehicle).
+    Booking ownership stays on the Booking itself (Booking.user_id = BOOKER).
+    """
+    __tablename__ = "transport_passengers"
+    __table_args__ = (
+        Index("ix_tp_booking", "booking_id", "status"),
+        Index("ix_tp_user", "user_id", "status"),
+        Index("ix_tp_vehicle", "assigned_vehicle_id", "status"),
+        Index("ix_tp_claim_hash", "claim_token_hash", unique=True),
+        ForeignKeyConstraint(
+            ['booking_id'], ['transport_bookings.id'],
+            ondelete='CASCADE',
+            name='fk_tp_booking'
+        ),
+        ForeignKeyConstraint(
+            ['user_id'], ['users.id'],
+            ondelete='SET NULL',
+            name='fk_tp_user'
+        ),
+        ForeignKeyConstraint(
+            ['assigned_vehicle_id'], ['transport_vehicles.id'],
+            ondelete='SET NULL',
+            name='fk_tp_vehicle'
+        ),
+        ForeignKeyConstraint(
+            ['claimed_by_user_id'], ['users.id'],
+            ondelete='SET NULL',
+            name='fk_tp_claimed_by'
+        ),
+    )
+
+    public_id = db.Column(
+        db.String(64), unique=True, nullable=False, index=True,
+        default=lambda: str(uuid_lib.uuid4())
+    )
+
+    booking_id = db.Column(db.BigInteger, nullable=False)
+    user_id = db.Column(db.BigInteger, nullable=True)
+    assigned_vehicle_id = db.Column(db.BigInteger, nullable=True)
+
+    name = db.Column(db.String(150))
+    email = db.Column(db.String(255))
+    phone = db.Column(db.String(30))
+
+    status = db.Column(db.String(20), default=PassengerStatus.PENDING, nullable=False)
+    seat_label = db.Column(db.String(20))
+
+    claim_token_hash = db.Column(db.String(128), nullable=True)
+    claim_token_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    claim_token_consumed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    claimed_by_user_id = db.Column(db.BigInteger, nullable=True)
+    claimed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    passenger_metadata = db.Column(JSONB, default=lambda: {})
+
+    # Relationships
+    booking = relationship("Booking", back_populates="passengers")
+    user = relationship("User", foreign_keys=[user_id], backref="transport_passengers")
+    claimed_by = relationship("User", foreign_keys=[claimed_by_user_id])
+    assigned_vehicle = relationship("Vehicle", foreign_keys=[assigned_vehicle_id])
+
+    @property
+    def is_accountless(self):
+        """True when the passenger has no linked System User Account."""
+        return self.user_id is None or self.status != PassengerStatus.LINKED
+
+    @property
+    def is_claimed(self):
+        return self.status in (PassengerStatus.CLAIMED, PassengerStatus.LINKED)
+
+    def link_to_user(self, user):
+        """Bind this passenger to a System User Account (idempotent)."""
+        self.user_id = user.id
+        self.name = self.name or getattr(user, 'name', None)
+        self.email = self.email or getattr(user, 'email', None)
+        self.phone = self.phone or getattr(user, 'phone', None)
+        self.status = PassengerStatus.LINKED
+        return self
 
 
 # ===========================================================================

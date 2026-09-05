@@ -231,40 +231,41 @@ class PromotionService:
                 )
 
             # Check if promo code already applied
-            if booking.promo_code:
+            applied_codes = (booking.booking_metadata or {}).get('promo_codes', [])
+            if promo_code in applied_codes:
                 raise ValidationError(
-                    message="Promo code already applied to this booking",
-                    code="PROMO_ALREADY_APPLIED"
+                    message="Promo code already applied to this booking"
                 )
 
             # Validate promo code
             validation_result = PromotionService.validate_promo_code(
                 promo_code=promo_code,
-                customer_id=booking.customer_id,
+                customer_id=booking.user_id,
                 booking_data={
                     'service_type': booking.service_type.value,
-                    'estimated_price': float(booking.estimated_price) if booking.estimated_price else 0.0
+                    'estimated_price': float(booking.final_price or booking.base_price or 0.0)
                 }
             )
 
             if not validation_result['valid']:
                 raise ValidationError(
-                    message=validation_result['message'],
-                    code=validation_result.get('code', 'INVALID_PROMO')
+                    message=validation_result['message']
                 )
 
             # Calculate discount
             discount_amount = Decimal(str(validation_result['data']['discount_amount']))
 
             # Update booking
-            booking.promo_code = promo_code
-            booking.discount_amount = discount_amount
+            booking.promotion_discount = (booking.promotion_discount or Decimal('0.00')) + discount_amount
+            metadata = booking.booking_metadata or {}
+            metadata.setdefault('promo_codes', []).append(promo_code)
+            booking.booking_metadata = metadata
 
             # Recalculate final price if already set
             if booking.final_price:
                 booking.final_price = booking.final_price - discount_amount
-            elif booking.estimated_price:
-                booking.final_price = booking.estimated_price - discount_amount
+            elif booking.base_price:
+                booking.final_price = booking.base_price - discount_amount
 
             db.session.commit()
 
@@ -286,7 +287,7 @@ class PromotionService:
                     'promo_code': promo_code,
                     'discount_amount': float(discount_amount),
                     'new_price': float(booking.final_price) if booking.final_price else float(
-                        booking.estimated_price - discount_amount) if booking.estimated_price else 0.0
+                        (booking.base_price or 0) - discount_amount)
                 }
             }
 
@@ -311,9 +312,7 @@ class PromotionService:
             required_fields = ['code', 'discount_type', 'discount_value']
             if not all(field in promo_data for field in required_fields):
                 raise ValidationError(
-                    message="Missing required fields",
-                    details={'required_fields': required_fields},
-                    code="MISSING_FIELDS"
+                    message=f"Missing required fields: {required_fields}",
                 )
 
             # Generate unique code if not provided

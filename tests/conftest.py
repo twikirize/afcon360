@@ -37,6 +37,46 @@ def pytest_configure(config):
     )
 
 
+# ---------- 1.5 Override pytest-flask's leaking _push_request_context ----------
+@pytest.fixture(autouse=True)
+def _push_request_context(request):
+    """Replace pytest-flask's autouse ``_push_request_context``.
+
+    pytest-flask 1.3.0 (plugin.py) unconditionally pushes ``app.test_request_
+    context()`` for every test whose fixture graph includes ``app``.  That
+    ``test_request_context()`` carries an ``AppContext`` that stays open for
+    the entire test.  When the test client then makes HTTP requests,
+    ``RequestContext.push()`` REUSES that already-active AppContext instead of
+    creating a fresh one, so ``flask.g`` (and Flask-Login's ``g._login_user``)
+    is the SAME object across every request made in the test.  The
+    ``current_user`` loaded during Request 1 therefore leaks into Request 2
+    even though the session says a different user (or none) is logged in.
+
+    Fix: tests that exercise HTTP via the ``client`` fixture get NO outer
+    request context, so every ``client.get()`` / ``client.post()`` runs with a
+    fresh AppContext and an isolated ``g``.  This is the explicit fixture
+    boundary: declaring ``client`` means "I make real HTTP requests" and thus
+    must not inherit a long-lived AppContext.
+
+    Tests that do NOT use ``client`` keep pytest-flask's convenience of being
+    able to call ``url_for`` / ``session`` / ``current_app`` directly in the
+    test body (a short-lived request context is pushed/popped around them).
+    """
+    if "app" not in request.fixturenames:
+        return
+    if "client" in request.fixturenames or "test_client" in request.fixturenames:
+        # HTTP tests: no outer request context, so client requests are isolated.
+        return
+    app = request.getfixturevalue("app")
+    ctx = app.test_request_context()
+    ctx.push()
+
+    def teardown():
+        ctx.pop()
+
+    request.addfinalizer(teardown)
+
+
 # ---------- 2. Force collection to only include tests from 'tests/' ----------
 def pytest_collection_modifyitems(session, config, items):
     """Remove any test items that are not inside the 'tests/' directory."""
@@ -228,11 +268,44 @@ def test_db(db_session):
 
 # ---------- 10. Automatic cleanup after each test ----------
 @pytest.fixture(autouse=True)
-def clean_db(request):
-    """Automatically rollback DB changes after each test (except no_database tests)."""
+def clean_db(request, app):
+    """Automatically rollback DB changes after each test (except no_database tests).
+
+    IMPORTANT: This fixture does NOT depend on ``db_session``.  Pulling in
+    ``db_session`` would push an ``AppContext`` that stays open for the
+    entire test, which causes ``flask.g`` to be the **same object** across
+    all HTTP requests made via ``client.get()`` / ``client.post()``.  That
+    breaks Flask-Login's ``g._login_user`` cache — the stale User from
+    Request 1 persists to Request 2, so ``user_loader`` is never called and
+    ``current_user`` is a detached instance.
+
+    Tests that need a live ``db_session`` within a persistent app context
+    must request it explicitly via their parameter list.  This autouse
+    fixture only ensures cleanup at the end.
+    """
     if request.node.get_closest_marker('no_database'):
         yield
         return
-    db_session = request.getfixturevalue('db_session')
     yield
-    db_session.rollback()
+    # Clean up the scoped session.  If no app context is active (common for
+    # HTTP-client tests), push a short-lived one just for the teardown.
+    from flask import has_app_context
+    if has_app_context():
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        try:
+            db.session.remove()
+        except Exception:
+            pass
+    else:
+        with app.app_context():
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            try:
+                db.session.remove()
+            except Exception:
+                pass

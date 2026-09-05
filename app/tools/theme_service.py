@@ -1,5 +1,6 @@
 import os
 from flask import current_app
+from app.extensions import db
 from app.models.theme import GlobalTheme, UserThemePreference
 
 class ThemeService:

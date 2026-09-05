@@ -12,11 +12,19 @@ from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db, cache
-from app.transport.models import Booking, BookingStatus, ServiceType, VehicleClass
+from app.transport.models import (
+    Booking,
+    BookingStatus,
+    ServiceType,
+    ProviderType,
+    VehicleClass,
+    Currency,
+    PaymentStatus,
+)
 from app.utils.exceptions import ValidationError, NotFoundError, PermissionError, ServiceUnavailableError
 from app.utils.security import sanitize_input
 from app.utils.validators import validate_booking_request
-from app.utils.monitoring import monitor_endpoint, record_metric, start_span
+from app.utils.monitoring import monitor_endpoint, record_metric
 from app.utils.audit import audit_log
 
 # Module-level logger (doesn't need app context)
@@ -41,35 +49,46 @@ class BookingService:
     @monitor_endpoint("create_booking")
     def create_booking(self, customer_id: int, booking_data: Dict[str, Any],
                        request_id: Optional[str] = None) -> Dict[str, Any]:
-        span = start_span("create_booking")
         try:
-            sanitized_data = sanitize_input(booking_data)
-            validation = validate_booking_request(sanitized_data)
-            if not validation["valid"]:
+            sanitized_data = booking_data or {}
+            is_valid, validation_errors = validate_booking_request(sanitized_data)
+            if not is_valid:
                 raise ValidationError(
-                    message="Booking validation failed",
-                    details=validation["errors"]
+                    message="; ".join(validation_errors) or "Booking validation failed"
                 )
 
             estimated_price = self._calculate_estimated_price(sanitized_data)
 
+            try:
+                pickup_time = datetime.fromisoformat(str(sanitized_data["pickup_time"]))
+            except (ValueError, TypeError, KeyError):
+                pickup_time = datetime.now(timezone.utc)
+
+            special_req = sanitized_data.get("special_requirements") or {}
+            if isinstance(special_req, str):
+                special_req = {"note": special_req}
+
             booking = Booking(
-                booking_code=self._generate_booking_code(),
-                customer_id=customer_id,
-                service_type=ServiceType(sanitized_data["service_type"]),
-                pickup_location=sanitized_data["pickup_location"],
-                dropoff_location=sanitized_data["dropoff_location"],
-                pickup_time=datetime.fromisoformat(sanitized_data["pickup_time"]),
-                passenger_count=sanitized_data.get("passenger_count", 1),
-                luggage_count=sanitized_data.get("luggage_count", 0),
-                vehicle_class_preference=sanitized_data.get("vehicle_class", VehicleClass.COMFORT.value),
-                special_requirements=sanitized_data.get("special_requirements", ""),
-                estimated_price=estimated_price,
+                user_id=customer_id,
+                provider_type=ProviderType(
+                    (sanitized_data.get("provider_type") or "individual_driver").lower()
+                ),
+                service_type=ServiceType(sanitized_data["service_type"].lower()),
+                pickup_location=sanitized_data.get("pickup_location"),
+                dropoff_location=sanitized_data.get("dropoff_location"),
+                pickup_time=pickup_time,
+                passenger_count=int(sanitized_data.get("passenger_count") or 1),
+                luggage_count=int(sanitized_data.get("luggage_count") or 0),
+                special_requirements=special_req,
+                accessibility_requirements=sanitized_data.get("accessibility_requirements") or [],
+                base_price=estimated_price,
                 estimated_distance_km=sanitized_data.get("estimated_distance"),
                 estimated_duration_minutes=sanitized_data.get("estimated_duration"),
                 payment_method=sanitized_data.get("payment_method", "cash"),
-                status=BookingStatus.PENDING,
-                metadata={
+                payment_status=PaymentStatus.PENDING,
+                status=BookingStatus.PENDING_PAYMENT,
+                currency=Currency(sanitized_data.get("currency") or "USD"),
+                booking_metadata={
                     "customer_id": customer_id,
                     "request_id": request_id,
                     "created_at": datetime.now(timezone.utc).isoformat()
@@ -83,20 +102,20 @@ class BookingService:
 
             record_metric("booking_created", tags={
                 "service_type": booking.service_type.value,
-                "vehicle_class": booking.vehicle_class_preference
+                "provider_type": booking.provider_type.value
             }, value=1)
 
             audit_log(
                 action="booking_created",
-                entity_type="booking",
-                entity_id=booking.id,
+                resource_type="booking",
+                resource_id=booking.id,
                 user_id=customer_id,
                 details={
-                    "booking_code": booking.booking_code,
+                    "booking_reference": booking.booking_reference,
                     "service_type": booking.service_type.value,
-                    "estimated_price": float(estimated_price)
-                },
-                request_id=request_id
+                    "base_price": float(estimated_price),
+                    "request_id": request_id,
+                }
             )
 
             # Emit notification signal (listener notifies customer)
@@ -111,7 +130,8 @@ class BookingService:
                 "message": "Booking created successfully",
                 "data": {
                     "booking_id": booking.id,
-                    "booking_code": booking.booking_code,
+                    "booking_public_id": booking.booking_reference,
+                    "booking_reference": booking.booking_reference,
                     "estimated_price": float(estimated_price),
                     "status": booking.status.value,
                     "pickup_time": booking.pickup_time.isoformat()
@@ -120,19 +140,14 @@ class BookingService:
 
         except ValidationError as e:
             db.session.rollback()
-            span.set_status("ERROR", str(e))
             record_metric("booking_creation", tags={"status": "failed", "error_type": "validation"}, value=1)
             raise
 
         except SQLAlchemyError as e:
             db.session.rollback()
             logger.error(f"Database error in booking creation: {e}", exc_info=True)
-            span.set_status("ERROR", f"Database error: {str(e)}")
             record_metric("booking_creation", tags={"status": "failed", "error_type": "database"}, value=1)
             raise ServiceUnavailableError("Booking service temporarily unavailable")
-
-        finally:
-            span.end()
 
     @monitor_endpoint("get_booking")
     def get_booking(self, booking_id: int) -> Dict[str, Any]:
@@ -159,16 +174,15 @@ class BookingService:
     @monitor_endpoint("cancel_booking")
     def cancel_booking(self, booking_id: int, user_id: int,
                        reason: Optional[str] = None) -> Dict[str, Any]:
-        span = start_span("cancel_booking")
         try:
             booking = db.session.get(Booking, booking_id)
             if not booking:
                 raise NotFoundError("Booking not found", resource_type="booking", resource_id=booking_id)
 
-            if booking.customer_id != user_id and booking.driver_id != user_id and booking.provider_id != user_id:
+            if booking.user_id != user_id and booking.assigned_driver_id != user_id and booking.provider_id != user_id:
                 raise PermissionError("Cannot cancel another user's booking")
 
-            if booking.status not in [BookingStatus.PENDING, BookingStatus.CONFIRMED]:
+            if booking.status not in [BookingStatus.PENDING_PAYMENT, BookingStatus.CONFIRMED]:
                 raise ValidationError(f"Cannot cancel booking in {booking.status.value} status")
 
             booking.status = BookingStatus.CANCELLED
@@ -193,17 +207,13 @@ class BookingService:
 
         except (NotFoundError, PermissionError, ValidationError) as e:
             db.session.rollback()
-            span.set_status("ERROR", str(e))
             record_metric("booking_cancelled", tags={"status": "failed", "error_type": type(e).__name__}, value=1)
             raise
         except SQLAlchemyError as e:
             db.session.rollback()
             logger.error(f"Database error cancelling booking {booking_id}: {e}", exc_info=True)
-            span.set_status("ERROR", str(e))
             record_metric("booking_cancelled", tags={"status": "failed", "error_type": "database"}, value=1)
             raise ServiceUnavailableError("Could not cancel booking")
-        finally:
-            span.end()
 
     # =========================================================
     # List & Analytics (Enhanced for Admin Dashboard)
@@ -402,11 +412,15 @@ class BookingService:
 
     def _invalidate_listing_caches(self):
         try:
-            for key in cache.cache._client.scan_iter(f"{self.cache_prefix}:list:*"):
-                cache.delete(key)
+            client = getattr(cache.cache, "_client", None)
+            if client is not None and callable(getattr(client, "scan_iter", None)):
+                for key in client.scan_iter(f"{self.cache_prefix}:list:*"):
+                    cache.delete(key)
+                return
         except Exception:
-            cache.delete(f"{self.cache_prefix}:list:recent")
-            cache.delete(f"{self.cache_prefix}:list:all")
+            pass
+        cache.delete(f"{self.cache_prefix}:list:recent")
+        cache.delete(f"{self.cache_prefix}:list:all")
 
 
 # =========================================================

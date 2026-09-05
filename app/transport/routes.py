@@ -26,7 +26,8 @@ from app.utils.module_guard import module_enabled as check_module_enabled
 from app.utils.exceptions import NotFoundError, ServiceUnavailableError, ValidationError
 from app.utils.audit import audit_log
 from app.transport.services import get_booking_service, get_provider_service, get_dashboard_service
-from app.transport.models import Booking, DriverProfile, Vehicle
+from app.transport.services.passenger_service import get_passenger_service
+from app.transport.models import Booking, DriverProfile, Vehicle, TransportPassenger
 from app.extensions import db
 
 logger = logging.getLogger(__name__)
@@ -236,7 +237,7 @@ def book_transport():
 
     try:
         booking = get_booking_service().create_booking(current_user.id, data)
-        ref = booking["data"]["booking_code"]
+        ref = booking["data"]["booking_reference"]
         booking_id = booking["data"]["booking_id"]
         logger.info(f"Booking created: user_id={_uid()}, ref={ref}")
         flash(f"Booking confirmed! Reference: {ref}", "success")
@@ -271,7 +272,7 @@ def bookings_show(id):
             return redirect(url_for("transport.bookings_index"))
 
         # Check ownership
-        _require_ownership(booking_model, "customer_id")
+        _require_ownership(booking_model, "user_id")
 
         # Get service representation
         booking = get_booking_service().get_booking(id)
@@ -299,7 +300,7 @@ def bookings_edit(id):
     booking_model = db.session.get(Booking, id)
     if not booking_model:
         abort(404)
-    _require_ownership(booking_model, "customer_id")
+    _require_ownership(booking_model, "user_id")
 
     logger.info(f"Booking edit {id} accessed by user_id={_uid()}")
     return _json_or_template("transport/bookings/edit.html", id=id)
@@ -314,7 +315,7 @@ def bookings_timeline(id):
     booking_model = db.session.get(Booking, id)
     if not booking_model:
         abort(404)
-    _require_ownership(booking_model, "customer_id")
+    _require_ownership(booking_model, "user_id")
 
     logger.info(f"Booking timeline {id} accessed by user_id={_uid()}")
     return _json_or_template("transport/bookings/timeline.html", id=id)
@@ -329,10 +330,207 @@ def bookings_payments(id):
     booking_model = db.session.get(Booking, id)
     if not booking_model:
         abort(404)
-    _require_ownership(booking_model, "customer_id")
+    _require_ownership(booking_model, "user_id")
 
     logger.info(f"Booking payments {id} accessed by user_id={_uid()}")
     return _json_or_template("transport/bookings/payments.html", id=id)
+
+
+# =========================================================================
+# Passengers (booker/coordinator management + secure claim)
+# =========================================================================
+
+@transport_bp.route("/bookings/<int:booking_id>/passengers", methods=["POST"])
+@module_enabled_required("transport")
+@login_required
+def passenger_add(booking_id):
+    """Add passengers to a booking (booker or authorised coordinator).
+    Supports accountless passengers (name/email/phone only)."""
+    booking = db.session.get(Booking, booking_id)
+    if not booking:
+        return jsonify({"status": "error", "message": "Booking not found"}), 404
+    _require_ownership(booking, "user_id")
+
+    data = request.get_json(silent=True) or request.form.to_dict()
+    svc = get_passenger_service()
+
+    raw_uid = data.get("user_id")
+    try:
+        linked_uid = int(raw_uid) if raw_uid not in (None, "", "None") else None
+    except (TypeError, ValueError):
+        linked_uid = None
+
+    try:
+        passenger = svc.add_passenger(
+            booking,
+            name=data.get("name"),
+            email=data.get("email") or None,
+            phone=data.get("phone") or None,
+            user_id=linked_uid,
+            seat_label=data.get("seat_label") or None,
+        )
+        db.session.commit()
+    except ValidationError as err:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(getattr(err, "message", err))}), 400
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Passenger add failed for user_id={_uid()}: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+    return jsonify({"status": "ok", "passenger": svc.serialize(passenger)}), 201
+
+
+@transport_bp.route("/bookings/<int:booking_id>/passengers")
+@module_enabled_required("transport")
+@login_required
+def passenger_list(booking_id):
+    """List passengers for a booking (booker or authorised coordinator)."""
+    booking = db.session.get(Booking, booking_id)
+    if not booking:
+        return jsonify({"status": "error", "message": "Booking not found"}), 404
+    _require_ownership(booking, "user_id")
+
+    svc = get_passenger_service()
+    passengers = svc.passengers_for_booking(int(booking.id))
+    return jsonify({
+        "status": "ok",
+        "passengers": [svc.serialize(p) for p in passengers],
+    })
+
+
+@transport_bp.route("/bookings/<int:booking_id>/passengers/bulk", methods=["POST"])
+@module_enabled_required("transport")
+@login_required
+def passenger_bulk_add(booking_id):
+    """Bulk add multiple passengers at once (booker or authorised coordinator).
+    Supports group/multi-passenger bookings; capacity is enforced per assignment."""
+    booking = db.session.get(Booking, booking_id)
+    if not booking:
+        return jsonify({"status": "error", "message": "Booking not found"}), 404
+    _require_ownership(booking, "user_id")
+
+    data = request.get_json(silent=True) or {}
+    passengers = data.get("passengers", []) if isinstance(data, dict) else data
+    if not isinstance(passengers, list) or not passengers:
+        return jsonify({"status": "error", "message": "passengers list required"}), 400
+
+    svc = get_passenger_service()
+    try:
+        created = svc.bulk_add_passengers(booking, passengers)
+        db.session.commit()
+    except ValidationError as err:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(getattr(err, "message", err))}), 400
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Bulk passenger add failed for user_id={_uid()}: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+    return jsonify({"status": "ok", "created": len(created),
+                    "passengers": [svc.serialize(p) for p in created]}), 201
+
+
+@transport_bp.route("/passengers/<int:passenger_id>/claim-token", methods=["POST"])
+@module_enabled_required("transport")
+@login_required
+def passenger_issue_claim_token(passenger_id):
+    """Issue a single-use, expiry-bound claim token for a passenger (booker only).
+    Requires the passenger to have an email or phone for secure recipient binding."""
+    passenger = db.session.get(TransportPassenger, passenger_id)
+    if not passenger:
+        return jsonify({"status": "error", "message": "Passenger not found"}), 404
+    booking = db.session.get(Booking, passenger.booking_id)
+    if not booking:
+        return jsonify({"status": "error", "message": "Booking not found"}), 404
+    _require_ownership(booking, "user_id")
+
+    svc = get_passenger_service()
+    try:
+        token = svc.create_claim_token(passenger)
+        db.session.commit()
+    except ValidationError as err:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(getattr(err, "message", err))}), 400
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Claim token issue failed for user_id={_uid()}: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+    return jsonify({"status": "ok", "claim_token": token})
+
+
+@transport_bp.route("/passenger/claim/<string:passenger_public_id>/<token>", methods=["GET"])
+@module_enabled_required("transport")
+@login_required
+def passenger_claim_landing(passenger_public_id, token):
+    """Landing page for a claim token. Requires authentication so the claim is
+    bound to an AFCON360 user account (never a public form)."""
+    svc = get_passenger_service()
+    try:
+        passenger = svc.validate_claim_token(passenger_public_id, token)
+    except (ValidationError, PermissionError, NotFoundError) as err:
+        flash(str(getattr(err, "message", err)), "danger")
+        return redirect(url_for("transport.bookings_index"))
+    return render_template("transport/passengers/claim.html",
+                           passenger=passenger, token=token)
+
+
+@transport_bp.route("/passenger/claim/<string:passenger_public_id>/<token>", methods=["POST"])
+@module_enabled_required("transport")
+@login_required
+def passenger_claim(passenger_public_id, token):
+    """Bind a claim token to the currently authenticated user (single-use)."""
+    svc = get_passenger_service()
+    try:
+        passenger = svc.claim_with_token(passenger_public_id, token, current_user)
+        db.session.commit()
+    except (ValidationError, PermissionError, NotFoundError) as err:
+        db.session.rollback()
+        flash(str(getattr(err, "message", err)), "danger")
+        return redirect(url_for("transport.home"))
+    flash("Passenger linked to your account", "success")
+    return redirect(url_for("transport.bookings_show", id=passenger.booking_id))
+
+
+@transport_bp.route("/passengers/<int:passenger_id>/assign", methods=["POST"])
+@module_enabled_required("transport")
+@login_required
+def passenger_assign_vehicle(passenger_id):
+    """Assign (or reassign) a passenger to a specific vehicle, enforcing capacity
+    and booking passenger-count bounds. Supports multi-vehicle group assignment."""
+    passenger = db.session.get(TransportPassenger, passenger_id)
+    if not passenger:
+        return jsonify({"status": "error", "message": "Passenger not found"}), 404
+    booking = db.session.get(Booking, passenger.booking_id)
+    if not booking:
+        return jsonify({"status": "error", "message": "Booking not found"}), 404
+    _require_ownership(booking, "user_id")
+
+    data = request.get_json(silent=True) or request.form.to_dict()
+    vehicle_id = data.get("vehicle_id") or data.get("assigned_vehicle_id")
+    try:
+        vehicle_id = int(vehicle_id)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "vehicle_id required"}), 400
+
+    vehicle = db.session.get(Vehicle, vehicle_id)
+    if not vehicle or vehicle.is_deleted:
+        return jsonify({"status": "error", "message": "Vehicle not found"}), 404
+
+    svc = get_passenger_service()
+    try:
+        passenger = svc.assign_vehicle(passenger, vehicle, booking=booking)
+        db.session.commit()
+    except ValidationError as err:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(getattr(err, "message", err))}), 400
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Passenger assign failed for user_id={_uid()}: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+    return jsonify({"status": "ok", "passenger": svc.serialize(passenger)})
 
 
 # =========================================================================

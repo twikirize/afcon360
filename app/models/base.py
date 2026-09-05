@@ -106,6 +106,8 @@ class BaseModel(TimestampMixin, db.Model):
             'actor_id',        # polymorphic actor reference stored as string
             'aggregate_id',    # polymorphic aggregate reference stored as string
             'provider_message_id',  # NotificationDelivery - provider-side id
+            'org_id',  # Organisation.org_id - internal ORG- prefixed business key, not a UUID
+            'tax_id',  # Organisation.tax_id / HostProfile.tax_id - tax identification number, not a UUID
         }
 
         # Check if this is an _id field that needs validation

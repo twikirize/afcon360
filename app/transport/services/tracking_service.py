@@ -41,9 +41,7 @@ class TrackingService:
             required_fields = ['latitude', 'longitude']
             if not all(field in location_data for field in required_fields):
                 raise ValidationError(
-                    message="Location must include latitude and longitude",
-                    details={'required_fields': required_fields},
-                    code="INVALID_LOCATION_DATA"
+                    message=f"Location must include latitude and longitude (required: {required_fields})",
                 )
 
             # Prepare location data
@@ -192,14 +190,14 @@ class TrackingService:
             }
 
             # Get driver location if assigned
-            if booking.driver_id:
-                driver_location = TrackingService.get_location('driver', booking.driver_id)
+            if booking.assigned_driver_id:
+                driver_location = TrackingService.get_location('driver', booking.assigned_driver_id)
                 if driver_location['success']:
                     tracking_info['driver_location'] = driver_location['data']['location']
 
                 # Get vehicle location
-                if booking.vehicle_id:
-                    vehicle_location = TrackingService.get_location('vehicle', booking.vehicle_id)
+                if booking.assigned_vehicle_id:
+                    vehicle_location = TrackingService.get_location('vehicle', booking.assigned_vehicle_id)
                     if vehicle_location['success']:
                         tracking_info['vehicle_location'] = vehicle_location['data']['location']
 
@@ -281,7 +279,7 @@ class TrackingService:
             if location and 'latitude' in location and 'longitude' in location:
                 points.append(f"{location['latitude']},{location['longitude']}")
 
-        return "|".join(points) if points else None
+        return "|".join(points) if points else ""
 
     @staticmethod
     @monitor_endpoint("get_nearby_drivers")

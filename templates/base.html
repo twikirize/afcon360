@@ -22,9 +22,9 @@
   <!-- 1. Global Theme (Foundation) -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/generated/global-theme.css') }}" id="global-theme-css">
   
-  <!-- 2. User Theme (Personal Overrides) — served as a static file, no DB hit -->
+  <!-- 2. User Theme (Personal Overrides) — served via theme route, falls back to global -->
   {% if current_user.is_authenticated %}
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/generated/user-' ~ current_user.id ~ '.css') }}" id="user-theme-css" onerror="this.remove()">
+  <link rel="stylesheet" href="{{ url_for('theme.serve_user_theme_css') }}" id="user-theme-css">
   {% else %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/generated/global-theme.css') }}" id="user-theme-css">
   {% endif %}
@@ -670,7 +670,7 @@
 
         <div class="drawer-divider"></div>
 
-        <a class="drawer-link" href="/api/notifications">
+        <a class="drawer-link" href="{{ url_for('communication_pages.notifications') }}">
           <i class="bi bi-bell me-2"></i>Notifications
           {% if notif_badges and notif_badges.get('total_unread', 0) %}
             <span class="badge bg-danger ms-1">{{ notif_badges.get('total_unread') }}</span>

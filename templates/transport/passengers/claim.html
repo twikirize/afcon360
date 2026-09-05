@@ -1,0 +1,31 @@
+{% extends "transport/base.html" %}
+{% block title %}Claim Passenger{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span>
+<a href="{{ safe_url('transport.bookings_index') }}">Bookings</a>
+<span class="sep">/</span>
+<span class="current">Claim passenger</span>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h3>Claim this passenger</h3>
+  </div>
+  <div class="card-body">
+    <p>
+      You are about to link the passenger
+      <strong>{{ passenger.name or 'Unnamed' }}</strong>
+      {% if passenger.email %} ({{ passenger.email }}){% endif %}
+      {% if passenger.phone %} ({{ passenger.phone }}){% endif %}
+      to your AFCON360 account.
+    </p>
+    <p>This is a single-use link and cannot be used again after confirmation.</p>
+    <form method="post" action="{{ url_for('transport.passenger_claim', passenger_public_id=passenger.public_id, token=token) }}">
+      {{ csrf_token() }}
+      <button type="submit" class="btn btn-primary">Link to my account</button>
+      <a href="{{ url_for('transport.bookings_index') }}" class="btn btn-secondary">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

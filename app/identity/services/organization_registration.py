@@ -11,11 +11,9 @@ from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.identity.models.organisation import Organisation
-from app.identity.models.organisation_member import OrganisationMember
+from app.identity.models.organisation_member import OrganisationMember, OrgRole, OrgUserRole
 from app.identity.models.organization_types import OrganizationType, get_available_roles, get_organization_capabilities
 from app.identity.models.user import User
-from app.wallet.models.ledger import AccountModel, AccountOwnerType
-from app.wallet.services.wallet_service import WalletService
 
 
 class OrganizationRegistrationService:
@@ -130,16 +128,24 @@ class OrganizationRegistrationService:
     
     @staticmethod
     def create_organization(data: Dict[str, Any], creator_user: User, org_settings: Dict[str, Any] = None) -> tuple[Optional[Organisation], List[str]]:
-        """Create a new organization"""
+        """Create a new organization with full RBAC provisioning.
+
+        Atomically:
+            1. Create Organisation
+            2. Provision per-org OrgRole instances + OrgRolePermission rows
+            3. Create OrganisationMember for creator
+            4. Assign creator to the org_owner OrgRole via OrgUserRole
+            5. Create organisation wallet
+            6. Complete existing default-organisation behaviour
+
+        If any step fails the entire transaction is rolled back.
+        """
         # Validate data
         is_valid, errors = OrganizationRegistrationService.validate_registration_data(data, org_settings)
         if not is_valid:
             return None, errors
 
         # Gate: the creator must have completed basic personal KYC
-        # (verified phone + verified email + verified national ID) before an
-        # organisation can be registered. No source-of-funds documentation is
-        # required at this initial registration step.
         from app.auth.kyc_compliance import calculate_kyc_tier
         _kyc = calculate_kyc_tier(creator_user.id)
         if not (
@@ -152,82 +158,112 @@ class OrganizationRegistrationService:
                 "and national ID) before registering an organisation."
             ]
 
+        from app.utils.transactions import db_transaction
+        from app.auth.seed_roles import ORG_ROLE_TEMPLATES
+
         try:
-            # Create organization
-            org = Organisation(
-                org_id=OrganizationRegistrationService.generate_org_id(),
-                legal_name=data['legal_name'],
-                org_type=data.get('org_type', 'merchant'),
-                business_category=OrganizationType(data['org_type']),
-                country=data['country'],
-                region=data.get('region', ''),
-                contact_email=data['contact_email'],
-                contact_phone=data.get('contact_phone'),
-                headquarters_address=data.get('headquarters_address', ''),
-                website=data.get('website', ''),
-                registration_no=data.get('registration_no', ''),
-                tax_id=data.get('tax_id', ''),
-                vat_number=data.get('vat_number', ''),
-                verification_status='pending',
-                lifecycle_state='registered',
-                is_active=True,
-                is_operational=False
-            )
-            
-            # Set organization-specific settings
-            org.set_setting('registration_date', datetime.now(timezone.utc).isoformat())
-            org.set_setting('creator_user_id', creator_user.id)
-            org.set_setting('setup_completed', False)
-            
-            # Set KYC settings (use provided settings or defaults)
-            if org_settings:
-                org.set_setting('kyc_enabled', org_settings.get('kyc_enabled', False))
-                org.set_setting('kyc_strict', org_settings.get('kyc_strict', False))
-                org.set_setting('kyc_auto_approve', org_settings.get('kyc_auto_approve', True))
-                org.set_setting('default_kyc_level', org_settings.get('default_kyc_level', 0))
-                org.set_setting('max_kyc_level', org_settings.get('max_kyc_level', 3))
-                org.set_setting('registration_mode', org_settings.get('registration_mode', 'testing'))
-                org.set_setting('kyc_require_identity', org_settings.get('kyc_require_identity', True))
-                org.set_setting('kyc_require_address', org_settings.get('kyc_require_address', False))
-                org.set_setting('kyc_require_business', org_settings.get('kyc_require_business', False))
-                org.set_setting('kyc_require_financial', org_settings.get('kyc_require_financial', False))
-            else:
-                # Default settings for testing mode
-                org.set_setting('kyc_enabled', False)
-                org.set_setting('kyc_strict', False)
-                org.set_setting('kyc_auto_approve', True)
-                org.set_setting('default_kyc_level', 0)
-                org.set_setting('max_kyc_level', 3)
-                org.set_setting('registration_mode', 'testing')
-                org.set_setting('kyc_require_identity', False)
-                org.set_setting('kyc_require_address', False)
-                org.set_setting('kyc_require_business', False)
-                org.set_setting('kyc_require_financial', False)
-            
-            db.session.add(org)
-            db.session.flush()  # Get org ID without committing
-            
-            # Add creator as organization owner
-            OrganizationRegistrationService.add_org_member(
-                org, creator_user, 'org_owner'
-            )
-            
-            # Create wallet account for organization
-            OrganizationRegistrationService.create_org_wallet(org)
-            
-            # Send for verification if required
-            if org.requires_license():
-                OrganizationRegistrationService.initiate_verification(org)
-            
-            db.session.commit()
-            
+            with db_transaction("create_organization"):
+                # --- 1. Create Organisation -----------------------------------
+                org = Organisation(
+                    org_id=OrganizationRegistrationService.generate_org_id(),
+                    legal_name=data['legal_name'],
+                    org_type=data.get('org_type', 'merchant'),
+                    business_category=OrganizationType(data['org_type']),
+                    country=data['country'],
+                    region=data.get('region', ''),
+                    contact_email=data['contact_email'],
+                    contact_phone=data.get('contact_phone'),
+                    headquarters_address=data.get('headquarters_address', ''),
+                    website=data.get('website', ''),
+                    registration_no=data.get('registration_no', ''),
+                    tax_id=data.get('tax_id') or None,
+                    vat_number=data.get('vat_number') or None,
+                    verification_status='pending',
+                    lifecycle_state='registered',
+                    is_active=True,
+                    is_operational=False,
+                )
+
+                org.set_setting('registration_date', datetime.now(timezone.utc).isoformat())
+                org.set_setting('creator_user_id', creator_user.id)
+                org.set_setting('setup_completed', False)
+
+                if org_settings:
+                    org.set_setting('kyc_enabled', org_settings.get('kyc_enabled', False))
+                    org.set_setting('kyc_strict', org_settings.get('kyc_strict', False))
+                    org.set_setting('kyc_auto_approve', org_settings.get('kyc_auto_approve', True))
+                    org.set_setting('default_kyc_level', org_settings.get('default_kyc_level', 0))
+                    org.set_setting('max_kyc_level', org_settings.get('max_kyc_level', 3))
+                    org.set_setting('registration_mode', org_settings.get('registration_mode', 'testing'))
+                    org.set_setting('kyc_require_identity', org_settings.get('kyc_require_identity', True))
+                    org.set_setting('kyc_require_address', org_settings.get('kyc_require_address', False))
+                    org.set_setting('kyc_require_business', org_settings.get('kyc_require_business', False))
+                    org.set_setting('kyc_require_financial', org_settings.get('kyc_require_financial', False))
+                else:
+                    org.set_setting('kyc_enabled', False)
+                    org.set_setting('kyc_strict', False)
+                    org.set_setting('kyc_auto_approve', True)
+                    org.set_setting('default_kyc_level', 0)
+                    org.set_setting('max_kyc_level', 3)
+                    org.set_setting('registration_mode', 'testing')
+                    org.set_setting('kyc_require_identity', False)
+                    org.set_setting('kyc_require_address', False)
+                    org.set_setting('kyc_require_business', False)
+                    org.set_setting('kyc_require_financial', False)
+
+                db.session.add(org)
+                db.session.flush()
+
+                # --- 2. Provision per-org OrgRole instances ------------------
+                # Use commit=False so provisioning runs as a nested operation
+                # (savepoint) inside this outer transaction instead of starting
+                # its own committing transaction. The outer ``db_transaction``
+                # commits exactly once at the end, preserving atomicity of the
+                # whole organisation-creation flow.
+                from app.identity.services.organisation_role_provisioning import (
+                    provision_organisation_roles,
+                )
+                provision_organisation_roles(org, commit=False)
+                db.session.expire_all()
+
+                # --- 3 + 4. Creator membership + owner role assignment -------
+                member = OrganisationMember(
+                    organisation_id=org.id,
+                    user_id=creator_user.id,
+                    is_active=True,
+                )
+                db.session.add(member)
+                db.session.flush()
+
+                org_owner_role = OrgRole.query.filter_by(
+                    organisation_id=org.id,
+                    name='org_owner',
+                ).first()
+                if org_owner_role is None:
+                    raise RuntimeError(
+                        "org_owner OrgRole not found after provisioning for "
+                        f"organisation {org.id}"
+                    )
+
+                owner_assignment = OrgUserRole(
+                    organisation_member_id=member.id,
+                    role_id=org_owner_role.id,
+                    assigned_by=creator_user.id,
+                )
+                db.session.add(owner_assignment)
+                db.session.flush()
+
+                # --- 5. Existing behaviour -----------------------------------
+                if org.requires_license():
+                    OrganizationRegistrationService.initiate_verification(org)
+
             return org, []
-            
+
         except IntegrityError as e:
             db.session.rollback()
             current_app.logger.error(f"Organization creation failed: {e}")
             return None, ["Organization with this details already exists"]
-        
+
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Organization creation error: {e}")
@@ -241,29 +277,58 @@ class OrganizationRegistrationService:
     
     @staticmethod
     def add_org_member(org: Organisation, user: User, role_name: str) -> OrganisationMember:
-        """Add a member to organization with specified role"""
-        from app.identity.models.organisation_member import OrganisationMember
-        from app.identity.models.organisation import OrgRole
-        
-        # Get role
-        role = OrgRole.query.filter_by(name=role_name).first()
-        if not role:
-            raise ValueError(f"Role '{role_name}' not found")
-        
+        """Add a member to an organization and assign the specified org role.
+
+        Creates:
+            1. OrganisationMember  (user ↔ organisation link)
+            2. OrgUserRole         (member → per-org OrgRole assignment)
+
+        The ``OrgRole`` is resolved organisation-scoped by name.  It must
+        already exist (typically via ``provision_organisation_roles``).
+
+        Idempotent for the membership row (unique constraint on
+        user_id + organisation_id).  The role assignment is also
+        idempotent via the ``uq_org_user_role`` constraint.
+
+        The caller is responsible for committing the transaction.
+
+        Raises:
+            ValueError: If the ``OrgRole`` cannot be resolved for the
+                        given organisation.
+        """
         # Create membership
         member = OrganisationMember(
             organisation_id=org.id,
             user_id=user.id,
-            org_role_id=role.id,
             is_active=True,
-            is_deleted=False
         )
-        
         db.session.add(member)
+        db.session.flush()
+
+        # Resolve the per-organisation OrgRole instance
+        org_role = OrgRole.query.filter_by(
+            organisation_id=org.id,
+            name=role_name,
+        ).first()
+        if not org_role:
+            raise ValueError(
+                f"Organisation role '{role_name}' not found for "
+                f"organisation {org.id}. Provision roles first."
+            )
+
+        # Create role assignment
+        user_role = OrgUserRole(
+            organisation_member_id=member.id,
+            role_id=org_role.id,
+            assigned_by=user.id,
+        )
+        db.session.add(user_role)
+        db.session.flush()
+
         return member
     
     @staticmethod
-    def create_org_wallet(org: Organisation) -> AccountModel:
+    def create_org_wallet(org: Organisation):
         """Create wallet account for organization"""
         from app.wallet.models.ledger import (
             AccountModel, AccountOwnerType, AccountStatus, AccountType
@@ -277,7 +342,6 @@ class OrganizationRegistrationService:
             account_name=f"{org.legal_name} Wallet",
             currency='UGX',  # Default to Ugandan Shillings
             status=AccountStatus.ACTIVE,
-            is_active=True,
             daily_volume=Decimal('0'),
             monthly_volume=Decimal('0'),
         )
@@ -288,13 +352,11 @@ class OrganizationRegistrationService:
     @staticmethod
     def initiate_verification(org: Organisation) -> None:
         """Initiate organization verification process"""
-        from app.identity.models.organisation import OrganisationVerification
+        from app.identity.models.kyb import OrganisationVerification
         
         verification = OrganisationVerification(
             organisation_id=org.id,
-            verification_type='business_registration',
             status='pending',
-            requested_at=datetime.now(timezone.utc)
         )
         
         db.session.add(verification)

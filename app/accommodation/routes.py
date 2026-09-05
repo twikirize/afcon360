@@ -6012,10 +6012,7 @@ def explore_search_api():
     
     # Property type filter
     if property_type != 'all':
-        try:
-            query = query.filter(Property.property_type == AccommodationPropertyType(property_type))
-        except ValueError:
-            pass  # Invalid property type, ignore
+        query = query.filter(Property.property_type == property_type)
     
     # Price filter
     if min_price is not None:

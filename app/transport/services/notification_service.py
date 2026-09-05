@@ -49,29 +49,29 @@ class NotificationService:
             notification_data = data or {}
 
             if notification_type == 'booking_created':
-                recipients = [booking.customer_id]
-                message_template = "Your booking #{booking_code} has been confirmed. Pickup at {pickup_time}."
+                recipients = [booking.user_id]
+                message_template = "Your booking #{booking_reference} has been confirmed. Pickup at {pickup_time}."
 
             elif notification_type == 'driver_assigned':
-                if booking.driver_id:
-                    recipients = [booking.customer_id, booking.driver_id]
-                    message_template = "Driver {driver_name} has been assigned to your booking #{booking_code}."
+                if booking.assigned_driver_id:
+                    recipients = [booking.user_id, booking.assigned_driver_id]
+                    message_template = "Driver {driver_name} has been assigned to your booking #{booking_reference}."
 
             elif notification_type == 'driver_arriving':
-                recipients = [booking.customer_id]
+                recipients = [booking.user_id]
                 message_template = "Your driver is arriving in approximately {eta_minutes} minutes."
 
             elif notification_type == 'booking_completed':
-                recipients = [booking.customer_id]
-                if booking.driver_id:
-                    recipients.append(booking.driver_id)
-                message_template = "Booking #{booking_code} has been completed. Fare: ${final_price}."
+                recipients = [booking.user_id]
+                if booking.assigned_driver_id:
+                    recipients.append(booking.assigned_driver_id)
+                message_template = "Booking #{booking_reference} has been completed. Fare: ${final_price}."
 
             elif notification_type == 'booking_cancelled':
-                recipients = [booking.customer_id]
-                if booking.driver_id:
-                    recipients.append(booking.driver_id)
-                message_template = "Booking #{booking_code} has been cancelled. Reason: {cancellation_reason}."
+                recipients = [booking.user_id]
+                if booking.assigned_driver_id:
+                    recipients.append(booking.assigned_driver_id)
+                message_template = "Booking #{booking_reference} has been cancelled. Reason: {cancellation_reason}."
 
             # Format message
             message = NotificationService._format_message(
@@ -194,19 +194,19 @@ class NotificationService:
         """Format notification message"""
         # Prepare template data
         template_data = {
-            'booking_code': booking.booking_code,
+            'booking_reference': booking.booking_reference,
             'pickup_time': booking.pickup_time.strftime('%I:%M %p') if booking.pickup_time else '',
             'pickup_location': booking.pickup_location.get('address', '') if isinstance(booking.pickup_location,
                                                                                         dict) else str(
                 booking.pickup_location),
             'final_price': float(booking.final_price) if booking.final_price else float(
-                booking.estimated_price) if booking.estimated_price else 0.0,
+                booking.base_price) if booking.base_price else 0.0,
             'cancellation_reason': booking.cancellation_reason or 'unknown'
         }
 
         # Add driver info if available
-        if booking.driver_id:
-            driver = db.session.get(DriverProfile, booking.driver_id)
+        if booking.assigned_driver_id:
+            driver = db.session.get(DriverProfile, booking.assigned_driver_id)
             if driver and driver.user:
                 template_data['driver_name'] = driver.user.name or 'Driver'
 

@@ -14,6 +14,8 @@ def register_all_models():
     # Identity domain
     from app.identity.models.user import User
     from app.identity.models.organisation import Organisation
+    from app.identity.models.organisation_provider_capability import OrganisationProviderCapability
+    from app.identity.models.provider_participation import ProviderParticipation
     from app.identity.models.roles_permission import Role, Permission
     from app.identity.models.compliance_audit_log import ComplianceAuditLog
 
@@ -22,6 +24,8 @@ def register_all_models():
 
     # Wallet domain - NEW LEDGER ARCHITECTURE
     from app.wallet.models.ledger import AccountModel, LedgerEntryModel
+    from app.wallet.models.agent_onboarding import AgentOnboarding, AgentOnboardingApproval
+    from app.wallet.models.agent_float import AgentFloatAccount, AgentFloatLedger
     from app.wallet.models.transaction import TransactionModel
     from app.wallet.models.audit import AuditLogModel
     from app.wallet.models.fx import FXRateModel, FXTransactionModel
@@ -87,6 +91,7 @@ def register_all_models():
             Rating,
             ScheduledRoute,
             ContingencyPlan,
+            TransportPassenger,
         )
     except ImportError:
         pass

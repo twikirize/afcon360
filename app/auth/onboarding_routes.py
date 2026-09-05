@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import uuid
 import secrets
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from functools import wraps
 from datetime import datetime, date
 from decimal import Decimal
@@ -48,7 +48,12 @@ def _get_or_create_profile(user) -> Any:
 
     profile = get_profile_by_user(user.public_id)
     if not profile:
-        profile = UserProfile(user_id=user.public_id)
+        # ``full_name`` is NOT NULL (and has a non-empty CHECK constraint), so
+        # a newly created profile must carry a non-empty value. Derive a safe
+        # fallback from the user's username; onboarding forms that collect a
+        # real name overwrite this before the transaction commits.
+        fallback = getattr(user, "username", None) or "AFCON 360 User"
+        profile = UserProfile(user_id=user.public_id, full_name=fallback)
         db.session.add(profile)
         db.session.flush()
     return profile
@@ -62,24 +67,20 @@ def _get_or_create_profile(user) -> Any:
 @login_required
 def choose():
     """
-    Post-verification landing page.
-    Shows all available roles/services and lets user pick their path.
-    Only shown once - if profile is already completed, redirect to dashboard.
+    Canonical partner entry gate (/onboarding).
+
+    This is NOT an account-creation step: every user reaching this page
+    already has an AFCON 360 System User Account. It presents the two
+    approved partner paths (Individual | Organisation). Partnership is
+    optional and additive, so the page stays reachable even after a user has
+    completed a profile and/or enabled other capabilities - it never redirects
+    an already-onboarded user away from the gate.
     """
-    from app.profile.models import get_profile_by_user
-
-    profile = get_profile_by_user(current_user.public_id)
-
-    if profile and profile.profile_completed:
-        # Already onboarded - check for saved deep-link redirect
-        post_redirect = session.pop("post_onboarding_redirect", None)
-        if post_redirect:
-            from app.auth.routes import is_safe_url
-            if is_safe_url(post_redirect):
-                return redirect(post_redirect)
-        # Go to their dashboard
-        from app.auth.routes import _dashboard_for_user
-        return redirect(_dashboard_for_user(current_user))
+    post_redirect = session.pop("post_onboarding_redirect", None)
+    if post_redirect:
+        from app.auth.routes import is_safe_url
+        if is_safe_url(post_redirect):
+            return redirect(post_redirect)
 
     return render_template("onboarding/choose.html")
 
@@ -301,36 +302,156 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Organisation onboarding (universal - type determines sub-path)
+# Organisation onboarding (universal - type + optional provider capabilities)
 # ---------------------------------------------------------------------------
+
+# Canonical organisation types surfaced in the onboarding UI, drawn from the
+# existing OrganizationType enum. Do NOT add/remove/rename enum members here.
+_ORGANISATION_TYPE_LABELS = {
+    "hotel": "Hotel",
+    "restaurant": "Restaurant",
+    "tour_operator": "Tour Operator",
+    "travel_agency": "Travel Agency",
+    "tourism_board": "Tourism Board",
+    "accommodation_provider": "Accommodation Provider",
+    "hostel": "Hostel",
+    "vacation_rental": "Vacation Rental",
+    "camping_site": "Camping Site",
+    "event_management": "Event Management",
+    "conference_center": "Conference Center",
+    "venue_operator": "Venue Operator",
+    "exhibition_org": "Exhibition Organisation",
+    "sports_team": "Sports Team",
+    "football_team": "Football Team",
+    "sports_federation": "Sports Federation",
+    "fitness_center": "Fitness Center",
+    "recreation_facility": "Recreation Facility",
+    "transport_company": "Transport Company",
+    "airline": "Airline",
+    "bus_operator": "Bus Operator",
+    "taxi_service": "Taxi Service",
+    "car_rental": "Car Rental",
+    "corporate": "Corporate",
+    "consulting_firm": "Consulting Firm",
+    "marketing_agency": "Marketing Agency",
+    "it_services": "IT Services",
+    "government": "Government",
+    "ngo": "NGO",
+    "educational_institution": "Educational Institution",
+    "healthcare_provider": "Healthcare Provider",
+    "bank": "Bank",
+    "insurance_company": "Insurance Company",
+    "investment_firm": "Investment Firm",
+    "fintech": "Fintech",
+    "media_company": "Media Company",
+    "broadcasting": "Broadcasting",
+    "entertainment": "Entertainment",
+    "publishing": "Publishing",
+}
+
+# Canonical provider capability codes (Stage 3 reference set).
+_PROVIDER_CAPABILITY_LABELS = {
+    "accommodation": "Accommodation",
+    "transport": "Transport",
+    "events": "Events",
+    "tourism": "Tourism",
+    "venue": "Venue",
+}
+
+
+def _validate_organisation_type(value: str):
+    """
+    Return the canonical ``OrganizationType`` member for *value* or raise
+    ValueError. ``business_category`` is a native PostgreSQL enum whose member
+    names (e.g. ``HOTEL``) are derived from the enum *names*, so the existing
+    canonical mechanism persists the ``OrganizationType`` member (not the
+    lowercase ``.value`` string).
+    """
+    from app.identity.models.organization_types import OrganizationType
+    try:
+        return OrganizationType(value)
+    except ValueError:
+        raise ValueError("Please select a valid organisation type.")
+
+
+def _normalise_capabilities(raw: Optional[List[str]]) -> List[str]:
+    """Return a deduplicated list of valid provider-capability codes."""
+    from app.identity.models.organisation_provider_capability import (
+        ProviderCapabilityCode,
+    )
+    if not raw:
+        return []
+    valid = {c.value for c in ProviderCapabilityCode}
+    seen = set()
+    result = []
+    for code in raw:
+        code = str(code or "").strip()
+        if code and code in valid and code not in seen:
+            seen.add(code)
+            result.append(code)
+    return result
+
 
 @onboarding_bp.route("/organisation", methods=["GET", "POST"])
 @onboarding_bp.route("/organisation/step/<int:step>", methods=["GET", "POST"])
 @login_required
 def organisation_onboarding(step: int = 1):
-    """Organisation registration wizard (transport / accommodation / consumer)."""
-    org_type = request.args.get("type", session.get("org_onboarding_type", "consumer"))
-
+    """
+    Organisation registration wizard: one organisation type + zero or more
+    optional provider capabilities (recorded as intent only).
+    """
+    # Step 0: organisation type + provider capabilities are chosen on the
+    # landing form (/onboarding/choose/organisation). This route persists the
+    # temporary onboarding state so the multi-step wizard can use it.
     if step == 1 and request.method == "GET":
-        session["org_onboarding_type"] = org_type
         session["org_onboarding"] = {}
 
     if "org_onboarding" not in session:
         session["org_onboarding"] = {}
+
+    # When posting the initial type+capability form (step defaults to 1 but the
+    # form posts here from /onboarding/choose/organisation), capture the
+    # selections and advance to step 1.
+    if request.method == "POST" and "org_type" in request.form:
+        step = 1
+        org_type = request.form.get("org_type", "").strip()
+        selected_caps = request.form.getlist("provider_capabilities")
+
+        try:
+            _validate_organisation_type(org_type)
+        except ValueError as e:
+            flash(str(e), "danger")
+            return redirect(url_for("onboarding.choose_organisation"))
+
+        capabilities = _normalise_capabilities(selected_caps)
+        session["org_onboarding_type"] = org_type
+        session["org_onboarding_capabilities"] = capabilities
+        session["org_onboarding"] = {}
+        return redirect(url_for("onboarding.organisation_onboarding", step=1))
+
+    org_type = request.args.get("type", session.get("org_onboarding_type"))
+    capabilities = session.get("org_onboarding_capabilities", [])
+
+    if step == 1 and request.method == "GET":
+        if not org_type:
+            flash("Please choose an organisation type first.", "danger")
+            return redirect(url_for("onboarding.choose_organisation"))
 
     if request.method == "POST":
         data = session["org_onboarding"]
 
         if step == 1:
             data["step1"] = {
+                "full_name": request.form.get("full_name", "").strip(),
                 "legal_name": request.form.get("legal_name", "").strip(),
                 "country": request.form.get("country", "").strip(),
                 "registration_no": request.form.get("registration_no", "").strip(),
-                "tax_id": request.form.get("tax_id", "").strip(),
+                "tax_id": request.form.get("tax_id", "").strip() or None,
                 "contact_email": request.form.get("contact_email", "").strip(),
                 "contact_phone": request.form.get("contact_phone", "").strip(),
                 "website": request.form.get("website", "").strip(),
-                "org_type": session.get("org_onboarding_type", "consumer"),
+                "org_type": org_type,
+                "provider_capabilities": capabilities,
             }
             session["org_onboarding"] = data
             return redirect(url_for("onboarding.organisation_onboarding", step=2))
@@ -340,6 +461,7 @@ def organisation_onboarding(step: int = 1):
                 org = _commit_organisation_onboarding(current_user, data)
                 session.pop("org_onboarding", None)
                 session.pop("org_onboarding_type", None)
+                session.pop("org_onboarding_capabilities", None)
 
                 # Switch context to the new org immediately
                 session["current_context"] = "organization"
@@ -357,39 +479,76 @@ def organisation_onboarding(step: int = 1):
                 current_app.logger.error(f"Org onboarding error: {e}")
                 flash("Registration failed. Please try again.", "danger")
 
+    org_type_label = _ORGANISATION_TYPE_LABELS.get(org_type, org_type or "")
+    capability_labels = [
+        _PROVIDER_CAPABILITY_LABELS.get(c, c) for c in capabilities
+    ]
+
     return render_template(
         f"onboarding/organisation_step{step}.html",
         data=session.get("org_onboarding", {}),
         org_type=org_type,
+        org_type_label=org_type_label,
+        capabilities=capability_labels,
         step=step,
     )
 
 
 def _commit_organisation_onboarding(user, data: Dict[str, Any]) -> Any:
-    """Atomic commit of organisation registration."""
+    """
+    Atomic commit of organisation registration:
+      Organisation + OrganisationMember + org_owner + provider participation
+      rows (status=intent) + default org + context within a single transaction.
+    Any failure rolls the whole thing back — no partial organisation.
+    """
     from app.identity.models.organisation import Organisation
-    from app.identity.models.organisation_member import OrganisationMember
-    from app.auth.roles import assign_org_role
+    from app.identity.models.organisation_member import (
+        OrganisationMember, OrgRole, OrgUserRole,
+    )
+    from app.identity.services.organisation_role_provisioning import (
+        provision_organisation_roles,
+    )
+    from app.identity.services.provider_participation_service import (
+        create_organisation_intention,
+    )
     from app.profile.models import get_profile_by_user
     from app.extensions import db
     from app.utils.transactions import db_transaction
 
     step1 = data.get("step1", {})
+    org_type = step1.get("org_type")
+    capabilities = _normalise_capabilities(step1.get("provider_capabilities"))
+
+    if not org_type:
+        raise ValueError("Organisation type is required.")
+
+    # Validate the organisation type against the canonical enum and obtain the
+    # enum member so business_category persists a native enum value correctly.
+    # Normalize to lowercase to match the PostgreSQL enum values (which use
+    # .value from OrganizationType, e.g. "hostel" not "HOSTEL").
+    org_type_member = _validate_organisation_type(org_type.lower().strip())
+
+    # Domain contract: a missing/blank optional organisation identifier
+    # (tax_id) is "not provided" → None → SQL NULL.  An empty string would
+    # collide on the (country, tax_id) unique constraint for every org in the
+    # same country without a tax ID.
+    tax_id = step1.get("tax_id") or None
 
     with db_transaction("Organisation onboarding commit"):
-        # Create Organisation
+        # Create Organisation (business_category = organisation type)
         org = Organisation(
             org_id=str(uuid.uuid4()),  # public UUID
             legal_name=step1["legal_name"],
             country=step1["country"],
             registration_no=step1.get("registration_no"),
-            tax_id=step1.get("tax_id"),
+            tax_id=tax_id,
             contact_email=step1.get("contact_email"),
             contact_phone=step1.get("contact_phone"),
             website=step1.get("website"),
             primary_contact_user_id=user.id,  # internal FK
             verification_status="pending",
             lifecycle_state="registered",
+            business_category=org_type_member,
         )
         db.session.add(org)
         db.session.flush()  # Get org.id before creating member
@@ -404,14 +563,40 @@ def _commit_organisation_onboarding(user, data: Dict[str, Any]) -> Any:
         db.session.add(member)
         db.session.flush()
 
-        # Assign org_owner role
-        internal_org_id = org.id
-        assign_org_role(
-            user_id=user.id,
-            org_id=internal_org_id,
-            role_name="org_owner",
-            assigned_by_id=user.id,
+        # Create provider participation rows (status = intent only) via the
+        # canonical ProviderParticipation service (Stage 4B-3 — OPC is no
+        # longer a production write target).
+        # Created BEFORE assign_org_role (which commits internally) so that a
+        # participation persistence failure rolls back the whole organisation,
+        # member, and participations together — never a partial organisation.
+        for code in capabilities:
+            create_organisation_intention(user, org.id, code)
+        db.session.flush()
+
+        # Provision ALL organisation roles (consistent with
+        # create_organization path).  commit=False runs as a nested
+        # savepoint inside the outer db_transaction; the outer commit
+        # finalises everything atomically.
+        provision_organisation_roles(org, commit=False)
+        db.session.expire_all()
+
+        # Assign creator → org_owner directly within the outer transaction.
+        org_owner_role = OrgRole.query.filter_by(
+            organisation_id=org.id, name="org_owner",
+        ).first()
+        if org_owner_role is None:
+            raise RuntimeError(
+                "org_owner OrgRole not found after provisioning for "
+                f"organisation {org.id}"
+            )
+        db.session.add(
+            OrgUserRole(
+                organisation_member_id=member.id,
+                role_id=org_owner_role.id,
+                assigned_by=user.id,
+            )
         )
+        db.session.flush()
 
         # Set user's default org
         from app.identity.models.user import User as UserModel
@@ -421,6 +606,9 @@ def _commit_organisation_onboarding(user, data: Dict[str, Any]) -> Any:
 
         # Mark profile complete
         profile = _get_or_create_profile(user)
+        full_name = step1.get("full_name") or getattr(user, "username", None) or ""
+        if not profile.full_name:
+            profile.full_name = full_name or org.legal_name
         profile.profile_completed = True
 
     return org
@@ -438,6 +626,8 @@ def _generate_unique_slug(base: str) -> str:
 # ---------------------------------------------------------------------------
 # Accommodation Host onboarding (2-step)
 # ---------------------------------------------------------------------------
+
+from app.accommodation.utils import normalize_country
 
 @onboarding_bp.route("/host", methods=["GET", "POST"])
 @onboarding_bp.route("/host/step/<int:step>", methods=["GET", "POST"])
@@ -471,10 +661,18 @@ def host_onboarding(step: int = 1):
             }
 
             try:
+                # Normalize country name/Code to ISO alpha-2 before persisting
+                data["step2"]["country"] = normalize_country(data["step2"]["country"])
                 _commit_host_onboarding(current_user, data)
                 session.pop("host_onboarding", None)
-                flash("Property listed successfully! We will verify your details.", "success")
+                flash(
+                    "Your host profile is ready! Add your first property from your dashboard.",
+                    "success",
+                )
                 return redirect(url_for("accommodation.host_dashboard"))
+            except ValueError as e:
+                current_app.logger.warning(f"Host onboarding country error: {e}")
+                flash(str(e), "danger")
             except Exception as e:
                 current_app.logger.error(f"Host onboarding error: {e}")
                 flash("Something went wrong. Please try again.", "danger")
@@ -486,8 +684,22 @@ def host_onboarding(step: int = 1):
     )
 
 
-def _commit_host_onboarding(user, data: Dict[str, Any]) -> None:
-    """Atomic commit of host onboarding data."""
+def _commit_host_onboarding(user, data: Dict[str, Any], save_as_intent_only: bool = True) -> None:
+    """Atomic commit of host onboarding data.
+
+    DEFAULT behavior (save_as_intent_only=True): updates the UserProfile and
+    records the accommodation provider intention in the universal
+    ProviderParticipation registry (create_individual_intention →
+    individual / accommodation / INTENT) — the expression of accommodation
+    provider participation is separated from domain resource creation.
+    Property creation is owned by the Accommodation domain via the host
+    dashboard "Add Listing" flow (host_create_listing →
+    HostService.create_property).
+
+    Passing *save_as_intent_only=False* preserves the legacy behavior of
+    creating a Property record as an onboarding side effect (test/back-compat
+    only).
+    """
     from app.profile.models import get_profile_by_user
     from app.accommodation.models.property import (
         Property, AccommodationPropertyType, AccommodationPropertyStatus,
@@ -502,10 +714,43 @@ def _commit_host_onboarding(user, data: Dict[str, Any]) -> None:
     with db_transaction("Host onboarding commit"):
         # Update UserProfile
         profile = _get_or_create_profile(user)
-        profile.full_name = step1.get("full_name", profile.full_name)
+
+        # Preserve verified full_name from KYC/profile - do not overwrite
+        # if the profile already has a full_name set (from verified KYC)
+        if not profile.full_name or profile.full_name == getattr(user, "username", None) or profile.full_name == "AFCON 360 User":
+            profile.full_name = step1.get("full_name", profile.full_name)
+        # If full_name already exists from verified KYC, keep it as-is
+
         profile.id_type = "national_id"
         profile.id_number = step1.get("national_id")
         profile.profile_completed = True
+
+        # Preserve verified country from KYC/profile - do not overwrite
+        # if the profile already has a country set from verified KYC
+        if not profile.country:
+            profile.country = step2.get("country", "")
+
+        # Universal provider participation: record the accommodation
+        # provider intention (idempotent). This is the first production use
+        # of the ProviderParticipation registry. It creates NO domain
+        # resource — Property creation stays with the Accommodation domain
+        # (host dashboard "Add Listing" flow).
+        from app.identity.services.provider_participation_service import (
+            create_individual_intention,
+        )
+        from app.identity.models.organisation_provider_capability import (
+            ProviderCapabilityCode,
+        )
+        create_individual_intention(
+            user, ProviderCapabilityCode.ACCOMMODATION.value,
+        )
+
+        # When saving as intent only, skip Property creation entirely.
+        # The accommodation provider intention is recorded through the
+        # UserProfile update AND the ProviderParticipation row above, but no
+        # domain resource is persisted.
+        if save_as_intent_only:
+            return
 
         # Map property type string to enum
         property_type_map = {
@@ -514,6 +759,9 @@ def _commit_host_onboarding(user, data: Dict[str, Any]) -> None:
             'room': AccommodationPropertyType.PRIVATE_ROOM,
             'villa': AccommodationPropertyType.ENTIRE_PLACE,
             'guesthouse': AccommodationPropertyType.ENTIRE_PLACE,
+            'community_host': AccommodationPropertyType.COMMUNITY_HOST,
+            'lodge': AccommodationPropertyType.LODGE,
+            'hostel': AccommodationPropertyType.HOSTEL,
         }
         selected_type = property_type_map.get(
             step2.get("property_type", ""),
@@ -528,11 +776,11 @@ def _commit_host_onboarding(user, data: Dict[str, Any]) -> None:
             address_line1=step2.get("address", ""),
             city=step2.get("city", ""),
             country=step2.get("country", ""),
-            property_type=selected_type,
+            property_type=selected_type.value,
             bedrooms=int(step2.get("number_of_rooms", 1)),
             owner_user_id=user.id,
-            verification_status=AccommodationVerificationStatus.PENDING,
-            status=AccommodationPropertyStatus.DRAFT,
+            verification_status=AccommodationVerificationStatus.PENDING.value,
+            status=AccommodationPropertyStatus.DRAFT.value,
             base_price_per_night=Decimal('0'),
             max_guests=int(step2.get("number_of_rooms", 1)) * 2,
             description=step2.get("description") or f"Property hosted by {step1.get('full_name', '')}",

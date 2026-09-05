@@ -13,11 +13,10 @@ from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
-from app.transport.models import Booking, BookingStatus
+from app.transport.models import Booking, BookingStatus, PaymentStatus
 from app.wallet.services.wallet_service import WalletService
 from app.utils.exceptions import ValidationError, NotFoundError, ServiceUnavailableError
-from app.utils.monitoring import monitor_endpoint, record_metric, start_span
-from app.utils.security import sanitize_input
+from app.utils.monitoring import monitor_endpoint, record_metric
 from app.utils.validators import validate_payment
 from app.utils.audit import audit_log
 
@@ -40,18 +39,14 @@ class PaymentService:
         Returns:
             Payment processing result
         """
-        span = start_span("process_payment")
-
         try:
             # Validate payment data
-            sanitized_data = sanitize_input(payment_data)
-            validation_result = validate_payment(sanitized_data)
+            sanitized_data = dict(payment_data)
+            is_valid, errors = validate_payment(sanitized_data)
 
-            if not validation_result['valid']:
+            if not is_valid:
                 raise ValidationError(
-                    message="Payment validation failed",
-                    details=validation_result['errors'],
-                    code="VALIDATION_FAILED"
+                    message=f"Payment validation failed: {errors}"
                 )
 
             # Get booking
@@ -66,8 +61,7 @@ class PaymentService:
             # Check if booking can be paid for
             if booking.status not in [BookingStatus.COMPLETED, BookingStatus.CONFIRMED]:
                 raise ValidationError(
-                    message=f"Cannot process payment for booking in {booking.status.value} status",
-                    code="INVALID_BOOKING_STATUS"
+                    message=f"Cannot process payment for booking in {booking.status.value} status"
                 )
 
             # Calculate final price
@@ -82,12 +76,12 @@ class PaymentService:
             wallet_txn_id = None
             if payment_method == 'wallet':
                 wallet_service = WalletService()
-                account = wallet_service.account_repo.get_by_user_id(booking.customer_id, booking.currency)
+                account = wallet_service.account_repo.get_by_user_id(booking.user_id, booking.currency)
                 if not account:
-                    raise ValidationError(message="No wallet account found", code="NO_WALLET")
+                    raise ValidationError(message="No wallet account found")
                 balance = wallet_service.ledger_repo.get_balance(account.id, booking.currency)
                 if balance < final_price:
-                    raise ValidationError(message="Insufficient wallet balance", code="INSUFFICIENT_BALANCE")
+                    raise ValidationError(message="Insufficient wallet balance")
                 client_request_id = f"TRN-PAY-{booking_id}-{int(datetime.now(timezone.utc).timestamp())}"
                 result = wallet_service.withdraw(
                     account_id=str(account.id),
@@ -97,7 +91,7 @@ class PaymentService:
                     metadata={"transport_booking_id": str(booking_id), "payment_reference": payment_ref}
                 )
                 if result.get("status") != "success":
-                    raise ValidationError(message=result.get("error", "Wallet payment failed"), code="WALLET_FAILED")
+                    raise ValidationError(message=result.get("error", "Wallet payment failed"))
                 wallet_txn_id = result.get("transaction_id")
                 payment_status = 'completed'
                 payment_processed = True
@@ -118,30 +112,29 @@ class PaymentService:
             # Update booking with payment info
             booking.final_price = final_price
             booking.payment_method = payment_method
-            booking.payment_status = payment_status
-            booking.payment_reference = payment_ref
-            booking.payment_processed_at = datetime.now(timezone.utc) if payment_processed else None
+            booking.payment_status = PaymentStatus.CAPTURED if payment_processed else PaymentStatus.PENDING
+            booking.payment_gateway_reference = payment_ref
+            booking.payment_captured_at = datetime.now(timezone.utc) if payment_processed else None
             booking.wallet_transaction_id = wallet_txn_id or booking.wallet_transaction_id
 
-            if payment_status == 'completed':
-                booking.status = BookingStatus.PAID
-                booking.paid_at = datetime.now(timezone.utc)
+            if payment_processed:
+                booking.status = BookingStatus.CONFIRMED
 
             db.session.commit()
 
             # Create audit log
             audit_log(
                 action='payment_processed',
-                entity_type='booking',
-                entity_id=booking_id,
-                user_id=booking.customer_id,
+                resource_type='booking',
+                resource_id=booking_id,
+                user_id=booking.user_id,
                 details={
                     'amount': float(final_price),
                     'payment_method': payment_method,
                     'payment_status': payment_status,
-                    'payment_reference': payment_ref
-                },
-                request_id=request_id
+                    'payment_reference': payment_ref,
+                    'request_id': request_id
+                }
             )
 
             # Record metrics
@@ -170,22 +163,16 @@ class PaymentService:
 
         except (ValidationError, NotFoundError) as e:
             db.session.rollback()
-            span.set_status("ERROR", str(e))
             record_metric('payment_processing', tags={'status': 'failed', 'error_type': type(e).__name__}, value=1)
             raise
 
         except SQLAlchemyError as e:
             db.session.rollback()
             current_app.logger.error(f"Database error processing payment: {e}", exc_info=True)
-            span.set_status("ERROR", f"Database error: {str(e)}")
             record_metric('payment_processing', tags={'status': 'failed', 'error_type': 'database'}, value=1)
             raise ServiceUnavailableError(
-                message="Payment service temporarily unavailable",
-                code="SERVICE_UNAVAILABLE"
+                message="Payment service temporarily unavailable"
             )
-
-        finally:
-            span.end()
 
     @staticmethod
     @monitor_endpoint("calculate_fare")
@@ -230,22 +217,17 @@ class PaymentService:
     @staticmethod
     def _calculate_final_price(booking: Booking) -> Decimal:
         """Calculate final price for booking"""
-        base_price = booking.estimated_price or Decimal('0.00')
+        base_price = booking.base_price or Decimal('0.00')
 
-        # Add any additional charges
+        # Add any additional charges (tolls/parking) if present
         additional_charges = Decimal('0.00')
-
-        # Add waiting time charges if applicable
-        if booking.waiting_time_minutes and booking.waiting_time_minutes > 5:
-            waiting_charge = Decimal(str((booking.waiting_time_minutes - 5) * 0.5))
-            additional_charges += waiting_charge
-
-        # Add tolls/road charges
-        if booking.additional_charges:
-            additional_charges += booking.additional_charges
+        if booking.toll_fees:
+            additional_charges += booking.toll_fees
+        if booking.parking_fees:
+            additional_charges += booking.parking_fees
 
         # Apply discount if any
-        discount = booking.discount_amount or Decimal('0.00')
+        discount = booking.promotion_discount or Decimal('0.00')
 
         final_price = base_price + additional_charges - discount
 

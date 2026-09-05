@@ -11,6 +11,22 @@ attribute 'value'), so always route through `enum_value`.
 
 import enum
 
+# ISO 3166-1 alpha-2 country codes for AFCON360 supported countries.
+# Key: lowercase country name (for normalization)
+# Value: ISO alpha-2 code
+_COUNTRIES: dict[str, str] = {
+    "uganda": "UG",
+    "rwanda": "RW",
+    "kenya": "KE",
+    "tanzania": "TZ",
+    "ghana": "GH",
+    "ug": "UG",
+    "rw": "RW",
+    "ke": "KE",
+    "tz": "TZ",
+    "gh": "GH",
+}
+
 
 def enum_value(val):
     """
@@ -24,3 +40,33 @@ def enum_value(val):
     (property_type, status, payment_status, cancellation_policy, etc.).
     """
     return val.value if isinstance(val, enum.Enum) else val
+
+
+def normalize_country(country_input: str | None) -> str:
+    """
+    Normalize a country value to its ISO 3166-1 alpha-2 code.
+
+    Handles:
+    - Full country names (case-insensitive, whitespace trimmed): "Uganda" → "UG"
+    - ISO alpha-2 codes (pass-through, case-insensitive): "UG" → "UG", "ug" → "UG"
+    - None/empty returns default 'UG'
+
+    Raises ValueError if the country cannot be normalized to a valid ISO code.
+    """
+    if not country_input:
+        return "UG"
+
+    key = country_input.strip().lower()
+    result = _COUNTRIES.get(key)
+    if result is not None:
+        return result.upper()
+
+    # Also try reverse: if input is already a 2-char code, normalize case
+    if len(key) == 2 and key.isalpha():
+        return key.upper()
+
+    # Not found - raise a descriptive error
+    raise ValueError(
+        f"Unknown country: '{country_input}'. "
+        "Expected a supported country name or ISO alpha-2 code."
+    )

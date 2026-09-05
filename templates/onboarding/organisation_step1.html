@@ -4,12 +4,24 @@
 {% set step_current=1 %}{% set step_total=2 %}{% set step_labels=['Details', 'Confirm'] %}
 <div class="onboarding-root ob-wizard">
   <div class="ob-wizard-inner">
-    <a href="{{ url_for('onboarding.choose') }}" class="ob-back">← Back to paths</a>
-    <h2 class="ob-wizard-title">Organisation — Details</h2>
+    <a href="{{ url_for('onboarding.choose_organisation') }}" class="ob-back">&larr; Back to organisation setup</a>
+    <h2 class="ob-wizard-title">Organisation &mdash; Details</h2>
     <p class="ob-wizard-sub">Register your organisation to offer or book services at scale.</p>
+    {% if org_type_label %}
+    <div class="ob-selected-type">
+      <span class="ob-type-badge">{{ org_type_label }}</span>
+      {% if capabilities %}
+      <span class="ob-cap-badge">{{ capabilities|length }} provider {{ 'capability' if capabilities|length == 1 else 'capabilities' }} selected</span>
+      {% endif %}
+    </div>
+    {% endif %}
     {% include 'onboarding/_progress_bar.html' %}
     <form method="POST" action="{{ url_for('onboarding.organisation_onboarding', step=1) }}" class="ob-form" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="ob-field">
+        <label>Your Full Name <span class="ob-req">*</span></label>
+        <input type="text" name="full_name" placeholder="The person registering this organisation" required>
+      </div>
       <div class="ob-field">
         <label>Legal Name <span class="ob-req">*</span></label>
         <input type="text" name="legal_name" required>
@@ -39,10 +51,37 @@
         <input type="text" name="website">
       </div>
       <div class="ob-form-footer">
-        <button class="ob-btn ob-btn--primary" type="submit">Continue →</button>
+        <button class="ob-btn ob-btn--primary" type="submit">Continue &rarr;</button>
       </div>
     </form>
   </div>
 </div>
+<style>
+.ob-selected-type {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.ob-type-badge {
+  display: inline-block;
+  padding: 4px 14px;
+  background: #FFC107;
+  color: #212529;
+  border-radius: 50px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ob-cap-badge {
+  display: inline-block;
+  padding: 4px 14px;
+  background: #e9ecef;
+  color: #495057;
+  border-radius: 50px;
+  font-size: 13px;
+  font-weight: 500;
+}
+</style>
 {% include 'onboarding/_wizard_styles.html' %}
 {% endblock %}

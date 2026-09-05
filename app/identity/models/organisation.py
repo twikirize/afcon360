@@ -175,6 +175,16 @@ class Organisation(BaseModel):
     default_users = relationship("User", foreign_keys="User.default_org_id", back_populates="default_org")
     primary_contact_user = relationship("User", foreign_keys=[primary_contact_user_id])
     custom_roles = relationship("OrgRole", back_populates="organisation", cascade="all, delete-orphan")
+    # LEGACY / RETIRE AFTER COMPATIBILITY VERIFICATION (Stage 4B-3):
+    # OPC-backed relationship. Production writes/reads now target
+    # ProviderParticipation; this relationship is referenced only by legacy
+    # OPC tests and awaits the ADR-4A-010 retirement step.
+    provider_capabilities = relationship(
+        "OrganisationProviderCapability",
+        back_populates="organisation",
+        cascade="all, delete-orphan",
+        lazy="select",
+    )
 
     # -------------------
     # Wallet Account Relationships

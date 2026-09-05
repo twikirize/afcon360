@@ -1,6 +1,8 @@
 #app/identity/models/__init__.py
 from .user import User, UserRole, MFASecret, Session, APIKey
 from .organisation import Organisation
+from .organisation_provider_capability import OrganisationProviderCapability, ProviderCapabilityCode, ProviderCapabilityStatus
+from .provider_participation import ProviderParticipation
 from .organisation_member import OrganisationMember, OrgUserRole, OrgRole
 from .organisation_controller import OrganisationController
 from .licence_document import OrganisationLicense, OrganisationDocument, OrganisationAuditLog
@@ -20,6 +22,8 @@ __all__ = [
 
     "User", "UserRole", "MFASecret", "Session", "APIKey",
     "Organisation", "OrganisationMember", "OrgUserRole", "OrgRole", "OrganisationController",
+    "OrganisationProviderCapability", "ProviderCapabilityCode", "ProviderCapabilityStatus",
+    "ProviderParticipation",
     "OrganisationLicense", "OrganisationDocument", "OrganisationAuditLog",
     "Role", "Permission", "RolePermission",
     "OrganisationVerification", "OrganisationKYBCheck", "OrganisationUBO", "OrganisationKYBDocument",

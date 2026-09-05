@@ -29,6 +29,9 @@ class AccommodationPropertyType(enum.Enum):
     PRIVATE_ROOM = "private_room"
     SHARED_ROOM = "shared_room"
     HOTEL_ROOM = "hotel_room"
+    COMMUNITY_HOST = "community_host"
+    LODGE = "lodge"
+    HOSTEL = "hostel"
 
 
 class AccommodationCancellationPolicy(enum.Enum):
@@ -50,6 +53,7 @@ class AccommodationPropertyStatus(enum.Enum):
     PUBLISHED = "published"
     SUSPENDED = "suspended"
     ARCHIVED = "archived"
+    PENDING_REVIEW = "pending_review"
 
 
 class AccommodationVerificationStatus(enum.Enum):

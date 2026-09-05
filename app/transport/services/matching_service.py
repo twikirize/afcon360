@@ -5,12 +5,12 @@ Matches bookings with available drivers/vehicles
 """
 
 from datetime import datetime, timezone
-from typing import Dict, List, Any
+from typing import Dict, List, Optional, Any, cast
 import math
 from flask import current_app
 
 from app.extensions import db, cache
-from app.transport.models import Booking, DriverProfile, BookingStatus
+from app.transport.models import Booking, DriverProfile, BookingStatus, ProviderType
 from app.transport.services import get_provider_service
 from app.utils.exceptions import ValidationError, NotFoundError
 from app.utils.monitoring import monitor_endpoint, record_metric
@@ -20,6 +20,23 @@ class MatchingService:
     """Service for matching bookings with providers"""
 
     CACHE_PREFIX = "transport:matching"
+
+    @staticmethod
+    def _booking_vehicle_class(booking: Booking) -> Optional[str]:
+        """Canonical vehicle-class preference lives in booking_metadata (JSONB)."""
+        meta = cast(Dict[str, Any], booking.booking_metadata or {})
+        return meta.get('vehicle_class')
+
+    @staticmethod
+    def _driver_vehicle_id(driver: DriverProfile) -> Optional[int]:
+        """Resolve the driver's current vehicle id (DriverProfile has no vehicle_id column)."""
+        assignment = driver.current_assignment
+        if assignment is not None:
+            return cast(int, assignment.vehicle_id)
+        owned = driver.owned_vehicles or []
+        if owned:
+            return cast(int, owned[0].id)
+        return None
 
     @staticmethod
     @monitor_endpoint("find_driver_for_booking")
@@ -41,7 +58,7 @@ class MatchingService:
             provider_service = get_provider_service()
             available_drivers = provider_service.get_available_drivers(
                 zone=booking.pickup_location.get('zone'),
-                vehicle_class=booking.vehicle_class_preference,
+                vehicle_class=MatchingService._booking_vehicle_class(booking),
                 limit=10
             )
 
@@ -80,7 +97,7 @@ class MatchingService:
                 'driver_matched',
                 tags={
                     'service_type': booking.service_type.value,
-                    'vehicle_class': booking.vehicle_class_preference
+                    'vehicle_class': MatchingService._booking_vehicle_class(booking)
                 },
                 value=1
             )
@@ -134,7 +151,7 @@ class MatchingService:
 
             # 2. Vehicle class match
             vehicle_classes = driver.get('vehicle_classes', [])
-            if booking.vehicle_class_preference in vehicle_classes:
+            if MatchingService._booking_vehicle_class(booking) in vehicle_classes:
                 score += 25
             elif any(cls in vehicle_classes for cls in ['premium', 'luxury']):
                 score += 15
@@ -202,22 +219,19 @@ class MatchingService:
 
             if not driver.is_available and not force_assignment:
                 raise ValidationError(
-                    message="Driver is not available",
-                    details={'driver_id': driver_id, 'is_available': False},
-                    code="DRIVER_NOT_AVAILABLE"
+                    message=f"Driver is not available (driver_id={driver_id})",
                 )
 
-            if not driver.vehicle_id:
+            driver_vehicle_id = MatchingService._driver_vehicle_id(driver)
+            if not driver_vehicle_id:
                 raise ValidationError(
-                    message="Driver has no vehicle assigned",
-                    details={'driver_id': driver_id},
-                    code="NO_VEHICLE_ASSIGNED"
+                    message=f"Driver has no vehicle assigned (driver_id={driver_id})",
                 )
 
             # Update booking
-            booking.driver_id = driver_id
-            booking.vehicle_id = driver.vehicle_id
-            booking.provider_type = 'user'
+            booking.assigned_driver_id = driver_id
+            booking.assigned_vehicle_id = driver_vehicle_id
+            booking.provider_type = ProviderType.INDIVIDUAL_DRIVER
             booking.provider_id = driver_id
             booking.status = BookingStatus.CONFIRMED
             booking.confirmed_at = datetime.now(timezone.utc)
@@ -240,7 +254,7 @@ class MatchingService:
                 'data': {
                     'booking_id': booking_id,
                     'driver_id': driver_id,
-                    'vehicle_id': driver.vehicle_id,
+                    'vehicle_id': driver_vehicle_id,
                     'booking_status': booking.status.value
                 }
             }

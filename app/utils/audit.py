@@ -4,7 +4,7 @@ Audit logging utilities for AFCON360
 """
 import logging
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 from flask import request, has_request_context, g
 import json
 from functools import wraps
@@ -18,10 +18,10 @@ class AuditLog:
     @staticmethod
     def log(
             action: str,
-            user_id: Optional[str] = None,
+            user_id: Optional[Union[str, int]] = None,
             details: Optional[Dict[str, Any]] = None,
             resource_type: Optional[str] = None,
-            resource_id: Optional[str] = None,
+            resource_id: Optional[Union[str, int]] = None,
             ip_address: Optional[str] = None,
             user_agent: Optional[str] = None,
             status: str = "success",
@@ -85,7 +85,7 @@ class AuditLog:
 
 def audit_log(
         action: str,
-        user_id: Optional[str] = None,
+        user_id: Optional[Union[str, int]] = None,
         details: Optional[Dict[str, Any]] = None,
         **kwargs
 ):
@@ -102,8 +102,8 @@ class AuditContext:
             self,
             action: str,
             resource_type: Optional[str] = None,
-            resource_id: Optional[str] = None,
-            user_id: Optional[str] = None,
+            resource_id: Optional[Union[str, int]] = None,
+            user_id: Optional[Union[str, int]] = None,
             **kwargs
     ):
         self.action = action

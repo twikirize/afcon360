@@ -243,7 +243,8 @@ class PaymentProviderConfig(BaseModel):
         for config_data in defaults:
             existing = cls.query.filter_by(provider_name=config_data["provider_name"]).first()
             if not existing:
-                config = cls(**config_data)
+                config = cls(config_data["provider_name"], config_data["display_name"], config_data.get("is_sandbox", True))
+                config.config_json = config_data["config_json"]
                 db.session.add(config)
         
         db.session.commit()

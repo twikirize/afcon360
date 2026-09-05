@@ -45,8 +45,10 @@ from .regulatory_volume import (
     WindowMode,
     RegulatoryVolumePolicy,
     RegulatoryVolumePolicyChangeRequest,
-    LedgerReversalReference,
+    LedgerReversalReference
 )
+from .agent_onboarding import AgentOnboarding, AgentOnboardingApproval
+from .agent_float import AgentFloatAccount, AgentFloatLedger
 
 __all__ = [
     'LedgerEntryModel',
@@ -65,4 +67,8 @@ __all__ = [
     'RegulatoryVolumePolicy',
     'RegulatoryVolumePolicyChangeRequest',
     'LedgerReversalReference',
+    'AgentOnboarding',
+    'AgentOnboardingApproval',
+    'AgentFloatAccount',
+    'AgentFloatLedger',
 ]

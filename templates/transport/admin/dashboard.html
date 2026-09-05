@@ -205,7 +205,7 @@
           {% for booking in recent_bookings %}
           <div class="recent-item">
             <div>
-              <span class="booking-code">{{ booking.booking_code }}</span>
+              <span class="booking-code">{{ booking.booking_reference }}</span>
               <div style="font-size: 0.7rem; color: var(--text-muted);">
                 {{ booking.passenger_count }} pax · {{ booking.service_type }}
               </div>

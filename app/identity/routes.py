@@ -563,5 +563,201 @@ def api_permissions(org_id):
     })
 
 
+# ---------------------------------------------------------------------------
+# Provider Capability endpoints
+# ---------------------------------------------------------------------------
+
+@org_bp.route('/<org_id>/capabilities')
+@login_required
+def list_capabilities(org_id):
+    """List provider capabilities for an organisation.
+
+    Any active org member may view capabilities.
+    """
+    org = _get_organisation_by_public_id(org_id)
+
+    if not OrganizationPermissionService.is_member(current_user, org):
+        return jsonify({'error': 'Not a member'}), 403
+
+    from app.identity.services.provider_participation_service import (
+        list_organisation_intentions,
+        participation_to_dict,
+    )
+    caps = list_organisation_intentions(org.id)
+    return jsonify({
+        'organisation_id': org.org_id,
+        'capabilities': [participation_to_dict(c) for c in caps],
+    })
+
+
+@org_bp.route('/<org_id>/capabilities/<code>/activate', methods=['POST'])
+@login_required
+def activate_capability(org_id, code):
+    """Activate a provider capability (intent → activated).
+
+    Requires org_owner authority.
+    """
+    org = _get_organisation_by_public_id(org_id)
+
+    from app.identity.services.provider_participation_service import (
+        activate_organisation_intention,
+        ParticipationNotFoundError,
+        ParticipationPermissionError,
+        ParticipationTransitionError,
+        ParticipationValidationError,
+        participation_to_dict,
+    )
+    from app.identity.models.organisation_provider_capability import ProviderCapabilityCode
+
+    try:
+        ProviderCapabilityCode(code)
+    except ValueError:
+        return jsonify({'error': f'Invalid capability code: {code}'}), 400
+
+    try:
+        cap = activate_organisation_intention(current_user, org.id, code)
+    except ParticipationPermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except ParticipationNotFoundError as exc:
+        return jsonify({'error': str(exc)}), 404
+    except ParticipationTransitionError as exc:
+        return jsonify({'error': str(exc)}), 409
+    except ParticipationValidationError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    return jsonify({
+        'message': f"Capability '{code}' activated.",
+        'organisation_id': org.org_id,
+        'capability': participation_to_dict(cap),
+    })
+
+
+@org_bp.route('/<org_id>/capabilities/<code>/deactivate', methods=['POST'])
+@login_required
+def deactivate_capability(org_id, code):
+    """Deactivate a provider capability (activated → deactivated).
+
+    Requires org_owner authority.  Reversible.
+    """
+    org = _get_organisation_by_public_id(org_id)
+
+    from app.identity.services.provider_participation_service import (
+        deactivate_organisation_intention,
+        ParticipationNotFoundError,
+        ParticipationPermissionError,
+        ParticipationTransitionError,
+        ParticipationValidationError,
+        participation_to_dict,
+    )
+    from app.identity.models.organisation_provider_capability import ProviderCapabilityCode
+
+    try:
+        ProviderCapabilityCode(code)
+    except ValueError:
+        return jsonify({'error': f'Invalid capability code: {code}'}), 400
+
+    try:
+        cap = deactivate_organisation_intention(current_user, org.id, code)
+    except ParticipationPermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except ParticipationNotFoundError as exc:
+        return jsonify({'error': str(exc)}), 404
+    except ParticipationTransitionError as exc:
+        return jsonify({'error': str(exc)}), 409
+    except ParticipationValidationError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    return jsonify({
+        'message': f"Capability '{code}' deactivated.",
+        'organisation_id': org.org_id,
+        'capability': participation_to_dict(cap),
+    })
+
+
+@org_bp.route('/<org_id>/capabilities/<code>/suspend', methods=['POST'])
+@login_required
+def suspend_capability(org_id, code):
+    """Suspend a provider capability (activated → suspended).
+
+    Requires org_owner or platform admin authority.
+    """
+    org = _get_organisation_by_public_id(org_id)
+
+    from app.identity.services.provider_participation_service import (
+        suspend_organisation_intention,
+        ParticipationNotFoundError,
+        ParticipationPermissionError,
+        ParticipationTransitionError,
+        ParticipationValidationError,
+        participation_to_dict,
+    )
+    from app.identity.models.organisation_provider_capability import ProviderCapabilityCode
+
+    try:
+        ProviderCapabilityCode(code)
+    except ValueError:
+        return jsonify({'error': f'Invalid capability code: {code}'}), 400
+
+    try:
+        cap = suspend_organisation_intention(current_user, org.id, code)
+    except ParticipationPermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except ParticipationNotFoundError as exc:
+        return jsonify({'error': str(exc)}), 404
+    except ParticipationTransitionError as exc:
+        return jsonify({'error': str(exc)}), 409
+    except ParticipationValidationError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    return jsonify({
+        'message': f"Capability '{code}' suspended.",
+        'organisation_id': org.org_id,
+        'capability': participation_to_dict(cap),
+    })
+
+
+@org_bp.route('/<org_id>/capabilities/<code>/revoke', methods=['POST'])
+@login_required
+def revoke_capability(org_id, code):
+    """Revoke a provider capability (any → revoked).
+
+    Requires org_owner or platform admin authority.
+    Revoked capabilities are not re-grantable without review.
+    """
+    org = _get_organisation_by_public_id(org_id)
+
+    from app.identity.services.provider_participation_service import (
+        revoke_organisation_intention,
+        ParticipationNotFoundError,
+        ParticipationPermissionError,
+        ParticipationTransitionError,
+        ParticipationValidationError,
+        participation_to_dict,
+    )
+    from app.identity.models.organisation_provider_capability import ProviderCapabilityCode
+
+    try:
+        ProviderCapabilityCode(code)
+    except ValueError:
+        return jsonify({'error': f'Invalid capability code: {code}'}), 400
+
+    try:
+        cap = revoke_organisation_intention(current_user, org.id, code)
+    except ParticipationPermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except ParticipationNotFoundError as exc:
+        return jsonify({'error': str(exc)}), 404
+    except ParticipationTransitionError as exc:
+        return jsonify({'error': str(exc)}), 409
+    except ParticipationValidationError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    return jsonify({
+        'message': f"Capability '{code}' revoked.",
+        'organisation_id': org.org_id,
+        'capability': participation_to_dict(cap),
+    })
+
+
 # Export the blueprint for the main app to register
 __all__ = ['org_bp']

@@ -4,15 +4,41 @@
 {% set step_current=2 %}{% set step_total=2 %}{% set step_labels=['Details', 'Confirm'] %}
 <div class="onboarding-root ob-wizard">
   <div class="ob-wizard-inner">
-    <a href="{{ url_for('onboarding.choose') }}" class="ob-back">← Back to paths</a>
-    <h2 class="ob-wizard-title">Organisation — Confirm</h2>
+    <a href="{{ url_for('onboarding.organisation_onboarding', step=1) }}" class="ob-back">&larr; Back to details</a>
+    <h2 class="ob-wizard-title">Organisation &mdash; Confirm</h2>
     <p class="ob-wizard-sub">Review and confirm your organisation details.</p>
     {% include 'onboarding/_progress_bar.html' %}
     <form method="POST" action="{{ url_for('onboarding.organisation_onboarding', step=2) }}" class="ob-form" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="ob-field">
-        <label>Review Details</label>
-        <textarea readonly rows="6">{{ data.get('step1', {}) }}</textarea>
+        <label>Organisation Type</label>
+        <div class="ob-review-box">{{ org_type_label or data.get('step1', {}).get('org_type', '') }}</div>
+      </div>
+      <div class="ob-field">
+        <label>Provider Capabilities</label>
+        {% if capabilities %}
+        <div class="ob-review-box">
+          <ul class="ob-cap-list">
+            {% for cap in capabilities %}
+            <li>{{ cap }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% else %}
+        <div class="ob-review-box ob-review-muted">None selected — this organisation will use AFCON 360 services as a customer.</div>
+        {% endif %}
+      </div>
+      <div class="ob-field">
+        <label>Legal Name</label>
+        <div class="ob-review-box">{{ data.get('step1', {}).get('legal_name', '') }}</div>
+      </div>
+      <div class="ob-field">
+        <label>Country</label>
+        <div class="ob-review-box">{{ data.get('step1', {}).get('country', '') }}</div>
+      </div>
+      <div class="ob-field">
+        <label>Registration Number</label>
+        <div class="ob-review-box">{{ data.get('step1', {}).get('registration_no', '') or '—' }}</div>
       </div>
       <div class="ob-field">
         <label>Registration Document</label>
@@ -26,10 +52,34 @@
         </label>
       </div>
       <div class="ob-form-footer">
-        <button class="ob-btn ob-btn--primary" type="submit">Register Organisation →</button>
+        <button class="ob-btn ob-btn--primary" type="submit">Register Organisation &rarr;</button>
       </div>
     </form>
   </div>
 </div>
+<style>
+.ob-review-box {
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border: 1.5px solid #e9ecef;
+  border-radius: 10px;
+  font-size: 15px;
+  color: #212529;
+  min-height: 20px;
+}
+.ob-review-muted {
+  color: #6c757d;
+  font-style: italic;
+}
+.ob-cap-list {
+  margin: 0;
+  padding-left: 18px;
+}
+.ob-cap-list li {
+  font-size: 14px;
+  color: #212529;
+  margin-bottom: 2px;
+}
+</style>
 {% include 'onboarding/_wizard_styles.html' %}
 {% endblock %}
