@@ -545,3 +545,110 @@ the proposed design, and the ownership boundary. NOT yet implemented unless note
 - **Owner/area:** Tests / Events / Wallet
 - **Links:** tests/test_payment_flow.py, app/events/services.py, app/wallet/services/*
 
+---
+
+## Transport correction node follow-ups (dead services, pre-existing refs, schema sync)
+- **Status:** Partially resolved (LSP pass 2026-09-02)
+- **Raised:** 2026-09-02
+- **Context:** The `TRANSPORT_MIN_CORRECTION` node (Transport passengers: booker ≠ payer ≠ passenger, accountless passengers, group/multi-vehicle assignment, claim-by-public-id, canonical vocabulary) is implemented and its own suite passes (`tests/test_transport_passengers.py`, 18 passed). The following were identified during that node as **pre-existing / out of scope** and intentionally left untouched (scope discipline, AGENTS.md §5).
+
+  **Resolved (2026-09-02 LSP pass — genuine runtime defects fixed, no `type: ignore`):**
+  - `app/transport/services/payment_service.py` — removed `start_span`/`span.set_status()`/`span.end()` (MonitorContext has no such methods); `ValidationError(details=/code=)` → message-only; `ServiceUnavailableError(code=)` → message-only; `audit_log(entity_type/entity_id/request_id=)` → `resource_type/resource_id` (+ `request_id` folded into details); `sanitize_input(payment_data)` → `dict(payment_data)` (was `AttributeError`); `validate_payment(...)['valid']/['errors']` → tuple unpacking (was `TypeError`).
+  - `app/transport/services/matching_service.py` — `ValidationError(details=/code=)` → message-only; `booking.vehicle_class_preference` (L44/83/137) → `_booking_vehicle_class()` reading canonical `booking.booking_metadata['vehicle_class']`; `driver.vehicle_id` (attr does not exist) → `_driver_vehicle_id()` resolving via `current_assignment.vehicle_id` or first `owned_vehicles` id. (Runtime `AttributeError`s.)
+  - `app/transport/services/promotion_service.py` — `ValidationError(details=/code=)` → message-only.
+  - `app/transport/services/tracking_service.py` — `ValidationError(details=/code=)` → message-only; `_generate_route_polyline` returns `""` instead of `None` (declared `-> str`).
+  - `app/utils/audit.py` — `user_id`/`resource_id` hints widened to `Optional[Union[str, int]]` (root cause: `DBAuditLog.user_id` is BigInteger, app/audit/models.py:26).
+  - `app/transport/services/booking_service.py` — `_invalidate_listing_caches` now guards `cache.cache._client`/`scan_iter` (SimpleCache has neither).
+  - `tests/test_transport_passengers.py` — `_user(..., email=)` param; instance `hasattr()` checks replace `__mapper__.columns`.
+
+  **Still open (deferred):**
+  1. `app/transport/routes.py` — `audit_log(... entity_type=..., entity_id=...)` calls (lines ~1115, 1201, 1230, 1284, 1313, 1623) hit a runtime `TypeError` because `AuditLog.log()` accepts `resource_type`/`resource_id`, not `entity_type`/`entity_id`. Affected endpoints will 500 when reached.
+  2. `app/transport/services/provider_service.py` and `app/transport/services/settings_service.py` — same genuine defect class as the now-fixed services: `ValidationError(details=/code=;)`, `src.errors.ServiceUnavailableError(code=)`, `span.set_status()`, and audit `entity_type/entity_id` kwargs. Identified during the same LSP audit but outside the node's modified file set; must be fixed in a remediation node.
+  3. `app/transport/services/payment_service.py`, `promotion_service.py`, `matching_service.py`, `tracking_service.py` are broadly "dead services" — decide on repair vs formal retirement (repair of the concrete broken refs is done; the retire/rewire decision remains).
+  3. `app/transport/routes.py` — unresolved `app.schemas.transport` (L227/574/749), `BookingService.list_services`/`get_service`/`get_driver_bookings`, `Trip`/`DriverAvailability` imports, `DriverProfile.status` access, and `ValidationError.messages` accesses.
+  4. `templates/admin/moderator/transport_vehicle_view.html:267` renders `history.driver_id` (history object, not a Booking).
+  5. `tests/conftest.py` create_all bootstrap is gated on the `users` table existing; after this node's new table, a stale test DB must be dropped (or `scripts/setup_test_db_schema.py` run) before `pytest` — the setup script itself hangs in socketio Redis retry loops, so dropping `afcon360_test` via psycopg2 and letting conftest rebuild is the reliable path.
+  6. `tests/test_booking_mode.py` (accommodation) fails with `accommodation_properties.slug` NOT NULL — pre-existing, unrelated to transport.
+- **What needs to happen:** A dedicated transport remediation node to (a) normalize the remaining `audit_log` calls in `routes.py` (+ `provider_service.py`/`settings_service.py`) to `resource_type`/`resource_id`, (b) decide repair vs formal retirement of the dead transport services + `app.schemas.transport`/route stubs, (c) fix the vehicle-view driver_id template ref, and (d) address the test-infra socketio/setup-script hang. Migration head is `a3f7d1e5b2` (transport_passengers table; native `transport_passengers_status` enum) — user must run `flask db upgrade` before this is live outside the test DB.
+- **Owner/area:** Transport + test infrastructure
+- **Links:** app/transport/routes.py, app/transport/services/{payment,promotion,matching,tracking}_service.py, templates/admin/moderator/transport_vehicle_view.html, migrations/versions/a3f7d1e5b2_transport_passengers_table.py, tests/test_transport_passengers.py
+
+
+
+---
+
+## Stage 4 onboarding: assign_org_role cannot persist org_owner (pre-existing RBAC FK mismatch)
+- **Status:** Blocked (NEEDS_DECISION)
+- **Raised:** 2026-09-02
+- **Context:** Stage 4 organisation onboarding (Organisation Type + optional Provider Capabilities) commits the creator as org_owner via pp/auth/roles.py:assign_org_role (per the work-state contract). Evidence shows that function cannot persist org-owner in the current schema, and that this is a **pre-existing** defect, not introduced by Stage 4:
+  - OrgUserRole.role_id is a FK to org_roles.id (pp/identity/models/organisation_member.py:185), and OrgUserRole.role relationship targets OrgRole (organisation_member.py:190).
+  - But ssign_org_role resolves ole = _get_role(role_name, scope='org') from the global oles table and stores ole.id (a oles.id) into org_user_roles.role_id (pp/auth/roles.py:265,288).
+  - The org_roles table (OrgRole model) is **never provisioned anywhere** in pp/ (no OrgRole(...) instantiation found), so there is no row whose id satisfies the FK.
+  - Resulting runtime error during commit: ForeignKeyViolation: org_user_roles.role_id -> org_roles.id. Confirmed in the legacy registration service too (OrganizationRegistrationService.add_org_member at organization_registration.py:243-263 uses a *different* legacy OrgRole/org_role_id path in pp/identity/models/organisation.py).
+  - Observation: there are at least two divergent org-role designs in the codebase (legacy organisation.py OrgRole/org_role_id on membership vs. organisation_member.py OrgRole/OrgUserRole), and pp/auth/roles.py:assign_org_role reconciles with neither.
+- **What needs to happen:** An identity-domain decision (HIGH_RISK, �18.2/�17) on the org-owner assignment mechanism. Options: (a) fix ssign_org_role to create the org_roles row and reference org_roles.id correctly, (b) route Stage 4 through the legacy dd_org_member path, or (c) formalize one org-role design and remove the divergent one. Stage 4 code/tests are ready but blocked on this. The Stage 4 files already updated: pp/auth/onboarding_routes.py, 	emplates/onboarding/{choose_organisation,organisation_step1,organisation_step2}.html, 	ests/test_onboarding.py, 	ests/test_onboarding_stage4.py.
+- **Owner/area:** Identity / RBAC (cross-cutting; needs identity ownership sign-off)
+- **Links:** app/auth/roles.py:241-308, app/identity/models/organisation_member.py:170-262, app/identity/models/organisation.py (legacy OrgRole), app/identity/services/organization_registration.py:242-263, tests/test_onboarding_stage4.py
+
+---
+
+## Stage 4: create_org_wallet stores org.id as AccountModel.user_id (FK to users) — broken by design
+- **Status:** Blocked (NEEDS_DECISION) — wallet frozen, out of Stage 4 scope
+- **Raised:** 2026-09-04
+- **Context:** `OrganizationRegistrationService.create_org_wallet(org)` (app/identity/services/organization_registration.py:331-350) builds `AccountModel(user_id=org.id, owner_type=AccountOwnerType.ORGANISATION, ...)`. `AccountModel.user_id` is `BigInteger, ForeignKey('users.id', ondelete='RESTRICT')` (app/wallet/models/ledger.py). `org.id` is the internal `organisations.id` — never a valid `users.id` — so a real wallet insert for an organisation always raises `ForeignKeyViolation: accounts_user_id_fkey`. Verified via `tests/test_org_creation_rbac_4b1.py::test_explicit_wallet_creation_works_later`; the test only passed in earlier runs when `org.id` coincidentally collided with a users.id persisted by a prior create_organization run (which commits users). This is a pre-existing wallet-architecture defect (org and user share one accounts table keyed by user_id), surfaced by the Stage 4 wallet-decoupling test.
+- **What needs to happen:** Wallet-domain decision on how an organisation-owned account is keyed (e.g., an `organisation_id` FK/column on accounts, or an owner-resolution layer) so `create_org_wallet` can persist for orgs. Do NOT implement in Stage 4 — wallet is frozen (§18.1, §34). Either fix the account model/schema (ARCHITECTURAL/HIGH_RISK) or remove/reframe the wallet-decoupling "explicit wallet creation still works" test until the model supports org wallets.
+- **Owner/area:** Wallet (frozen) + Identity boundary
+- **Links:** app/identity/services/organization_registration.py:331-350, app/wallet/models/ledger.py (AccountModel.user_id FK users.id), tests/test_org_creation_rbac_4b1.py:455-483
+
+---
+
+## Pre-existing test_onboarding.py contract mismatches (partner gate + org entry)
+- **Status:** Blocked (NEEDS_DECISION)
+- **Raised:** 2026-09-04
+- **Context:** `tests/test_onboarding.py` (rewritten by earlier Stage 4 work) has 5 persistent failures unrelated to the 4B-1/RBAC deliverable: `TestPartnerGate::test_partner_gate_shows_two_paths`, `test_partner_gate_copy_is_partner_not_account_creation`, `test_partner_gate_accessible_after_profile_completed`, `TestOrganisationPaths::test_organisation_onboarding_entry_reachable`, `TestAdditivePartnership::test_gate_remains_accessible_after_profile_completed`. Root causes are route/contract mismatches, NOT the Stage 4 full_name/profile fix (all 5 failing tests only GET `/onboarding/choose*` or `/onboarding/organisation` and never reach step1 profile creation): (a) GET `/onboarding/organisation` 302-redirects to `/onboarding/choose/organisation` when no `org_type` is in session (onboarding_routes.py:437-440), but the test expects 200; (b) `Become a Partner` / `Individual Partner` copy not present on the pages the tests fetch. My session's edits (organisation_step1.html full_name field; `_get_or_create_profile` full_name default; `_commit_organisation_onboarding` profile full_name) do not affect the routes/templates under test.
+- **What needs to happen:** An onboarding-domain decision: either (a) align `tests/test_onboarding.py` expectations with the real gated flow (type-first redirect, actual header/copy on `/onboarding/choose`), or (b) change the routes/templates to satisfy the tests (if the intended UX is direct access + a `Become a Partner` header). Confirm the intended copy string and whether direct `/onboarding/organisation` GET should stay type-gated.
+- **Owner/area:** Onboarding (routes + templates) — separate from RBAC Stage 4
+- **Links:** app/auth/onboarding_routes.py:395-440, tests/test_onboarding.py:211-269, templates/onboarding/choose.html
+
+---
+
+## Pre-existing host-onboarding step-2 test failures (DetachedInstanceError root cause)
+- **Status:** Blocked (NEEDS_DECISION)
+- **Raised:** 2026-09-05
+- **Context:** 4 persistent failures in BOTH `tests/test_onboarding.py` and `tests/test_onboarding_new.py`, re-confirmed unchanged after the Property-separation flip (which only inverts `_commit_host_onboarding`'s default to save-intent-only): `test_verified_full_name_is_prefilled_and_not_overwritten` (DetachedInstanceError), `test_missing_full_name_can_be_requested_from_user` (NotNullViolation — test writes `full_name=None` into a NOT NULL column), `test_missing_country_can_be_requested` (expects raw `"Rwanda"` but `normalize_country` yields canonical `UG`/`RW`), `test_host_onboarding_commits_successfully_with_verified_full_name_preserved` (302 expected, got 200 — cascade of the DetachedInstanceError in `app/__init__.py` `inject_user_role_info` context processor after `db_transaction` commits and expires the Flask-Login `current_user`). None are caused by the intent/Property-separation work; confirmed identical in the untouched sibling file. `tests/test_accommodation_roomtype.py` also still fails (2 tests) due to a non-existent `owner_org_id=123` FK and property status `pending_review` (not bookable) — test-setup drift noted in the earlier "Accommodation test database and RoomType import drift" entry.
+- **What needs to happen:** (a) Fix `current_user` session binding/refresh across `db_transaction` commits so the `inject_user_role_info` context processor does not hit a detached instance (auth/session lifecycle — HIGH_RISK, needs a dedicated node); (b) correct the three test bugs (don't write NULL full_name; assert on normalized country; assert 302-or-error accordingly). Property creation must remain in the Accommodation domain (`host_create_listing`), not back in `_commit_host_onboarding`.
+- **Owner/area:** Auth session lifecycle + Onboarding tests (separate node)
+- **Links:** app/auth/onboarding_routes.py:691-773, tests/test_onboarding.py:206-582, tests/test_onboarding_new.py:285-638, app/__init__.py:1246-1255, tests/test_accommodation_roomtype.py:55,122
+
+---
+
+## Stage 4B provider architecture: OPC→PP consolidation (approved Option A, ADR-4A-001/010)
+- **Status:** Partial — Stage 4B-1 done; 4B-4 forensics/dry-run done (zero-write); backfill execution pending user + real data
+- **Raised:** 2026-09-05
+- **Context:** Stage 4A decision report approved (STAGE_4A_UNIVERSAL_PROVIDER_ARCHITECTURE_DECISION_REPORT.md, verdict Option A): `provider_participations` (PP) is the single universal provider-participation table for BOTH subjects (user_id XOR organisation_id); `org_provider_capabilities` (OPC) is consolidated into it 1:1 and then retired. 4B-1 (dual-ID sanitization of `capability_to_dict` + Option A docstrings) is implemented. Remaining 4B work is deferred behind: (a) the user-executed OPC→PP data backfill (below); (b) a transport-specific HIGH_RISK checkpoint (G-2 broken `register_driver` call + F-2 missing provider/driver roles).
+- **What needs to happen (order):**
+  1. **OPC→PP data backfill (USER EXECUTES, per §20):** proposal below; 4B-3 org write re-point to PP must be sequenced AFTER backfill to avoid legacy-row visibility loss.
+  2. 4B-3: re-point `_commit_organisation_onboarding` (app/auth/onboarding_routes.py:497+) and org capability routes/readers to PP rows; retire OPC service usage.
+  3. 4B-2: individual capability API (G-3) once an eligibility-hook contract is defined (ADR-4A-006: activation must be eligibility-gated; PP service has no eligibility coupling, no individual suspend/revoke).
+  4. 4B-5: transport split + G-2/F-2 fixes — HIGH_RISK, own checkpoint. G-2 confirmed: app/transport/routes.py:584 calls `register_driver(data, user_id=...)` but signature is `register_driver(self, user_id: int, driver_data, request_id=None)`; also fetches `.id` off the dict result.
+  5. 4B-6: enforcement gap G-1 — apply `can_org_host` gate at org listing creation.
+- **Migration proposal (user executes, do NOT run without explicit authorization):** OPC→PP backfill. Since PP rows are (subject, capability_code, status) and OPC org rows are structurally 1:1, propose an idempotent `flask db`/SQL backfill operator-owned via `scripts/` OR a raw SQL `INSERT ... ON CONFLICT DO NOTHING` mapped on (organisation_id→user_id NULL + capability_code). Verify with pre/post row counts and a NOT NULL `organisation_id` on OPC after cutover. Do NOT use `flask db migrate` as a workaround; no CHECK-constraint changes involved.
+- **Stage 4B-4 forensics outcome (2026-09-05, READ-ONLY; see `scripts/stage4b4_opc_to_pp_forensics.py`):** configured dev DB `afcon360_prod` has `org_provider_capabilities`/`provider_participations` tables (exact DDL verified, incl. `ck_provider_participations_single_subject` and `uq_provider_participation_org_code`) with **0 rows in both** — backfill is currently a no-op. `afcon360_test` holds 180 OPC rows (159 live / 21 deleted) + 45 INDIVIDUAL PP rows; classified all zero orphans/invalids/duplicates/conflicts; 180 safe-to-copy; individual PP rows untouched by design. Test-DB data is ephemeral synthetic test data (rebuilt by conftest) and is NOT a migration target. When real OPC data accumulates, rerun the read-only forensics script, get human approval, then execute transactionally.
+- **Owner/area:** Identity / provider architecture (implementer: 4B node) + migrations (operator)
+- **Links:** app/identity/models/provider_participation.py, app/identity/models/organisation_provider_capability.py, app/identity/services/capability_service.py, app/identity/services/provider_participation_service.py, app/identity/routes.py, app/auth/onboarding_routes.py:497+, STAGE_4A_UNIVERSAL_PROVIDER_ARCHITECTURE_DECISION_REPORT.md
+
+---
+
+## Test-suite forensic audit — deferred stabilization work (see docs/TEST_SUITE_FORENSIC_AUDIT_REPORT.md)
+
+- **Status:** Open (awaiting implementation node `test-suite-stabilization`; audit itself is complete, read-only)
+- **Raised:** 2026-09-05
+- **Context:** Full audit of the 89-failure baseline (`867 collected → 89 failed, 763 passed, 4 skipped, 11 errors`) classified every failure into production defects (2 total) vs test/harness defects (~3/4 of the red). The 2 production defects were APPROVED and FIXED: P0 `app/events/trust_service.py` missing `calculate_kyc_tier` module import (commit 2996d92) and P1 KYC template malformed Jinja comments `templates/kyc/index.html:18,77` (commit 9798d12). The three previously-untracked alembic migrations (20260902_2255, 9f75675b5e52, 3a73c6e6cf29) are now tracked (commit 7e34dec); DB is single-head at 3a73c6e6cf29 and CHECK-constraint sync shows no real drift (only representation-only parenthesization).
+- **What needs to happen (implementation node, human-approved scope):**
+  1. Wire auth/session `current_user` refresh across `db_transaction` commits (also the fix for the onboarding DetachedInstanceError). Verify `tests/test_trust_system.py` + KYC family stay green.
+  2. T3 test repairs (tests are the wrong side — no product downgrades): kyc-limit UUID-family (`tests/wallet/test_authorization_limits.py`, `tests/test_kyc_limit_authorization.py` — patch `regulatory_volume_calculator.db` or inject calculator mock); `tests/wallet/test_payment_identity.py:112-115` hardcoded `user_id=1` → use `_make_user`; convert ad-hoc scripts `tests/test_owner_trust_integration.py` (returns early, hardcodes User 2, missing `db` import) and `tests/test_template_fix.py` (bare `template.render()` bypasses Flask context processors → `current_user` undefined; use `render_template` under `test_request_context`) to pytest-conformant tests or fold coverage into `test_trust_system.py`.
+  3. Org-wallet ownership DECISION (NEEDS_DECISION): `create_org_wallet` (`app/identity/services/organization_registration.py:331-350`) sets `user_id=org.id` against `AccountModel.user_id` FK → `users.id` (ledger.py:209-214); no callers found; org wallet ownership model must be decided by identity spec (likely `organisation_id` on account), never silently reshaped.
+  4. Harness isolation to kill T2 flakiness + T4/T5 pollution (production_console inactive-owner rows; attendee/accommodation id=4 orphan; DB reuse): prefer fixture reset per writing test; require DB rebuild `scripts/setup_test_db_schema.py` before final full-suite gate.
+  5. Final gate: full `pytest` after `setup_test_db_schema.py`; remaining red must be ⊆ pre-existing onboarding family (BACKLOG.md:619-625) + any new flake; then update this entry per §11.
+- **Owner/area:** Test harness + auth session lifecycle (implementation, human-gated) — NOT this audit node
+- **Links:** docs/TEST_SUITE_FORENSIC_AUDIT_REPORT.md, app/events/trust_service.py, templates/kyc/index.html:18,77, app/wallet/services/regulatory_volume_calculator.py:122-138, app/wallet/services/kyc_limit_service.py:473-474, tests/wallet/test_payment_identity.py:112-115, tests/wallet/test_ledger_concurrency.py, app/identity/services/organization_registration.py:331-350, app/wallet/models/ledger.py:209-214
