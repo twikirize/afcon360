@@ -12,6 +12,7 @@ from app.identity.models.user import User
 from app.events.models import Event, CreatorType
 from app.events.constants import EventStatus
 from app.auth.helpers import has_global_role
+from app.auth.kyc_compliance import calculate_kyc_tier
 
 
 class TrustLevel:
