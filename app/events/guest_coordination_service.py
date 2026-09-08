@@ -78,6 +78,24 @@ class CoordinationError(Exception):
     message: str
 
 
+# The set of Accommodation booking statuses the Events module may present as an
+# active accommodation assignment. Mirror of the acceptance set validated in
+# ``_resolve_accommodation_booking`` (single source of truth): any status outside
+# this set (cancelled, refunded, ...) is treated as "not currently assigned".
+ACCOMMODATION_ASSIGNABLE_STATUSES = frozenset((
+    "held", "confirmed", "pending", "pending_approval",
+))
+
+
+# The set of Transport Booking statuses the Events module may present as an
+# active transport assignment. Mirror of the acceptance set validated in the
+# Transport coordination contract (single source of truth): any status outside
+# this set (cancelled, refunded, ...) is treated as "not currently assigned".
+TRANSPORT_ASSIGNABLE_STATUSES = frozenset((
+    "confirmed", "assigned",
+))
+
+
 class GuestCoordinationService:
     """Application service for the Event host guest-coordination contract."""
 
@@ -225,6 +243,12 @@ class GuestCoordinationService:
                     Booking.id.in_(transport_ids), Booking.is_deleted.is_(False)
                 ).all()
             }
+        assignable_accommodation_ids = GuestCoordinationService._assignable_accommodation_booking_ids(
+            accommodation_by_id.values()
+        )
+        assignable_transport_ids = GuestCoordinationService._assignable_transport_booking_ids(
+            transport_by_id.values()
+        )
         rows = []
         for registration in pagination.items:
             assignment = assignments.get(('registration', registration.id))
@@ -232,36 +256,49 @@ class GuestCoordinationService:
                 assignment = assignments.get(('user', registration.user_id)) or assignments.get(
                     ('user', getattr(registration, "attendee_user_id", None))
                 )
+            accommodation_booking_id = getattr(assignment, "accommodation_booking_id", None)
+            accommodation_is_active = (
+                accommodation_booking_id is not None
+                and accommodation_booking_id in assignable_accommodation_ids
+            )
+            transport_booking_id = getattr(assignment, "transport_booking_id", None)
+            transport_is_active = (
+                transport_booking_id is not None
+                and transport_booking_id in assignable_transport_ids
+            )
             rows.append({
                 "registration_ref": registration.registration_ref,
                 "name": registration.full_name,
                 "email": registration.email,
                 "phone": registration.phone,
                 "registration_status": registration.status,
-                "accommodation_assigned": bool(assignment and assignment.accommodation_booking_id),
-                "transport_assigned": bool(assignment and assignment.transport_booking_id),
+                "accommodation_assigned": bool(accommodation_is_active),
+                "transport_assigned": bool(transport_is_active),
                 "accommodation": GuestCoordinationService._accommodation_summary(
-                    accommodation_by_id.get(getattr(assignment, "accommodation_booking_id", None))
+                    accommodation_by_id.get(accommodation_booking_id)
+                    if accommodation_is_active else None
                 ),
                 "transport": GuestCoordinationService._transport_summary(
-                    transport_by_id.get(getattr(assignment, "transport_booking_id", None))
+                    transport_by_id.get(transport_booking_id)
+                    if transport_is_active else None
                 ),
             })
+        unique_assignments = {a.id: a for a in assignments.values() if a.id is not None}
         return {
             "items": rows,
             "page": pagination.page,
             "pages": pagination.pages,
             "total": pagination.total,
-            "accommodation_assigned": EventAssignment.query.filter(
-                EventAssignment.event_id == event.id,
-                EventAssignment.is_deleted.is_(False),
-                EventAssignment.accommodation_booking_id.is_not(None),
-            ).count(),
-            "transport_assigned": EventAssignment.query.filter(
-                EventAssignment.event_id == event.id,
-                EventAssignment.is_deleted.is_(False),
-                EventAssignment.transport_booking_id.is_not(None),
-            ).count(),
+            "accommodation_assigned": sum(
+                1
+                for a in unique_assignments.values()
+                if a.accommodation_booking_id in assignable_accommodation_ids
+            ),
+            "transport_assigned": sum(
+                1
+                for a in unique_assignments.values()
+                if a.transport_booking_id in assignable_transport_ids
+            ),
         }
 
     @staticmethod
@@ -286,11 +323,11 @@ class GuestCoordinationService:
             "capabilities": {
                 "accommodation": {
                     "available": GuestCoordinationService._module_available("accommodation"),
-                    "status": "assigned" if assignment and assignment.accommodation_booking_id else "unassigned",
+                    "status": GuestCoordinationService._accommodation_assignment_status(assignment),
                 },
                 "transport": {
                     "available": GuestCoordinationService._module_available("transport"),
-                    "status": "assigned" if assignment and assignment.transport_booking_id else "unassigned",
+                    "status": GuestCoordinationService._transport_assignment_status(assignment),
                 },
                 "wallet": {"available": GuestCoordinationService._module_available("wallet"), "status": "reference_only"},
                 "tourism": {"available": GuestCoordinationService._module_available("tourism"), "status": "reference_only"},
@@ -405,6 +442,74 @@ class GuestCoordinationService:
         }
 
     @staticmethod
+    def _accommodation_booking_assignable(booking) -> bool:
+        """True when an AccommodationBooking may still back an active event
+        accommodation assignment (not deleted and an assignable status)."""
+        if booking is None or getattr(booking, "is_deleted", False):
+            return False
+        return GuestCoordinationService._status_value(
+            getattr(booking, "status", "")
+        ) in ACCOMMODATION_ASSIGNABLE_STATUSES
+
+    @staticmethod
+    def _assignable_accommodation_booking_ids(bookings) -> set[int]:
+        """Event-side read revalidation: the ids of bookings that may still be
+        presented as active accommodation assignments (shared by dashboard,
+        attendee-list and statistics reads)."""
+        return {
+            booking.id
+            for booking in bookings
+            if GuestCoordinationService._accommodation_booking_assignable(booking)
+        }
+
+    @staticmethod
+    def _accommodation_assignment_status(assignment) -> str:
+        """Journey status for one assignment: "assigned" only while the
+        referenced booking is still assignable."""
+        if assignment is None or not assignment.accommodation_booking_id:
+            return "unassigned"
+        from app.accommodation.models.booking import AccommodationBooking
+
+        booking = db.session.get(AccommodationBooking, assignment.accommodation_booking_id)
+        if not GuestCoordinationService._accommodation_booking_assignable(booking):
+            return "unassigned"
+        return "assigned"
+
+    @staticmethod
+    def _transport_booking_assignable(booking) -> bool:
+        """True when a Transport Booking may still back an active event
+        transport assignment (not deleted and an assignable status)."""
+        if booking is None or getattr(booking, "is_deleted", False):
+            return False
+        return GuestCoordinationService._status_value(
+            getattr(booking, "status", "")
+        ) in TRANSPORT_ASSIGNABLE_STATUSES
+
+    @staticmethod
+    def _transport_assignment_status(assignment) -> str:
+        """Journey status for one assignment: "assigned" only while the
+        referenced transport booking is still assignable (fail-closed read)."""
+        if assignment is None or not assignment.transport_booking_id:
+            return "unassigned"
+        from app.transport.models import Booking
+
+        booking = db.session.get(Booking, assignment.transport_booking_id)
+        if not GuestCoordinationService._transport_booking_assignable(booking):
+            return "unassigned"
+        return "assigned"
+
+    @staticmethod
+    def _assignable_transport_booking_ids(bookings) -> set:
+        """Event-side read revalidation: the ids of transport bookings that may
+        still be presented as active transport assignments (shared by the
+        dashboard)."""
+        return {
+            booking.id
+            for booking in bookings
+            if GuestCoordinationService._transport_booking_assignable(booking)
+        }
+
+    @staticmethod
     def _resolve_accommodation_booking(event, resource_ref, actor=None):
         from app.accommodation.models.booking import AccommodationBooking
 
@@ -434,9 +539,7 @@ class GuestCoordinationService:
         )
         if not event_linked and not owner_linked:
             raise CoordinationError("BOOKING_EVENT_MISMATCH", "Accommodation booking is not reserved for this event")
-        if GuestCoordinationService._status_value(booking.status) not in {
-            "held", "confirmed", "pending", "pending_approval"
-        }:
+        if not GuestCoordinationService._accommodation_booking_assignable(booking):
             raise CoordinationError("ACCOMMODATION_BOOKING_UNAVAILABLE", "Accommodation booking is not assignable")
 
         event_start, event_end = GuestCoordinationService._event_dates(event)
@@ -471,50 +574,35 @@ class GuestCoordinationService:
         return booking
 
     @staticmethod
-    def _resolve_transport_booking(event, resource_ref):
-        from app.transport.models import Booking, DriverProfile, Vehicle
+    def _resolve_transport_booking(event, resource_ref, actor=None):
+        """Resolve a Transport booking for this event and validate event scope.
+
+        This deliberately keeps transport-domain rules OUT of Events: driver /
+        vehicle eligibility, booking status and capacity are owned by the
+        Transport coordination contract and revalidated authoritatively on
+        every reservation. Events owns only the event scope check (the booking
+        must be tagged to this event or booked by the acting organizer).
+        """
+        from app.transport.models import Booking
 
         ref = GuestCoordinationService._resource_ref(resource_ref)
         if not ref:
             raise CoordinationError("INVALID_EVENT_RESOURCE", "Transport booking reference is required")
         query = Booking.query.with_for_update()
         booking = query.filter_by(booking_reference=ref, is_deleted=False).first()
+        # Keep old clients working while ensuring the numeric value is never
+        # trusted without the contract revalidation below.
         if booking is None and ref.isdigit():
             booking = query.filter_by(id=int(ref), is_deleted=False).first()
         if booking is None:
             raise CoordinationError("TRANSPORT_BOOKING_NOT_FOUND", "Transport booking was not found")
-        if booking.event_id != event.id:
+        event_linked = booking.event_id == event.id
+        # Organizers may assign their own booked/owned transport to event
+        # attendees even when the booking was not explicitly tagged to the event.
+        actor_id = getattr(actor, "id", None)
+        owner_linked = actor_id is not None and booking.user_id == actor_id
+        if not event_linked and not owner_linked:
             raise CoordinationError("BOOKING_EVENT_MISMATCH", "Transport booking is not reserved for this event")
-        if GuestCoordinationService._status_value(booking.status) not in {"confirmed", "assigned"}:
-            raise CoordinationError("TRANSPORT_BOOKING_UNAVAILABLE", "Transport booking is not assignable")
-
-        driver = getattr(booking, "driver", None) or db.session.get(
-            DriverProfile, booking.assigned_driver_id
-        )
-        vehicle = getattr(booking, "vehicle", None) or db.session.get(
-            Vehicle, booking.assigned_vehicle_id
-        )
-        if driver is None or vehicle is None:
-            raise CoordinationError("TRANSPORT_RESOURCE_INCOMPLETE", "Transport booking has no eligible driver and vehicle")
-        if getattr(driver, "is_deleted", False) or not getattr(driver, "is_available", False) or not getattr(driver, "is_online", False):
-            raise CoordinationError("DRIVER_UNAVAILABLE", "The assigned driver is not available")
-        if GuestCoordinationService._status_value(getattr(driver, "compliance_status", None)) != "approved":
-            raise CoordinationError("DRIVER_NOT_APPROVED", "The assigned driver is not approved")
-        if GuestCoordinationService._status_value(getattr(driver, "verification_tier", None)) not in {
-            "platform_verified", "event_certified"
-        }:
-            raise CoordinationError("DRIVER_NOT_APPROVED", "The assigned driver is not verified for event service")
-        if getattr(vehicle, "is_deleted", False) or GuestCoordinationService._status_value(
-            getattr(vehicle, "status", "")
-        ) != "active":
-            raise CoordinationError("VEHICLE_UNAVAILABLE", "The assigned vehicle is not active")
-        if not getattr(vehicle, "is_available", False) and getattr(
-            vehicle, "current_booking_id", None
-        ) != booking.id:
-            raise CoordinationError("VEHICLE_UNAVAILABLE", "The assigned vehicle is not available")
-        capacity = getattr(vehicle, "passenger_capacity", None)
-        if capacity is not None and capacity < int(booking.passenger_count or 1):
-            raise CoordinationError("TRANSPORT_CAPACITY_EXCEEDED", "The vehicle has no remaining capacity")
         return booking
 
     @staticmethod
@@ -568,6 +656,96 @@ class GuestCoordinationService:
         return assignment
 
     @staticmethod
+    def retire_invalid_accommodation_assignment(
+        assignment,
+        *,
+        removed_by_user_id: int | None = None,
+        reason: str | None = None,
+    ) -> bool:
+        """Event-side cleanup for an EventAssignment whose Accommodation booking
+        is no longer assignable (cancelled/refunded/deleted/missing).
+
+        The slot is retired through the Accommodation contract (ownership
+        boundary), then the assignment pointer and coordination token are
+        cleared. One transaction; idempotent (returns False when there is
+        nothing to do); a failed release rolls the whole cleanup back.
+        """
+        if assignment is None or not assignment.accommodation_booking_id:
+            return False
+        from app.accommodation.models.booking import AccommodationBooking
+        from app.accommodation.services.coordination_contract import (
+            AccommodationCoordinationContract,
+            CoordinationContractError,
+        )
+
+        booking_id = assignment.accommodation_booking_id
+        booking = db.session.get(AccommodationBooking, booking_id)
+        retire_reason = (reason or "booking no longer assignable").strip()
+        if booking is not None and not booking.is_deleted:
+            try:
+                AccommodationCoordinationContract.release_event_guest_slot(
+                    booking.booking_reference,
+                    event_assignment_id=assignment.id,
+                    removed_by_user_id=removed_by_user_id,
+                    reason=retire_reason,
+                )
+            except CoordinationContractError as exc:
+                current_app.logger.warning(
+                    "Slot release skipped while retiring assignment %s booking %s: %s",
+                    assignment.id, booking_id, exc,
+                )
+        assignment.accommodation_booking_id = None
+        assignment.acc_link_token_hash = None
+        assignment.acc_link_expires_at = None
+        assignment.status = "active" if assignment.transport_booking_id else "cancelled"
+        assignment.assigned_at = datetime.now(timezone.utc)
+        db.session.commit()
+        return True
+
+    @staticmethod
+    def retire_invalid_transport_assignment(
+        assignment,
+        *,
+        removed_by_user_id: int | None = None,
+        reason: str | None = None,
+    ) -> bool:
+        """Event-side cleanup for an EventAssignment whose Transport booking is
+        no longer assignable (cancelled/refunded/deleted/missing).
+
+        The passenger reservation is retired through the Transport contract
+        (ownership boundary), then the assignment pointer is cleared. One
+        transaction; idempotent (returns False when there is nothing to do);
+        a failed release rolls the whole cleanup back.
+        """
+        if assignment is None or not assignment.transport_booking_id:
+            return False
+        from app.transport.models import Booking
+        from app.transport.services.coordination_contract import (
+            TransportCoordinationContract,
+            TransportCoordinationContractError,
+        )
+
+        retire_reason = (reason or "transport booking no longer assignable").strip()
+        booking = db.session.get(Booking, assignment.transport_booking_id)
+        if not GuestCoordinationService._transport_booking_assignable(booking):
+            try:
+                TransportCoordinationContract.release_passenger(
+                    event_assignment_id=assignment.id,
+                    removed_by_user_id=removed_by_user_id,
+                    reason=retire_reason,
+                )
+            except TransportCoordinationContractError as exc:
+                current_app.logger.warning(
+                    "Passenger release skipped while retiring assignment %s booking %s: %s",
+                    assignment.id, assignment.transport_booking_id, exc,
+                )
+        assignment.transport_booking_id = None
+        assignment.status = "active" if assignment.accommodation_booking_id else "cancelled"
+        assignment.assigned_at = datetime.now(timezone.utc)
+        db.session.commit()
+        return True
+
+    @staticmethod
     def assign_accommodation(event, actor, registration_ref: str, booking_ref: str) -> EventAssignment:
         GuestCoordinationService._require(can_assign_accommodation, actor, event)
         if not GuestCoordinationService._module_available("accommodation"):
@@ -577,7 +755,6 @@ class GuestCoordinationService:
             booking = GuestCoordinationService._resolve_accommodation_booking(event, booking_ref, actor)
             # Capacity check is owned by AccommodationCoordinationContract.
             # It locks the booking row, creates the slot, and verifies capacity atomically.
-            from app.accommodation.models.guest_registration import GuestRegistration
             assignment = GuestCoordinationService._assignment(event, registration)
             previous = assignment.accommodation_booking_id
             if previous == booking.id:
@@ -592,14 +769,27 @@ class GuestCoordinationService:
                 from app.accommodation.models.booking import AccommodationBooking
                 old = db.session.get(AccommodationBooking, previous)
                 previous_ref = getattr(old, "booking_reference", None)
-                # Deactivate the old guest registration slot for this assignment
-                old_slot = GuestRegistration.query.filter_by(
-                    booking_id=previous,
-                    event_assignment_id=assignment.id,
-                    is_active=True
-                ).first()
-                if old_slot:
-                    old_slot.remove(actor.id, "reassigned")
+                if previous_ref:
+                    # Retire the old guest slot through the Accommodation contract:
+                    # Accommodation owns GuestRegistration lifecycle and capacity.
+                    from app.accommodation.services.coordination_contract import (
+                        AccommodationCoordinationContract,
+                        CoordinationContractError,
+                    )
+                    try:
+                        AccommodationCoordinationContract.release_event_guest_slot(
+                            previous_ref,
+                            event_assignment_id=assignment.id,
+                            removed_by_user_id=actor.id,
+                            reason="reassigned",
+                        )
+                    except CoordinationContractError as exc:
+                        if exc.code != "BOOKING_NOT_FOUND":
+                            raise
+                        current_app.logger.warning(
+                            "Slot release skipped while reassigning assignment %s booking %s: %s",
+                            assignment.id, previous, exc,
+                        )
             # Ensure the guest slot exists before committing the assignment.
             # The bridge will set the token hash/expiry but will not commit.
             from app.events.accommodation_bridge import issue_accommodation_for_assignment
@@ -636,7 +826,7 @@ class GuestCoordinationService:
             raise CoordinationError("TRANSPORT_UNAVAILABLE", "Transport service is currently unavailable")
         registration = GuestCoordinationService._registration(event, registration_ref)
         try:
-            booking = GuestCoordinationService._resolve_transport_booking(event, booking_ref)
+            booking = GuestCoordinationService._resolve_transport_booking(event, booking_ref, actor)
             assignment = GuestCoordinationService._assignment(event, registration)
             previous = assignment.transport_booking_id
             if previous == booking.id:
@@ -651,6 +841,31 @@ class GuestCoordinationService:
                 from app.transport.models import Booking
                 old = db.session.get(Booking, previous)
                 previous_ref = getattr(old, "booking_reference", None)
+            # Transport owns reservation, capacity and eligibility:
+            # the contract locks the booking row, revalidates driver/vehicle/
+            # status/capacity atomically, tags the booking to the event, and
+            # creates/retires the passenger reservation. It flushes only;
+            # _commit_assignment commits this outer transaction, so a failed
+            # reservation rolls everything (including the old reservation)
+            # back.
+            from app.transport.services.coordination_contract import (
+                TransportCoordinationContract,
+                TransportCoordinationContractError,
+            )
+            try:
+                TransportCoordinationContract.ensure_passenger_reservation(
+                    booking.booking_reference,
+                    event_assignment_id=assignment.id,
+                    event_id=event.id,
+                    full_name=registration.full_name,
+                    email=getattr(registration, "email", None),
+                    phone=getattr(registration, "phone", None),
+                    user_id=getattr(registration, "user_id", None),
+                    reason="assignment",
+                )
+            except TransportCoordinationContractError as exc:
+                db.session.rollback()
+                raise CoordinationError(exc.code, exc.message) from exc
             return GuestCoordinationService._commit_assignment(
                 event, actor, registration, assignment, "transport", booking.booking_reference, previous_ref
             )
@@ -682,19 +897,30 @@ class GuestCoordinationService:
             raise CoordinationError("ASSIGNMENT_NOT_FOUND", f"No {capability} assignment exists for this attendee")
         if capability == "accommodation":
             from app.accommodation.models.booking import AccommodationBooking
-            from app.accommodation.models.guest_registration import GuestRegistration
+            from app.accommodation.services.coordination_contract import (
+                AccommodationCoordinationContract,
+            )
             old = db.session.get(AccommodationBooking, previous_id)
             previous_ref = getattr(old, "booking_reference", None)
-            # Deactivate the guest registration slot for this assignment and booking
-            slot = GuestRegistration.query.filter_by(
-                booking_id=previous_id,
-                event_assignment_id=assignment.id,
-                is_active=True
-            ).first()
-            if slot:
-                slot.remove(actor.id, "assignment cancelled")
-                # Ensure slot change is flushed before continuing
-                db.session.flush()
+            # Retire the guest slot through the Accommodation contract:
+            # Accommodation owns GuestRegistration lifecycle and capacity.
+            released_slot = False
+            if previous_ref:
+                from app.accommodation.services.coordination_contract import CoordinationContractError
+                try:
+                    released_slot = AccommodationCoordinationContract.release_event_guest_slot(
+                        previous_ref,
+                        event_assignment_id=assignment.id,
+                        removed_by_user_id=actor.id,
+                        reason="assignment cancelled",
+                    )
+                except CoordinationContractError as exc:
+                    if exc.code != "BOOKING_NOT_FOUND":
+                        raise
+                    current_app.logger.warning(
+                        "Slot release skipped while cancelling assignment %s booking %s: %s",
+                        assignment.id, previous_id, exc,
+                    )
             # Clear the token on the assignment
             assignment.acc_link_token_hash = None
             assignment.acc_link_expires_at = None
@@ -740,15 +966,35 @@ class GuestCoordinationService:
                     )
                 # NotificationService.send() does a flush that expires the slot and reloads from DB
                 # (which still has is_active=True since we haven't committed yet).
-                # Re-apply our change by calling remove() again to set all fields properly.
-                if slot:
-                    slot.remove(actor.id, "assignment cancelled")
+                # Re-apply our change through the contract to set all fields properly.
+                if released_slot:
+                    AccommodationCoordinationContract.release_event_guest_slot(
+                        previous_ref,
+                        event_assignment_id=assignment.id,
+                        removed_by_user_id=actor.id,
+                        reason="assignment cancelled",
+                    )
             except Exception:
                 current_app.logger.exception("Failed to send accommodation cancellation notification to %r", email)
         else:
             from app.transport.models import Booking
             old = db.session.get(Booking, previous_id)
             previous_ref = getattr(old, "booking_reference", None)
+            # Retire the passenger reservation through the Transport contract:
+            # Transport owns passenger lifecycle and capacity. Idempotent (no
+            # double release) and never deletes history.
+            from app.transport.services.coordination_contract import TransportCoordinationContract
+            try:
+                TransportCoordinationContract.release_passenger(
+                    event_assignment_id=assignment.id,
+                    removed_by_user_id=actor.id,
+                    reason="assignment cancelled",
+                )
+            except Exception as exc:
+                current_app.logger.warning(
+                    "Passenger release skipped while cancelling assignment %s booking %s: %s",
+                    assignment.id, previous_id, exc,
+                )
             assignment.transport_booking_id = None
         assignment.status = "active" if (
             assignment.accommodation_booking_id or assignment.transport_booking_id

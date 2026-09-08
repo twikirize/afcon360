@@ -61,6 +61,39 @@ def _require_ownership(resource, user_id_attr, admin_allowed=True):
 
     return resource
 
+
+def _require_vehicle_ownership(vehicle_model):
+    """
+    Ownership check for vehicles whose owner is a driver profile
+    (owner_type='driver', owner_id=DriverProfile.id) or an organisation.
+    Admins may access anything.
+    """
+    from flask_login import current_user
+
+    if not vehicle_model:
+        abort(404)
+
+    if hasattr(current_user, 'is_admin') and current_user.is_admin:
+        return vehicle_model
+
+    owner_type = getattr(vehicle_model, 'owner_type', None)
+    owner_id = getattr(vehicle_model, 'owner_id', None)
+
+    if owner_type == 'driver':
+        driver_ids = [d.id for d in DriverProfile.query.filter_by(
+            user_id=current_user.id, is_deleted=False
+        ).all()]
+        if owner_id in driver_ids:
+            return vehicle_model
+    elif owner_id == current_user.id:
+        return vehicle_model
+
+    logger.warning(
+        f"Ownership check failed: user_id={current_user.id} tried to access "
+        f"vehicle owned by {owner_type}:{owner_id}"
+    )
+    abort(403)
+
 def _json_or_template(template, status=200, **ctx):
     """
     Returns JSON for AJAX/API clients, HTML for browsers.
@@ -559,7 +592,6 @@ def drivers_new():
 @login_required
 @require_profile_completion
 @require_kyc_tier(3)  # Tier 3 required to become a driver
-@role_required("provider")
 def become_driver():
     """Register as a transport driver"""
     if request.method == "GET":
@@ -581,8 +613,12 @@ def become_driver():
         return redirect(url_for("transport.become_driver"))
 
     try:
-        driver = get_provider_service().register_driver(data, user_id=current_user.id)
-        logger.info(f"Driver registered: user_id={_uid()}, driver_id={driver.id}")
+        result = get_provider_service().register_driver(
+            user_id=current_user.id,
+            driver_data=data,
+        )
+        driver_id = result['data']['driver_id']
+        logger.info(f"Driver registered: user_id={_uid()}, driver_id={driver_id}")
         flash("Driver registration submitted for verification!", "success")
         return redirect(url_for("transport.driver_dashboard"))
 
@@ -688,28 +724,14 @@ def driver_dashboard():
 @active_context_required(ContextType.DRIVER)
 @role_required("driver")
 def driver_dashboard_slash():
-    """Driver dashboard - manage vehicles, availability, trips."""
-    from datetime import date
+    """Alias of driver_dashboard.
 
-    from app.transport.models import Vehicle, Trip, DriverAvailability
-
-    vehicles = Vehicle.query.filter_by(driver_id=current_user.id).all()
-    upcoming_trips = (
-        Trip.query.filter_by(driver_id=current_user.id, status="scheduled")
-        .order_by(Trip.pickup_time.asc())
-        .limit(10)
-        .all()
-    )
-    today_availability = DriverAvailability.query.filter_by(
-        driver_id=current_user.id, date=date.today()
-    ).first()
-
-    return render_template(
-        "transport/driver_dashboard.html",
-        vehicles=vehicles,
-        upcoming_trips=upcoming_trips,
-        today_availability=today_availability,
-    )
+    Legacy duplicate of the working `driver_dashboard` route. Its original
+    body referenced `Trip`, `DriverAvailability`, and `Vehicle.driver_id`,
+    none of which exist in the current transport model, so every request
+    raised ImportError (500). Redirect to the canonical route instead.
+    """
+    return redirect(url_for("transport.driver_dashboard"))
 
 
 # =========================================================================
@@ -736,7 +758,8 @@ def vehicles_new():
 @transport_bp.route("/register-vehicle", methods=["GET", "POST"])
 @module_enabled_required("transport")
 @login_required
-@role_required("provider")
+@require_profile_completion
+@require_kyc_tier(3)  # Tier 3 required to register a vehicle
 def register_vehicle():
     """Register a vehicle for transport service"""
     if request.method == "GET":
@@ -756,8 +779,19 @@ def register_vehicle():
         return redirect(url_for("transport.register_vehicle"))
 
     try:
-        vehicle = get_provider_service().register_vehicle(data, user_id=current_user.id)
-        logger.info(f"Vehicle registered: user_id={_uid()}, vehicle_id={vehicle.id}")
+        svc = get_provider_service()
+        driver = svc.get_driver_profile(current_user.id)
+        if not driver:
+            raise ValidationError(
+                "You must be a registered driver to register a vehicle"
+            )
+        result = svc.register_vehicle(
+            owner_type='driver',
+            owner_id=driver.id,
+            vehicle_data=data,
+        )
+        vehicle_id = result['data']['vehicle_id']
+        logger.info(f"Vehicle registered: user_id={_uid()}, vehicle_id={vehicle_id}")
         flash("Vehicle registration submitted!", "success")
         return redirect(url_for("transport.vehicle_dashboard"))
 
@@ -783,8 +817,8 @@ def vehicles_show(id):
             flash("Vehicle not found", "warning")
             return redirect(url_for("transport.vehicles_index"))
 
-        # Check ownership (vehicle.owner_id) or admin
-        _require_ownership(vehicle_model, "owner_id", admin_allowed=True)
+        # Check ownership (vehicle owner driver/organisation) or admin
+        _require_vehicle_ownership(vehicle_model)
 
         # Get service representation
         vehicle = get_provider_service().get_vehicle(id)
@@ -833,7 +867,8 @@ def vehicles_location(id):
 @transport_bp.route("/vehicle-dashboard")
 @module_enabled_required("transport")
 @login_required
-@role_required("provider")
+@require_profile_completion
+@require_kyc_tier(3)  # Tier 3 required to manage vehicles
 def vehicle_dashboard():
     """Vehicle management dashboard"""
     try:

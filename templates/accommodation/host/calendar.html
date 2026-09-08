@@ -1,4 +1,8 @@
 {% extends "base.html" %}
+
+{% block module_styles %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
+{% endblock %}
 {% from "macros/flash_messages.html" import render_flash_messages with context %}
 
 {% block title %}Host Availability Calendar{% endblock %}

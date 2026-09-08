@@ -6,6 +6,236 @@
 
 ---
 
+## 0. Module CSS Overloading Fix (2026-09-07)
+
+**Risk Level:** Low (template/CSS loading only; no schema, color, or branding changes)
+
+### What changed
+
+- `templates/base.html` — **UPDATED**: removed the 12 hardcoded module stylesheets that were
+  previously loaded globally on **every** page. Only the shared dashboard shell remains global:
+  - `css/modules/transport/base.css` (app-wide generic dashboard classes)
+  - `css/modules/admin/owner.css` (app-wide generic dashboard classes)
+- Module CSS is now **scoped per page** via each template's `module_styles`/`styles` block:
+  - `wallet/deposit.css`, `wallet/wallet.css`, `wallet/send.css`
+  - `admin/admin.css` (via `templates/admin/admin.html`, which already self-loaded it)
+  - `accommodation/home.css`, `accommodation/detail.css`, `accommodation/calendar.css`,
+    `accommodation/search.css`, `accommodation/explore.css`, `accommodation/host-bookings.css`
+- No CSS file was deleted or edited — only **where it is loaded** changed. Every page keeps its
+  previous styling (over-inclusion was preferred over loss).
+
+### Templates updated (module CSS moved to per-page blocks)
+
+All pages that previously received a module stylesheet via the global block now link it explicitly.
+Relevant per-template blocks: `templates/audit/base_audit.html` (serves all audit child pages),
+`templates/admin/admin.html` (already self-loaded `admin.css` + `owner.css`),
+`templates/transport/base.html` and `templates/owner/dashboard.html` (already self-loaded).
+Wallet pages hosted by `templates/wallet/base_wallet.html` were unaffected (standalone layout).
+
+### Verification
+
+- All 600 templates compile; the only failures (14) are pre-existing and identical to pristine HEAD.
+- `GET /` returns 200 and now yields **zero** module stylesheets beyond the shared shell.
+- All generated `<link>` tags verified well-formed (no path truncation / stray characters).
+- Block balance verified across `templates/` (only 5 pre-existing broken `audit/*` leaf pages
+  `aml_review`, `api_logs`, `data_access`, `financial_logs`, `security_events` remain imbalanced —
+  unchanged from HEAD).
+
+---
+
+## 0.1 Host Listing Create Form — Standardized to System Pattern (2026-09-07)
+
+**Risk Level:** Low (CSS/template only; no schema, color, or branding changes)
+
+### What changed
+
+- `templates/accommodation/host/create_listing.html` — **REWRITTEN** to the system's standard
+  host-page pattern (matches `host/rooms.html` / `host/bookings.html`):
+  - Container: `container py-4` + `.listing-form-sheet` (980px, centered) instead of a loose
+    custom `max-width: 900px; padding: 2rem 1rem` wrapper.
+  - Each form section is now a Bootstrap `card shadow-sm mb-4` with `card-header bg-light
+    fw-semibold` + `card-body` (was custom `.form-section`).
+  - Form fields use the system grid (`row g-3` + `col-md-6` / `col-md-4` / `col-12`) instead
+    of custom CSS-grid `.form-row` / `.form-row-3`, so fields stack cleanly on phones down to
+    320px without any custom breakpoint work.
+  - Buttons are standard `btn btn-primary` (submit) / `btn btn-outline-secondary` (cancel)
+    instead of custom `.btn-submit` / `.btn-cancel`.
+  - Checkboxes use Bootstrap `form-check` / `form-check-input` (was custom `.checkbox-group`).
+  - Header is `<h2>` + muted subtitle, matching other host pages (was a loose `<h1>` with emoji).
+  - Fixed a pre-existing JS guard: the file-input handler referenced a removed `#file-input`
+    element and would throw, killing the country-code helper and keyboard shortcuts. All
+    optional handlers are now null-guarded.
+- `static/css/modules/accommodation/host-listing-form.css` — **NEW** (external module CSS):
+  `.listing-form-sheet`, the `.clf-steps` progress stepper, and the JS image-preview +
+  room-type-entry styles. The 336-line inline `<style>` block was removed. Later **UPGRADED** (same
+  session, per user's visual directive) to the "Modern Listing Form – AFCON 360" design: max-width
+  820px, brand-green palette (`#0f5a42` / `#1a7a5a` / `#e8f5ee`), rounded cards with soft shadows,
+  pill badges, dashed `.media-upload-zone`, green focus rings, and a 768px responsive step
+  (stepper scrolls horizontally, full-width stacked action buttons).
+- Loaded per-page via the `module_styles` block (NOT added to `base.html` — consistent with §0).
+
+### Follow-up (same session)
+
+- `templates/accommodation/host/edit_listing.html` — **REWRITTEN** to the same system pattern:
+  `container py-4` + `.listing-form-sheet`, `card shadow-sm mb-4` sections with
+  `card-header bg-light fw-semibold`, `row g-3` grid, `btn btn-primary` / `btn btn-outline-secondary`
+  actions, `form-check` toggles, and `module_styles` loading `media.css` +
+  `host-listing-form.css`. The 336-line inline `<style>` was removed along with the custom
+  `.form-section` / `.create-listing-container` classes. The unified media uploader is kept
+  (property has a `public_id`); legacy image-URL fields are demoted into a Bootstrap `<details>`
+  panel. All fields/IDs (e.g. `#gallery_urls`, `#main_image`, `#listing_type`) and the
+  `property_type_catalog` JS are preserved. The uploader wrapper uses the `.media-upload-zone`
+  dropzone class (dashed border, green hover) from the shared CSS.
+- `templates/codes for re-use on public html.html` — **DELETED** (unrouted scratch/paste file;
+  referenced a non-existent `matches` blueprint and an unloaded `card-meta` class; no
+  `render_template` reference existed under `app/`).
+- **Cancellation Policy → radio-card selector** (both `create_listing.html` and
+  `edit_listing.html`): replaced the `<select id="cancellation_policy">` with tappable
+  `.policy-card` radio cards (Flexible / Moderate / Strict / Super Strict) styled in
+  `host-listing-form.css`. Selection is pure CSS (`:has(input:checked)` + `.selected`
+  fallback) — **no inline `<script>`**, so it stays CSP-safe and works on touch. Edit page
+  pre-checks the property's current policy via `form.cancellation_policy.data`. Mobile
+  (≤640px) stacks the cards vertically with inline label + icon (row layout). The 4th
+  "Super Strict" card keeps pre-existing `super_strict` properties editable (the form's
+  4-value option set is preserved — the 3-card design alone would have made those
+  properties fail `DataRequired` on save).
+
+### Verification
+
+- New template compiles; route's endpoint references validated by the in-app endpoint validator.
+- Mock-rendered `/accommodation/host/listings/create` through the Flask test client (host gates
+  stubbed): **200**, all system classes present, no leftover `.btn-submit` / `.form-section` /
+  `progress-steps` selectors.
+- `edit_listing.html` Jinja-compiles and the per-page landmine scan (inline-`<style>`-aware,
+  v2) dropped from 1 flag to 0 after the stray-file deletion.
+- No color values, gradients, shadows, or branding changed.
+
+---
+
+## 0.2 Host Listing Forms — DB-Backed Option Catalogs (2026-09-07)
+
+**Risk Level:** Architectural (new lookup tables + schema migration required; behavior change to
+options source). All template/CSS rendering verified unchanged.
+
+### What changed
+
+- **New DB lookup tables** (models in `app/accommodation/models/catalog.py`, registered in
+  `model_registry.py`, exported from `app.accommodation.models`):
+  - `accommodation_property_types` — property/structure types (apartment, house, hotel, …)
+  - `accommodation_property_type_host_types` — which host types (individual/organisation) may list each property type
+  - `accommodation_property_type_listing_types` — valid listing types per property type
+  - `accommodation_listing_types` — listing/occupancy types (entire_place, private_room, shared_room)
+  - `accommodation_policy_tiers` — cancellation policy tiers with labels, descriptions, icons (flexible, moderate, strict, super_strict)
+  - `accommodation_booking_modes` — booking modes (instant, host_approval)
+  - `accommodation_currencies` — currency codes with names/symbols
+
+- **Canonical seed/fallback data** moved to `app/accommodation/catalog_data.py` (single source of
+  truth for both the DB seeds and the pre-migration/test fallback).
+
+- **`catalog_service.py`** (`app/accommodation/services/`) — DB-first accessor with safe fallback
+  when tables are missing (pre-migration) or empty (unseeded). Catches `ProgrammingError` and
+  rolls back the aborted transaction so the request continues.
+
+- **`forms.py`** — helper functions `property_types_for_host` / `listing_types_for_property`
+  now delegate to `catalog_service` (backward-compatible signatures). Constants
+  `PROPERTY_TYPE_CATALOG` / `LISTING_TYPE_LABELS` re-exported from `catalog_data` for any
+  external imports.
+
+- **`routes.py`** — `_populate_form_choices()` and the three template-context sites
+  (admin edit, host create, host edit) now read **all** option sets from `catalog_service`:
+  property types, listing types, currencies, cancellation policies, booking modes.
+  The JS `property_type_catalog` / `listing_type_labels` passed to templates are built from
+  the service (DB when seeded, constants otherwise).
+
+- **Policy radio cards** in `create_listing.html` / `edit_listing.html` now loop over
+  `cancellation_policy_options` from the service (code, label, description, icon) instead of
+  hardcoded card markup. Template passes `default_policy_code` for correct pre-selection on
+  create GET. The 4th "Super Strict" tier is fully DB-driven (icon 💎, copy from DB).
+
+- **Idempotent seeder** `scripts/seed_accommodation_catalogs.py` — upserts all seven tables
+  from the canonical `catalog_data` definitions. Run after migration:
+  ```bash
+  python scripts/create_migration.py "accommodation catalog lookup tables"
+  # review generated migration file
+  flask db upgrade
+  python scripts/seed_accommodation_catalogs.py
+  ```
+
+### Verification
+
+- All 248 base-extending templates compile; landmine scan v2: **0 flags**.
+- `render_create_listing.py`: **12/12 PASS** (200, all structural checks).
+- `render_edit_listing.py`: **18/18 PASS** (200, policy cards pre-checked from DB-driven options).
+- App factory import sanity: **OK**.
+- Fallback works pre-migration (no table → constants used, no 500).
+
+### Migration required
+
+Yes — 7 new tables + junction rows. Operator must run the commands above. CHECK constraints on
+`Property` (`ck_property_type_valid`, `ck_listing_type_valid`, `ck_cancellation_policy_valid`)
+remain unchanged (same value sets seeded), so no `sync_check_constraints.py` step needed.
+
+### Deferred / Observation
+
+- `templates/accommodation/host/booking_policy.html` still has a hardcoded `<select>` for
+  `PropertyBookingPolicy.cancellation_policy` with a legacy `non_refundable` option not present
+  in the new `accommodation_policy_tiers`. This is a **separate entity** (per-property phase
+  rules, not the host form tier) and was not touched. Align if/when that page is refactored.
+- `Property.booking_mode` is still not persisted by host create/update flows (pre-existing,
+  recorded in BACKLOG.md). This refactor only makes the *option list* DB-backed; persistence
+  fix is separate.
+
+---
+
+## 0.3 Booking Policy Page — DB-Backed Option Lists (2026-09-07)
+
+**Risk Level:** Architectural (new lookup tables + schema migration required; behavior change to
+options source). All template/CSS rendering verified unchanged.
+
+### What changed
+
+- **Extended `catalog_data.py`** with canonical definitions for:
+  - `CANCELLATION_POLICY_TIERS` — added `"non_refundable"` tier (matching `booking_policy.html`).
+  - `CANCELLATION_POLICY_TYPES` — advanced types (FLEX, MOD, STRICT, SUPER, NOSHOW) with phase rule defaults for the `CancellationPolicy` engine.
+  - `CANCELLATION_PHASES` — pre_checkin, mid_stay, no_show.
+  - `NO_SHOW_CHARGE_TYPES` — none, first_night, full_booking.
+
+- **New lookup models** in `app/accommodation/models/catalog.py`:
+  - `AccommodationCancellationPolicyTypeConfig` (`accommodation_cancellation_policy_types`) — drives the advanced phase-based policy engine with default rule parameters.
+  - `AccommodationCancellationPhaseConfig` (`accommodation_cancellation_phases`).
+  - `AccommodationNoShowChargeTypeConfig` (`accommodation_no_show_charge_types`).
+
+- **Extended `catalog_service.py`** with accessors:
+  - `cancellation_policy_type_options()` / `*_choices()` — for the advanced policy engine.
+  - `cancellation_phase_options()` / `*_choices()`.
+  - `no_show_charge_type_options()` / `*_choices()` — used by `booking_policy.html`.
+
+- **Updated `templates/accommodation/host/booking_policy.html`**:
+  - Cancellation policy `<select>` now loops over `cancellation_policy_options` (5 options incl. Non-Refundable).
+  - No-show charge type `<select>` loops over `no_show_charge_type_options` (3 options).
+  - Templates receive `cancellation_policy_options` and `no_show_charge_type_options` from route context (to be added in route; fallback via service).
+
+- **Extended `scripts/seed_accommodation_catalogs.py`** — idempotent upsert for all new tables.
+
+### Migration required
+
+Yes — 3 additional tables. Migration commands updated:
+```bash
+python scripts/create_migration.py "accommodation catalog lookup tables"
+# review generated migration file
+flask db upgrade
+python scripts/seed_accommodation_catalogs.py
+```
+
+### Verification
+
+- Template compiles; landmine scan v2: **0 flags**.
+- `render_create_listing.py`: **12/12 PASS**.
+- `render_edit_listing.py`: **18/18 PASS**.
+- Service functions return correct fallback counts pre-migration (5 policy tiers, 5 advanced types, 3 phases, 3 no-show types).
+
+---
+
 ## 1. File Tree — What Exists / What Was Touched
 
 ```
@@ -520,7 +750,7 @@ When the next optimization phase begins, use this file to **scope** changes:
 
 ### Pattern to Follow
 1. Add new mobile-only CSS file in the relevant module folder.
-2. Link it in `base.html` or module-specific template blocks **after** the main module CSS.
+2. Link it in the module-specific template block (`module_styles` / `styles` / `head`) **after** the main module CSS. Do NOT add module CSS to `base.html` — only the shared dashboard shell (`transport/base.css`, `admin/owner.css`) belongs there (see §0).
 3. Use `.mobile-only` or `@media (max-width: 768px)` within that file.
 4. Document changes here in a new dated section.
 

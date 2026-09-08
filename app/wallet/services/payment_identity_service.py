@@ -149,7 +149,8 @@ class PaymentIdentityService:
             identity_type: PHONE/EMAIL/AFCON360_ID/MERCHANT_CODE
             raw_value: Raw user-supplied value
             owner_type: USER/ORGANISATION/PLATFORM/SYSTEM
-            owner_id: Internal owner id (users.id convention)
+            owner_id: Internal owner id (users.id convention for USER/PLATFORM/
+                      SYSTEM; organisations.id convention for ORGANISATION)
             account_id: Target account UUID (optional at registration)
             is_verified: Verification state
             is_primary: Primary identity flag
@@ -174,7 +175,12 @@ class PaymentIdentityService:
         if existing:
             # Update in place (idempotent registration / claim flow).
             existing.owner_type = owner_type
-            existing.owner_id = owner_id
+            if owner_type == AccountOwnerType.ORGANISATION.value:
+                existing.organisation_id = owner_id
+                existing.owner_id = None
+            else:
+                existing.owner_id = owner_id
+                existing.organisation_id = None
             if account_id is not None:
                 existing.account_id = account_id
             existing.is_verified = is_verified
@@ -189,7 +195,8 @@ class PaymentIdentityService:
             identity_value=raw_value,
             normalized_value=normalized,
             owner_type=owner_type,
-            owner_id=owner_id,
+            owner_id=None if owner_type == AccountOwnerType.ORGANISATION.value else owner_id,
+            organisation_id=owner_id if owner_type == AccountOwnerType.ORGANISATION.value else None,
             account_id=account_id,
             is_verified=is_verified,
             is_primary=is_primary,
@@ -277,11 +284,18 @@ def resolve_payment_recipient(identifier: str) -> Dict[str, Any]:
 
     if account is None:
         # Fall back to canonical account lookup by owner.
-        account = AccountModel.query.filter_by(
-            user_id=identity.owner_id,
-            owner_type=identity.owner_type,
-            currency='UGX',
-        ).first()
+        if identity.owner_type == AccountOwnerType.ORGANISATION.value:
+            account = AccountModel.query.filter_by(
+                organisation_id=identity.organisation_id,
+                owner_type=identity.owner_type,
+                currency='UGX',
+            ).first()
+        else:
+            account = AccountModel.query.filter_by(
+                user_id=identity.owner_id,
+                owner_type=identity.owner_type,
+                currency='UGX',
+            ).first()
 
     if account is None:
         return {
@@ -303,7 +317,12 @@ def resolve_payment_recipient(identifier: str) -> Dict[str, Any]:
             "status": account.status,
         }
 
-    display_name = _resolve_display_name(identity.owner_type, identity.owner_id)
+    display_name = _resolve_display_name(
+        identity.owner_type,
+        identity.organisation_id
+        if identity.owner_type == AccountOwnerType.ORGANISATION.value
+        else identity.owner_id,
+    )
 
     return {
         "found": True,

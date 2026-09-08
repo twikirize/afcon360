@@ -162,18 +162,22 @@ def test_aml_threshold_ownership_conflict_surfaced():
 # Task A: regulatory KYC daily/monthly cumulative limit enforcement.
 # ---------------------------------------------------------------------------
 
-@patch("app.wallet.repositories.ledger_repository.LedgerRepository")
+@patch("app.wallet.services.kyc_limit_service.RegulatoryVolumeCalculator")
 @patch("app.wallet.services.kyc_limit_service.db")
 @patch("app.wallet.services.kyc_limit_service.WalletSystemConfig")
-def test_regulatory_daily_limit_enforced(mock_wsc, mock_db, mock_ledger):
+def test_regulatory_daily_limit_enforced(mock_wsc, mock_db, mock_calculator):
     """Task A: regulatory daily cumulative limit is enforced from ledger volume."""
     mock_wsc.get_config.return_value = _fake_operational_config()
     mock_db.session.get.return_value = MagicMock()
-    inst = mock_ledger.return_value
-    inst.get_daily_volume.return_value = Decimal("1900000")
-    inst.get_monthly_volume.return_value = Decimal("0")
-
+    inst = mock_calculator.return_value
     # Tier 2 regulatory daily limit = 2_000_000; 1.9M + 200K = 2.1M > limit.
+    inst.check_daily_limit.return_value = (
+        False, Decimal("1900000"), Decimal("2000000")
+    )
+    inst.check_monthly_limit.return_value = (
+        True, Decimal("0"), Decimal("10000000")
+    )
+
     res = KYCLimitService.check_regulatory_cumulative_limits(
         "acc-1", "UGX", Decimal("200000"), 2
     )
@@ -181,16 +185,20 @@ def test_regulatory_daily_limit_enforced(mock_wsc, mock_db, mock_ledger):
     assert res["limit_type"] == "daily"
 
 
-@patch("app.wallet.repositories.ledger_repository.LedgerRepository")
+@patch("app.wallet.services.kyc_limit_service.RegulatoryVolumeCalculator")
 @patch("app.wallet.services.kyc_limit_service.db")
 @patch("app.wallet.services.kyc_limit_service.WalletSystemConfig")
-def test_regulatory_daily_limit_allows_within_limit(mock_wsc, mock_db, mock_ledger):
+def test_regulatory_daily_limit_allows_within_limit(mock_wsc, mock_db, mock_calculator):
     """Task A: a volume within the regulatory daily limit is allowed."""
     mock_wsc.get_config.return_value = _fake_operational_config()
     mock_db.session.get.return_value = MagicMock()
-    inst = mock_ledger.return_value
-    inst.get_daily_volume.return_value = Decimal("1000000")
-    inst.get_monthly_volume.return_value = Decimal("0")
+    inst = mock_calculator.return_value
+    inst.check_daily_limit.return_value = (
+        True, Decimal("1000000"), Decimal("2000000")
+    )
+    inst.check_monthly_limit.return_value = (
+        True, Decimal("0"), Decimal("10000000")
+    )
 
     res = KYCLimitService.check_regulatory_cumulative_limits(
         "acc-1", "UGX", Decimal("500000"), 2
@@ -198,17 +206,21 @@ def test_regulatory_daily_limit_allows_within_limit(mock_wsc, mock_db, mock_ledg
     assert res["allowed"] is True
 
 
-@patch("app.wallet.repositories.ledger_repository.LedgerRepository")
+@patch("app.wallet.services.kyc_limit_service.RegulatoryVolumeCalculator")
 @patch("app.wallet.services.kyc_limit_service.db")
 @patch("app.wallet.services.kyc_limit_service.WalletSystemConfig")
-def test_regulatory_monthly_limit_enforced(mock_wsc, mock_db, mock_ledger):
+def test_regulatory_monthly_limit_enforced(mock_wsc, mock_db, mock_calculator):
     """Task A: regulatory monthly cumulative limit is enforced from ledger volume."""
     mock_wsc.get_config.return_value = _fake_operational_config()
     mock_db.session.get.return_value = MagicMock()
-    inst = mock_ledger.return_value
-    inst.get_daily_volume.return_value = Decimal("0")
+    inst = mock_calculator.return_value
+    inst.check_daily_limit.return_value = (
+        True, Decimal("0"), Decimal("2000000")
+    )
     # Tier 2 regulatory monthly limit = 10_000_000; 9.9M + 500K = 10.4M > limit.
-    inst.get_monthly_volume.return_value = Decimal("9900000")
+    inst.check_monthly_limit.return_value = (
+        False, Decimal("9900000"), Decimal("10000000")
+    )
 
     res = KYCLimitService.check_regulatory_cumulative_limits(
         "acc-1", "UGX", Decimal("500000"), 2
@@ -217,10 +229,10 @@ def test_regulatory_monthly_limit_enforced(mock_wsc, mock_db, mock_ledger):
     assert res["limit_type"] == "monthly"
 
 
-@patch("app.wallet.repositories.ledger_repository.LedgerRepository")
+@patch("app.wallet.services.kyc_limit_service.RegulatoryVolumeCalculator")
 @patch("app.wallet.services.kyc_limit_service.db")
 @patch("app.wallet.services.kyc_limit_service.WalletSystemConfig")
-def test_regulatory_daily_not_clamped_by_operational_ceiling(mock_wsc, mock_db, mock_ledger):
+def test_regulatory_daily_not_clamped_by_operational_ceiling(mock_wsc, mock_db, mock_calculator):
     """Issue A/Task A: the per-transaction operational ceiling must NOT be treated
     as a daily/monthly cumulative limit.
 
@@ -232,9 +244,13 @@ def test_regulatory_daily_not_clamped_by_operational_ceiling(mock_wsc, mock_db, 
     cfg = _fake_operational_config()  # max_transfer_amount = 300_000
     mock_wsc.get_config.return_value = cfg
     mock_db.session.get.return_value = MagicMock()
-    inst = mock_ledger.return_value
-    inst.get_daily_volume.return_value = Decimal("0")
-    inst.get_monthly_volume.return_value = Decimal("0")
+    inst = mock_calculator.return_value
+    inst.check_daily_limit.return_value = (
+        True, Decimal("0"), Decimal("2000000")
+    )
+    inst.check_monthly_limit.return_value = (
+        True, Decimal("0"), Decimal("10000000")
+    )
 
     res = KYCLimitService.check_regulatory_cumulative_limits(
         "acc-1", "UGX", Decimal("500000"), 2

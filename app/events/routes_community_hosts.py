@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from app.events import events_bp
 from app.events.services import EventService
 from app.events.models import Event, EventHostRegistration
-from app.accommodation.models.property import Property, AccommodationPropertyType, AccommodationPropertyStatus
+from app.accommodation.models.property import Property, AccommodationPropertyType, AccommodationListingType, AccommodationPropertyStatus
 from app.extensions import db
 import logging
 
@@ -61,11 +61,13 @@ def community_host_register(slug):
                 flash(f'Missing required field: {field}', 'danger')
                 return redirect(url_for('events.community_host_register', slug=slug))
         
-        # Check if user already has a property (reuse existing if possible)
-        existing_property = Property.query.filter_by(
-            owner_user_id=current_user.id,
-            property_type=AccommodationPropertyType.COMMUNITY_HOST.value,
-            is_deleted=False
+        # Check if user already has a community host property (reuse existing
+        # if possible). community_host is stored structurally as house +
+        # entire_place with an event_metadata marker.
+        existing_property = Property.query.filter(
+            Property.owner_user_id == current_user.id,
+            Property.event_metadata['community_host'].astext == 'true',
+            Property.is_deleted.is_(False),
         ).first()
         
         if existing_property:
@@ -89,7 +91,9 @@ def community_host_register(slug):
                 slug=unique_slug,
                 description=data.get('description', ''),
                 summary=data.get('summary', '')[:500],
-                property_type=AccommodationPropertyType.COMMUNITY_HOST.value,
+                property_type=AccommodationPropertyType.HOUSE.value,
+                listing_type=AccommodationListingType.ENTIRE_PLACE.value,
+                event_metadata={"community_host": True},
                 address_line1=data['address_line1'],
                 address_line2=data.get('address_line2'),
                 city=data['city'],

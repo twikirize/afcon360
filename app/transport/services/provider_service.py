@@ -241,19 +241,16 @@ class ProviderService:
             }
 
         except ImportError:
-            # Fallback for development
-            logger.warning("OrganisationRegistry not found, using mock data")
-            return {
-                'organisation_id': organisation_id,
-                'verified': True,
-                'business_registered': True,
-                'status': 'active',
-                'profile': {
-                    'name': f'Test Organisation {organisation_id}',
-                    'type': 'hotel_fleet',
-                    'registration_number': f'REG{organisation_id}'
-                }
-            }
+            # Fail closed: never fabricate organisation verification. If the
+            # central registry is unavailable, organisation transport profile
+            # creation must not proceed on assumed-active/verified data.
+            logger.error(
+                "Organisation identity registry unavailable; refusing to "
+                "fabricate organisation verification (fail-closed)."
+            )
+            raise ServiceUnavailableError(
+                "Organisation registry unavailable; organisation identity cannot be verified"
+            )
 
     def validate_organisation_eligibility(self, organisation_id: int) -> Dict[str, Any]:
         """
@@ -283,6 +280,17 @@ class ProviderService:
                 message="Organisation not legally registered",
                 details={'business_registered': False},
                 code="BUSINESS_NOT_REGISTERED"
+            )
+
+        # Stage 4B: organisation must be classified as transport-enabled
+        from app.identity.models.organisation import Organisation
+
+        organisation = db.session.get(Organisation, organisation_id)
+        if organisation is None:
+            raise ValidationError("Organisation not found")
+        if not organisation.can_manage_transport():
+            raise ValidationError(
+                "Organisation is not transport-enabled"
             )
 
         return {
@@ -444,13 +452,24 @@ class ProviderService:
             return None
 
     def get_user_vehicles(self, user_id: int) -> List[Vehicle]:
-        """Get vehicles owned by user"""
+        """Get vehicles owned by the user's driver profile(s).
+
+        Vehicles are owned by the driver profile (owner_type='driver',
+        owner_id=DriverProfile.id), not by the user directly.
+        """
         try:
-            return Vehicle.query.filter_by(
-                owner_type='user',
-                owner_id=user_id,
+            drivers = DriverProfile.query.filter_by(
+                user_id=user_id,
                 is_deleted=False
             ).all()
+            if not drivers:
+                return []
+            driver_ids = [d.id for d in drivers]
+            return Vehicle.query.filter(
+                Vehicle.owner_type == 'driver',
+                Vehicle.owner_id.in_(driver_ids),
+                Vehicle.is_deleted.is_(False),
+            ).order_by(Vehicle.created_at.desc()).all()
         except Exception as e:
             logger.error(f"Error getting vehicles for user {user_id}: {e}", exc_info=True)
             return []
@@ -570,6 +589,19 @@ class ProviderService:
                 # Guard: cannot activate driver if there are open ContentFlag records
                 _assert_no_open_flags("driver", user_id)
 
+                # Declare transport provider intention (resource-free) BEFORE
+                # creating the DriverProfile — INTENT != eligibility != resource.
+                from app.identity.models.organisation_provider_capability import (
+                    ProviderCapabilityCode,
+                )
+                from app.identity.models.user import User
+                from app.identity.services.provider_participation_service import (
+                    create_individual_intention,
+                )
+
+                owner = db.session.get(User, user_id)
+                create_individual_intention(owner, ProviderCapabilityCode.TRANSPORT.value)
+
                 db.session.begin_nested()
 
                 # Get settings
@@ -634,18 +666,9 @@ class ProviderService:
                     request_id=request_id
                 )
 
-                # Register vehicle if provided
-                if sanitized_data.get('vehicle_data'):
-                    vehicle_result = self.register_vehicle_internal(
-                        owner_type='user',
-                        owner_id=user_id,
-                        vehicle_data=sanitized_data['vehicle_data'],
-                        driver_id=driver.id,
-                        request_id=request_id
-                    )
-
-                    if vehicle_result['success']:
-                        driver.vehicle_id = vehicle_result['vehicle_id']
+                # Note: Vehicle registration is a SEPARATE, later operation
+                # (owner_type='driver'). Driver registration creates only the
+                # DriverProfile — never a Vehicle (scope gate T-1/T-5).
 
                 db.session.commit()
 
@@ -754,7 +777,7 @@ class ProviderService:
             )
 
             # Link to driver if provided
-            if driver_id and owner_type == 'user':
+            if driver_id and owner_type == 'driver':
                 vehicle.current_driver_id = driver_id
 
             db.session.add(vehicle)
@@ -786,24 +809,15 @@ class ProviderService:
 
         try:
             # Verify ownership
-            if owner_type == 'user':
-                # Check if user is a registered driver
-                driver = DriverProfile.query.filter_by(
-                    user_id=owner_id,
-                    is_deleted=False
-                ).first()
-
-                if not driver:
-                    raise ValidationError(
-                        message="User must be a registered driver",
-                        code="NOT_A_DRIVER"
-                    )
+            if owner_type == 'driver':
+                # Check the owning DriverProfile exists and is approved
+                driver = db.session.get(DriverProfile, owner_id)
+                if not driver or driver.is_deleted:
+                    raise ValidationError("Driver not found")
 
                 if driver.compliance_status != ComplianceStatus.APPROVED:
                     raise ValidationError(
-                        message="Driver must be approved to register vehicles",
-                        details={'compliance_status': driver.compliance_status.value},
-                        code="DRIVER_NOT_APPROVED"
+                        "Driver must be approved to register vehicles"
                     )
             else:  # organisation
                 org_profile = OrganisationTransportProfile.query.filter_by(
@@ -973,24 +987,9 @@ class ProviderService:
                 db.session.add(profile)
                 db.session.flush()
 
-                # Register vehicles
-                registered_vehicles = []
-                for vehicle_data in sanitized_data.get('vehicles', []):
-                    vehicle_result = self.register_vehicle_internal(
-                        owner_type='organisation',
-                        owner_id=organisation_id,
-                        vehicle_data=vehicle_data,
-                        organisation_id=profile.id,
-                        request_id=request_id
-                    )
-
-                    if vehicle_result['success']:
-                        registered_vehicles.append(vehicle_result['vehicle_id'])
-
-                # Update fleet stats
-                if registered_vehicles:
-                    profile.fleet_size = len(registered_vehicles)
-                    profile.available_fleet_size = len(registered_vehicles)
+                # Note: vehicle registration is a SEPARATE, later operation
+                # (owner_type='organisation'). Organisation transport profile
+                # creation never registers vehicles (scope gate T-4).
 
                 db.session.commit()
 
@@ -1007,7 +1006,7 @@ class ProviderService:
                         'fleet_size': profile.fleet_size,
                         'auto_approved': auto_approve,
                         'organisation_verified': eligibility['organisation']['verified'],
-                        'vehicles_registered': len(registered_vehicles)
+                        'vehicles_registered': 0
                     },
                     'metadata': {
                         'request_id': request_id,

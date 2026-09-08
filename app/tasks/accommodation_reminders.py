@@ -118,6 +118,93 @@ def send_registration_reminders():
             )
 
 
+@shared_task(name="accommodation.send_pre_arrival_request_reminder")
+def send_pre_arrival_request_reminder():
+    """
+    Pre-arrival special-request nudge (Addendum 1 §2).
+
+    Runs daily. For CONFIRMED bookings exactly 3 days from check-in with no
+    special request on record yet, sends one reminder so the guest can flag
+    anything the host should prepare for (late arrival, accessibility, etc.).
+
+    Idempotent: a booking only ever matches the exact check-in boundary once,
+    and an already-existing reminder notification for that booking suppresses
+    a re-send if the task is re-run within the day.
+    """
+    from app.notifications.models import (
+        Notification,
+        NotificationModule,
+        NotificationType,
+    )
+    from app.notifications.services import NotificationService
+    from app.accommodation.services.special_request_service import SpecialRequestService
+
+    now = datetime.now(timezone.utc)
+    target_date = now.date() + timedelta(days=3)
+
+    candidates = AccommodationBooking.query.filter(
+        AccommodationBooking.check_in == target_date,
+        AccommodationBooking.status == AccommodationBookingStatus.CONFIRMED.value,
+    ).all()
+
+    sent = 0
+    for booking in candidates:
+        try:
+            if SpecialRequestService.get_for_booking(booking.id):
+                continue
+            recipient_id = booking.primary_guest_id or booking.booked_by_user_id
+            if not recipient_id:
+                continue
+
+            existing = Notification.query.filter_by(
+                user_id=recipient_id,
+                type=NotificationType.BOOKING_UPDATE.value,
+                module=NotificationModule.ACCOMMODATION.value,
+            ).all()
+            if any(
+                (n.context or {}).get("booking_reference") == booking.booking_reference
+                for n in existing
+            ):
+                continue
+
+            link = None
+            try:
+                from flask import url_for
+
+                link = url_for(
+                    "accommodation.guest_add_request",
+                    booking_id=booking.id,
+                    _external=True,
+                )
+            except Exception:
+                link = None
+
+            NotificationService.send(
+                user_id=recipient_id,
+                notification_type=NotificationType.BOOKING_UPDATE,
+                module=NotificationModule.ACCOMMODATION,
+                title="A few days until your stay \u2014 anything we should know?",
+                message=(
+                    f"Your booking {booking.booking_reference} checks in on "
+                    f"{booking.check_in.isoformat()}. If you have a special "
+                    "request (late arrival, accessibility, extra bedding), let "
+                    "your host know now so they can prepare."
+                ),
+                data={
+                    "booking_reference": booking.booking_reference,
+                    "booking_id": booking.id,
+                },
+                channels=["in_app", "email"],
+                link=link,
+            )
+            sent += 1
+        except Exception as e:
+            db.session.rollback()
+            print(f"Pre-arrival request reminder failed for booking {booking.id}: {e}")
+
+    return f"Sent {sent} pre-arrival request reminder(s)"
+
+
 @shared_task(name="accommodation.enforce_registration_deadlines")
 def enforce_registration_deadlines():
     """

@@ -37,6 +37,7 @@ from app.accommodation import accommodation_bp
 from app.accommodation.forms import PropertyForm
 from app.accommodation.models.property import (
     AccommodationCancellationPolicy,
+    AccommodationListingType,
     AccommodationPropertyStatus,
     AccommodationPropertyType,
     Property,
@@ -301,8 +302,9 @@ def admin_edit_property(property_id):
     
     # Allow admins to edit ANY property - bypass ownership check
     form = PropertyForm()
-    _populate_form_choices(form)
-    
+    edit_host_type = "organisation" if prop.owner_org_id else "individual"
+    _populate_form_choices(form, host_type=edit_host_type)
+
     if request.method == "GET":
         form.process(
             formdata=None,
@@ -311,6 +313,7 @@ def admin_edit_property(property_id):
                 "summary": prop.summary,
                 "description": prop.description,
                 "property_type": enum_value(prop.property_type) if prop.property_type else None,
+                "listing_type": enum_value(prop.listing_type) if prop.listing_type else None,
                 "address_line1": prop.address_line1,
                 "address_line2": prop.address_line2,
                 "city": prop.city,
@@ -341,6 +344,7 @@ def admin_edit_property(property_id):
                 "meta_description": prop.meta_description,
             },
         )
+        _populate_form_choices(form, host_type=edit_host_type)
     
     if form.validate_on_submit():
         try:
@@ -349,6 +353,7 @@ def admin_edit_property(property_id):
             prop.summary = form.summary.data
             prop.description = form.description.data
             prop.property_type = form.property_type.data
+            prop.listing_type = form.listing_type.data
             prop.address_line1 = form.address_line1.data
             prop.address_line2 = form.address_line2.data
             prop.city = form.city.data
@@ -386,11 +391,23 @@ def admin_edit_property(property_id):
             db.session.rollback()
             flash(f"Error updating property: {str(e)}", "danger")
     
+    from app.accommodation.services.catalog_service import (
+        cancellation_policy_options,
+        get_listing_type_labels,
+        get_property_type_catalog,
+    )
+    admin_pc = get_property_type_catalog()
+    policy_options = cancellation_policy_options()
+
     return render_template(
         "accommodation/host/edit_listing.html",
         form=form,
         property=prop,
-        host_info={'display_name': 'Admin', 'type': 'individual'}
+        host_info={'display_name': 'Admin', 'type': 'individual'},
+        listing_type_labels=get_listing_type_labels(),
+        property_type_catalog=admin_pc,
+        cancellation_policy_options=policy_options,
+        default_policy_code=policy_options[0]["code"] if policy_options else "flexible",
     )
 
 
@@ -613,6 +630,18 @@ def admin_analytics():
         for t, c in type_counts
     ]
 
+    # Listing type breakdown
+    listing_counts = db.session.query(
+        Property.listing_type,
+        func.count(Property.id).label('count')
+    ).filter(
+        Property.is_deleted.is_(False)
+    ).group_by(Property.listing_type).all()
+    listing_type_breakdown = [
+        {"type": (t.value if hasattr(t, 'value') else str(t)).replace('_', ' ').title(), "count": c}
+        for t, c in listing_counts
+    ]
+
     # Top cities by listing count
     top_cities = db.session.query(
         Property.city,
@@ -645,6 +674,7 @@ def admin_analytics():
         booking_status_breakdown=booking_status_breakdown,
         booking_type_breakdown=booking_type_breakdown,
         property_type_breakdown=property_type_breakdown,
+        listing_type_breakdown=listing_type_breakdown,
         top_cities=top_cities_data,
         total_revenue=float(total_revenue),
         total_bookings=total_bookings,
@@ -762,6 +792,7 @@ def admin_properties():
     verification_status = request.args.get('verification_status', 'all')
     visibility_filter = request.args.get('visibility', 'all')
     property_type = request.args.get('property_type', 'all')
+    listing_type = request.args.get('listing_type', 'all')
     missing_info = request.args.get('missing_info', 'all')
     search_q = request.args.get('q', '').strip()
 
@@ -778,6 +809,9 @@ def admin_properties():
 
     if property_type != 'all':
         q = q.filter(Property.property_type == property_type)
+
+    if listing_type != 'all':
+        q = q.filter(Property.listing_type == listing_type)
 
     if missing_info == 'no_photos':
         q = q.filter(or_(Property.main_image.is_(None), Property.main_image == ''))
@@ -811,7 +845,8 @@ def admin_properties():
     workflow_stages = ['draft', 'submitted', 'under_review', 'approved', 'needs_information', 'active', 'suspended', 'archived']
     verification_options = ['unverified', 'pending', 'verified', 'rejected']
     visibility_options = ['public', 'event_only', 'hidden', 'private_invite']
-    property_types = ['entire_place', 'private_room', 'shared_room', 'hotel_room', 'lodge', 'hostel']
+    property_types = [ptype.value for ptype in AccommodationPropertyType]
+    listing_types = [ltype.value for ltype in AccommodationListingType]
 
     return render_template(
         "accommodation/admin/properties.html",
@@ -820,12 +855,14 @@ def admin_properties():
         verification_status=verification_status,
         visibility_filter=visibility_filter,
         property_type=property_type,
+        listing_type=listing_type,
         missing_info=missing_info,
         search_q=search_q,
         workflow_stages=workflow_stages,
         verification_options=verification_options,
         visibility_options=visibility_options,
         property_types=property_types,
+        listing_types=listing_types,
     )
 
 
@@ -1023,7 +1060,9 @@ def guest_search():
         'city': city,
         'check_in': check_in,
         'check_out': check_out,
-        'guests': guests
+        'guests': guests,
+        'property_type': request.args.get('property_type') or None,
+        'listing_type': request.args.get('listing_type') or None,
     })
     properties = properties.get('properties', []) if isinstance(properties, dict) else (properties or [])
 
@@ -1054,7 +1093,9 @@ def guest_api_search():
         'city': city,
         'check_in': check_in,
         'check_out': check_out,
-        'guests': guests
+        'guests': guests,
+        'property_type': request.args.get('property_type') or None,
+        'listing_type': request.args.get('listing_type') or None,
     })
 
     return jsonify({
@@ -2412,7 +2453,7 @@ def guest_checkout():
                 )
 
             # Notify third-party guest
-            if booking_type == 'third_party' and primary_guest_email != current_user.email:
+            if booking_type == 'third_party' and primary_guest_email and primary_guest_email != current_user.email:
                 NotificationService.send(
                     user_id=current_user.id,
                     notification_type='third_party_booking',
@@ -2434,7 +2475,10 @@ def guest_checkout():
         if payment_timing in ('pay_on_arrival', 'invoice'):
             flash(f'Booking created! Your reference: {booking.booking_reference}. Awaiting host approval.', 'success')
         elif booking_type == 'third_party':
-            flash(f'Booking confirmed for {primary_guest_name}! They will receive an email with details.', 'success')
+            if primary_guest_name or primary_guest_email:
+                flash(f'Booking confirmed for {primary_guest_name}! They will receive an email with details.', 'success')
+            else:
+                flash('Booking created! A link to fill in the guest details is on the confirmation page.', 'success')
         else:
             flash(f'Booking confirmed! Your reference: {booking.booking_reference}', 'success')
 
@@ -2751,8 +2795,27 @@ def assignment_completion(token):
     if assignment.acc_link_expires_at and assignment.acc_link_expires_at < datetime.now(timezone.utc):
         return render_template("accommodation/guest/assignment_completion.html", assignment=None, expired=True), 410
 
+    from app.events.guest_coordination_service import GuestCoordinationService
+
     booking = db.session.get(AccommodationBooking, assignment.accommodation_booking_id)
-    if not booking or booking.is_deleted:
+    if not booking or booking.is_deleted or not GuestCoordinationService._accommodation_booking_assignable(booking):
+        # Fail closed: a booking that is missing, deleted, or no longer
+        # assignable (cancelled/refunded outside the event flow) must not
+        # finalize the attendee slot. Retire the now-invalid Event-side
+        # assignment through the Accommodation contract and present the link
+        # as expired.
+        try:
+            GuestCoordinationService.retire_invalid_accommodation_assignment(
+                assignment,
+                removed_by_user_id=None,
+                reason="booking no longer assignable during assignment completion",
+            )
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception(
+                "Failed to retire invalid accommodation assignment %s during completion",
+                assignment.id,
+            )
         return render_template("accommodation/guest/assignment_completion.html", assignment=None, expired=True), 404
 
     # Resolve the specific guest registration slot for this assignment
@@ -2925,6 +2988,47 @@ def replace_registration(booking_id, registration_id):
     except ValueError as exc:
         db.session.rollback()
         return jsonify({"success": False, "error": str(exc)}), 400
+
+
+@accommodation_bp.route("/booking/<int:booking_id>/registers/<int:registration_id>/edit", methods=["GET", "POST"], endpoint="edit_registration")
+@login_required
+def edit_registration(booking_id, registration_id):
+    """Complete or edit an active registration row (e.g. a placeholder seat) in place."""
+    from app.accommodation.booking_forms import GuestRosterEntryForm
+    booking = _managed_registration_booking(booking_id)
+    row = GuestRegistration.query.filter_by(id=registration_id, booking_id=booking.id).first_or_404()
+    if not row.is_active:
+        flash("This registration is no longer active.", "warning")
+        return redirect(url_for("accommodation.guest_roster", booking_id=booking.id))
+
+    form = GuestRosterEntryForm()
+    if form.validate_on_submit():
+        row.guest_name = (form.guest_name.data or "").strip()[:255]
+        row.guest_email = (form.guest_email.data or "").strip()[:255] or None
+        combined_phone = f"{form.guest_phone_country_code.data.strip()}{form.guest_phone_national.data.strip()}".strip()[:50]
+        row.guest_phone = combined_phone or None
+        row.id_document_type = (form.id_document_type.data or "").strip()[:30] or None
+        if row.is_placeholder:
+            row.is_placeholder = False
+        if row.status == "pending":
+            row.status = "completed"
+        db.session.commit()
+        flash("Guest details updated.", "success")
+        return redirect(url_for("accommodation.guest_roster", booking_id=booking.id))
+
+    if request.method == "GET":
+        form.guest_name.data = row.guest_name
+        form.guest_email.data = row.guest_email or ""
+        form.guest_phone_country_code.data = ""
+        form.guest_phone_national.data = ""
+        form.id_document_type.data = row.id_document_type or ""
+
+    return render_template(
+        "accommodation/guest/edit_registration.html",
+        booking=booking,
+        registration=row,
+        form=form,
+    )
 
 
 @accommodation_bp.route("/booking/<int:booking_id>/delegate", methods=["POST"], endpoint="delegate_registration_management")
@@ -3172,6 +3276,8 @@ def guest_register(booking_id):
                 )
 
         flash("Guest registration saved.", "success")
+        if RegistrationPermissionService.can_manage_registrations(current_user, booking):
+            return redirect(url_for("accommodation.guest_roster", booking_id=booking.id))
         return redirect(url_for("accommodation.guest_my_bookings"))
 
     existing = GuestRegistration.query.filter_by(booking_id=booking.id).all()
@@ -3242,10 +3348,13 @@ def guest_add_request(booking_id):
         else:
             flash("Please describe your request.", "warning")
         return redirect(url_for("accommodation.guest_confirmation", reference=booking.booking_reference))
+    policy = PropertyBookingPolicy.query.filter_by(property_id=booking.property_id).first()
+    request_options = (policy.available_request_options if policy else None) or []
     return render_template(
         "accommodation/guest/add_request.html",
         booking=booking,
         special_requests=SpecialRequestService.get_for_booking(booking.id),
+        request_options=request_options,
     )
 
 
@@ -4077,26 +4186,45 @@ def _ensure_host_identity():
     return host_info
 
 
-def _populate_form_choices(form: PropertyForm) -> None:
-    """Populate select fields for property forms"""
-    property_type_choices = [
-        (ptype.value, ptype.name.replace("_", " ").title())
-        for ptype in AccommodationPropertyType
-    ]
-    cancellation_choices = [
-        (policy.value, policy.name.replace("_", " ").title())
-        for policy in AccommodationCancellationPolicy
-    ]
-    supported_currencies = current_app.config.get(
-        "SUPPORTED_CURRENCIES",
-        ["USD", "EUR", "GBP", "UGX", "KES", "NGN"],
+def _populate_form_choices(form: PropertyForm, host_type: Optional[str] = None) -> None:
+    """Populate select fields for property forms.
+
+    ``host_type`` ("individual" / "organisation") filters the property-type
+    choices to those the host can actually list. The listing-type choices are
+    then filtered to those valid for the currently selected property type.
+
+    Option sources are DB-backed lookup tables (see catalog_service), with a
+    safe fallback to the canonical constants when the tables are unseeded.
+    """
+    if host_type is None:
+        host_type = "individual"
+
+    from app.accommodation.services.catalog_service import (
+        booking_mode_choices,
+        cancellation_policy_choices,
+        currency_choices,
+        listing_types_for_property,
+        property_types_for_host,
+    )
+
+    property_type_choices = property_types_for_host(host_type)
+    cancellation_choices = cancellation_policy_choices()
+    supported_currencies = currency_choices(
+        fallback=current_app.config.get("SUPPORTED_CURRENCIES")
+    )
+
+    selected_property_type = form.property_type.data
+    listing_type_choices = listing_types_for_property(
+        selected_property_type or (property_type_choices[0][0] if property_type_choices else "house")
     )
 
     form.set_choices(
         property_types=property_type_choices,
+        listing_types=listing_type_choices,
         currencies=supported_currencies,
         cancellation_policies=cancellation_choices,
     )
+    form.booking_mode.choices = booking_mode_choices()
 
 
 def _resolve_month(month_str: Optional[str]) -> dict:
@@ -4347,8 +4475,68 @@ def host_create_listing():
     if not host_info:
         return redirect(url_for("index"))
 
+    # Two-gate operational rule for host listings (Stage 4B-2 / Stage 4B-6 G-1):
+    # 1) accommodation eligibility — can_host (individual, enforced inside
+    #    _ensure_host_identity) or can_org_host (organisation, enforced here) —
+    #    AND
+    # 2) the accommodation provider capability must be ACTIVATED in the
+    #    universal provider-participation registry.
+    # The same two gates are enforced again inside HostService.create_property
+    # at the write boundary (defense in depth).
+    if host_info["type"] == "individual":
+        from app.identity.models.organisation_provider_capability import (
+            ProviderCapabilityCode,
+        )
+        from app.identity.services.provider_participation_service import (
+            is_capability_operational,
+        )
+        if not is_capability_operational(
+            "individual",
+            current_user.id,
+            ProviderCapabilityCode.ACCOMMODATION.value,
+        ):
+            flash(
+                "Activate your accommodation provider capability in your "
+                "capabilities dashboard before creating a listing.",
+                "warning",
+            )
+            return redirect(url_for("accommodation.host_dashboard"))
+
+    if host_info["type"] == "organisation":
+        from app.identity.models.organisation_provider_capability import (
+            ProviderCapabilityCode,
+        )
+        from app.identity.services.provider_participation_service import (
+            is_capability_operational,
+        )
+
+        eligible, reason = AccommodationIdentityService.can_org_host(
+            host_info["id"]
+        )
+        if not eligible:
+            flash(f"Cannot create a listing: {reason}", "warning")
+            return redirect(url_for("accommodation.host_dashboard"))
+
+        if not is_capability_operational(
+            "organisation",
+            host_info["id"],
+            ProviderCapabilityCode.ACCOMMODATION.value,
+        ):
+            flash(
+                "Activate your organisation's accommodation provider capability "
+                "in the capabilities dashboard before creating a listing.",
+                "warning",
+            )
+            return redirect(url_for("accommodation.host_dashboard"))
+
     form = PropertyForm()
-    _populate_form_choices(form)
+    _populate_form_choices(form, host_type=host_info["type"])
+
+    if request.method == "GET" and not form.property_type.data:
+        form.property_type.data = (
+            "hotel" if host_info["type"] == "organisation" else None
+        )
+        _populate_form_choices(form, host_type=host_info["type"])
 
     if form.validate_on_submit():
         try:
@@ -4376,10 +4564,23 @@ def host_create_listing():
             if country:
                 form.country.data = country[:2].upper()
 
+    from app.accommodation.services.catalog_service import (
+        cancellation_policy_options,
+        get_listing_type_labels,
+        get_property_type_catalog,
+    )
+    listing_type_labels = get_listing_type_labels()
+    property_type_catalog = get_property_type_catalog()
+    policy_options = cancellation_policy_options()
+
     return render_template(
         "accommodation/host/create_listing.html",
         form=form,
         host_info=host_info,
+        listing_type_labels=listing_type_labels,
+        property_type_catalog=property_type_catalog,
+        cancellation_policy_options=policy_options,
+        default_policy_code=policy_options[0]["code"] if policy_options else "flexible",
     )
 
 
@@ -4430,7 +4631,8 @@ def host_edit_listing(property_id: int):
         abort(403)
 
     form = PropertyForm()
-    _populate_form_choices(form)
+    edit_host_type = "organisation" if prop.owner_org_id else "individual"
+    _populate_form_choices(form, host_type=edit_host_type)
 
     if request.method == "GET":
         form.process(
@@ -4440,6 +4642,7 @@ def host_edit_listing(property_id: int):
                 "summary": prop.summary,
                 "description": prop.description,
                 "property_type": enum_value(prop.property_type) if prop.property_type else None,
+                "listing_type": enum_value(prop.listing_type) if prop.listing_type else None,
                 "address_line1": prop.address_line1,
                 "address_line2": prop.address_line2,
                 "city": prop.city,
@@ -4470,6 +4673,8 @@ def host_edit_listing(property_id: int):
                 "meta_description": prop.meta_description,
             },
         )
+        # Ensure listing-type choices reflect the property's actual type.
+        _populate_form_choices(form, host_type=edit_host_type)
 
     if form.validate_on_submit():
         try:
@@ -4489,11 +4694,24 @@ def host_edit_listing(property_id: int):
             logger.exception("Failed to update listing")
             flash(f"Could not update listing: {exc}", "danger")
 
+    from app.accommodation.services.catalog_service import (
+        cancellation_policy_options,
+        get_listing_type_labels,
+        get_property_type_catalog,
+    )
+    pc = get_property_type_catalog()
+    listing_type_labels = get_listing_type_labels()
+    policy_options = cancellation_policy_options()
+
     return render_template(
         "accommodation/host/edit_listing.html",
         form=form,
         property=prop,
         host_info=host_info,
+        listing_type_labels=listing_type_labels,
+        property_type_catalog=pc,
+        cancellation_policy_options=policy_options,
+        default_policy_code=policy_options[0]["code"] if policy_options else "flexible",
     )
 
 
@@ -5982,6 +6200,7 @@ def explore_search_api():
     check_out = request.args.get('check_out')
     guests = request.args.get('guests', type=int, default=2)
     property_type = request.args.get('property_type', 'all')
+    listing_type = request.args.get('listing_type', 'all')
     sort_by = request.args.get('sort_by', 'relevance')
     min_price = request.args.get('min_price', type=float)
     max_price = request.args.get('max_price', type=float)
@@ -6013,6 +6232,10 @@ def explore_search_api():
     # Property type filter
     if property_type != 'all':
         query = query.filter(Property.property_type == property_type)
+
+    # Listing type filter
+    if listing_type != 'all':
+        query = query.filter(Property.listing_type == listing_type)
     
     # Price filter
     if min_price is not None:
@@ -6064,6 +6287,7 @@ def explore_search_api():
             'price': float(prop.base_price_per_night),
             'currency_symbol': '$',  # Could be dynamic based on prop.currency
             'property_type': enum_value(prop.property_type) if prop.property_type else None,
+            'listing_type': enum_value(prop.listing_type) if prop.listing_type else None,
             'rating': float(prop.overall_rating) if prop.overall_rating else None,
             'reviews': prop.total_reviews,
             'images': prop.gallery_images,

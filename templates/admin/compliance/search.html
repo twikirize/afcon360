@@ -2,7 +2,9 @@
 
 {% block title %}Audit Timeline Search - Forensic Audit System{% endblock %}
 
-{% block styles %}
+{% block styles %}  
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
+
 {{ super() }}
 <style>
     .timeline-event {

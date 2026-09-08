@@ -5,6 +5,36 @@
 (function() {
     let currentStep = 1;
     let groupBookingId = null;
+    var fxRateCache = {};
+
+    function showFxNote(methodCurrency) {
+        var form = document.getElementById('checkout-form');
+        var bookingCurrency = form ? form.dataset.currency : null;
+        var fxNote = document.getElementById('fxNote');
+        if (!fxNote || !bookingCurrency || !methodCurrency) { if (fxNote) fxNote.classList.add('d-none'); return; }
+        if (methodCurrency === bookingCurrency) { fxNote.classList.add('d-none'); return; }
+        var cacheKey = methodCurrency + '_' + bookingCurrency;
+        if (fxRateCache[cacheKey]) { fxNote.textContent = fxRateCache[cacheKey]; fxNote.classList.remove('d-none'); return; }
+        fxNote.textContent = '';
+        fxNote.classList.remove('d-none');
+        fxNote.innerHTML = '<span class="d-inline-flex align-items-center gap-1"><span class="spinner-border spinner-border-sm" role="status"></span> Fetching exchange rate\u2026</span>';
+        fetch('/api/fx/rates/' + encodeURIComponent(methodCurrency) + '/' + encodeURIComponent(bookingCurrency), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function(resp) { return resp.ok ? resp.json() : null; })
+            .then(function(data) {
+                if (data && data.status === 'success' && data.data) {
+                    var rate = parseFloat(data.data.rate);
+                    if (!isNaN(rate)) {
+                        var decimals = rate >= 1 ? 2 : 4;
+                        var txt = '\u2248 1 ' + methodCurrency + ' = ' + rate.toFixed(decimals) + ' ' + bookingCurrency + " at today's rate";
+                        fxRateCache[cacheKey] = txt;
+                        fxNote.textContent = txt;
+                        return;
+                    }
+                }
+                fxNote.innerHTML = '<span class="text-warning">Exchange rate unavailable \u2014 price shown in ' + bookingCurrency + '</span>';
+            })
+            .catch(function() { fxNote.classList.add('d-none'); });
+    }
 
     function showStep(step) {
         document.querySelectorAll('.wizard-step').forEach(function(el) {
@@ -218,6 +248,7 @@
         document.querySelectorAll('.summary-currency').forEach(function (element) {
             element.textContent = wrapper?.dataset.currency || 'USD';
         });
+        showFxNote(wrapper?.dataset.currency || 'USD');
     }
 
     function selectTiming(timing) {
@@ -423,6 +454,18 @@
                 selectTiming(timingValue);
             }
         }
+    });
+
+    // ---- Defer guest details (third-party): let the guest self-register via the shared link ----
+    document.getElementById('deferGuestToggle')?.addEventListener('change', function() {
+        var on = this.checked;
+        var hidden = document.getElementById('deferGuestDetailsInput');
+        if (hidden) hidden.value = on ? '1' : '0';
+        document.querySelectorAll('#thirdPartyFields input').forEach(function(el) {
+            el.required = !on;
+        });
+        var fields = document.getElementById('thirdPartyFields');
+        if (fields) fields.classList.toggle('d-none', on);
     });
 
     // ---- Additional event listeners ----

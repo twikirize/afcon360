@@ -66,7 +66,7 @@
       <i class="fa-solid fa-user-plus"></i> Assign Driver
     </a>
     {% endif %}
-    <a href="{{ safe_url('transport.booking_edit', id=booking.id) }}" class="btn btn-secondary btn-sm">
+    <a href="{{ safe_url('transport.bookings_edit', id=booking.id) }}" class="btn btn-secondary btn-sm">
       <i class="fa-solid fa-pen"></i> Edit
     </a>
     <button class="btn btn-danger btn-sm" onclick="confirmDelete()">
@@ -146,7 +146,7 @@
         </div>
         <div style="margin-left:auto;text-align:right;">
           <div style="color:var(--amber);font-weight:700;">★ {{ booking.driver.average_rating|default('—') }}</div>
-          <a href="{{ safe_url('transport.driver_show', id=booking.driver.id) }}" class="btn btn-secondary btn-sm" style="margin-top:4px;">View</a>
+          <a href="{{ safe_url('transport.drivers_show', id=booking.driver.id) }}" class="btn btn-secondary btn-sm" style="margin-top:4px;">View</a>
         </div>
       </div>
       {% else %}
@@ -164,7 +164,7 @@
           <div style="font-weight:600;">{{ booking.vehicle.make }} {{ booking.vehicle.model }}</div>
           <div style="font-size:0.75rem;color:var(--text-muted);">{{ booking.vehicle.license_plate }} · {{ booking.vehicle.vehicle_class|title }}</div>
         </div>
-        <a href="{{ safe_url('transport.vehicle_show', id=booking.vehicle.id) }}" class="btn btn-secondary btn-sm" style="margin-left:auto;">View</a>
+        <a href="{{ safe_url('transport.vehicles_show', id=booking.vehicle.id) }}" class="btn btn-secondary btn-sm" style="margin-left:auto;">View</a>
       </div>
       {% else %}
       <div style="padding:16px 20px;color:var(--text-muted);font-size:0.82rem;">No vehicle assigned</div>

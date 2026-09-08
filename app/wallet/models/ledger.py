@@ -42,7 +42,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from sqlalchemy import (
     Column, String, Numeric, DateTime, ForeignKey, 
-    CheckConstraint, Index, BigInteger
+    CheckConstraint, Index, BigInteger, text
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.extensions import db
@@ -168,12 +168,38 @@ class AccountModel(db.Model):
     __tablename__ = 'accounts'
     __table_args__ = (
         Index('ix_accounts_user_id', 'user_id'),
+        Index('ix_accounts_organisation_id', 'organisation_id'),
         Index('ix_accounts_currency', 'currency'),
         Index('ix_accounts_owner_type', 'owner_type'),
         Index('ix_account_account_number', 'account_number', unique=True),
         Index('ix_account_type', 'account_type'),
         Index('ix_account_status', 'status'),
         Index('ix_account_platform', 'platform_account'),
+        # One organisation wallet per (organisation, currency). Partial so
+        # user/platform/system accounts (organisation_id NULL) are excluded.
+        Index(
+            'uq_accounts_org_owner_currency',
+            'organisation_id', 'currency',
+            unique=True,
+            postgresql_where=text(
+                "owner_type = 'organisation' AND organisation_id IS NOT NULL"
+            ),
+        ),
+        # Single-owner invariant: an account may reference a User OR an
+        # Organisation, never both.
+        CheckConstraint(
+            'user_id IS NULL OR organisation_id IS NULL',
+            name='ck_accounts_single_owner'
+        ),
+        # Owner-type consistency: USER and PLATFORM/SYSTEM accounts carry a
+        # real user reference; ORGANISATION accounts carry an organisation
+        # reference (legacy user_id-only org rows remain tolerated).
+        CheckConstraint(
+            "(owner_type = 'user' AND user_id IS NOT NULL AND organisation_id IS NULL) "
+            "OR (owner_type = 'organisation' AND (organisation_id IS NOT NULL OR user_id IS NOT NULL)) "
+            "OR (owner_type IN ('platform', 'system') AND user_id IS NOT NULL AND organisation_id IS NULL)",
+            name='ck_accounts_owner_type_consistent'
+        ),
     )
 
     id = Column(
@@ -206,11 +232,21 @@ class AccountModel(db.Model):
         default=AccountOwnerType.USER
     )
     
-    # Owner - references users.id
+    # Owner references - exactly one of user_id / organisation_id is set,
+    # depending on owner_type (enforced by ck_accounts_* checks below).
+    #
+    # user_id references users.id for USER / PLATFORM / SYSTEM owners.
     user_id = Column(
         BigInteger,
         ForeignKey('users.id', ondelete='RESTRICT'),
-        nullable=False
+        nullable=True
+    )
+
+    # organisation_id references organisations.id for ORGANISATION owners.
+    organisation_id = Column(
+        BigInteger,
+        ForeignKey('organisations.id', ondelete='RESTRICT'),
+        nullable=True
     )
     
     platform_account = Column(

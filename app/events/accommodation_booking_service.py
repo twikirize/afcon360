@@ -497,11 +497,31 @@ class AttendeeAccommodationBookingService:
                 actor_user_id,
                 reason or f"Cancelled via event {event.slug}"
             )
-            if success:
-                # Clear the assignment link
-                assignment.accommodation_booking_id = None
-                db.session.commit()
-            return success
+            if not success:
+                return False
+            # Release the Accommodation-owned guest slot for this assignment so
+            # capacity is returned, then clear the assignment pointer and token
+            # in the SAME transaction (no committed partial window; rollback
+            # restores the previous valid state on failure).
+            try:
+                AccommodationCoordinationContract.release_event_guest_slot(
+                    booking.booking_reference,
+                    event_assignment_id=assignment.id,
+                    removed_by_user_id=actor_user_id,
+                    reason=reason or f"Cancelled via event {event.slug}",
+                )
+            except CoordinationContractError as exc:
+                if exc.code != "BOOKING_NOT_FOUND":
+                    raise
+                current_app.logger.warning(
+                    "Slot release skipped for cancelled booking %s: %s",
+                    booking.booking_reference, exc,
+                )
+            assignment.accommodation_booking_id = None
+            assignment.acc_link_token_hash = None
+            assignment.acc_link_expires_at = None
+            db.session.commit()
+            return True
         except Exception:
             db.session.rollback()
             return False

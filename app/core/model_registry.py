@@ -56,6 +56,16 @@ def register_all_models():
             AccommodationBookingAmendment,
             CancellationPolicy,
             CancellationPenalty,
+            AccommodationPropertyTypeConfig,
+            AccommodationListingTypeConfig,
+            AccommodationPolicyTier,
+            AccommodationBookingMode,
+            AccommodationCurrency,
+            PropertyTypeHostType,
+            PropertyTypeListingType,
+            AccommodationCancellationPolicyTypeConfig,
+            AccommodationCancellationPhaseConfig,
+            AccommodationNoShowChargeTypeConfig,
         )
     except ImportError as e:
         # Deliberately NOT silent: if this fails, test/CI schema setup will

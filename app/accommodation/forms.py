@@ -16,6 +16,26 @@ from wtforms import (
 from wtforms.validators import DataRequired, Length, NumberRange, Optional
 
 
+# ===========================================================================
+# Property-type / listing-type catalog
+# ===========================================================================
+# The canonical option definitions live in app.accommodation.catalog_data and
+# are mirrored by the DB lookup tables (app.accommodation.models.catalog).
+# catalog_service is the DB-backed source: host listing forms read their
+# options from the lookup tables, falling back to the constants pre-seed.
+#
+# These re-exports preserve backward compatibility for code that imports the
+# constants/helpers from forms.py.
+from app.accommodation.catalog_data import (  # noqa: E402
+    LISTING_TYPE_LABELS,
+    PROPERTY_TYPE_CATALOG,
+)
+from app.accommodation.services.catalog_service import (  # noqa: E402
+    listing_types_for_property,
+    property_types_for_host,
+)
+
+
 class PropertyForm(FlaskForm):
     """Form used by hosts to create or edit property listings."""
 
@@ -33,6 +53,11 @@ class PropertyForm(FlaskForm):
     )
     property_type = SelectField(
         "Property type",
+        choices=[],
+        validators=[DataRequired()],
+    )
+    listing_type = SelectField(
+        "Listing type",
         choices=[],
         validators=[DataRequired()],
     )
@@ -178,11 +203,13 @@ class PropertyForm(FlaskForm):
         self,
         *,
         property_types: Sequence[tuple[str, str]],
+        listing_types: Sequence[tuple[str, str]],
         currencies: Sequence[str],
         cancellation_policies: Sequence[tuple[str, str]],
     ) -> None:
         """Helper to populate select field choices in a single call."""
 
         self.property_type.choices = list(property_types)
+        self.listing_type.choices = list(listing_types)
         self.currency.choices = [(code, code) for code in currencies]
         self.cancellation_policy.choices = list(cancellation_policies)

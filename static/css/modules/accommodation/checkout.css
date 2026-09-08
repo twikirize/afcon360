@@ -394,6 +394,40 @@
     animation: shakeX 0.4s ease;
 }
 
+/* ── Price Summary Inline (Step 3 review, outside .price-summary-card) ── */
+.price-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    color: #4b5563;
+    font-size: 0.9rem;
+}
+
+.price-item.total {
+    border-top: 2px solid #e5e7eb;
+    padding-top: 0.75rem;
+    margin-top: 0.5rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #0a1a2a;
+}
+
+.price-item.total .amount {
+    color: #667eea;
+    font-size: 1.25rem;
+}
+
+.payment-label {
+    display: block;
+    font-size: 0.8rem;
+    color: #6b7280;
+    text-align: center;
+    padding: 0.5rem;
+    background: #f3f4f6;
+    border-radius: 8px;
+    margin-top: 0.5rem;
+}
+
 /* ── Price Summary Sidebar ── */
 .price-summary-card {
     border: none;

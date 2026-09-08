@@ -85,6 +85,50 @@ def _session_login(client, user):
         sess["_fresh"] = True
 
 
+def _fresh_get(client, url, **kwargs):
+    """GET that clears the Flask-Caching user cache first."""
+    from app.extensions import cache
+    try:
+        cache.clear()
+    except Exception:
+        pass
+    return client.get(url, **kwargs)
+
+
+def _post_form(client, url, data=None, **kwargs):
+    """POST with real form data, clearing the Flask-Caching user cache first
+    (mirrors the stage-4 helper so the user_loader never returns a stale
+    detached instance from a previous request's session scope)."""
+    from app.extensions import cache
+    try:
+        cache.clear()
+    except Exception:
+        pass
+    return client.post(url, data=data, **kwargs)
+
+
+def _make_kyc_verified(app, user):
+    """Approve identity verification for *user* so is_fully_verified() is True.
+
+    can_host() — the runtime gate that makes the accommodation_host context
+    eligible for switch_context — reads IndividualVerification records, NOT
+    UserProfile.verification_status. Completion tests therefore create an
+    approved IndividualVerification row, mirroring the owner/admin approval
+    path (app/admin/owner/routes.py) that makes a host context available.
+    """
+    from app.identity.individuals.individual_verification import IndividualVerification
+
+    with app.app_context():
+        db.session.add(
+            IndividualVerification(
+                user_id=user.id,
+                status="verified",
+                scope={"identity": True, "address": True},
+            )
+        )
+        db.session.commit()
+
+
 @pytest.fixture
 def client(app):
     """Fresh client per test — avoids cross-test session leakage from
@@ -283,177 +327,155 @@ class TestAdditivePartnership:
 
 
 class TestHostOnboardingVerifiedFields:
-    """Test that verified KYC fields are preserved during host onboarding."""
+    """Test that verified KYC fields are preserved during host onboarding.
 
-    def _create_pending_profile_with_full_name(self, app, user, full_name):
-        """Helper to create a profile in pending status with a full_name."""
+    Contract under test (approved architecture): onboarding extends existing
+    UserProfile/KYC state instead of re-registering it. The verified profile
+    is the source of truth - verified values win and are pre-filled/locked;
+    missing values may be provided; unverified/editable values may be
+    replaced. Valid submissions return 302 to the host dashboard.
+    """
+
+    STEP1_FIELDS = {
+        "full_name": "Form Full Name",
+        "national_id": "FORM-ID-001",
+        "proof_of_address": "",
+        "country": "UG",
+    }
+
+    def _create_verified_profile_with(self, app, user, *, full_name, country=None, id_number=None):
+        """Schema-valid verified profile state (full_name is NOT NULL).
+
+        Identity fields are set while the profile is still pending, then the
+        profile is flipped to verified in a second commit so the immutable
+        after-verification listener never sees a verified-field change.
+        """
         with app.app_context():
             profile = get_profile_by_user(user.public_id)
             profile.full_name = full_name
             profile.verification_status = "pending"
             profile.profile_completed = False
+            profile.country = country
+            profile.id_type = "national_id" if id_number else None
+            profile.id_number = id_number
             db.session.commit()
-        return profile
 
-    def _verify_profile(self, app, user):
-        """Helper to mark profile as verified."""
         with app.app_context():
             profile = get_profile_by_user(user.public_id)
             profile.verification_status = "verified"
             profile.profile_completed = True
             db.session.commit()
+        return profile
+
+    def _create_pending_profile_with(self, app, user, *, full_name=None, country=None):
+        """Schema-valid unverified profile state (placeholder names allowed)."""
+        with app.app_context():
+            profile = get_profile_by_user(user.public_id)
+            profile.full_name = full_name or "AFCON 360 User"
+            profile.verification_status = "pending"
+            profile.profile_completed = False
+            profile.country = country
+            profile.id_type = None
+            profile.id_number = None
+            db.session.commit()
+        return profile
+
+    def _submit_host_wizard(self, client, step1):
+        """POST through the real single-step host onboarding HTTP flow."""
+        r = _post_form(
+            client,
+            "/onboarding/host/step/1",
+            data=step1,
+            follow_redirects=False,
+        )
+        assert r.status_code == 302, (
+            f"Host onboarding expected redirect (302) but got {r.status_code}"
+        )
+        return r
 
     def test_verified_full_name_is_prefilled_and_not_overwritten(self, client, verified_user, app):
-        """When a user has a verified full_name in their profile, host onboarding step 1
-        must display/prefill it and NOT modify it on submission."""
-        # Step 1: Create profile in pending status and set full_name (simulates initial onboarding)
-        self._create_pending_profile_with_full_name(app, verified_user, "Verified Host Name")
-        # Step 2: Mark profile as verified (simulates KYC completion)
-        self._verify_profile(app, verified_user)
-
+        """Step 1 GET displays the canonical verified full_name; submission
+        with a different name completes with 302 and preserves the value."""
+        self._create_verified_profile_with(app, verified_user, full_name="Verified Host Name")
         _session_login(client, verified_user)
+        _make_kyc_verified(app, verified_user)
 
-        # Step 3: Submit host onboarding step 1 with a different full_name
-        with client.session_transaction() as sess:
-            sess["host_onboarding"] = {
-                "step1": {
-                    "full_name": "Different Full Name",
-                    "national_id": "ID123456",
-                    "proof_of_address": "Some address",
-                }
-            }
+        get_resp = _fresh_get(client, "/onboarding/host/step/1")
+        assert get_resp.status_code == 200
+        assert b'value="Verified Host Name"' in get_resp.data
 
-        # Submit step 1
-        response = client.post("/onboarding/host/step/1", follow_redirects=False)
-        assert response.status_code in (302, 200)
+        r2 = self._submit_host_wizard(
+            client,
+            {**self.STEP1_FIELDS, "full_name": "Different Full Name"},
+        )
+        assert r2.status_code == 302, (
+            f"Expected redirect (302) but got {r2.status_code}. Host onboarding failed."
+        )
 
-        # Step 4: Submit host onboarding step 2
-        with client.session_transaction() as sess:
-            sess["host_onboarding"] = {
-                "step1": {
-                    "full_name": "Different Full Name",
-                    "national_id": "ID123456",
-                    "proof_of_address": "Some address",
-                },
-                "step2": {
-                    "property_name": "Test Property",
-                    "description": "A test property",
-                    "address": "123 Test St",
-                    "city": "Kampala",
-                    "country": "UG",
-                    "property_type": "house",
-                    "number_of_rooms": "2",
-                },
-            }
-
-        response = client.post("/onboarding/host/step/2", follow_redirects=False)
-
-        # Verify the verified full_name was NOT changed
         with app.app_context():
             profile = get_profile_by_user(verified_user.public_id)
-            # The verified full_name should remain unchanged
             assert profile.full_name == "Verified Host Name", (
                 f"Expected 'Verified Host Name' but got '{profile.full_name}'"
             )
 
-    def test_verified_country_is_preserved_and_available(self, client, verified_user, app):
-        """When a user has a verified country in their profile, host onboarding step 2
-        must use the canonical country value and not overwrite it."""
-        # Step 1: Create profile in pending status with country
-        with app.app_context():
-            profile = get_profile_by_user(verified_user.public_id)
-            profile.country = "UG"
-            profile.verification_status = "pending"
-            profile.profile_completed = False
-            db.session.commit()
-
-        # Step 2: Mark profile as verified
-        with app.app_context():
-            profile = get_profile_by_user(verified_user.public_id)
-            profile.verification_status = "verified"
-            profile.profile_completed = True
-            db.session.commit()
-
+    def test_verified_national_id_is_locked(self, client, verified_user, app):
+        """A verified national id may not be replaced by onboarded form data."""
+        self._create_verified_profile_with(
+            app, verified_user, full_name="Verified Host Name", id_number="VERIFIED-42"
+        )
         _session_login(client, verified_user)
+        _make_kyc_verified(app, verified_user)
 
-        # Submit host onboarding with a different country
-        with client.session_transaction() as sess:
-            sess["host_onboarding"] = {
-                "step1": {
-                    "full_name": "Test Host",
-                    "national_id": "ID123456",
-                    "proof_of_address": "Some address",
-                },
-                "step2": {
-                    "property_name": "Test Property",
-                    "description": "A test property",
-                    "address": "123 Test St",
-                    "city": "Kampala",
-                    # Submitting "Rwanda" even though profile has "UG" verified
-                    "country": "Rwanda",
-                    "property_type": "house",
-                    "number_of_rooms": "2",
-                },
-            }
+        r2 = self._submit_host_wizard(client, self.STEP1_FIELDS)
+        assert r2.status_code == 302
 
-        response = client.post("/onboarding/host/step/2", follow_redirects=False)
-
-        # Verify the verified country was NOT changed
         with app.app_context():
             profile = get_profile_by_user(verified_user.public_id)
-            # The verified country should remain "UG" (canonical)
+            assert profile.id_type == "national_id"
+            assert profile.id_number == "VERIFIED-42", (
+                f"Expected 'VERIFIED-42' but got '{profile.id_number}'"
+            )
+
+    def test_verified_country_is_preserved_and_available(self, client, verified_user, app):
+        """Host step 1 GET pre-fills the verified country; submitting a
+        different country cannot overwrite the canonical value."""
+        self._create_verified_profile_with(
+            app, verified_user, full_name="Verified Host Name", country="UG"
+        )
+        _session_login(client, verified_user)
+        _make_kyc_verified(app, verified_user)
+
+        get_resp = _fresh_get(client, "/onboarding/host/step/1")
+        assert get_resp.status_code == 200
+        assert b'value="UG"' in get_resp.data
+
+        r1 = _post_form(
+            client,
+            "/onboarding/host/step/1",
+            data={**self.STEP1_FIELDS, "country": "Rwanda"},
+            follow_redirects=False,
+        )
+        assert r1.status_code == 302
+
+        with app.app_context():
+            profile = get_profile_by_user(verified_user.public_id)
             assert profile.country == "UG", (
                 f"Expected 'UG' but got '{profile.country}'"
             )
 
     def test_missing_full_name_can_be_requested_from_user(self, client, verified_user, app):
-        """When full_name is NULL/missing from verified profile, onboarding
-        should allow the user to provide it."""
-        # Step 1: Create profile in pending status WITHOUT full_name (NULL)
-        with app.app_context():
-            profile = get_profile_by_user(verified_user.public_id)
-            profile.full_name = None
-            profile.verification_status = "pending"
-            profile.profile_completed = False
-            db.session.commit()
-
+        """An unverified profile with only the placeholder name accepts the
+        submitted real name (schema-valid placeholder, never NULL)."""
+        self._create_pending_profile_with(app, verified_user, full_name="AFCON 360 User")
         _session_login(client, verified_user)
 
-        # Step 2: Submit host onboarding step 1 with a new full_name
-        with client.session_transaction() as sess:
-            sess["host_onboarding"] = {
-                "step1": {
-                    "full_name": "New Host Name",
-                    "national_id": "ID123456",
-                    "proof_of_address": "Some address",
-                }
-            }
+        r2 = self._submit_host_wizard(
+            client,
+            {**self.STEP1_FIELDS, "full_name": "New Host Name"},
+        )
+        assert r2.status_code == 302
+        assert "kyc" in r2.headers["Location"].lower()
 
-        response = client.post("/onboarding/host/step/1", follow_redirects=False)
-        assert response.status_code in (302, 200)
-
-        # Step 3: Submit step 2
-        with client.session_transaction() as sess:
-            sess["host_onboarding"] = {
-                "step1": {
-                    "full_name": "New Host Name",
-                    "national_id": "ID123456",
-                    "proof_of_address": "Some address",
-                },
-                "step2": {
-                    "property_name": "Test Property",
-                    "description": "A test property",
-                    "address": "123 Test St",
-                    "city": "Kampala",
-                    "country": "UG",
-                    "property_type": "house",
-                    "number_of_rooms": "2",
-                },
-            }
-
-        response = client.post("/onboarding/host/step/2", follow_redirects=False)
-
-        # Verify the new full_name was set (since it was previously NULL)
         with app.app_context():
             profile = get_profile_by_user(verified_user.public_id)
             assert profile.full_name == "New Host Name", (
@@ -461,80 +483,53 @@ class TestHostOnboardingVerifiedFields:
             )
 
     def test_missing_country_can_be_requested(self, client, verified_user, app):
-        """When country is NULL/missing from verified profile, onboarding
-        should allow the user to provide it."""
-        # Step 1: Create profile in pending status WITHOUT country
-        with app.app_context():
-            profile = get_profile_by_user(verified_user.public_id)
-            profile.country = None
-            profile.verification_status = "pending"
-            profile.profile_completed = False
-            db.session.commit()
-
+        """A missing country accepts the submitted value, normalized to ISO
+        alpha-2 ('Rwanda' -> 'RW'; an empty submission never becomes 'UG')."""
+        self._create_pending_profile_with(app, verified_user, full_name="Test Host")
         _session_login(client, verified_user)
 
-        # Step 2: Submit host onboarding with a country
-        with client.session_transaction() as sess:
-            sess["host_onboarding"] = {
-                "step1": {
-                    "full_name": "Test Host",
-                    "national_id": "ID123456",
-                    "proof_of_address": "Some address",
-                },
-                "step2": {
-                    "property_name": "Test Property",
-                    "description": "A test property",
-                    "address": "123 Test St",
-                    "city": "Kampala",
-                    "country": "Rwanda",
-                    "property_type": "house",
-                    "number_of_rooms": "2",
-                },
-            }
+        r2 = self._submit_host_wizard(
+            client,
+            {**self.STEP1_FIELDS, "country": "Rwanda"},
+        )
+        assert r2.status_code == 302
+        assert "kyc" in r2.headers["Location"].lower()
 
-        response = client.post("/onboarding/host/step/2", follow_redirects=False)
-
-        # Verify the country was set (since it was previously NULL)
         with app.app_context():
             profile = get_profile_by_user(verified_user.public_id)
-            assert profile.country == "Rwanda", (
-                f"Expected 'Rwanda' but got '{profile.country}'"
+            assert profile.country == "RW", (
+                f"Expected 'RW' but got '{profile.country}'"
             )
 
-    def test_attempting_to_change_verified_full_name_remains_preserved(self, client, verified_user, app):
-        """Attempting to submit host onboarding with a different full_name
-        when the profile already has a verified full_name should preserve
-        the verified value - it should not be changed."""
-        # Step 1: Create profile in pending status with full_name
-        self._create_pending_profile_with_full_name(app, verified_user, "Verified Host Name")
-        # Step 2: Mark profile as verified
-        self._verify_profile(app, verified_user)
-
+    def test_unverified_profile_accepts_submitted_national_id(self, client, verified_user, app):
+        """An unverified profile with no stored id accepts the submitted
+        national id after validation."""
+        self._create_pending_profile_with(app, verified_user, full_name="Test Host")
         _session_login(client, verified_user)
 
-        # Step 3: Submit host onboarding with a different full_name
-        with client.session_transaction() as sess:
-            sess["host_onboarding"] = {
-                "step1": {
-                    "full_name": "Different Full Name",
-                    "national_id": "ID123456",
-                    "proof_of_address": "Some address",
-                },
-                "step2": {
-                    "property_name": "Test Property",
-                    "description": "A test property",
-                    "address": "123 Test St",
-                    "city": "Kampala",
-                    "country": "UG",
-                    "property_type": "house",
-                    "number_of_rooms": "2",
-                },
-            }
+        r2 = self._submit_host_wizard(client, self.STEP1_FIELDS)
+        assert r2.status_code == 302
+        assert "kyc" in r2.headers["Location"].lower()
 
-        # This should NOT modify the verified full_name
-        response = client.post("/onboarding/host/step/2", follow_redirects=False)
+        with app.app_context():
+            profile = get_profile_by_user(verified_user.public_id)
+            assert profile.id_type == "national_id"
+            assert profile.id_number == "FORM-ID-001"
+            assert profile.profile_completed is True
 
-        # Verify the verified full_name was preserved (not changed)
+    def test_attempting_to_change_verified_full_name_preserves_it(self, client, verified_user, app):
+        """Attempting to alter a verified full_name through onboarding leaves
+        the canonical value untouched and still completes successfully."""
+        self._create_verified_profile_with(app, verified_user, full_name="Verified Host Name")
+        _session_login(client, verified_user)
+        _make_kyc_verified(app, verified_user)
+
+        r2 = self._submit_host_wizard(
+            client,
+            {**self.STEP1_FIELDS, "full_name": "Different Full Name"},
+        )
+        assert r2.status_code == 302
+
         with app.app_context():
             profile = get_profile_by_user(verified_user.public_id)
             assert profile.full_name == "Verified Host Name", (
@@ -542,41 +537,71 @@ class TestHostOnboardingVerifiedFields:
             )
 
     def test_host_onboarding_commits_successfully_with_verified_full_name_preserved(self, client, verified_user, app):
-        """Host onboarding should commit successfully without errors when
-        the verified full_name is preserved."""
-        # Step 1: Create profile in pending status with full_name
-        self._create_pending_profile_with_full_name(app, verified_user, "Verified Host Name")
-        # Step 2: Mark profile as verified
-        self._verify_profile(app, verified_user)
-
+        """A verified profile completes host onboarding with a redirect to the
+        host dashboard; verified fields are preserved."""
+        self._create_verified_profile_with(app, verified_user, full_name="Verified Host Name")
         _session_login(client, verified_user)
+        _make_kyc_verified(app, verified_user)
 
-        # Step 3: Submit host onboarding with a different full_name
-        with client.session_transaction() as sess:
-            sess["host_onboarding"] = {
-                "step1": {
-                    "full_name": "Different Full Name",
-                    "national_id": "ID123456",
-                    "proof_of_address": "Some address",
-                },
-                "step2": {
-                    "property_name": "Test Property",
-                    "description": "A test property",
-                    "address": "123 Test St",
-                    "city": "Kampala",
-                    "country": "UG",
-                    "property_type": "house",
-                    "number_of_rooms": "2",
-                },
-            }
-
-        response = client.post("/onboarding/host/step/2", follow_redirects=False)
-
-        # Should complete successfully (verified full_name preserved, not overwritten)
-        assert response.status_code == 302, (
-            f"Expected redirect (302) but got {response.status_code}. "
-            "Host onboarding failed."
+        r2 = self._submit_host_wizard(
+            client,
+            {**self.STEP1_FIELDS, "full_name": "Different Full Name"},
         )
+        assert r2.status_code == 302
+        assert "host" in r2.headers["Location"].lower()
 
-        # Verify success message
-        assert b"Property listed successfully" in response.data or b"success" in response.data
+        with app.app_context():
+            profile = get_profile_by_user(verified_user.public_id)
+            assert profile.full_name == "Verified Host Name"
+            assert profile.profile_completed is True
+
+
+def test_unverified_host_onboarding_is_routed_to_kyc_gate(app, client, verified_user):
+    """The KYC gate: an individual who is not is_fully_verified() may save
+    their host profile and provider intention, but is routed to the KYC
+    document flow instead of the host dashboard. The accommodation capability
+    stays at INTENT (activation is gated on identity verification), because
+    switch_context to the accommodation_host context requires
+    AccommodationIdentityService.can_host == True (which demands
+    is_fully_verified())."""
+    from app.identity.services.provider_participation_service import (
+        get_individual_intention,
+    )
+    from app.identity.models.organisation_provider_capability import (
+        ProviderCapabilityCode,
+        ProviderCapabilityStatus,
+    )
+
+    _session_login(client, verified_user)
+
+    r1 = _post_form(
+        client,
+        "/onboarding/host/step/1",
+        data={
+            "full_name": "Test Host",
+            "national_id": "ID123456",
+            "proof_of_address": "Some address",
+            "country": "UG",
+        },
+        follow_redirects=False,
+    )
+    assert r1.status_code == 302
+    assert "kyc" in r1.headers["Location"].lower()
+    assert "host" not in r1.headers["Location"].lower()
+
+    with app.app_context():
+        profile = get_profile_by_user(verified_user.public_id)
+        assert profile.profile_completed is True
+        assert profile.full_name == "Test Customer"
+
+        participation = get_individual_intention(
+            verified_user.id, ProviderCapabilityCode.ACCOMMODATION.value
+        )
+        assert participation is not None, (
+            "Host onboarding must record the accommodation provider intention "
+            "even when KYC is not yet verified."
+        )
+        assert str(participation.status) == ProviderCapabilityStatus.INTENT.value, (
+            f"Accommodation capability must stay at INTENT while KYC is "
+            f"unverified; got '{participation.status}'"
+        )

@@ -232,6 +232,7 @@ from app.events.permissions import (
     get_event_guest_permissions,
 )
 from app.events.guest_coordination_service import (
+    ACCOMMODATION_ASSIGNABLE_STATUSES,
     CoordinationError,
     GuestCoordinationService,
 )
@@ -305,11 +306,18 @@ def assignment_dashboard(event_ref):
     # Important: this counts distinct assignments, not total rooms/seats used.
     # If one booking can hold multiple attendees, capacity handling must be
     # handled elsewhere.
-    accommodation_assigned = db.session.query(func.count()).filter(
+    from app.accommodation.models.booking import AccommodationBooking
+
+    accommodation_assigned = db.session.query(func.count()).select_from(EventAssignment).join(
+        AccommodationBooking,
+        EventAssignment.accommodation_booking_id == AccommodationBooking.id,
+    ).filter(
         and_(
             EventAssignment.event_id == event_id,
             EventAssignment.accommodation_booking_id != None,
             EventAssignment.is_deleted.is_(False),
+            AccommodationBooking.is_deleted.is_(False),
+            AccommodationBooking.status.in_(ACCOMMODATION_ASSIGNABLE_STATUSES),
         )
     ).scalar() or 0
 
@@ -431,14 +439,42 @@ def list_attendees(event_ref):
     accommodation_ids = set()
     transport_ids = set()
 
+    # Revalidate the referenced Accommodation bookings: only bookings that are
+    # still assignable (not deleted, status in the assignable set) count as an
+    # active accommodation assignment. Cancelled/refunded bookings must not
+    # hide an attendee from the "needs accommodation" list.
+    from app.accommodation.models.booking import AccommodationBooking
+
+    accommodation_booking_ids = {
+        assignment.accommodation_booking_id
+        for assignment in assignments
+        if assignment.accommodation_booking_id
+    }
+    valid_accommodation_booking_ids = set()
+    if accommodation_booking_ids:
+        valid_accommodation_booking_ids = GuestCoordinationService._assignable_accommodation_booking_ids(
+            AccommodationBooking.query.filter(
+                AccommodationBooking.id.in_(accommodation_booking_ids)
+            ).all()
+        )
+
     # Walk through assignments to associate them with registrations either by
     # direct registration_id or by attendee user identity.
     for assignment in assignments:
         registration_id = user_registration_ids.get(assignment.attendee_id)
+        if (
+            assignment.accommodation_booking_id
+            and assignment.accommodation_booking_id not in valid_accommodation_booking_ids
+            and not assignment.transport_booking_id
+        ):
+            # The only reference on this assignment is a stale accommodation
+            # booking (cancelled/refunded/deleted): do not present the attendee
+            # as having an assignment.
+            continue
         if registration_id is not None:
             assignment_map.setdefault(registration_id, assignment)
         registration_id = assignment.registration_id or registration_id
-        if registration_id and assignment.accommodation_booking_id:
+        if registration_id and assignment.accommodation_booking_id in valid_accommodation_booking_ids:
             accommodation_ids.add(registration_id)
         if registration_id and assignment.transport_booking_id:
             transport_ids.add(registration_id)
@@ -814,12 +850,16 @@ def check_available_drivers(event_ref):
     ).limit(100).all()
 
     eligible = []
+    from app.transport.services.coordination_contract import (
+        TransportCoordinationContract,
+        TransportCoordinationContractError,
+    )
     for booking in bookings:
         try:
-            GuestCoordinationService._resolve_transport_booking(
-                event, booking.booking_reference
+            TransportCoordinationContract.validate_booking_for_assignment(
+                booking.booking_reference
             )
-        except CoordinationError:
+        except TransportCoordinationContractError:
             continue
         driver = db.session.get(DriverProfile, booking.assigned_driver_id)
         vehicle = db.session.get(Vehicle, booking.assigned_vehicle_id)

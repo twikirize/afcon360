@@ -7,8 +7,26 @@
       <h1 class="h4 mb-1">Guest roster</h1>
       <p class="text-muted mb-0">{{ booking.booking_reference }} · {{ active_count }} of {{ booking.num_guests }} registered</p>
     </div>
-    <span class="badge bg-info">{{ booking.num_guests - active_count }} may complete at check-in</span>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{{ url_for('accommodation.guest_register', booking_id=booking.id) }}" class="btn btn-primary">Add guest</a>
+      <span class="badge bg-info align-self-center">{{ booking.num_guests - active_count }} may complete at check-in</span>
+    </div>
   </div>
+
+  {% if current_user.id in (booking.booked_by_user_id, booking.booking_owner_id) %}
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <h2 class="h6">Delegate roster management</h2>
+      <p class="small text-muted">Let someone else (an assistant, HR staff) manage this guest list on your behalf. Escalates to their roster-management capability for 7 days.</p>
+      <form id="delegateForm" method="post" action="{{ url_for('accommodation.delegate_registration_management', booking_id=booking.id) }}" class="row g-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col-8"><input type="email" name="email" id="delegateEmail" class="form-control" placeholder="Their AFCON360 email" required></div>
+        <div class="col-4"><button class="btn btn-outline-primary w-100" type="submit">Delegate</button></div>
+        <div class="col-12"><div id="delegateFeedback" role="alert"></div></div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
 
   <div class="card shadow-sm mb-4">
     <div class="card-body">
@@ -35,6 +53,9 @@
               <td>{{ registration.registration_source or '—' }}</td>
               <td>
                 {% if registration.is_active %}
+                {% if registration.is_placeholder %}
+                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('accommodation.edit_registration', booking_id=booking.id, registration_id=registration.id) }}">Edit</a>
+                {% endif %}
                 <form method="post" action="{{ url_for('accommodation.remove_registration', booking_id=booking.id, registration_id=registration.id) }}" class="d-inline">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="removed_reason" value="Roster reassignment">
                   <button class="btn btn-sm btn-outline-danger" type="submit">Remove</button>
@@ -49,4 +70,8 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/modules/accommodation/guest_roster.js') }}"></script>
 {% endblock %}

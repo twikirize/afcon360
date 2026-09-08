@@ -446,10 +446,13 @@ Host gets $900       Platform keeps $100
 ```
 AccountModel
 ├── owner_type = 'user'         → user_id references users.id
-├── owner_type = 'organisation' → user_id references organisations.id
-├── owner_type = 'platform'     → user_id references organisations.id (platform org)
-└── owner_type = 'system'       → user_id references organisations.id (system org)
+├── owner_type = 'organisation' → organisation_id references organisations.id (user_id NULL)
+├── owner_type = 'platform'     → user_id references users.id (real platform user row)
+└── owner_type = 'system'       → user_id references users.id (real system/agent user row)
 ```
+Single-owner and owner-type consistency are CHECK-enforced (`ck_accounts_single_owner`,
+`ck_accounts_owner_type_consistent`); one org wallet per currency via partial unique index
+`uq_accounts_org_owner_currency`.
 
 ---
 

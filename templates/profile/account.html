@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Account — {{ user.username or 'Settings' }}{% endblock %}
 
-{% block styles %}
+{% block styles %}  
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
+
 <style>
 *, *::before, *::after { box-sizing: border-box; }
 body { background: var(--bg); color: var(--text); font-family: var(--font-body); min-height: 100vh; }

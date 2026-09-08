@@ -155,10 +155,9 @@
                         <h5 class="mb-3">Cancellation Policy</h5>
                         <div class="mb-4">
                             <select name="cancellation_policy" class="form-select mb-2">
-                                <option value="flexible" {{ 'selected' if policy.cancellation_policy == 'flexible' else '' }}>Flexible</option>
-                                <option value="moderate" {{ 'selected' if policy.cancellation_policy == 'moderate' else '' }}>Moderate</option>
-                                <option value="strict" {{ 'selected' if policy.cancellation_policy == 'strict' else '' }}>Strict</option>
-                                <option value="non_refundable" {{ 'selected' if policy.cancellation_policy == 'non_refundable' else '' }}>Non-Refundable</option>
+                                {% for opt in cancellation_policy_options %}
+                                <option value="{{ opt.code }}" {{ 'selected' if policy.cancellation_policy == opt.code else '' }}>{{ opt.label }}</option>
+                                {% endfor %}
                             </select>
                             <div class="row mt-2">
                                 <div class="col-md-4">
@@ -172,9 +171,9 @@
                         <h5 class="mb-3">No Show Policy</h5>
                         <div class="mb-4">
                             <select name="no_show_charge_type" class="form-select mb-2">
-                                <option value="none" {{ 'selected' if policy.no_show_charge_type == 'none' else '' }}>No Charge</option>
-                                <option value="first_night" {{ 'selected' if policy.no_show_charge_type == 'first_night' else '' }}>Charge First Night</option>
-                                <option value="full_booking" {{ 'selected' if policy.no_show_charge_type == 'full_booking' else '' }}>Charge Full Booking</option>
+                                {% for opt in no_show_charge_type_options %}
+                                <option value="{{ opt.code }}" {{ 'selected' if policy.no_show_charge_type == opt.code else '' }}>{{ opt.label }}</option>
+                                {% endfor %}
                             </select>
                             <div class="row mt-2">
                                 <div class="col-md-4">

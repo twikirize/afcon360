@@ -577,9 +577,24 @@ def create_app(config_object=None) -> Flask:
         except Exception as rollback_error:
             logger.error(f"Failed to rollback failed request transaction: {rollback_error}")
 
+        # The rollback above detaches any g._login_user / g._cached_user that
+        # the failed request bound to the (now-rolled-back) session. If they
+        # are left in place, rendering the 500 page below re-evaluates
+        # current_user, which re-raises DetachedInstanceError inside the error
+        # handler and recurses to a stack overflow. Drop them so the error
+        # page fails safe to anonymous and terminates cleanly.
+        from flask import g as _err_g
+        for _attr in ('_login_user', '_cached_user', '_cached_user_pubid',
+                      '_identity_loaded'):
+            _err_g.__dict__.pop(_attr, None)
+
         # Log to database for admin visibility
         try:
-            user_id = current_user.id if current_user.is_authenticated else None
+            try:
+                _cu_ok = current_user.is_authenticated
+            except Exception:
+                _cu_ok = False
+            user_id = current_user.id if _cu_ok else None
             org_id = current_user.org_id if hasattr(current_user, 'org_id') else None
 
             error_traceback = traceback.format_exc()
@@ -706,6 +721,52 @@ def create_app(config_object=None) -> Flask:
             return
         try:
             from flask import g as _g
+
+            # Prune stale per-request login caches that a previous request
+            # left behind when the application context survives across
+            # requests (pytest-flask keeps one open; long-lived background
+            # contexts behave the same). Flask-Login's _get_user() returns
+            # g._login_user verbatim whenever the key exists, and user_loader
+            # returns g._cached_user verbatim when the cached public_id
+            # matches. After the prior request's teardown ran
+            # db.session.remove(), both are detached and the first column
+            # read (UserMixin.is_active behind current_user.is_authenticated)
+            # raises DetachedInstanceError. Drop stale entries so this
+            # request reloads a fresh, session-bound user.
+            _pruned_stale = False
+            from sqlalchemy import inspect as _sa_inspect
+            from werkzeug.local import LocalProxy as _LocalProxy
+            for _attr in ('_login_user', '_cached_user'):
+                _obj = getattr(_g, _attr, None)
+                if _obj is None:
+                    continue
+                if isinstance(_obj, _LocalProxy):
+                    if _attr == '_cached_user':
+                        _g.__dict__.pop('_cached_user_pubid', None)
+                    _g.__dict__.pop(_attr, None)
+                    _pruned_stale = True
+                    continue
+                try:
+                    _mapper_state = _sa_inspect(_obj)
+                except Exception:
+                    continue
+                if _mapper_state is None:
+                    continue  # non-ORM value (e.g. AnonymousUserMixin) — keep
+                try:
+                    _detached = _mapper_state.session is None
+                except Exception:
+                    _detached = True
+                if _detached:
+                    _g.__dict__.pop(_attr, None)
+                    _pruned_stale = True
+            if '_cached_user' not in _g.__dict__:
+                _g.__dict__.pop('_cached_user_pubid', None)
+
+            # The per-request identity-context load flag may also have been
+            # left behind by the request that produced the now-detached user.
+            # Force a fresh load for this request, then mark it loaded.
+            if _pruned_stale:
+                _g.__dict__.pop('_identity_loaded', None)
             if hasattr(_g, '_identity_loaded'):
                 return
             _g._identity_loaded = True
@@ -716,7 +777,21 @@ def create_app(config_object=None) -> Flask:
             from app.identity.models.user import User
             from app.extensions import db
 
-            actor_user = current_user if getattr(current_user, "is_authenticated", False) else None
+            # IMPORTANT: never cache the `current_user` LocalProxy itself.
+            # Resolve the underlying object first.  If a proxy were stored in
+            # g._cached_user, Flask-Login's loader would return it verbatim on
+            # a later request; the staleness check above would then hand the
+            # proxy to sqlalchemy.inspect(), whose attribute probing resolves
+            # current_user -> _get_user -> g._login_user -> (same proxy) in an
+            # infinite loop (RecursionError).
+            _cu_proxy = current_user
+            try:
+                _actor_obj = _cu_proxy._get_current_object() if getattr(
+                    _cu_proxy, "is_authenticated", False
+                ) else None
+            except Exception:
+                _actor_obj = None
+            actor_user = _actor_obj
             # Cache current_user in flask.g to prevent redundant user_loader calls
             # within the same request (context processors, templates, etc.)
             if actor_user:
@@ -990,6 +1065,18 @@ def create_app(config_object=None) -> Flask:
     except Exception as e:
         logger.error(f"Failed to register organization blueprint: {e}")
 
+    # Register individual capability blueprint (G-3 self-only API)
+    try:
+        from app.identity.routes import capability_bp
+        app.register_blueprint(capability_bp)
+    except ImportError as e:
+        logger.warning(f"Capability blueprint not found: {e}")
+        from flask import Blueprint
+        capability_bp = Blueprint('capability', __name__)
+        app.register_blueprint(capability_bp)
+    except Exception as e:
+        logger.error(f"Failed to register capability blueprint: {e}")
+
     # 2. Register API Blueprints
     from app.media.routes import media_bp
     api_blueprints = [wallet_api_bp, fx_api_bp, webhooks_bp, admin_api_bp, media_bp]
@@ -1242,14 +1329,30 @@ def create_app(config_object=None) -> Flask:
         from app.auth.decorators import get_highest_role
         from app.auth.routes import _dashboard_for_user
 
+        def _current_user_authenticated():
+            # Guard against a detached/stale current_user (e.g. a long-lived
+            # app context where g._login_user survives a db.session.remove()):
+            # the property evaluation raises DetachedInstanceError, which must
+            # not take down the whole template render.
+            try:
+                return bool(current_user and current_user.is_authenticated)
+            except Exception:
+                return False
+
         def user_highest_role():
-            if current_user and current_user.is_authenticated:
-                return get_highest_role(current_user)
+            if _current_user_authenticated():
+                try:
+                    return get_highest_role(current_user)
+                except Exception:
+                    return None
             return None
 
         def user_dashboard_url():
-            if current_user and current_user.is_authenticated:
-                return _dashboard_for_user(current_user)
+            if _current_user_authenticated():
+                try:
+                    return _dashboard_for_user(current_user)
+                except Exception:
+                    return url_for('index')
             return url_for('index')
 
         return {'user_highest_role': user_highest_role(), 'user_dashboard_url': user_dashboard_url()}
@@ -1266,7 +1369,15 @@ def create_app(config_object=None) -> Flask:
         _org_id = None
         _org_role = None
 
-        if _cu.is_authenticated:
+        # Resolve auth defensively: a detached/stale current_user (long-lived
+        # app context after db.session.remove()) raises DetachedInstanceError
+        # through is_authenticated, which must not break the shared navigation.
+        try:
+            _cu_authenticated = bool(_cu and _cu.is_authenticated)
+        except Exception:
+            _cu_authenticated = False
+
+        if _cu_authenticated:
             try:
                 from flask import g as _g
                 if not hasattr(_g, '_req_profiles'):

@@ -156,7 +156,10 @@
                     <!-- Type + Location -->
                     <div class="card-meta">
                         {% if property.property_type %}
-                        <span class="card-type">{{ property.property_type|title }}</span>
+                        <span class="card-type">{{ property.property_type|replace('_',' ')|title }}</span>
+                        {% endif %}
+                        {% if property.listing_type %}
+                        <span class="card-type">{{ property.listing_type|replace('_',' ')|title }}</span>
                         {% endif %}
                         <span class="card-location">{{ property.city }}{% if property.country %}, {{ property.country }}{% endif %}</span>
                     </div>

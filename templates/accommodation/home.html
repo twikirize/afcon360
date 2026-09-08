@@ -123,24 +123,24 @@
 <div class="container quick-links">
     <div class="row g-3">
         <div class="col-md-3 col-6">
-            <a href="{{ url_for('accommodation.guest_search') }}?property_type=hotel_room" class="quick-link-card">
+            <a href="{{ url_for('accommodation.guest_search') }}?property_type=hotel" class="quick-link-card">
                 <div class="quick-link-icon">🏨</div>
                 <div class="quick-link-title">Hotels</div>
                 <div class="quick-link-desc">Verified hotels near venues</div>
             </a>
         </div>
         <div class="col-md-3 col-6">
-            <a href="{{ url_for('accommodation.guest_search') }}?property_type=entire_place" class="quick-link-card">
+            <a href="{{ url_for('accommodation.guest_search') }}?property_type=apartment" class="quick-link-card">
                 <div class="quick-link-icon">🏠</div>
                 <div class="quick-link-title">Apartments</div>
                 <div class="quick-link-desc">Entire homes & apartments</div>
             </a>
         </div>
         <div class="col-md-3 col-6">
-            <a href="{{ url_for('accommodation.guest_search', property_type='community_host') }}" class="quick-link-card">
+            <a href="{{ url_for('accommodation.guest_search') }}?property_type=house&listing_type=entire_place" class="quick-link-card">
                 <div class="quick-link-icon">❤️</div>
-                <div class="quick-link-title">Community Hosts</div>
-                <div class="quick-link-desc">Free or low-cost stays</div>
+                <div class="quick-link-title">Houses</div>
+                <div class="quick-link-desc">Homestays, community hosts & apartments</div>
             </a>
         </div>
         <div class="col-md-3 col-6">

@@ -11,8 +11,11 @@
         <label class="form-label" for="request_type">Request type</label>
         <select class="form-select mb-3" id="request_type" name="request_type">
           <option value="other">Something else</option>
-          <option value="late_checkout">Late checkout</option>
-          <option value="extra_bedding">Extra bedding</option>
+          {% set fallback_request_options = [('late_checkout', 'Late checkout'), ('extra_bedding', 'Extra bedding')] %}
+          {% set request_options = request_options or [] %}
+          {% for opt in (request_options if request_options else fallback_request_options) %}
+            <option value="{{ opt['type'] }}">{{ opt['label'] }}</option>
+          {% endfor %}
         </select>
         <label class="form-label" for="request_text">Your request</label>
         <textarea class="form-control mb-3" id="request_text" name="request_text" rows="4" maxlength="4000" required></textarea>

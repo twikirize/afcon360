@@ -49,6 +49,7 @@ from app.models.base import BaseModel
 # Note: geoalchemy2 is optional for PostGIS support
 # Uncomment and install if spatial features are needed
 # from geoalchemy2 import Geometry
+from app.utils.id_kinds import IDKind
 from app.utils.security import encrypt_field, decrypt_field
 
 
@@ -1188,6 +1189,15 @@ class TransportPassenger(TransportBase):
     booking_id = db.Column(db.BigInteger, nullable=False)
     user_id = db.Column(db.BigInteger, nullable=True)
     assigned_vehicle_id = db.Column(db.BigInteger, nullable=True)
+
+    # Cross-module event coordination reference (BIGINT, no db-level FK).
+    # Set by TransportCoordinationContract when an EventAssignment reserves a
+    # seat on this booking. Events never writes transport tables directly; the
+    # value is a logical reference into app/events/models EventAssignment.
+    event_assignment_id = db.Column(
+        db.BigInteger, nullable=True, index=True,
+        info={"id_kind": IDKind.CROSS_MODULE_REF},
+    )
 
     name = db.Column(db.String(150))
     email = db.Column(db.String(255))

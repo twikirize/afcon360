@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block title %}{{ public_info.display_name or public_info.full_name or user.username }} — AFCON360{% endblock %}
 
-{% block styles %}
+{% block styles %}  
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/search.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/admin.css') }}">
+
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: var(--bg); color: var(--text); font-family: var(--font-body); min-height: 100vh; }

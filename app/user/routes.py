@@ -84,7 +84,6 @@ def _get_wallet_balance(wallet):
         return Decimal('0')
     try:
         from app.wallet.services.wallet_service import WalletService
-        from decimal import Decimal
         balance_data = WalletService().get_balance(str(wallet.user_id))
         return balance_data.get('balance', Decimal('0'))
     except Exception:

@@ -550,7 +550,7 @@ class TestWalletOwnershipTypes:
         
         # Create account directly with ORGANISATION owner_type
         account = AccountModel(
-            user_id=org.id,
+            organisation_id=org.id,
             currency="UGX",
             owner_type=AccountOwnerType.ORGANISATION,
             account_type=AccountType.ORG_WALLET,
@@ -561,7 +561,8 @@ class TestWalletOwnershipTypes:
         db.session.add(account)
         db.session.commit()
         
-        assert account.user_id == org.id
+        assert account.user_id is None
+        assert account.organisation_id == org.id
         assert account.owner_type == AccountOwnerType.ORGANISATION
         assert account.account_type in ('user_wallet', 'org_wallet')
         
@@ -591,7 +592,7 @@ class TestWalletOwnershipTypes:
         
         # Create org wallet directly with ORGANISATION owner_type
         org_account = AccountModel(
-            user_id=org.id,
+            organisation_id=org.id,
             currency="UGX",
             owner_type=AccountOwnerType.ORGANISATION,
             account_type=AccountType.ORG_WALLET,
@@ -606,7 +607,63 @@ class TestWalletOwnershipTypes:
         assert user_account.owner_type == AccountOwnerType.USER
         assert org_account.owner_type == AccountOwnerType.ORGANISATION
         assert user_account.user_id == test_user
-        assert org_account.user_id == org.id
+        assert user_account.organisation_id is None
+        assert org_account.user_id is None
+        assert org_account.organisation_id == org.id
+
+    def test_org_wallet_ownership_is_not_user_id_collision_dependent(self, app, test_user):
+        """Collision-safety: an organisation wallet is owned via organisation_id,
+        never user_id, so its legitimacy is structurally independent of any
+        numeric collision between organisations.id and users.id."""
+        from app.identity.models.user import User
+        from app.identity.models.organisation import Organisation
+        from app.wallet.models.ledger import AccountModel, AccountOwnerType, AccountType, AccountStatus
+        from app.wallet.services.wallet_service import WalletService
+        from app.wallet.routes import get_or_create_account
+
+        user = db.session.get(User, test_user)
+
+        org = Organisation(
+            org_id=str(uuid4()),
+            legal_name="Collision Proof Org " + str(uuid4()),
+            country="UG",
+            primary_contact_user_id=None,
+            lifecycle_state="registered",
+            verification_status="unverified",
+        )
+        db.session.add(org)
+        db.session.flush()
+
+        account = AccountModel(
+            organisation_id=org.id,
+            currency="UGX",
+            owner_type=AccountOwnerType.ORGANISATION,
+            account_type=AccountType.ORG_WALLET,
+            account_name=f"OrgWallet_UGX_{org.id}",
+            status=AccountStatus.ACTIVE,
+            verified=False,
+        )
+        db.session.add(account)
+        db.session.commit()
+
+        assert account.user_id is None
+        assert account.organisation_id == org.id
+
+        # Reachable only through the canonical organisation ownership paths.
+        assert org.primary_account.id == account.id
+        assert WalletService.get_wallet_by_org_id(org.id, currency='UGX') is not None
+
+        # Unreachable through the user_id lookup key (even if a colliding user
+        # id exists) — the account carries no user reference at all.
+        assert AccountModel.query.filter_by(
+            user_id=org.id, owner_type=AccountOwnerType.ORGANISATION
+        ).first() is None
+
+        # Distinct from the user's own wallet.
+        user_account = get_or_create_account(user.id, 'USD')
+        assert user_account.id != account.id
+        assert user_account.user_id == user.id
+        assert user_account.organisation_id is None
 
 
 if __name__ == '__main__':

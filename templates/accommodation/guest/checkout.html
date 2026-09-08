@@ -33,7 +33,7 @@
                             </div>
                         </div>
 
-                        <form method="POST" id="checkout-form" action="{{ safe_url('accommodation.guest_checkout') }}">
+                        <form method="POST" id="checkout-form" action="{{ safe_url('accommodation.guest_checkout') }}" data-currency="{{ booking.currency or 'USD' }}">
                             <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
 
                             <!-- Step 1: Guest Details -->
@@ -69,14 +69,21 @@
 
                                 <div id="thirdPartySection" class="hidden-section mb-4">
                                     <div class="checkout-section-title">Guest Details</div>
-                                    <div class="row">
+                                    <div class="form-check form-switch mb-3" id="deferGuestToggleWrap">
+                                        <input class="form-check-input" type="checkbox" id="deferGuestToggle">
+                                        <label class="form-check-label" for="deferGuestToggle">
+                                            I don't have their details right now — send them a link to fill it in themselves
+                                        </label>
+                                    </div>
+                                    <input type="hidden" name="defer_guest_details" id="deferGuestDetailsInput" value="0">
+                                    <div class="row" id="thirdPartyFields">
                                         <div class="col-md-6 mb-3">
                                             <label class="form-label fw-semibold">Guest Full Name <span class="text-danger">*</span></label>
-                                            <input type="text" name="primary_guest_name" class="form-control form-control-lg" placeholder="Full name of person staying">
+                                            <input type="text" name="primary_guest_name" class="form-control form-control-lg" placeholder="Full name of person staying" required>
                                         </div>
                                         <div class="col-md-6 mb-3">
                                             <label class="form-label fw-semibold">Guest Email <span class="text-danger">*</span></label>
-                                            <input type="email" name="primary_guest_email" class="form-control form-control-lg" placeholder="Email for booking confirmation">
+                                            <input type="email" name="primary_guest_email" class="form-control form-control-lg" placeholder="Email for booking confirmation" required>
                                         </div>
                                         <div class="col-md-6 mb-3">
                                             <label class="form-label fw-semibold">Guest Phone</label>
@@ -210,6 +217,7 @@
                                     <div class="price-item"><span>Service fee</span><span>{{ "%.2f"|format(booking.service_fee|float) }}</span></div>
                                     <div class="price-item total"><span>Total</span><span class="amount"><span class="summary-currency">{{ booking.currency or 'USD' }}</span> {{ "%.2f"|format(booking.total|float) }}</span></div>
                                     <span class="payment-label" id="payment-method-label"><i class="fas fa-info-circle"></i> Select a payment method</span>
+                                    <div id="fxNote" class="text-muted small mt-1 d-none" aria-live="polite"></div>
                                 </div>
 
                                 <div class="mb-4">

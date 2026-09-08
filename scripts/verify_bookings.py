@@ -19,7 +19,8 @@ with app.app_context():
         org_prop = Property(
             owner_org_id=1, 
             title="Test Org Property", 
-            property_type="hotel_room", 
+            property_type="hotel", 
+            listing_type="private_room", 
             status="ACTIVE",
             max_guests=2,
             base_price_per_night=100.0,

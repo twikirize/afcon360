@@ -144,9 +144,12 @@ def search_properties(params: dict = None) -> dict:
         if params.get('guests'):
             q = q.filter(Property.max_guests >= int(params['guests']))
 
-        # PROPERTY TYPE
+        # PROPERTY TYPE (structure) and LISTING TYPE (occupancy)
         if params.get('property_type'):
             q = q.filter(Property.property_type == params['property_type'])
+
+        if params.get('listing_type'):
+            q = q.filter(Property.listing_type == params['listing_type'])
 
         # MINIMUM RATING — overall_rating column exists
         if params.get('min_rating') and hasattr(Property, 'overall_rating'):
@@ -257,6 +260,8 @@ def _property_to_dict(property: Property) -> Dict:
         "name": property.title,
         "price": float(property.base_price_per_night),
         "currency": property.currency,
+        "property_type": property.property_type,
+        "listing_type": property.listing_type,
         "summary": property.summary or property.description[:100],
         "description": property.description,
         "city": property.city,

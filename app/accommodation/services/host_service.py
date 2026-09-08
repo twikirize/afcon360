@@ -13,6 +13,7 @@ from app.accommodation.utils import enum_value
 from app.utils.slugs import slugify, ensure_unique_slug
 from app.accommodation.models.property import (
     AccommodationCancellationPolicy,
+    AccommodationListingType,
     AccommodationPropertyStatus,
     AccommodationPropertyType,
     Property,
@@ -84,7 +85,44 @@ class HostService:
         individual or organisation-owned, so it is immediately bookable.
         Organisation hosts can add additional RoomTypes afterward via Room Type
         Management or bulk import.
+
+        Write-boundary invariant (Stage 4B-6 / G-1): an organisation-owned
+        property (owner_org_id set) may only be persisted when BOTH the
+        organisation is accommodation-eligible (can_org_host) AND its
+        accommodation provider capability is ACTIVATED in the universal
+        provider-participation registry. No organisation write may bypass this
+        gate. The individual path is gated by the route (can_host + capability),
+        not here.
         """
+        if owner_org_id is not None:
+            from app.accommodation.services.identity_service import (
+                AccommodationIdentityService,
+            )
+            from app.identity.models.organisation_provider_capability import (
+                ProviderCapabilityCode,
+            )
+            from app.identity.services.provider_participation_service import (
+                is_capability_operational,
+            )
+
+            eligible, reason = AccommodationIdentityService.can_org_host(
+                owner_org_id
+            )
+            if not eligible:
+                raise ValueError(
+                    "Organisation is not eligible to host accommodation: "
+                    f"{reason}"
+                )
+            if not is_capability_operational(
+                "organisation",
+                owner_org_id,
+                ProviderCapabilityCode.ACCOMMODATION.value,
+            ):
+                raise ValueError(
+                    "Organisation accommodation provider capability is not "
+                    "activated."
+                )
+
         title = data["title"].strip()
         slug = ensure_unique_slug(slugify(title), db.session, Property)
 
@@ -96,6 +134,7 @@ class HostService:
             summary=data.get("summary"),
             description=data["description"].strip(),
             property_type=data["property_type"],
+            listing_type=data.get("listing_type") or AccommodationListingType.ENTIRE_PLACE.value,
             address_line1=data["address_line1"].strip(),
             address_line2=data.get("address_line2") or None,
             city=data["city"].strip(),
@@ -192,6 +231,7 @@ class HostService:
         prop.summary = data.get("summary")
         prop.description = data["description"].strip()
         prop.property_type = data["property_type"]
+        prop.listing_type = data.get("listing_type") or prop.listing_type
         prop.address_line1 = data["address_line1"].strip()
         prop.address_line2 = data.get("address_line2") or None
         prop.city = data["city"].strip()

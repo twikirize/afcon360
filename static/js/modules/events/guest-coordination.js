@@ -69,10 +69,35 @@
                 ));
             });
             select.disabled = data.drivers.length === 0;
-            if (!data.drivers.length) select.replaceChildren(new Option('No eligible transport available', ''));
+            if (!data.drivers.length) {
+                select.replaceChildren(new Option('No eligible transport available', ''));
+                showCreateTransportLink();
+            } else {
+                hideCreateTransportLink();
+            }
         } catch (error) {
             select.replaceChildren(new Option(error.message, ''));
         }
+    }
+
+    function showCreateTransportLink() {
+        const info = document.getElementById('availableDriversInfo');
+        if (!info) return;
+        const bookingUrl = '/transport/bookings/new';
+        info.innerHTML = `
+            <span class="text-danger"><i class="fas fa-exclamation-triangle"></i> No eligible transport available</span>
+            <div class="mt-2">
+                <a href="${bookingUrl}" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-plus me-1"></i> Create Transport Booking
+                </a>
+            </div>
+        `;
+    }
+
+    function hideCreateTransportLink() {
+        const info = document.getElementById('availableDriversInfo');
+        if (!info) return;
+        // Keep existing availability info (set by checkDriverAvailability in template)
     }
 
     async function postAssignment(url, registrationRef, bookingRef, resultId, loadingId) {

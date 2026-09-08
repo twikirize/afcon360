@@ -98,7 +98,7 @@ class TestAccountNumberGeneration:
         org_id = _make_org(app, 1)
         with app.app_context():
             acc = AccountModel(
-                user_id=org_id,
+                organisation_id=org_id,
                 owner_type=AccountOwnerType.ORGANISATION,
                 account_type=AccountType.ORG_WALLET,
                 account_name='Org wallet',
@@ -107,12 +107,20 @@ class TestAccountNumberGeneration:
             )
             db.session.add(acc)
             db.session.commit()
+            # Organisation ownership is carried by organisation_id (FK ->
+            # organisations.id); user_id stays NULL so legitimacy is never
+            # dependent on a numeric collision with a users.id.
+            assert acc.organisation_id == org_id
+            assert acc.user_id is None
             assert acc.account_number.startswith('ORG-UGX-')
 
     def test_platform_account_prefix(self, app):
+        # A PLATFORM account is owned by a real system user id (the production
+        # escrow flow uses PLATFORM_ORG_ID -> users.id), never a fabricated id.
+        user_id, _ = _make_user(app, 14)
         with app.app_context():
             acc = AccountModel(
-                user_id=1,
+                user_id=user_id,
                 owner_type=AccountOwnerType.PLATFORM,
                 account_type=AccountType.REVENUE,
                 account_name='Platform revenue',
@@ -267,7 +275,7 @@ class TestResolvePaymentRecipient:
         org_id = _make_org(app, 2)
         with app.app_context():
             acc = AccountModel(
-                user_id=org_id,
+                organisation_id=org_id,
                 owner_type=AccountOwnerType.ORGANISATION,
                 account_type=AccountType.ORG_WALLET,
                 account_name='Org wallet',
@@ -276,7 +284,9 @@ class TestResolvePaymentRecipient:
             )
             db.session.add(acc)
             db.session.commit()
-            PaymentIdentityService.register('MERCHANT_CODE', 'mtn-ug', 'organisation', org_id, account_id=acc.id, is_verified=True)
+            pi = PaymentIdentityService.register('MERCHANT_CODE', 'mtn-ug', 'organisation', org_id, account_id=acc.id, is_verified=True)
+            assert pi.organisation_id == org_id
+            assert pi.owner_id is None
             res = resolve_payment_recipient('MTN-UG')
             assert res['found'] is True
             assert res['trusted'] is True

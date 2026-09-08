@@ -127,10 +127,16 @@ class WalletStatusService:
                 has_pin = False
 
         # Check if owner has wallet
-        account = AccountModel.query.filter_by(
-            user_id=owner_id,
-            owner_type=owner_type
-        ).first()
+        if owner_type == AccountOwnerType.ORGANISATION:
+            account = AccountModel.query.filter_by(
+                organisation_id=owner_id,
+                owner_type=owner_type
+            ).first()
+        else:
+            account = AccountModel.query.filter_by(
+                user_id=owner_id,
+                owner_type=owner_type
+            ).first()
 
         if not account:
             _no_wallet = WalletStatus(

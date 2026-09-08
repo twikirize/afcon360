@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 
+{% block module_styles %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/search.css') }}">
+{% endblock %}
+
 {% block title %}Events - AFCON360{% endblock %}
 
 {% block content %}

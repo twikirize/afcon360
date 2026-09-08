@@ -389,6 +389,7 @@ class FeedService:
             "source_module": "accommodation",
             "metadata": {
                 "property_type": prop.property_type or "",
+                "listing_type": prop.listing_type or "",
                 "city": prop.city or "",
                 "country": prop.country or "",
                 "price_per_night": str(prop.base_price_per_night) if prop.base_price_per_night else None,

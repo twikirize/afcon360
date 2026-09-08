@@ -7,7 +7,7 @@ It explains the data model, account lifecycle, payment integration points,
 and the rules every engineer must follow when touching wallet code.
 
 **Audience:** Backend engineers, security auditors, compliance reviewers.
-**Last updated:** 2026-07-26
+**Last updated:** 2026-09-06
 
 ---
 
@@ -20,6 +20,7 @@ and the rules every engineer must follow when touching wallet code.
 | **Double-entry ledger** | Every debit must have a matching credit. Balances are **derived**, never stored. |
 | **Internal vs Public IDs** | `user.id` (BIGINT) is for DB relations only. `public_id` (UUID) is for APIs/URLs/sessions. |
 | **Owner types** | Accounts can belong to `USER`, `ORGANISATION`, `PLATFORM`, or `SYSTEM`. Platform accounts are explicitly flagged. |
+| **Ownership reference** | Organisation-owned accounts reference `organisations.id` via `organisation_id` and MUST leave `user_id` NULL (CHECK-enforced). User/platform/system accounts use `user_id` and MUST leave `organisation_id` NULL. |
 
 ---
 
@@ -33,7 +34,8 @@ AccountModel (accounts table)
 ├── account_description  VARCHAR(500)
 ├── account_type         VARCHAR(30) — revenue, escrow, operations, settlement, reserve, user_wallet, org_wallet
 ├── owner_type           VARCHAR(20) — user, organisation, platform, system
-├── user_id              BIGINT (FK → users.id, ON DELETE RESTRICT)
+├── user_id              BIGINT NULL (FK → users.id, ON DELETE RESTRICT) — user/platform/system accounts; NULL for organisation-owned
+├── organisation_id      BIGINT NULL (FK → organisations.id, ON DELETE RESTRICT) — organisation-owned accounts; NULL for user/platform/system
 ├── platform_account     BOOLEAN — true for platform-owned accounts
 ├── status               VARCHAR(20) — active, frozen, closed, suspended
 ├── currency             VARCHAR(10), default 'USD'
@@ -54,6 +56,17 @@ AccountModel (accounts table)
 ├── created_at           TIMESTAMP
 ├── updated_at           TIMESTAMP
 └── [NO balance column]
+
+**Ownership rules (CHECK-enforced at DB level, `ck_accounts_*`):**
+- Single owner: `user_id IS NULL OR organisation_id IS NULL`.
+- Owner-type consistency: a `user`/`platform`/`system` account owns via `user_id` (and leaves
+  `organisation_id` NULL); an `organisation` account owns via `organisation_id` (legacy
+  `user_id`-only rows created before this change remain valid via the tolerance branch).
+- Uniqueness: one organisation wallet per currency, enforced by partial unique index
+  `uq_accounts_org_owner_currency (organisation_id, currency)` where `owner_type='organisation'`.
+
+**Payment identities (`payment_identities`) mirror the same rules** via `ck_payment_identities_*`
+(`owner_id` ↔ `organisation_id`, index `ix_payment_identity_org_owner`).
 
 LedgerEntryModel (ledger_entries table)
 ├── id               UUID

@@ -9,7 +9,10 @@
 
 {% block title %}Events Command Centre — AFCON360{% endblock %}
 
-{% block module_styles %}
+{% block module_styles %}  
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/explore.css') }}">
+
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/dashboard.css') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">

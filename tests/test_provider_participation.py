@@ -331,8 +331,13 @@ def test_intention_creates_no_domain_resources(db_session):
     user = _make_user(db_session)
     props_before = Property.query.filter_by(owner_user_id=user.id).count()
     # Vehicle has no per-user owner (owner_id/owner_type point at driver/org
-    # profiles), so assert the global count is unchanged.
-    vehicles_before = Vehicle.query.count()
+    # profiles), so a leftover Vehicle owned by this user would be a legacy
+    # 'user' owner_type violation. Compare the same per-user filtered count
+    # before/after (NOT the global count) so the assertion is immune to other
+    # tests persisting Vehicle rows in the shared afcon360_test database.
+    vehicles_before = Vehicle.query.filter_by(
+        owner_type="user", owner_id=user.id,
+    ).count()
     wallets_before = AccountModel.query.filter_by(user_id=user.id).count()
     for code in ALL_CODES:
         create_individual_intention(user, code)

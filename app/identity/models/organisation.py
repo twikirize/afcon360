@@ -191,7 +191,7 @@ class Organisation(BaseModel):
     # -------------------
     accounts = relationship(
         'AccountModel',
-        primaryjoin='Organisation.id == foreign(AccountModel.user_id)',
+        primaryjoin='Organisation.id == foreign(AccountModel.organisation_id)',
         viewonly=True,
         lazy='dynamic'
     )
@@ -314,7 +314,7 @@ class Organisation(BaseModel):
         """Get the primary account for this organisation."""
         from app.wallet.models.ledger import AccountModel, AccountOwnerType
         return AccountModel.query.filter_by(
-            user_id=self.id,
+            organisation_id=self.id,
             owner_type=AccountOwnerType.ORGANISATION
         ).first()
 

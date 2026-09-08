@@ -336,7 +336,7 @@ class OrganizationRegistrationService:
         from decimal import Decimal
         
         account = AccountModel(
-            user_id=org.id,
+            organisation_id=org.id,
             owner_type=AccountOwnerType.ORGANISATION,
             account_type=AccountType.ORG_WALLET,
             account_name=f"{org.legal_name} Wallet",

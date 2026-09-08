@@ -334,7 +334,198 @@ def normalize_sql(sql: Optional[str]) -> str:
         s,
     )
 
-    return s.strip()
+    # Remove grouping parentheses that are redundant under SQL boolean
+    # operator precedence (NOT > AND > OR).
+    #
+    # PostgreSQL reflects CHECK expressions with only the parentheses that
+    # are semantically required, while SQLAlchemy model authors commonly
+    # declare explicit grouping such as:
+    #
+    #   ((A AND B) OR (C AND D))
+    #
+    # which is logically identical to:
+    #
+    #   A AND B OR C AND D
+    #
+    # Without this step the synchronizer reports a false-positive
+    # "semantic drift" and generates a destructive DROP+RECREATE for a
+    # constraint whose meaning never changed.
+    return _canonicalize_bool(s.strip())
+
+
+# ---------------------------------------------------------------------------
+# Redundant-grouping-parenthesis canonicalization
+#
+# Removes ONLY parentheses that are provably redundant under PostgreSQL
+# boolean precedence (NOT > AND > OR).  Grouping that actually changes the
+# parse tree -- such as `(A OR B) AND C` or `NOT (A OR B)` -- is preserved.
+# ---------------------------------------------------------------------------
+
+_BOOL_OR_PREC = 1
+_BOOL_AND_PREC = 2
+_BOOL_NOT_PREC = 3
+_BOOL_ATOM_PREC = 4
+
+
+def _is_ident_char(c: str) -> bool:
+    return c.isalnum() or c == "_"
+
+
+def _outer_parens_wrap(s: str) -> bool:
+    """True when `s` is exactly one matched outer ( ... ) pair."""
+    if not (s.startswith("(") and s.endswith(")")):
+        return False
+    depth = 0
+    for i, c in enumerate(s):
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0 and i != len(s) - 1:
+                return False
+    return depth == 0
+
+
+def _unwrap(s: str) -> str:
+    """Strip matched outer parentheses from `s`."""
+    t = s.strip()
+    while _outer_parens_wrap(t):
+        t = t[1:-1].strip()
+    return t
+
+
+def _matching_paren(s: str, open_idx: int) -> int:
+    """Return the index of the `)` matching the `(` at ``open_idx``."""
+    depth = 0
+    for i in range(open_idx, len(s)):
+        if s[i] == "(":
+            depth += 1
+        elif s[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+
+def _split_top_level(s: str, op: str) -> List[str]:
+    """
+    Split `s` on the boolean operator `op` ('and'/'or') occurring at
+    parenthesis depth 0 and outside single-quoted string literals.
+    """
+    parts: List[str] = []
+    depth = 0
+    in_str = False
+    start = 0
+    i = 0
+    n = len(s)
+    while i < n:
+        c = s[i]
+        if in_str:
+            if c == "'":
+                in_str = False
+            i += 1
+            continue
+        if c == "'":
+            in_str = True
+            i += 1
+            continue
+        if c == "(":
+            depth += 1
+            i += 1
+            continue
+        if c == ")":
+            depth -= 1
+            i += 1
+            continue
+        if depth == 0 and s.startswith(op, i):
+            before_ok = i == 0 or not _is_ident_char(s[i - 1])
+            after = i + len(op)
+            after_ok = after >= n or not _is_ident_char(s[after])
+            if before_ok and after_ok:
+                part = s[start:i].strip()
+                if part:
+                    parts.append(part)
+                start = after
+                i = after
+                continue
+        i += 1
+    tail = s[start:].strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _top_level_prec(s: str) -> int:
+    """Precedence of the top-level boolean operator of `s`."""
+    t = _unwrap(s)
+    if len(_split_top_level(t, "or")) > 1:
+        return _BOOL_OR_PREC
+    if len(_split_top_level(t, "and")) > 1:
+        return _BOOL_AND_PREC
+    if t.startswith("not ") or t.startswith("not("):
+        return _BOOL_NOT_PREC
+    return _BOOL_ATOM_PREC
+
+
+def _canonicalize_operand(text: str, parent_prec: int) -> str:
+    """
+    Canonicalize `text` used as an operand of an operator with precedence
+    ``parent_prec``.  Parentheses are kept only when required by precedence.
+    """
+    t = text.strip()
+    if t.startswith("(") and _outer_parens_wrap(t):
+        inner = t[1:-1].strip()
+        if _top_level_prec(inner) >= parent_prec:
+            return _canonicalize_bool(inner)
+        return "(" + _canonicalize_bool(inner) + ")"
+    return _canonicalize_bool(t)
+
+
+def _canonicalize_bool(s: str) -> str:
+    """
+    Remove grouping parentheses that are redundant under SQL boolean
+    operator precedence (NOT > AND > OR).
+
+    Examples:
+      ((A AND B) OR (C AND D))  ->  A AND B OR C AND D
+      (A AND B) OR C            ->  A AND B OR C
+      NOT (A AND B)             ->  NOT (A AND B)   (kept)
+      (A OR B) AND C            ->  (A OR B) AND C  (kept)
+    """
+    s = s.strip()
+    if not s:
+        return s
+
+    # Outer parentheses around the entire expression are always redundant.
+    while _outer_parens_wrap(s):
+        s = s[1:-1].strip()
+
+    # Lowest-precedence operator first (OR, then AND).
+    parts = _split_top_level(s, "or")
+    if len(parts) > 1:
+        return " or ".join(
+            _canonicalize_operand(p, _BOOL_OR_PREC) for p in parts
+        )
+
+    parts = _split_top_level(s, "and")
+    if len(parts) > 1:
+        return " and ".join(
+            _canonicalize_operand(p, _BOOL_AND_PREC) for p in parts
+        )
+
+    # Top-level NOT.
+    if s.startswith("not "):
+        operand = s[4:]
+    elif s.startswith("not("):
+        close = _matching_paren(s, 3)
+        operand = s[4:close] if close != -1 else s[4:]
+    else:
+        return s
+
+    operand = _canonicalize_bool(operand)
+    if _top_level_prec(operand) < _BOOL_NOT_PREC:
+        return "not (" + operand + ")"
+    return "not " + operand
 
 
 # ---------------------------------------------------------------------------

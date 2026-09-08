@@ -71,8 +71,14 @@ class AccommodationIdentityService:
         if not org.is_operational:
             return False, "Organisation is not operational. Please complete all requirements."
 
-        # Check business category
-        if org.business_category not in ['service_provider', 'merchant']:
+        if not org.business_category:
+            return False, "Organisation type not set"
+
+        # Canonical classification: business_category is an OrganizationType
+        # member. Accommodation eligibility is derived from the repository-owned
+        # organisation capability mapping (get_capabilities().can_manage_accommodation),
+        # NOT from a legacy string vocabulary ("service_provider"/"merchant").
+        if not org.can_manage_accommodation():
             return False, "Organisation type not eligible for accommodation hosting"
 
         return True, "OK"

@@ -2,7 +2,9 @@
 
 {% block title %}KYC Documents - {{ user.username }}{% endblock %}
 
-{% block styles %}
+{% block styles %}  
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
+
 {{ super() }}
 <style>
     .kyc-container {

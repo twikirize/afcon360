@@ -1,0 +1,449 @@
+{% extends "base.html" %}
+{% block title %}My Capabilities | AFCON 360{% endblock %}
+
+{% block module_styles %}  
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
+
+<style>
+.capabilities-modern {
+  background: var(--bg-body, #f2f4f2);
+  min-height: 100vh;
+  padding: 0;
+}
+
+/* ── Hero ── */
+.cap-hero-modern {
+  background: linear-gradient(135deg, var(--brand-primary-dark, #1a3a1a) 0%, var(--brand-primary, #2d5a2d) 55%, #3a6b3a 100%);
+  color: #fff;
+  padding: 2.5rem 0 2.25rem;
+  margin-bottom: 1.75rem;
+  position: relative;
+  overflow: hidden;
+}
+.cap-hero-modern::after {
+  content: '';
+  position: absolute;
+  right: -60px;
+  top: -60px;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 204, 0, 0.18) 0%, rgba(255, 204, 0, 0) 70%);
+  pointer-events: none;
+}
+.cap-hero-modern .container-fluid {
+  position: relative;
+  z-index: 1;
+}
+.cap-hero-title h1 {
+  font-size: 1.9rem;
+  font-weight: 800;
+  margin-bottom: 0.35rem;
+  letter-spacing: -0.02em;
+}
+.cap-hero-title .highlight {
+  color: var(--brand-accent, #ffcc00);
+}
+.cap-hero-title p {
+  opacity: 0.92;
+  font-size: 1rem;
+  margin: 0;
+}
+.cap-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  border-radius: var(--radius-full, 9999px);
+  padding: 0.35rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-top: 0.9rem;
+}
+
+/* ── Stats ── */
+.cap-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+.cap-stat-card {
+  background: var(--bg-surface, #fff);
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--border-light, #e9ecef);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+.cap-stat-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+.cap-stat-icon.green { background: var(--success-light, #e8f5e8); color: var(--success, #006400); }
+.cap-stat-icon.gold  { background: rgba(255, 204, 0, 0.18); color: var(--brand-accent-dark, #e6a800); }
+.cap-stat-icon.blue  { background: #e0ecfe; color: #2563eb; }
+.cap-stat-icon.gray  { background: var(--bg-muted, #e9ecef); color: var(--text-tertiary, #6c757d); }
+.cap-stat-info .cap-stat-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--text-primary, #1a1a1a);
+}
+.cap-stat-info .cap-stat-label {
+  font-size: 0.75rem;
+  color: var(--text-tertiary, #6c757d);
+  font-weight: 500;
+}
+
+/* ── Capability Grid ── */
+.cap-grid-modern {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.25rem;
+}
+.cap-card {
+  background: var(--bg-surface, #fff);
+  border-radius: 14px;
+  border: 1px solid var(--border-light, #e9ecef);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.cap-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+.cap-card-accents {
+  height: 5px;
+  flex-shrink: 0;
+}
+.cap-card-accents.activated { background: var(--success, #006400); }
+.cap-card-accents.intent { background: var(--brand-accent, #ffcc00); }
+.cap-card-accents.deactivated { background: var(--border-dark, #ced4da); }
+
+.cap-card-body {
+  padding: 1.25rem 1.25rem 1rem;
+  flex: 1;
+}
+.cap-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+.cap-card-code {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+.cap-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  background: var(--brand-primary-light, #e8f0e8);
+  color: var(--brand-primary, #2d5a2d);
+  flex-shrink: 0;
+}
+.cap-card-name {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text-primary, #1a1a1a);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.cap-card-desc {
+  font-size: 0.75rem;
+  color: var(--text-tertiary, #6c757d);
+}
+.cap-card-divider {
+  border: 0;
+  border-top: 1px solid var(--border-light, #e9ecef);
+  margin: 0.9rem 0 0.85rem;
+}
+.cap-card-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.status-badge-modern {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--radius-full, 9999px);
+}
+.status-badge-modern .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.status-badge-modern.activated { background: var(--success-light, #e8f5e8); color: var(--success, #006400); }
+.status-badge-modern.intent { background: rgba(255, 204, 0, 0.18); color: var(--brand-accent-dark, #e6a800); }
+.status-badge-modern.deactivated { background: var(--bg-muted, #e9ecef); color: var(--text-tertiary, #6c757d); }
+
+.cap-card-actions {
+  padding: 0.9rem 1.25rem 1.25rem;
+  border-top: 1px solid var(--border-light, #e9ecef);
+  background: var(--bg-surface-alt, #f8f9fa);
+}
+.btn-cap {
+  width: 100%;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border: none;
+  border-radius: 10px;
+  padding: 0.65rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+}
+.btn-cap:active {
+  transform: scale(0.98);
+}
+.btn-cap-activate {
+  background: var(--brand-primary, #2d5a2d);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(45, 90, 45, 0.3);
+}
+.btn-cap-activate:hover {
+  background: var(--brand-primary-hover, #3a6b3a);
+}
+.btn-cap-deactivate {
+  background: var(--bg-surface, #fff);
+  color: var(--text-secondary, #374151);
+  border: 1px solid var(--border-medium, #dee2e6);
+}
+.btn-cap-deactivate:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+/* ── Empty State ── */
+.cap-empty-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 4rem 1.5rem;
+  background: var(--bg-surface, #fff);
+  border-radius: 14px;
+  border: 1px dashed var(--border-medium, #dee2e6);
+}
+.cap-empty-state .cap-empty-icon {
+  font-size: 3.2rem;
+  color: var(--brand-accent, #ffcc00);
+  margin-bottom: 1rem;
+}
+.cap-empty-state h4 {
+  font-weight: 700;
+  color: var(--text-primary, #1a1a1a);
+  margin-bottom: 0.35rem;
+}
+.cap-empty-state p {
+  color: var(--text-tertiary, #6c757d);
+  font-size: 0.9rem;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+/* ── Info Note ── */
+.cap-note-modern {
+  margin-top: 1.75rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  background: var(--bg-surface-alt, #f8f9fa);
+  border: 1px solid var(--border-light, #e9ecef);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  color: var(--text-tertiary, #6c757d);
+  font-size: 0.8rem;
+}
+.cap-note-modern i {
+  color: var(--brand-primary, #2d5a2d);
+  margin-top: 0.1rem;
+}
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .cap-hero-modern {
+    padding: 1.75rem 0 1.5rem;
+  }
+  .cap-hero-title h1 {
+    font-size: 1.45rem;
+  }
+  .cap-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .cap-grid-modern {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# Capability metadata (labels, icons, descriptions) #}
+{% set cap_meta = {
+  'ACCOMMODATION': {'icon': 'bi-house-check', 'label': 'Accommodation', 'desc': 'Host properties, rooms and bookings'},
+  'TRANSPORT':     {'icon': 'bi-bus-front', 'label': 'Transport', 'desc': 'Offer vehicles, routes and rides'},
+  'EVENTS':        {'icon': 'bi-calendar-event', 'label': 'Events', 'desc': 'Create and manage events'},
+  'TOURISM':       {'icon': 'bi-map', 'label': 'Tourism', 'desc': 'Showcase tours and experiences'},
+  'VENUE':         {'icon': 'bi-geo-alt', 'label': 'Venue', 'desc': 'List venues for events and functions'}
+} %}
+
+<div class="capabilities-modern">
+
+  {# ── HERO ── #}
+  <div class="cap-hero-modern">
+    <div class="container-fluid px-4">
+      <div class="cap-hero-title">
+        <h1>My Provider <span class="highlight">Capabilities</span></h1>
+        <p>Activate, deactivate and manage your provider participations</p>
+        <span class="cap-hero-badge">
+          <i class="bi bi-shield-check"></i> {{ capabilities | length }} capabilities available
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="container-fluid px-4">
+
+    {# ── STATS ── #}
+    <div class="cap-stats-grid">
+      <div class="cap-stat-card">
+        <div class="cap-stat-icon green"><i class="bi bi-shield-check"></i></div>
+        <div class="cap-stat-info">
+          <div class="cap-stat-value">{{ capabilities | length }}</div>
+          <div class="cap-stat-label">Total Capabilities</div>
+        </div>
+      </div>
+      <div class="cap-stat-card">
+        <div class="cap-stat-icon green"><i class="bi bi-check-circle"></i></div>
+        <div class="cap-stat-info">
+          <div class="cap-stat-value">{{ capabilities | selectattr('status', 'eq', 'activated') | list | count }}</div>
+          <div class="cap-stat-label">Active</div>
+        </div>
+      </div>
+      <div class="cap-stat-card">
+        <div class="cap-stat-icon gold"><i class="bi bi-hourglass-split"></i></div>
+        <div class="cap-stat-info">
+          <div class="cap-stat-value">{{ capabilities | selectattr('status', 'eq', 'intent') | list | count }}</div>
+          <div class="cap-stat-label">Pending Activation</div>
+        </div>
+      </div>
+      <div class="cap-stat-card">
+        <div class="cap-stat-icon gray"><i class="bi bi-pause-circle"></i></div>
+        <div class="cap-stat-info">
+          <div class="cap-stat-value">{{ capabilities | selectattr('status', 'eq', 'deactivated') | list | count }}</div>
+          <div class="cap-stat-label">Deactivated</div>
+        </div>
+      </div>
+    </div>
+
+    {# ── CAPABILITY GRID ── #}
+    <div class="cap-grid-modern">
+
+      {% if not capabilities %}
+        <div class="cap-empty-state">
+          <div class="cap-empty-icon"><i class="bi bi-box-seamless"></i></div>
+          <h4>No capabilities found</h4>
+          <p>You currently have no provider participations. Complete onboarding or contact support to get started.</p>
+        </div>
+      {% else %}
+
+        {% for cap in capabilities %}
+        {% set meta = cap_meta.get(cap.capability_code | upper, {'icon': 'bi-box', 'label': cap.capability_code | upper, 'desc': 'Provider participation'}) %}
+        <div class="cap-card">
+          <div class="cap-card-accents {{ cap.status }}"></div>
+
+          <div class="cap-card-body">
+            <div class="cap-card-head">
+              <div class="cap-card-code">
+                <span class="cap-card-icon"><i class="bi {{ meta.icon }}"></i></span>
+                <div>
+                  <div class="cap-card-name">{{ meta.label }}</div>
+                  <div class="cap-card-desc">{{ meta.desc }}</div>
+                </div>
+              </div>
+              <span class="status-badge-modern {{ cap.status }}">
+                <span class="dot"></span>{{ cap.status | upper }}
+              </span>
+            </div>
+
+            <hr class="cap-card-divider">
+
+            <div class="cap-card-meta">
+              <small class="text-muted">Code: <strong>{{ cap.capability_code | upper }}</strong></small>
+            </div>
+          </div>
+
+          <div class="cap-card-actions">
+            {% if cap.status == 'intent' %}
+              <form method="POST" action="{{ url_for('capability.activate_my_capability', code=cap.capability_code) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn-cap btn-cap-activate">
+                  <i class="bi bi-check-circle"></i>Activate Capability
+                </button>
+              </form>
+            {% elif cap.status == 'activated' %}
+              <form method="POST" action="{{ url_for('capability.deactivate_my_capability', code=cap.capability_code) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn-cap btn-cap-deactivate">
+                  <i class="bi bi-pause-circle"></i>Deactivate Capability
+                </button>
+              </form>
+            {% elif cap.status == 'deactivated' %}
+              <form method="POST" action="{{ url_for('capability.activate_my_capability', code=cap.capability_code) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn-cap btn-cap-activate">
+                  <i class="bi bi-arrow-counterclockwise"></i>Re-activate Capability
+                </button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+
+      {% endif %}
+
+    </div>
+
+    {# ── NOTE ── #}
+    <div class="cap-note-modern">
+      <i class="bi bi-info-circle"></i>
+      <span>Changing a capability status takes effect immediately. Activated capabilities become visible to your organisation and customers.</span>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}

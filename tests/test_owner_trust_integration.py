@@ -1,58 +1,64 @@
-#!/usr/bin/env python
 """
-Test owner dashboard trust settings integration
+Owner dashboard trust-settings integration contract.
+
+Verifies the trust-based security subsystem end to end through the real
+application wiring (routes, settings model, trust service, and template),
+using repository fixtures instead of hardcoded internal user IDs.
 """
 
-from app import create_app
+import uuid
+
+from flask import render_template
+
 from app.events.settings_model import EventSettings
-from app.events.trust_service import EventTrustService
+from app.events.trust_service import EventTrustService, TrustLevel
+from app.identity.models.user import User
 
-def test_owner_trust_integration():
-    """Test the complete owner dashboard trust settings workflow"""
-    
-    app = create_app()
-    with app.app_context():
-        print('Testing Owner Dashboard Trust Settings Integration:')
-        print('=' * 60)
-        
-        # 1. Test EventSettings loading
-        settings = EventSettings.get()
-        print('EventSettings loaded successfully')
-        print(f'   Enable trust-based publishing: {settings.enable_trust_based_publishing}')
-        print(f'   High trust threshold: {settings.high_trust_threshold}')
-        print(f'   Medium trust threshold: {settings.medium_trust_threshold}')
-        
-        # 2. Test trust service integration
-        from app.identity.models.user import User
-        test_user = db.session.get(User, 2)
-        if test_user:
-            trust_level = EventTrustService.calculate_trust_level(test_user)
-            should_auto, reason = EventTrustService.should_auto_publish(test_user, trust_level)
-            print(f'Trust service working for {test_user.username}: {trust_level} (auto-publish: {should_auto})')
-        
-        # 3. Test route availability
-        print('Trust settings routes registered:')
-        for rule in app.url_map.iter_rules():
-            if 'trust-settings' in str(rule.rule):
-                print(f'   {list(rule.methods)} {rule.rule}')
-        
-        # 4. Test template integration
-        try:
-            with app.test_request_context():
-                # Test that trust settings are available for template
-                trust_settings = EventSettings.get()
-                print(f'Trust settings available for template: {type(trust_settings).__name__}')
-                
-        except Exception as e:
-            print(f'Template integration test failed: {e}')
-        
-        print('')
-        print('Owner Dashboard Trust Settings Integration Complete!')
-        print('Owners can now access trust settings via: /settings')
-        print('Trust Security tab is available in the owner dashboard settings')
-        
-        return True
 
-if __name__ == "__main__":
-    test_owner_trust_integration()
+def _new_user(db_session):
+    """Create a disposable, real user row (never a hardcoded internal ID)."""
+    user = User(
+        email=f"trust_test_{uuid.uuid4().hex}@example.com",
+        username=f"trust_test_{uuid.uuid4().hex[:8]}",
+        password_hash="hashed",
+        is_active=True,
+        is_verified=True,
+    )
+    db_session.add(user)
+    db_session.flush()
+    return user
 
+
+def test_owner_trust_integration(app, db_session):
+    """The owner dashboard trust settings workflow is wired end to end."""
+    settings = EventSettings.get()
+    assert settings is not None
+    assert isinstance(settings.enable_trust_based_publishing, bool)
+
+    user = _new_user(db_session)
+    trust_level = EventTrustService.calculate_trust_level(user)
+    assert trust_level in (TrustLevel.HIGH, TrustLevel.MEDIUM, TrustLevel.LOW)
+
+    should_auto, reason = EventTrustService.should_auto_publish(user, trust_level)
+    assert isinstance(should_auto, bool)
+    assert isinstance(reason, str)
+
+    rules = [str(r.rule) for r in app.url_map.iter_rules()]
+    assert any("/owner/trust-settings" in rule for rule in rules)
+    assert any("/trust-settings" in rule for rule in rules)
+
+    rendered = render_template(
+        "admin/trust_settings.html",
+        settings=settings,
+        user_analyses=[],
+    )
+    assert str(settings.high_trust_threshold) in rendered
+    assert str(settings.medium_trust_threshold) in rendered
+    for toggle in (
+        "enable_trust_based_publishing",
+        "enable_role_bypass",
+        "enable_kyc_boost",
+        "enable_account_age_boost",
+        "enable_event_history_boost",
+    ):
+        assert f'name="{toggle}"' in rendered

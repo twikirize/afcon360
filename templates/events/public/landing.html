@@ -4,7 +4,11 @@
 
 {% set total_registrations = total_registrations|default(0) %}
 
-{% block module_styles %}
+{% block module_styles %}  
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/explore.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/home.css') }}">
+
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/public.css') }}">

@@ -41,19 +41,12 @@
   <!-- Dashboard CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
 
-  <!-- Module-specific CSS (e.g., wallet, transport, events, accommodation) -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/wallet/deposit.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/admin.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/owner.css') }}">
+  <!-- Shared dashboard shell: always global for generic dashboard classes -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/base.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/wallet/wallet.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/wallet/send.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/home.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/detail.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/search.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/explore.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/host-bookings.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/owner.css') }}">
+
+  <!-- Module-specific CSS: scoped per-page via each template's style blocks -->
+  {# Everything else is loaded by the pages that use it. #}
 
   {% block module_styles %}{% endblock %} {# For specific module pages #}
   {% block styles %}{% endblock %} {# For page-specific styles #}

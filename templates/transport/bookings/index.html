@@ -94,7 +94,7 @@
           <tr>
             <td><input type="checkbox" value="{{ b.id }}" class="row-check" style="accent-color:var(--amber);" /></td>
             <td>
-              <a href="{{ safe_url('transport.booking_show', id=b.id) }}" class="td-primary td-mono" style="color:var(--amber);">
+              <a href="{{ safe_url('transport.bookings_show', id=b.id) }}" class="td-primary td-mono" style="color:var(--amber);">
                 {{ b.booking_reference }}
               </a>
             </td>
@@ -133,7 +133,7 @@
             <td class="td-primary td-mono">${{ b.total_amount|default('0.00') }}</td>
             <td>
               <div class="booking-row-actions">
-                <a href="{{ safe_url('transport.booking_show', id=b.id) }}" class="btn btn-secondary btn-sm btn-icon" title="View">
+                <a href="{{ safe_url('transport.bookings_show', id=b.id) }}" class="btn btn-secondary btn-sm btn-icon" title="View">
                   <i class="fa-solid fa-eye"></i>
                 </a>
                 {% if b.status in ['confirmed'] %}
@@ -141,7 +141,7 @@
                   <i class="fa-solid fa-user-plus"></i>
                 </a>
                 {% endif %}
-                <a href="{{ safe_url('transport.booking_edit', id=b.id) }}" class="btn btn-secondary btn-sm btn-icon" title="Edit">
+                <a href="{{ safe_url('transport.bookings_edit', id=b.id) }}" class="btn btn-secondary btn-sm btn-icon" title="Edit">
                   <i class="fa-solid fa-pen"></i>
                 </a>
               </div>

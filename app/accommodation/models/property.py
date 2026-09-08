@@ -1,6 +1,8 @@
 # app/accommodation/models/property.py
 """
-Property models - High-standard, using namespaced enums and fully aligned with DB.
+Property models - Now with separate structure and occupancy types.
+property_type  → structure (apartment, house, villa, etc.)
+listing_type   → occupancy (entire_place, private_room, shared_room)
 """
 
 from datetime import datetime, timezone
@@ -24,14 +26,28 @@ import uuid as uuid_lib
 # ==========================================
 
 class AccommodationPropertyType(enum.Enum):
-    """Property type - matches DB enum 'accommodation_propertytype'"""
+    """
+    Structure type – what the building is.
+    (Renamed semantically, but enum name kept for backward compatibility)
+    """
+    APARTMENT = "apartment"
+    HOUSE = "house"
+    VILLA = "villa"
+    LODGE = "lodge"
+    HOSTEL = "hostel"
+    HOTEL = "hotel"
+    GUESTHOUSE = "guesthouse"
+    BOUTIQUE_HOTEL = "boutique_hotel"
+    RESORT = "resort"
+
+
+class AccommodationListingType(enum.Enum):
+    """
+    Occupancy type – what the guest actually rents.
+    """
     ENTIRE_PLACE = "entire_place"
     PRIVATE_ROOM = "private_room"
     SHARED_ROOM = "shared_room"
-    HOTEL_ROOM = "hotel_room"
-    COMMUNITY_HOST = "community_host"
-    LODGE = "lodge"
-    HOSTEL = "hostel"
 
 
 class AccommodationCancellationPolicy(enum.Enum):
@@ -64,10 +80,8 @@ class AccommodationVerificationStatus(enum.Enum):
     REJECTED = "rejected"
 
 
-# FIX 1: Removed AccommodationBlockedReason from here.
-# It was defined in BOTH property.py and availability.py, causing a shadowing conflict.
-# It belongs in availability.py (alongside BlockedDate which uses it) - import it from there
-# if property.py ever needs it directly.
+# FIX: AccommodationBlockedReason belongs in availability.py, not here.
+# It is imported from there if needed.
 
 
 # ==========================================
@@ -86,16 +100,24 @@ class Property(BaseModel):
         Index("idx_property_status", "status"),
         Index("idx_property_verified", "is_verified"),
         Index("idx_property_owner_status", "owner_user_id", "status"),
+        # Ownership constraint
         CheckConstraint(
             "(owner_user_id IS NOT NULL) OR (owner_org_id IS NOT NULL)",
             name="ck_property_has_owner"
         ),
         CheckConstraint("base_price_per_night >= 0", name="ck_price_positive"),
         CheckConstraint("max_guests >= 1", name="ck_max_guests_min"),
+        # --- NEW: Structure type constraint (property_type) ---
         CheckConstraint(
-            "property_type IN ('entire_place', 'private_room', 'shared_room', 'hotel_room', 'community_host', 'lodge', 'hostel')",
+            "property_type IN ('apartment', 'house', 'villa', 'lodge', 'hostel', 'hotel', 'guesthouse', 'boutique_hotel', 'resort')",
             name="ck_property_type_valid"
         ),
+        # --- NEW: Occupancy type constraint (listing_type) ---
+        CheckConstraint(
+            "listing_type IN ('entire_place', 'private_room', 'shared_room')",
+            name="ck_listing_type_valid"
+        ),
+        # --- Existing constraints (unchanged) ---
         CheckConstraint(
             "cancellation_policy IN ('flexible', 'moderate', 'strict', 'super_strict')",
             name="ck_cancellation_policy_valid"
@@ -131,7 +153,26 @@ class Property(BaseModel):
     slug = Column(String(220), nullable=False, unique=True)
     description = Column(Text, nullable=False)
     summary = Column(String(500), nullable=True)
-    property_type = Column(String(50), nullable=False, default="hotel_room")
+
+    # -------------------------------
+    # Property Type (Structure) - kept as property_type
+    # -------------------------------
+    property_type = Column(
+        String(50),
+        nullable=False,
+        default="house",
+        server_default="house"
+    )
+
+    # -------------------------------
+    # Listing Type (Occupancy) - NEW column
+    # -------------------------------
+    listing_type = Column(
+        String(50),
+        nullable=False,
+        default="entire_place",
+        server_default="entire_place"
+    )
 
     # -------------------------------
     # Location
@@ -229,7 +270,7 @@ class Property(BaseModel):
         nullable=False,
         server_default="0.0"
     )
-    is_verified = Column(Boolean, default=False, nullable=False, )
+    is_verified = Column(Boolean, default=False, nullable=False)
     is_featured = Column(Boolean, default=False, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
 
@@ -275,7 +316,7 @@ class Property(BaseModel):
     # Relationships to EventHostRegistration
     # -------------------------------
     event_host_registrations = relationship(
-        "EventHostRegistration", 
+        "EventHostRegistration",
         back_populates="property",
         cascade="all, delete-orphan"
     )
@@ -295,7 +336,7 @@ class Property(BaseModel):
     amenities = relationship("PropertyAmenity", back_populates="property", cascade="all, delete-orphan")
     rules = relationship("PropertyRule", back_populates="property", cascade="all, delete-orphan")
     reviews = relationship("Review", back_populates="property", cascade="all, delete-orphan")
-    bookings = relationship("AccommodationBooking", back_populates="accommodation_property",cascade="all, delete-orphan")
+    bookings = relationship("AccommodationBooking", back_populates="accommodation_property", cascade="all, delete-orphan")
 
     blocked_dates = relationship("BlockedDate", back_populates="property", cascade="all, delete-orphan")
     availability_rules = relationship("AvailabilityRule", back_populates="property", cascade="all, delete-orphan")
@@ -364,8 +405,6 @@ class Property(BaseModel):
             module="accommodation",
             entity_id=self.public_id,
             media_type=media_type,
-            # Older records used the internal property ID as entity_id. This
-            # remains an internal compatibility lookup and is never exposed.
             legacy_entity_ids=[str(self.id), self.slug],
         )
 
@@ -410,7 +449,6 @@ class Property(BaseModel):
         )
         if cover:
             return MediaService.get_original_url(cover)
-        # Fallback to legacy column if no unified media exists yet
         return self.main_image or MediaService.PLACEHOLDER_IMAGE
 
     @property
@@ -565,11 +603,28 @@ class PropertyRule(BaseModel):
         return f"<PropertyRule {self.property_id}: {self.rule_text[:50]}>"
 
 
-# Guarantee every Property has a public_id (UUID) before insert, including
-# rows that predate the column. Mirrors the User model's public_id guarantee.
-from sqlalchemy import event  # noqa: E402
+# ==========================================
+# Slug & public_id auto-generation
+# ==========================================
+
+from sqlalchemy import event
+import re
+
 
 @event.listens_for(Property, 'before_insert')
-def _ensure_property_public_id(mapper, connection, target):
+def _ensure_property_fields(mapper, connection, target):
+    # Ensure public_id
     if not target.public_id:
         target.public_id = str(uuid_lib.uuid4())
+
+    # Ensure slug
+    if not target.slug and target.title:
+        base_slug = re.sub(r'[^\w\s-]', '', target.title).strip().lower()
+        base_slug = re.sub(r'[-\s]+', '-', base_slug)
+
+        suffix = target.public_id[:8]
+        max_base_len = 220 - len(suffix) - 1
+        if len(base_slug) > max_base_len:
+            base_slug = base_slug[:max_base_len]
+
+        target.slug = f"{base_slug}-{suffix}"

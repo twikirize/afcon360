@@ -122,6 +122,52 @@ class AccommodationCoordinationContract:
         }
 
     @staticmethod
+    def release_event_guest_slot(
+        booking_reference: str,
+        *,
+        event_assignment_id: int = None,
+        removed_by_user_id: int = None,
+        reason: str = None,
+    ) -> bool:
+        """Retire the active GuestRegistration slot owned by an event assignment.
+
+        Accommodation owns guest-slot lifecycle; this is the ONLY surface the
+        Events module may use to release a slot created by
+        ``ensure_event_guest_slot`` (reassignment or cancellation). Events must
+        not write ``GuestRegistration`` directly.
+
+        Idempotent: returns True when an active slot was retired, False when
+        none matched (already released or unknown assignment).
+        """
+        from app.accommodation.models.booking import AccommodationBooking
+        from app.accommodation.models.guest_registration import GuestRegistration
+
+        reason = (reason or "").strip()
+        if not reason:
+            raise CoordinationContractError(
+                "MISSING_RELEASE_REASON", "A slot release reason is required"
+            )
+
+        booking = AccommodationBooking.query.filter_by(
+            booking_reference=booking_reference, is_deleted=False
+        ).first()
+        if not booking:
+            raise CoordinationContractError(
+                "BOOKING_NOT_FOUND", "Accommodation booking was not found"
+            )
+
+        slot = GuestRegistration.query.filter_by(
+            booking_id=booking.id,
+            event_assignment_id=event_assignment_id,
+            is_active=True,
+        ).first()
+        if slot is None:
+            return False
+        slot.remove(removed_by_user_id, reason)
+        db.session.flush()
+        return True
+
+    @staticmethod
     def ensure_registration_link(
         booking_reference: str,
         token_hash: str,

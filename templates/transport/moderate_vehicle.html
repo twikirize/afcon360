@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Review Vehicle - AFCON360{% endblock %}
 
-{% block head %}
+{% block head %}  
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/admin.css') }}">
+
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {

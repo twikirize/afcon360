@@ -7,6 +7,7 @@ Accommodation Models - Export all models with namespaced enums
 from app.accommodation.models.property import (
     Property,
     AccommodationPropertyType,
+    AccommodationListingType,
     AccommodationCancellationPolicy,
     AccommodationPropertyStatus,
     AccommodationVerificationStatus,
@@ -63,6 +64,20 @@ from app.accommodation.models.booking_registration_link import BookingRegistrati
 # Review models
 from app.accommodation.models.review import Review, AccommodationReviewStatus
 from app.accommodation.models.room import RoomType, Room, RoomBooking
+
+# Catalog lookup tables (DB-backed form option sources)
+from app.accommodation.models.catalog import (
+    AccommodationPropertyTypeConfig,
+    AccommodationListingTypeConfig,
+    AccommodationPolicyTier,
+    AccommodationBookingMode,
+    AccommodationCurrency,
+    PropertyTypeHostType,
+    PropertyTypeListingType,
+    AccommodationCancellationPolicyTypeConfig,
+    AccommodationCancellationPhaseConfig,
+    AccommodationNoShowChargeTypeConfig,
+)
 from app.accommodation.models.wishlist import Wishlist
 from app.accommodation.models.guest_profile import GuestProfile
 from app.accommodation.models.feedback import (
@@ -79,6 +94,7 @@ __all__ = [
     # Property
     'Property',
     'AccommodationPropertyType',
+    'AccommodationListingType',
     'AccommodationCancellationPolicy',
     'AccommodationPropertyStatus',
     'AccommodationVerificationStatus',
@@ -135,6 +151,17 @@ __all__ = [
     'AccommodationBookingAmendment',
     'AmendmentType',
     'AmendmentStatus',
+    # Catalog lookup tables
+    'AccommodationPropertyTypeConfig',
+    'AccommodationListingTypeConfig',
+    'AccommodationPolicyTier',
+    'AccommodationBookingMode',
+    'AccommodationCurrency',
+    'PropertyTypeHostType',
+    'PropertyTypeListingType',
+    'AccommodationCancellationPolicyTypeConfig',
+    'AccommodationCancellationPhaseConfig',
+    'AccommodationNoShowChargeTypeConfig',
 ]
 
 

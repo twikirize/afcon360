@@ -5,6 +5,7 @@ let currentProperties = [];
 let currentBounds = null;
 let currentFilters = {
     property_type: 'all',
+    listing_type: 'all',
     sort_by: 'relevance',
     min_price: null,
     max_price: null,
@@ -74,7 +75,8 @@ async function fetchProperties() {
     if (checkIn) params.append('check_in', checkIn);
     if (checkOut) params.append('check_out', checkOut);
     if (guests) params.append('guests', guests);
-    params.append('property_type', currentFilters.property_type);
+    if (currentFilters.property_type !== 'all') params.append('property_type', currentFilters.property_type);
+    if (currentFilters.listing_type !== 'all') params.append('listing_type', currentFilters.listing_type);
     params.append('sort_by', currentFilters.sort_by);
     if (currentFilters.min_price) params.append('min_price', currentFilters.min_price);
     if (currentFilters.max_price) params.append('max_price', currentFilters.max_price);
@@ -166,10 +168,14 @@ function addMarker(property) {
 // Get marker color based on property type
 function getMarkerColor(propertyType) {
     const colors = {
-        'hotel_room': '#2d5a2d',
-        'entire_place': '#3498db',
-        'private_room': '#e67e22',
-        'shared_room': '#95a5a6'
+        'hotel': '#2d5a2d',
+        'house': '#27ae60',
+        'apartment': '#3498db',
+        'villa': '#8e44ad',
+        'lodge': '#d35400',
+        'hostel': '#7f8c8d',
+        'guesthouse': '#f39c12',
+        'resort': '#16a085'
     };
     return colors[propertyType] || '#2d5a2d';
 }
@@ -230,10 +236,15 @@ function renderPropertyCard(property) {
 // Helper functions
 function getPropertyTypeLabel(type) {
     const labels = {
-        'hotel_room': '🏨 Hotel',
-        'entire_place': '🏠 Entire home',
-        'private_room': '🔑 Private room',
-        'shared_room': '🛌 Shared room'
+        'hotel': '🏨 Hotel',
+        'house': '🏠 House',
+        'apartment': '🏢 Apartment',
+        'villa': '🏰 Villa',
+        'lodge': '🛖 Lodge',
+        'hostel': '🎒 Hostel',
+        'guesthouse': '🏘️ Guesthouse',
+        'boutique_hotel': '✨ Boutique Hotel',
+        'resort': '🌴 Resort'
     };
     return labels[type] || '🏠 Accommodation';
 }
@@ -261,6 +272,19 @@ function setPropertyType(type) {
         if (el.dataset.type === type) el.classList.add('active');
     });
     
+    fetchProperties();
+}
+
+function setListingType(listing) {
+    currentFilters.listing_type = listing;
+    currentPage = 1;
+    hasMore = true;
+
+    document.querySelectorAll('.filter-chip[data-listing]').forEach(el => {
+        el.classList.remove('active');
+        if (el.dataset.listing === listing) el.classList.add('active');
+    });
+
     fetchProperties();
 }
 

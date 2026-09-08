@@ -2,7 +2,9 @@
 
 {% block title %}Owner Dashboard - AFCON360{% endblock %}
 
-{% block styles %}
+{% block styles %}  
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
+
   <link rel="stylesheet" href="{{ url_for('static', filename='admin/modules/admin.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/owner.css') }}">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">

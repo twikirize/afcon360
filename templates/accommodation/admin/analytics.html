@@ -137,6 +137,26 @@
       </div>
       <div class="aa-card">
         <div class="aa-card-header">
+          <h5 class="aa-card-title"><i class="bi bi-door-open text-primary"></i>Listings by Booking Type</h5>
+        </div>
+        <div style="padding:1.25rem 1.25rem .75rem;">
+          {% if listing_type_breakdown %}
+            {% set max_l = (listing_type_breakdown | map(attribute='count') | list | max) or 1 %}
+            {% for item in listing_type_breakdown %}
+            <div class="aa-bar-item">
+              <div class="aa-bar-meta"><strong>{{ item.type }}</strong><span>{{ item.count }}</span></div>
+              <div class="aa-bar-track">
+                <div class="aa-bar-fill" style="width:{{ ((item.count / max_l)*100)|round }}%;"></div>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="aa-empty"><i class="bi bi-inbox"></i><p>No data yet.</p></div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="aa-card">
+        <div class="aa-card-header">
           <h5 class="aa-card-title"><i class="bi bi-geo-alt-fill text-danger"></i>Top Cities</h5>
         </div>
         <div style="padding:1.25rem 1.25rem .75rem;">

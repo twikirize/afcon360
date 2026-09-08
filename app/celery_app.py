@@ -109,6 +109,10 @@ def make_celery(app=None):
             "task": "accommodation.detect_no_shows",
             "schedule": 3600.0,  # every 1 hour
         },
+        "accommodation-pre-arrival-request-reminders": {
+            "task": "accommodation.send_pre_arrival_request_reminder",
+            "schedule": 86400.0,  # once per day
+        },
         "notifications-schedule-reminders": {
             "task": "notifications.schedule_reminders",
             "schedule": 60.0,  # every 60 seconds

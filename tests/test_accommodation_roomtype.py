@@ -1,3 +1,4 @@
+import uuid
 import pytest
 from datetime import date, timedelta
 from app.extensions import db
@@ -7,6 +8,7 @@ from app.accommodation.models.booking import AccommodationBooking, Accommodation
 from app.accommodation.services.host_service import HostService
 from app.accommodation.services.booking_service import BookingService
 from app.identity.models.user import User
+from app.identity.models.organization_types import OrganizationType
 
 @pytest.fixture(autouse=True)
 def setup_postgres(app):
@@ -34,7 +36,8 @@ def test_room_type_auto_creation_and_update(app):
             "title": "Marriott Nakasero Test",
             "summary": "Beautiful luxury hotel in Kampala",
             "description": "Premium luxury accommodations",
-            "property_type": "hotel_room",
+            "property_type": "hotel",
+            "listing_type": "private_room",
             "address_line1": "Nakasero Hill Road",
             "city": "Kampala",
             "country": "UG",
@@ -51,8 +54,41 @@ def test_room_type_auto_creation_and_update(app):
             "instant_book": True,
         }
 
-        # Create property - should auto-create RoomType regardless of whether owner_org_id is set
-        prop = HostService.create_property(property_data, owner_user_id=host.id, owner_org_id=123)
+        # Stage 4B-6 / G-1: an organisation-owned Property may only be created
+        # through HostService.create_property when the organisation is
+        # accommodation-eligible (can_org_host) AND its accommodation provider
+        # capability is ACTIVATED. Use a genuine eligible+activated org instead
+        # of a fabricated id (a fake owner_org_id is now correctly rejected).
+        from app.identity.models.organisation import Organisation
+        from app.identity.models.organisation_provider_capability import (
+            ProviderCapabilityCode, ProviderCapabilityStatus,
+        )
+        from app.identity.models.provider_participation import ProviderParticipation
+
+        org = Organisation(
+            org_id=f"org_{uuid.uuid4().hex[:10]}",
+            legal_name=f"RoomType Org {uuid.uuid4().hex[:8]}",
+            country="UG",
+            business_category=OrganizationType.HOTEL,
+            verification_status="verified",
+            lifecycle_state="registered",
+            is_active=True,
+            is_operational=True,
+        )
+        db.session.add(org)
+        db.session.flush()
+        db.session.add(
+            ProviderParticipation(
+                user_id=None,
+                organisation_id=org.id,
+                capability_code=ProviderCapabilityCode.ACCOMMODATION.value,
+                status=ProviderCapabilityStatus.ACTIVATED.value,
+            )
+        )
+        db.session.flush()
+
+        # Create property - should auto-create RoomType regardless of owner
+        prop = HostService.create_property(property_data, owner_user_id=None, owner_org_id=org.id)
         db.session.commit()
 
         assert prop.id is not None
@@ -102,7 +138,8 @@ def test_available_units_and_booking_creation(app):
             "title": "Kampala Suites Test",
             "summary": "Luxury suites",
             "description": "Premium accommodations",
-            "property_type": "hotel_room",
+            "property_type": "hotel",
+            "listing_type": "private_room",
             "address_line1": "Naguru Hill",
             "city": "Kampala",
             "country": "UG",

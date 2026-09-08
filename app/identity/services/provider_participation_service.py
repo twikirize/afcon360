@@ -370,6 +370,34 @@ def revoke_organisation_intention(user, org_id: int, code: str) -> ProviderParti
     return row
 
 
+def is_capability_operational(subject_type: str, subject_id: int, code: str) -> bool:
+    """
+    Read-only operational gate (domain-neutral, no eligibility evaluation).
+
+    True iff the subject holds a non-deleted provider participation for
+    ``code`` in ACTIVATED state. This is the capability half of the
+    two-gate operational rule (eligibility AND capability activated);
+    eligibility remains the domain services' authority (e.g.
+    AccommodationIdentityService.can_host / can_org_host).
+
+    Returns False for unknown codes or a nil/missing subject — never raises.
+    """
+    try:
+        normalised = _validate_code(code)
+    except ParticipationValidationError:
+        return False
+    if subject_type == "individual":
+        row = get_individual_intention(subject_id, normalised)
+    elif subject_type == "organisation":
+        row = get_organisation_intention(subject_id, normalised)
+    else:
+        return False
+    return bool(
+        row is not None
+        and str(row.status) == ProviderCapabilityStatus.ACTIVATED.value
+    )
+
+
 def participation_to_dict(row: ProviderParticipation) -> dict:
     """Serialise a participation row (internal service boundary).
 

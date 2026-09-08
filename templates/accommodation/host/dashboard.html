@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Host Dashboard | AFCON 360{% endblock %}
 
-{% block module_styles %}
+{% block module_styles %}  
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
+
 <style>
 .host-dashboard-modern {
   background: #f8fafc;
@@ -729,6 +731,10 @@
             <a href="{{ url_for('accommodation.host_create_listing') }}" class="quick-action-modern">
               <i class="bi bi-plus-circle" style="color:#047857;"></i>
               <span class="action-label">New Listing</span>
+            </a>
+            <a href="{{ url_for('capability.capabilities_dashboard') }}" class="quick-action-modern">
+              <i class="bi bi-shield-check" style="color:#6c5ce7;"></i>
+              <span class="action-label">Capabilities</span>
             </a>
             <a href="{{ url_for('accommodation.host_calendar') }}" class="quick-action-modern">
               <i class="bi bi-calendar3" style="color:#3b82f6;"></i>

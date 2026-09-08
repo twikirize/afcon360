@@ -9,7 +9,9 @@
 
 {% block title %}Organizer Management — AFCON360 Admin{% endblock %}
 
-{% block module_styles %}
+{% block module_styles %}  
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/explore.css') }}">
+
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/dashboard.css') }}">
   <style>

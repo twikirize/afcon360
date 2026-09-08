@@ -181,7 +181,8 @@
         <div class="prop-meta">
           <span><i class="bi bi-geo-alt-fill text-danger me-1"></i>{{ prop.city }}, {{ prop.country }}</span>
           <span><i class="bi bi-tag-fill text-primary me-1"></i>
-            {{ (prop.property_type.value if prop.property_type and prop.property_type.value else (prop.property_type|string)) | replace('_',' ') | title }}
+            {{ (prop.property_type or '') | replace('_',' ') | title }}
+            {% if prop.listing_type %} · {{ (prop.listing_type or '') | replace('_',' ') | title }}{% endif %}
           </span>
         </div>
         <div class="prop-detail">

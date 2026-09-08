@@ -412,7 +412,7 @@ class WalletService:
         """
         from app.wallet.models.ledger import AccountModel, AccountOwnerType
         return AccountModel.query.filter_by(
-            user_id=org_id,
+            organisation_id=org_id,
             owner_type=AccountOwnerType.ORGANISATION,
             currency=currency
         ).first()

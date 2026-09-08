@@ -365,7 +365,7 @@ def wallet(org_id):
     # Get organization wallet
     from app.wallet.models.ledger import AccountModel, AccountOwnerType
     wallet = AccountModel.query.filter_by(
-        user_id=org.id,
+        organisation_id=org.id,
         owner_type=AccountOwnerType.ORGANISATION
     ).first()
     
@@ -759,5 +759,160 @@ def revoke_capability(org_id, code):
     })
 
 
-# Export the blueprint for the main app to register
-__all__ = ['org_bp']
+# ---------------------------------------------------------------------------
+# Individual provider capability endpoints (G-3 — self-only, minimal)
+#
+# These routes operate ONLY on ``current_user``'s own individual provider
+# participations (user_id subject). They are the public API surface for the
+# universal provider-participation lifecycle (list / activate / deactivate).
+#
+# Eligibility (KYC/KYB) is NOT evaluated here by default — the participation
+# service is domain-neutral. The single approved exception: individual
+# ACCOMMODATION activation is gated on the accommodation eligibility
+# authority (AccommodationIdentityService.can_host) at the route boundary,
+# per Stage 4B-2 user decision. All other individual codes (transport,
+# events, tourism, venue) remain lifecycle-only until their domain
+# eligibility rules are specified/deferred.
+# ---------------------------------------------------------------------------
+
+capability_bp = Blueprint('capability', __name__, url_prefix='/me/capabilities')
+
+
+def _resolve_individual_user_public_id():
+    """Self-only: subject is always the authenticated user (public id)."""
+    return current_user.public_id
+
+
+@capability_bp.route('', methods=['GET'])
+@login_required
+def list_my_capabilities():
+    """List the authenticated user's own provider capabilities."""
+    from app.identity.services.provider_participation_service import (
+        list_individual_intentions,
+        participation_to_dict,
+    )
+    caps = list_individual_intentions(current_user.id)
+    return jsonify({
+        'user_id': _resolve_individual_user_public_id(),
+        'capabilities': [participation_to_dict(c) for c in caps],
+    })
+
+
+@capability_bp.route('/<code>/activate', methods=['POST'])
+@login_required
+def activate_my_capability(code):
+    """Activate one of the authenticated user's own capabilities.
+
+    Individual ACCOMMODATION activation requires the accommodation
+    eligibility authority (can_host) to pass; all other individual codes are
+    lifecycle-only at this stage (4B-2).
+    """
+    from app.identity.models.organisation_provider_capability import (
+        ProviderCapabilityCode,
+    )
+    from app.identity.services.provider_participation_service import (
+        activate_individual_intention,
+        ParticipationNotFoundError,
+        ParticipationPermissionError,
+        ParticipationTransitionError,
+        ParticipationValidationError,
+    )
+
+    try:
+        ProviderCapabilityCode(code)
+    except ValueError:
+        flash(f'Invalid capability code: {code}', 'danger')
+        return redirect(url_for('capability.capabilities_dashboard'))
+
+    if code == ProviderCapabilityCode.ACCOMMODATION.value:
+        from app.accommodation.services.identity_service import (
+            AccommodationIdentityService,
+        )
+        eligible, reason = AccommodationIdentityService.can_host(current_user)
+        if not eligible:
+            flash(reason, 'danger')
+            return redirect(url_for('capability.capabilities_dashboard'))
+
+    try:
+        activate_individual_intention(current_user, code)
+        db.session.commit()
+    except ParticipationPermissionError as exc:
+        db.session.rollback()
+        flash(str(exc), 'danger')
+        return redirect(url_for('capability.capabilities_dashboard'))
+    except ParticipationNotFoundError as exc:
+        db.session.rollback()
+        flash(str(exc), 'danger')
+        return redirect(url_for('capability.capabilities_dashboard'))
+    except ParticipationTransitionError as exc:
+        db.session.rollback()
+        flash(str(exc), 'warning')
+        return redirect(url_for('capability.capabilities_dashboard'))
+    except ParticipationValidationError as exc:
+        db.session.rollback()
+        flash(str(exc), 'danger')
+        return redirect(url_for('capability.capabilities_dashboard'))
+
+    flash(f"Capability '{code}' activated.", 'success')
+    return redirect(url_for('capability.capabilities_dashboard'))
+
+
+@capability_bp.route('/<code>/deactivate', methods=['POST'])
+@login_required
+def deactivate_my_capability(code):
+    """Deactivate one of the authenticated user's own capabilities (reversible)."""
+    from app.identity.models.organisation_provider_capability import (
+        ProviderCapabilityCode,
+    )
+    from app.identity.services.provider_participation_service import (
+        deactivate_individual_intention,
+        ParticipationNotFoundError,
+        ParticipationPermissionError,
+        ParticipationTransitionError,
+        ParticipationValidationError,
+    )
+
+    try:
+        ProviderCapabilityCode(code)
+    except ValueError:
+        flash(f'Invalid capability code: {code}', 'danger')
+        return redirect(url_for('capability.capabilities_dashboard'))
+
+    try:
+        deactivate_individual_intention(current_user, code)
+        db.session.commit()
+    except ParticipationPermissionError as exc:
+        db.session.rollback()
+        flash(str(exc), 'danger')
+        return redirect(url_for('capability.capabilities_dashboard'))
+    except ParticipationNotFoundError as exc:
+        db.session.rollback()
+        flash(str(exc), 'danger')
+        return redirect(url_for('capability.capabilities_dashboard'))
+    except ParticipationTransitionError as exc:
+        db.session.rollback()
+        flash(str(exc), 'warning')
+        return redirect(url_for('capability.capabilities_dashboard'))
+    except ParticipationValidationError as exc:
+        db.session.rollback()
+        flash(str(exc), 'danger')
+        return redirect(url_for('capability.capabilities_dashboard'))
+
+    flash(f"Capability '{code}' deactivated.", 'success')
+    return redirect(url_for('capability.capabilities_dashboard'))
+
+
+# Export the blueprints for the main app to register
+__all__ = ['org_bp', 'capability_bp']
+
+
+@capability_bp.route('/dashboard', methods=['GET'])
+@login_required
+def capabilities_dashboard():
+    """Render the capabilities dashboard HTML page."""
+    from app.identity.services.provider_participation_service import (
+        list_individual_intentions,
+        participation_to_dict,
+    )
+    caps = list_individual_intentions(current_user.id)
+    return render_template('identity/capabilities_dashboard.html', capabilities=caps)

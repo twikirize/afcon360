@@ -9,6 +9,8 @@
 {% extends "admin/admin.html" %}
 
 {% block module_styles %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
+
   {{ super() }}
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <style>
@@ -230,6 +232,12 @@ document.addEventListener('DOMContentLoaded', function() {
         Submissions
         <span class="sad-nav-pill alert">!</span>
       </a>
+
+      <div class="sad-nav-label" style="margin-top:12px;">Quick Access</div>
+      <a href="{{ url_for('user.dashboard') }}" class="sad-nav-item" style="background:#10b9811a; color:#10b981; font-weight:600; border:1px solid #10b98133;">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 1L1.5 7h3.5v6h5V7H14z" stroke="#10b981" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        My Dashboard
+      </a>
     </div>
 
 
@@ -270,6 +278,10 @@ document.addEventListener('DOMContentLoaded', function() {
       <a href="#" class="sad-mobile-nav-item active">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.85"/><rect x="8.5" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/><rect x="1" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/><rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" fill-opacity="0.4"/></svg>
         Dashboard
+      </a>
+      <a href="{{ url_for('user.dashboard') }}" class="sad-mobile-nav-item" style="background:#10b9811a; color:#10b981; font-weight:600;">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 1L1.5 7h3.5v6h5V7H14z" stroke="#10b981" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        My Dashboard
       </a>
       <a href="{{ safe_url('monitor.monitor_dashboard') }}" class="sad-mobile-nav-item">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
@@ -331,6 +343,10 @@ document.addEventListener('DOMContentLoaded', function() {
         <button class="sad-mobile-menu-btn" id="sadMobileMenuBtn" aria-label="Open menu" style="display:none; background:var(--sad-surface2); border:1px solid var(--sad-border2); color:var(--sad-text); width:36px; height:36px; border-radius:8px; cursor:pointer; align-items:center; justify-content:center; font-size:1.2rem;">
           &#9776;
         </button>
+        <a href="{{ url_for('user.dashboard') }}" class="sad-btn" style="background:#10b981; color:#fff; font-weight:600; display:inline-flex; align-items:center; gap:5px;">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1L1 6.5h3v5h5v-5h3z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+          My Dashboard
+        </a>
         <a href="{{ url_for('admin.manage_users') }}" class="sad-btn">
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="4.5" cy="3.5" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M1 11c0-1.93 1.57-3.5 3.5-3.5h.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="9.5" cy="9" r="2" stroke="currentColor" stroke-width="1.3"/></svg>
           Users

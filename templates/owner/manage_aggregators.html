@@ -1,5 +1,9 @@
 {% extends "admin/admin.html" %}
 
+{% block module_styles %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid py-4">
     <!-- Header -->

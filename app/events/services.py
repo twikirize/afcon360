@@ -2470,12 +2470,15 @@ class EventService:
             elif booking_type == 'transport':
                 assignment.transport_booking_id = booking_id
                 try:
-                    from app.transport.models import Booking
-                    transport_booking = db.session.get(Booking, booking_id)
-                    if transport_booking:
-                        transport_booking.event_id = event.id
+                    from app.transport.services.coordination_contract import (
+                        TransportCoordinationContract,
+                        TransportCoordinationContractError,
+                    )
+                    TransportCoordinationContract.tag_booking_for_event(booking_id, event.id)
                 except ImportError:
-                    logger.warning("Could not import Booking from transport.models, skipping event_id update")
+                    logger.warning("Could not import TransportCoordinationContract, skipping event_id tag")
+                except TransportCoordinationContractError as exc:
+                    logger.warning("Could not tag transport booking for event: %s", exc)
             elif booking_type == 'meal':
                 assignment.meal_booking_id = booking_id
             else:

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Edit Guest - AFCON360{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h1 class="h4 mb-1">Edit guest details</h1>
+      <p class="text-muted mb-0">{{ booking.booking_reference }} · {% if registration.is_placeholder %}placeholder seat awaiting details{% else %}{{ registration.guest_name }}{% endif %}</p>
+    </div>
+    <a href="{{ url_for('accommodation.guest_roster', booking_id=booking.id) }}" class="btn btn-outline-secondary">Back to roster</a>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <form method="post" novalidate>
+        {{ form.hidden_tag() }}
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Full name <span class="text-danger">*</span></label>
+          {{ form.guest_name(class="form-control") }}
+          {% for error in form.guest_name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Email</label>
+          {{ form.guest_email(class="form-control") }}
+          {% for error in form.guest_email.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Country code <span class="text-danger">*</span></label>
+            {{ form.guest_phone_country_code(class="form-control", placeholder="+256") }}
+            {% for error in form.guest_phone_country_code.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          <div class="col-md-8">
+            <label class="form-label fw-semibold">Phone <span class="text-danger">*</span></label>
+            {{ form.guest_phone_national(class="form-control", placeholder="701234567") }}
+            {% for error in form.guest_phone_national.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">ID document type</label>
+          {{ form.id_document_type(class="form-select") }}
+          {% for error in form.id_document_type.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        </div>
+        <div class="text-end">
+          <button type="submit" class="btn btn-primary">Save guest details</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

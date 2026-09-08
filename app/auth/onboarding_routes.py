@@ -16,6 +16,10 @@ from flask import (
     request, session, url_for,
 )
 from flask_login import current_user, login_required
+from app.auth.context import switch_context
+from app.identity.services.provider_participation_service import (
+    activate_individual_intention,
+)
 
 from app.extensions import db
 from app.utils.transactions import db_transaction
@@ -57,6 +61,84 @@ def _get_or_create_profile(user) -> Any:
         db.session.add(profile)
         db.session.flush()
     return profile
+
+
+# ---------------------------------------------------------------------------
+# Helper: reconcile submitted onboarding data against the canonical profile
+# ---------------------------------------------------------------------------
+
+def _reconcile_host_profile(profile, user, step1: Dict[str, Any], step2: Dict[str, Any]) -> None:
+    """Reconcile submitted host-onboarding data against the canonical
+    UserProfile.
+
+    Architecture: onboarding is a completion/extension of existing
+    UserProfile/KYC state, not a second KYC registration. The verified
+    profile is the source of truth for the identity fields declared in
+    ``IMMUTABLE_AFTER_VERIFICATION``. The rules applied here mirror that
+    single authority (no second immutable-field list is introduced):
+
+    - verified value present        -> keep (verified wins, submission ignored)
+    - field missing on the profile  -> accept the submitted value after validation
+    - unverified/editable value     -> may be replaced by the submitted value
+
+    ``country`` is not in the immutable set (it stays editable even when
+    verified), but a present verified country is still kept so onboarding
+    cannot silently rewrite it. An empty submission never introduces a
+    value (profile.country stays None until the user provides a country).
+    """
+    from app.profile.models import IMMUTABLE_AFTER_VERIFICATION
+
+    # Assert the fields this helper reconciles are (and remain) the protected
+    # identity authority — do not edit reconciled fields without updating the
+    # immutable set.
+    protected = IMMUTABLE_AFTER_VERIFICATION
+    for field in ("full_name", "id_type", "id_number"):
+        if field not in protected:
+            raise ValueError(f"{field} is not covered by IMMUTABLE_AFTER_VERIFICATION")
+
+    verified = profile.verification_status == "verified"
+
+    # full_name — NOT NULL with a non-empty CHECK constraint; never write None.
+    submitted_name = (step1.get("full_name") or "").strip()
+    current_name = profile.full_name or ""
+    if not verified and submitted_name and (
+        not current_name
+        or current_name == "AFCON 360 User"
+        or current_name == getattr(user, "username", None)
+    ):
+        profile.full_name = submitted_name
+
+    # id_type / id_number — written together, and only when neither exists yet.
+    submitted_id = (step1.get("national_id") or "").strip()
+    if not verified and not profile.id_type and not profile.id_number and submitted_id:
+        profile.id_type = "national_id"
+        profile.id_number = submitted_id
+
+    # country — an empty submission must never become the default "UG".
+    submitted_country = (step2.get("country") or "").strip()
+    if not verified and not profile.country and submitted_country:
+        profile.country = submitted_country
+
+
+def _host_prefill_values(user) -> Dict[str, Any]:
+    """Canonical profile values shown (and locked) on the host wizard.
+
+    Onboarding extends existing UserProfile/KYC state: the GET forms render
+    these values so verified/known identity data is visible but never
+    re-collected. Verified profiles are rendered read-only on the protected
+    fields (see host_step1.html).
+    """
+    from app.profile.models import get_profile_by_user
+
+    profile = get_profile_by_user(user.public_id)
+    if not profile:
+        return {}
+    return {
+        "verified": profile.verification_status == "verified",
+        "full_name": profile.full_name or "",
+        "national_id": profile.id_number or "",
+        "country": profile.country or "",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -227,15 +309,19 @@ def driver_onboarding(step: int = 1):
 
 
 def _commit_driver_onboarding(user, data: Dict[str, Any]) -> None:
-    """Atomic commit of all driver onboarding data."""
-    from app.transport.models import DriverProfile, Vehicle, VerificationTier, ComplianceStatus, VehicleClass
+    """Atomic commit of all driver onboarding data.
+
+    DriverProfile is created ONLY after validate_driver_eligibility. The
+    transport provider intention is declared resource-free (PP row only). A
+    Vehicle is a SEPARATE, later operation — never created here (stage 4B-5).
+    """
+    from app.transport.models import DriverProfile, VerificationTier, ComplianceStatus
     from app.auth.roles import assign_global_role
     from app.extensions import db
     from app.utils.transactions import db_transaction
 
     step1 = data.get("step1", {})
     step2 = data.get("step2", {})
-    step3 = data.get("step3", {})
 
     with db_transaction("Driver onboarding commit"):
         # Update UserProfile
@@ -248,6 +334,27 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> None:
         profile.profile_completed = True
         if not profile.display_name:
             profile.display_name = step1.get("full_name", "")
+
+        # Validate driver eligibility (domain authority) BEFORE creating the profile
+        from app.transport.services.provider_service import get_provider_service
+        get_provider_service().validate_driver_eligibility(user.id)
+
+        # Guard against duplicate driver registration at the write point
+        existing = DriverProfile.query.filter_by(
+            user_id=user.id,
+            is_deleted=False,
+        ).first()
+        if existing:
+            raise ValueError("User is already registered as a driver")
+
+        # Declare transport provider intention (resource-free) — INTENT only.
+        from app.identity.models.organisation_provider_capability import (
+            ProviderCapabilityCode,
+        )
+        from app.identity.services.provider_participation_service import (
+            create_individual_intention,
+        )
+        create_individual_intention(user, ProviderCapabilityCode.TRANSPORT.value)
 
         # Create DriverProfile using existing model fields
         driver = DriverProfile(
@@ -272,23 +379,6 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> None:
         )
         db.session.add(driver)
         db.session.flush()
-
-        # Create Vehicle using existing model fields
-        vehicle = Vehicle(
-            owner_type='driver',
-            owner_id=driver.id,
-            make=step3.get("vehicle_make", ""),
-            model=step3.get("vehicle_model", ""),
-            year=int(step3["vehicle_year"]) if step3.get("vehicle_year") else datetime.now().year,
-            license_plate=step3.get("plate_number", "").upper().strip(),
-            vehicle_type=step3.get("vehicle_type", "sedan"),
-            vehicle_class=VehicleClass.COMFORT,
-            passenger_capacity=4,
-            luggage_capacity=2,
-            status='active',
-            is_available=True,
-        )
-        db.session.add(vehicle)
 
         # Assign driver global role if it exists in the database
         try:
@@ -524,8 +614,8 @@ def _commit_organisation_onboarding(user, data: Dict[str, Any]) -> Any:
 
     # Validate the organisation type against the canonical enum and obtain the
     # enum member so business_category persists a native enum value correctly.
-    # Normalize to lowercase to match the PostgreSQL enum values (which use
-    # .value from OrganizationType, e.g. "hostel" not "HOSTEL").
+    # Note: `business_category` stores the enum MEMBER NAME (e.g. "HOSTEL", not
+    # the lowercase ".value" string "hostel") — see Stage 4B reconciliation.
     org_type_member = _validate_organisation_type(org_type.lower().strip())
 
     # Domain contract: a missing/blank optional organisation identifier
@@ -646,41 +736,88 @@ def host_onboarding(step: int = 1):
                 "national_id": request.form.get("national_id", "").strip(),
                 "proof_of_address": request.form.get("proof_of_address", "").strip(),
             }
+            # The former wizard collected country/property details on a second
+            # step. Host onboarding is now a single identity step: the property
+            # is captured later in the accommodation "Add Listing" flow, which
+            # owns Property creation (save_as_intent_only). The only step-2
+            # value that was actually persisted to the profile — country — is
+            # folded into step 1 here so nothing is lost.
+            submitted_country = request.form.get("country", "").strip()
+            data["step2"] = {"country": submitted_country}
+            if submitted_country:
+                data["step2"]["country"] = normalize_country(submitted_country)
             session["host_onboarding"] = data
-            return redirect(url_for("onboarding.host_onboarding", step=2))
-
-        elif step == 2:
-            data["step2"] = {
-                "property_name": request.form.get("property_name", "").strip(),
-                "description": request.form.get("description", "").strip(),
-                "address": request.form.get("address", "").strip(),
-                "city": request.form.get("city", "").strip(),
-                "country": request.form.get("country", "").strip(),
-                "property_type": request.form.get("property_type", "").strip(),
-                "number_of_rooms": request.form.get("number_of_rooms", "1").strip(),
-            }
 
             try:
-                # Normalize country name/Code to ISO alpha-2 before persisting
-                data["step2"]["country"] = normalize_country(data["step2"]["country"])
                 _commit_host_onboarding(current_user, data)
                 session.pop("host_onboarding", None)
+
+                if not current_user.is_fully_verified():
+                    # KYC gate: host activation is only valid for an
+                    # identity-verified individual — AccommodationIdentityService.
+                    # can_host (the source of the accommodation_host context used
+                    # by switch_context below) requires is_fully_verified().
+                    # Unverified individuals keep their saved host profile and
+                    # provider intention but are routed to the KYC document flow
+                    # (owned by the KYC domain) and return here once compliance
+                    # approves their verification.
+                    flash(
+                        "Your host profile is saved. To start hosting, complete "
+                        "identity (KYC) verification first.",
+                        "info",
+                    )
+                    return redirect(url_for("kyc.upload"))
+
+                # Verified -> switch into the host context and activate the
+                # individual provider intention so the capability gate passes
+                # (is_capability_operational requires ACTIVATED status).
+                switch_context(current_user, {
+                    "type": "accommodation_host",
+                    "public_id": str(current_user.public_id),
+                })
+                from app.identity.services.provider_participation_service import (
+                    ProviderCapabilityCode,
+                )
+                activate_individual_intention(
+                    current_user, ProviderCapabilityCode.ACCOMMODATION.value,
+                )
                 flash(
                     "Your host profile is ready! Add your first property from your dashboard.",
                     "success",
                 )
                 return redirect(url_for("accommodation.host_dashboard"))
             except ValueError as e:
-                current_app.logger.warning(f"Host onboarding country error: {e}")
+                # Intentional validation failures (implicit immutable-field
+                # protection, invalid input) re-render with feedback instead
+                # of a masked 200 success.
+                current_app.logger.warning(f"Host onboarding validation error: {e}")
                 flash(str(e), "danger")
-            except Exception as e:
-                current_app.logger.error(f"Host onboarding error: {e}")
-                flash("Something went wrong. Please try again.", "danger")
+            # Unexpected exceptions are intentionally NOT caught here: they
+            # propagate to the app-wide error handler (generic 500 with
+            # audit) instead of being masked as a successful 200.
+
+        elif step == 2:
+            # Legacy step 2 retired: property details are captured via the
+            # accommodation "Add Listing" flow, not an onboarding side effect.
+            # Preserve a redirect to the dashboard for any stale callers.
+            session.pop("host_onboarding", None)
+            return redirect(url_for("accommodation.host_dashboard"))
+
+    # Pre-fill the wizard from the canonical profile so onboarding extends
+    # existing KYC state instead of asking for it again.
+    prefill = _host_prefill_values(current_user)
+
+    # Step 2 retired: property details are captured via the accommodation
+    # "Add Listing" flow, not an onboarding side effect. Stale direct links to
+    # step 2 fall through to the host dashboard.
+    if step != 1:
+        return redirect(url_for("accommodation.host_dashboard"))
 
     return render_template(
-        f"onboarding/host_step{step}.html",
+        "onboarding/host_step1.html",
         data=session.get("host_onboarding", {}),
         step=step,
+        profile=prefill,
     )
 
 
@@ -702,8 +839,8 @@ def _commit_host_onboarding(user, data: Dict[str, Any], save_as_intent_only: boo
     """
     from app.profile.models import get_profile_by_user
     from app.accommodation.models.property import (
-        Property, AccommodationPropertyType, AccommodationPropertyStatus,
-        AccommodationVerificationStatus
+        Property, AccommodationPropertyType, AccommodationListingType,
+        AccommodationPropertyStatus, AccommodationVerificationStatus
     )
     from app.extensions import db
     from app.utils.transactions import db_transaction
@@ -715,20 +852,13 @@ def _commit_host_onboarding(user, data: Dict[str, Any], save_as_intent_only: boo
         # Update UserProfile
         profile = _get_or_create_profile(user)
 
-        # Preserve verified full_name from KYC/profile - do not overwrite
-        # if the profile already has a full_name set (from verified KYC)
-        if not profile.full_name or profile.full_name == getattr(user, "username", None) or profile.full_name == "AFCON 360 User":
-            profile.full_name = step1.get("full_name", profile.full_name)
-        # If full_name already exists from verified KYC, keep it as-is
-
-        profile.id_type = "national_id"
-        profile.id_number = step1.get("national_id")
+        # Reconcile submitted onboarding data against the canonical profile:
+        # verified KYC fields win, missing fields accept submitted values,
+        # and unverified/editable fields may be replaced after validation.
+        # This keeps onboarding a completion/extension of existing KYC state
+        # and never triggers the immutable-after-verification failure.
+        _reconcile_host_profile(profile, user, step1, step2)
         profile.profile_completed = True
-
-        # Preserve verified country from KYC/profile - do not overwrite
-        # if the profile already has a country set from verified KYC
-        if not profile.country:
-            profile.country = step2.get("country", "")
 
         # Universal provider participation: record the accommodation
         # provider intention (idempotent). This is the first production use
@@ -752,20 +882,23 @@ def _commit_host_onboarding(user, data: Dict[str, Any], save_as_intent_only: boo
         if save_as_intent_only:
             return
 
-        # Map property type string to enum
+        # Map legacy property-type strings to (structure, occupancy). The
+        # schema split property_type (what the building is) from listing_type
+        # (what the guest rents). community_host is preserved structurally as
+        # a house renting the entire place.
         property_type_map = {
-            'apartment': AccommodationPropertyType.ENTIRE_PLACE,
-            'house': AccommodationPropertyType.ENTIRE_PLACE,
-            'room': AccommodationPropertyType.PRIVATE_ROOM,
-            'villa': AccommodationPropertyType.ENTIRE_PLACE,
-            'guesthouse': AccommodationPropertyType.ENTIRE_PLACE,
-            'community_host': AccommodationPropertyType.COMMUNITY_HOST,
-            'lodge': AccommodationPropertyType.LODGE,
-            'hostel': AccommodationPropertyType.HOSTEL,
+            'apartment': (AccommodationPropertyType.APARTMENT, AccommodationListingType.ENTIRE_PLACE),
+            'house': (AccommodationPropertyType.HOUSE, AccommodationListingType.ENTIRE_PLACE),
+            'room': (AccommodationPropertyType.HOUSE, AccommodationListingType.PRIVATE_ROOM),
+            'villa': (AccommodationPropertyType.VILLA, AccommodationListingType.ENTIRE_PLACE),
+            'guesthouse': (AccommodationPropertyType.GUESTHOUSE, AccommodationListingType.ENTIRE_PLACE),
+            'community_host': (AccommodationPropertyType.HOUSE, AccommodationListingType.ENTIRE_PLACE),
+            'lodge': (AccommodationPropertyType.LODGE, AccommodationListingType.ENTIRE_PLACE),
+            'hostel': (AccommodationPropertyType.HOSTEL, AccommodationListingType.ENTIRE_PLACE),
         }
-        selected_type = property_type_map.get(
+        selected_type, selected_listing = property_type_map.get(
             step2.get("property_type", ""),
-            AccommodationPropertyType.ENTIRE_PLACE
+            (AccommodationPropertyType.HOUSE, AccommodationListingType.ENTIRE_PLACE)
         )
 
         # Create Property record using correct model fields
@@ -777,6 +910,8 @@ def _commit_host_onboarding(user, data: Dict[str, Any], save_as_intent_only: boo
             city=step2.get("city", ""),
             country=step2.get("country", ""),
             property_type=selected_type.value,
+            listing_type=selected_listing.value,
+            event_metadata={"community_host": True} if step2.get("property_type") == "community_host" else None,
             bedrooms=int(step2.get("number_of_rooms", 1)),
             owner_user_id=user.id,
             verification_status=AccommodationVerificationStatus.PENDING.value,

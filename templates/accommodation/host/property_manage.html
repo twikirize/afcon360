@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Manage Property - {{ property.title }}{% endblock %}
 
-{% block module_styles %}
+{% block module_styles %}  
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
+
 <style>
 .pm-shell { padding: 1.5rem 0; }
 .pm-header {

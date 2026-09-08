@@ -4,6 +4,10 @@
     {% set is_pane = true %}
 {% else %}
     {% extends "base.html" %}
+
+{% block module_styles %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
+{% endblock %}
     {% set is_pane = false %}
 {% endif %}
 
