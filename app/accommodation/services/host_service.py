@@ -159,6 +159,7 @@ class HostService:
             check_in_time=data.get("check_in_time") or "14:00",
             check_out_time=data.get("check_out_time") or "11:00",
             instant_book=bool(data.get("instant_book")),
+            booking_mode=(data.get("booking_mode") or "instant"),
             allow_pets=bool(data.get("allow_pets")),
             allow_smoking=bool(data.get("allow_smoking")),
             allow_events=bool(data.get("allow_events")),
@@ -252,6 +253,7 @@ class HostService:
         prop.check_in_time = data.get("check_in_time") or prop.check_in_time
         prop.check_out_time = data.get("check_out_time") or prop.check_out_time
         prop.instant_book = bool(data.get("instant_book"))
+        prop.booking_mode = data.get("booking_mode") or prop.booking_mode
         prop.allow_pets = bool(data.get("allow_pets"))
         prop.allow_smoking = bool(data.get("allow_smoking"))
         prop.allow_events = bool(data.get("allow_events"))

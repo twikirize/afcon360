@@ -79,6 +79,8 @@ property_type="house",
         check_out_time="11:00",
         min_stay_nights=1,
         status="published",
+        is_verified=True,
+        verification_status="verified",
         visibility="public",
         is_publicly_visible=True,
         is_active=True,
@@ -111,6 +113,8 @@ def host_approval_property(host_user):
         check_out_time="11:00",
         min_stay_nights=1,
         status="published",
+        is_verified=True,
+        verification_status="verified",
         visibility="public",
         is_publicly_visible=True,
         is_active=True,
@@ -134,6 +138,7 @@ class TestBookingModeInstant:
         booking, error = BookingService.create_booking(
             property_id=instant_property.id,
             guest_user_id=guest_user.id,
+            host_user_id=instant_property.owner_user_id,
             check_in=check_in,
             check_out=check_out,
             num_guests=2,
@@ -156,6 +161,7 @@ class TestBookingModeInstant:
         booking, _ = BookingService.create_booking(
             property_id=instant_property.id,
             guest_user_id=guest_user.id,
+            host_user_id=instant_property.owner_user_id,
             check_in=check_in,
             check_out=check_out,
             num_guests=2,
@@ -213,6 +219,7 @@ class TestBookingModeHostApproval:
         booking, error = BookingService.create_booking(
             property_id=host_approval_property.id,
             guest_user_id=guest_user.id,
+            host_user_id=host_approval_property.owner_user_id,
             check_in=check_in,
             check_out=check_out,
             num_guests=2,
@@ -228,32 +235,39 @@ class TestBookingModeHostApproval:
     def test_host_approval_payment_received_stays_pending_approval(
         self, host_approval_property, guest_user
     ):
-        """Payment for HOST_APPROVAL booking should NOT auto-confirm."""
+        """Payment for HOST_APPROVAL booking must NOT be captured or auto-confirm while
+        pending host approval (Request-to-Book: approval precedes payment)."""
         check_in = date.today() + timedelta(days=5)
         check_out = check_in + timedelta(days=2)
 
-        booking, _ = BookingService.create_booking(
+        booking, error = BookingService.create_booking(
             property_id=host_approval_property.id,
             guest_user_id=guest_user.id,
+            host_user_id=host_approval_property.owner_user_id,
             check_in=check_in,
             check_out=check_out,
             num_guests=2,
             rooms_requested=1,
         )
 
-        # Confirm payment
-        success, error = BookingService.confirm_booking(
+        assert error is None
+        assert booking is not None
+        assert booking.status == AccommodationBookingStatus.PENDING_APPROVAL.value
+
+        # Payment attempt before host approval must be rejected and must NOT confirm
+        success, confirm_error = BookingService.confirm_booking(
             booking_id=booking.id,
             wallet_transaction_id="test-txn-456",
         )
 
-        assert success
-        assert error is None
+        assert success is False
+        assert confirm_error is not None
+        assert "Host approval required" in confirm_error
 
-        # Reload and verify - should STILL be PENDING_APPROVAL
+        # Reload and verify - still PENDING_APPROVAL, payment NOT captured
         db.session.refresh(booking)
         assert booking.status == AccommodationBookingStatus.PENDING_APPROVAL.value
-        assert booking.payment_status == AccommodationPaymentStatus.PAID.value
+        assert booking.payment_status == AccommodationPaymentStatus.PENDING.value
 
     def test_host_can_approve_pending_booking(
         self, host_approval_property, guest_user, host_user
@@ -265,6 +279,7 @@ class TestBookingModeHostApproval:
         booking, _ = BookingService.create_booking(
             property_id=host_approval_property.id,
             guest_user_id=guest_user.id,
+            host_user_id=host_approval_property.owner_user_id,
             check_in=check_in,
             check_out=check_out,
             num_guests=2,
@@ -296,6 +311,7 @@ class TestBookingModeHostApproval:
         booking, _ = BookingService.create_booking(
             property_id=host_approval_property.id,
             guest_user_id=guest_user.id,
+            host_user_id=host_approval_property.owner_user_id,
             check_in=check_in,
             check_out=check_out,
             num_guests=2,
@@ -328,6 +344,7 @@ class TestBookingModeHostApproval:
         booking, _ = BookingService.create_booking(
             property_id=host_approval_property.id,
             guest_user_id=guest_user.id,
+            host_user_id=host_approval_property.owner_user_id,
             check_in=check_in,
             check_out=check_out,
             num_guests=2,
@@ -348,6 +365,7 @@ class TestBookingModeHostApproval:
         new_booking, _ = BookingService.create_booking(
             property_id=host_approval_property.id,
             guest_user_id=guest_user.id,
+            host_user_id=host_approval_property.owner_user_id,
             check_in=check_in + timedelta(days=10),
             check_out=check_in + timedelta(days=12),
             num_guests=2,
@@ -371,6 +389,7 @@ class TestBookingModeAvailability:
         booking1, _ = BookingService.create_booking(
             property_id=instant_property.id,
             guest_user_id=guest_user.id,
+            host_user_id=instant_property.owner_user_id,
             check_in=check_in,
             check_out=check_out,
             num_guests=2,
@@ -378,12 +397,13 @@ class TestBookingModeAvailability:
         )
         BookingService.confirm_booking(booking1.id, "txn-1")
 
-        # Second booking for same dates should fail
-        guest2 = type('Guest', (), {'id': 99999})()  # Mock user
+        # Second guest (unique id per the module's fixture pattern) so the
+        # before_insert uniqueness guard can't collide with rows persisted by
+        # an earlier test session on the shared afcon360_test DB.
         from app.identity.models.user import User
         guest2 = User(
-            email="guest2@example.com",
-            username="guest2",
+            email=f"guest2-{uuid.uuid4().hex[:6]}@example.com",
+            username=f"guest2-{uuid.uuid4().hex[:6]}",
             password_hash="hash",
             email_verified=True,
             phone_verified=True,
@@ -395,6 +415,7 @@ class TestBookingModeAvailability:
         booking2, error = BookingService.create_booking(
             property_id=instant_property.id,
             guest_user_id=guest2.id,
+            host_user_id=instant_property.owner_user_id,
             check_in=check_in,
             check_out=check_out,
             num_guests=2,
@@ -415,17 +436,20 @@ class TestBookingModeAvailability:
         booking1, _ = BookingService.create_booking(
             property_id=host_approval_property.id,
             guest_user_id=guest_user.id,
+            host_user_id=host_approval_property.owner_user_id,
             check_in=check_in,
             check_out=check_out,
             num_guests=2,
             rooms_requested=1,
         )
 
-        # Second booking for same dates
+        # Second guest (unique id per the module's fixture pattern) so the
+        # before_insert uniqueness guard can't collide with rows persisted by
+        # an earlier test session on the shared afcon360_test DB.
         from app.identity.models.user import User
         guest2 = User(
-            email="guest3@example.com",
-            username="guest3",
+            email=f"guest3-{uuid.uuid4().hex[:6]}@example.com",
+            username=f"guest3-{uuid.uuid4().hex[:6]}",
             password_hash="hash",
             email_verified=True,
             phone_verified=True,
@@ -437,6 +461,7 @@ class TestBookingModeAvailability:
         booking2, error = BookingService.create_booking(
             property_id=host_approval_property.id,
             guest_user_id=guest2.id,
+            host_user_id=host_approval_property.owner_user_id,
             check_in=check_in,
             check_out=check_out,
             num_guests=2,
@@ -460,6 +485,7 @@ class TestPaymentValidation:
         booking, _ = BookingService.create_booking(
             property_id=instant_property.id,
             guest_user_id=guest_user.id,
+            host_user_id=instant_property.owner_user_id,
             check_in=check_in,
             check_out=check_out,
             num_guests=2,
@@ -483,6 +509,7 @@ class TestPaymentValidation:
         booking, _ = BookingService.create_booking(
             property_id=host_approval_property.id,
             guest_user_id=guest_user.id,
+            host_user_id=host_approval_property.owner_user_id,
             check_in=check_in,
             check_out=check_out,
             num_guests=2,

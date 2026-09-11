@@ -2502,16 +2502,6 @@ class EventService:
             return None, str(e)
 
     @classmethod
-    def _registration_to_dict(cls, registration) -> Dict:
-        return {
-            "id": registration.id, "event_id": registration.event_id, "user_id": registration.user_id,
-            "full_name": registration.full_name, "email": registration.email,
-            "status": registration.status.value if hasattr(registration.status, 'value') else registration.status,
-            "created_at": registration.created_at.isoformat() if registration.created_at else None,
-            "updated_at": registration.updated_at.isoformat() if registration.updated_at else None,
-        }
-
-    @classmethod
     def _assignment_to_dict(cls, assignment) -> Dict:
         return {
             "id": assignment.id, "event_id": assignment.event_id, "attendee_id": assignment.attendee_id,

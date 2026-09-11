@@ -1,10 +1,61 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "transport/base.html" %}
+{% block title %}New Route{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ safe_url('transport.routes_index') }}">Routes</a>
+<span class="sep">/</span><span class="current">New</span>
+{% endblock %}
 
-</body>
-</html>
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">New Route</h1>
+    <p class="page-subtitle">Define a scheduled transport route</p>
+  </div>
+</div>
+
+<form method="POST" action="{{ safe_url('transport.routes_new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header"><span class="card-title">Route Details</span></div>
+    <div class="card-body">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Route Name <span class="req">*</span></label>
+          <input name="name" class="form-control" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Route Code <span class="req">*</span></label>
+          <input name="route_code" class="form-control" required placeholder="e.g. KLA-ENT-01" />
+        </div>
+      </div>
+      <div class="grid-3">
+        <div class="form-group">
+          <label class="form-label">Route Type <span class="req">*</span></label>
+          <select name="route_type" class="form-control" required>
+            <option value="airport_transfer">Airport Transfer</option>
+            <option value="stadium_shuttle">Stadium Shuttle</option>
+            <option value="hotel_transfer">Hotel Transfer</option>
+            <option value="city_tour">City Tour</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Capacity <span class="req">*</span></label>
+          <input name="vehicle_capacity" type="number" min="1" class="form-control" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Price per Seat</label>
+          <input name="price_per_seat" type="number" step="0.01" class="form-control" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <textarea name="description" class="form-control" rows="2"></textarea>
+      </div>
+    </div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.routes_index') }}" class="btn btn-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Create Route</button>
+  </div>
+</form>
+{% endblock %}

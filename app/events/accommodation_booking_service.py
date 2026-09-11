@@ -463,7 +463,9 @@ class AttendeeAccommodationBookingService:
                 "message": "Accommodation booking not found",
             }
         
-        return BookingPolicyEvaluator.get_booking_requirements(booking)
+        requirements = BookingPolicyEvaluator.get_booking_requirements(booking)
+        requirements["has_booking"] = True
+        return requirements
     
     @staticmethod
     def cancel_attendee_booking(

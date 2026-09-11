@@ -1,10 +1,93 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "transport/base.html" %}
+{% block title %}{{ vehicle.license_plate }}{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ safe_url('transport.vehicles_index') }}">Vehicles</a>
+<span class="sep">/</span><span class="current">{{ vehicle.license_plate }}</span>
+{% endblock %}
 
-</body>
-</html>
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">{{ vehicle.make }} {{ vehicle.model }}</h1>
+    <p class="page-subtitle td-mono">{{ vehicle.license_plate }} · {{ vehicle.year }} · {{ vehicle.vehicle_class.value|title }}</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.vehicles_maintenance', id=vehicle.id) }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-wrench"></i> Maintenance
+    </a>
+    <a href="{{ safe_url('transport.vehicles_edit', id=vehicle.id) }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-pen"></i> Edit
+    </a>
+  </div>
+</div>
+
+<div class="grid-2" style="align-items:start;">
+  <div class="card">
+    <div class="card-header"><span class="card-title">Vehicle Details</span></div>
+    <div style="padding:16px;">
+      {% for label, val in [
+        ('Make', vehicle.make),
+        ('Model', vehicle.model),
+        ('Year', vehicle.year),
+        ('Color', vehicle.color or '—'),
+        ('Type', vehicle.vehicle_type),
+        ('Class', vehicle.vehicle_class.value|title),
+        ('Passenger Capacity', vehicle.passenger_capacity),
+        ('Luggage Capacity', vehicle.luggage_capacity or '—'),
+        ('VIN', vehicle.vin_number or '—'),
+        ('Registration No.', vehicle.registration_number or '—'),
+      ] %}
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:0.82rem;">
+        <span style="color:var(--text-muted);">{{ label }}</span>
+        <span style="font-weight:600;">{{ val }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:16px;">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Status</span>
+        <span class="badge badge-{{ 'green' if vehicle.status == 'active' else 'amber' }}">{{ vehicle.status|title }}</span>
+      </div>
+      <div style="padding:16px;">
+        <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:0.82rem;">
+          <span style="color:var(--text-muted);">Available</span>
+          <span style="font-weight:600;">{{ 'Yes' if vehicle.is_available else 'No' }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:0.82rem;">
+          <span style="color:var(--text-muted);">Reserved</span>
+          <span style="font-weight:600;">{{ 'Yes' if vehicle.is_reserved else 'No' }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:0.82rem;">
+          <span style="color:var(--text-muted);">Maintenance</span>
+          <span style="font-weight:600;">{{ vehicle.maintenance_status|title|default('OK') }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:0.82rem;">
+          <span style="color:var(--text-muted);">Odometer</span>
+          <span style="font-weight:600;">{{ vehicle.odometer_reading_km|default(0) }} km</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">Insurance</span></div>
+      <div style="padding:16px;">
+        <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:0.82rem;">
+          <span style="color:var(--text-muted);">Provider</span>
+          <span style="font-weight:600;">{{ vehicle.insurance_provider or '—' }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:0.82rem;">
+          <span style="color:var(--text-muted);">Verified</span>
+          <span class="badge badge-{{ 'green' if vehicle.insurance_verified else 'amber' }}">{{ 'Verified' if vehicle.insurance_verified else 'Pending' }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:0.82rem;">
+          <span style="color:var(--text-muted);">Expiry</span>
+          <span style="font-weight:600;">{{ vehicle.insurance_expiry.strftime('%d %b %Y') if vehicle.insurance_expiry else '—' }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -10,6 +10,7 @@ import secrets
 import time
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urlparse, urljoin
 from flask import (Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for,)
@@ -97,6 +98,23 @@ def _verify_mfa_token(user, token: str, backup_code: bool = False) -> bool:
     except Exception as e:
         current_app.logger.error(f"MFA verification error: {e}")
         return False
+
+
+def _rotate_session_id():
+    """Rotate the Flask-Session SID after a successful authentication so a
+    pre-login (attacker-supplied) session id cannot be fixed on the user.
+
+    flask_session 0.8.0 provides SessionInterface.regenerate(); login_user()
+    mutates the pre-auth session in place and — without rotation — the raw SID
+    (SESSION_USE_SIGNER=False) survives unchanged across the anonymous ->
+    authenticated transition (session fixation). BACKLOG:1179 [D2].
+    """
+    try:
+        interface = current_app.session_interface
+        if hasattr(interface, "regenerate"):
+            interface.regenerate(session)
+    except Exception:
+        current_app.logger.exception("session_id_regenerate_failed")
 
 
 # ---------------------------------------------------------------------------
@@ -771,7 +789,7 @@ def is_safe_url(target):
 @limiter.limit("5 per minute", methods=["POST"])
 @limiter.limit("30 per minute", methods=["GET"])
 def login():
-    from app.auth.services import authenticate_user, AuthResult
+    from app.auth.services import authenticate_user, AuthResult, start_server_session
 
     if request.method == "POST":
         identifier = (request.form.get("username") or "").strip()[:64]
@@ -791,6 +809,45 @@ def login():
             _ct_delay()
             flash("Login is temporarily unavailable.", "danger")
             return render_template("login.html", username=identifier)
+
+        if result == AuthResult.MFA_REQUIRED:
+            user = payload["user"]
+
+            # First step: valid credentials + MFA enabled. Present the
+            # challenge; the same form re-submits username/password +
+            # mfa_code together (consistent with the owner inline-MFA flow).
+            mfa_code = (request.form.get("mfa_code") or "").strip()[:16]
+
+            if not mfa_code:
+                session["pending_mfa_user_id"] = user.id
+                return render_template(
+                    "login.html",
+                    username=identifier,
+                    require_mfa=True,
+                    mfa_type=payload.get("mfa_type", "totp"),
+                )
+
+            # Second step: verify the submitted TOTP / backup code. Credentials
+            # were re-validated by authenticate_user() in this same request, so
+            # a valid code for this exact user is sufficient to complete login.
+            if not _verify_mfa_token(user, mfa_code):
+                current_app.logger.warning(f"MFA verification failed for {user.public_id}")
+                flash("Invalid MFA code. Please try again.", "danger")
+                return render_template(
+                    "login.html",
+                    username=identifier,
+                    require_mfa=True,
+                    mfa_type=payload.get("mfa_type", "totp"),
+                )
+
+            # MFA confirmed: start the server session and let the standard
+            # SUCCESS branch below complete the owner/non-owner login setup.
+            session["mfa_verified"] = True
+            session.pop("pending_mfa_user_id", None)
+            session_id = start_server_session(user.public_id, ip, user_agent)
+            db.session.commit()
+            result = AuthResult.SUCCESS
+            payload = {"user": user, "session_id": session_id}
 
         if result == AuthResult.SUCCESS:
             user       = payload["user"]
@@ -829,8 +886,8 @@ def login():
                         flash("MFA code is required for owner login", "danger")
                         return render_template("login.html", username=identifier, require_mfa=True)
                     
-                    # Validate MFA token
-                    if not _verify_mfa_token(user, mfa_code):
+                    # Validate MFA token (skip when the MFA_REQUIRED flow above already verified it)
+                    if not session.get("mfa_verified") and not _verify_mfa_token(user, mfa_code):
                         current_app.logger.warning(f"Failed MFA attempt for owner {user.public_id}")
                         flash("Invalid MFA code. Please try again.", "danger")
                         return render_template("login.html", username=identifier, require_mfa=True)
@@ -842,7 +899,7 @@ def login():
                     if getattr(user, 'mfa_enabled', False):
                         # User has MFA - verify it for extra security even when not required
                         mfa_code = request.form.get('mfa_code')
-                        if mfa_code and not _verify_mfa_token(user, mfa_code):
+                        if mfa_code and not session.get("mfa_verified") and not _verify_mfa_token(user, mfa_code):
                             flash("Invalid MFA code. Please try again.", "danger")
                             return render_template("login.html", username=identifier, require_mfa=True)
                         # If no MFA code provided but user has MFA, we'll still allow login
@@ -882,6 +939,7 @@ def login():
                 next_page = request.args.get("next") or session.pop("next_url", None)
                 if not next_page or not is_safe_url(next_page):
                     next_page = url_for("admin.owner.dashboard")
+                _rotate_session_id()
                 return redirect(next_page)
 
             # Use public_id explicitly since get_profile_by_user expects a string UUID
@@ -968,6 +1026,7 @@ def login():
             if not next_page or not is_safe_url(next_page):
                 next_page = _dashboard_for_user(user)
 
+            _rotate_session_id()
             return redirect(next_page)
 
         # Audit failed login attempt

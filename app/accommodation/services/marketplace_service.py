@@ -11,7 +11,6 @@ Integrates with the real wallet module (double-entry ledger) to handle:
 from decimal import Decimal
 from typing import Optional, Tuple, Dict, Any
 from datetime import datetime, timezone
-from uuid import uuid4
 
 from flask import current_app
 from sqlalchemy.exc import OperationalError
@@ -21,6 +20,7 @@ from app.wallet.services.wallet_service import WalletService
 from app.wallet.services.commission_service import CommissionService
 from app.wallet.models.ledger import AccountModel, AccountOwnerType
 from app.wallet.repositories.account_repository import AccountRepository
+from app.wallet.repositories.transaction_repository import TransactionRepository
 from app.accommodation.models.booking import AccommodationBooking
 from app.accommodation.models.commission import BookingCommission
 import logging
@@ -192,7 +192,7 @@ class MarketplaceService:
                 to_account_id=host_account_id,
                 amount=commission.host_payout,
                 currency=booking.currency,
-                client_request_id=f"booking_{booking_id}_payout_{uuid4().hex[:12]}",
+                client_request_id=f"booking_{booking_id}_payout",
                 note=f"Host payout: {booking.booking_reference}",
                 metadata={
                     'booking_id': str(booking_id),
@@ -250,7 +250,7 @@ class MarketplaceService:
                 to_account_id=guest_account_id,
                 amount=refund_amount,
                 currency=booking.currency,
-                client_request_id=f"booking_{booking_id}_refund_{uuid4().hex[:12]}",
+                client_request_id=f"booking_{booking_id}_refund",
                 note=f"Refund: {booking.booking_reference}",
                 metadata={
                     'booking_id': str(booking_id),
@@ -260,10 +260,22 @@ class MarketplaceService:
             )
 
             txn_id = result.get('transaction_id')
+            if result.get('already_processed'):
+                # The wallet leg already moved money for this booking (e.g. a
+                # retry after the business commit failed). Converge business
+                # state to the ACTUAL recorded amount of the existing
+                # transaction — never to fields of the duplicate request.
+                existing = TransactionRepository(db.session).get_by_client_request_id(
+                    f"booking_{booking_id}_refund"
+                )
+                recorded_amount = existing.amount if existing else refund_amount
+            else:
+                recorded_amount = refund_amount
+
             commission.status = 'refunded'
-            commission.refund_amount = refund_amount
+            commission.refund_amount = recorded_amount
             commission.refunded_at = datetime.now(timezone.utc)
-            booking.refund_amount = refund_amount
+            booking.refund_amount = recorded_amount
             booking.refunded_at = datetime.now(timezone.utc)
             booking.payment_status = 'refunded'
             db.session.commit()

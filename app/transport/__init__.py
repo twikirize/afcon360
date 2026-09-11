@@ -110,7 +110,7 @@ __all__ = [
     "get_matching_service",
     "get_payment_service",
     "get_tracking_service",
-    "get_notification_status",
+    "get_notification_service",
     "get_promotion_service",
     "get_external_platforms",
     "get_settings_service",

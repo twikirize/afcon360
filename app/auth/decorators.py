@@ -258,7 +258,7 @@ def require_role(*roles: str) -> Callable:
             if not user:
                 _log_denied("unauthenticated", None, fn.__qualname__)
                 flash("Please log in to access this page.", "warning")
-                return redirect(url_for("auth_routes.login", next=request.url))
+                return redirect(url_for("auth.login", next=request.url))
 
             # Ensure user is attached to the session before checking roles
             if user not in db.session:
@@ -307,7 +307,7 @@ def require_org_role(*roles: str) -> Callable:
             if not user:
                 _log_denied("unauthenticated", None, fn.__qualname__)
                 flash("Please log in to access this page.", "warning")
-                return redirect(url_for("auth_routes.login", next=request.url))
+                return redirect(url_for("auth.login", next=request.url))
 
             if org_id is None:
                 current_app.logger.error(
@@ -365,7 +365,7 @@ def require_permission(permission: str, *, org_scoped: bool = False) -> Callable
             if not user:
                 _log_denied("unauthenticated", None, fn.__qualname__)
                 flash("Please log in to access this page.", "warning")
-                return redirect(url_for("auth_routes.login", next=request.url))
+                return redirect(url_for("auth.login", next=request.url))
 
             from app.auth.policy import can
             if not can(user, permission, org_id=org_id):
@@ -404,7 +404,7 @@ def admin_required(fn: Callable) -> Callable:
         if not user:
             _log_denied("unauthenticated", None, fn.__qualname__)
             flash("Please log in to access this page.", "warning")
-            return redirect(url_for("auth_routes.login", next=request.url))
+            return redirect(url_for("auth.login", next=request.url))
 
         # Ensure user is attached to the session before checking roles
         if user not in db.session:
@@ -446,7 +446,7 @@ def owner_only(fn: Callable) -> Callable:
         if not user:
             _log_denied("unauthenticated", None, fn.__qualname__)
             flash("Please log in to access this page.", "warning")
-            return redirect(url_for("auth_routes.login", next=request.url))
+            return redirect(url_for("auth.login", next=request.url))
 
         from app.auth.helpers import is_owner
         if not is_owner(user):
@@ -473,7 +473,7 @@ def require_wallet_access(fn: Callable) -> Callable:
         if not user:
             _log_denied("unauthenticated", None, fn.__qualname__)
             flash("Please log in to access wallet.", "warning")
-            return redirect(url_for("auth_routes.login", next=request.url))
+            return redirect(url_for("auth.login", next=request.url))
 
         # Check if wallet module is enabled
         from app.wallet.middleware.kill_switch import wallet_enabled
@@ -515,7 +515,7 @@ def require_audit_access(required_permission: str = "audit.view") -> Callable:
             if not user:
                 _log_denied("unauthenticated", None, fn.__qualname__)
                 flash("Please log in to access audit logs.", "warning")
-                return redirect(url_for("auth_routes.login", next=request.url))
+                return redirect(url_for("auth.login", next=request.url))
 
             from app.auth.policy import can
             if not can(user, required_permission):

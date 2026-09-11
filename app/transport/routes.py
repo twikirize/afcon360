@@ -27,10 +27,11 @@ from app.utils.exceptions import NotFoundError, ServiceUnavailableError, Validat
 from app.utils.audit import audit_log
 from app.transport.services import get_booking_service, get_provider_service, get_dashboard_service
 from app.transport.services.passenger_service import get_passenger_service
-from app.transport.models import Booking, DriverProfile, Vehicle, TransportPassenger
+from app.transport.models import Booking, DriverProfile, Vehicle, TransportPassenger, ServiceType
+from app.transport.models import ComplianceStatus
 from app.extensions import db
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)   # noqa: E402
 
 
 # =========================================================================
@@ -51,7 +52,10 @@ def _require_ownership(resource, user_id_attr, admin_allowed=True):
         abort(404)
 
     # Admin can access anything if allowed
-    if admin_allowed and hasattr(current_user, 'is_admin') and current_user.is_admin:
+    if admin_allowed and (
+        hasattr(current_user, 'has_global_role')
+        and current_user.has_global_role('admin', 'super_admin', 'owner')
+    ):
         return resource
 
     # Check ownership
@@ -156,27 +160,57 @@ def health():
 def home():
     """Transport module homepage"""
     is_pane = request.args.get('_pane') == '1'
-    
-    try:
-        booking_service = get_booking_service()
-        services = booking_service.list_services() if hasattr(booking_service, "list_services") else []
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Error loading transport services: {e}")
-        services = []
+
+    # Canonical, backend-sourced ride/service types for the front page cards.
+    # These come from the real ServiceType enum (app/transport/models.py), never
+    # fabricated in the template. Fares are NOT displayed because there is no
+    # per-service fare shown before trip details; the booking form/quote flow
+    # computes pricing. Honest pre-price messaging is used instead.
+    service_labels = {
+        "airport_arrival": "Airport Arrival",
+        "airport_departure": "Airport Departure",
+        "stadium_shuttle": "Stadium Shuttle",
+        "hotel_transfer": "Hotel Transfer",
+        "city_tour": "City Tour",
+        "on_demand": "On-Demand Ride",
+        "scheduled_route": "Scheduled Route",
+        "custom_tour": "Custom Tour",
+    }
+    services = [
+        {"key": st.value, "name": service_labels.get(st.value, st.value.replace("_", " ").title())}
+        for st in ServiceType
+    ]
+
+    # User-scoped recent rides. Only surfaced for an authenticated user; never
+    # leaks another user's bookings. Anonymous visitors get an honest login CTA.
+    recent_rides = []
+    ride_count = 0
+    is_authenticated = bool(current_user.is_authenticated) if not current_user.is_anonymous else False
+    if is_authenticated:
+        try:
+            booking_service = get_booking_service()
+            recent_rides = booking_service.get_user_bookings(current_user.id, limit=5)
+            ride_count = booking_service.count_user_bookings(current_user.id)
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error loading user bookings for user_id={_uid()}: {e}")
 
     logger.info(f"Transport home accessed by user_id={_uid()}, pane={is_pane}")
-    
+
+    ctx = dict(
+        title="AFCON Transport & Travel",
+        services=services,
+        transport_enabled=check_module_enabled("transport"),
+        recent_rides=recent_rides,
+        ride_count=ride_count,
+        is_authenticated=is_authenticated,
+    )
+
     if is_pane:
         # Return only the content for pane loading
-        return render_template("transport/home_pane.html", services=services)
+        return render_template("transport/home_pane.html", **ctx)
     else:
-        return render_template(
-            "transport/home.html",
-            title="AFCON Transport & Travel",
-            services=services,
-            transport_enabled=check_module_enabled("transport")
-        )
+        return render_template("transport/home.html", **ctx)
 
 
 @transport_bp.route("/service/<uuid:service_id>", methods=["GET"])
@@ -242,7 +276,16 @@ def bookings_index():
 @login_required
 def bookings_new():
     """New booking form"""
-    return render_template("transport/bookings/new.html")
+    # Prefill from the front page's "Where to?" inputs when present.
+    pickup = request.args.get("pickup_location", "").strip()
+    dropoff = request.args.get("dropoff_location", "").strip()
+    service_type = request.args.get("service_type", "").strip()
+    return render_template(
+        "transport/bookings/new.html",
+        pickup_value=pickup,
+        dropoff_value=dropoff,
+        selected_service=service_type,
+    )
 
 
 @transport_bp.route("/book", methods=["GET", "POST"])
@@ -322,6 +365,57 @@ def bookings_show(id):
         return redirect(url_for("transport.bookings_index"))
 
     return _json_or_template("transport/bookings/show.html", booking=booking, id=id)
+
+
+@transport_bp.route("/bookings/<int:id>/cancel", methods=["POST"])
+@module_enabled_required("transport")
+@login_required
+def bookings_cancel(id):
+    """Passenger cancel binding (Policy A, TH-3-D2).
+
+    A passenger may cancel only while the booking is in a pre-assignment
+    status (PENDING_PAYMENT / CONFIRMED). The service applies the atomic
+    Race-E status gate (conditional UPDATE, rowcount == 1); once a driver
+    has been assigned the booking is no longer passenger-cancellable.
+    """
+    try:
+        booking_model = db.session.get(Booking, id)
+        if not booking_model:
+            abort(404)
+        _require_ownership(booking_model, "user_id")
+
+        result = get_booking_service().cancel_booking(
+            id, user_id=current_user.id, reason="passenger_request"
+        )
+        audit_log(action="booking_cancelled_passenger", resource_type="booking",
+                  resource_id=id, user_id=current_user.id,
+                  details={"status": "cancelled", "source": "passenger"})
+        logger.info(f"Booking {id} cancelled by passenger user_id={_uid()}")
+        if request.is_json:
+            return jsonify({"status": "success", **result}), 200
+        flash("Booking cancelled successfully", "success")
+    except ValidationError as e:
+        logger.warning(f"Passenger cancel booking {id} rejected: {e}")
+        if request.is_json:
+            return jsonify({"status": "error", "message": str(e)}), 409
+        flash(str(e), "danger")
+    except PermissionError as e:
+        logger.warning(f"Passenger cancel booking {id} forbidden: {e}")
+        if request.is_json:
+            return jsonify({"status": "error", "message": str(e)}), 403
+        flash(str(e), "danger")
+    except NotFoundError as e:
+        if request.is_json:
+            return jsonify({"status": "error", "message": str(e)}), 404
+        flash(str(e), "warning")
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Unexpected error while passenger cancelled booking {id}: {e}", exc_info=True)
+        if request.is_json:
+            return jsonify({"status": "error", "message": "Unable to cancel booking"}), 500
+        flash("Unable to cancel booking", "danger")
+
+    return redirect(url_for("transport.bookings_show", id=id))
 
 
 @transport_bp.route("/bookings/<int:id>/edit")
@@ -702,7 +796,7 @@ def driver_dashboard():
         profile = get_provider_service().get_driver_profile(current_user.id)
         bookings = (
             get_booking_service().get_driver_bookings(current_user.id)
-            if profile and profile.status == "approved"
+            if profile and profile.compliance_status == ComplianceStatus.APPROVED
             else []
         )
     except Exception as e:
@@ -1147,8 +1241,8 @@ def cancel_booking(booking_id):
     try:
         get_booking_service().cancel_booking(booking_id, user_id=current_user.id)
         logger.info(f"Booking {booking_id} cancelled by user_id={_uid()}")
-        audit_log(action="booking_cancelled_admin", entity_type="booking",
-                  entity_id=booking_id, user_id=current_user.id, details={"status": "cancelled"})
+        audit_log(action="booking_cancelled_admin", resource_type="booking",
+                  resource_id=booking_id, user_id=current_user.id, details={"status": "cancelled"})
         flash(f"Booking {booking_id} cancelled successfully", "success")
 
     except NotFoundError as e:
@@ -1233,8 +1327,8 @@ def approve_driver(driver_id):
     try:
         get_provider_service().update_driver_status(driver_id, "approved")
         logger.info(f"Driver {driver_id} approved by user_id={_uid()}")
-        audit_log(action="driver_approved", entity_type="driver",
-                  entity_id=driver_id, user_id=current_user.id, details={"status": "approved"})
+        audit_log(action="driver_approved", resource_type="driver",
+                  resource_id=driver_id, user_id=current_user.id, details={"status": "approved"})
         flash(f"Driver {driver_id} approved", "success")
 
     except NotFoundError as e:
@@ -1262,8 +1356,8 @@ def reject_driver(driver_id):
     try:
         get_provider_service().update_driver_status(driver_id, "rejected")
         logger.info(f"Driver {driver_id} rejected by user_id={_uid()}")
-        audit_log(action="driver_rejected", entity_type="driver",
-                  entity_id=driver_id, user_id=current_user.id, details={"status": "rejected"})
+        audit_log(action="driver_rejected", resource_type="driver",
+                  resource_id=driver_id, user_id=current_user.id, details={"status": "rejected"})
         flash(f"Driver {driver_id} rejected", "warning")
 
     except NotFoundError as e:
@@ -1316,8 +1410,8 @@ def approve_vehicle(vehicle_id):
     try:
         get_provider_service().update_vehicle_status(vehicle_id, "approved")
         logger.info(f"Vehicle {vehicle_id} approved by user_id={_uid()}")
-        audit_log(action="vehicle_approved", entity_type="vehicle",
-                  entity_id=vehicle_id, user_id=current_user.id, details={"status": "approved"})
+        audit_log(action="vehicle_approved", resource_type="vehicle",
+                  resource_id=vehicle_id, user_id=current_user.id, details={"status": "approved"})
         flash(f"Vehicle {vehicle_id} approved", "success")
 
     except NotFoundError as e:
@@ -1345,8 +1439,8 @@ def reject_vehicle(vehicle_id):
     try:
         get_provider_service().update_vehicle_status(vehicle_id, "rejected")
         logger.info(f"Vehicle {vehicle_id} rejected by user_id={_uid()}")
-        audit_log(action="vehicle_rejected", entity_type="vehicle",
-                  entity_id=vehicle_id, user_id=current_user.id, details={"status": "rejected"})
+        audit_log(action="vehicle_rejected", resource_type="vehicle",
+                  resource_id=vehicle_id, user_id=current_user.id, details={"status": "rejected"})
         flash(f"Vehicle {vehicle_id} rejected", "warning")
 
     except NotFoundError as e:
@@ -1510,7 +1604,7 @@ def dashboard():
             ctx['recent_bookings'] = get_booking_service().get_recent_bookings(limit=5)
 
             # Status breakdown
-            ctx['pending_bookings'] = get_booking_service().count_bookings_by_status('pending')
+            ctx['pending_bookings'] = get_booking_service().count_bookings_by_status('pending_payment')
             ctx['confirmed_bookings'] = get_booking_service().count_bookings_by_status('confirmed')
             ctx['completed_bookings'] = get_booking_service().count_bookings_by_status('completed')
             ctx['cancelled_bookings'] = get_booking_service().count_bookings_by_status('cancelled')

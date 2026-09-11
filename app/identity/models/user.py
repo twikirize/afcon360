@@ -228,6 +228,33 @@ class User(UserMixin, ProtectedModel):
         """Explicit helper - URL/public usage (UUID string)."""
         return self.public_id
 
+    @property
+    def display_name(self) -> str:
+        """Canonical human-facing name for this user.
+
+        Precedence:
+          1. UserProfile.display_name   (explicit public choice)
+          2. UserProfile.full_name      (legal name)
+          3. User.username              (login handle — last resort)
+          4. User.email                 (technical fallback)
+          5. "Unknown"
+
+        Use this EVERYWHERE a human-visible name is needed.
+
+        Never read `username` directly for UI display — it may be
+        a system-generated handle (e.g. 'f03c_plain_abc123').
+
+        UserProfile is joined by User.public_id, so a User without
+        a profile will fall through to username / email.
+        """
+        profile = getattr(self, "profile", None)
+        if profile is not None:
+            if profile.display_name:
+                return profile.display_name
+            if profile.full_name:
+                return profile.full_name
+        return self.username or self.email or "Unknown"
+
     @classmethod
     def get_by_public_id(cls, public_uuid: str):
         """Find user by public UUID - use this in all API endpoints."""

@@ -28,7 +28,9 @@ from app.auth.kyc_compliance import (
     TIER_0_UNREGISTERED, TIER_1_BASIC, TIER_2_STANDARD, TIER_3_ENHANCED, TIER_4_PREMIUM,
 )
 from app.wallet.services.kyc_limit_service import KYCLimitService, LimitExceededError
+from app.wallet.services.regulatory_volume_calculator import RegulatoryVolumeCalculator
 from app.wallet.services.wallet_service import WalletService
+from uuid import uuid4
 
 
 def cta(*args, **kwargs):
@@ -251,32 +253,27 @@ class TestPerTransactionPrecedence:
 class TestDailyCumulative:
     def test_regulatory_daily_enforced(self, app, monkeypatch):
         monkeypatch.setitem(app.config, 'WALLET_DAILY_LIMIT_LOCAL', 100_000_000)  # operational high -> regulatory wins
-        mock_ledger = MagicMock()
-        mock_ledger.get_daily_volume.return_value = Decimal('0')
-        mock_ledger.get_monthly_volume.return_value = Decimal('0')
         with app.app_context():
             with patch('app.auth.kyc_compliance.calculate_kyc_tier',
                        return_value=tier_info(TIER_2_STANDARD, 500000, 2_000_000, 10_000_000)), \
                  patch('app.wallet.services.kyc_limit_service.WalletSystemConfig.get_config', return_value=make_config()), \
                  patch('app.wallet.services.kyc_limit_service.db.session.get', return_value=None), \
-                 patch('app.wallet.repositories.ledger_repository.LedgerRepository', return_value=mock_ledger):
+                 patch.object(RegulatoryVolumeCalculator, 'get_daily_volume', return_value=Decimal('0')):
                 with pytest.raises(LimitExceededError):
-                    KYCLimitService.enforce_cumulative_volume(1, 1, Decimal('2_100_000'), 'UGX', 'daily')
+                    KYCLimitService.enforce_cumulative_volume(1, uuid4(), Decimal('2_100_000'), 'UGX', 'daily')
                 # within limit
-                KYCLimitService.enforce_cumulative_volume(1, 1, Decimal('50000'), 'UGX', 'daily')
+                KYCLimitService.enforce_cumulative_volume(1, uuid4(), Decimal('50000'), 'UGX', 'daily')
 
     def test_ledger_daily_volume_used(self, app):
-        mock_ledger = MagicMock()
-        mock_ledger.get_daily_volume.return_value = Decimal('0')
         with app.app_context():
             with patch('app.auth.kyc_compliance.calculate_kyc_tier',
                        return_value=tier_info(TIER_2_STANDARD, 500000, 2_000_000, 10_000_000)), \
                  patch('app.wallet.services.kyc_limit_service.WalletSystemConfig.get_config', return_value=make_config()), \
                  patch('app.wallet.services.kyc_limit_service.db.session.get',
                        side_effect=lambda cls, pk: MagicMock() if cls.__name__ == 'AccountModel' else None), \
-                 patch('app.wallet.repositories.ledger_repository.LedgerRepository', return_value=mock_ledger):
-                KYCLimitService.enforce_cumulative_volume(1, 1, Decimal('100'), 'UGX', 'daily')
-                mock_ledger.get_daily_volume.assert_called_once()
+                 patch.object(RegulatoryVolumeCalculator, 'get_daily_volume', return_value=Decimal('0')) as mock_vol:
+                KYCLimitService.enforce_cumulative_volume(1, uuid4(), Decimal('100'), 'UGX', 'daily')
+                mock_vol.assert_called_once()
 
     def test_wallet_service_enforces_operational_daily(self, app, monkeypatch):
         # WalletService._check_daily_limit enforces the OPERATIONAL Flask daily ceiling
@@ -287,7 +284,7 @@ class TestDailyCumulative:
         ws.ledger_repo = MagicMock()
         ws.ledger_repo.get_daily_volume.return_value = Decimal('1900000')
         account = MagicMock()
-        account.id = 1
+        account.id = uuid4()
         account.user_id = 1
         account.currency = 'UGX'
         ws.account_repo.get_by_id.return_value = account
@@ -296,8 +293,8 @@ class TestDailyCumulative:
             with patch('app.wallet.services.wallet_service.WalletSystemConfig.get_config',
                        return_value=MagicMock(max_daily_amount=None, max_monthly_amount=None)):
                 with pytest.raises(LimitExceededError):
-                    ws._check_daily_limit(1, Decimal('200000'), 'UGX', 'deposit')
-                ws._check_daily_limit(1, Decimal('50000'), 'UGX', 'deposit')
+                    ws._check_daily_limit(uuid4(), Decimal('200000'), 'UGX', 'deposit')
+                ws._check_daily_limit(uuid4(), Decimal('50000'), 'UGX', 'deposit')
 
     def test_effective_daily_is_restrictive_min(self, app, monkeypatch):
         with app.app_context():
@@ -323,43 +320,35 @@ class TestDailyCumulative:
 
 class TestMonthlyCumulative:
     def test_regulatory_monthly_enforced(self, app):
-        mock_ledger = MagicMock()
-        mock_ledger.get_daily_volume.return_value = Decimal('0')
-        mock_ledger.get_monthly_volume.return_value = Decimal('9000000')
         with app.app_context():
             with patch('app.auth.kyc_compliance.calculate_kyc_tier',
                        return_value=tier_info(TIER_2_STANDARD, 500000, 2_000_000, 10_000_000)), \
                  patch('app.wallet.services.kyc_limit_service.WalletSystemConfig.get_config', return_value=make_config()), \
                  patch('app.wallet.services.kyc_limit_service.db.session.get', return_value=None), \
-                 patch('app.wallet.repositories.ledger_repository.LedgerRepository', return_value=mock_ledger):
+                 patch.object(RegulatoryVolumeCalculator, 'get_monthly_volume', return_value=Decimal('9000000')):
                 with pytest.raises(LimitExceededError):
-                    KYCLimitService.enforce_cumulative_volume(1, 1, Decimal('2000000'), 'UGX', 'monthly')
-                KYCLimitService.enforce_cumulative_volume(1, 1, Decimal('500000'), 'UGX', 'monthly')
+                    KYCLimitService.enforce_cumulative_volume(1, uuid4(), Decimal('2000000'), 'UGX', 'monthly')
+                KYCLimitService.enforce_cumulative_volume(1, uuid4(), Decimal('500000'), 'UGX', 'monthly')
 
     def test_ledger_monthly_volume_used(self, app):
-        mock_ledger = MagicMock()
-        mock_ledger.get_monthly_volume.return_value = Decimal('0')
         with app.app_context():
             with patch('app.auth.kyc_compliance.calculate_kyc_tier',
                        return_value=tier_info(TIER_4_PREMIUM, 5_000_000, 0, 0)), \
                  patch('app.wallet.services.kyc_limit_service.WalletSystemConfig.get_config', return_value=make_config()), \
                  patch('app.wallet.services.kyc_limit_service.db.session.get', return_value=None), \
-                 patch('app.wallet.repositories.ledger_repository.LedgerRepository', return_value=mock_ledger):
-                KYCLimitService.enforce_cumulative_volume(1, 1, Decimal('100'), 'UGX', 'monthly')
-                mock_ledger.get_monthly_volume.assert_called_once()
+                 patch.object(RegulatoryVolumeCalculator, 'get_monthly_volume', return_value=Decimal('0')) as mock_vol:
+                KYCLimitService.enforce_cumulative_volume(1, uuid4(), Decimal('100'), 'UGX', 'monthly')
+                mock_vol.assert_called_once()
 
     def test_stored_account_monthly_volume_not_authoritative(self, app):
-        mock_ledger = MagicMock()
-        mock_ledger.get_daily_volume.return_value = Decimal('0')
-        mock_ledger.get_monthly_volume.return_value = Decimal('0')
         with app.app_context():
             with patch('app.auth.kyc_compliance.calculate_kyc_tier',
                        return_value=tier_info(TIER_2_STANDARD, 500000, 2_000_000, 10_000_000)), \
                  patch('app.wallet.services.kyc_limit_service.WalletSystemConfig.get_config', return_value=make_config()), \
                  patch('app.wallet.services.kyc_limit_service.db.session.get', return_value=None), \
-                 patch('app.wallet.repositories.ledger_repository.LedgerRepository', return_value=mock_ledger):
+                 patch.object(RegulatoryVolumeCalculator, 'get_monthly_volume', return_value=Decimal('0')):
                 # Even if a stale stored account.monthly_volume were huge, ledger is authoritative.
-                KYCLimitService.enforce_cumulative_volume(1, 1, Decimal('8000000'), 'UGX', 'monthly')  # 9M < 10M ok
+                KYCLimitService.enforce_cumulative_volume(1, uuid4(), Decimal('8000000'), 'UGX', 'monthly')  # 9M < 10M ok
 
     def test_max_transfer_not_monthly_ceiling(self, app):
         with app.app_context():
@@ -383,28 +372,25 @@ class TestSingleBoundary:
         # KYCLimitService.check_regulatory_cumulative_limits; enforce_cumulative_volume is
         # the direct equivalent. Both must share the same ledger-derived boundary (tier-2
         # daily = 2_000_000). A 2_100_000 request exceeds; 2_000 stays under.
-        mock_ledger = MagicMock()
-        mock_ledger.get_daily_volume.return_value = Decimal('0')
-        mock_ledger.get_monthly_volume.return_value = Decimal('0')
         with app.app_context():
             with patch('app.auth.kyc_compliance.calculate_kyc_tier',
                        return_value=tier_info(TIER_2_STANDARD, 500000, 2_000_000, 10_000_000)), \
                  patch('app.wallet.services.kyc_limit_service.WalletSystemConfig.get_config', return_value=make_config()), \
                  patch('app.wallet.services.kyc_limit_service.db.session.get',
                        side_effect=lambda cls, pk: MagicMock() if cls.__name__ == 'AccountModel' else None), \
-                 patch('app.wallet.repositories.ledger_repository.LedgerRepository', return_value=mock_ledger):
+                 patch.object(RegulatoryVolumeCalculator, 'get_daily_volume', return_value=Decimal('0')):
                 # Direct helper: returns dict (not raises)
                 assert KYCLimitService.check_regulatory_cumulative_limits(
-                    1, 'UGX', Decimal('2000'), 2)['allowed'] is True
+                    uuid4(), 'UGX', Decimal('2000'), 2)['allowed'] is True
                 # WalletService path uses the same limit
                 ws = WalletService(db_session=MagicMock())
                 ws.account_repo = MagicMock()
-                ws._check_kyc_limits(1, Decimal('2000'), 'deposit', 'UGX', account_id=1)
+                ws._check_kyc_limits(1, Decimal('2000'), 'deposit', 'UGX', account_id=str(uuid4()))
                 # Over the boundary: both detect the breach
                 assert KYCLimitService.check_regulatory_cumulative_limits(
-                    1, 'UGX', Decimal('2_100_000'), 2)['allowed'] is False
+                    uuid4(), 'UGX', Decimal('2_100_000'), 2)['allowed'] is False
                 with pytest.raises(LimitExceededError):
-                    KYCLimitService.enforce_cumulative_volume(1, 1, Decimal('2_100_000'), 'UGX', 'daily')
+                    KYCLimitService.enforce_cumulative_volume(1, uuid4(), Decimal('2_100_000'), 'UGX', 'daily')
 
 
 # ---------------------------------------------------------------------------
@@ -502,16 +488,14 @@ class TestFailureSemantics:
                     KYCLimitService.enforce_cumulative_volume(1, 1, Decimal('100'), 'UGX', 'daily')
 
     def test_authorization_helpers_do_not_commit(self, app):
-        mock_ledger = MagicMock()
-        mock_ledger.get_daily_volume.return_value = Decimal('0')
         with app.app_context():
             with patch('app.auth.kyc_compliance.calculate_kyc_tier',
                        return_value=tier_info(TIER_4_PREMIUM, 5_000_000, 1_000_000, 0)), \
                  patch('app.wallet.services.kyc_limit_service.WalletSystemConfig.get_config', return_value=make_config()), \
                  patch('app.wallet.services.kyc_limit_service.db.session.get', return_value=None), \
-                 patch('app.wallet.repositories.ledger_repository.LedgerRepository', return_value=mock_ledger), \
+                 patch.object(RegulatoryVolumeCalculator, 'get_daily_volume', return_value=Decimal('0')), \
                  patch('app.wallet.services.kyc_limit_service.db.session.commit') as mock_commit:
-                KYCLimitService.enforce_cumulative_volume(1, 1, Decimal('100'), 'UGX', 'daily')
+                KYCLimitService.enforce_cumulative_volume(1, uuid4(), Decimal('100'), 'UGX', 'daily')
                 mock_commit.assert_not_called()
 
 

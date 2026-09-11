@@ -6,6 +6,7 @@ All writes are audited. Sensitive settings are protected.
 Cache is invalidated on every write.
 """
 from flask import request
+from flask_login import login_required
 from flask_restful import Resource
 from app.extensions import db, cache
 from app.transport.models import TransportSetting
@@ -48,6 +49,7 @@ class SettingsListResource(Resource):
        POST /api/transport/settings - create a new setting (admin only)
     """
 
+    @login_required
     def get(self):
         """
         List settings.
@@ -139,8 +141,9 @@ class SettingsListResource(Resource):
 class SettingDetailResource(Resource):
     """GET/PUT/DELETE /api/transport/settings/<setting_id>"""
 
+    @admin_required
     def get(self, setting_id):
-        """Get setting by ID"""
+        """Get setting by ID (admin only)"""
         setting = _setting_or_404(setting_id)
         return {"success": True, "data": setting.to_dict()}
 
@@ -232,6 +235,7 @@ class SettingDetailResource(Resource):
 class SettingByKeyResource(Resource):
     """GET/PUT /api/transport/settings/key/<key>"""
 
+    @login_required
     def get(self, key):
         """
         Get a setting by its key.

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 """Comprehensive module isolation integration tests."""
+import json
 import os
 import sys
 import unittest
@@ -32,6 +33,42 @@ class ModuleIsolationIntegrationTest(unittest.TestCase):
                 db.session.add(owner)
                 db.session.commit()
             self.owner_id = owner.id
+
+            # Snapshot persisted module flags so tests that toggle them
+            # (test_6/test_7) restore the shared test DB afterwards. Without
+            # this, every run permanently dirties SystemConfig MODULE_FLAGS
+            # (DB-pollution family), breaking unrelated suites.
+            from app.models.system_config import SystemConfig
+            from app.utils.module_toggle_service import ModuleToggleService
+            self._flags_row_present = (
+                SystemConfig.query.filter_by(key=ModuleToggleService.SETTINGS_KEY).first()
+                is not None
+            )
+            self._prev_module_flags = ModuleToggleService._fetch_stored_flags()
+    
+    def tearDown(self):
+        """Restore persisted module flags to the pre-test state."""
+        with self.app.app_context():
+            from app.extensions import db
+            from app.models.system_config import SystemConfig
+            from app.utils.module_toggle_service import ModuleToggleService
+
+            if self._flags_row_present:
+                SystemConfig.set(
+                    ModuleToggleService.SETTINGS_KEY,
+                    json.dumps(self._prev_module_flags),
+                    value_type='json',
+                    description='Module flags',
+                    commit=True,
+                )
+            else:
+                row = SystemConfig.query.filter_by(
+                    key=ModuleToggleService.SETTINGS_KEY
+                ).first()
+                if row is not None:
+                    db.session.delete(row)
+                    db.session.commit()
+            ModuleToggleService.load_overrides_into_app()
     
     def test_1_module_enabled_function(self):
         """Test module_enabled works with database service."""

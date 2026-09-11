@@ -2,7 +2,7 @@ from decimal import Decimal
 from typing import Optional, Tuple, Dict, Any
 from app.accommodation.services.payment_processors.base import PaymentProcessor
 from app.accommodation.services.marketplace_service import MarketplaceService
-from app.wallet.models.ledger import AccountModel, AccountOwnerType
+from app.wallet.repositories.ledger_repository import LedgerRepository
 from app.wallet.services.wallet_service import WalletService
 
 
@@ -35,13 +35,13 @@ class WalletProcessor(PaymentProcessor):
         if not booking:
             return False, None, "Booking not found for idempotency key"
 
-        account = AccountModel.query.filter_by(user_id=user_id).first()
+        account = WalletService.get_wallet_by_user_id(user_id, currency)
         if not account:
             return False, None, "Wallet account not found. Please create a wallet first."
 
-        balance = WalletService.get_balance(account.id)
-        if balance.get('balance', 0) < amount:
-            return False, None, f"Insufficient wallet balance. Available: {balance.get('balance', 0)}, Required: {amount}"
+        balance = LedgerRepository().get_balance(account.id, currency)
+        if balance < amount:
+            return False, None, f"Insufficient wallet balance. Available: {balance}, Required: {amount}"
 
         success, txn_id, error = MarketplaceService.charge_guest(
             booking=booking,

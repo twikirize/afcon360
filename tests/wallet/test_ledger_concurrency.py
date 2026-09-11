@@ -17,8 +17,6 @@ from uuid import uuid4
 import uuid
 from datetime import datetime, timezone, timedelta
 
-from app import create_app
-from app.config import TestingConfig
 from app.extensions import db
 from app.wallet.services.wallet_service import WalletService
 from app.wallet.repositories.ledger_repository import LedgerRepository
@@ -35,18 +33,17 @@ from app.identity.models.user import User
 from unittest.mock import patch
 
 
-@pytest.fixture
-def app():
-    """Create application for testing."""
-    app = create_app(config_object=TestingConfig)
-    app.config['TESTING'] = True
+@pytest.fixture(autouse=True)
+def _wallet_limits(app):
+    """Explicit wallet limit config on the shared app.
+
+    The central conftest ``_isolate_config`` autouse fixture restores
+    ``app.config`` after every test, so setting these inside a test fixture
+    does not leak across tests.
+    """
     app.config['WALLET_MAX_DEPOSIT'] = Decimal('10000')
     app.config['WALLET_DAILY_LIMIT_HOME'] = Decimal('5000')
-    
-    with app.app_context():
-        yield app
-        db.session.remove()
-        db.session.rollback()
+    yield
 
 
 @pytest.fixture

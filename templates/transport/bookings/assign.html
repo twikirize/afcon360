@@ -1,10 +1,75 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "transport/base.html" %}
+{% block title %}Assign Driver{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ safe_url('transport.bookings_index') }}">Bookings</a>
+<span class="sep">/</span><a href="{{ safe_url('transport.bookings_show', id=booking.id) }}">{{ booking.booking_reference }}</a>
+<span class="sep">/</span><span class="current">Assign</span>
+{% endblock %}
 
-</body>
-</html>
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Assign Driver & Vehicle</h1>
+    <p class="page-subtitle">{{ booking.booking_reference }} · {{ booking.pickup_address or '—' }} → {{ booking.dropoff_address or '—' }}</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.bookings_show', id=booking.id) }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-arrow-left"></i> Back
+    </a>
+  </div>
+</div>
+
+<form method="POST" action="{{ safe_url('transport.booking_assign', id=booking.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header"><span class="card-title">Booking Summary</span></div>
+    <div style="padding:16px;">
+      <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:0.82rem;">
+        <span style="color:var(--text-muted);">Passengers</span><span style="font-weight:600;">{{ booking.passenger_count }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:0.82rem;">
+        <span style="color:var(--text-muted);">Service</span><span style="font-weight:600;">{{ booking.service_type.value|replace('_',' ')|title }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:0.82rem;">
+        <span style="color:var(--text-muted);">Pickup Time</span><span style="font-weight:600;">{{ booking.pickup_time.strftime('%d %b %Y %H:%M') if booking.pickup_time else '—' }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header"><span class="card-title">Assign</span></div>
+    <div class="card-body">
+      <div class="form-group">
+        <label class="form-label">Driver</label>
+        <select name="driver_id" class="form-control">
+          <option value="">— Select driver —</option>
+          {% for d in drivers %}
+          <option value="{{ d.id }}" {{ 'selected' if booking.assigned_driver_id == d.id }}>
+            {{ d.driver_code }} · {{ d.user.name if d.user else 'Driver' }} · ★ {{ '%.1f'|format(d.average_rating|float) if d.average_rating else '—' }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Vehicle</label>
+        <select name="vehicle_id" class="form-control">
+          <option value="">— Select vehicle —</option>
+          {% for v in vehicles %}
+          <option value="{{ v.id }}" {{ 'selected' if booking.assigned_vehicle_id == v.id }}>
+            {{ v.license_plate }} · {{ v.make }} {{ v.model }} ({{ v.passenger_capacity }} pax)
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.bookings_show', id=booking.id) }}" class="btn btn-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary">
+      <i class="fa-solid fa-user-plus"></i> Assign
+    </button>
+  </div>
+</form>
+{% endblock %}

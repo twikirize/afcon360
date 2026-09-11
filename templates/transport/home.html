@@ -196,6 +196,11 @@ body {
     margin: 0 !important;
     padding: 0 !important;
 }
+
+.transport-dashboard .empty-state-plain {
+    color: #6c757d;
+    font-size: 0.95rem;
+}
 </style>
 {% endblock %}
 
@@ -212,12 +217,11 @@ body {
                         <p class="mb-0" style="color: #6c757d;">Get where you need to go, safely and quickly</p>
                     </div>
                     <div class="d-flex gap-3">
-                        <button class="btn btn-outline-secondary">
+                        {% if is_authenticated %}
+                        <a href="{{ safe_url('transport.bookings_index') }}" class="btn btn-outline-secondary">
                             <i class="fas fa-history"></i> Ride History
-                        </button>
-                        <button class="btn btn-outline-secondary">
-                            <i class="fas fa-headset"></i> Support
-                        </button>
+                        </a>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -226,68 +230,58 @@ body {
         <!-- Main Booking Section -->
         <div class="row mb-4">
             <div class="col-lg-8">
-                <div class="booking-card p-4">
+                <form class="booking-card p-4" method="GET"
+                      action="{{ safe_url('transport.bookings_new') if is_authenticated else safe_url('auth.login', next=request.path) }}">
                     <h3 class="mb-4" style="font-weight: 600;">Where to?</h3>
-                    
+
                     <!-- Location Inputs -->
                     <div class="mb-4">
                         <div class="position-relative mb-3">
                             <span class="location-icon">
                                 <i class="fas fa-circle"></i>
                             </span>
-                            <input type="text" class="form-control location-input" placeholder="Enter pickup location" style="padding-left: 50px;">
+                            <input type="text" name="pickup_location" class="form-control location-input"
+                                   placeholder="Enter pickup location" style="padding-left: 50px;" required>
                         </div>
-                        
+
                         <div class="position-relative">
                             <span class="location-icon">
                                 <i class="fas fa-map-marker-alt"></i>
                             </span>
-                            <input type="text" class="form-control location-input" placeholder="Enter destination" style="padding-left: 50px;">
+                            <input type="text" name="dropoff_location" class="form-control location-input"
+                                   placeholder="Enter destination" style="padding-left: 50px;" required>
                         </div>
                     </div>
 
                     <!-- Ride Type Selection -->
+                    {% if services %}
                     <div class="mb-4">
                         <h5 class="mb-3" style="font-weight: 600;">Choose your ride</h5>
                         <div class="row g-3">
+                            {% for service in services %}
                             <div class="col-md-4">
-                                <div class="ride-type-card selected">
+                                <label class="ride-type-card d-flex flex-column {{ 'selected' if loop.first else '' }} mb-0"
+                                       style="cursor: pointer;">
+                                    <input type="radio" name="service_type" value="{{ service.key }}"
+                                           class="d-none ride-type-radio" {{ 'checked' if loop.first else '' }}>
                                     <div class="ride-icon">
                                         <i class="fas fa-car"></i>
                                     </div>
-                                    <h6 class="mb-2">AFCON Go</h6>
-                                    <p class="text-muted mb-2 small">Affordable, everyday rides</p>
-                                    <div class="price-tag">UGX 15,000-25,000</div>
-                                </div>
+                                    <h6 class="mb-2">{{ service.name }}</h6>
+                                    <p class="text-muted mb-2 small">Driver availability checked when you request a ride</p>
+                                    <div class="price-tag" style="font-size: 0.9rem;">Fare calculated after trip details</div>
+                                </label>
                             </div>
-                            <div class="col-md-4">
-                                <div class="ride-type-card">
-                                    <div class="ride-icon">
-                                        <i class="fas fa-car-side"></i>
-                                    </div>
-                                    <h6 class="mb-2">AFCON Comfort</h6>
-                                    <p class="text-muted mb-2 small">Comfortable sedans</p>
-                                    <div class="price-tag">UGX 25,000-40,000</div>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="ride-type-card">
-                                    <div class="ride-icon">
-                                        <i class="fas fa-users"></i>
-                                    </div>
-                                    <h6 class="mb-2">AFCON XL</h6>
-                                    <p class="text-muted mb-2 small">For up to 6 passengers</p>
-                                    <div class="price-tag">UGX 35,000-50,000</div>
-                                </div>
-                            </div>
+                            {% endfor %}
                         </div>
                     </div>
+                    {% endif %}
 
                     <!-- Book Button -->
-                    <button class="book-ride-btn">
-                        <i class="fas fa-car me-2"></i> Book AFCON Go
+                    <button type="submit" class="book-ride-btn">
+                        <i class="fas fa-car me-2"></i> {% if is_authenticated %}Continue Booking{% else %}Log in to Book{% endif %}
                     </button>
-                </div>
+                </form>
             </div>
 
             <!-- Right Sidebar -->
@@ -296,13 +290,13 @@ body {
                 <div class="row g-3 mb-4">
                     <div class="col-6">
                         <div class="stats-card">
-                            <div class="stat-number">12</div>
+                            <div class="stat-number">{{ ride_count }}</div>
                             <div class="stat-label">Total Rides</div>
                         </div>
                     </div>
                     <div class="col-6">
                         <div class="stats-card">
-                            <div class="stat-number">4.8</div>
+                            <div class="stat-number" style="font-size: 1.5rem; padding-top: 10px;">—</div>
                             <div class="stat-label">Your Rating</div>
                         </div>
                     </div>
@@ -313,35 +307,35 @@ body {
                     <h5 class="mb-3" style="font-weight: 600;">Quick Actions</h5>
                     <div class="row g-3">
                         <div class="col-6">
-                            <a href="#" class="quick-action-btn">
+                            <a href="{{ safe_url('transport.bookings_new') if is_authenticated else safe_url('auth.login') }}" class="quick-action-btn">
                                 <div class="quick-action-icon">
-                                    <i class="fas fa-calendar-plus"></i>
+                                    <i class="fas fa-car"></i>
                                 </div>
-                                <div>Schedule</div>
+                                <div>Book a Ride</div>
                             </a>
                         </div>
                         <div class="col-6">
-                            <a href="#" class="quick-action-btn">
+                            <a href="{{ safe_url('transport.bookings_index') if is_authenticated else safe_url('auth.login') }}" class="quick-action-btn">
                                 <div class="quick-action-icon">
-                                    <i class="fas fa-gift"></i>
+                                    <i class="fas fa-history"></i>
                                 </div>
-                                <div>Send Gift</div>
+                                <div>Ride History</div>
                             </a>
                         </div>
                         <div class="col-6">
-                            <a href="#" class="quick-action-btn">
+                            <a href="{{ safe_url('transport.become_driver') if is_authenticated else safe_url('auth.login') }}" class="quick-action-btn">
                                 <div class="quick-action-icon">
-                                    <i class="fas fa-briefcase"></i>
+                                    <i class="fas fa-user-tie"></i>
                                 </div>
-                                <div>Business</div>
+                                <div>Become a Driver</div>
                             </a>
                         </div>
                         <div class="col-6">
-                            <a href="#" class="quick-action-btn">
+                            <a href="{{ safe_url('transport.register_vehicle') if is_authenticated else safe_url('auth.login') }}" class="quick-action-btn">
                                 <div class="quick-action-icon">
-                                    <i class="fas fa-shield-alt"></i>
+                                    <i class="fas fa-truck"></i>
                                 </div>
-                                <div>Safety</div>
+                                <div>Register Vehicle</div>
                             </a>
                         </div>
                     </div>
@@ -350,32 +344,32 @@ body {
                 <!-- Recent Rides -->
                 <div>
                     <h5 class="mb-3" style="font-weight: 600;">Recent Rides</h5>
+                    {% if not is_authenticated %}
                     <div class="recent-ride">
+                        <p class="empty-state-plain mb-2">Log in to view your rides.</p>
+                        <a href="{{ safe_url('auth.login') }}" class="btn btn-dark btn-sm">Log in</a>
+                    </div>
+                    {% elif recent_rides %}
+                    {% for ride in recent_rides %}
+                    <a href="{{ safe_url('transport.bookings_show', id=ride.booking_id) }}" class="recent-ride d-block" style="text-decoration: none; color: inherit;">
                         <div class="d-flex justify-content-between align-items-start mb-2">
                             <div>
-                                <div class="fw-bold">Kampala Stadium</div>
-                                <div class="text-muted small">to Entebbe Airport</div>
+                                <div class="fw-bold">{{ ride.pickup_location or ride.pickup_address or 'Pickup' }}</div>
+                                <div class="text-muted small">to {{ ride.dropoff_location or ride.dropoff_address or 'Destination' }}</div>
                             </div>
-                            <span class="ride-status completed">Completed</span>
+                            <span class="ride-status {% if ride.status == 'completed' %}completed{% elif ride.status == 'cancelled' %}cancelled{% else %}active{% endif %}">{{ ride.status|title }}</span>
                         </div>
                         <div class="d-flex justify-content-between align-items-center">
-                            <span class="text-muted small">Dec 8, 2025 • 2:30 PM</span>
-                            <span class="fw-bold">UGX 35,000</span>
+                            <span class="text-muted small">{{ ride.pickup_time|default(ride.created_at, true) }}</span>
+                            <span class="fw-bold">{{ ride.final_price if ride.final_price is not none else '—' }}</span>
                         </div>
-                    </div>
+                    </a>
+                    {% endfor %}
+                    {% else %}
                     <div class="recent-ride">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <div>
-                                <div class="fw-bold">Hotel Africana</div>
-                                <div class="text-muted small">to Nakawa Market</div>
-                            </div>
-                            <span class="ride-status completed">Completed</span>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span class="text-muted small">Dec 7, 2025 • 10:15 AM</span>
-                            <span class="fw-bold">UGX 18,000</span>
-                        </div>
+                        <p class="empty-state-plain mb-0">No rides yet</p>
                     </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -387,7 +381,8 @@ body {
                     <h4 class="mb-4" style="font-weight: 600;">Want to drive with AFCON?</h4>
                     <div class="row g-4">
                         <div class="col-md-6">
-                            <div class="d-flex align-items-center">
+                            <a href="{{ safe_url('transport.become_driver') if is_authenticated else safe_url('auth.login') }}"
+                               class="d-flex align-items-center" style="text-decoration: none; color: inherit;">
                                 <div class="me-4">
                                     <div class="ride-icon">
                                         <i class="fas fa-user-tie"></i>
@@ -397,10 +392,11 @@ body {
                                     <h6 class="mb-1">Become a Driver</h6>
                                     <p class="text-muted mb-0">Earn money during AFCON tournament</p>
                                 </div>
-                            </div>
+                            </a>
                         </div>
                         <div class="col-md-6">
-                            <div class="d-flex align-items-center">
+                            <a href="{{ safe_url('transport.register_vehicle') if is_authenticated else safe_url('auth.login') }}"
+                               class="d-flex align-items-center" style="text-decoration: none; color: inherit;">
                                 <div class="me-4">
                                     <div class="ride-icon">
                                         <i class="fas fa-truck"></i>
@@ -410,16 +406,8 @@ body {
                                     <h6 class="mb-1">Register Vehicle</h6>
                                     <p class="text-muted mb-0">Add your vehicle to our fleet</p>
                                 </div>
-                            </div>
+                            </a>
                         </div>
-                    </div>
-                    <div class="mt-4">
-                        <button class="btn btn-outline-dark me-3">
-                            <i class="fas fa-car me-2"></i> Start Driving
-                        </button>
-                        <button class="btn btn-outline-dark">
-                            <i class="fas fa-plus-circle me-2"></i> Add Vehicle
-                        </button>
                     </div>
                 </div>
             </div>
@@ -430,76 +418,15 @@ body {
 
 <script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
-    // Ride type selection
+    // Ride type selection - highlights the selected card
     const rideTypeCards = document.querySelectorAll('.ride-type-card');
-    const bookButton = document.querySelector('.book-ride-btn');
-    
     rideTypeCards.forEach(card => {
         card.addEventListener('click', function() {
             rideTypeCards.forEach(c => c.classList.remove('selected'));
             this.classList.add('selected');
-            
-            const rideType = this.querySelector('h6').textContent;
-            bookButton.innerHTML = `<i class="fas fa-car me-2"></i> Book ${rideType}`;
+            const radio = this.querySelector('.ride-type-radio');
+            if (radio) radio.checked = true;
         });
-    });
-    
-    // Location input autocomplete simulation
-    const locationInputs = document.querySelectorAll('.location-input');
-    const popularLocations = [
-        'Kampala Stadium',
-        'Entebbe Airport', 
-        'Hotel Africana',
-        'Nakawa Market',
-        'Makerere University',
-        'Mall Kampala',
-        'Rubaga Cathedral',
-        'Kibuli Mosque'
-    ];
-    
-    locationInputs.forEach(input => {
-        input.addEventListener('focus', function() {
-            if (!this.value) {
-                this.placeholder = 'Start typing to see suggestions...';
-            }
-        });
-        
-        input.addEventListener('blur', function() {
-            if (!this.value) {
-                const icon = this.parentElement.querySelector('.location-icon i');
-                if (icon.classList.contains('fa-circle')) {
-                    this.placeholder = 'Enter pickup location';
-                } else {
-                    this.placeholder = 'Enter destination';
-                }
-            }
-        });
-    });
-    
-    // Book ride button
-    bookButton.addEventListener('click', function() {
-        const pickup = locationInputs[0].value;
-        const destination = locationInputs[1].value;
-        
-        if (!pickup || !destination) {
-            alert('Please enter both pickup and destination locations');
-            return;
-        }
-        
-        // Simulate booking process
-        this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Finding drivers...';
-        this.disabled = true;
-        
-        setTimeout(() => {
-            this.innerHTML = '<i class="fas fa-check me-2"></i> Driver Found! Arriving in 5 mins';
-            this.style.background = '#28a745';
-            
-            setTimeout(() => {
-                this.innerHTML = '<i class="fas fa-car me-2"></i> Book AFCON Go';
-                this.style.background = '#000';
-                this.disabled = false;
-            }, 3000);
-        }, 2000);
     });
 });
 </script>

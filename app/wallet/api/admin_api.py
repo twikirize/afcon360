@@ -4,7 +4,7 @@ Role-based access: regulators, aggregators, auditors, compliance officers
 """
 
 from functools import wraps
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, current_app
 from flask_login import current_user, login_required
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import literal, select
@@ -30,10 +30,10 @@ def require_any_role(*roles):
         def decorated_function(*args, **kwargs):
             if not current_user.is_authenticated:
                 return jsonify({"error": "Authentication required"}), 401
-            
-            if not any(current_user.has_role(role) for role in roles):
+
+            if not current_user.has_global_role(*roles):
                 return jsonify({"error": f"Requires one of roles: {roles}"}), 403
-            
+
             return f(*args, **kwargs)
         return decorated_function
     return decorator
@@ -46,20 +46,20 @@ def require_any_role(*roles):
 @require_any_role('regulator', 'central_bank', 'financial_authority')
 def regulator_dashboard():
     """Regulator dashboard with system-wide statistics"""
-    
+
     # Total system volume
     total_volume = db.session.query(
         db.func.sum(LedgerEntryModel.amount)
     ).filter(LedgerEntryModel.entry_type == 'CREDIT').scalar() or 0
-    
+
     # Active users
     active_users = db.session.query(
         db.func.count(db.distinct(AccountModel.user_id))
     ).scalar()
-    
+
     # Transaction statistics (last 30 days)
     thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
-    
+
     txn_stats = db.session.query(
         db.func.count(TransactionModel.id).label('total'),
         db.func.sum(TransactionModel.amount).label('volume'),
@@ -67,7 +67,7 @@ def regulator_dashboard():
     ).filter(
         TransactionModel.created_at >= thirty_days_ago
     ).first()
-    
+
     # Currency breakdown
     currency_stats = db.session.query(
         TransactionModel.currency,
@@ -77,11 +77,11 @@ def regulator_dashboard():
         TransactionModel.created_at >= thirty_days_ago,
         TransactionModel.status == TransactionStatus.COMPLETED
     ).group_by(TransactionModel.currency).all()
-    
+
     frozen_accounts = db.session.query(
         db.func.count(AccountModel.id)
     ).filter(AccountModel.is_frozen == True).scalar()
-    
+
     return jsonify({
         "system_overview": {
             "total_volume_all_time": float(total_volume),
@@ -109,14 +109,14 @@ def regulator_dashboard():
 @require_any_role('regulator', 'central_bank', 'financial_authority')
 def regulator_transaction_search():
     """Search all transactions (regulator view)"""
-    
+
     user_id = request.args.get('user_id', type=int)
     min_amount = request.args.get('min_amount', type=float)
     max_amount = request.args.get('max_amount', type=float)
     currency = request.args.get('currency')
-    
+
     query = TransactionModel.query
-    
+
     if user_id:
         query = query.filter(TransactionModel.user_id == user_id)
     if min_amount:
@@ -125,14 +125,14 @@ def regulator_transaction_search():
         query = query.filter(TransactionModel.amount <= max_amount)
     if currency:
         query = query.filter(TransactionModel.currency == currency)
-    
+
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
-    
+
     pagination = query.order_by(TransactionModel.created_at.desc()).paginate(
         page=page, per_page=per_page, error_out=False
     )
-    
+
     return jsonify({
         "transactions": [
             {
@@ -162,9 +162,9 @@ def generate_str():
     data = request.get_json()
     country_code = data.get('country_code', 'NG')
     days = data.get('days', 7)
-    
+
     report = generate_str_report(country_code, days)
-    
+
     return jsonify({
         "report_type": "STR",
         "country": country_code,
@@ -181,18 +181,18 @@ def generate_str():
 @require_any_role('auditor', 'regulator')
 def auditor_reconciliation():
     """Reconciliation report - verify all debits equal credits"""
-    
+
     totals = db.session.query(
         LedgerEntryModel.entry_type,
         db.func.sum(LedgerEntryModel.amount).label('total'),
         db.func.count(LedgerEntryModel.id).label('count')
     ).group_by(LedgerEntryModel.entry_type).all()
-    
+
     debit_total = sum(t.total for t in totals if t.entry_type.value == 'DEBIT') or 0
     credit_total = sum(t.total for t in totals if t.entry_type.value == 'CREDIT') or 0
-    
+
     is_balanced = abs(float(debit_total) - float(credit_total)) < 0.01
-    
+
     return jsonify({
         "reconciliation_status": "balanced" if is_balanced else "imbalance_detected",
         "total_debits": float(debit_total),
@@ -212,27 +212,27 @@ def compliance_freeze_account():
     data = request.get_json()
     account_id = data.get('account_id')
     reason = data.get('reason')
-    
+
     if not account_id or not reason:
         return jsonify({"error": "account_id and reason required"}), 400
-    
+
     try:
         account = db.session.get(AccountModel, account_id)
         if not account:
             return jsonify({"error": "Account not found"}), 404
-        
+
         account.is_frozen = True
         account.frozen_reason = reason
         account.frozen_at = datetime.now(timezone.utc)
         account.frozen_by = current_user.id
-        
+
         db.session.commit()
-        
+
         return jsonify({
             "success": True,
             "message": f"Account {account_id} frozen"
         })
-        
+
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
@@ -246,30 +246,30 @@ def compliance_thaw_account():
     data = request.get_json()
     account_id = data.get('account_id')
     reason = data.get('reason', 'Account thawed by admin')
-    
+
     if not account_id:
         return jsonify({"error": "account_id required"}), 400
-    
+
     try:
         account = db.session.get(AccountModel, account_id)
         if not account:
             return jsonify({"error": "Account not found"}), 404
-        
+
         if not account.is_frozen:
             return jsonify({"error": "Account is not frozen"}), 400
-        
+
         account.is_frozen = False
         account.frozen_reason = None
         account.frozen_at = None
         account.frozen_by = None
-        
+
         db.session.commit()
-        
+
         return jsonify({
             "success": True,
             "message": f"Account {account_id} thawed"
         })
-        
+
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
@@ -283,7 +283,7 @@ def compliance_thaw_account():
 def system_payment_providers():
     """Get payment provider status"""
     status = get_provider_status()
-    
+
     return jsonify({
         "payment_providers": status,
         "configured_count": sum(1 for v in status.values() if v),
@@ -294,13 +294,13 @@ def system_payment_providers():
 @admin_api_bp.route('/system/health', methods=['GET'])
 def system_health():
     """Public health check endpoint"""
-    
+
     try:
         db.session.execute(select(literal(1)))
         db_healthy = True
     except:
         db_healthy = False
-    
+
     return jsonify({
         "status": "healthy" if db_healthy else "unhealthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -420,18 +420,18 @@ def list_fraud_alerts():
     status = request.args.get('status')
     user_id = request.args.get('user_id', type=int)
     limit = request.args.get('limit', 50, type=int)
-    
+
     try:
         from app.wallet.models.fraud_alert import FraudAlert, FraudAlertStatus
-        
+
         query = FraudAlert.query
         if status:
             query = query.filter_by(status=status)
         if user_id:
             query = query.filter_by(user_id=user_id)
-        
+
         alerts = query.order_by(FraudAlert.created_at.desc()).limit(limit).all()
-        
+
         return jsonify({
             "status": "success",
             "data": [alert.to_dict() for alert in alerts]
@@ -449,32 +449,32 @@ def review_fraud_alert(alert_id):
     data = request.get_json() or {}
     action = data.get('action')
     notes = data.get('notes', '')
-    
+
     valid_actions = ['approve', 'reject', 'escalate', 'dismiss']
     if action not in valid_actions:
         return jsonify({"error": f"action must be one of: {valid_actions}"}), 400
-    
+
     try:
         from app.wallet.models.fraud_alert import FraudAlert, FraudAlertStatus
-        
+
         alert = db.session.get(FraudAlert, alert_id)
         if not alert:
             return jsonify({"error": "Fraud alert not found"}), 404
-        
+
         status_map = {
             'approve': FraudAlertStatus.RESOLVED,
             'reject': FraudAlertStatus.DISMISSED,
             'escalate': FraudAlertStatus.ESCALATED,
             'dismiss': FraudAlertStatus.DISMISSED
         }
-        
+
         alert.status = status_map[action]
         alert.reviewed_by = current_user.id
         alert.reviewed_at = datetime.now(timezone.utc)
         alert.resolution_notes = notes
-        
+
         db.session.commit()
-        
+
         return jsonify({
             "status": "success",
             "message": f"Fraud alert {action}d",
@@ -540,17 +540,17 @@ def admin_wallet_adjustment(account_id):
     currency = data.get('currency', 'UGX')
     action = data.get('action') # 'deposit' or 'withdraw'
     reason = data.get('reason')
-    
+
     if not amount or not action or not reason:
         return jsonify({"error": "amount, action, and reason are required"}), 400
-        
+
     if action not in ('deposit', 'withdraw'):
         return jsonify({"error": "action must be 'deposit' or 'withdraw'"}), 400
-        
+
     try:
         from decimal import Decimal
         amount_dec = Decimal(str(amount))
-        
+
         service = WalletService()
         result = service.admin_request_adjustment(
             account_id=account_id,
@@ -559,7 +559,7 @@ def admin_wallet_adjustment(account_id):
             adjustment_type=action,
             reason=reason
         )
-            
+
         return jsonify(result)
     except Exception as e:
         current_app.logger.error(f"Admin wallet adjustment request error: {e}")
@@ -573,13 +573,13 @@ def list_adjustment_requests():
     """List manual adjustment requests."""
     from app.wallet.models.adjustment import AdjustmentRequestModel
     status = request.args.get('status')
-    
+
     query = AdjustmentRequestModel.query
     if status:
         query = query.filter_by(status=status)
-        
+
     requests = query.order_by(AdjustmentRequestModel.created_at.desc()).all()
-    
+
     return jsonify({
         "status": "success",
         "data": [
@@ -622,7 +622,7 @@ def reject_adjustment_request(request_id):
     """Reject an adjustment request."""
     data = request.get_json() or {}
     reason = data.get('reason', 'Rejected by admin')
-    
+
     try:
         service = WalletService()
         result = service.reject_adjustment(request_id, current_user.id, reason)
@@ -633,4 +633,3 @@ def reject_adjustment_request(request_id):
 
 
 __all__ = ['admin_api_bp']
-

@@ -1,10 +1,16 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
-
-</body>
-</html>
+{% extends "transport/base.html" %}
+{% block title %}Edit Driver{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ safe_url('transport.drivers_index') }}">Drivers</a>
+<span class="sep">/</span><a href="{{ safe_url('transport.drivers_show', id=driver.id) }}">{{ driver.driver_code }}</a>
+<span class="sep">/</span><span class="current">Edit</span>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Edit Driver</h1>
+    <p class="page-subtitle">{{ driver.driver_code }} · Update driver information</p>
+  </div>
+</div>
+{% include "transport/drivers/_form.html" with context %}
+{% endblock %}

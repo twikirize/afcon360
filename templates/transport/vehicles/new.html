@@ -1,10 +1,16 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
-
-</body>
-</html>
+{# vehicles/new.html #}
+{% extends "transport/base.html" %}
+{% block title %}New Vehicle{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ safe_url('transport.vehicles_index') }}">Vehicles</a>
+<span class="sep">/</span><span class="current">New</span>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Register Vehicle</h1>
+    <p class="page-subtitle">Add a vehicle to the fleet</p>
+  </div>
+</div>
+{% include "transport/vehicles/_form.html" with context %}
+{% endblock %}

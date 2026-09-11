@@ -1,10 +1,119 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "transport/base.html" %}
+{% block title %}Driver Verification{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ safe_url('transport.drivers_index') }}">Drivers</a>
+<span class="sep">/</span><a href="{{ safe_url('transport.drivers_show', id=driver.id) }}">{{ driver.driver_code }}</a>
+<span class="sep">/</span><span class="current">Verification</span>
+{% endblock %}
 
-</body>
-</html>
+{% block extra_css %}
+<style>
+.vf-step { display:flex; gap:14px; padding:14px 16px; border-bottom:1px solid var(--border); align-items:flex-start; }
+.vf-step:last-child { border-bottom:none; }
+.vf-icon { width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:0.85rem; }
+.vf-icon.ok      { background:var(--green-dim); color:var(--green); }
+.vf-icon.pending { background:var(--amber-dim); color:var(--amber); }
+.vf-icon.missing { background:var(--red-dim); color:var(--red); }
+.vf-icon.info    { background:var(--blue-dim); color:var(--blue); }
+.vf-info { flex:1; }
+.vf-title { font-size:0.86rem; font-weight:600; margin-bottom:2px; }
+.vf-desc { font-size:0.75rem; color:var(--text-muted); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Driver Verification</h1>
+    <p class="page-subtitle">{{ driver.driver_code }} · {{ driver.user.name if driver.user else 'Driver' }}</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.drivers_show', id=driver.id) }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-arrow-left"></i> Back to Profile
+    </a>
+  </div>
+</div>
+
+<div class="grid-2" style="align-items:start;">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Verification Checklist</span>
+      <span class="badge badge-{{ 'green' if driver.compliance_status.value == 'approved' else 'amber' }}">
+        {{ driver.compliance_status.value|replace('_',' ')|title }}
+      </span>
+    </div>
+
+    <div class="vf-step">
+      <div class="vf-icon {{ 'ok' if driver.license_verified else 'pending' }}">
+        <i class="fa-solid fa-{{ 'check' if driver.license_verified else 'clock' }}"></i>
+      </div>
+      <div class="vf-info">
+        <div class="vf-title">Driver License</div>
+        <div class="vf-desc">
+          {% if driver.license_verified %}
+            Verified {{ driver.license_verified_at.strftime('%d %b %Y') if driver.license_verified_at else '' }}
+          {% else %}Awaiting verification{% endif %}
+          {% if driver.license_expiry %} · Expires {{ driver.license_expiry.strftime('%d %b %Y') }}{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="vf-step">
+      <div class="vf-icon {{ 'ok' if driver.police_clearance_verified else 'pending' }}">
+        <i class="fa-solid fa-{{ 'check' if driver.police_clearance_verified else 'clock' }}"></i>
+      </div>
+      <div class="vf-info">
+        <div class="vf-title">Police Clearance</div>
+        <div class="vf-desc">
+          {% if driver.police_clearance_verified %}
+            Verified {{ driver.police_clearance_date.strftime('%d %b %Y') if driver.police_clearance_date else '' }}
+          {% else %}Not submitted{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="vf-step">
+      <div class="vf-icon {{ 'ok' if driver.background_check_status == 'approved' else 'pending' if driver.background_check_status == 'pending' else 'missing' }}">
+        <i class="fa-solid fa-user-shield"></i>
+      </div>
+      <div class="vf-info">
+        <div class="vf-title">Background Check</div>
+        <div class="vf-desc">
+          Status: {{ driver.background_check_status|default('pending')|title }}
+          {% if driver.background_check_reference %} · Ref: {{ driver.background_check_reference }}{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="vf-step">
+      <div class="vf-icon info"><i class="fa-solid fa-medal"></i></div>
+      <div class="vf-info">
+        <div class="vf-title">Verification Tier</div>
+        <div class="vf-desc">{{ driver.verification_tier.value|replace('_',' ')|title }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">Compliance Summary</span></div>
+    <div style="padding:16px;">
+      <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font-size:0.82rem;">
+        <span style="color:var(--text-muted);">Compliance Status</span>
+        <span style="font-weight:600;">{{ driver.compliance_status.value|replace('_',' ')|title }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font-size:0.82rem;">
+        <span style="color:var(--text-muted);">Requires Retraining</span>
+        <span style="font-weight:600;">{{ 'Yes' if driver.requires_retraining else 'No' }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font-size:0.82rem;">
+        <span style="color:var(--text-muted);">Last Training</span>
+        <span style="font-weight:600;">{{ driver.last_training_date.strftime('%d %b %Y') if driver.last_training_date else '—' }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:9px 0;font-size:0.82rem;">
+        <span style="color:var(--text-muted);">Next Training Due</span>
+        <span style="font-weight:600;">{{ driver.next_training_due.strftime('%d %b %Y') if driver.next_training_due else '—' }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

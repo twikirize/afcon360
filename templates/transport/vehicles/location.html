@@ -1,10 +1,47 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "transport/base.html" %}
+{% block title %}Vehicle Location{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ safe_url('transport.vehicles_index') }}">Vehicles</a>
+<span class="sep">/</span><a href="{{ safe_url('transport.vehicles_show', id=vehicle.id) }}">{{ vehicle.license_plate }}</a>
+<span class="sep">/</span><span class="current">Location</span>
+{% endblock %}
 
-</body>
-</html>
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>#vehicleMap { height:480px; border-radius:var(--radius-lg); border:1px solid var(--border); }</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Vehicle Location</h1>
+    <p class="page-subtitle td-mono">{{ vehicle.license_plate }}</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.vehicles_show', id=vehicle.id) }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-arrow-left"></i> Back
+    </a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><span class="card-title">Last Known Location</span></div>
+  <div id="vehicleMap" style="margin:12px;"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function() {
+  const map = L.map('vehicleMap').setView([-1.2921, 36.8219], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+  {% if vehicle.current_location %}
+  const lat = {{ vehicle.current_location.get('latitude', -1.2921) }};
+  const lng = {{ vehicle.current_location.get('longitude', 36.8219) }};
+  L.marker([lat, lng]).addTo(map).bindPopup('{{ vehicle.license_plate }}');
+  map.setView([lat, lng], 14);
+  {% endif %}
+})();
+</script>
+{% endblock %}

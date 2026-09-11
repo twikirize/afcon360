@@ -385,6 +385,13 @@ class BookingService:
                         check_out=check_out,
                     )
                     if available_units < rooms_requested:
+                        if idempotency_key:
+                            winner = AccommodationBooking.query.filter_by(
+                                idempotency_key=idempotency_key,
+                                guest_user_id=guest_user_id
+                            ).first()
+                            if winner:
+                                return winner, None
                         return None, (
                             f"Only {available_units} unit(s) available, "
                             f"but {rooms_requested} requested"
@@ -400,6 +407,13 @@ class BookingService:
                     property_id, check_in, check_out
                 )
                 if not is_available:
+                    if idempotency_key:
+                        winner = AccommodationBooking.query.filter_by(
+                            idempotency_key=idempotency_key,
+                            guest_user_id=guest_user_id
+                        ).first()
+                        if winner:
+                            return winner, None
                     return None, error or "Selected dates are not available"
             else:
                 # When skipping hold creation, we already have a hold. Just verify the property exists.

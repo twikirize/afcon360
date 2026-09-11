@@ -478,6 +478,8 @@ def _wallet_dashboard_pane():
                     TransactionModel.recipient_user_id == current_user.id
                 )
             ).order_by(TransactionModel.created_at.desc()).limit(5).all()
+            for tx in recent_transactions:
+                tx.transaction_direction = 'out' if tx.user_id == current_user.id else 'in'
             transaction_count = calculate_transaction_usage(current_user.id)
 
         return render_template(

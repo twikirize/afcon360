@@ -159,6 +159,16 @@ def test_available_units_and_booking_creation(app):
         prop = HostService.create_property(property_data, owner_user_id=host.id, owner_org_id=None)
         db.session.commit()
 
+        # A property is bookable only after approval: HostService.create_property
+        # produces status="pending_review"/is_verified=False; promote it through
+        # the moderation-approval outcome so the property is in a valid bookable
+        # domain state (same fields moderation_service.approve_property sets).
+        prop.status = "published"
+        prop.is_verified = True
+        prop.verification_status = "verified"
+        prop.is_active = True
+        db.session.commit()
+
         rt = RoomType.query.filter_by(property_id=prop.id).first()
         
         # Make total_units = 5 for hotel scenario
@@ -231,11 +241,17 @@ def test_available_units_and_booking_creation(app):
         avail = HostService.available_units(rt.id, today, tomorrow)
         assert avail == 0
 
-        # Snapshot should show status as "booked" (since total available <= 0 and there is a booking)
+        # A fully-consumed day is "blocked" (with a block reason) while the inventory is
+        # only HELD: the booking is PENDING_PAYMENT and its unit is held by a
+        # temporary_hold InventoryBlock, not an active/confirmed booking. Per
+        # Implement/booking_flow.md, HELD is a distinct state from BOOKED (CONFIRMED);
+        # the snapshot classifies a day as "booked" only when an active/confirmed
+        # booking overlaps it.
         snapshot = HostService.get_property_calendar_snapshot(
             property_id=prop.id,
             start_date=today,
             end_date=today
         )
         day = snapshot["days"][0]
-        assert day["status"] == "booked"
+        assert day["status"] == "blocked"
+        assert day["blocked_reason"] in ("temporary_hold", "MAINTENANCE")

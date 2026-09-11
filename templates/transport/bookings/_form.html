@@ -14,14 +14,14 @@
         <div class="form-group">
           <label class="form-label" for="svc_type">Service Type <span class="req">*</span></label>
           <select id="svc_type" name="service_type" class="form-control" required>
-            <option value="stadium_shuttle">Stadium Shuttle</option>
-            <option value="airport_arrival">Airport Arrival</option>
-            <option value="airport_departure">Airport Departure</option>
-            <option value="hotel_transfer">Hotel Transfer</option>
-            <option value="on_demand">On-Demand Ride</option>
-            <option value="scheduled_route">Scheduled Route</option>
-            <option value="city_tour">City Tour</option>
-            <option value="custom_tour">Custom Tour</option>
+            <option value="stadium_shuttle" {{ 'selected' if selected_service == 'stadium_shuttle' }}>Stadium Shuttle</option>
+            <option value="airport_arrival" {{ 'selected' if selected_service == 'airport_arrival' }}>Airport Arrival</option>
+            <option value="airport_departure" {{ 'selected' if selected_service == 'airport_departure' }}>Airport Departure</option>
+            <option value="hotel_transfer" {{ 'selected' if selected_service == 'hotel_transfer' }}>Hotel Transfer</option>
+            <option value="on_demand" {{ 'selected' if selected_service == 'on_demand' }}>On-Demand Ride</option>
+            <option value="scheduled_route" {{ 'selected' if selected_service == 'scheduled_route' }}>Scheduled Route</option>
+            <option value="city_tour" {{ 'selected' if selected_service == 'city_tour' }}>City Tour</option>
+            <option value="custom_tour" {{ 'selected' if selected_service == 'custom_tour' }}>Custom Tour</option>
           </select>
         </div>
         <div class="form-group">
@@ -40,12 +40,12 @@
         <div class="form-group">
           <label class="form-label" for="pickup_location">Pickup Location <span class="req">*</span></label>
           <input id="pickup_location" name="pickup_location" class="form-control"
-                 placeholder="e.g. Nile Independence Stadium, Kampala" required />
+                 placeholder="e.g. Nile Independence Stadium, Kampala" value="{{ pickup_value or '' }}" required />
         </div>
         <div class="form-group">
           <label class="form-label" for="dropoff_location">Drop-off Location <span class="req">*</span></label>
           <input id="dropoff_location" name="dropoff_location" class="form-control"
-                 placeholder="e.g. Entebbe International Airport" required />
+                 placeholder="e.g. Entebbe International Airport" value="{{ dropoff_value or '' }}" required />
         </div>
       </div>
 

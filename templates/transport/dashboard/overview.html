@@ -1,28 +1,61 @@
-{% extends "transport/base.html" %}
+{% extends "transport/base_dashboard.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="current">Overview</span>{% endblock %}
+
 {% block content %}
-<div id="mainContent" class="container">
-    <h2>Admin Overview Dashboard</h2>
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Dashboard</h1>
+    <p class="page-subtitle">Transport system overview</p>
+  </div>
+</div>
 
-    <!-- KPI Cards -->
-    <div class="kpi-row">
-        <div class="kpi-card" data-tooltip="Total bookings in selected period">
-            <h3>Total Bookings</h3>
-            <div id="totalBookings">0</div>
-        </div>
-        <div class="kpi-card" data-tooltip="Percentage of completed bookings">
-            <h3>Completion Rate</h3>
-            <div id="completionRate">0%</div>
-        </div>
-        <div class="kpi-card" data-tooltip="Percentage of cancelled bookings">
-            <h3>Cancellation Rate</h3>
-            <div id="cancellationRate">0%</div>
-        </div>
-    </div>
+<div class="grid-4" style="margin-bottom:16px;">
+  <div class="stat-card amber">
+    <div class="stat-icon amber"><i class="fa-solid fa-calendar-check"></i></div>
+    <div class="stat-value">{{ total_bookings|default(0) }}</div>
+    <div class="stat-label">Total Bookings</div>
+  </div>
+  <div class="stat-card green">
+    <div class="stat-icon green"><i class="fa-solid fa-id-card"></i></div>
+    <div class="stat-value">{{ active_drivers|default(0) }}</div>
+    <div class="stat-label">Active Drivers</div>
+  </div>
+  <div class="stat-card blue">
+    <div class="stat-icon blue"><i class="fa-solid fa-van-shuttle"></i></div>
+    <div class="stat-value">{{ available_vehicles|default(0) }}</div>
+    <div class="stat-label">Available Vehicles</div>
+  </div>
+  <div class="stat-card red">
+    <div class="stat-icon red"><i class="fa-solid fa-triangle-exclamation"></i></div>
+    <div class="stat-value">{{ open_incidents|default(0) }}</div>
+    <div class="stat-label">Open Incidents</div>
+  </div>
+</div>
 
-    <!-- Chart -->
-    <canvas id="bookingsChart" width="400" height="200"></canvas>
-
-    <!-- Notifications -->
-    <div id="notificationsList"></div>
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">Recent Activity</span>
+    <a href="{{ safe_url('transport.bookings_index') }}" class="btn btn-secondary btn-sm">View All</a>
+  </div>
+  <div class="t-table-wrap">
+    <table class="t-table">
+      <thead><tr><th>Reference</th><th>Service</th><th>Status</th><th>Created</th></tr></thead>
+      <tbody>
+        {% if recent_bookings %}
+          {% for b in recent_bookings %}
+          <tr>
+            <td><a href="{{ safe_url('transport.bookings_show', id=b.id) }}" class="td-mono" style="color:var(--amber);">{{ b.booking_reference }}</a></td>
+            <td>{{ b.service_type.value|replace('_',' ')|title }}</td>
+            <td><span class="badge badge-gray">{{ b.status.value|replace('_',' ')|title }}</span></td>
+            <td class="td-mono">{{ b.created_at.strftime('%d %b %H:%M') if b.created_at else '—' }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="4"><div class="empty-state" style="padding:24px;"><i class="fa-solid fa-calendar"></i><p>No recent bookings</p></div></td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}

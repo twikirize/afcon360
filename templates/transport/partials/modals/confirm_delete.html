@@ -1,10 +1,22 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
-
-</body>
-</html>
+{# Reusable confirm-delete modal. Expects #deleteModal id. #}
+<div id="deleteModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;"
+     onclick="if(event.target===this)this.style.display='none'">
+  <div class="card" style="max-width:420px;width:90%;margin:0;">
+    <div class="card-header"><span class="card-title">Confirm Delete</span></div>
+    <div class="card-body">
+      <p style="font-size:0.86rem;color:var(--text-secondary);margin-bottom:16px;">
+        Are you sure you want to delete this item? This action cannot be undone.
+      </p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('deleteModal').style.display='none'">Cancel</button>
+        <form method="POST" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-danger"><i class="fa-solid fa-trash"></i> Delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  document.getElementById('deleteModal').classList.add('open');
+</script>

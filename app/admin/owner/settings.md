@@ -501,7 +501,7 @@ def owner_required(f):
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
             flash('Please log in first', 'warning')
-            return redirect(url_for('auth_routes.login', next=request.url))
+            return redirect(url_for('auth.login', next=request.url))
 
         # Check if user has owner role safely
         try:
@@ -1507,7 +1507,7 @@ def exit_impersonation():
         flash("✅ Returned to Owner Dashboard", "info")
         return redirect(url_for('admin.owner.dashboard'))
 
-    return redirect(url_for('auth_routes.login'))
+    return redirect(url_for('auth.login'))
 
 # Keep existing user-specific impersonation for fine-grained testing
 @owner_bp.route('/impersonate/<string:user_id>', methods=['POST'])
@@ -2013,7 +2013,7 @@ def exit_impersonation():
         flash("✅ Returned to Owner Dashboard", "info")
         return redirect(url_for('admin.owner.dashboard'))
 
-    return redirect(url_for('auth_routes.login'))
+    return redirect(url_for('auth.login'))
 
 # Keep existing user-specific impersonation for fine-grained testing
 @owner_bp.route('/impersonate/<string:user_id>', methods=['POST'])

@@ -1,10 +1,54 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "transport/base.html" %}
+{% block title %}Timeline{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ safe_url('transport.bookings_index') }}">Bookings</a>
+<span class="sep">/</span><a href="{{ safe_url('transport.bookings_show', id=booking.id) }}">{{ booking.booking_reference }}</a>
+<span class="sep">/</span><span class="current">Timeline</span>
+{% endblock %}
 
-</body>
-</html>
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Timeline</h1>
+    <p class="page-subtitle td-mono">{{ booking.booking_reference }}</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.bookings_show', id=booking.id) }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-arrow-left"></i> Back
+    </a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <div class="timeline">
+      {% set events = [
+        ('Booking Created', booking.created_at),
+        ('Confirmed', booking.confirmed_at),
+        ('Driver Assigned', booking.driver_assigned_at),
+        ('Driver En Route', booking.driver_en_route_at),
+        ('Driver Arrived', booking.driver_arrived_at),
+        ('Trip Started', booking.pickup_actual_time),
+        ('Trip Completed', booking.completed_at),
+        ('Cancelled', booking.cancelled_at),
+      ] %}
+      {% for label, ts in events %}
+        {% if ts %}
+        <div class="tl-step done">
+          <div class="tl-label">{{ label }}</div>
+          <div class="tl-time">{{ ts.strftime('%d %b %Y %H:%M') }}</div>
+        </div>
+        {% endif %}
+      {% endfor %}
+      {% if booking.audit_log %}
+        {% for entry in booking.audit_log %}
+        <div class="tl-step">
+          <div class="tl-label">{{ entry.get('action', 'Event') }}</div>
+          <div class="tl-time">{{ entry.get('at', '') }}</div>
+        </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

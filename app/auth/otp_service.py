@@ -524,6 +524,25 @@ class OTPService:
             return False
         return OTPService.verify_otp(identifier=identifier, otp=otp, purpose="sms_verification")
 
+    def get_user_mfa_method(self, user_id) -> Optional[str]:
+        """
+        Return the MFA method ('totp', 'sms', ...) of the user's active
+        MFASecret, or None when the user has no active MFA secret.
+
+        BACKLOG:1179 [D7] — app/auth/services.py (authenticate_user and the MFA
+        helper functions) calls this method, but it did not exist on OTPService,
+        raising AttributeError and breaking MFA login for every MFA-enabled user.
+        """
+        from app.identity.models.user import MFASecret
+
+        mfa_secret = MFASecret.query.filter_by(
+            user_id=user_id,
+            is_active=True,
+        ).first()
+        if mfa_secret and mfa_secret.mfa_type:
+            return mfa_secret.mfa_type
+        return None
+
 
 # Global instance for easy import
 otp_service = OTPService()

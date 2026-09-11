@@ -38,6 +38,7 @@ class ScheduledRouteListResource(Resource):
        POST /api/transport/routes - create a new scheduled route
     """
 
+    @admin_required
     def get(self):
         """List scheduled routes with filtering, sorting, and pagination"""
         query = ScheduledRoute.query.filter_by(is_deleted=False)
@@ -151,6 +152,7 @@ class ScheduledRouteListResource(Resource):
 class ScheduledRouteDetailResource(Resource):
     """GET/PUT/DELETE /api/transport/routes/<route_id>"""
 
+    @admin_required
     def get(self, route_id):
         """Get route detail with live capacity and current assignment"""
         route = _route_or_404(route_id)

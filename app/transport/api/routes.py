@@ -30,6 +30,10 @@ def register_api_resources(api):
         DriverVerificationResource,
         DriverLocationResource,
         DriverHistoryResource,
+        DriverOfferListResource,
+        DriverOfferAcceptResource,
+        DriverOfferDeclineResource,
+        DriverTripResource,
     )
     from .vehicle_routes import (
         VehicleListResource,
@@ -85,6 +89,15 @@ def register_api_resources(api):
     safe_add_resource(DriverLocationResource, "/drivers/<int:driver_id>/location", endpoint="driver_location")
     safe_add_resource(DriverHistoryResource, "/drivers/<int:driver_id>/history", endpoint="driver_history")
 
+    # TH-3-D2 driver offer surface + trip lifecycle
+    safe_add_resource(DriverOfferListResource, "/drivers/me/offers", endpoint="driver_me_offers")
+    safe_add_resource(DriverOfferAcceptResource, "/drivers/me/offers/<string:booking_reference>/accept",
+                     endpoint="driver_me_offer_accept")
+    safe_add_resource(DriverOfferDeclineResource, "/drivers/me/offers/<string:booking_reference>/decline",
+                     endpoint="driver_me_offer_decline")
+    safe_add_resource(DriverTripResource, "/drivers/me/trips/<int:booking_id>/status",
+                     endpoint="driver_me_trip_status")
+
     # Vehicles
     safe_add_resource(VehicleListResource, "/vehicles", endpoint="vehicle_list")
     safe_add_resource(VehicleDetailResource, "/vehicles/<int:vehicle_id>", endpoint="vehicle_detail")
@@ -100,7 +113,7 @@ def register_api_resources(api):
 
     # Bookings
     safe_add_resource(BookingListResource, "/bookings", endpoint="booking_list")
-    safe_add_resource(BookingDetailResource, "/bookings/<int:booking_id>", endpoint="booking_detail")
+    safe_add_resource(BookingDetailResource, "/bookings/<string:booking_reference>", endpoint="booking_detail")
     safe_add_resource(BookingStatusResource, "/bookings/<int:booking_id>/status", endpoint="booking_status")
     safe_add_resource(BookingAssignmentResource, "/bookings/<int:booking_id>/assign", endpoint="booking_assignment")
     safe_add_resource(BookingPaymentResource, "/bookings/<int:booking_id>/payments", endpoint="booking_payments")

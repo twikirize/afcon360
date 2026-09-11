@@ -1,7 +1,12 @@
 """Regression checks for the group checkout and notification contracts."""
 
+import uuid
 from pathlib import Path
 
+from app.extensions import db
+from app.accommodation.models.property import Property
+from app.accommodation.models.room import RoomType
+from app.identity.models.user import User
 from app.accommodation.services.pricing_service import PricingService
 from app.notifications.models import Notification
 
@@ -81,6 +86,50 @@ def test_availability_endpoint_parses_dates_before_service_lookup(app, monkeypat
 
     from app.accommodation.services.availability_service import AvailabilityService
 
+    # ORG-9 availability boundary requires a real bookable + publicly visible
+    # property, so the id below belongs to a freshly published property.
+    with app.app_context():
+        owner = User(
+            public_id=str(uuid.uuid4()),
+            username=f"o_{uuid.uuid4().hex[:8]}",
+            email=f"o_{uuid.uuid4().hex[:8]}@example.com",
+        )
+        owner.set_password("TestPassword123!")
+        owner.is_active = True
+        owner.is_verified = True
+        owner.email_verified = True
+        db.session.add(owner)
+        db.session.flush()
+        prop = Property(
+            public_id=str(uuid.uuid4()),
+            slug=f"avl-{uuid.uuid4().hex[:10]}",
+            title="Availability parse test property",
+            description="Used to prove date parsing runs after the ORG-9 gate",
+            address_line1="Test Road",
+            city="Kampala",
+            country="UG",
+            base_price_per_night=120.0,
+            status="published",
+            is_verified=True,
+            verification_status="verified",
+            is_publicly_visible=True,
+            is_active=True,
+            owner_user_id=owner.id,
+        )
+        db.session.add(prop)
+        db.session.flush()
+        db.session.add(
+            RoomType(
+                property_id=prop.id,
+                name="Standard",
+                base_price_per_night=100.0,
+                total_units=1,
+                is_active=True,
+            )
+        )
+        db.session.commit()
+        prop_id = prop.id
+
     received = {}
 
     def fake_get_availability_cascade(**kwargs):
@@ -94,9 +143,9 @@ def test_availability_endpoint_parses_dates_before_service_lookup(app, monkeypat
     )
 
     with app.test_request_context(
-        "/accommodation/api/availability"
-        "?property_id=2&check_in=2026-08-20&check_out=2026-08-21"
-        "&num_guests=2&num_rooms=1"
+        f"/accommodation/api/availability"
+        f"?property_id={prop_id}&check_in=2026-08-20&check_out=2026-08-21"
+        f"&num_guests=2&num_rooms=1"
     ):
         response = app.view_functions["accommodation.api_availability"]()
 

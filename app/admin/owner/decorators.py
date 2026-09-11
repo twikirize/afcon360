@@ -21,7 +21,7 @@ def owner_required(f):
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
             flash('Please log in first', 'warning')
-            return redirect(url_for('auth_routes.login', next=request.url))
+            return redirect(url_for('auth.login', next=request.url))
 
         # CRITICAL: Ensure clean session state before role check
         # Rollback any aborted transaction safely
@@ -98,7 +98,7 @@ def owner_or_superadmin_required(f):
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
             flash('Please log in first', 'warning')
-            return redirect(url_for('auth_routes.login', next=request.url))
+            return redirect(url_for('auth.login', next=request.url))
 
         # Ensure clean session state before role checks.
         try:

@@ -36,6 +36,7 @@ class VehicleListResource(Resource):
        POST /api/transport/vehicles - register a new vehicle
     """
 
+    @admin_required
     def get(self):
         """List vehicles with filtering, sorting, and pagination"""
         query = Vehicle.query.filter_by(is_deleted=False)
@@ -144,6 +145,7 @@ class VehicleListResource(Resource):
 class VehicleDetailResource(Resource):
     """GET/PUT/DELETE /api/transport/vehicles/<vehicle_id>"""
 
+    @admin_required
     def get(self, vehicle_id):
         """Get full vehicle detail including current driver and booking"""
         vehicle = _vehicle_or_404(vehicle_id)
@@ -238,6 +240,7 @@ class VehicleDetailResource(Resource):
 class VehicleMaintenanceResource(Resource):
     """GET/POST /api/transport/vehicles/<vehicle_id>/maintenance"""
 
+    @admin_required
     def get(self, vehicle_id):
         """Get maintenance status and schedule"""
         vehicle = _vehicle_or_404(vehicle_id)

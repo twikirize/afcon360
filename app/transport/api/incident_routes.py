@@ -39,6 +39,7 @@ class IncidentListResource(Resource):
        POST /api/transport/incidents - report a new incident
     """
 
+    @admin_required
     def get(self):
         """List incidents with filtering, sorting, and pagination"""
         query = TransportIncident.query.filter_by(is_deleted=False)
@@ -173,6 +174,7 @@ class IncidentListResource(Resource):
 class IncidentDetailResource(Resource):
     """GET/PUT /api/transport/incidents/<incident_id>"""
 
+    @admin_required
     def get(self, incident_id):
         """Get full incident detail"""
         incident = _incident_or_404(incident_id)

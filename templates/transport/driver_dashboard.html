@@ -1,10 +1,216 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "transport/base.html" %}
+{% block title %}Driver Dashboard{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="current">Driver Dashboard</span>{% endblock %}
 
-</body>
-</html>
+{% block extra_css %}
+<style>
+.driver-hero { background:linear-gradient(135deg, rgba(245,158,11,0.12), rgba(59,130,246,0.08)); border:1px solid var(--border); border-radius:var(--radius-lg); padding:22px 24px; margin-bottom:16px; display:flex; align-items:center; gap:20px; flex-wrap:wrap; }
+.driver-hero-avatar { width:64px; height:64px; border-radius:50%; background:linear-gradient(135deg,var(--amber),var(--blue)); display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-weight:800; font-size:1.5rem; color:#000; flex-shrink:0; }
+.driver-hero-info { flex:1; min-width:200px; }
+.driver-hero-name { font-family:var(--font-display); font-size:1.3rem; font-weight:700; margin-bottom:3px; }
+.driver-hero-code { font-family:var(--font-mono); font-size:0.78rem; color:var(--text-muted); }
+.online-toggle { display:flex; align-items:center; gap:10px; padding:10px 16px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:10px; }
+.toggle { position:relative; display:inline-block; width:44px; height:24px; }
+.toggle input { opacity:0; width:0; height:0; }
+.toggle-slider { position:absolute; cursor:pointer; inset:0; background:var(--bg-hover); border:1px solid var(--border-light); border-radius:24px; transition:0.2s; }
+.toggle-slider::before { content:''; position:absolute; width:18px; height:18px; left:2px; top:2px; background:var(--text-muted); border-radius:50%; transition:0.2s; }
+.toggle input:checked + .toggle-slider { background:var(--green); border-color:var(--green); }
+.toggle input:checked + .toggle-slider::before { transform:translateX(20px); background:#000; }
+.trip-card { display:flex; gap:14px; padding:14px 16px; border-bottom:1px solid var(--border); align-items:center; }
+.trip-card:last-child { border-bottom:none; }
+.trip-time { min-width:70px; text-align:center; padding:8px; background:var(--bg-elevated); border-radius:8px; }
+.trip-time .th { font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted); }
+.trip-time .td { font-family:var(--font-display); font-size:1rem; font-weight:700; color:var(--amber); }
+.trip-info { flex:1; min-width:0; }
+.trip-route { font-size:0.86rem; color:var(--text-primary); margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.trip-meta { font-size:0.72rem; color:var(--text-muted); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Driver Dashboard</h1>
+    <p class="page-subtitle">Your assignments and availability</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.register_vehicle') }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-plus"></i> Register Vehicle
+    </a>
+    <a href="{{ safe_url('transport.vehicles_index') }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-van-shuttle"></i> My Vehicles
+    </a>
+  </div>
+</div>
+
+{% if driver_profile %}
+<div class="driver-hero">
+  <div class="driver-hero-avatar">
+    {{ (driver_profile.user.name or driver_profile.driver_code)[:2].upper() if driver_profile.user else driver_profile.driver_code[:2].upper() }}
+  </div>
+  <div class="driver-hero-info">
+    <div class="driver-hero-name">{{ driver_profile.user.name if driver_profile.user else 'Driver' }}</div>
+    <div class="driver-hero-code">
+      {{ driver_profile.driver_code }}
+      ·
+      <span class="badge badge-{{ 'green' if driver_profile.compliance_status.value == 'approved' else 'amber' if driver_profile.compliance_status.value == 'pending_review' else 'red' }}">
+        {{ driver_profile.compliance_status.value|replace('_',' ')|title }}
+      </span>
+      ·
+      ★ {{ '%.1f'|format(driver_profile.average_rating|float) if driver_profile.average_rating else '—' }}
+    </div>
+  </div>
+  <div class="online-toggle">
+    <div>
+      <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Online</div>
+      <div style="font-size:0.78rem;font-weight:600;" id="onlineLabel">
+        {{ 'Available' if driver_profile.is_online else 'Offline' }}
+      </div>
+    </div>
+    <label class="toggle">
+      <input type="checkbox" id="onlineToggle" {{ 'checked' if driver_profile.is_online }} />
+      <span class="toggle-slider"></span>
+    </label>
+  </div>
+</div>
+
+<div class="grid-4" style="margin-bottom:16px;">
+  <div class="stat-card amber">
+    <div class="stat-icon amber"><i class="fa-solid fa-route"></i></div>
+    <div class="stat-value">{{ driver_profile.total_trips|default(0) }}</div>
+    <div class="stat-label">Total Trips</div>
+  </div>
+  <div class="stat-card green">
+    <div class="stat-icon green"><i class="fa-solid fa-check"></i></div>
+    <div class="stat-value">{{ driver_profile.completed_trips|default(0) }}</div>
+    <div class="stat-label">Completed</div>
+  </div>
+  <div class="stat-card blue">
+    <div class="stat-icon blue"><i class="fa-solid fa-percent"></i></div>
+    <div class="stat-value">{{ '%.0f'|format(driver_profile.acceptance_rate|float) if driver_profile.acceptance_rate else '—' }}%</div>
+    <div class="stat-label">Acceptance</div>
+  </div>
+  <div class="stat-card purple">
+    <div class="stat-icon purple"><i class="fa-solid fa-star"></i></div>
+    <div class="stat-value">★ {{ '%.1f'|format(driver_profile.average_rating|float) if driver_profile.average_rating else '—' }}</div>
+    <div class="stat-label">Rating</div>
+  </div>
+</div>
+
+{% if driver_profile.compliance_status.value == 'pending_review' %}
+<div class="alert alert-amber" style="margin-bottom:16px;">
+  <i class="fa-solid fa-clock"></i>
+  <span>Your driver account is <strong>pending review</strong>. You will be able to accept rides once approved.</span>
+  <a href="{{ safe_url('transport.drivers_verification', id=driver_profile.id) }}" class="btn btn-secondary btn-sm" style="margin-left:auto;">View Verification</a>
+</div>
+{% elif driver_profile.compliance_status.value != 'approved' %}
+<div class="alert alert-red" style="margin-bottom:16px;">
+  <i class="fa-solid fa-circle-exclamation"></i>
+  <span>Your driver account is <strong>{{ driver_profile.compliance_status.value|replace('_',' ')|title }}</strong>. Contact support.</span>
+</div>
+{% endif %}
+
+<div class="grid-2" style="align-items:start;">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Upcoming Assignments</span>
+      <span class="badge badge-amber">{{ bookings|length if bookings else 0 }}</span>
+    </div>
+    {% if bookings %}
+      {% for b in bookings %}
+      <div class="trip-card">
+        <div class="trip-time">
+          <div class="th">{{ b.pickup_time.strftime('%H:%M') if b.pickup_time else '—' }}</div>
+          <div class="td">{{ b.pickup_time.strftime('%d %b') if b.pickup_time else '—' }}</div>
+        </div>
+        <div class="trip-info">
+          <div class="trip-route">
+            {{ b.pickup_address or (b.pickup_location.get('address') if b.pickup_location else 'Pickup') }}
+            <i class="fa-solid fa-arrow-right" style="opacity:0.4;font-size:0.7rem;"></i>
+            {{ b.dropoff_address or (b.dropoff_location.get('address') if b.dropoff_location else 'Dropoff') }}
+          </div>
+          <div class="trip-meta">
+            {{ b.booking_reference }} · {{ b.passenger_count|default(1) }} pax · {{ b.service_type.value|replace('_',' ')|title }}
+          </div>
+        </div>
+        <div>
+          <a href="{{ safe_url('transport.bookings_show', id=b.id) }}" class="btn btn-primary btn-sm">View</a>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-state" style="padding:32px;">
+        <i class="fa-solid fa-calendar"></i>
+        <p>No upcoming assignments</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div style="display:flex; flex-direction:column; gap:16px;">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Quick Actions</span></div>
+      <div style="padding:12px;display:flex;flex-direction:column;gap:8px;">
+        <a href="{{ safe_url('transport.drivers_verification', id=driver_profile.id) }}" class="btn btn-secondary">
+          <i class="fa-solid fa-shield-check"></i> Verification Status
+        </a>
+        <a href="{{ safe_url('transport.drivers_history', id=driver_profile.id) }}" class="btn btn-secondary">
+          <i class="fa-solid fa-clock-rotate-left"></i> Trip History
+        </a>
+        <a href="{{ safe_url('transport.drivers_location', id=driver_profile.id) }}" class="btn btn-secondary">
+          <i class="fa-solid fa-location-dot"></i> My Location
+        </a>
+        <a href="{{ safe_url('transport.vehicle_dashboard') }}" class="btn btn-secondary">
+          <i class="fa-solid fa-van-shuttle"></i> My Vehicles
+        </a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">Performance</span></div>
+      <div style="padding:16px;">
+        <div class="stat-row"><span style="color:var(--text-muted);font-size:0.78rem;">Reliability Score</span><span style="font-weight:600;">{{ driver_profile.reliability_score|default(0) }}</span></div>
+        <div class="stat-row"><span style="color:var(--text-muted);font-size:0.78rem;">Safety Score</span><span style="font-weight:600;">{{ driver_profile.safety_score|default(0) }}</span></div>
+        <div class="stat-row"><span style="color:var(--text-muted);font-size:0.78rem;">Cancellation Rate</span><span style="font-weight:600;">{{ '%.1f'|format(driver_profile.cancellation_rate|float) if driver_profile.cancellation_rate else '0.0' }}%</span></div>
+        <div class="stat-row" style="border-bottom:none;"><span style="color:var(--text-muted);font-size:0.78rem;">Total Distance</span><span style="font-weight:600;">{{ driver_profile.total_distance_km|default(0) }} km</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% else %}
+<div class="card">
+  <div class="card-body" style="text-align:center;padding:48px 20px;">
+    <i class="fa-solid fa-id-card" style="font-size:3rem;opacity:0.3;margin-bottom:16px;"></i>
+    <h3>No driver profile found</h3>
+    <p style="color:var(--text-muted);margin-bottom:20px;">Register as a driver to start accepting trips.</p>
+    <a href="{{ safe_url('transport.become_driver') }}" class="btn btn-primary">
+      <i class="fa-solid fa-user-plus"></i> Become a Driver
+    </a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('onlineToggle')?.addEventListener('change', function() {
+  const online = this.checked;
+  const label = document.getElementById('onlineLabel');
+  if (label) label.textContent = online ? 'Available' : 'Offline';
+  fetch('/api/transport/drivers/{{ driver_profile.id if driver_profile else 0 }}/status', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+    body: JSON.stringify({is_online: online, is_available: online})
+  }).then(r => r.json()).then(d => {
+    if (!d.success) {
+      this.checked = !online;
+      if (label) label.textContent = !online ? 'Available' : 'Offline';
+      alert('Could not update availability');
+    }
+  }).catch(() => {
+    this.checked = !online;
+    if (label) label.textContent = !online ? 'Available' : 'Offline';
+  });
+});
+</script>
+{% endblock %}

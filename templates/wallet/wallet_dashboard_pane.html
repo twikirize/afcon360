@@ -54,8 +54,9 @@
                     <p style="font-size:13px; font-weight:600; margin:0; color:var(--color-text-primary);">{{ tx.description or 'Transaction' }}</p>
                     <p style="font-size:11px; margin:2px 0 0; color:var(--color-text-tertiary);">{{ tx.created_at.strftime('%d %b %Y') if tx.created_at else '' }}</p>
                 </div>
-                <span style="font-size:13px; font-weight:700; color:{% if tx.user_id == current_user.id %}var(--red){% else %}var(--green){% endif %};">
-                    {% if tx.user_id == current_user.id %}-{% else %}+{% endif %}{{ "{:,.0f}".format(tx.amount) }}
+                {% set direction = tx.transaction_direction if transaction_direction is defined else ('out' if tx.user_id == current_user.id else 'in') %}
+                <span style="font-size:13px; font-weight:700; color:{% if direction == 'out' %}var(--red){% else %}var(--green){% endif %};">
+                    {% if direction == 'out' %}-{% else %}+{% endif %}{{ "{:,.0f}".format(tx.amount) }}
                 </span>
             </div>
             {% endfor %}

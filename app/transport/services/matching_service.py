@@ -4,14 +4,15 @@ AFCON360 Transport Module - Matching Service
 Matches bookings with available drivers/vehicles
 """
 
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any, cast
+from datetime import datetime, timezone, timedelta
+from typing import Dict, List, Optional, Any, cast, Tuple
 import math
 from flask import current_app
 
 from app.extensions import db, cache
 from app.transport.models import Booking, DriverProfile, BookingStatus, ProviderType
 from app.transport.services import get_provider_service
+from app.transport.services.tracking_service import TrackingService
 from app.utils.exceptions import ValidationError, NotFoundError
 from app.utils.monitoring import monitor_endpoint, record_metric
 
@@ -131,23 +132,48 @@ class MatchingService:
         """
         Rank drivers based on suitability for a booking
         """
+        now = datetime.now(timezone.utc)
+        freshness_cutoff = now - timedelta(seconds=TrackingService.LOCATION_TTL_SECONDS)
+
         ranked_drivers = []
 
         for driver in drivers:
+            driver_location = driver.get('current_location')
+            location_updated_at = driver.get('location_updated_at')
+
+            # Geographic contract: only drivers with a fresh CANONICAL location are matchable.
+            # A driver whose location is legacy ('lat'/'lng'), partial, malformed, or
+            # out-of-range has no usable geographic position and must be excluded —
+            # even if the timestamp is fresh — so non-geographic scoring criteria
+            # (rating, acceptance, vehicle class) cannot silently promote them.
+            is_matchable = False
+            if driver_location and location_updated_at:
+                try:
+                    updated = datetime.fromisoformat(str(location_updated_at))
+                    if updated >= freshness_cutoff:
+                        lat, lon = MatchingService._coordinates_or_none(driver_location)
+                        is_matchable = lat is not None and lon is not None
+                except (TypeError, ValueError):
+                    is_matchable = False
+            if not is_matchable:
+                continue
+
             score = 0
 
             # 1. Proximity
-            if driver.get('current_location') and booking.pickup_location:
+            distance = None
+            if driver_location and booking.pickup_location:
                 distance = MatchingService._calculate_distance(
-                    driver['current_location'],
+                    driver_location,
                     booking.pickup_location
                 )
-                if distance < 5:
-                    score += 30
-                elif distance < 10:
-                    score += 20
-                elif distance < 15:
-                    score += 10
+                if distance is not None:
+                    if distance < 5:
+                        score += 30
+                    elif distance < 10:
+                        score += 20
+                    elif distance < 15:
+                        score += 10
 
             # 2. Vehicle class match
             vehicle_classes = driver.get('vehicle_classes', [])
@@ -170,8 +196,7 @@ class MatchingService:
                 score += 10
 
             # Estimated arrival time
-            if driver.get('current_location') and booking.pickup_location:
-                distance = MatchingService._calculate_distance(driver['current_location'], booking.pickup_location)
+            if distance is not None:
                 estimated_arrival = distance * 2 + 5
             else:
                 estimated_arrival = 15
@@ -186,28 +211,51 @@ class MatchingService:
         return ranked_drivers
 
     @staticmethod
-    def _calculate_distance(location1: Dict, location2: Dict) -> float:
-        """Calculate distance between two locations"""
+    def _coordinates_or_none(location: Dict) -> Tuple[Optional[float], Optional[float]]:
+        """Return (lat, lon) floats only when BOTH canonical values are valid, else (None, None)."""
         try:
-            lat1 = math.radians(location1.get('latitude', 0))
-            lon1 = math.radians(location1.get('longitude', 0))
-            lat2 = math.radians(location2.get('latitude', 0))
-            lon2 = math.radians(location2.get('longitude', 0))
+            latitude = location.get('latitude')
+            longitude = location.get('longitude')
+            if latitude is None or longitude is None:
+                return None, None
+            lat = float(latitude)
+            lon = float(longitude)
+            if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+                return None, None
+            return lat, lon
+        except (TypeError, ValueError, AttributeError):
+            return None, None
 
-            dlon = lon2 - lon1
-            dlat = lat2 - lat1
-            a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
-            c = 2 * math.asin(math.sqrt(a))
-            return 6371 * c  # km
-        except Exception:
-            lat_diff = abs(location1.get('latitude', 0) - location2.get('latitude', 0))
-            lon_diff = abs(location1.get('longitude', 0) - location2.get('longitude', 0))
-            return math.sqrt(lat_diff ** 2 + lon_diff ** 2) * 111
+    @staticmethod
+    def _calculate_distance(location1: Dict, location2: Dict) -> Optional[float]:
+        """Calculate distance between two locations. Returns None if either location lacks valid canonical coordinates."""
+        lat1, lon1 = MatchingService._coordinates_or_none(location1)
+        lat2, lon2 = MatchingService._coordinates_or_none(location2)
+
+        if None in (lat1, lon1, lat2, lon2):
+            return None
+
+        dlon = lon2 - lon1
+        dlat = lat2 - lat1
+        a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+        c = 2 * math.asin(math.sqrt(a))
+        return 6371 * c  # km
 
     @staticmethod
     @monitor_endpoint("assign_driver_to_booking")
     def assign_driver_to_booking(booking_id: int, driver_id: int, force_assignment: bool = False) -> Dict[str, Any]:
-        """Assign a driver to a booking"""
+        """Assign a driver to a booking (TH-3-D2).
+
+        DEPRECATED legacy entry point with no known callers. It now
+        DELEGATES to the canonical dispatch claim so no legacy path can
+        bypass atomic assignment guarantees. ``force_assignment`` maps to the
+        admin-only ``force`` flag of the claim.
+        """
+        from app.transport.services.assignment_service import (
+            AssignmentService,
+            DispatchClaimError,
+        )
+
         try:
             booking = db.session.get(Booking, booking_id)
             if not booking:
@@ -217,34 +265,22 @@ class MatchingService:
             if not driver:
                 raise NotFoundError("Driver not found", resource_type="driver", resource_id=driver_id)
 
-            if not driver.is_available and not force_assignment:
-                raise ValidationError(
-                    message=f"Driver is not available (driver_id={driver_id})",
-                )
-
             driver_vehicle_id = MatchingService._driver_vehicle_id(driver)
             if not driver_vehicle_id:
                 raise ValidationError(
                     message=f"Driver has no vehicle assigned (driver_id={driver_id})",
                 )
 
-            # Update booking
-            booking.assigned_driver_id = driver_id
-            booking.assigned_vehicle_id = driver_vehicle_id
-            booking.provider_type = ProviderType.INDIVIDUAL_DRIVER
-            booking.provider_id = driver_id
-            booking.status = BookingStatus.CONFIRMED
-            booking.confirmed_at = datetime.now(timezone.utc)
+            result = AssignmentService.claim(
+                booking.booking_reference,
+                driver_id,
+                driver_vehicle_id,
+                actor=None,
+                force=bool(force_assignment),
+            )
 
-            # Update driver
-            driver.is_available = False
-            driver.current_booking_id = booking_id
-
-            db.session.commit()
-
-            # Invalidate caches
-            cache.delete(f"booking:{booking_id}")
-            cache.delete(f"driver:{driver_id}")
+            db.session.expire_all()
+            booking = db.session.get(Booking, booking_id)
 
             record_metric('driver_assigned', tags={'booking_id': booking_id}, value=1)
 
@@ -255,10 +291,13 @@ class MatchingService:
                     'booking_id': booking_id,
                     'driver_id': driver_id,
                     'vehicle_id': driver_vehicle_id,
-                    'booking_status': booking.status.value
+                    'booking_status': booking.status.value if booking else result['status'],
                 }
             }
 
+        except DispatchClaimError as e:
+            db.session.rollback()
+            raise ValidationError(message=e.message)
         except (NotFoundError, ValidationError):
             db.session.rollback()
             raise

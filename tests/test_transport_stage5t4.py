@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import String, type_coerce
 
 from app.events.guest_coordination_service import GuestCoordinationService, CoordinationError
 from app.extensions import db
@@ -181,14 +182,14 @@ def vehicle():
     v = Vehicle(
         owner_type="driver",
         owner_id=1,
-        license_plate=f"UG{uuid.uuid4().hex[:4].upper()}",
+        license_plate=f"UG{uuid.uuid4().hex[:8].upper()}",
         make="Test",
         model="Model",
         year=2023,
         vehicle_type="Sedan",
         vehicle_class="comfort",
         passenger_capacity=4,
-        current_location={"lat": 1.2, "lng": 3.4},
+        current_location={"latitude": 1.2, "longitude": 3.4},
         status="active",
         is_available=True,
     )
@@ -203,6 +204,8 @@ def org_profile(actor):
     from app.identity.models.organisation import Organisation
 
     org = Organisation(
+        org_id=str(uuid.uuid4()),
+        legal_name=f"Test Transport Co {uuid.uuid4().hex[:6]}",
         name=f"Test Transport Co {uuid.uuid4().hex[:6]}",
         slug=f"test-transport-{uuid.uuid4().hex[:6]}",
         email=f"org_{uuid.uuid4().hex[:6]}@example.com",
@@ -242,14 +245,14 @@ def org_vehicle(org_profile):
     v = Vehicle(
         owner_type="organisation",
         owner_id=org_profile.organisation_id,
-        license_plate=f"UG{uuid.uuid4().hex[:4].upper()}",
+        license_plate=f"UG{uuid.uuid4().hex[:8].upper()}",
         make="Org",
         model="Van",
         year=2023,
         vehicle_type="Van",
         vehicle_class="van",
         passenger_capacity=8,
-        current_location={"lat": 1.2, "lng": 3.4},
+        current_location={"latitude": 1.2, "longitude": 3.4},
         status="active",
         is_available=True,
     )
@@ -264,8 +267,8 @@ def _make_booking(actor, driver, vehicle, **overrides):
         user_id=actor.id,
         provider_type=ProviderType.INDIVIDUAL_DRIVER,
         service_type=ServiceType.ON_DEMAND,
-        pickup_location={"lat": 1.2, "lng": 3.4},
-        dropoff_location={"lat": 5.6, "lng": 7.8},
+        pickup_location={"latitude": 1.2, "longitude": 3.4},
+        dropoff_location={"latitude": 5.6, "longitude": 7.8},
         pickup_time=datetime.now(timezone.utc) + timedelta(hours=2),
         passenger_count=4,
         base_price=100.00,
@@ -282,14 +285,14 @@ def _make_booking(actor, driver, vehicle, **overrides):
     return b
 
 
-def _make_org_booking(org_profile, org_vehicle, **overrides):
+def _make_org_booking(org_profile, org_vehicle, actor, **overrides):
     """Create a confirmed, organisation-assigned transport booking."""
     b = Booking(
-        user_id=org_profile.organisation_id,  # org as booker (provider)
+        user_id=actor.id,
         provider_type=ProviderType.TRANSPORT_COMPANY,
         service_type=ServiceType.ON_DEMAND,
-        pickup_location={"lat": 1.2, "lng": 3.4},
-        dropoff_location={"lat": 5.6, "lng": 7.8},
+        pickup_location={"latitude": 1.2, "longitude": 3.4},
+        dropoff_location={"latitude": 5.6, "longitude": 7.8},
         pickup_time=datetime.now(timezone.utc) + timedelta(hours=2),
         passenger_count=4,
         base_price=100.00,
@@ -309,7 +312,7 @@ def _make_org_booking(org_profile, org_vehicle, **overrides):
 def _active_passengers_for_assignment(assignment_id):
     return TransportPassenger.query.filter(
         TransportPassenger.event_assignment_id == assignment_id,
-        TransportPassenger.status != PassengerStatus.CANCELLED,
+        ~type_coerce(TransportPassenger.status, String).in_([PassengerStatus.CANCELLED.value]),
     ).all()
 
 
@@ -372,7 +375,7 @@ def test_t5t4_01_transport_booking_status_preserved_through_assign_reassign_canc
 # ---------------------------------------------------------------------------
 
 def test_t5t4_02_direct_organisation_transport_booking_works_without_events(
-    org_profile, org_vehicle, db_session
+    actor, org_profile, org_vehicle, db_session
 ):
     """An organisation transport booking (provider = transport_company) accepts
     passengers directly without any Events involvement.
@@ -382,7 +385,7 @@ def test_t5t4_02_direct_organisation_transport_booking_works_without_events(
     """
     from app.events.models import EventAssignment
 
-    booking = _make_org_booking(org_profile, org_vehicle, passenger_count=4)
+    booking = _make_org_booking(org_profile, org_vehicle, actor, passenger_count=4)
 
     assert booking.event_id is None
     assert booking.provider_type == ProviderType.TRANSPORT_COMPANY
@@ -391,13 +394,15 @@ def test_t5t4_02_direct_organisation_transport_booking_works_without_events(
     svc = get_passenger_service()
 
     # Add a passenger linked to a user (simulating a known rider)
-    rider_user = db.session.query(__import__('app.identity.models.user', fromlist=['User']).User).filter_by(email="rider@example.com").first()
-    if not rider_user:
-        from app.identity.models.user import User
+    rider_email = f"rider_{uuid.uuid4().hex[:8]}@example.com"
+
+    from app.identity.models.user import User
+    rider_user = db.session.query(User).filter_by(email=rider_email).first()
+    if rider_user is None:
         rider_user = User(
             public_id=str(uuid.uuid4()),
             username=f"rider_{uuid.uuid4().hex[:6]}",
-            email="rider@example.com",
+            email=rider_email,
             is_verified=True,
             is_active=True,
             email_verified=True,
@@ -406,8 +411,17 @@ def test_t5t4_02_direct_organisation_transport_booking_works_without_events(
         db.session.add(rider_user)
         db.session.flush()
 
+    from sqlalchemy import select
+    rider_user_id = db.session.scalar(
+        select(User.id).where(User.email == rider_email)
+    )
+    assert rider_user_id is not None
+
     self_passenger = svc.add_passenger(
-        booking, name=rider_user.username, email=rider_user.email, user_id=rider_user.id
+        booking,
+        name=str(rider_user.username),
+        email=str(rider_user.email),
+        user_id=rider_user_id,
     )
     accountless = svc.add_passenger(
         booking, name="Guest Rider", email="guest.rider@example.com"
@@ -432,7 +446,7 @@ def test_t5t4_02_direct_organisation_transport_booking_works_without_events(
     # Both reservations remain active on the booking.
     active = TransportPassenger.query.filter(
         TransportPassenger.booking_id == booking.id,
-        TransportPassenger.status != PassengerStatus.CANCELLED,
+        ~type_coerce(TransportPassenger.status, String).in_([PassengerStatus.CANCELLED.value]),
     ).all()
     assert {p.id for p in active} == {self_passenger.id, accountless.id}
 
@@ -453,7 +467,7 @@ def test_t5t4_03_contract_reservation_syncs_booking_passenger_count(
     # Before contract reservation, booking has no Transport passengers
     initial_count = TransportPassenger.query.filter(
         TransportPassenger.booking_id == booking.id,
-        TransportPassenger.status != PassengerStatus.CANCELLED,
+        ~type_coerce(TransportPassenger.status, String).in_([PassengerStatus.CANCELLED.value]),
     ).count()
     assert initial_count == 0
 

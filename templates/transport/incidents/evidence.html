@@ -1,10 +1,41 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "transport/base.html" %}
+{% block title %}Incident Evidence{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ safe_url('transport.incidents_index') }}">Incidents</a>
+<span class="sep">/</span><a href="{{ safe_url('transport.incidents_show', id=incident.id) }}">{{ incident.incident_reference }}</a>
+<span class="sep">/</span><span class="current">Evidence</span>
+{% endblock %}
 
-</body>
-</html>
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Evidence</h1>
+    <p class="page-subtitle td-mono">{{ incident.incident_reference }}</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.incidents_show', id=incident.id) }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-arrow-left"></i> Back
+    </a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><span class="card-title">Photos & Files</span></div>
+  <div style="padding:16px;">
+    {% if incident.photos %}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;">
+      {% for photo in incident.photos %}
+      <a href="{{ photo }}" target="_blank">
+        <img src="{{ photo }}" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;border:1px solid var(--border);" />
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding:32px;">
+      <i class="fa-solid fa-camera"></i>
+      <p>No evidence files attached</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

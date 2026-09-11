@@ -4,7 +4,8 @@ AFCON360 Transport - Booking REST API
 Handles the full booking lifecycle: create, view, status updates,
 driver assignment, payments, and route association.
 """
-from flask import request
+from flask import request, abort
+from flask_login import current_user, login_required
 from flask_restful import Resource
 from app.extensions import db
 from app.transport.models import (
@@ -12,6 +13,7 @@ from app.transport.models import (
     PaymentStatus, DriverProfile, Vehicle, ScheduledRoute
 )
 from app.auth.decorators import admin_required
+from app.transport.services.booking_service import _validate_booking_location_coordinates
 from app.transport.utils.helpers import paginate, filter_query, sort_query
 from datetime import datetime, timezone
 from sqlalchemy import func, or_
@@ -48,6 +50,20 @@ def _booking_or_404(booking_id):
     return Booking.query.filter_by(id=booking_id, is_deleted=False).first_or_404()
 
 
+def _booking_by_reference_or_404(booking_reference):
+    return Booking.query.filter_by(
+        booking_reference=booking_reference, is_deleted=False
+    ).first_or_404()
+
+
+def _current_user_is_admin():
+    return (
+        current_user.is_authenticated
+        and hasattr(current_user, "has_global_role")
+        and current_user.has_global_role("admin", "super_admin", "owner")
+    )
+
+
 def _can_transition(current: BookingStatus, target: BookingStatus) -> bool:
     return target in STATUS_TRANSITIONS.get(current, [])
 
@@ -61,6 +77,7 @@ class BookingListResource(Resource):
        POST /api/transport/bookings - create a new booking
     """
 
+    @admin_required
     def get(self):
         """List bookings with filtering, sorting, and pagination"""
         query = Booking.query.filter_by(is_deleted=False)
@@ -136,13 +153,20 @@ class BookingListResource(Resource):
             return {"success": False, "error": f"Missing fields: {missing}"}, 400
 
         try:
-            booking = Booking(**{k: data[k] for k in required})
+            from app.utils.exceptions import ValidationError
+            validated = dict(data)
+            validated["pickup_location"] = _validate_booking_location_coordinates(data.get("pickup_location"), "pickup_location")
+            validated["dropoff_location"] = _validate_booking_location_coordinates(data.get("dropoff_location"), "dropoff_location")
+            booking = Booking(**{k: validated[k] for k in required})
             booking.generate_booking_reference()
             db.session.add(booking)
             db.session.commit()
             logger.info(f"Booking created: ref={booking.booking_reference}")
             return {"success": True, "data": booking.to_dict()}, 201
 
+        except ValidationError as e:
+            db.session.rollback()
+            return {"success": False, "error": str(e)}, 400
         except Exception as e:
             db.session.rollback()
             logger.error(f"Error creating booking: {e}", exc_info=True)
@@ -154,11 +178,19 @@ class BookingListResource(Resource):
 # ===========================================================================
 
 class BookingDetailResource(Resource):
-    """GET/PUT/DELETE /api/transport/bookings/<booking_id>"""
+    """GET/PUT/DELETE /api/transport/bookings/<booking_reference>"""
 
-    def get(self, booking_id):
-        """Get full booking detail with related data"""
-        booking = _booking_or_404(booking_id)
+    @login_required
+    def get(self, booking_reference):
+        """Get full booking detail with related data (owner or admin only)"""
+        booking = _booking_by_reference_or_404(booking_reference)
+
+        if not (_current_user_is_admin() or booking.user_id == current_user.id):
+            logger.warning(
+                f"Ownership check failed: user={current_user.id} tried to access "
+                f"booking owned by {booking.user_id}"
+            )
+            abort(403)
 
         return {
             "success": True,
@@ -177,9 +209,9 @@ class BookingDetailResource(Resource):
         }
 
     @admin_required
-    def put(self, booking_id):
+    def put(self, booking_reference):
         """Update booking fields (admin only)"""
-        booking = _booking_or_404(booking_id)
+        booking = _booking_by_reference_or_404(booking_reference)
         data = request.get_json()
         if not data:
             return {"success": False, "error": "JSON body required"}, 400
@@ -198,27 +230,47 @@ class BookingDetailResource(Resource):
 
         try:
             db.session.commit()
-            logger.info(f"Booking {booking_id} updated")
+            logger.info(f"Booking {booking_reference} updated")
             return {"success": True, "data": booking.to_dict()}
         except Exception as e:
             db.session.rollback()
-            logger.error(f"Error updating booking {booking_id}: {e}", exc_info=True)
+            logger.error(f"Error updating booking {booking_reference}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}, 500
 
     @admin_required
-    def delete(self, booking_id):
-        """Soft delete booking"""
-        booking = _booking_or_404(booking_id)
+    def delete(self, booking_reference):
+        """Soft delete booking.
+
+        Rejects bookings that currently hold an active assignment
+        (TH-3-D2): a live booking must be cancelled/completed via the
+        canonical release before it can be soft-deleted.
+        """
+        booking = _booking_by_reference_or_404(booking_reference)
+
+        ACTIVE_ASSIGNMENT = (
+            BookingStatus.ASSIGNED,
+            BookingStatus.DRIVER_EN_ROUTE,
+            BookingStatus.PICKUP_ARRIVED,
+            BookingStatus.IN_PROGRESS,
+        )
+        if booking.status in ACTIVE_ASSIGNMENT:
+            return {
+                "success": False,
+                "error": "cannot delete a booking with an active assignment; "
+                         "cancel or complete it first",
+                "code": "active_assignment",
+            }, 409
+
         booking.is_deleted = True
         booking.deleted_at = datetime.now(timezone.utc)
 
         try:
             db.session.commit()
-            logger.info(f"Booking {booking_id} soft-deleted")
+            logger.info(f"Booking {booking_reference} soft-deleted")
             return {"success": True, "message": "Booking deleted"}
         except Exception as e:
             db.session.rollback()
-            logger.error(f"Error deleting booking {booking_id}: {e}", exc_info=True)
+            logger.error(f"Error deleting booking {booking_reference}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}, 500
 
 
@@ -253,10 +305,57 @@ class BookingStatusResource(Resource):
             }, 422
 
         old_status = booking.status
+        now = datetime.now(timezone.utc)
+
+        # TH-3-D2: terminal transitions on an assigned booking go through the
+        # canonical release (status -> terminal, clear assignment FKs, free
+        # resources with late-release protection) in one transaction.
+        TERMINAL_TARGETS = (
+            BookingStatus.COMPLETED,
+            BookingStatus.CANCELLED,
+            BookingStatus.NO_SHOW,
+            BookingStatus.DISPUTED,
+        )
+        if new_status in TERMINAL_TARGETS and (
+            booking.assigned_driver_id is not None or booking.assigned_vehicle_id is not None
+        ):
+            from app.transport.services.assignment_service import (
+                AssignmentService,
+                DispatchClaimError,
+            )
+            if new_status == BookingStatus.COMPLETED:
+                booking.completed_at = now
+            elif new_status == BookingStatus.CANCELLED:
+                booking.cancelled_at = now
+                booking.cancellation_reason = data.get("reason", "admin_action")
+                booking.cancellation_initiated_by = "admin"
+            try:
+                release_result = AssignmentService.release(
+                    booking_id,
+                    new_status,
+                    actor=current_user,
+                    reason=data.get("reason"),
+                    audit_extra={"from": old_status.value},
+                )
+            except DispatchClaimError as e:
+                db.session.rollback()
+                return {
+                    "success": False,
+                    "error": e.message,
+                    "code": e.kind,
+                    "allowed_transitions": [
+                        s.value for s in STATUS_TRANSITIONS.get(booking.status, [])
+                    ],
+                }, 409
+            refreshed = _booking_or_404(booking_id)
+            logger.info(
+                f"Booking {booking_id} released via canonical dispatch -> {new_status.value}"
+            )
+            return {"success": True, "data": refreshed.to_dict(), "release": release_result}
+
         booking.status = new_status
 
         # Set lifecycle timestamps automatically
-        now = datetime.now(timezone.utc)
         if new_status == BookingStatus.CONFIRMED:
             booking.confirmed_at = now
         elif new_status == BookingStatus.COMPLETED:
@@ -295,51 +394,61 @@ class BookingAssignmentResource(Resource):
     @admin_required
     def post(self, booking_id):
         """
-        Assign a driver and/or vehicle to a booking.
-        Validates driver/vehicle availability before assigning.
+        Assign a driver (and vehicle) to a booking via the canonical
+        dispatch claim (TH-3-D2). The vehicle is derived from the driver's
+        current vehicle when not supplied. The assignment is atomic; a
+        concurrent claim or cancellation wins and yields a typed 409.
         """
+        from app.transport.services.assignment_service import (
+            AssignmentService,
+            DispatchClaimError,
+        )
+
         booking = _booking_or_404(booking_id)
         data = request.get_json()
         if not data:
             return {"success": False, "error": "JSON body required"}, 400
 
         driver_id = data.get("driver_id")
+        if not driver_id:
+            return {"success": False, "error": "driver_id is required for assignment"}, 400
+
+        driver = DriverProfile.query.filter_by(id=driver_id, is_deleted=False).first()
+        if not driver:
+            return {"success": False, "error": f"Driver {driver_id} not found"}, 404
+
         vehicle_id = data.get("vehicle_id")
+        if not vehicle_id:
+            vehicle_id = driver.current_vehicle.id if driver.current_vehicle else None
+        if not vehicle_id:
+            return {
+                "success": False,
+                "error": f"Driver {driver_id} has no vehicle to assign; supply vehicle_id",
+            }, 400
 
-        if not driver_id and not vehicle_id:
-            return {"success": False, "error": "driver_id or vehicle_id required"}, 400
-
-        # Validate driver
-        if driver_id:
-            driver = DriverProfile.query.filter_by(
-                id=driver_id, is_deleted=False, is_available=True
-            ).first()
-            if not driver:
-                return {"success": False, "error": f"Driver {driver_id} not found or unavailable"}, 404
-            booking.assigned_driver_id = driver_id
-            booking.driver_assigned_at = datetime.now(timezone.utc)
-
-        # Validate vehicle
-        if vehicle_id:
-            vehicle = Vehicle.query.filter_by(
-                id=vehicle_id, is_deleted=False, is_available=True
-            ).first()
-            if not vehicle:
-                return {"success": False, "error": f"Vehicle {vehicle_id} not found or unavailable"}, 404
-            booking.assigned_vehicle_id = vehicle_id
-
-        # Auto-advance status if both assigned
-        if booking.assigned_driver_id and booking.status == BookingStatus.CONFIRMED:
-            booking.status = BookingStatus.ASSIGNED
+        force = bool(data.get("force", False))
 
         try:
-            db.session.commit()
-            logger.info(f"Booking {booking_id} assigned: driver={driver_id}, vehicle={vehicle_id}")
-            return {"success": True, "data": booking.to_dict()}
-        except Exception as e:
+            result = AssignmentService.claim(
+                booking.booking_reference,
+                driver_id,
+                vehicle_id,
+                actor=current_user,
+                force=force,
+            )
+        except DispatchClaimError as e:
             db.session.rollback()
-            logger.error(f"Error assigning booking {booking_id}: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}, 500
+            status_code = (
+                403 if e.kind == "unauthorized" else 409
+            )
+            return {
+                "success": False,
+                "error": e.message,
+                "code": e.kind,
+            }, status_code
+
+        logger.info(f"Booking {booking_id} claimed via canonical dispatch: driver={driver_id}")
+        return {"success": True, "data": result}
 
 
 # ===========================================================================
@@ -349,6 +458,7 @@ class BookingAssignmentResource(Resource):
 class BookingPaymentResource(Resource):
     """GET/POST /api/transport/bookings/<booking_id>/payments"""
 
+    @admin_required
     def get(self, booking_id):
         """List all payment records for a booking"""
         _booking_or_404(booking_id)
@@ -420,6 +530,7 @@ class BookingPaymentResource(Resource):
 class BookingRouteResource(Resource):
     """GET/POST /api/transport/bookings/<booking_id>/route"""
 
+    @admin_required
     def get(self, booking_id):
         """Get the scheduled route assigned to this booking"""
         booking = _booking_or_404(booking_id)

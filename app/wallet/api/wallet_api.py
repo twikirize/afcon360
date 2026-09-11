@@ -279,6 +279,18 @@ def resolve_recipient():
 # WALLET BALANCE ENDPOINTS
 # ============================================================================
 
+def _public_wallet_data(payload):
+    """Strip internal identifiers (internal user_id) from the API-facing payload.
+
+    The service/repository layers return user_id internally; it must never
+    cross the public API boundary (§12.1 dual-ID system).
+    """
+    if isinstance(payload, dict):
+        payload = dict(payload)
+        payload.pop("user_id", None)
+    return payload
+
+
 @wallet_api_bp.route('/me', methods=['GET'])
 @login_required
 
@@ -306,7 +318,7 @@ def get_my_wallet():
 
         return jsonify({
             "status": "success",
-            "data": balance
+            "data": _public_wallet_data(balance)
         })
     except Exception as e:
         current_app.logger.error(f"Wallet balance error: {e}")
@@ -400,7 +412,7 @@ def deposit():
 
         return jsonify({
             "status": "success",
-            "data": result
+            "data": _public_wallet_data(result)
         }), 200
 
     except DuplicateTransactionError as e:
@@ -527,8 +539,23 @@ def withdraw():
         internal_user_id = assert_internal_id(current_user.id)
 
         service = WalletService()
+
+        # Resolve the account to debit from the authenticated user + requested
+        # currency on the SERVER side (never from client input; see §12.1 dual-ID
+        # system and §18.1 ownership). WalletService.withdraw() takes an
+        # ``account_id`` (Account UUID), not a ``user_id``, so the API must
+        # resolve the account before calling it - passing ``user_id=`` raised
+        # TypeError -> 500 on every withdrawal.
+        account = service.account_repo.get_by_user_id(
+            internal_user_id, validated['currency']
+        )
+        if not account:
+            raise WalletNotFoundError(
+                wallet_ref=f"user:{internal_user_id}:{validated['currency']}"
+            )
+
         result = service.withdraw(
-            user_id=internal_user_id,
+            account_id=str(account.id),
             amount=validated['amount'],
             currency=validated['currency'],
             client_request_id=idempotency_key,
@@ -541,7 +568,7 @@ def withdraw():
 
         return jsonify({
             "status": "success",
-            "data": result
+            "data": _public_wallet_data(result)
         }), 200
 
     except InsufficientBalanceError as e:

@@ -1,10 +1,66 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "transport/base.html" %}
+{% block title %}{{ route.name }}{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ safe_url('transport.routes_index') }}">Routes</a>
+<span class="sep">/</span><span class="current">{{ route.route_code }}</span>
+{% endblock %}
 
-</body>
-</html>
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">{{ route.name }}</h1>
+    <p class="page-subtitle td-mono">{{ route.route_code }} · {{ route.route_type|replace('_',' ')|title }}</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.routes_schedule', id=route.id) }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-calendar"></i> Schedule
+    </a>
+    <a href="{{ safe_url('transport.routes_new') }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-plus"></i> New Route
+    </a>
+  </div>
+</div>
+
+<div class="grid-2" style="align-items:start;">
+  <div class="card">
+    <div class="card-header"><span class="card-title">Details</span></div>
+    <div style="padding:16px;">
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:0.82rem;">
+        <span style="color:var(--text-muted);">Type</span><span style="font-weight:600;">{{ route.route_type|replace('_',' ')|title }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:0.82rem;">
+        <span style="color:var(--text-muted);">Zone</span><span style="font-weight:600;">{{ route.primary_zone or '—' }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:0.82rem;">
+        <span style="color:var(--text-muted);">Capacity</span><span style="font-weight:600;">{{ route.vehicle_capacity }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:0.82rem;">
+        <span style="color:var(--text-muted);">Available Seats</span><span style="font-weight:600;">{{ route.available_seats }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:0.82rem;">
+        <span style="color:var(--text-muted);">Price/Seat</span><span style="font-weight:600;">{{ '$' + '%.2f'|format(route.price_per_seat|float) if route.price_per_seat else ('Free' if route.is_free else '—') }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:0.82rem;">
+        <span style="color:var(--text-muted);">Status</span>
+        <span class="badge badge-{{ 'green' if route.is_active else 'red' }}">{{ 'Active' if route.is_active else 'Inactive' }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">Stops</span></div>
+    <div style="padding:12px;">
+      {% if route.stops %}
+        {% for stop in route.stops %}
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);font-size:0.82rem;">
+          <div style="width:22px;height:22px;border-radius:50%;background:var(--amber-dim);color:var(--amber);display:flex;align-items:center;justify-content:center;font-size:0.68rem;font-weight:700;">{{ loop.index }}</div>
+          <span>{{ stop.get('name') or stop.get('address') or stop }}</span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state" style="padding:24px;"><i class="fa-solid fa-map-pin"></i><p>No stops defined</p></div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

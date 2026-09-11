@@ -1,4 +1,4 @@
-﻿# tests/run_hooks_tests.py
+# tests/run_hooks_tests.py
 import sys
 import os
 
@@ -48,8 +48,8 @@ def test_alert_owner_dead_letter():
         )
 
         # Need to mock the database query to return our owner
-        with patch('app.tasks.webhook_processor.db.session.query') as mock_query:
-            mock_query.return_value.join.return_value.filter.return_value.order_by.return_value.first.return_value = fake_owner
+        with patch('app.extensions.db.session.query') as mock_query:
+            mock_query.return_value.join.return_value.join.return_value.filter.return_value.order_by.return_value.first.return_value = fake_owner
 
             # Call the function
             _alert_owner_dead_letter(event)
@@ -92,8 +92,8 @@ def test_alert_owner_dead_letter_sms_only():
             patch('app.transport.services.notification_service.NotificationService.send_email', send_email_mock):
         event = SimpleNamespace(id=99, provider="flutterwave", event_type="charge.completed")
 
-        with patch('app.tasks.webhook_processor.db.session.query') as mock_query:
-            mock_query.return_value.join.return_value.filter.return_value.order_by.return_value.first.return_value = fake_owner
+        with patch('app.extensions.db.session.query') as mock_query:
+            mock_query.return_value.join.return_value.join.return_value.filter.return_value.order_by.return_value.first.return_value = fake_owner
             _alert_owner_dead_letter(event)
 
     assert send_sms_mock.called, "SMS should be sent when phone is verified"
@@ -124,8 +124,8 @@ def test_alert_owner_dead_letter_email_only():
             patch('app.transport.services.notification_service.NotificationService.send_email', send_email_mock):
         event = SimpleNamespace(id=99, provider="flutterwave", event_type="charge.completed")
 
-        with patch('app.tasks.webhook_processor.db.session.query') as mock_query:
-            mock_query.return_value.join.return_value.filter.return_value.order_by.return_value.first.return_value = fake_owner
+        with patch('app.extensions.db.session.query') as mock_query:
+            mock_query.return_value.join.return_value.join.return_value.filter.return_value.order_by.return_value.first.return_value = fake_owner
             _alert_owner_dead_letter(event)
 
     assert not send_sms_mock.called, "SMS should not be sent when phone not verified"
@@ -148,8 +148,8 @@ def test_alert_owner_dead_letter_no_owner():
             patch('app.transport.services.notification_service.NotificationService.send_email', send_email_mock):
         event = SimpleNamespace(id=99, provider="flutterwave", event_type="charge.completed")
 
-        with patch('app.tasks.webhook_processor.db.session.query') as mock_query:
-            mock_query.return_value.join.return_value.filter.return_value.order_by.return_value.first.return_value = None
+        with patch('app.extensions.db.session.query') as mock_query:
+            mock_query.return_value.join.return_value.join.return_value.filter.return_value.order_by.return_value.first.return_value = None
             _alert_owner_dead_letter(event)
 
     assert not send_sms_mock.called, "SMS should not be sent when no owner"
@@ -182,9 +182,10 @@ def test_alert_owner_dead_letter_fallback_query():
         event = SimpleNamespace(id=99, provider="flutterwave", event_type="charge.completed")
 
         # Make the DB session query fail
-        with patch('app.tasks.webhook_processor.db.session.query', side_effect=Exception("DB error")):
-            # Mock the fallback User.query.all()
-            with patch('app.identity.models.user.User.query.all', return_value=[fake_owner]):
+        with patch('app.extensions.db.session.query', side_effect=Exception("DB error")):
+            # Mock the fallback User.query
+            with patch('app.identity.models.user.User.query') as mock_user_query:
+                mock_user_query.all.return_value = [fake_owner]
                 _alert_owner_dead_letter(event)
 
     assert send_sms_mock.called, "SMS should be sent via fallback query"

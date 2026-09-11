@@ -1,10 +1,50 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "transport/base.html" %}
+{% block title %}Investigate Incident{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ safe_url('transport.incidents_index') }}">Incidents</a>
+<span class="sep">/</span><a href="{{ safe_url('transport.incidents_show', id=incident.id) }}">{{ incident.incident_reference }}</a>
+<span class="sep">/</span><span class="current">Investigate</span>
+{% endblock %}
 
-</body>
-</html>
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Investigate</h1>
+    <p class="page-subtitle td-mono">{{ incident.incident_reference }}</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.incidents_show', id=incident.id) }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-arrow-left"></i> Back
+    </a>
+  </div>
+</div>
+
+<form method="POST" action="{{ safe_url('transport.incidents_investigate', id=incident.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header"><span class="card-title">Investigation Notes</span></div>
+    <div class="card-body">
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea name="investigation_notes" class="form-control" rows="4">{{ incident.investigation_notes or '' }}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Root Cause</label>
+        <input name="root_cause" class="form-control" value="{{ incident.root_cause or '' }}" maxlength="200" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Actions Taken</label>
+        <textarea name="actions_taken" class="form-control" rows="3"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Assigned To (User ID)</label>
+        <input name="assigned_to" type="number" class="form-control" value="{{ incident.assigned_to or '' }}" />
+      </div>
+    </div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.incidents_show', id=incident.id) }}" class="btn btn-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Save</button>
+  </div>
+</form>
+{% endblock %}

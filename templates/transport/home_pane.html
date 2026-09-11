@@ -6,21 +6,23 @@
                 <div class="booking-card p-4 mb-4">
                     <h1 class="mb-3">AFCON Transport & Travel</h1>
                     <p class="lead mb-4">Book match-day shuttles, airport transfers and regional routes.</p>
-                    
-                    <!-- Quick Search -->
-                    <div class="row mb-4">
+
+                    <!-- Quick Search / Book entry -->
+                    <form method="GET"
+                          action="{{ safe_url('transport.bookings_new') if is_authenticated else safe_url('auth.login', next=request.path) }}"
+                          class="row mb-4">
                         <div class="col-md-4">
-                            <input type="text" class="form-control location-input" placeholder="From: Pick-up location">
+                            <input type="text" name="pickup_location" class="form-control location-input" placeholder="From: Pick-up location" required>
                         </div>
                         <div class="col-md-4">
-                            <input type="text" class="form-control location-input" placeholder="To: Destination">
+                            <input type="text" name="dropoff_location" class="form-control location-input" placeholder="To: Destination" required>
                         </div>
                         <div class="col-md-4">
-                            <button class="btn btn-primary w-100">
-                                <i class="fas fa-search"></i> Search Routes
+                            <button class="btn btn-dark w-100">
+                                <i class="fas fa-car"></i> {% if is_authenticated %}Continue Booking{% else %}Log in to Book{% endif %}
                             </button>
                         </div>
-                    </div>
+                    </form>
                 </div>
             </div>
         </div>
@@ -36,34 +38,16 @@
                         <div class="d-flex justify-content-between align-items-start mb-3">
                             <div>
                                 <h5 class="mb-1">{{ service.name }}</h5>
-                                <p class="text-muted mb-2">{{ service.summary }}</p>
-                            </div>
-                            <div class="text-end">
-                                <span class="badge bg-success">{{ service.status|default('Available') }}</span>
                             </div>
                         </div>
-                        
-                        <div class="mb-3">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <small class="text-muted">
-                                    <i class="fas fa-clock"></i> {{ service.eta|default('30 mins') }}
-                                </small>
-                                <small class="text-muted">
-                                    <i class="fas fa-users"></i> {{ service.capacity|default('4 seats') }}
-                                </small>
-                            </div>
-                        </div>
-                        
+
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                {% if service.price %}
-                                <strong>${{ "%.2f"|format(service.price) }}</strong>
-                                {% else %}
-                                <span class="text-muted">Price varies</span>
-                                {% endif %}
+                                <span class="text-muted small">Availability checked when you request a ride</span>
                             </div>
-                            <a href="{{ safe_url('transport.service_detail', service_id=service.id) }}" class="btn btn-sm btn-outline-primary">
-                                View Details
+                            <a href="{{ safe_url('transport.bookings_new') if is_authenticated else safe_url('auth.login', next=request.path) }}"
+                               class="btn btn-sm btn-outline-dark">
+                                Book
                             </a>
                         </div>
                     </div>
@@ -84,4 +68,30 @@
             </div>
         </div>
     {% endif %}
+
+    <!-- Recent Rides (user-scoped, honest empty state) -->
+    <div class="container-fluid p-0">
+        <div class="row g-0">
+            <div class="col-12">
+                <div class="booking-card p-4 mt-4">
+                    <h5 class="mb-3">Recent Rides</h5>
+                    {% if not is_authenticated %}
+                    <p class="text-muted mb-2">Log in to view your rides.</p>
+                    <a href="{{ safe_url('auth.login', next=request.path) }}" class="btn btn-dark btn-sm">Log in</a>
+                    {% elif recent_rides %}
+                    {% for ride in recent_rides %}
+                    <a href="{{ safe_url('transport.bookings_show', id=ride.booking_id) }}" class="d-block py-2" style="text-decoration:none; color:inherit;">
+                        <div class="d-flex justify-content-between">
+                            <span>{{ ride.pickup_location }} <i class="fas fa-arrow-right"></i> {{ ride.dropoff_location }}</span>
+                            <span class="badge bg-secondary">{{ ride.status|title }}</span>
+                        </div>
+                    </a>
+                    {% endfor %}
+                    {% else %}
+                    <p class="text-muted mb-0">No rides yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
 </div>

@@ -1,10 +1,136 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "transport/base.html" %}
+{% block title %}Register Vehicle{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ safe_url('transport.vehicle_dashboard') }}">Vehicles</a>
+<span class="sep">/</span><span class="current">Register</span>
+{% endblock %}
 
-</body>
-</html>
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Register Vehicle</h1>
+    <p class="page-subtitle">Add a vehicle to your driver account</p>
+  </div>
+</div>
+
+<form method="POST" action="{{ safe_url('transport.register_vehicle') }}" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header"><span class="card-title">Vehicle Identification</span></div>
+    <div class="card-body">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">License Plate <span class="req">*</span></label>
+          <input name="license_plate" class="form-control" required placeholder="e.g. UAX 123A" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Registration Number</label>
+          <input name="registration_number" class="form-control" />
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Make <span class="req">*</span></label>
+          <input name="make" class="form-control" required placeholder="e.g. Toyota" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Model <span class="req">*</span></label>
+          <input name="model" class="form-control" required placeholder="e.g. Hiace" />
+        </div>
+      </div>
+      <div class="grid-3">
+        <div class="form-group">
+          <label class="form-label">Year <span class="req">*</span></label>
+          <input name="year" type="number" class="form-control" min="2000" max="2030" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Color</label>
+          <input name="color" class="form-control" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">VIN Number</label>
+          <input name="vin_number" class="form-control" maxlength="17" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header"><span class="card-title">Class & Capacity</span></div>
+    <div class="card-body">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Vehicle Type <span class="req">*</span></label>
+          <input name="vehicle_type" class="form-control" required placeholder="e.g. sedan, van, bus" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Vehicle Class <span class="req">*</span></label>
+          <select name="vehicle_class" class="form-control" required>
+            {% for vc in ['economy','comfort','premium','luxury','van','bus'] %}
+            <option value="{{ vc }}">{{ vc|title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="grid-3">
+        <div class="form-group">
+          <label class="form-label">Passenger Capacity <span class="req">*</span></label>
+          <input name="passenger_capacity" type="number" class="form-control" min="1" max="100" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Luggage Capacity</label>
+          <input name="luggage_capacity" type="number" class="form-control" min="0" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Luggage Space (m³)</label>
+          <input name="luggage_space_cubic_meters" type="number" step="0.01" class="form-control" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header"><span class="card-title">Insurance & Compliance</span></div>
+    <div class="card-body">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Insurance Provider</label>
+          <input name="insurance_provider" class="form-control" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Insurance Policy Number</label>
+          <input name="insurance_policy_number" class="form-control" />
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Insurance Expiry</label>
+          <input name="insurance_expiry" type="date" class="form-control" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Insurance Coverage Amount</label>
+          <input name="insurance_coverage_amount" type="number" step="0.01" class="form-control" />
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Roadworthiness Certificate</label>
+          <input name="roadworthiness_certificate" class="form-control" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Roadworthiness Expiry</label>
+          <input name="roadworthiness_expiry" type="date" class="form-control" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.vehicle_dashboard') }}" class="btn btn-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary">
+      <i class="fa-solid fa-plus"></i> Submit Vehicle
+    </button>
+  </div>
+</form>
+{% endblock %}

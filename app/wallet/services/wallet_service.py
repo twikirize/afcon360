@@ -71,8 +71,8 @@ class WalletService:
         if not current_user or not current_user.is_authenticated:
             return False
         # roles that can bypass ownership check
-        admin_roles = {'owner', 'super_admin', 'admin', 'wallet_admin'}
-        return any(current_user.has_role(role) for role in admin_roles)
+        admin_roles = ('owner', 'super_admin', 'admin', 'wallet_admin')
+        return current_user.has_global_role(*admin_roles)
 
     def _quantize(self, value: Decimal) -> Decimal:
         """Quantize decimal to money precision."""

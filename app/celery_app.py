@@ -80,6 +80,7 @@ def make_celery(app=None):
             "app.notifications.events.tasks",
             "app.tasks.backup_tasks",
             "app.events.tasks",
+            "app.tasks.transport_recovery",
             # add future task modules here
         ],
     )
@@ -164,6 +165,19 @@ def make_celery(app=None):
         "backup-scheduled-run": {
             "task": "backup.scheduled_run",
             "schedule": 3600.0,  # hourly due-check; actual dump respects BACKUP_FREQUENCY
+        },
+
+        # --- Transport dispatch recovery (TH-3-D2) ---
+        # Defensive sweep of orphaned transient offers (TTL is primary).
+        "transport-dispatch-recovery": {
+            "task": "transport.dispatch_recovery",
+            "schedule": 60.0,  # every minute
+        },
+        # Terminal-timeout recovery: ASSIGNED with no driver en-route beyond
+        # TRANSPORT_STALL_TIMEOUT_SECONDS -> CANCELLED via canonical release.
+        "transport-stall-recovery": {
+            "task": "transport.stall_recovery",
+            "schedule": 120.0,  # every 2 minutes
         },
     }
 

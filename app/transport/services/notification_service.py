@@ -189,6 +189,56 @@ class NotificationService:
             }
 
     @staticmethod
+    def send_email(to: str, subject: str, body: str, link: str = None) -> Dict[str, Any]:
+        """
+        Send a plain transactional email (no notification-inbox record).
+
+        Used by wallet event notifications and webhook dead-letter alerts.
+        Best-effort and fail-silent: a broken email transport must never roll
+        back the business operation that triggered it. Renders the branded
+        AFCON360 HTML template (falling back to plain text) via the same
+        flask_mail path as the unified EmailHandler.
+        """
+        try:
+            if not to or "@" not in to:
+                return {
+                    'success': False,
+                    'response_code': 400,
+                    'response_body': 'No recipient email address',
+                }
+
+            html = None
+            try:
+                from app.notifications.template_loader import template_loader
+                html = template_loader.env.get_template(
+                    "email/default.html"
+                ).render(title=subject, message=body, link=link)
+            except Exception as e:
+                current_app.logger.debug(
+                    f"Could not render branded HTML for email '{subject}' ({e}); using text body"
+                )
+
+            from flask_mail import Message
+            from app.extensions import mail
+
+            msg = Message(subject=subject, recipients=[to], body=body, html=html)
+            mail.send(msg)
+
+            current_app.logger.info(f"Email sent to {to}: {subject}")
+            return {
+                'success': True,
+                'response_code': 200,
+                'response_body': 'Email delivered via SMTP',
+            }
+        except Exception as e:
+            current_app.logger.error(f"Failed to send email to {to}: {e}")
+            return {
+                'success': False,
+                'response_code': 500,
+                'response_body': str(e),
+            }
+
+    @staticmethod
     def _format_message(template: str, booking: Booking,
                         extra_data: Dict[str, Any]) -> str:
         """Format notification message"""
@@ -221,43 +271,80 @@ class NotificationService:
                            notification_type: str,
                            booking_id: Optional[int] = None,
                            is_driver: bool = False) -> Dict[str, Any]:
-        """Send notification to a recipient"""
+        """Send a notification to a recipient via the DURABLE notification
+        path (TH-3-D2): the canonical app.notifications service persists an
+        inbox record (module=transport) instead of only logging.
+
+        Fail-safe by design: if the durable path is unavailable the
+        notification degrades to a log line and never raises, so a broken
+        notification transport can never roll back the business operation
+        that triggered it.
+        """
         try:
-            # This is a simplified implementation
-            # In production, integrate with email, SMS, push notification services
-
-            # For now, just log the notification
-            notification_data = {
-                'recipient_id': recipient_id,
-                'message': message,
-                'notification_type': notification_type,
-                'booking_id': booking_id,
-                'is_driver': is_driver,
-                'sent_at': datetime.now(timezone.utc).isoformat(),
-                'channels': ['in_app']  # Could be ['email', 'sms', 'push', 'in_app']
-            }
-
-            current_app.logger.info(
-                f"Notification sent: {notification_type} to recipient {recipient_id}"
+            from app.notifications.services import NotificationService as DurableService
+            from app.notifications.models import (
+                NotificationType,
+                NotificationModule,
             )
 
-            # In production, you would:
-            # 1. Store notification in database
-            # 2. Send email via SMTP service
-            # 3. Send SMS via Twilio/other provider
-            # 4. Send push notification via Firebase/APNS
+            type_map = {
+                'driver_assigned': NotificationType.DRIVER_ASSIGNED,
+                'booking_created': NotificationType.BOOKING_CONFIRMED,
+                'booking_confirmed': NotificationType.BOOKING_CONFIRMED,
+                'booking_cancelled': NotificationType.BOOKING_CANCELLED,
+                'cancelled': NotificationType.BOOKING_CANCELLED,
+            }
+            notification_type_enum = type_map.get(
+                notification_type, NotificationType.BOOKING_UPDATE
+            )
+
+            # Resolve the actual user id (a driver recipient references a
+            # DriverProfile; everyone else is already a user id).
+            user_id = recipient_id
+            if is_driver:
+                profile = db.session.get(DriverProfile, recipient_id)
+                user_id = profile.user_id if profile else None
+            if not user_id:
+                return {
+                    'success': False,
+                    'error': 'no resolvable user for recipient',
+                }
+
+            record = DurableService.send(
+                user_id=user_id,
+                notification_type=notification_type_enum,
+                title=f"Transport {notification_type.replace('_', ' ').title()}",
+                message=message,
+                data={
+                    'booking_id': booking_id,
+                    'recipient_id': recipient_id,
+                    'is_driver': is_driver,
+                    'transport_type': notification_type,
+                },
+                channels=['in_app'],
+                module=NotificationModule.TRANSPORT,
+            )
+
+            if record is None:
+                current_app.logger.warning(
+                    "Durable notification suppressed for %s -> %s",
+                    notification_type, user_id,
+                )
 
             return {
                 'success': True,
-                'channels': ['logged'],
-                'notification_id': f"notif_{datetime.now().strftime('%Y%m%d%H%M%S')}_{recipient_id}"
+                'channels': ['in_app'],
+                'notification_id': f"{getattr(record, 'id', '') or 'n/a'}",
             }
-
         except Exception as e:
-            current_app.logger.error(f"Error sending to recipient {recipient_id}: {e}", exc_info=True)
+            current_app.logger.error(
+                f"Error delivering durable notification to {recipient_id}: {e}",
+                exc_info=True,
+            )
             return {
                 'success': False,
-                'error': str(e)
+                'channels': ['logged_fallback'],
+                'error': str(e),
             }
 
     @staticmethod

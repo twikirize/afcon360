@@ -1,10 +1,45 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "transport/base.html" %}
+{% block title %}Performance Analytics{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><a href="{{ safe_url('transport.analytics_index') }}">Analytics</a><span class="sep">/</span><span class="current">Performance</span>{% endblock %}
 
-</body>
-</html>
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Performance Analytics</h1>
+    <p class="page-subtitle">Operational performance metrics</p>
+  </div>
+</div>
+
+<div class="grid-3" style="margin-bottom:16px;">
+  <div class="stat-card green">
+    <div class="stat-icon green"><i class="fa-solid fa-clock"></i></div>
+    <div class="stat-value">{{ on_time_rate|default(0) }}%</div>
+    <div class="stat-label">On-Time Rate</div>
+  </div>
+  <div class="stat-card amber">
+    <div class="stat-icon amber"><i class="fa-solid fa-star"></i></div>
+    <div class="stat-value">{{ '%.2f'|format(avg_rating|float) if avg_rating else '—' }}</div>
+    <div class="stat-label">Avg Rating</div>
+  </div>
+  <div class="stat-card blue">
+    <div class="stat-icon blue"><i class="fa-solid fa-route"></i></div>
+    <div class="stat-value">{{ completed_trips|default(0) }}</div>
+    <div class="stat-label">Completed Trips</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><span class="card-title">Performance Summary</span></div>
+  <div style="padding:16px;">
+    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:0.82rem;">
+      <span style="color:var(--text-muted);">Avg Trip Duration</span><span style="font-weight:600;">{{ avg_duration|default('—') }} min</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:0.82rem;">
+      <span style="color:var(--text-muted);">Avg Distance</span><span style="font-weight:600;">{{ avg_distance|default('—') }} km</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:0.82rem;">
+      <span style="color:var(--text-muted);">Incident Rate</span><span style="font-weight:600;">{{ incident_rate|default(0) }}%</span>
+    </div>
+  </div>
+</div>
+{% endblock %}

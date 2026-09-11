@@ -40,6 +40,7 @@ class OrganisationListResource(Resource):
        POST /api/transport/organisations - create a new organisation profile
     """
 
+    @admin_required
     def get(self):
         """List organisations with filtering, sorting, and pagination"""
         query = OrganisationTransportProfile.query.filter_by(is_deleted=False)
@@ -142,6 +143,7 @@ class OrganisationListResource(Resource):
 class OrganisationDetailResource(Resource):
     """GET/PUT /api/transport/organisations/<org_id>"""
 
+    @admin_required
     def get(self, org_id):
         """Get full organisation profile including fleet and driver summary"""
         org = _org_or_404(org_id)
@@ -245,6 +247,7 @@ class OrganisationDetailResource(Resource):
 class OrganisationDriversResource(Resource):
     """GET/POST/DELETE /api/transport/organisations/<org_id>/drivers"""
 
+    @admin_required
     def get(self, org_id):
         """List all drivers belonging to this organisation"""
         org = _org_or_404(org_id)

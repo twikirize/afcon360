@@ -112,6 +112,24 @@ def test_property(test_db, test_host_user):
     )
     db.session.add(policy)
     db.session.commit()
+    
+    # Create an active room type so the property has sellable capacity
+    from app.accommodation.models.room import RoomType
+    room_type = RoomType(
+        property_id=prop.id,
+        name="Standard Room",
+        description="Standard test room",
+        max_guests=2,
+        bedrooms=1,
+        beds=1,
+        bathrooms=1,
+        base_price_per_night=Decimal("100.00"),
+        currency="USD",
+        total_units=10,
+        is_active=True,
+    )
+    db.session.add(room_type)
+    db.session.commit()
     return prop
 
 
@@ -193,8 +211,11 @@ class TestAttendeeAccommodationBookingService:
             )
             
             assert len(properties) >= 1
-            prop = properties[0]
-            assert prop["property_id"] == test_property.id
+            prop = next(
+                (p for p in properties if p["property_id"] == test_property.id),
+                None,
+            )
+            assert prop is not None, f"Fixture property {test_property.id} not in available list"
             assert prop["title"] == test_property.title
             assert "pay_now" in prop["payment_timings"]
             assert "pay_on_arrival" in prop["payment_timings"]
@@ -420,7 +441,7 @@ class TestAttendeeAccommodationBookingService:
             assert "payment_policy" in requirements
             assert "financial_summary" in requirements
     
-    def test_cancel_attendee_booking(self, app, test_property, test_event, attendee_registration):
+    def test_cancel_attendee_booking(self, app, test_property, test_event, attendee_registration, test_organizer_user):
         """Test cancelling an attendee's booking."""
         with app.app_context():
             event = test_event["event"]
@@ -576,7 +597,7 @@ class TestAttendeeAccommodationBookingAPI:
             check_out = (date.today() + timedelta(days=32)).isoformat()
             
             with client.session_transaction() as sess:
-                sess['user_id'] = attendee_registration.user_id
+                sess['_user_id'] = str(attendee_registration.user.public_id)
                 sess['_fresh'] = True
             
             resp = client.get(
@@ -602,7 +623,7 @@ class TestAttendeeAccommodationBookingAPI:
             check_out = (date.today() + timedelta(days=32)).isoformat()
             
             with client.session_transaction() as sess:
-                sess['user_id'] = attendee_registration.user_id
+                sess['_user_id'] = str(attendee_registration.user.public_id)
                 sess['_fresh'] = True
             
             resp = client.post(
@@ -632,7 +653,7 @@ class TestAttendeeAccommodationBookingAPI:
             check_out = (date.today() + timedelta(days=32)).isoformat()
             
             with client.session_transaction() as sess:
-                sess['user_id'] = attendee_registration.user_id
+                sess['_user_id'] = str(attendee_registration.user.public_id)
                 sess['_fresh'] = True
             
             resp = client.post(
@@ -660,7 +681,12 @@ class TestAttendeeAccommodationBookingAPI:
             check_in = (date.today() + timedelta(days=30)).isoformat()
             check_out = (date.today() + timedelta(days=32)).isoformat()
             
-            # No login
+            # No login — explicitly clear any session left by earlier tests
+            with client.session_transaction() as sess:
+                sess.pop('_user_id', None)
+                sess.pop('user_id', None)
+                sess.pop('_fresh', None)
+            
             resp = client.post(
                 url_for('events.api_attendee_accommodation_book', slug=event.slug),
                 json={

@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Any
 import random
 import string
 import logging
+import sqlalchemy as sa
 from flask import current_app
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
@@ -21,6 +22,7 @@ from app.transport.models import (
     Currency,
     PaymentStatus,
 )
+from app.core.validators import validate_coordinates
 from app.utils.exceptions import ValidationError, NotFoundError, PermissionError, ServiceUnavailableError
 from app.utils.security import sanitize_input
 from app.utils.validators import validate_booking_request
@@ -29,6 +31,32 @@ from app.utils.audit import audit_log
 
 # Module-level logger (doesn't need app context)
 logger = logging.getLogger(__name__)
+
+
+def _validate_booking_location_coordinates(location: Any, field_name: str) -> Any:
+    """Enforce the canonical geographic contract at the booking boundary.
+
+    - Non-dict payloads (address-only / free text) pass through unchanged.
+    - 'lat'/'lng' keys are REJECTED (must use 'latitude'/'longitude').
+    - Canonical coordinates must be BOTH present and valid ranges.
+    """
+    if not isinstance(location, dict):
+        return location
+    if "lat" in location or "lng" in location:
+        raise ValidationError(
+            f"{field_name} geographic coordinates must use 'latitude'/'longitude' keys; 'lat'/'lng' are not accepted",
+            field=field_name,
+        )
+    has_lat = location.get("latitude") is not None
+    has_lng = location.get("longitude") is not None
+    if has_lat != has_lng:
+        raise ValidationError(
+            f"{field_name} must include both 'latitude' and 'longitude'",
+            field=field_name,
+        )
+    if has_lat:
+        validate_coordinates(location["latitude"], location["longitude"])
+    return location
 
 
 class BookingService:
@@ -68,14 +96,17 @@ class BookingService:
             if isinstance(special_req, str):
                 special_req = {"note": special_req}
 
+            pickup_location = _validate_booking_location_coordinates(sanitized_data.get("pickup_location"), "pickup_location")
+            dropoff_location = _validate_booking_location_coordinates(sanitized_data.get("dropoff_location"), "dropoff_location")
+
             booking = Booking(
                 user_id=customer_id,
                 provider_type=ProviderType(
                     (sanitized_data.get("provider_type") or "individual_driver").lower()
                 ),
                 service_type=ServiceType(sanitized_data["service_type"].lower()),
-                pickup_location=sanitized_data.get("pickup_location"),
-                dropoff_location=sanitized_data.get("dropoff_location"),
+                pickup_location=pickup_location,
+                dropoff_location=dropoff_location,
                 pickup_time=pickup_time,
                 passenger_count=int(sanitized_data.get("passenger_count") or 1),
                 luggage_count=int(sanitized_data.get("luggage_count") or 0),
@@ -182,15 +213,44 @@ class BookingService:
             if booking.user_id != user_id and booking.assigned_driver_id != user_id and booking.provider_id != user_id:
                 raise PermissionError("Cannot cancel another user's booking")
 
-            if booking.status not in [BookingStatus.PENDING_PAYMENT, BookingStatus.CONFIRMED]:
-                raise ValidationError(f"Cannot cancel booking in {booking.status.value} status")
+            if booking.is_deleted:
+                raise NotFoundError("Booking not found", resource_type="booking", resource_id=booking_id)
 
-            booking.status = BookingStatus.CANCELLED
-            booking.cancelled_at = datetime.now(timezone.utc)
-            booking.cancellation_reason = reason
-            booking.cancellation_fee = self._calculate_cancellation_fee(booking)
+            # Race-E-safe cancellation (D2): the pre-assignment status gate is
+            # enforced atomically by the conditional UPDATE. Ownership is
+            # checked above (authorization), the status gate is part of the
+            # guarded statement so a concurrent claim cannot slip between a
+            # read and a write. rowcount == 1 is REQUIRED.
+            cancellation_fee = self._calculate_cancellation_fee(booking)
+            refund_amount = float(booking.final_price - cancellation_fee)
+
+            result = db.session.execute(
+                sa.update(Booking.__table__)
+                .where(
+                    Booking.__table__.c.id == booking_id,
+                    Booking.__table__.c.status.in_([
+                        BookingStatus.PENDING_PAYMENT.value,
+                        BookingStatus.CONFIRMED.value,
+                    ]),
+                    Booking.__table__.c.is_deleted.is_(False),
+                )
+                .values(
+                    status=BookingStatus.CANCELLED.value,
+                    cancelled_at=datetime.now(timezone.utc),
+                    cancellation_reason=reason,
+                    cancellation_fee=cancellation_fee,
+                )
+                .execution_options(synchronize_session=False)
+            )
+            if result.rowcount != 1:
+                db.session.rollback()
+                raise ValidationError(
+                    "Cannot cancel booking: it is no longer in a cancellable "
+                    "(pre-assignment) state"
+                )
 
             db.session.commit()
+            db.session.expire_all()
             self._invalidate_booking_caches(booking_id)
 
             record_metric("booking_cancelled", tags={"status": "success"}, value=1)
@@ -200,8 +260,8 @@ class BookingService:
                 "message": "Booking cancelled successfully",
                 "data": {
                     "booking_id": booking_id,
-                    "cancellation_fee": float(booking.cancellation_fee),
-                    "refund_amount": float(booking.final_price - booking.cancellation_fee)  # using final_price
+                    "cancellation_fee": float(cancellation_fee),
+                    "refund_amount": refund_amount,  # using final_price
                 }
             }
 
@@ -262,6 +322,60 @@ class BookingService:
         except Exception as e:
             logger.error(f"Error getting recent bookings: {e}", exc_info=True)
             return []
+
+    @monitor_endpoint("get_user_bookings")
+    def get_user_bookings(self, user_id: int, limit: int = 5) -> List[Dict[str, Any]]:
+        """Get the most recent bookings scoped to a single authenticated user.
+
+        Used by the Transport front page to render a truthful, user-scoped
+        Recent Rides list. Never returns another user's bookings.
+        """
+        try:
+            bookings = Booking.query.filter(
+                Booking.user_id == user_id,
+                Booking.is_deleted == False  # noqa: E712
+            ).order_by(
+                Booking.created_at.desc()
+            ).limit(limit).all()
+            # Build the light-weight dict explicitly (Booking.to_dict depends on
+            # app.core.serializers.ModelSerializer which is not present).
+            routes = []
+            for b in bookings:
+                pickup = b.pickup_address
+                if not pickup and isinstance(b.pickup_location, dict):
+                    pickup = b.pickup_location.get("address") or b.pickup_location.get(
+                        "name") or b.pickup_location.get("label")
+                dropoff = b.dropoff_address
+                if not dropoff and isinstance(b.dropoff_location, dict):
+                    dropoff = b.dropoff_location.get("address") or b.dropoff_location.get(
+                        "name") or b.dropoff_location.get("label")
+                routes.append({
+                    "booking_id": b.id,
+                    "booking_reference": b.booking_reference,
+                    "pickup_location": pickup or "Pickup",
+                    "dropoff_location": dropoff or "Destination",
+                    "status": b.status.value if b.status else None,
+                    "pickup_time": b.pickup_time.isoformat() if b.pickup_time else None,
+                    "created_at": b.created_at.isoformat() if b.created_at else None,
+                    "final_price": float(b.final_price) if b.final_price is not None else None,
+                    "currency": b.currency.value if b.currency else None,
+                })
+            return routes
+        except Exception as e:
+            logger.error(f"Error getting bookings for user {user_id}: {e}", exc_info=True)
+            return []
+
+    @monitor_endpoint("count_user_bookings")
+    def count_user_bookings(self, user_id: int) -> int:
+        """Count the active (non-deleted) bookings for a single user."""
+        try:
+            return Booking.query.filter(
+                Booking.user_id == user_id,
+                Booking.is_deleted == False  # noqa: E712
+            ).count()
+        except Exception as e:
+            logger.error(f"Error counting bookings for user {user_id}: {e}", exc_info=True)
+            return 0
 
     @monitor_endpoint("get_today_bookings_count")
     def get_today_bookings_count(self) -> int:
@@ -371,6 +485,243 @@ class BookingService:
                 "average_booking_value": 0,
                 "daily_breakdown": []
             }
+
+    # =========================================================
+    # Admin Listing & Driver-scoped Queries
+    # =========================================================
+
+    @monitor_endpoint("list_all_bookings")
+    def list_all_bookings(self, page: int = 1, per_page: int = 25) -> Dict[str, Any]:
+        """List all bookings with pagination (admin dashboard)."""
+        try:
+            query = Booking.query.filter_by(
+                is_deleted=False
+            ).order_by(Booking.created_at.desc())
+            paginated = query.paginate(page=page, per_page=per_page, error_out=False)
+            return {
+                'items': [b.to_dict() for b in paginated.items],
+                'total': paginated.total,
+                'page': page,
+                'per_page': per_page,
+                'pages': paginated.pages,
+            }
+        except Exception as e:
+            logger.error(f"Error listing all bookings: {e}", exc_info=True)
+            return {
+                'items': [], 'total': 0,
+                'page': page, 'per_page': per_page, 'pages': 0,
+            }
+
+    @monitor_endpoint("get_driver_bookings")
+    def get_driver_bookings(self, driver_user_id: int) -> List[Dict[str, Any]]:
+        """Get bookings assigned to a driver, looked up by the driver's user_id.
+
+        The driver dashboard calls this to show the driver's assigned rides.
+        """
+        try:
+            from app.transport.models import DriverProfile
+            profile = DriverProfile.query.filter_by(
+                user_id=driver_user_id, is_deleted=False
+            ).first()
+            if not profile:
+                return []
+            bookings = Booking.query.filter(
+                Booking.assigned_driver_id == profile.id,
+                Booking.is_deleted == False,  # noqa: E712
+            ).order_by(Booking.created_at.desc()).limit(20).all()
+            return [b.to_dict() for b in bookings]
+        except Exception as e:
+            logger.error(f"Error getting driver bookings for user {driver_user_id}: {e}", exc_info=True)
+            return []
+
+    @monitor_endpoint("count_bookings_since")
+    def count_bookings_since(self, since: datetime) -> int:
+        """Count bookings created since a given datetime."""
+        try:
+            return Booking.query.filter(
+                Booking.created_at >= since,
+                Booking.is_deleted == False,  # noqa: E712
+            ).count()
+        except Exception as e:
+            logger.error(f"Error counting bookings since {since}: {e}", exc_info=True)
+            return 0
+
+    @monitor_endpoint("count_driver_bookings")
+    def count_driver_bookings(self, driver_user_id: int) -> int:
+        """Count total bookings for a driver (by user_id)."""
+        try:
+            from app.transport.models import DriverProfile
+            profile = DriverProfile.query.filter_by(
+                user_id=driver_user_id, is_deleted=False
+            ).first()
+            if not profile:
+                return 0
+            return Booking.query.filter(
+                Booking.assigned_driver_id == profile.id,
+                Booking.is_deleted == False,  # noqa: E712
+            ).count()
+        except Exception as e:
+            logger.error(f"Error counting driver bookings: {e}", exc_info=True)
+            return 0
+
+    @monitor_endpoint("count_driver_bookings_by_status")
+    def count_driver_bookings_by_status(self, driver_user_id: int, status: str) -> int:
+        """Count driver bookings with a specific status."""
+        try:
+            from app.transport.models import DriverProfile
+            profile = DriverProfile.query.filter_by(
+                user_id=driver_user_id, is_deleted=False
+            ).first()
+            if not profile:
+                return 0
+            status_enum = getattr(BookingStatus, status.upper(), None)
+            if status_enum is None:
+                return 0
+            return Booking.query.filter(
+                Booking.assigned_driver_id == profile.id,
+                Booking.status == status_enum,
+                Booking.is_deleted == False,  # noqa: E712
+            ).count()
+        except Exception as e:
+            logger.error(f"Error counting driver bookings by status: {e}", exc_info=True)
+            return 0
+
+    @monitor_endpoint("get_driver_upcoming_bookings")
+    def get_driver_upcoming_bookings(self, driver_user_id: int, limit: int = 5) -> List[Dict[str, Any]]:
+        """Get upcoming bookings for a driver."""
+        try:
+            from app.transport.models import DriverProfile
+            profile = DriverProfile.query.filter_by(
+                user_id=driver_user_id, is_deleted=False
+            ).first()
+            if not profile:
+                return []
+            now = datetime.now(timezone.utc)
+            bookings = Booking.query.filter(
+                Booking.assigned_driver_id == profile.id,
+                Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.ASSIGNED, BookingStatus.DRIVER_EN_ROUTE]),
+                Booking.pickup_time > now,
+                Booking.is_deleted == False,  # noqa: E712
+            ).order_by(Booking.pickup_time.asc()).limit(limit).all()
+            return [b.to_dict() for b in bookings]
+        except Exception as e:
+            logger.error(f"Error getting driver upcoming bookings: {e}", exc_info=True)
+            return []
+
+    @monitor_endpoint("get_driver_earnings")
+    def get_driver_earnings(self, driver_user_id: int) -> float:
+        """Get total earnings for a driver from completed bookings."""
+        try:
+            from app.transport.models import DriverProfile
+            profile = DriverProfile.query.filter_by(
+                user_id=driver_user_id, is_deleted=False
+            ).first()
+            if not profile:
+                return 0.0
+            earnings = db.session.query(func.sum(Booking.final_price)).filter(
+                Booking.assigned_driver_id == profile.id,
+                Booking.status == BookingStatus.COMPLETED,
+                Booking.payment_status == PaymentStatus.CAPTURED,
+                Booking.is_deleted == False,  # noqa: E712
+            ).scalar() or 0
+            return float(earnings)
+        except Exception as e:
+            logger.error(f"Error getting driver earnings: {e}", exc_info=True)
+            return 0.0
+
+    @monitor_endpoint("get_driver_recent_bookings")
+    def get_driver_recent_bookings(self, driver_user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent bookings for a driver."""
+        try:
+            from app.transport.models import DriverProfile
+            profile = DriverProfile.query.filter_by(
+                user_id=driver_user_id, is_deleted=False
+            ).first()
+            if not profile:
+                return []
+            bookings = Booking.query.filter(
+                Booking.assigned_driver_id == profile.id,
+                Booking.is_deleted == False,  # noqa: E712
+            ).order_by(Booking.created_at.desc()).limit(limit).all()
+            return [b.to_dict() for b in bookings]
+        except Exception as e:
+            logger.error(f"Error getting driver recent bookings: {e}", exc_info=True)
+            return []
+
+    @monitor_endpoint("get_driver_next_booking")
+    def get_driver_next_booking(self, driver_user_id: int) -> Optional[Dict[str, Any]]:
+        """Get the next upcoming booking for a driver."""
+        try:
+            from app.transport.models import DriverProfile
+            profile = DriverProfile.query.filter_by(
+                user_id=driver_user_id, is_deleted=False
+            ).first()
+            if not profile:
+                return None
+            now = datetime.now(timezone.utc)
+            booking = Booking.query.filter(
+                Booking.assigned_driver_id == profile.id,
+                Booking.status.in_([BookingStatus.ASSIGNED, BookingStatus.DRIVER_EN_ROUTE]),
+                Booking.pickup_time > now,
+                Booking.is_deleted == False,  # noqa: E712
+            ).order_by(Booking.pickup_time.asc()).first()
+            return booking.to_dict() if booking else None
+        except Exception as e:
+            logger.error(f"Error getting driver next booking: {e}", exc_info=True)
+            return None
+
+    @monitor_endpoint("count_org_bookings")
+    def count_org_bookings(self, org_id: int) -> int:
+        """Count bookings for an organisation."""
+        try:
+            return Booking.query.filter(
+                Booking.provider_id == org_id,
+                Booking.is_deleted == False,  # noqa: E712
+            ).count()
+        except Exception as e:
+            logger.error(f"Error counting org bookings: {e}", exc_info=True)
+            return 0
+
+    @monitor_endpoint("count_org_today_bookings")
+    def count_org_today_bookings(self, org_id: int) -> int:
+        """Count today's bookings for an organisation."""
+        try:
+            today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            return Booking.query.filter(
+                Booking.provider_id == org_id,
+                Booking.created_at >= today_start,
+                Booking.is_deleted == False,  # noqa: E712
+            ).count()
+        except Exception as e:
+            logger.error(f"Error counting org today bookings: {e}", exc_info=True)
+            return 0
+
+    @monitor_endpoint("get_org_revenue")
+    def get_org_revenue(self, org_id: int) -> float:
+        """Get total revenue for an organisation from completed bookings."""
+        try:
+            revenue = db.session.query(func.sum(Booking.final_price)).filter(
+                Booking.provider_id == org_id,
+                Booking.status == BookingStatus.COMPLETED,
+                Booking.is_deleted == False,  # noqa: E712
+            ).scalar() or 0
+            return float(revenue)
+        except Exception as e:
+            logger.error(f"Error getting org revenue: {e}", exc_info=True)
+            return 0.0
+
+    @monitor_endpoint("get_org_recent_bookings")
+    def get_org_recent_bookings(self, org_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent bookings for an organisation."""
+        try:
+            bookings = Booking.query.filter(
+                Booking.provider_id == org_id,
+                Booking.is_deleted == False,  # noqa: E712
+            ).order_by(Booking.created_at.desc()).limit(limit).all()
+            return [b.to_dict() for b in bookings]
+        except Exception as e:
+            logger.error(f"Error getting org recent bookings: {e}", exc_info=True)
+            return []
 
     # =========================================================
     # Private Helper Methods

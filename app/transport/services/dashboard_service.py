@@ -40,7 +40,7 @@ class DashboardService:
                 'today_bookings': self.booking_service.get_today_bookings_count(),
                 'today_revenue': self.booking_service.get_today_revenue(),
                 'recent_bookings': self.booking_service.get_recent_bookings(10),
-                'pending_bookings': self.booking_service.count_bookings_by_status('pending'),
+                'pending_bookings': self.booking_service.count_bookings_by_status('pending_payment'),
                 'confirmed_bookings': self.booking_service.count_bookings_by_status('confirmed'),
                 'completed_bookings': self.booking_service.count_bookings_by_status('completed'),
                 'cancelled_bookings': self.booking_service.count_bookings_by_status('cancelled'),

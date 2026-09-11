@@ -25,6 +25,7 @@ from app.transport.models import (
     VerificationTier, ComplianceStatus, TransportSetting, Booking, BookingStatus,
     Rating, organisation_drivers, VehicleClass, ProviderType, ServiceType
 )
+from app.identity.models.user import User
 from app.transport.services.settings_service import (
     SettingsService, feature_enabled, development_only
 )
@@ -375,6 +376,72 @@ class ProviderService:
             return 0
 
     # ===========================================================================
+    # ORGANISATION-SCOPED COUNTS
+    # ===========================================================================
+
+    def count_org_vehicles(self, org_id: int) -> int:
+        """Count vehicles belonging to an organisation."""
+        try:
+            return Vehicle.query.filter_by(
+                owner_type='organisation', owner_id=org_id, is_deleted=False
+            ).count()
+        except Exception as e:
+            logger.error(f"Error counting org vehicles: {e}", exc_info=True)
+            return 0
+
+    def count_org_available_vehicles(self, org_id: int) -> int:
+        """Count available vehicles belonging to an organisation."""
+        try:
+            return Vehicle.query.filter_by(
+                owner_type='organisation', owner_id=org_id,
+                is_available=True, is_deleted=False
+            ).count()
+        except Exception as e:
+            logger.error(f"Error counting org available vehicles: {e}", exc_info=True)
+            return 0
+
+    def count_org_drivers(self, org_id: int) -> int:
+        """Count drivers belonging to an organisation."""
+        try:
+            from app.transport.models import organisation_drivers
+            return db.session.query(organisation_drivers).filter(
+                organisation_drivers.c.organisation_id == org_id,
+                organisation_drivers.c.is_active == True,  # noqa: E712
+            ).count()
+        except Exception as e:
+            logger.error(f"Error counting org drivers: {e}", exc_info=True)
+            return 0
+
+    def count_org_active_drivers(self, org_id: int) -> int:
+        """Count online+available drivers belonging to an organisation."""
+        try:
+            from app.transport.models import organisation_drivers
+            driver_ids = db.session.query(organisation_drivers.c.driver_id).filter(
+                organisation_drivers.c.organisation_id == org_id,
+                organisation_drivers.c.is_active == True,  # noqa: E712
+            ).subquery()
+            return DriverProfile.query.filter(
+                DriverProfile.id.in_(driver_ids),
+                DriverProfile.is_online == True,  # noqa: E712
+                DriverProfile.is_available == True,  # noqa: E712
+                DriverProfile.is_deleted == False,
+            ).count()
+        except Exception as e:
+            logger.error(f"Error counting org active drivers: {e}", exc_info=True)
+            return 0
+
+    def get_org_vehicles(self, org_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get vehicles belonging to an organisation."""
+        try:
+            vehicles = Vehicle.query.filter_by(
+                owner_type='organisation', owner_id=org_id, is_deleted=False
+            ).order_by(Vehicle.created_at.desc()).limit(limit).all()
+            return [v.to_dict() for v in vehicles]
+        except Exception as e:
+            logger.error(f"Error getting org vehicles: {e}", exc_info=True)
+            return []
+
+    # ===========================================================================
     # GET METHODS
     # ===========================================================================
 
@@ -479,13 +546,18 @@ class ProviderService:
     # ===========================================================================
 
     def list_drivers(self, page: int = 1, per_page: int = 25,
-                     status: Optional[str] = None) -> Dict[str, Any]:
+                     status: Optional[str] = None,
+                     online: Optional[str] = None) -> Dict[str, Any]:
         """List drivers with pagination"""
         try:
             query = DriverProfile.query.filter_by(is_deleted=False)
 
             if status:
                 query = query.filter_by(compliance_status=status)
+
+            if online is not None:
+                is_online = online.lower() in ('true', '1', 'yes')
+                query = query.filter_by(is_online=is_online)
 
             paginated = query.order_by(
                 DriverProfile.created_at.desc()
@@ -1047,9 +1119,15 @@ class ProviderService:
     @monitor_endpoint("update_driver_status")
     @rate_limit("driver_status_update", limit=60, period=60)
     @require_permission('driver:update_status')
-    def update_driver_status(self, driver_id: int, status_data: Dict[str, Any],
+    def update_driver_status(self, driver_id: int, status_data,
                              user_id: Optional[int] = None) -> Dict[str, Any]:
-        """Update driver status"""
+        """Update driver status.
+
+        Accepts either a dict of field updates (``{'is_online': True}``) or a
+        plain string representing a compliance/approval action
+        (``"approved"`` / ``"rejected"``).  The string form is a convenience
+        used by the admin approve/reject web routes.
+        """
         try:
             driver = db.session.get(DriverProfile, driver_id)
             if not driver:
@@ -1068,6 +1146,44 @@ class ProviderService:
 
             updates = {}
 
+            # --- String shorthand for compliance approve / reject -----------
+            if isinstance(status_data, str):
+                action = status_data.lower().strip()
+                if action == 'approved':
+                    driver.compliance_status = ComplianceStatus.APPROVED
+                    updates['compliance_status'] = driver.compliance_status.value
+                elif action == 'rejected':
+                    driver.compliance_status = ComplianceStatus.REVOKED
+                    updates['compliance_status'] = driver.compliance_status.value
+                elif action == 'suspended':
+                    driver.compliance_status = ComplianceStatus.SUSPENDED
+                    updates['compliance_status'] = driver.compliance_status.value
+                else:
+                    raise ValidationError(
+                        message=f"Unknown driver status action: {action}",
+                        field="compliance_status",
+                    )
+                db.session.commit()
+                self._invalidate_driver_caches(driver_id)
+                self._invalidate_available_drivers_cache()
+                return {
+                    'success': True,
+                    'message': f'Driver status updated to {action}',
+                    'data': {'driver_id': driver_id, 'updates': updates}
+                }
+
+            # --- Dict form (online / availability toggles) -----------------
+            if 'compliance_status' in status_data:
+                raw = status_data['compliance_status']
+                try:
+                    driver.compliance_status = ComplianceStatus(raw)
+                except ValueError:
+                    raise ValidationError(
+                        message=f"Invalid compliance_status: {raw}",
+                        field="compliance_status",
+                    )
+                updates['compliance_status'] = driver.compliance_status.value
+
             if 'is_online' in status_data:
                 driver.is_online = bool(status_data['is_online'])
                 driver.last_seen_at = datetime.now(timezone.utc)
@@ -1077,7 +1193,7 @@ class ProviderService:
                 if bool(status_data['is_available']) and not driver.is_online:
                     raise ValidationError(
                         message="Driver must be online to become available",
-                        code="INVALID_STATUS_TRANSITION"
+                        field="is_available",
                     )
                 driver.is_available = bool(status_data['is_available'])
                 updates['is_available'] = driver.is_available
@@ -1110,23 +1226,111 @@ class ProviderService:
             )
 
     # ===========================================================================
+    # VEHICLE STATUS MANAGEMENT
+    # ===========================================================================
+
+    @monitor_endpoint("update_vehicle_status")
+    @rate_limit("vehicle_status_update", limit=60, period=60)
+    @require_permission('vehicle:update_status')
+    def update_vehicle_status(self, vehicle_id: int, status: str) -> Dict[str, Any]:
+        """Update vehicle moderation status (approve / reject / suspend)."""
+        try:
+            vehicle = db.session.get(Vehicle, vehicle_id)
+            if not vehicle:
+                raise NotFoundError(
+                    message="Vehicle not found",
+                    resource_type="vehicle",
+                    resource_id=vehicle_id
+                )
+
+            action = status.lower().strip()
+            valid_statuses = ('active', 'pending', 'suspended', 'rejected',
+                              'maintenance', 'retired')
+            if action not in valid_statuses:
+                # Map common moderation strings to valid vehicle statuses
+                status_map = {
+                    'approved': 'active',
+                    'verified': 'active',
+                }
+                mapped = status_map.get(action)
+                if mapped is None:
+                    raise ValidationError(
+                        message=f"Invalid vehicle status: {action}",
+                        field="status",
+                    )
+                action = mapped
+
+            vehicle.status = action
+            db.session.commit()
+
+            cache.delete(f"{self.cache_prefix}:vehicle:{vehicle_id}")
+            self._invalidate_provider_caches()
+
+            return {
+                'success': True,
+                'message': f'Vehicle status updated to {action}',
+                'data': {'vehicle_id': vehicle_id, 'status': action}
+            }
+
+        except (NotFoundError, ValidationError) as e:
+            db.session.rollback()
+            raise
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            logger.error(...)
+            raise ServiceUnavailableError(
+                message="Vehicle status update unavailable",
+                service_name="vehicle",
+                retry_after=60,
+            )
+
+    # ===========================================================================
     # AVAILABLE DRIVERS QUERY
     # ===========================================================================
 
-    @cached_query(lambda self, zone, vehicle_class, limit, **kwargs:
-                  f"{self.cache_prefix}:available_drivers:{zone}:{vehicle_class}:{limit}")
     def get_available_drivers(self, zone: Optional[str] = None,
                               vehicle_class: Optional[str] = None,
-                              limit: int = 20) -> List[Dict[str, Any]]:
-        """Get available drivers"""
+                              limit: int = 50) -> List[Dict[str, Any]]:
+        """Return up to `limit` available driver candidates for ranking.
+
+        THIS METHOD IS A POOL SELECTOR, NOT A RANKER.
+
+        Ordering, proximity scoring, freshness filtering, and
+        final selection happen in
+        MatchingService._rank_drivers_for_booking. This method
+        only returns a superset of candidates that pass the
+        base eligibility filters (deleted, online, available,
+        approved).
+
+        Because the pool is unordered and the ranker applies a
+        score threshold, `limit` must be large enough that the
+        geographically closest and freshest drivers are unlikely
+        to be truncated before the ranker sees them.
+
+        DO NOT add ORDER BY here — there is no product-level
+        ordering rule at the pool level. Any concrete ordering
+        would silently bias the ranker by pre-truncating the
+        candidate set.
+
+        DO NOT cache this method — deliberate.
+
+        The matching pipeline filters on `location_updated_at`
+        freshness (see MatchingService._rank_drivers_for_booking
+        and TrackingService.LOCATION_TTL_SECONDS = 300). Caching
+        this result for any TTL would return stale timestamps to
+        the freshness filter and silently corrupt matches.
+
+        If DB load becomes a problem, add explicit cache
+        invalidation in TrackingService.update_location —
+        do NOT add @cached_query here.
+        """
         try:
             query = DriverProfile.query.options(
-                joinedload(DriverProfile.user).load_only('id', 'name', 'phone'),
-                joinedload(DriverProfile.current_vehicle)
+                joinedload(DriverProfile.user).joinedload(User.profile),
             ).filter(
-                DriverProfile.is_active == True,
-                DriverProfile.is_online == True,
-                DriverProfile.is_available == True,
+                DriverProfile.is_deleted == False,  # noqa: E712
+                DriverProfile.is_online == True,    # noqa: E712
+                DriverProfile.is_available == True, # noqa: E712
                 DriverProfile.compliance_status == ComplianceStatus.APPROVED
             )
 
@@ -1147,14 +1351,19 @@ class ProviderService:
                     'driver_id': driver.id,
                     'driver_code': driver.driver_code,
                     'user': {
-                        'name': driver.user.name if driver.user else 'Unknown',
+                        'name': driver.user.display_name if driver.user else 'Unknown',
                         'phone': driver.user.phone if driver.user else None
                     },
                     'vehicle': {
                         'license_plate': driver.current_vehicle.license_plate if driver.current_vehicle else None,
                         'vehicle_class': driver.current_vehicle.vehicle_class.value if driver.current_vehicle else None
                     },
-                    'rating': float(driver.average_rating) if driver.average_rating else 0.0
+                    'vehicle_classes': driver.vehicle_classes or [],
+                    'average_rating': float(driver.average_rating) if driver.average_rating else 0.0,
+                    'acceptance_rate': float(driver.acceptance_rate) if driver.acceptance_rate is not None else 100.0,
+                    'service_types': driver.service_types or [],
+                    'current_location': driver.last_location if isinstance(driver.last_location, dict) else None,
+                    'location_updated_at': driver.location_updated_at.isoformat() if driver.location_updated_at else None,
                 }
                 for driver in drivers
             ]
@@ -1191,7 +1400,14 @@ class ProviderService:
                 'priority': 'high'
             })
 
-        if not driver.vehicle_id:
+        # Check if the driver has any registered vehicles via the
+        # owner_type='driver' / owner_id=DriverProfile.id relationship.
+        has_vehicle = Vehicle.query.filter_by(
+            owner_type='driver',
+            owner_id=driver.id,
+            is_deleted=False,
+        ).first() is not None
+        if not has_vehicle:
             steps.append({
                 'step': 'register_vehicle',
                 'title': 'Register Vehicle',

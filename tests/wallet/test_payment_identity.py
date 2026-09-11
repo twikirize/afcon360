@@ -13,7 +13,6 @@ import pytest
 from uuid import uuid4
 import uuid
 
-from app.config import TestingConfig
 from app.extensions import db
 from app.identity.models.user import User
 from app.identity.models.organisation import Organisation

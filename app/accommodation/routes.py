@@ -1188,6 +1188,12 @@ def guest_detail(identifier):
         if not property_model:
             property_model = Property.query.filter_by(slug=identifier).first()
 
+    # ORG-9 guest-facing public boundary: a property is not publicly viewable
+    # merely because its identifier is known. Enforce the canonical public
+    # visibility boundary used by the public search/listing architecture.
+    if property_model is not None and not property_model.is_publicly_viewable():
+        abort(404)
+
     if property_model:
         _increment_view_count(property_model.id)
         
@@ -1531,6 +1537,12 @@ def api_availability():
 
     if check_out <= check_in:
         return jsonify({'success': False, 'error': 'Check-out date must be after check-in date.'}), 400
+
+    # ORG-9 guest-facing public boundary: only a bookable, publicly visible
+    # property may be returned to guests. Reuse the canonical booking gate.
+    prop = db.session.get(Property, property_id)
+    if prop is None or not prop.can_be_booked() or not prop.is_publicly_visible:
+        return jsonify({'success': False, 'error': 'Property not available for booking'}), 404
 
     try:
         from app.accommodation.services.availability_service import AvailabilityService
@@ -2078,17 +2090,18 @@ def guest_checkout():
 
         # Check wallet balance if needed
         if payment_method == 'wallet' and charge_amount > 0:
+            from app.wallet.repositories.ledger_repository import LedgerRepository
             from app.wallet.services.wallet_service import WalletService
-            account = AccountModel.query.filter_by(user_id=current_user.id).first()
+            account = WalletService.get_wallet_by_user_id(current_user.id, property_obj.currency)
             if not account:
                 AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
                 flash('You don\'t have a wallet account. Please choose another payment method or create a wallet first.', 'warning')
                 return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
             
-            balance = WalletService.get_balance(account.id)
-            if balance.get('balance', 0) < charge_amount:
+            balance = LedgerRepository().get_balance(account.id, property_obj.currency)
+            if balance < charge_amount:
                 AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
-                flash(f'Insufficient wallet balance. Your balance is {balance.get("balance", 0)} {property_obj.currency} but the required amount is {charge_amount} {property_obj.currency}.', 'danger')
+                flash(f'Insufficient wallet balance. Your balance is {balance} {property_obj.currency} but the required amount is {charge_amount} {property_obj.currency}.', 'danger')
                 return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
 
         # ============================================================
@@ -3713,18 +3726,19 @@ def guest_cancel_booking(reference):
         flash('Booking not found', 'danger')
         return redirect(url_for('accommodation.guest_my_bookings'))
 
-    # Allow cancellation if current user is the guest, primary guest, booking
-    # owner, or booker (for third-party bookings).
+    # Authorisation: guest, booker, primary guest, or booking owner may cancel
     is_guest = booking.guest_user_id == current_user.id
     is_booker = booking.booked_by_user_id == current_user.id
     is_primary_guest = booking.primary_guest_id == current_user.id
     is_booking_owner = booking.booking_owner_id == current_user.id
     if not (is_guest or is_booker or is_primary_guest or is_booking_owner):
-        flash('You are not authorized to cancel this booking', 'danger')
+        flash('You are not authorised to cancel this booking', 'danger')
         return redirect(url_for('accommodation.guest_my_bookings'))
 
     reason = request.form.get('reason', 'User requested cancellation')
 
+    # Cancel the booking – this updates the booking status, releases dates,
+    # and returns the refund amount (if any)
     success, message, refund = BookingService.cancel_booking(
         booking.id,
         cancelled_by_user_id=current_user.id,
@@ -3740,24 +3754,16 @@ def guest_cancel_booking(reference):
     )
 
     if success:
-        if refund > 0:
-            # Determine which user gets the refund (booker or guest)
-            refund_user_id = booking.booked_by_user_id or booking.guest_user_id
-            if not refund_user_id:
-                refund_user_id = current_user.id
-            
-            refund_result = WalletService.refund_wallet(
-                user_id=refund_user_id,
-                amount=refund,
-                description=f"Refund for cancelled booking: {reference}",
-                original_transaction_id=booking.wallet_txn_id,
-                currency=booking.currency or "USD",
+        if refund and refund > 0:
+            # Use the canonical MarketplaceService to process the refund
+            refund_success, refund_error = MarketplaceService.refund_guest(
+                booking.id,
+                refund
             )
-            # Store refund transaction ID for idempotency
-            if refund_result.get("transaction_id"):
-                booking.wallet_txn_id = refund_result["transaction_id"]
-                db.session.commit()
-            flash(f'{message} Refund of ${refund} has been processed.', 'success')
+            if refund_success:
+                flash(f'{message} Refund of ${refund} processed.', 'success')
+            else:
+                flash(f'Refund failed: {refund_error}', 'warning')
         else:
             flash(message, 'info')
     else:

@@ -50,8 +50,8 @@ def _booking(s, booker, **overrides):
         user_id=booker.id,
         provider_type=ProviderType.INDIVIDUAL_DRIVER,
         service_type=ServiceType.ON_DEMAND,
-        pickup_location={"lat": 1.2, "lng": 3.4},
-        dropoff_location={"lat": 5.6, "lng": 7.8},
+        pickup_location={"latitude": 1.2, "longitude": 3.4},
+        dropoff_location={"latitude": 5.6, "longitude": 7.8},
         pickup_time=datetime.now(timezone.utc) + timedelta(hours=2),
         passenger_count=4,
         base_price=100.00,
@@ -69,14 +69,14 @@ def _vehicle(s, capacity=2, **overrides):
     v = Vehicle(
         owner_type="driver",
         owner_id=1,
-        license_plate=f"UG{uuid.uuid4().hex[:4].upper()}",
+        license_plate=f"UG{uuid.uuid4().hex[:8].upper()}",
         make="Test",
         model="Model",
         year=2023,
         vehicle_type="Sedan",
         vehicle_class="comfort",
         passenger_capacity=capacity,
-        current_location={"lat": 1.2, "lng": 3.4},
+        current_location={"latitude": 1.2, "longitude": 3.4},
     )
     for k, val in overrides.items():
         setattr(v, k, val)
@@ -212,10 +212,10 @@ def test_claim_token_requires_email_or_phone(db_session):
 
 def test_claim_token_single_use_and_invalidation(db_session):
     booker = _user(db_session, "booker")
-    rider = _user(db_session, "rider", email="rider@example.com")
+    rider = _user(db_session, "rider")
     b = _booking(db_session, booker)
     svc = get_passenger_service()
-    p = svc.add_passenger(b, name="Rider", email="rider@example.com")
+    p = svc.add_passenger(b, name="Rider", email=rider.email)
     token = svc.create_claim_token(p)
     db_session.flush()
     assert p.claim_token_hash and p.claim_token_hash != token  # stored hashed, never raw
@@ -257,7 +257,7 @@ def test_claim_token_expired_rejected(db_session):
 def test_claim_token_recipient_binding(db_session):
     """The token is bound to the passenger's email/phone; a mismatched recipient fails."""
     booker = _user(db_session, "booker")
-    wrong = _user(db_session, "wrong", email="someone-else@example.com")
+    wrong = _user(db_session, "wrong")
     b = _booking(db_session, booker)
     svc = get_passenger_service()
     p = svc.add_passenger(b, name="Rider", email="rider@example.com")
@@ -335,8 +335,8 @@ def test_create_booking_service_returns_public_reference(db_session):
     result = BookingService().create_booking(
         booker.id,
         {
-            "pickup_location": {"lat": 1.2, "lng": 3.4},
-            "dropoff_location": {"lat": 5.6, "lng": 7.8},
+            "pickup_location": {"latitude": 1.2, "longitude": 3.4},
+            "dropoff_location": {"latitude": 5.6, "longitude": 7.8},
             "pickup_time": datetime.now(timezone.utc) + timedelta(hours=2),
             "service_type": "on_demand",
             "passenger_count": 1,

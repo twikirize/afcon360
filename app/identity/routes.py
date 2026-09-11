@@ -375,8 +375,8 @@ def wallet(org_id):
     
     # Get wallet balance
     try:
-        from app.wallet.services.wallet_service import WalletService
-        balance = WalletService.get_balance(wallet.id)
+        from app.wallet.repositories.ledger_repository import LedgerRepository
+        balance = LedgerRepository().get_balance(wallet.id, wallet.currency)
     except Exception:
         balance = 0
     
@@ -783,6 +783,21 @@ def _resolve_individual_user_public_id():
     return current_user.public_id
 
 
+def _wants_html_form():
+    """True for genuine browser form submissions (e.g. the capabilities
+    dashboard), False for JSON API / fetch / test clients.
+
+    A browser form POST advertises ``Accept: text/html,...``; API and test
+    clients do not. ``request.is_json`` (Content-Type) and the common
+    ``X-Requested-With: XMLHttpRequest`` header are treated as JSON signals.
+    """
+    return (
+        not request.is_json
+        and request.headers.get('X-Requested-With') != 'XMLHttpRequest'
+        and request.accept_mimetypes.accept_html
+    )
+
+
 @capability_bp.route('', methods=['GET'])
 @login_required
 def list_my_capabilities():
@@ -806,6 +821,10 @@ def activate_my_capability(code):
     Individual ACCOMMODATION activation requires the accommodation
     eligibility authority (can_host) to pass; all other individual codes are
     lifecycle-only at this stage (4B-2).
+
+    JSON API responses (mirror org capability endpoints) for fetch/API/test
+    clients; flash+redirect to the capabilities dashboard for browser form
+    submissions.
     """
     from app.identity.models.organisation_provider_capability import (
         ProviderCapabilityCode,
@@ -816,13 +835,18 @@ def activate_my_capability(code):
         ParticipationPermissionError,
         ParticipationTransitionError,
         ParticipationValidationError,
+        participation_to_dict,
     )
+
+    is_html = _wants_html_form()
 
     try:
         ProviderCapabilityCode(code)
     except ValueError:
-        flash(f'Invalid capability code: {code}', 'danger')
-        return redirect(url_for('capability.capabilities_dashboard'))
+        if is_html:
+            flash(f'Invalid capability code: {code}', 'danger')
+            return redirect(url_for('capability.capabilities_dashboard'))
+        return jsonify({'error': f'Invalid capability code: {code}'}), 400
 
     if code == ProviderCapabilityCode.ACCOMMODATION.value:
         from app.accommodation.services.identity_service import (
@@ -830,37 +854,69 @@ def activate_my_capability(code):
         )
         eligible, reason = AccommodationIdentityService.can_host(current_user)
         if not eligible:
-            flash(reason, 'danger')
-            return redirect(url_for('capability.capabilities_dashboard'))
+            if is_html:
+                flash(reason, 'danger')
+                return redirect(url_for('capability.capabilities_dashboard'))
+            return jsonify({'error': reason}), 403
 
     try:
         activate_individual_intention(current_user, code)
         db.session.commit()
     except ParticipationPermissionError as exc:
         db.session.rollback()
-        flash(str(exc), 'danger')
-        return redirect(url_for('capability.capabilities_dashboard'))
+        if is_html:
+            flash(str(exc), 'danger')
+            return redirect(url_for('capability.capabilities_dashboard'))
+        return jsonify({'error': str(exc)}), 403
     except ParticipationNotFoundError as exc:
         db.session.rollback()
-        flash(str(exc), 'danger')
-        return redirect(url_for('capability.capabilities_dashboard'))
+        if is_html:
+            flash(str(exc), 'danger')
+            return redirect(url_for('capability.capabilities_dashboard'))
+        return jsonify({'error': str(exc)}), 404
     except ParticipationTransitionError as exc:
         db.session.rollback()
-        flash(str(exc), 'warning')
-        return redirect(url_for('capability.capabilities_dashboard'))
+        if is_html:
+            flash(str(exc), 'warning')
+            return redirect(url_for('capability.capabilities_dashboard'))
+        return jsonify({'error': str(exc)}), 409
     except ParticipationValidationError as exc:
         db.session.rollback()
-        flash(str(exc), 'danger')
+        if is_html:
+            flash(str(exc), 'danger')
+            return redirect(url_for('capability.capabilities_dashboard'))
+        return jsonify({'error': str(exc)}), 400
+
+    cap = _current_individual_participation(code)
+
+    if is_html:
+        flash(f"Capability '{code}' activated.", 'success')
         return redirect(url_for('capability.capabilities_dashboard'))
 
-    flash(f"Capability '{code}' activated.", 'success')
-    return redirect(url_for('capability.capabilities_dashboard'))
+    return jsonify({
+        'message': f"Capability '{code}' activated.",
+        'user_id': _resolve_individual_user_public_id(),
+        'capability': participation_to_dict(cap),
+    })
+
+
+def _current_individual_participation(code):
+    """Fetch the authenticated user's current participation row (post-write)."""
+    from app.identity.services.provider_participation_service import (
+        get_individual_intention,
+    )
+    return get_individual_intention(current_user.id, code)
 
 
 @capability_bp.route('/<code>/deactivate', methods=['POST'])
 @login_required
 def deactivate_my_capability(code):
-    """Deactivate one of the authenticated user's own capabilities (reversible)."""
+    """Deactivate one of the authenticated user's own capabilities (reversible).
+
+    JSON API responses (mirror org capability endpoints) for fetch/API/test
+    clients; flash+redirect to the capabilities dashboard for browser form
+    submissions.
+    """
     from app.identity.models.organisation_provider_capability import (
         ProviderCapabilityCode,
     )
@@ -870,36 +926,58 @@ def deactivate_my_capability(code):
         ParticipationPermissionError,
         ParticipationTransitionError,
         ParticipationValidationError,
+        participation_to_dict,
     )
+
+    is_html = _wants_html_form()
 
     try:
         ProviderCapabilityCode(code)
     except ValueError:
-        flash(f'Invalid capability code: {code}', 'danger')
-        return redirect(url_for('capability.capabilities_dashboard'))
+        if is_html:
+            flash(f'Invalid capability code: {code}', 'danger')
+            return redirect(url_for('capability.capabilities_dashboard'))
+        return jsonify({'error': f'Invalid capability code: {code}'}), 400
 
     try:
         deactivate_individual_intention(current_user, code)
         db.session.commit()
     except ParticipationPermissionError as exc:
         db.session.rollback()
-        flash(str(exc), 'danger')
-        return redirect(url_for('capability.capabilities_dashboard'))
+        if is_html:
+            flash(str(exc), 'danger')
+            return redirect(url_for('capability.capabilities_dashboard'))
+        return jsonify({'error': str(exc)}), 403
     except ParticipationNotFoundError as exc:
         db.session.rollback()
-        flash(str(exc), 'danger')
-        return redirect(url_for('capability.capabilities_dashboard'))
+        if is_html:
+            flash(str(exc), 'danger')
+            return redirect(url_for('capability.capabilities_dashboard'))
+        return jsonify({'error': str(exc)}), 404
     except ParticipationTransitionError as exc:
         db.session.rollback()
-        flash(str(exc), 'warning')
-        return redirect(url_for('capability.capabilities_dashboard'))
+        if is_html:
+            flash(str(exc), 'warning')
+            return redirect(url_for('capability.capabilities_dashboard'))
+        return jsonify({'error': str(exc)}), 409
     except ParticipationValidationError as exc:
         db.session.rollback()
-        flash(str(exc), 'danger')
+        if is_html:
+            flash(str(exc), 'danger')
+            return redirect(url_for('capability.capabilities_dashboard'))
+        return jsonify({'error': str(exc)}), 400
+
+    cap = _current_individual_participation(code)
+
+    if is_html:
+        flash(f"Capability '{code}' deactivated.", 'success')
         return redirect(url_for('capability.capabilities_dashboard'))
 
-    flash(f"Capability '{code}' deactivated.", 'success')
-    return redirect(url_for('capability.capabilities_dashboard'))
+    return jsonify({
+        'message': f"Capability '{code}' deactivated.",
+        'user_id': _resolve_individual_user_public_id(),
+        'capability': participation_to_dict(cap),
+    })
 
 
 # Export the blueprints for the main app to register

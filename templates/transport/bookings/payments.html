@@ -1,10 +1,51 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "transport/base.html" %}
+{% block title %}Payments{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ safe_url('transport.bookings_index') }}">Bookings</a>
+<span class="sep">/</span><a href="{{ safe_url('transport.bookings_show', id=booking.id) }}">{{ booking.booking_reference }}</a>
+<span class="sep">/</span><span class="current">Payments</span>
+{% endblock %}
 
-</body>
-</html>
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Payments</h1>
+    <p class="page-subtitle td-mono">{{ booking.booking_reference }}</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.bookings_show', id=booking.id) }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-arrow-left"></i> Back
+    </a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="t-table-wrap">
+    <table class="t-table">
+      <thead>
+        <tr><th>Reference</th><th>Method</th><th>Status</th><th>Amount</th><th>Date</th></tr>
+      </thead>
+      <tbody>
+        {% if booking.payments %}
+          {% for p in booking.payments %}
+          <tr>
+            <td class="td-mono">{{ p.payment_reference }}</td>
+            <td>{{ p.payment_method|title }}</td>
+            <td><span class="badge badge-{{ 'green' if p.payment_status.value == 'captured' else 'amber' if p.payment_status.value == 'pending' else 'red' }}">{{ p.payment_status.value|title }}</span></td>
+            <td class="td-mono">${{ '%.2f'|format(p.amount|float) }}</td>
+            <td class="td-mono">{{ p.created_at.strftime('%d %b %Y %H:%M') if p.created_at else '—' }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="5">
+            <div class="empty-state" style="padding:32px;">
+              <i class="fa-solid fa-credit-card"></i>
+              <p>No payment records yet</p>
+            </div>
+          </td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

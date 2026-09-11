@@ -4,12 +4,13 @@ AFCON360 Transport Module - Tracking Service
 Handles real-time location tracking and updates
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 import json
 from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.validators import validate_coordinates
 from app.extensions import db, redis_client
 from app.transport.models import Booking, DriverProfile, Vehicle, BookingStatus
 from app.utils.exceptions import ValidationError, NotFoundError
@@ -20,6 +21,7 @@ class TrackingService:
     """Service for real-time tracking"""
 
     REDIS_PREFIX = "transport:tracking"
+    LOCATION_TTL_SECONDS = 300  # 5 minutes freshness boundary
 
     @staticmethod
     @monitor_endpoint("update_location")
@@ -44,6 +46,9 @@ class TrackingService:
                     message=f"Location must include latitude and longitude (required: {required_fields})",
                 )
 
+            # Validate coordinate ranges
+            validate_coordinates(location_data['latitude'], location_data['longitude'])
+
             # Prepare location data
             location_update = {
                 'latitude': float(location_data['latitude']),
@@ -54,13 +59,16 @@ class TrackingService:
                 'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
-            # Store in Redis
+            # Store in Redis (resilient to Redis unavailability)
             redis_key = f"{TrackingService.REDIS_PREFIX}:{entity_type}:{entity_id}"
-            redis_client.setex(
-                redis_key,
-                300,  # 5 minutes TTL
-                json.dumps(location_update)
-            )
+            try:
+                redis_client.setex(
+                    redis_key,
+                    TrackingService.LOCATION_TTL_SECONDS,
+                    json.dumps(location_update)
+                )
+            except Exception as redis_error:
+                current_app.logger.warning(f"Redis unavailable during location update: {redis_error}")
 
             # Update database if entity is driver
             if entity_type == 'driver':
@@ -207,7 +215,8 @@ class TrackingService:
                     tracking_info['driver_location'],
                     booking.pickup_location
                 )
-                tracking_info['estimated_arrival'] = distance * 2  # 2 mins per km
+                if distance is not None:
+                    tracking_info['estimated_arrival'] = distance * 2  # 2 mins per km
 
             # Generate route polyline (simplified)
             if (tracking_info['driver_location'] and
@@ -235,39 +244,47 @@ class TrackingService:
             }
 
     @staticmethod
-    def _calculate_distance(location1: Dict, location2: Dict) -> float:
-        """Calculate distance between two locations"""
+    def _coordinates_or_none(location: Dict) -> Tuple[Optional[float], Optional[float]]:
+        """Return (lat, lon) floats only when BOTH canonical values are valid, else (None, None)."""
         try:
-            import math
+            latitude = location.get('latitude')
+            longitude = location.get('longitude')
+            if latitude is None or longitude is None:
+                return None, None
+            lat = float(latitude)
+            lon = float(longitude)
+            if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+                return None, None
+            return lat, lon
+        except (TypeError, ValueError, AttributeError):
+            return None, None
 
-            lat1 = location1.get('latitude', 0)
-            lon1 = location1.get('longitude', 0)
-            lat2 = location2.get('latitude', 0)
-            lon2 = location2.get('longitude', 0)
+    @staticmethod
+    def _calculate_distance(location1: Dict, location2: Dict) -> Optional[float]:
+        """Calculate distance between two locations. Returns None if either location lacks valid canonical coordinates."""
+        import math
 
-            # Convert to radians
-            lat1_rad = math.radians(lat1)
-            lon1_rad = math.radians(lon1)
-            lat2_rad = math.radians(lat2)
-            lon2_rad = math.radians(lon2)
+        lat1, lon1 = TrackingService._coordinates_or_none(location1)
+        lat2, lon2 = TrackingService._coordinates_or_none(location2)
 
-            # Haversine formula
-            dlon = lon2_rad - lon1_rad
-            dlat = lat2_rad - lat1_rad
+        if None in (lat1, lon1, lat2, lon2):
+            return None
 
-            a = math.sin(dlat / 2) ** 2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
-            c = 2 * math.asin(math.sqrt(a))
+        # Haversine formula
+        lat1_rad = math.radians(lat1)
+        lon1_rad = math.radians(lon1)
+        lat2_rad = math.radians(lat2)
+        lon2_rad = math.radians(lon2)
 
-            # Earth radius in km
-            r = 6371
+        dlon = lon2_rad - lon1_rad
+        dlat = lat2_rad - lat1_rad
 
-            return c * r
+        a = math.sin(dlat / 2) ** 2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
+        c = 2 * math.asin(math.sqrt(a))
 
-        except:
-            # Fallback simple calculation
-            lat_diff = abs(location1.get('latitude', 0) - location2.get('latitude', 0))
-            lon_diff = abs(location1.get('longitude', 0) - location2.get('longitude', 0))
-            return math.sqrt(lat_diff ** 2 + lon_diff ** 2) * 111
+        r = 6371
+
+        return c * r
 
     @staticmethod
     def _generate_route_polyline(*locations: Dict) -> str:
@@ -293,6 +310,9 @@ class TrackingService:
 
             nearby_drivers = []
 
+            now = datetime.now(timezone.utc)
+            cutoff = now - timedelta(seconds=TrackingService.LOCATION_TTL_SECONDS)
+
             # Get all online drivers
             online_drivers = DriverProfile.query.filter_by(
                 is_online=True,
@@ -300,22 +320,28 @@ class TrackingService:
             ).limit(50).all()
 
             for driver in online_drivers:
-                if driver.last_location:
-                    distance = TrackingService._calculate_distance(
-                        location,
-                        driver.last_location
-                    )
+                if not driver.last_location or not driver.location_updated_at:
+                    continue
+                if driver.location_updated_at < cutoff:
+                    continue
 
-                    if distance <= radius_km:
-                        driver_data = {
-                            'driver_id': driver.id,
-                            'driver_code': driver.driver_code,
-                            'distance_km': distance,
-                            'location': driver.last_location,
-                            'vehicle_class': driver.vehicle_classes[0] if driver.vehicle_classes else 'comfort',
-                            'rating': float(driver.average_rating) if driver.average_rating else 0.0
-                        }
-                        nearby_drivers.append(driver_data)
+                distance = TrackingService._calculate_distance(
+                    location,
+                    driver.last_location
+                )
+
+                if distance is None or distance > radius_km:
+                    continue
+
+                driver_data = {
+                    'driver_id': driver.id,
+                    'driver_code': driver.driver_code,
+                    'distance_km': distance,
+                    'location': driver.last_location,
+                    'vehicle_class': driver.vehicle_classes[0] if driver.vehicle_classes else 'comfort',
+                    'rating': float(driver.average_rating) if driver.average_rating else 0.0
+                }
+                nearby_drivers.append(driver_data)
 
             # Sort by distance
             nearby_drivers.sort(key=lambda x: x['distance_km'])

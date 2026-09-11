@@ -326,9 +326,9 @@ class Organisation(BaseModel):
             from decimal import Decimal
             return Decimal('0')
 
-        from app.wallet.services.wallet_service import WalletService
+        from app.wallet.repositories.ledger_repository import LedgerRepository
         try:
-            return WalletService.get_balance(account.id)
+            return LedgerRepository().get_balance(account.id, account.currency)
         except Exception:
             from decimal import Decimal
             return Decimal('0')

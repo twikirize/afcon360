@@ -19,6 +19,7 @@ from app.accommodation.models.property import Property
 from app.models.system_config import SystemConfig
 from app.accommodation.state_machine.booking_states import BookingStateMachine
 from app.accommodation.services.readiness_service import AccommodationReadinessService
+from app.notifications.models import NotificationModule, NotificationType
 
 
 @shared_task(name="accommodation.send_registration_reminders")
@@ -49,7 +50,7 @@ def send_registration_reminders():
         if not _is_fully_registered(booking.id):
             _send_notification(
                 booking,
-                "registration_reminder_72h",
+                NotificationType.BOOKING_UPDATE,
                 "Complete guest registration soon",
                 f"Guest registration for booking {booking.booking_reference} is still incomplete. "
                 f"Check-in is on {booking.check_in.isoformat()}. Please register all guests within 72 hours.",
@@ -70,7 +71,7 @@ def send_registration_reminders():
         if not _is_fully_registered(booking.id):
             _send_notification(
                 booking,
-                "registration_reminder_48h",
+                NotificationType.BOOKING_UPDATE,
                 "Guest registration required before check-in",
                 f"Guest registration for booking {booking.booking_reference} is still incomplete. "
                 f"Check-in is on {booking.check_in.isoformat()}. Host may deny check-in without completed registration.",
@@ -91,7 +92,7 @@ def send_registration_reminders():
         if not _is_fully_registered(booking.id):
             _send_notification(
                 booking,
-                "registration_reminder_24h",
+                NotificationType.BOOKING_UPDATE,
                 "URGENT: Guest registration deadline approaching",
                 f"Guest registration for booking {booking.booking_reference} is still incomplete. "
                 f"Check-in is tomorrow ({booking.check_in.isoformat()}). Incomplete registration will block check-in.",
@@ -111,7 +112,7 @@ def send_registration_reminders():
         if not _is_fully_registered(booking.id):
             _send_notification(
                 booking,
-                "registration_reminder_post_booking",
+                NotificationType.BOOKING_UPDATE,
                 "Complete your guest registration",
                 f"Please complete guest registration for booking {booking.booking_reference}. "
                 f"Check-in is on {booking.check_in.isoformat()}.",
@@ -226,7 +227,7 @@ def enforce_registration_deadlines():
         if not _is_fully_registered(booking.id):
             _send_notification(
                 booking,
-                "registration_deadline_passed",
+                NotificationType.BOOKING_UPDATE,
                 "Registration deadline has passed",
                 f"Guest registration for booking {booking.booking_reference} is incomplete "
                 f"and the deadline ({booking.registration_deadline.isoformat()}) has passed. "
@@ -358,7 +359,7 @@ def _is_fully_registered(booking_id: int) -> bool:
         return False
 
 
-def _send_notification(booking, notification_type: str, title: str, message: str):
+def _send_notification(booking, notification_type, title: str, message: str):
     """Best-effort notification sender; swallows failures to keep task idempotent."""
     try:
         from app.notifications.services import NotificationService
@@ -367,6 +368,7 @@ def _send_notification(booking, notification_type: str, title: str, message: str
         NotificationService.send(
             user_id=recipient_id,
             notification_type=notification_type,
+            module=NotificationModule.ACCOMMODATION,
             title=title,
             message=message,
             channels=["in_app", "email"],

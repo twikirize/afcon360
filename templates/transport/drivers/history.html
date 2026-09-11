@@ -1,10 +1,65 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "transport/base.html" %}
+{% block title %}Driver History{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ safe_url('transport.drivers_index') }}">Drivers</a>
+<span class="sep">/</span><a href="{{ safe_url('transport.drivers_show', id=driver.id) }}">{{ driver.driver_code }}</a>
+<span class="sep">/</span><span class="current">Trip History</span>
+{% endblock %}
 
-</body>
-</html>
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Trip History</h1>
+    <p class="page-subtitle">{{ driver.driver_code }} · {{ driver.completed_trips|default(0) }} completed trips</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.drivers_show', id=driver.id) }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-arrow-left"></i> Back to Profile
+    </a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="t-table-wrap">
+    <table class="t-table">
+      <thead>
+        <tr>
+          <th>Reference</th>
+          <th>Service</th>
+          <th>Pickup</th>
+          <th>Dropoff</th>
+          <th>Completed</th>
+          <th>Duration</th>
+          <th>Fare</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if bookings %}
+          {% for b in bookings %}
+          <tr>
+            <td>
+              <a href="{{ safe_url('transport.bookings_show', id=b.id) }}" class="td-mono" style="color:var(--amber);">
+                {{ b.booking_reference }}
+              </a>
+            </td>
+            <td>{{ b.service_type.value|replace('_',' ')|title }}</td>
+            <td>{{ b.pickup_address or '—' }}</td>
+            <td>{{ b.dropoff_address or '—' }}</td>
+            <td class="td-mono">{{ b.completed_at.strftime('%d %b %Y %H:%M') if b.completed_at else '—' }}</td>
+            <td>{{ b.actual_duration_minutes|default('—') }} min</td>
+            <td class="td-mono">${{ '%.2f'|format(b.final_price|float) if b.final_price else '0.00' }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="7">
+            <div class="empty-state" style="padding:32px;">
+              <i class="fa-solid fa-route"></i>
+              <p>No completed trips yet</p>
+            </div>
+          </td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

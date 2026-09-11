@@ -1,10 +1,82 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{# Shared vehicle create/edit form. #}
+<form method="POST"
+      action="{{ safe_url('transport.register_vehicle') if not vehicle else safe_url('transport.vehicles_edit', id=vehicle.id) }}"
+      enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-</body>
-</html>
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header"><span class="card-title">Vehicle</span></div>
+    <div class="card-body">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">License Plate <span class="req">*</span></label>
+          <input name="license_plate" class="form-control" required value="{{ vehicle.license_plate if vehicle else '' }}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Registration Number</label>
+          <input name="registration_number" class="form-control" value="{{ vehicle.registration_number if vehicle else '' }}" />
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Make <span class="req">*</span></label>
+          <input name="make" class="form-control" required value="{{ vehicle.make if vehicle else '' }}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Model <span class="req">*</span></label>
+          <input name="model" class="form-control" required value="{{ vehicle.model if vehicle else '' }}" />
+        </div>
+      </div>
+      <div class="grid-3">
+        <div class="form-group">
+          <label class="form-label">Year <span class="req">*</span></label>
+          <input name="year" type="number" class="form-control" required value="{{ vehicle.year if vehicle else '' }}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Color</label>
+          <input name="color" class="form-control" value="{{ vehicle.color if vehicle else '' }}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">VIN</label>
+          <input name="vin_number" class="form-control" maxlength="17" value="{{ vehicle.vin_number if vehicle else '' }}" />
+        </div>
+      </div>
+      <div class="grid-3">
+        <div class="form-group">
+          <label class="form-label">Type <span class="req">*</span></label>
+          <input name="vehicle_type" class="form-control" required value="{{ vehicle.vehicle_type if vehicle else '' }}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Class <span class="req">*</span></label>
+          <select name="vehicle_class" class="form-control" required>
+            {% for vc in ['economy','comfort','premium','luxury','van','bus'] %}
+            <option value="{{ vc }}" {{ 'selected' if vehicle and vehicle.vehicle_class.value == vc }}>{{ vc|title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Passengers <span class="req">*</span></label>
+          <input name="passenger_capacity" type="number" min="1" max="100" class="form-control" required value="{{ vehicle.passenger_capacity if vehicle else '' }}" />
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Luggage Capacity</label>
+          <input name="luggage_capacity" type="number" class="form-control" value="{{ vehicle.luggage_capacity if vehicle else '' }}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Luggage Space (m³)</label>
+          <input name="luggage_space_cubic_meters" type="number" step="0.01" class="form-control" value="{{ vehicle.luggage_space_cubic_meters if vehicle else '' }}" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.vehicles_index') }}" class="btn btn-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary">
+      <i class="fa-solid fa-{{ 'floppy-disk' if vehicle else 'plus' }}"></i>
+      {{ 'Save Changes' if vehicle else 'Register Vehicle' }}
+    </button>
+  </div>
+</form>

@@ -336,6 +336,20 @@
                     </div>
                 </div>
 
+                {% if require_mfa %}
+                <div class="mb-4">
+                    <label for="mfa_code" class="form-label">
+                        <i class="fas fa-shield-alt me-2"></i>MFA Code
+                    </label>
+                    <input type="text" class="form-control" id="mfa_code" name="mfa_code"
+                           required maxlength="8" placeholder="6-digit code or 8-char backup code"
+                           autocomplete="one-time-code" pattern="[0-9A-Za-z]{6,8}">
+                    <div class="invalid-feedback">
+                        Please enter the current code from your authenticator app.
+                    </div>
+                </div>
+                {% endif %}
+
                 <div class="mb-4 form-check">
                     <input type="checkbox" class="form-check-input" id="remember" name="remember">
                     <label class="form-check-label" for="remember">
@@ -344,7 +358,7 @@
                 </div>
 
                 <button type="submit" class="btn btn-login">
-                    <i class="fas fa-sign-in-alt me-2"></i>Login
+                    <i class="fas fa-sign-in-alt me-2"></i>{% if require_mfa %}Verify & Login{% else %}Login{% endif %}
                 </button>
 
                 <div class="text-center mt-3">

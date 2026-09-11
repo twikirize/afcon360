@@ -501,6 +501,18 @@ class Property(BaseModel):
                 self.is_active and
                 not self.is_deleted)
 
+    def is_publicly_viewable(self) -> bool:
+        """Guest-facing public boundary mirroring the public search filter.
+
+        A property is guest-viewable only when it passes the canonical booking
+        gate AND is publicly visible AND has at least one active room type.
+        """
+        if not self.can_be_booked():
+            return False
+        if not self.is_publicly_visible:
+            return False
+        return any(rt.is_active for rt in self.room_types)
+
     # -------------------------------
     # Validation
     # -------------------------------

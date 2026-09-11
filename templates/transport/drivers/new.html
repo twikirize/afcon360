@@ -1,10 +1,15 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
-
-</body>
-</html>
+{% extends "transport/base.html" %}
+{% block title %}New Driver{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span><a href="{{ safe_url('transport.drivers_index') }}">Drivers</a>
+<span class="sep">/</span><span class="current">New Driver</span>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Register Driver</h1>
+    <p class="page-subtitle">Add a new driver to the transport fleet</p>
+  </div>
+</div>
+{% include "transport/drivers/_form.html" with context %}
+{% endblock %}

@@ -18,7 +18,7 @@ from app.extensions import db
 from app.kyc.models import KycRecord
 from app.identity.models.user import User
 from app.events.models import Event, TicketType, EventRegistration, Waitlist
-from app.events.services import EventService, IdempotencyChecker
+from app.events.services import EventService, IdempotencyChecker, SoldOutException
 import app.identity.individuals.individual_verification        # IndividualVerification
 import app.fan.models
 
@@ -81,7 +81,7 @@ class TestRegistrationFlow(unittest.TestCase):
 
             # First check should return False (key doesn't exist)
             # Mock redis_client to be None
-            with patch('app.events.services._legacy.redis_client', None):
+            with patch('app.events.services.redis_client', None):
                 exists = IdempotencyChecker.check_and_store(key)
                 self.assertFalse(exists)
 
@@ -103,7 +103,7 @@ class TestRegistrationFlow(unittest.TestCase):
             self.assertIsNone(err1)
 
             # Second registration with same key should be detected as duplicate
-            with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
+            with patch('app.events.services.SIGNALS_AVAILABLE', False):
                 reg2, qr2, err2 = EventService.register_for_event_optimistic(
                     event_slug, self.user1_id, registration_data, key
                 )
@@ -154,10 +154,15 @@ class TestRegistrationFlow(unittest.TestCase):
                         'ticket_type_id': ticket_id
                     }
 
-                    with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
-                        reg, qr, err = EventService.register_for_event_optimistic(
-                            f'concurrent-event-{self.slug_suffix}', user_id, data
-                        )
+                    with patch('app.events.services.SIGNALS_AVAILABLE', False):
+                        try:
+                            reg, qr, err = EventService.register_for_event_optimistic(
+                                f'concurrent-event-{self.slug_suffix}', user_id, data
+                            )
+                        except SoldOutException as e:
+                            reg, qr, err = None, None, str(e)
+                        except Exception as e:
+                            reg, qr, err = None, None, str(e)
 
                     if err:
                         errors.append(err)
@@ -240,7 +245,7 @@ class TestRegistrationFlow(unittest.TestCase):
                     'ticket_type_id': ticket.id
                 }
 
-                with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
+                with patch('app.events.services.SIGNALS_AVAILABLE', False):
                     EventService.register_for_event_optimistic(
                         f'waitlist-event-{self.slug_suffix}', user.id, data
                     )
@@ -263,7 +268,7 @@ class TestRegistrationFlow(unittest.TestCase):
             }
 
             # Try to register (should fail and suggest waitlist)
-            with patch('app.events.services._legacy.SIGNALS_AVAILABLE', False):
+            with patch('app.events.services.SIGNALS_AVAILABLE', False):
                 reg, qr, err = EventService.register_for_event_optimistic(
                     f'waitlist-event-{self.slug_suffix}', waitlist_user.id, waitlist_data
                 )

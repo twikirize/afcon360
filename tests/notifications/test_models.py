@@ -5,6 +5,7 @@ Tests for models, services, channel handlers, and cross-module integration.
 """
 
 import pytest
+import uuid
 from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
 
@@ -22,6 +23,22 @@ from app.notifications.services import NotificationService
 from app.notifications.preferences import PreferenceService
 from app.notifications.utils import calculate_backoff, generate_idempotency_key
 from app.identity.models.user import User
+
+
+def _make_user(db_session, tag="notif"):
+    """Create a unique user record (UUID-based) so it never collides with
+    committed rows from previous runs in the shared test database."""
+    user = User(
+        public_id=str(uuid.uuid4()),
+        email=f"{tag}-{uuid.uuid4().hex[:8]}@example.com",
+        username=f"{tag}-{uuid.uuid4().hex[:6]}",
+        password_hash="dummy-hash",
+        is_verified=True,
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.flush()
+    return user
 
 
 # ============================================================================
@@ -179,8 +196,9 @@ class TestUserNotificationPreferenceModel:
 
     def test_preference_creation(self, db_session):
         """Test creating a user notification preference."""
+        user = _make_user(db_session)
         pref = UserNotificationPreference(
-            user_id=1,
+            user_id=user.id,
             notification_type="booking_confirmed",
             channel="email",
             enabled=True,
@@ -189,7 +207,7 @@ class TestUserNotificationPreferenceModel:
         db_session.commit()
 
         assert pref.id is not None
-        assert pref.user_id == 1
+        assert pref.user_id == user.id
         assert pref.enabled is True
 
 
@@ -422,8 +440,9 @@ class TestPreferenceService:
 
     def test_get_preferences(self, db_session):
         """Test getting user preferences."""
+        user = _make_user(db_session)
         pref = UserNotificationPreference(
-            user_id=1,
+            user_id=user.id,
             notification_type="booking_confirmed",
             channel="email",
             enabled=True,
@@ -431,7 +450,7 @@ class TestPreferenceService:
         db_session.add(pref)
         db_session.commit()
 
-        prefs = PreferenceService.get_preferences(1)
+        prefs = PreferenceService.get_preferences(user.id)
         assert len(prefs) >= 1
 
     def test_update_preference(self, db_session):
@@ -447,8 +466,9 @@ class TestPreferenceService:
 
     def test_is_allowed_when_disabled(self, db_session):
         """Test that notifications are blocked when explicitly disabled."""
+        user = _make_user(db_session)
         pref = UserNotificationPreference(
-            user_id=1,
+            user_id=user.id,
             notification_type="booking_confirmed",
             channel="email",
             enabled=False,
@@ -456,13 +476,14 @@ class TestPreferenceService:
         db_session.add(pref)
         db_session.commit()
 
-        result = PreferenceService.is_allowed(1, "booking_confirmed", ["email"])
+        result = PreferenceService.is_allowed(user.id, "booking_confirmed", ["email"])
         assert result is False
 
     def test_get_enabled_channels(self, db_session):
         """Test getting enabled channels for a user."""
+        user = _make_user(db_session)
         pref = UserNotificationPreference(
-            user_id=1,
+            user_id=user.id,
             notification_type="booking_confirmed",
             channel="email",
             enabled=True,
@@ -470,7 +491,7 @@ class TestPreferenceService:
         db_session.add(pref)
         db_session.commit()
 
-        channels = PreferenceService.get_enabled_channels(1, "booking_confirmed")
+        channels = PreferenceService.get_enabled_channels(user.id, "booking_confirmed")
         assert "email" in channels
 
 
@@ -614,8 +635,9 @@ class TestNotificationIntegration:
 
     def test_preference_links_to_user_and_notification(self, db_session):
         """Test that preferences link users to notification types."""
+        user = _make_user(db_session)
         pref = UserNotificationPreference(
-            user_id=1,
+            user_id=user.id,
             notification_type="booking_confirmed",
             channel="email",
             enabled=False,
@@ -623,7 +645,7 @@ class TestNotificationIntegration:
         db_session.add(pref)
         db_session.commit()
 
-        assert pref.user_id == 1
+        assert pref.user_id == user.id
         assert pref.notification_type == "booking_confirmed"
         assert pref.channel == "email"
         assert pref.enabled is False

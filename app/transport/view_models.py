@@ -53,7 +53,7 @@ class AdminDashboardViewModel:
                 active=booking_service.get_active_bookings_count(),
                 today=booking_service.get_today_bookings_count(),
                 today_revenue=booking_service.get_today_revenue(),
-                pending=booking_service.count_bookings_by_status('pending'),
+                pending=booking_service.count_bookings_by_status('pending_payment'),
                 confirmed=booking_service.count_bookings_by_status('confirmed'),
                 completed=booking_service.count_bookings_by_status('completed'),
                 cancelled=booking_service.count_bookings_by_status('cancelled')

@@ -1,10 +1,71 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "transport/base.html" %}
+{% block title %}Vehicles{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="current">Vehicles</span>{% endblock %}
 
-</body>
-</html>
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">Vehicles</h1>
+    <p class="page-subtitle">{{ total|default(0) }} vehicle(s)</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.register_vehicle') }}" class="btn btn-primary btn-sm">
+      <i class="fa-solid fa-plus"></i> Register Vehicle
+    </a>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <a href="?" class="filter-pill {% if not status %}active{% endif %}">All</a>
+  <a href="?status=active" class="filter-pill green {% if status == 'active' %}active green{% endif %}">Active</a>
+  <a href="?status=pending" class="filter-pill {% if status == 'pending' %}active{% endif %}">Pending</a>
+  <a href="?status=maintenance" class="filter-pill {% if status == 'maintenance' %}active{% endif %}">Maintenance</a>
+</div>
+
+<div class="card">
+  <div class="t-table-wrap">
+    <table class="t-table">
+      <thead>
+        <tr>
+          <th>Plate</th>
+          <th>Vehicle</th>
+          <th>Class</th>
+          <th>Capacity</th>
+          <th>Owner</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if vehicles %}
+          {% for v in vehicles %}
+          <tr>
+            <td><a href="{{ safe_url('transport.vehicles_show', id=v.id) }}" class="td-mono" style="color:var(--amber);">{{ v.license_plate }}</a></td>
+            <td>{{ v.make }} {{ v.model }} <span style="color:var(--text-muted);font-size:0.72rem;">({{ v.year }})</span></td>
+            <td>{{ v.vehicle_class.value|title }}</td>
+            <td>{{ v.passenger_capacity }} pax</td>
+            <td>{{ v.owner_type|title }}</td>
+            <td>
+              <span class="badge badge-{{ 'green' if v.status == 'active' else 'amber' if v.status == 'pending' else 'gray' }}">{{ v.status|title }}</span>
+            </td>
+            <td>
+              <div style="display:flex;gap:4px;">
+                <a href="{{ safe_url('transport.vehicles_show', id=v.id) }}" class="btn btn-secondary btn-sm btn-icon"><i class="fa-solid fa-eye"></i></a>
+                <a href="{{ safe_url('transport.vehicles_edit', id=v.id) }}" class="btn btn-secondary btn-sm btn-icon"><i class="fa-solid fa-pen"></i></a>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="7">
+            <div class="empty-state" style="padding:32px;">
+              <i class="fa-solid fa-van-shuttle"></i>
+              <p>No vehicles found</p>
+            </div>
+          </td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
