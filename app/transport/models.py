@@ -813,6 +813,39 @@ class Vehicle(TransportBase):
 
 
 # ===========================================================================
+# TRANSPORT OFFERINGS (Catalog of available transport types)
+# ===========================================================================
+
+class TransportOffering(TransportBase):
+    """Catalog of available transport offerings (vehicles/services)."""
+
+    __tablename__ = "transport_offerings"
+
+    __table_args__ = (
+        Index("ix_offering_code", "code", unique=True),
+        Index("ix_offering_active", "is_active", "is_deleted"),
+        CheckConstraint("min_seats > 0", name="chk_offering_min_seats"),
+        CheckConstraint("max_seats >= min_seats", name="chk_offering_max_ge_min"),
+        CheckConstraint("default_seats >= min_seats AND default_seats <= max_seats",
+                        name="chk_offering_default_valid"),
+    )
+
+    code = db.Column(db.String(50), nullable=False, unique=True, index=True)
+    display_name = db.Column(db.String(100), nullable=False)
+    min_seats = db.Column(db.Integer, nullable=False, default=1)
+    max_seats = db.Column(db.Integer, nullable=False, default=1)
+    default_seats = db.Column(db.Integer, nullable=False, default=1)
+    booking_mode = db.Column(db.String(20), nullable=False, default="capacity")
+
+    # Operational flags
+    is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    is_deleted = db.Column(db.Boolean, default=False, nullable=False, index=True)
+
+    # Metadata for vehicle eligibility
+    offering_metadata = db.Column(JSONB, default=lambda: {})
+
+
+# ===========================================================================
 # DRIVER VEHICLE HISTORY (Track everything that happens)
 # ===========================================================================
 
@@ -2513,6 +2546,176 @@ def get_vehicle_history(vehicle_id, days=30):
     ).order_by(DriverVehicleHistory.started_at.desc()).all()
 
     return history
+
+
+# ===========================================================================
+# INITIALIZATION
+# ===========================================================================
+
+class ReservationState(str, Enum):
+    """Reservation lifecycle states (Transport-owned)."""
+    DRAFT = "draft"
+    HELD = "held"
+    RESERVED = "reserved"
+    MATERIALIZED = "materialized"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+
+
+class ReservationObligationState(str, Enum):
+    """Reservation-side financial obligation status.
+
+    Refund outcomes (REFUNDED, PARTIALLY_REFUNDED) are intentionally absent
+    here. If they become necessary, they must be admitted only when the
+    underlying BookingPayment lifecycle supports them. Wallet/Payment
+    remains the authoritative owner of refund state.
+    """
+    UNPAID = "unpaid"
+    DEPOSITED = "deposited"
+    PAID = "paid"
+
+
+# ===========================================================================
+# TRANSPORT RESERVATION (D3 - TH-3-D3)
+# ===========================================================================
+
+class TransportReservation(TransportBase):
+    """Transport reservation (D3 - TH-3-D3).
+
+    Frozen boundaries:
+        Reservation ≠ Booking ≠ Assignment ≠ Payment ≠ Execution
+
+    State machine: DRAFT → HELD → RESERVED → MATERIALIZED → COMPLETED/CANCELLED/EXPIRED
+    Obligation state: UNPAID → DEPOSITED → PAID
+
+    Payment metadata recorded; Wallet/Payment owns actual money movement.
+    """
+    __tablename__ = "transport_reservations"
+    __table_args__ = (
+        Index("ix_reservation_reference", "reservation_reference", unique=True),
+        UniqueConstraint("reserving_user_id", "idempotency_key", name="uq_reservation_idem"),
+        Index("ix_reservation_reserving_user", "reserving_user_id", "created_at"),
+        Index("ix_reservation_state", "state", "created_at"),
+        Index("ix_reservation_window", "window_start", "window_end"),
+        Index("ix_reservation_provider", "provider_type", "provider_id", "offering_code"),
+        Index("ix_reservation_organisation", "on_behalf_of_organisation_id"),
+        CheckConstraint("window_end > window_start", name="chk_reservation_window"),
+        CheckConstraint("required_quantity > 0", name="chk_reservation_quantity"),
+    )
+
+    reservation_reference = db.Column(db.String(50), nullable=False)
+    idempotency_key = db.Column(db.String(128), nullable=False)
+    reserving_user_id = db.Column(db.BigInteger, db.ForeignKey("users.id"), nullable=False)
+    on_behalf_of_organisation_id = db.Column(
+        db.BigInteger, db.ForeignKey("organisations.id"), nullable=True
+    )
+    authority_evidence = db.Column(JSONB, default=lambda: {})
+    event_id = db.Column(db.BigInteger, nullable=True, index=True)
+
+    offering_code = db.Column(db.String(50), nullable=False, index=True)
+    provider_type = db.Column(db.String(20), nullable=False)
+    provider_id = db.Column(db.BigInteger, nullable=False)
+
+    window_start = db.Column(db.DateTime(timezone=True), nullable=False)
+    window_end = db.Column(db.DateTime(timezone=True), nullable=False)
+    required_quantity = db.Column(db.Integer, nullable=False, default=1)
+    mode = db.Column(db.String(20), nullable=False, default="capacity")
+
+    state = db.Column(db.String(30), nullable=False, default="draft", index=True)
+    obligation_state = db.Column(db.String(30), nullable=False, default="unpaid")
+
+    # Payment metadata — D3 records; Wallet owns money.
+    payment_method = db.Column(db.String(50), nullable=True)
+    payment_timing = db.Column(db.String(30), nullable=True)
+    commercial_policy_ref = db.Column(db.String(100), nullable=True)
+
+    deposit_required = db.Column(db.Boolean, default=False, nullable=False)
+    deposit_amount = db.Column(db.Numeric(10, 2), nullable=True)
+    deposit_currency = db.Column(db.String(10), nullable=True)
+    deposit_due_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    wallet_transaction_reference = db.Column(db.String(255), nullable=True)
+
+    context_source = db.Column(db.String(50), nullable=True)
+    context_ref = db.Column(db.String(100), nullable=True)
+
+    policy_snapshot = db.Column(JSONB, default=lambda: {})
+    reservation_metadata = db.Column(JSONB, default=lambda: {})
+    audit_log = db.Column(JSONB, default=lambda: [])
+
+    lines = relationship(
+        "TransportReservationLine",
+        back_populates="reservation",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class TransportReservationLine(TransportBase):
+    """A single line item within a TransportReservation.
+
+    One line per vehicle (specific mode) or per unit (capacity mode).
+    """
+    __tablename__ = "transport_reservation_lines"
+    __table_args__ = (
+        Index("ix_line_reservation", "reservation_id", "created_at"),
+        Index("ix_line_vehicle", "vehicle_id", "state"),
+        Index("ix_line_offering", "offering_code", "state"),
+        CheckConstraint("vehicle_id IS NULL OR vehicle_id > 0", name="chk_line_vehicle_id"),
+    )
+
+    reservation_id = db.Column(db.BigInteger, db.ForeignKey("transport_reservations.id"), nullable=False)
+    offering_code = db.Column(db.String(50), nullable=False)
+    vehicle_id = db.Column(db.BigInteger, nullable=True)
+    window_start = db.Column(db.DateTime(timezone=True), nullable=False)
+    window_end = db.Column(db.DateTime(timezone=True), nullable=False)
+    state = db.Column(db.String(30), nullable=False, default="held")
+    line_metadata = db.Column(JSONB, default=lambda: {})
+
+    # Relationships
+    reservation = relationship(
+        "TransportReservation",
+        back_populates="lines",
+        cascade="delete",
+        foreign_keys=[reservation_id],
+    )
+
+
+# Provider offering supply declarations (TH-3-D3)
+# -------------------------------
+# Declared supply slices for capacity management.
+# Invariant: no overlapping (provider_type, provider_id, offering_code) windows.
+#
+
+class ProviderOfferingSupply(TransportBase):
+    """Declared supply slice for a provider/offering.
+
+    Invariants:
+      - (provider_type, provider_id, offering_code) window [start, end) must not overlap.
+      - total_units > 0
+    """
+    __tablename__ = "provider_offering_supply"
+    __table_args__ = (
+        Index("ix_supply_provider_offering", "provider_type", "provider_id", "offering_code"),
+        Index("ix_supply_window", "window_start", "window_end"),
+        CheckConstraint("total_units > 0", name="chk_supply_total_positive"),
+        CheckConstraint("window_end > window_start", name="chk_supply_window"),
+    )
+
+    provider_type = db.Column(db.String(20), nullable=False)
+    provider_id = db.Column(db.BigInteger, nullable=False)
+    offering_code = db.Column(db.String(50), nullable=False)
+    window_start = db.Column(db.DateTime(timezone=True), nullable=False)
+    window_end = db.Column(db.DateTime(timezone=True), nullable=False)
+    total_units = db.Column(db.Integer, nullable=False)
+
+    # Optional: link to a specific vehicle if this supply is vehicle-specific
+    vehicle_id = db.Column(db.BigInteger, db.ForeignKey("transport_vehicles.id"), nullable=True)
+
+    is_deleted = db.Column(db.Boolean, default=False, nullable=False, index=True)
+
+    # Relationships
+    vehicle = relationship("Vehicle", foreign_keys=[vehicle_id])
 
 
 # ===========================================================================

@@ -268,6 +268,10 @@ def app(setup_database):
         seed_all(verbose=False)
         print("[OK] Seeded global RBAC (roles/permissions/links) at session bootstrap")
 
+        from app.transport.services.offering_registry import TransportOfferingRegistry
+        TransportOfferingRegistry.ensure_defaults()
+        print("[OK] Seeded default transport offerings")
+
         if os.getenv('SEED_TEST_DB', '') == '1':
             from app.identity.models.roles_permission import get_or_create_role
             from app.identity.models.user import User, UserRole
