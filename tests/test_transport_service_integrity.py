@@ -328,6 +328,56 @@ class TestUpdateDriverStatusString:
         assert result['data']['updates']['compliance_status'] == 'pending_review'
 
 
+class TestUpdateDriverStatusErrorPaths:
+    """TH-3-D2 EVIDENCE GATE §17 — provider_service error paths must raise
+    typed errors, not TypeError from unsupported exception kwargs.
+
+    The historical finding (provider_service.py:1223) passed ``code=`` to
+    ServiceUnavailableError; the same function also passed ``code=`` to
+    PermissionError (provider_service.py:1142-1145). Neither exception
+    accepts ``code``, so the affected paths raised TypeError instead of the
+    typed error. These tests execute the real paths.
+    """
+
+    def test_foreign_driver_update_raises_permission_error(
+        self, provider_service, driver_profile, admin, req_ctx
+    ):
+        from app.identity.models.user import User
+        from app.utils.exceptions import PermissionError
+
+        other = User(
+            public_id=str(uuid.uuid4()),
+            username=f"th15_foreign_{uuid.uuid4().hex[:8]}",
+            email=f"th15_foreign_{uuid.uuid4().hex[:8]}@example.com",
+            is_verified=True,
+            is_active=True,
+            email_verified=True,
+        )
+        other.set_password("Password123!")
+        db.session.add(other)
+        db.session.commit()
+        assert other.id != driver_profile.user_id
+        with pytest.raises(PermissionError):
+            provider_service.update_driver_status(
+                driver_profile.id, {'is_online': True}, user_id=other.id
+            )
+
+    def test_db_error_during_status_update_raises_service_unavailable(
+        self, provider_service, driver_profile, admin, req_ctx, monkeypatch
+    ):
+        from sqlalchemy.exc import OperationalError
+        from app.utils.exceptions import ServiceUnavailableError
+
+        def _boom():
+            raise OperationalError("probe", {}, Exception("forced db failure"))
+
+        monkeypatch.setattr(db.session, "commit", _boom)
+        with pytest.raises(ServiceUnavailableError):
+            provider_service.update_driver_status(
+                driver_profile.id, {'is_online': True}
+            )
+
+
 class TestUpdateVehicleStatus:
     """T15-09: update_vehicle_status works."""
 

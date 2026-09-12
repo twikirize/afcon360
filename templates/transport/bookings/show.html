@@ -191,6 +191,10 @@
         </div>
         {% endfor %}
       {% endif %}
+      <div class="payment-row">
+        <span>Estimated Fare</span>
+        <span style="font-family:var(--font-mono);">${{ booking.base_price|default('0.00') }}</span>
+      </div>
       <div class="payment-row payment-total">
         <span>Total</span>
         <span style="font-family:var(--font-mono);">${{ booking.total_amount|default('0.00') }}</span>

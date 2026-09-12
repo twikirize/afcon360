@@ -234,9 +234,8 @@ class Organisation(BaseModel):
     
     def get_capabilities(self):
         """Get capabilities based on organization type"""
-        if not self.business_category:
-            return get_organization_capabilities(OrganizationType.MERCHANT)
-        return get_organization_capabilities(self.business_category)
+        org_type = self.business_category or OrganizationType.CORPORATE
+        return get_organization_capabilities(org_type)
     
     def can_manage_staff(self):
         """Check if organization can manage staff"""

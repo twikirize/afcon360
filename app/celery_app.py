@@ -179,6 +179,14 @@ def make_celery(app=None):
             "task": "transport.stall_recovery",
             "schedule": 120.0,  # every 2 minutes
         },
+        # Scheduled-route execution (TH-3-D3): resolve due ScheduledRoutes
+        # (next_departure passed, departure not yet claimed) into the canonical
+        # dispatch chain. A minute cadence is tight enough to honour scheduled
+        # departures without racing the 60s dispatch-recovery sweep.
+        "transport-scheduled-route-execution": {
+            "task": "transport.scheduled_route_execution",
+            "schedule": 60.0,  # every minute
+        },
     }
 
     celery.conf.update(

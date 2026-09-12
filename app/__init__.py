@@ -664,6 +664,9 @@ def create_app(config_object=None) -> Flask:
     @login_manager.unauthorized_handler
     def unauthorized():
         """Return JSON for API requests instead of redirecting to login page."""
+        # Check if this is an API request (Flask-RESTful or /api/ prefix)
+        if request.path.startswith('/api/'):
+            return jsonify({"ok": False, "error": "Not authenticated"}), 401
         # Check if this is an AJAX request (fetch sends Content-Type: application/json)
         if request.is_json or request.headers.get('Content-Type') == 'application/json':
             return jsonify({"ok": False, "error": "Not authenticated"}), 401

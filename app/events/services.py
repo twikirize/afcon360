@@ -935,6 +935,17 @@ class EventService:
         if not approver:
             return False, "Approver not found"
 
+        is_target = (
+            (req.to_user_id is not None and approver.id == req.to_user_id)
+            or (
+                req.to_organization_id is not None
+                and approver.has_org_role(req.to_organization_id, "org_owner", "org_admin")
+            )
+        )
+        is_admin = approver.is_super_admin()
+        if not (is_target or is_admin):
+            return False, "Unauthorized to approve this transfer request"
+
         # In a real system, verify if approver has the right to accept (e.g. is target owner or admin)
         # For hardening, we explicitly ensure the change is atomic and logged.
         

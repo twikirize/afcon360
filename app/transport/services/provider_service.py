@@ -1140,8 +1140,7 @@ class ProviderService:
             # Verify permission
             if user_id and driver.user_id != user_id:
                 raise PermissionError(
-                    message="Cannot update another driver's status",
-                    code="PERMISSION_DENIED"
+                    message="Cannot update another driver's status"
                 )
 
             updates = {}
@@ -1222,7 +1221,8 @@ class ProviderService:
             logger.error(f"Database error: {e}", exc_info=True)
             raise ServiceUnavailableError(
                 message="Status update service unavailable",
-                code="SERVICE_UNAVAILABLE"
+                service_name="driver_status",
+                retry_after=60,
             )
 
     # ===========================================================================
@@ -1358,6 +1358,7 @@ class ProviderService:
                         'license_plate': driver.current_vehicle.license_plate if driver.current_vehicle else None,
                         'vehicle_class': driver.current_vehicle.vehicle_class.value if driver.current_vehicle else None
                     },
+                    'vehicle_id': driver.current_vehicle.id if driver.current_vehicle else None,
                     'vehicle_classes': driver.vehicle_classes or [],
                     'average_rating': float(driver.average_rating) if driver.average_rating else 0.0,
                     'acceptance_rate': float(driver.acceptance_rate) if driver.acceptance_rate is not None else 100.0,

@@ -24,12 +24,12 @@ from threading import Barrier, Thread
 import pytest
 
 from app.extensions import db
-from app.identity.models.user import User
 from app.transport.models import (
     Booking,
     BookingStatus,
     ComplianceStatus,
     DriverProfile,
+    DriverVehicleHistory,
     ServiceType,
     Vehicle,
     VehicleClass,
@@ -327,8 +327,7 @@ class TestConcurrentBookingPerDriver:
         assert (errors[0] or errors[1]).kind == "driver_unavailable"
 
         _delete(app, (Booking, bk1_id), (Booking, bk2_id),
-                (DriverProfile, drv), (Vehicle, veh),
-                (User, pax_id), (User, drv_user))
+                (DriverProfile, drv), (Vehicle, veh))
 
 
 # =====================================================================
@@ -371,8 +370,7 @@ class TestConcurrentVehicleClaim:
         assert (errors[0] or errors[1]).kind == "vehicle_unavailable"
 
         _delete(app, (Booking, bk1_id), (Booking, bk2_id),
-                (DriverProfile, drv1), (DriverProfile, drv2), (Vehicle, veh),
-                (User, pax_id), (User, drv1_user), (User, drv2_user))
+                (DriverProfile, drv1), (DriverProfile, drv2), (Vehicle, veh))
 
 
 # =====================================================================
@@ -397,8 +395,7 @@ class TestConcurrentCancelVsClaim:
                 AssignmentService.claim(bk_ref, drv, veh, actor=None)
         assert exc.value.kind == "booking_unavailable"
 
-        _delete(app, (Booking, bk_id), (DriverProfile, drv), (Vehicle, veh),
-                (User, pax_id), (User, drv_user))
+        _delete(app, (Booking, bk_id), (DriverProfile, drv), (Vehicle, veh))
 
     def test_claim_before_cancel_r1_prevents_double_assign(self, app):
         pax_id = _create_user(app, "pax4b")
@@ -432,8 +429,7 @@ class TestConcurrentCancelVsClaim:
         # Cancel never mutated the assignment; release cleanly instead.
         with app.app_context():
             AssignmentService.release(bk_id, BookingStatus.COMPLETED, actor=None, reason="test")
-        _delete(app, (Booking, bk_id), (DriverProfile, drv), (Vehicle, veh),
-                (User, pax_id), (User, drv_user))
+        _delete(app, (Booking, bk_id), (DriverProfile, drv), (Vehicle, veh))
 
 
 # =====================================================================
@@ -484,8 +480,7 @@ class TestLateReleaseProtection:
         with app.app_context():
             AssignmentService.release(bkB_id, BookingStatus.COMPLETED, actor=None, reason="test")
         _delete(app, (Booking, bkA_id), (Booking, bkB_id),
-                (DriverProfile, drv), (Vehicle, veh),
-                (User, pax_id), (User, drv_user))
+                (DriverProfile, drv), (Vehicle, veh))
 
 
 # =====================================================================
@@ -674,3 +669,78 @@ class TestStallRecovery:
         with app.app_context():
             AssignmentService.release(bk_id, BookingStatus.CANCELLED, actor=None, reason="dry_run_test")
         _delete(app, (Booking, bk_id), (DriverProfile, drv), (Vehicle, veh))
+
+
+# =====================================================================
+# Dispatch discovery + offer wiring tests (TH-3-D2 §20/§23)
+# =====================================================================
+
+def _make_matchable_driver(app, label="mch"):
+    """Driver + owned vehicle + open DriverVehicleHistory + fresh canonical
+    location, so the pool->ranker pipeline treats the driver as matchable
+    (fresh canonical coordinates, ≥40 rank score)."""
+    user_id, driver_id = _create_driver(app, f"m_{label}")
+    veh_id = _create_vehicle(app, driver_id, f"m_{label}")
+    with app.app_context():
+        driver = db.session.get(DriverProfile, driver_id)
+        driver.last_location = {
+            'latitude': 0.3476,
+            'longitude': 32.5825,
+            'accuracy': 5.0,
+            'updated_at': datetime.now(timezone.utc).isoformat(),
+        }
+        driver.location_updated_at = datetime.now(timezone.utc)
+        history = DriverVehicleHistory(
+            driver_id=driver_id,
+            vehicle_id=veh_id,
+            assignment_reason="test_dispatch",
+            started_at=datetime.now(timezone.utc),
+            ended_at=None,
+        )
+        db.session.add(history)
+        db.session.commit()
+        hist_id = history.id
+    return user_id, driver_id, veh_id, hist_id
+
+
+class TestDispatchDiscoveryAndOffer:
+    def test_discover_and_offer_creates_offer_for_confirmed_unassigned(self, app, monkeypatch):
+        fake = _FakeRedis()
+        monkeypatch.setattr("app.transport.services.offer_service.redis_client", fake)
+
+        pax_id = _create_user(app, "paxDisp")
+        _, drv, veh, hist = _make_matchable_driver(app, "d1")
+        bk_id, bk_ref = _create_booking(app, pax_id, "disp")
+
+        with app.app_context():
+            assert db.session.get(Booking, bk_id).status == BookingStatus.CONFIRMED.value
+            assert db.session.get(Booking, bk_id).assigned_driver_id is None
+
+            from app.transport.services.matching_service import MatchingService
+            outcome = MatchingService.discover_and_offer(bk_id)
+
+        assert outcome["offers_created"] >= 1, outcome
+        offer = OfferService.get_offer(bk_ref)
+        assert offer is not None
+        assert offer["driver_id"] == drv
+
+        _delete(app, (DriverVehicleHistory, hist), (Booking, bk_id),
+                (DriverProfile, drv), (Vehicle, veh))
+
+    def test_dispatch_recovery_rediscovery_offers_confirmed_unassigned(self, app, monkeypatch):
+        fake = _FakeRedis()
+        monkeypatch.setattr("app.transport.services.offer_service.redis_client", fake)
+
+        pax_id = _create_user(app, "paxRec")
+        _, drv, veh, hist = _make_matchable_driver(app, "d2")
+        bk_id, bk_ref = _create_booking(app, pax_id, "rec")
+
+        from app.tasks.transport_recovery import dispatch_recovery
+        result = dispatch_recovery()
+
+        assert result.get("rediscovered") >= 1, result
+        assert result.get("offers_created") >= 1, result
+        assert OfferService.get_offer(bk_ref) is not None
+
+        _delete(app, (DriverVehicleHistory, hist), (Booking, bk_id),
+                (DriverProfile, drv), (Vehicle, veh))

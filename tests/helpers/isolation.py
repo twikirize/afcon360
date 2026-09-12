@@ -138,6 +138,30 @@ _TABLE_SKIP_PREFIXES = ("_",)
 _TABLE_SKIP_NAMES = {"alembic_version", "_test_rows"}
 
 
+def _get_fk_columns(inspector, table_name: str) -> List[str]:
+    """Return FK column names that can block parent-row deletion.
+
+    Excludes CASCADE / SET NULL / SET DEFAULT (Postgres handles those) and
+    deferrable-deferred FKs. Only NO ACTION / RESTRICT columns are returned.
+    """
+    try:
+        fks = inspector.get_foreign_keys(table_name)
+    except Exception:
+        return []
+    cols: List[str] = []
+    for fk in fks:
+        options = fk.get("options") or {}
+        ondelete = (options.get("ondelete") or "NO ACTION").upper()
+        if ondelete in ("CASCADE", "SET NULL", "SET DEFAULT"):
+            continue
+        if options.get("deferrable") and (options.get("initially") or "").upper() == "DEFERRED":
+            continue
+        for c in fk.get("constrained_columns", []):
+            if c not in cols:
+                cols.append(c)
+    return cols
+
+
 def _get_pk_columns(inspector, table_name: str) -> List[str]:
     """Return ordered PK column names for a table."""
     try:
@@ -157,6 +181,7 @@ def snapshot_table_rows_readonly(conn, table_name: str) -> Dict[str, Any]:
     inspector = sa_inspect(conn.engine)
     columns = [col["name"] for col in inspector.get_columns(table_name)]
     pk_cols = _get_pk_columns(inspector, table_name)
+    fk_cols = _get_fk_columns(inspector, table_name)
 
     result = conn.execute(text(f'SELECT * FROM "{table_name}"'))
     all_rows = [tuple(row) for row in result]
@@ -190,12 +215,29 @@ def snapshot_table_rows_readonly(conn, table_name: str) -> Dict[str, Any]:
         if sample is not None and isinstance(sample, int):
             snap["pk_type"] = "int"
             snap["max_pk"] = max(values) if values else 0
+            if fk_cols:
+                fk_idx_map = {fc: columns.index(fc) for fc in fk_cols if fc in columns}
+                if fk_idx_map:
+                    snap["fk_columns"] = list(fk_idx_map.keys())
+                    snap["fk_baseline"] = {
+                        row[pk_idx]: {fc: row[idx] for fc, idx in fk_idx_map.items()}
+                        for row in all_rows
+                    }
         elif sample is not None and (
             isinstance(sample, str) and len(sample) == 36
             or isinstance(sample, UUID)
         ):
             snap["pk_type"] = "uuid"
             snap["uuid_pks"] = {str(v) if isinstance(v, UUID) else v for v in values}
+            if fk_cols:
+                fk_idx_map = {fc: columns.index(fc) for fc in fk_cols if fc in columns}
+                if fk_idx_map:
+                    snap["fk_columns"] = list(fk_idx_map.keys())
+                    snap["fk_baseline"] = {
+                        (str(row[pk_idx]) if isinstance(row[pk_idx], UUID) else row[pk_idx]):
+                            {fc: row[idx] for fc, idx in fk_idx_map.items()}
+                        for row in all_rows
+                    }
         else:
             snap["pk_type"] = "other"
             if not all_rows:
@@ -214,6 +256,61 @@ def snapshot_table_rows_readonly(conn, table_name: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Cleanup logic
 # ---------------------------------------------------------------------------
+
+def revert_fk_mutations(conn, table_name: str, snap: Dict[str, Any]) -> int:
+    """Restore FK columns on pre-existing rows to their session-start values.
+
+    Runs BEFORE cleanup_table's delete pass, so removing a test-created parent
+    cannot orphan a pre-existing child that was repointed mid-test.
+    """
+    from sqlalchemy import bindparam
+
+    fk_baseline = snap.get("fk_baseline") or {}
+    fk_columns = snap.get("fk_columns") or []
+    pk_cols = snap.get("pk_columns") or []
+    if not fk_baseline or not fk_columns or len(pk_cols) != 1:
+        return 0
+
+    pk_col = pk_cols[0]
+    pk_type = snap.get("pk_type")
+    cols_sql = ", ".join(f'"{c}"' for c in [pk_col, *fk_columns])
+
+    if pk_type == "int":
+        max_pk = snap.get("max_pk", 0)
+        if max_pk == 0:
+            return 0
+        rows = conn.execute(
+            text(f'SELECT {cols_sql} FROM "{table_name}" WHERE "{pk_col}" <= :max_pk'),
+            {"max_pk": max_pk},
+        ).all()
+    elif pk_type == "uuid":
+        uuid_pks = list(snap.get("uuid_pks") or set())
+        if not uuid_pks:
+            return 0
+        stmt = text(
+            f'SELECT {cols_sql} FROM "{table_name}" WHERE "{pk_col}" IN :pks'
+        ).bindparams(bindparam("pks", expanding=True))
+        rows = conn.execute(stmt, {"pks": uuid_pks}).all()
+    else:
+        return 0
+
+    reverted = 0
+    for row in rows:
+        pk_val = row[0]
+        key = str(pk_val) if isinstance(pk_val, UUID) else pk_val
+        baseline = fk_baseline.get(key)
+        if baseline is None:
+            continue
+        for i, col in enumerate(fk_columns, start=1):
+            baseline_val = baseline.get(col)
+            if row[i] != baseline_val:
+                conn.execute(
+                    text(f'UPDATE "{table_name}" SET "{col}" = :v WHERE "{pk_col}" = :pk'),
+                    {"v": baseline_val, "pk": pk_val},
+                )
+                reverted += 1
+    return reverted
+
 
 def cleanup_table(session, table_name: str, snap: Dict[str, Any]) -> int:
     """Delete rows inserted during the test. Returns count deleted.
@@ -476,6 +573,13 @@ def cleanup_inserted_rows(
     # FK-safe delete order is the same for every cleanup — use the cached one.
     delete_order = _get_delete_order(engine)
 
+    # Pass 1: revert FK mutations on pre-existing rows.
+    for table_name in delete_order:
+        snap = snapshot.get(table_name)
+        if snap:
+            revert_fk_mutations(conn, table_name, snap)
+
+    # Pass 2: delete test-created rows in FK-safe order.
     deleted: Dict[str, int] = {}
     for table_name in delete_order:
         snap = snapshot[table_name]

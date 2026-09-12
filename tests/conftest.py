@@ -34,9 +34,11 @@ import os
 import pickle
 import pytest
 import sys
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 from sqlalchemy import create_engine, text, inspect as sa_inspect
+from sqlalchemy.pool import NullPool
 from flask_migrate import stamp as alembic_stamp
 
 # Ensure project root is in sys.path
@@ -146,40 +148,104 @@ masked_url = (
 print(f"Using test database: {masked_url}")
 
 
+# ===================================================================
+# Advisory-lock serialization  (cross-session test-DB mutual exclusion)
+# ===================================================================
+# Two pytest sessions must never touch the test DB at the same time — that is
+# the source of the repeated HEAD/ISOLATION deadlocks. We serialize the WHOLE
+# session on a single PostgreSQL advisory lock:
+#
+#   - the lock is acquired on a dedicated, NON-POOLED connection (NullPool)
+#     and held for the entire session
+#   - a second session blocks here (waits) until the first session finishes
+#   - if a session dies (Ctrl-C, kill, crash), Postgres auto-releases the lock
+#     when its socket closes — there is nothing to clean up manually
+#
+# The lock key is arbitrary but MUST be identical across sessions.
+_TEST_DB_LOCK_KEY = 239847651
+_TEST_DB_LOCK_TIMEOUT = int(os.getenv("TEST_DB_LOCK_TIMEOUT", "1800"))
+
+# Module-level holders so teardown can always release the lock, even if a
+# test raised.
+_guard_engine = None
+_guard_conn = None
+
+
 @pytest.fixture(scope='session', autouse=True)
 def setup_database():
-    """Runs once per test session: ensures the test DB exists and is built."""
+    """Runs once per test session: acquires the advisory lock, then ensures
+    the test DB exists and is built."""
+    global _guard_engine, _guard_conn
+
     db_url = TEST_DATABASE_URL
     db_name = db_url.split('/')[-1]
     default_url = db_url.replace('/' + db_name, '/postgres')
 
-    engine_default = create_engine(default_url, isolation_level="AUTOCOMMIT")
+    # --- Acquire the cross-session advisory lock (blocking w/ timeout). ---
+    _guard_engine = create_engine(db_url, poolclass=NullPool)
+    _guard_conn = _guard_engine.connect()
+    lock_started = time.time()
+    while True:
+        got = _guard_conn.execute(
+            text("SELECT pg_try_advisory_lock(:key)"),
+            {"key": _TEST_DB_LOCK_KEY},
+        ).scalar()
+        if got:
+            print("[OK] Acquired advisory lock; test session serialized.")
+            break
+        if time.time() - lock_started > _TEST_DB_LOCK_TIMEOUT:
+            _guard_conn.close()
+            _guard_engine.dispose()
+            _guard_conn = None
+            _guard_engine = None
+            raise RuntimeError(
+                f"[FAIL] Could not acquire advisory lock {_TEST_DB_LOCK_KEY} "
+                f"within {_TEST_DB_LOCK_TIMEOUT}s; is another pytest session "
+                "still holding the test DB?"
+            )
+        time.sleep(1.0)
+
     try:
-        engine_test = create_engine(db_url)
-        with engine_test.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        print(f"[OK] Test database '{db_name}' already exists.")
-    except Exception:
-        with engine_default.connect() as conn:
-            conn.execute(text(f"CREATE DATABASE {db_name}"))
-        print(f"[OK] Test database '{db_name}' created.")
+        engine_default = create_engine(default_url, isolation_level="AUTOCOMMIT")
+        try:
+            engine_test = create_engine(db_url)
+            with engine_test.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            print(f"[OK] Test database '{db_name}' already exists.")
+        except Exception:
+            with engine_default.connect() as conn:
+                conn.execute(text(f"CREATE DATABASE {db_name}"))
+            print(f"[OK] Test database '{db_name}' created.")
 
-    app = create_app(config_object=TestingConfig)
-    app.config['SQLALCHEMY_DATABASE_URI'] = db_url
-    with app.app_context():
-        from app.extensions import db
+        app = create_app(config_object=TestingConfig)
+        app.config['SQLALCHEMY_DATABASE_URI'] = db_url
+        with app.app_context():
+            from app.extensions import db
 
-        inspector = sa_inspect(db.engine)
-        if "users" not in inspector.get_table_names():
-            db.create_all()
-            print("[OK] Schema built from current SQLAlchemy models (db.create_all).")
-        else:
-            print("[OK] Test database schema already present; skipping rebuild.")
+            inspector = sa_inspect(db.engine)
+            if "users" not in inspector.get_table_names():
+                db.create_all()
+                print("[OK] Schema built from current SQLAlchemy models (db.create_all).")
+            else:
+                print("[OK] Test database schema already present; skipping rebuild.")
 
-        alembic_stamp(revision="head", purge=True)
-        print("[OK] Alembic head stamped.")
-
-    yield
+            alembic_stamp(revision="head", purge=True)
+            print("[OK] Alembic head stamped.")
+        yield
+    finally:
+        # --- Release the advisory lock so the next session can proceed. ---
+        if _guard_conn is not None:
+            try:
+                _guard_conn.execute(
+                    text("SELECT pg_advisory_unlock(:key)"),
+                    {"key": _TEST_DB_LOCK_KEY},
+                )
+                print("[OK] Released advisory lock.")
+            finally:
+                _guard_conn.close()
+                _guard_engine.dispose()
+                _guard_conn = None
+                _guard_engine = None
 
 
 # ===================================================================
@@ -197,6 +263,10 @@ def app(setup_database):
     with app.app_context():
         table_count = assert_migrated_postgres_database(db.engine)
         print(f"[OK] PostgreSQL test database verified (tables count: {table_count})")
+
+        from app.auth.seed_roles import seed_all
+        seed_all(verbose=False)
+        print("[OK] Seeded global RBAC (roles/permissions/links) at session bootstrap")
 
         if os.getenv('SEED_TEST_DB', '') == '1':
             from app.identity.models.roles_permission import get_or_create_role

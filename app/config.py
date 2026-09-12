@@ -207,6 +207,16 @@ class Config:
     WALLET_MAX_WITHDRAWAL = Decimal(os.getenv("WALLET_MAX_WITHDRAWAL", "5000"))
     WALLET_MAX_TRANSFER  = Decimal(os.getenv("WALLET_MAX_TRANSFER",  "2000"))
 
+    # ---- Transport dispatch (TH-3-D2, docs/transport/d2-atomic-dispatch-claim.md §4.1) ----
+    # Documented P0 defaults. Configurable override at ship/runtime; an override
+    # changes only the constant, never the guard semantics (§5/§9).
+    TRANSPORT_OFFER_TTL_SECONDS      = int(os.getenv("TRANSPORT_OFFER_TTL_SECONDS", "300"))
+    TRANSPORT_STALL_TIMEOUT_SECONDS  = int(os.getenv("TRANSPORT_STALL_TIMEOUT_SECONDS", "600"))
+    # Contained dispatch-loop knobs: max ranked candidates offered per booking,
+    # and the per-beat recovery batch cap.
+    TRANSPORT_DISPATCH_MAX_CANDIDATES = int(os.getenv("TRANSPORT_DISPATCH_MAX_CANDIDATES", "3"))
+    TRANSPORT_DISPATCH_RECOVERY_BATCH = int(os.getenv("TRANSPORT_DISPATCH_RECOVERY_BATCH", "50"))
+
     # ---- Email --------------------------------------------------------------
     MAIL_SERVER         = os.getenv("MAIL_SERVER",    "smtp.gmail.com")
     MAIL_PORT           = int(os.getenv("MAIL_PORT",  "587"))

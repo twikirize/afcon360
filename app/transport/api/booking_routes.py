@@ -13,6 +13,10 @@ from app.transport.models import (
     PaymentStatus, DriverProfile, Vehicle, ScheduledRoute
 )
 from app.auth.decorators import admin_required
+from app.transport.services.assignment_service import (
+    ACTIVE_ASSIGNMENT_STATUSES,
+    TERMINAL_RELEASE_STATUSES,
+)
 from app.transport.services.booking_service import _validate_booking_location_coordinates
 from app.transport.utils.helpers import paginate, filter_query, sort_query
 from datetime import datetime, timezone
@@ -247,13 +251,7 @@ class BookingDetailResource(Resource):
         """
         booking = _booking_by_reference_or_404(booking_reference)
 
-        ACTIVE_ASSIGNMENT = (
-            BookingStatus.ASSIGNED,
-            BookingStatus.DRIVER_EN_ROUTE,
-            BookingStatus.PICKUP_ARRIVED,
-            BookingStatus.IN_PROGRESS,
-        )
-        if booking.status in ACTIVE_ASSIGNMENT:
+        if booking.status in ACTIVE_ASSIGNMENT_STATUSES:
             return {
                 "success": False,
                 "error": "cannot delete a booking with an active assignment; "
@@ -309,13 +307,11 @@ class BookingStatusResource(Resource):
 
         # TH-3-D2: terminal transitions on an assigned booking go through the
         # canonical release (status -> terminal, clear assignment FKs, free
-        # resources with late-release protection) in one transaction.
-        TERMINAL_TARGETS = (
-            BookingStatus.COMPLETED,
-            BookingStatus.CANCELLED,
-            BookingStatus.NO_SHOW,
-            BookingStatus.DISPUTED,
-        )
+        # resources with late-release protection) in one transaction. DISPUTED
+        # is an ACTIVE ownership state (§9): entering DISPUTED keeps the
+        # resources latched; only a later terminal closure (COMPLETED /
+        # CANCELLED / NO_SHOW) releases them.
+        TERMINAL_TARGETS = TERMINAL_RELEASE_STATUSES
         if new_status in TERMINAL_TARGETS and (
             booking.assigned_driver_id is not None or booking.assigned_vehicle_id is not None
         ):

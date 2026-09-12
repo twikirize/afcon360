@@ -2061,6 +2061,7 @@ Important references include:
     app/accommodation/AFCON360_SEAMLESS_BOOKING_SPEC.md
     static/MOBILE_OPTIMIZATION.md
     BACKLOG.md
+    .opencode/MCP-STACK.md
 
 Additional domain specifications and ADRs take precedence for their specific
 domain.

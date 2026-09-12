@@ -33,19 +33,21 @@ logger = logging.getLogger(__name__)
 # Status sets -- single source of truth for active-assignment semantics
 # ---------------------------------------------------------------------------
 
-ACTIVE_ASSIGNMENT_STATUSES: tuple = (
+ACTIVE_ASSIGNMENT_STATUSES = frozenset({
     BookingStatus.ASSIGNED.value,
     BookingStatus.DRIVER_EN_ROUTE.value,
     BookingStatus.PICKUP_ARRIVED.value,
     BookingStatus.IN_PROGRESS.value,
-)
+    BookingStatus.DISPUTED.value,
+})
 
-TERMINAL_RELEASE_STATUSES: tuple = (
+TERMINAL_RELEASE_STATUSES = frozenset({
     BookingStatus.COMPLETED.value,
     BookingStatus.CANCELLED.value,
     BookingStatus.NO_SHOW.value,
-    BookingStatus.DISPUTED.value,
-)
+})
+
+CLAIMABLE_STATUSES = frozenset({BookingStatus.CONFIRMED.value})
 
 VEHICLE_ACTIVE_STATUS = "active"
 

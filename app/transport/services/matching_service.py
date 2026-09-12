@@ -40,6 +40,24 @@ class MatchingService:
         return None
 
     @staticmethod
+    def _ranked_candidates(booking: Booking):
+        """pool -> ranker. Returns (available_drivers, ranked_drivers)."""
+        provider_service = get_provider_service()
+        available_drivers = provider_service.get_available_drivers(
+            zone=booking.pickup_location.get('zone'),
+            vehicle_class=MatchingService._booking_vehicle_class(booking),
+            limit=10
+        )
+        if not available_drivers:
+            return available_drivers, []
+
+        ranked_drivers = MatchingService._rank_drivers_for_booking(
+            drivers=available_drivers,
+            booking=booking
+        )
+        return available_drivers, ranked_drivers
+
+    @staticmethod
     @monitor_endpoint("find_driver_for_booking")
     def find_driver_for_booking(booking_id: int) -> Dict[str, Any]:
         """
@@ -55,13 +73,7 @@ class MatchingService:
                     resource_id=booking_id
                 )
 
-            # Get available drivers via singleton provider service
-            provider_service = get_provider_service()
-            available_drivers = provider_service.get_available_drivers(
-                zone=booking.pickup_location.get('zone'),
-                vehicle_class=MatchingService._booking_vehicle_class(booking),
-                limit=10
-            )
+            available_drivers, ranked_drivers = MatchingService._ranked_candidates(booking)
 
             if not available_drivers:
                 return {
@@ -72,12 +84,6 @@ class MatchingService:
                         'available_drivers': 0
                     }
                 }
-
-            # Score and rank drivers
-            ranked_drivers = MatchingService._rank_drivers_for_booking(
-                drivers=available_drivers,
-                booking=booking
-            )
 
             if not ranked_drivers:
                 return {
@@ -126,6 +132,69 @@ class MatchingService:
                 'message': f"Error finding driver: {str(e)}",
                 'data': {'booking_id': booking_id}
             }
+
+    @staticmethod
+    @monitor_endpoint("discover_and_offer")
+    def discover_and_offer(booking_id: int, max_candidates: Optional[int] = None) -> Dict[str, Any]:
+        """TH-3-D2: wire the dispatch loop for a booking.
+
+        CONFIRMED+unassigned -> rediscover (pool -> ranker) -> transient offer
+        for the top ranked candidate(s). Offers are never authoritative;
+        ownership still transfers exclusively through ``AssignmentService.claim``.
+        Offer creation degrades safely: any Redis failure leaves the booking
+        CONFIRMED/unassigned for rediscovery on the next recovery beat.
+        """
+        from app.transport.services.offer_service import OfferService, OfferUnavailableError
+
+        try:
+            booking = db.session.get(Booking, booking_id)
+            if not booking:
+                return {'success': False, 'reason': 'booking_not_found', 'offers_created': 0}
+
+            _, ranked_drivers = MatchingService._ranked_candidates(booking)
+            if not ranked_drivers:
+                return {
+                    'success': False,
+                    'reason': 'no_suitable_drivers',
+                    'offers_created': 0,
+                    'ranked_count': 0,
+                }
+
+            if max_candidates is None:
+                max_candidates = int(
+                    current_app.config.get("TRANSPORT_DISPATCH_MAX_CANDIDATES", 3)
+                )
+
+            created: List[int] = []
+            for candidate in ranked_drivers[:max_candidates]:
+                driver_id = candidate.get('driver_id')
+                vehicle_id = candidate.get('vehicle_id')
+                if not driver_id or not vehicle_id:
+                    continue
+                try:
+                    OfferService.create_offer(booking.booking_reference, driver_id, vehicle_id)
+                    created.append(driver_id)
+                except OfferUnavailableError:
+                    current_app.logger.warning(
+                        "dispatch offer creation unavailable for booking %s; "
+                        "leaving for rediscovery", booking.booking_reference
+                    )
+                    break
+                except Exception as e:
+                    current_app.logger.warning(
+                        "dispatch offer creation failed for booking %s: %s",
+                        booking.booking_reference, e,
+                    )
+
+            return {
+                'success': True,
+                'offers_created': len(created),
+                'driver_ids': created,
+                'ranked_count': len(ranked_drivers),
+            }
+        except Exception as e:
+            current_app.logger.error(f"Error discovering/offering booking: {e}", exc_info=True)
+            return {'success': False, 'reason': 'error', 'offers_created': 0}
 
     @staticmethod
     def _rank_drivers_for_booking(drivers: List[Dict[str, Any]], booking: Booking) -> List[Dict[str, Any]]:
