@@ -16,6 +16,8 @@ Idempotency:
 from __future__ import annotations
 
 import logging
+import hashlib
+import json
 import secrets
 import string
 from datetime import datetime, timezone
@@ -112,14 +114,23 @@ class TransportReservationService:
                     "specific mode requires exactly `required_quantity` vehicle ids"
                 )
 
-        # -- 4. Idempotency lookup (before policy — so a retry that only differs
-        #      in non-material fields still converges)
+        # -- 4. Bind the retry key to a canonical material request.
+        request_fingerprint = cls._request_fingerprint(
+            offering_code=offering_code, provider_type=provider_type,
+            provider_id=provider_id, window_start=window_start,
+            window_end=window_end, required_quantity=required_quantity, mode=mode,
+            payment_method=payment_method, payment_timing=payment_timing,
+            commercial_policy_ref=commercial_policy_ref,
+            on_behalf_of_organisation_id=on_behalf_of_organisation_id,
+            event_id=event_id, context_source=context_source, context_ref=context_ref,
+            specific_vehicle_ids=specific_vehicle_ids, estimated_value=estimated_value,
+        )
         existing = cls._lookup_idempotent(
             reserving_user_id=actor.id,
             idempotency_key=idempotency_key,
         )
         if existing is not None:
-            return existing
+            return cls._return_matching_idempotent(existing, request_fingerprint)
 
         # -- 5. Policy evaluation
         decision: PolicyDecision = TransportReservationPolicyEvaluator.evaluate(
@@ -164,6 +175,7 @@ class TransportReservationService:
         reservation = TransportReservation(
             reservation_reference=cls._generate_reference(),
             idempotency_key=idempotency_key,
+            request_fingerprint=request_fingerprint,
             reserving_user_id=actor.id,
             on_behalf_of_organisation_id=on_behalf_of_organisation_id,
             authority_evidence=authority_evidence or {},
@@ -206,7 +218,7 @@ class TransportReservationService:
             # Concurrent create with same idempotency key — return the winner.
             winner = cls._lookup_idempotent(actor.id, idempotency_key)
             if winner is not None:
-                return winner
+                return cls._return_matching_idempotent(winner, request_fingerprint)
             raise ConflictError("Concurrent reservation creation") from exc
 
         # -- 9. Materialise lines under lock
@@ -253,6 +265,37 @@ class TransportReservationService:
             is_deleted=False,
         ).first()
 
+    @staticmethod
+    def _canonical_value(value):
+        if isinstance(value, datetime):
+            return value.astimezone(timezone.utc).isoformat(timespec="microseconds")
+        if isinstance(value, Decimal):
+            return format(value, "f")
+        return value
+
+    @classmethod
+    def _request_fingerprint(cls, **request) -> str:
+        """Hash a canonical representation of D3's material request inputs."""
+        canonical = {key: cls._canonical_value(value) for key, value in request.items()}
+        canonical["specific_vehicle_ids"] = sorted(
+            int(vehicle_id) for vehicle_id in (request["specific_vehicle_ids"] or [])
+        )
+        canonical["offering_code"] = str(canonical["offering_code"]).strip().lower()
+        canonical["provider_type"] = str(canonical["provider_type"]).strip().lower()
+        canonical["mode"] = str(canonical["mode"]).strip().lower()
+        for name in ("payment_method", "payment_timing"):
+            canonical[name] = str(canonical[name]).strip().upper() if canonical[name] is not None else None
+        payload = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _return_matching_idempotent(existing, request_fingerprint):
+        if existing.request_fingerprint != request_fingerprint:
+            raise ConflictError(
+                "Idempotency key has already been used with a different material request"
+            )
+        return existing
+
     # ==================================================================
     # Vehicle ownership proof
     # ==================================================================
@@ -270,22 +313,29 @@ class TransportReservationService:
                 raise NotFoundError(f"Vehicle {vid} not found",
                                     resource_type="vehicle", resource_id=vid)
 
-            # Provider ownership: match Vehicle.owner_type/owner_id
-            expected_owner_type = (
-                "organisation" if provider_type == VEHICLE_PROVIDER_TYPE_ORG else "driver"
-            )
+            # Vehicle.owner_type / owner_id are the canonical transport graph:
+            # organisation owner_id is Organisation.id, driver owner_id is
+            # DriverProfile.id (never a User.id).
+            if provider_type not in {
+                VEHICLE_PROVIDER_TYPE_ORG, VEHICLE_PROVIDER_TYPE_DRIVER,
+            }:
+                raise ValidationError("specific reservations require an organisation or driver provider")
+            expected_owner_type = provider_type
             if v.owner_type != expected_owner_type or int(v.owner_id) != int(provider_id):
                 raise PermissionError(
                     f"Vehicle {vid} is not owned by the indicated provider"
                 )
 
             # Active status
-            if (v.status or "").lower() != "active":
+            if (v.status or "").lower() != "active" or not v.is_available:
                 raise ValidationError(f"Vehicle {vid} is not in active status")
 
             # Offering eligibility: vehicle_class must be compatible with
-            # the offering's declared compatibility set (stored on offering
-            # metadata if present), or fall back to permissive mode.
+            # the offering's capacity contract and declared class contract.
+            if not offering.min_seats <= v.passenger_capacity <= offering.max_seats:
+                raise ValidationError(
+                    f"Vehicle {vid} capacity is not eligible for offering '{offering.code}'"
+                )
             compat = (getattr(offering, "offering_metadata", None) or {}).get(
                 "compatible_vehicle_classes"
             )
@@ -318,14 +368,9 @@ class TransportReservationService:
         )
 
         if not supplies:
-            if mode == "capacity":
-                raise SupplyCoverageError(
-                    "Provider has not declared supply for this offering."
-                )
-            # Specific mode does not require declared supply, but does require
-            # no other reservation to have claimed the slot (enforced by the
-            # exclusion constraint on the line).
-            return
+            raise SupplyCoverageError(
+                "Provider has not declared supply for this offering."
+            )
 
         # A. Continuous coverage
         cls._assert_continuous_coverage(

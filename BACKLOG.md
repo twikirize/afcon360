@@ -1581,8 +1581,17 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 ### M1 — `Vehicle.current_booking_id` orphan: latent coordination edge (deferred technical integrity finding)
 - **Status:** DEFERRED — TECHNICAL INTEGRITY (recorded 2026-09-12 TH-3 NEXT-NODE AUDIT). Not fixed.
 - **Context:** `app/transport/models.py:702` — `current_booking_id = db.Column(db.BigInteger)` (FK removed; no relationship). Grep confirms NO assignment anywhere in `app/`. `AssignmentService.claim` marks the vehicle `is_available=False` (`assignment_service.py:221-224`) without writing this column; `release` restores `is_available=True` (assignment_service.py:387-401) also without writing it.
-- **Latent edge:** `app/transport/services/coordination_contract.py:147-153` — when a vehicle is not `is_available`, the contract requires `current_booking_id == booking.id` to pass validation. Because the column is never written (always NULL), the "same-booking exemption" can never fire: re-validating an already-assigned booking (e.g., Events `GuestCoordinationService.assign_transport` adding a seat to a booking whose vehicle was claimed by a driver) would raise `VEHCLE_UNAVAILABLE`. No current test exercises that combined path.
-- **Classification:** deferred technical integrity finding; cross-domain (Transport × Events coordination); latent, untested, non-blocking.
+## TH-3-D3 — Scheduled Transport Execution Engine (READ-ONLY)
+- **Links:** app/tasks/transport_recovery.py, app/celery_app.py, tests/test_transport_d3_scheduled_execution.py, .opencode/thread_state.md
+
+---
+
+## TH-3-D3 Batch 1 correction — migration and PostgreSQL concurrency evidence
+- **Status:** DEFERRED — BLOCKED BY CURRENT ENVIRONMENT (2026-09-13).
+- **Context:** `app/transport/models.py` now declares the D3 request-fingerprint column and the half-open PostgreSQL GiST exclusion constraint `ex_supply_provider_offering_window` for the canonical provider/offering supply pool. The current container has neither the `flask` command nor the `flask` Python module, so `flask db heads`, `flask db migrate`, and the PostgreSQL-backed reservation test suite cannot run here. No migration was generated, edited, or applied.
+- **What needs to happen:** In a provisioned AFCON360 Flask/PostgreSQL environment, run `flask db heads`; run `flask db migrate -m "enforce transport reservation request identity and supply exclusion"`; inspect the generated migration; add only the minimal PostgreSQL operation required for `CREATE EXTENSION IF NOT EXISTS btree_gist` and the model-declared exclusion constraint if autogenerate omitted it; then have the user run `flask db upgrade`. Add and execute real separate-session PostgreSQL tests for concurrent same-key reservations and concurrent overlapping supply registration, plus positive/negative organisation-member transport-authority and vehicle-ownership/eligibility cases.
+- **Owner/area:** transport / reservation D3 / migrations.
+- **Links:** app/transport/models.py, app/transport/services/reservation_service.py, app/transport/services/reservation_policy_evaluator.py, tests/transport/test_reservation_d3.py, AGENTS.md §20-21.
 - **Links:** `app/transport/models.py:702`, `app/transport/services/assignment_service.py:189/:221-224/:364-401`, `app/transport/services/coordination_contract.py:147-153`.
 
 ### M2 — `chk_pickup_time_future` vs `pickup_time=now()` fallback: latent `CheckViolation` (deferred schema/runtime constraint finding)
