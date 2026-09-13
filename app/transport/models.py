@@ -39,10 +39,10 @@ from sqlalchemy import (
     Index, UniqueConstraint, CheckConstraint, Enum as SQLEnum,
     ForeignKeyConstraint, event, DDL, and_
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID, ExcludeConstraint
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import validates, relationship, backref
-from sqlalchemy.sql import column, expression
+from sqlalchemy.sql import column, expression, func
 
 from app.extensions import db
 from app.models.base import BaseModel
@@ -2606,6 +2606,7 @@ class TransportReservation(TransportBase):
 
     reservation_reference = db.Column(db.String(50), nullable=False)
     idempotency_key = db.Column(db.String(128), nullable=False)
+    request_fingerprint = db.Column(db.String(64), nullable=False)
     reserving_user_id = db.Column(db.BigInteger, db.ForeignKey("users.id"), nullable=False)
     on_behalf_of_organisation_id = db.Column(
         db.BigInteger, db.ForeignKey("organisations.id"), nullable=True
@@ -2700,6 +2701,15 @@ class ProviderOfferingSupply(TransportBase):
         Index("ix_supply_window", "window_start", "window_end"),
         CheckConstraint("total_units > 0", name="chk_supply_total_positive"),
         CheckConstraint("window_end > window_start", name="chk_supply_window"),
+        ExcludeConstraint(
+            ("provider_type", "="),
+            ("provider_id", "="),
+            ("offering_code", "="),
+            (func.tstzrange(column("window_start"), column("window_end"), "[)"), "&&"),
+            name="ex_supply_provider_offering_window",
+            using="gist",
+            where=column("is_deleted") == expression.false(),
+        ),
     )
 
     provider_type = db.Column(db.String(20), nullable=False)
@@ -2716,6 +2726,16 @@ class ProviderOfferingSupply(TransportBase):
 
     # Relationships
     vehicle = relationship("Vehicle", foreign_keys=[vehicle_id])
+
+
+# Equality operators in the GiST exclusion constraint require PostgreSQL's
+# btree_gist extension.  This also makes metadata-driven test schema creation
+# faithful to the production migration.
+event.listen(
+    ProviderOfferingSupply.__table__,
+    "before_create",
+    DDL("CREATE EXTENSION IF NOT EXISTS btree_gist").execute_if(dialect="postgresql"),
+)
 
 
 # ===========================================================================

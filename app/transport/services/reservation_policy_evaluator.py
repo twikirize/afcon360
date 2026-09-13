@@ -192,12 +192,10 @@ class TransportReservationPolicyEvaluator:
     # ------------------------------------------------------------------
     @classmethod
     def _validate_authority(cls, actor, org_id: int, evidence: Dict[str, Any]):
-        try:
-            from app.identity.models.organisation import Organisation
-        except Exception:
-            return False, "Organisation model unavailable"
+        from app.identity.models.organisation import Organisation
+        from app.identity.models.organisation_member import OrganisationMember
 
-        org = Organisation.query.filter_by(id=org_id).first()
+        org = Organisation.query.filter_by(id=org_id, is_deleted=False, is_active=True).first()
         if org is None:
             return False, "Organisation not found"
 
@@ -205,22 +203,20 @@ class TransportReservationPolicyEvaluator:
         if actor_id is None:
             return False, "Cannot determine actor identity"
 
-        for attr in ("owner_user_id", "created_by_user_id"):
-            if getattr(org, attr, None) == actor_id:
-                return True, ""
+        membership = OrganisationMember.query.filter_by(
+            user_id=actor_id,
+            organisation_id=org.id,
+            is_active=True,
+            is_deleted=False,
+        ).first()
+        if membership is None:
+            return False, "Actor is not an active organisation member"
 
-        for m in (getattr(org, "members", None) or []):
-            if getattr(m, "user_id", None) == actor_id and getattr(m, "is_active", True):
-                return True, ""
-
-        try:
-            for m in (getattr(actor, "organisation_memberships", None) or []):
-                if getattr(m, "organisation_id", None) == org_id and getattr(m, "is_active", True):
-                    return True, ""
-        except Exception:
-            pass
-
-        return False, "Actor is not authorised for this organisation"
+        # Identity's membership/role graph is authoritative.  Mere membership
+        # is intentionally insufficient for acting for an organisation.
+        if not membership.has_permission("org.manage_transport"):
+            return False, "Actor lacks organisation transport authority"
+        return True, ""
 
     # ------------------------------------------------------------------
     @classmethod
