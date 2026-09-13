@@ -2632,6 +2632,10 @@ class TransportReservation(TransportBase):
     commercial_policy_ref = db.Column(db.String(100), nullable=True)
 
     deposit_required = db.Column(db.Boolean, default=False, nullable=False)
+    # Reservation-side obligation facts only; Wallet/Payment remains the
+    # authoritative owner of money movement and transaction history.
+    required_total_amount = db.Column(db.Numeric(10, 2), nullable=True)
+    amount_received = db.Column(db.Numeric(10, 2), nullable=False, default=0)
     deposit_amount = db.Column(db.Numeric(10, 2), nullable=True)
     deposit_currency = db.Column(db.String(10), nullable=True)
     deposit_due_at = db.Column(db.DateTime(timezone=True), nullable=True)
@@ -2663,6 +2667,16 @@ class TransportReservationLine(TransportBase):
         Index("ix_line_vehicle", "vehicle_id", "state"),
         Index("ix_line_offering", "offering_code", "state"),
         CheckConstraint("vehicle_id IS NULL OR vehicle_id > 0", name="chk_line_vehicle_id"),
+        ExcludeConstraint(
+            ("vehicle_id", "="),
+            (func.tstzrange(column("window_start"), column("window_end"), "[)"), "&&"),
+            name="ex_reservation_line_vehicle_window",
+            using="gist",
+            where=and_(
+                column("vehicle_id").isnot(None),
+                column("state").in_(("held", "reserved", "materialized")),
+            ),
+        ),
     )
 
     reservation_id = db.Column(db.BigInteger, db.ForeignKey("transport_reservations.id"), nullable=False)
@@ -2733,6 +2747,11 @@ class ProviderOfferingSupply(TransportBase):
 # faithful to the production migration.
 event.listen(
     ProviderOfferingSupply.__table__,
+    "before_create",
+    DDL("CREATE EXTENSION IF NOT EXISTS btree_gist").execute_if(dialect="postgresql"),
+)
+event.listen(
+    TransportReservationLine.__table__,
     "before_create",
     DDL("CREATE EXTENSION IF NOT EXISTS btree_gist").execute_if(dialect="postgresql"),
 )

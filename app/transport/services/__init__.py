@@ -16,6 +16,7 @@ from .promotion_service import PromotionService, get_promotion_service
 from .external_platforms import ExternalPlatformsService, get_external_platforms
 from .dashboard_service import DashboardService, get_dashboard_service
 from .settings_service import SettingsService, get_settings_service, feature_enabled, development_only, production_only
+from .reservation_expiry_service import TransportReservationExpiryService
 
 # ------------------------
 # Initialization
@@ -48,6 +49,7 @@ __all__ = [
     'ExternalPlatformsService',
     'SettingsService',
     'DashboardService',
+    'TransportReservationExpiryService',
 
     # Singleton getters
     'get_provider_service',

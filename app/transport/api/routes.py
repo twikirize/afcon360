@@ -76,6 +76,9 @@ def register_api_resources(api):
         SettingByKeyResource,
     )
     from .dashboard_routes import DashboardOverviewResource
+    from .reservation_routes import (
+        ReservationListResource, ReservationDetailResource, ReservationCancelResource,
+    )
 
     # -------------------------------------------------------------------
     # Resource registration with EXPLICIT endpoint names
@@ -119,6 +122,11 @@ def register_api_resources(api):
     safe_add_resource(BookingPaymentResource, "/bookings/<int:booking_id>/payments", endpoint="booking_payments")
     safe_add_resource(BookingRouteResource, "/bookings/<int:booking_id>/route", endpoint="booking_route")
 
+    # TH-3-D3 reservations intentionally remain separate from Booking.
+    safe_add_resource(ReservationListResource, "/reservations", endpoint="reservation_list")
+    safe_add_resource(ReservationDetailResource, "/reservations/<string:reservation_reference>", endpoint="reservation_detail")
+    safe_add_resource(ReservationCancelResource, "/reservations/<string:reservation_reference>/cancel", endpoint="reservation_cancel")
+
     # Incidents
     safe_add_resource(IncidentListResource, "/incidents", endpoint="incident_list")
     safe_add_resource(IncidentDetailResource, "/incidents/<int:incident_id>", endpoint="incident_detail")
@@ -144,5 +152,4 @@ def register_api_resources(api):
     safe_add_resource(DashboardOverviewResource, "/dashboard/overview", endpoint="dashboard_overview")
 
     logger.info(f"✅ Transport API resources registered ({len(registered_endpoints)} endpoints)")
-
 

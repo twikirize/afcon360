@@ -1277,7 +1277,10 @@ class ProviderService:
             raise
         except SQLAlchemyError as e:
             db.session.rollback()
-            logger.error(...)
+            logger.error(
+                "Vehicle status update failed for vehicle_id=%s status=%s: %s",
+                vehicle_id, status, e, exc_info=True,
+            )
             raise ServiceUnavailableError(
                 message="Vehicle status update unavailable",
                 service_name="vehicle",
@@ -1485,4 +1488,3 @@ def get_provider_service() -> ProviderService:
                 _provider_service_instance = ProviderService()
                 logger.debug("ProviderService singleton created")
     return _provider_service_instance
-

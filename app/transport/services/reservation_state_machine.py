@@ -9,35 +9,12 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from enum import Enum
 from typing import Any, Dict, Optional
 
 from app.extensions import db
+from app.transport.models import ReservationObligationState, ReservationState
 
 logger = logging.getLogger(__name__)
-
-
-class ReservationState(str, Enum):
-    DRAFT = "draft"
-    HELD = "held"
-    RESERVED = "reserved"
-    MATERIALIZED = "materialized"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
-    EXPIRED = "expired"
-
-
-class ReservationObligationState(str, Enum):
-    """Reservation-side financial obligation status.
-
-    Refund outcomes (REFUNDED, PARTIALLY_REFUNDED) are intentionally absent
-    here. If they become necessary, they must be admitted only when the
-    underlying BookingPayment lifecycle supports them. Wallet/Payment
-    remains the authoritative owner of refund state.
-    """
-    UNPAID = "unpaid"
-    DEPOSITED = "deposited"
-    PAID = "paid"
 
 
 class InvalidReservationTransition(Exception): ...
@@ -157,7 +134,7 @@ class TransportReservationStateMachine:
                     getattr(reservation, "id", "?"), old, target_value, trigger)
         return reservation
 
-@classmethod
+    @classmethod
     def transition_obligation(cls, reservation, target_obligation, *, changed_by_user_id=None,
                               reason=None, trigger=None, metadata=None, commit=False):
         target_value = target_obligation.value if isinstance(target_obligation, ReservationObligationState) \

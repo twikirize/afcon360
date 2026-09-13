@@ -701,6 +701,17 @@ the proposed design, and the ownership boundary. NOT yet implemented unless note
 
 ---
 
+## TH-3-D3 Batch 2 — Reservation API, expiry, lifecycle and integrity
+- **Status:** Partial
+- **Raised:** 2026-09-13
+- **Context:** Implemented the authorized Batch 2 service/API foundation: repaired the reservation state-machine indentation, made `app/transport/models.py` the sole enum definition, added the active specific-vehicle half-open GiST exclusion declaration (with `btree_gist` metadata hook), added reservation-side required-total/received facts, monotonic obligation handling, organisation-aware access/cancellation, the expiry primitive, REST resources, provider status error context, and focused regression tests. Reservation remains separate from Booking, Wallet/Payment, Assignment, and Execution.
+- **Verification:** `python -m py_compile app/transport/models.py app/transport/services/reservation_state_machine.py app/transport/services/reservation_service.py app/transport/services/reservation_expiry_service.py app/transport/api/reservation_routes.py tests/transport/test_reservation_d3.py tests/transport/test_reservation_expiry.py tests/transport/test_reservation_api.py` passed; `git diff --check` passed. Runtime import, pytest, Alembic autogeneration/inspection, PostgreSQL exclusion execution, and real PostgreSQL concurrency tests could not run because the environment has no Flask dependency installed and package installation is blocked by the network proxy (`403 Forbidden`). No migration revision was generated; the model change requires an operator to run `flask db migrate`, inspect the generated revision for the two obligation columns and `ex_reservation_line_vehicle_window`, then run the PostgreSQL test matrix.
+- **Deferred:** D5 materialisation seam remains intentionally untouched. Scheduling this expiry primitive remains deferred; Batch 2 creates no beat task. Verify real PostgreSQL concurrent cancel-vs-expiry and vehicle overlap after dependencies are available.
+- **Owner/area:** transport / TH-3-D3
+- **Links:** `app/transport/models.py`, `app/transport/services/reservation_service.py`, `app/transport/services/reservation_expiry_service.py`, `app/transport/api/reservation_routes.py`, `tests/transport/test_reservation_d3.py`, `tests/transport/test_reservation_expiry.py`, `tests/transport/test_reservation_api.py`
+
+---
+
 ## Stage 4 onboarding: assign_org_role cannot persist org_owner (pre-existing RBAC FK mismatch)
 - **Status:** RESOLVED (2026-09-05) - org-role provisioning architecture implemented
 - **Raised:** 2026-09-02
