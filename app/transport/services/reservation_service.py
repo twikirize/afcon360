@@ -30,11 +30,11 @@ from sqlalchemy import func
 from app.extensions import db
 from app.transport.models import (
     TransportReservation, TransportReservationLine,
-    ProviderOfferingSupply, Vehicle, TransportOffering,
+    ProviderOfferingSupply, Vehicle, TransportOffering, ReservationState,
+    ReservationObligationState,
 )
 from app.transport.services.reservation_state_machine import (
     TransportReservationStateMachine as SM,
-    ReservationState, ReservationObligationState,
     InvalidReservationTransition,
 )
 from app.transport.services.reservation_policy_evaluator import (
@@ -56,6 +56,24 @@ class SupplyCoverageError(ConflictError): ...
 
 
 class TransportReservationService:
+
+    @staticmethod
+    def actor_can_access_reservation(*, actor, reservation) -> bool:
+        """Apply the Identity-owned individual/organisation authority graph."""
+        if actor is None or not getattr(actor, "is_authenticated", False):
+            return False
+        if reservation.reserving_user_id == getattr(actor, "id", None):
+            return True
+        if getattr(actor, "has_global_role", lambda *_: False)("admin", "super_admin", "owner"):
+            return True
+        org_id = reservation.on_behalf_of_organisation_id
+        if org_id is None:
+            return False
+        from app.identity.models.organisation_member import OrganisationMember
+        member = OrganisationMember.query.filter_by(
+            user_id=actor.id, organisation_id=org_id, is_active=True, is_deleted=False,
+        ).first()
+        return bool(member and member.has_permission("org.manage_transport"))
 
     # ==================================================================
     # Create
@@ -193,6 +211,8 @@ class TransportReservationService:
             payment_timing=(payment_timing or "").strip().upper() or None,
             commercial_policy_ref=decision.commercial_policy_ref,
             deposit_required=bool(decision.requires_deposit),
+            required_total_amount=estimated_value,
+            amount_received=Decimal("0"),
             deposit_amount=decision.deposit_amount,
             deposit_currency=decision.deposit_currency,
             deposit_due_at=decision.deposit_due_at,
@@ -530,6 +550,7 @@ class TransportReservationService:
         reservation_id: int,
         target_obligation: ReservationObligationState,
         wallet_transaction_reference: Optional[str] = None,
+        amount_received: Optional[Decimal] = None,
         commit: bool = True,
     ) -> TransportReservation:
         """Advance obligation state; promote HELD → RESERVED if policy allows.
@@ -544,10 +565,35 @@ class TransportReservationService:
                                 resource_type="transport_reservation",
                                 resource_id=reservation_id)
 
-        SM.transition_obligation(
-            row, target_obligation,
-            trigger="wallet_obligation_event",
-        )
+        target = (target_obligation.value if isinstance(target_obligation, ReservationObligationState)
+                  else str(target_obligation).lower())
+        current = row.obligation_state
+        # A duplicate callback is a no-op, provided it identifies the same
+        # external financial event.  It must never manufacture another state
+        # transition or audit entry.
+        proposed_received = Decimal(str(row.amount_received or 0))
+        if amount_received is not None:
+            try:
+                received = Decimal(str(amount_received))
+            except Exception as exc:
+                raise ValidationError("amount_received must be a decimal amount") from exc
+            if received < 0:
+                raise ValidationError("amount_received must not be negative")
+            proposed_received = max(proposed_received, received)
+        elif target == ReservationObligationState.DEPOSITED.value and row.deposit_amount is not None:
+            proposed_received = max(proposed_received, Decimal(str(row.deposit_amount)))
+        elif target == ReservationObligationState.PAID.value and row.required_total_amount is not None:
+            proposed_received = max(proposed_received, Decimal(str(row.required_total_amount)))
+
+        if target == ReservationObligationState.DEPOSITED.value:
+            if row.deposit_required and row.deposit_amount is not None and proposed_received < Decimal(str(row.deposit_amount)):
+                raise ValidationError("Deposit event does not satisfy the required deposit amount")
+        if target == ReservationObligationState.PAID.value and row.required_total_amount is not None:
+            if proposed_received < Decimal(str(row.required_total_amount)):
+                raise ValidationError("Full-settlement event does not satisfy the required total amount")
+        if target != current:
+            SM.transition_obligation(row, target, trigger="wallet_obligation_event")
+        row.amount_received = proposed_received
         if wallet_transaction_reference:
             row.wallet_transaction_reference = wallet_transaction_reference
 
@@ -578,15 +624,7 @@ class TransportReservationService:
                                 resource_type="transport_reservation",
                                 resource_id=reservation_id)
 
-        is_admin = False
-        try:
-            is_admin = bool(getattr(actor, "has_global_role", lambda *_: False)(
-                "admin", "super_admin", "owner"
-            ))
-        except Exception:
-            is_admin = False
-
-        if row.reserving_user_id != getattr(actor, "id", None) and not is_admin:
+        if not cls.actor_can_access_reservation(actor=actor, reservation=row):
             raise PermissionError("Not authorised to cancel this reservation")
 
         if SM.is_terminal(row.state):

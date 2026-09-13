@@ -19,6 +19,27 @@ from app.transport.services.reservation_policy_evaluator import (
     TransportReservationPolicyEvaluator, PolicyDecision, CANONICAL_PAYMENT_METHODS,
 )
 from app.transport.services.offering_registry import TransportOfferingRegistry
+from app.transport.services.reservation_state_machine import (
+    InvalidObligationTransition, TransportReservationStateMachine,
+)
+
+
+class TestObligationStateMachine:
+    @pytest.mark.parametrize("current,target", [
+        (ReservationObligationState.UNPAID, ReservationObligationState.DEPOSITED),
+        (ReservationObligationState.UNPAID, ReservationObligationState.PAID),
+        (ReservationObligationState.DEPOSITED, ReservationObligationState.PAID),
+    ])
+    def test_allows_monotonic_transitions(self, current, target):
+        assert TransportReservationStateMachine.can_transition_obligation(current, target)
+
+    @pytest.mark.parametrize("current,target", [
+        (ReservationObligationState.DEPOSITED, ReservationObligationState.UNPAID),
+        (ReservationObligationState.PAID, ReservationObligationState.UNPAID),
+        (ReservationObligationState.PAID, ReservationObligationState.DEPOSITED),
+    ])
+    def test_rejects_backward_transitions(self, current, target):
+        assert not TransportReservationStateMachine.can_transition_obligation(current, target)
 
 
 class TestPolicyEvaluatorStrict:
