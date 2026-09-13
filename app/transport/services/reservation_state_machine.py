@@ -157,7 +157,7 @@ class TransportReservationStateMachine:
                     getattr(reservation, "id", "?"), old, target_value, trigger)
         return reservation
 
-    @classmethod
+@classmethod
     def transition_obligation(cls, reservation, target_obligation, *, changed_by_user_id=None,
                               reason=None, trigger=None, metadata=None, commit=False):
         target_value = target_obligation.value if isinstance(target_obligation, ReservationObligationState) \
