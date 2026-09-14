@@ -212,11 +212,11 @@
                 <div class="stat-label">Organizations</div>
             </div>
             <div class="stat-item">
-                <div class="stat-value">{{ memberships|selectattr('role.name', 'equalto', 'org_owner')|list|length }}</div>
+                <div class="stat-value">{{ owned_count }}</div>
                 <div class="stat-label">Owned</div>
             </div>
             <div class="stat-item">
-                <div class="stat-value">{{ memberships|selectattr('organisation.verification_status', 'equalto', 'verified')|list|length }}</div>
+                <div class="stat-value">{{ verified_count }}</div>
                 <div class="stat-label">Verified</div>
             </div>
         </div>
@@ -233,6 +233,9 @@
     <div class="row justify-content-center">
         <div class="col-lg-8 col-md-10">
             {% for membership in memberships %}
+            {% set _member_roles = [] %}
+            {% for _our in membership.roles %}{% if _our.role and _our.role.name %}{% set _member_roles = _member_roles + [_our.role.name] %}{% endif %}{% endfor %}
+            {% set _member_role = _member_roles[0] if _member_roles else 'org_member' %}
             <a href="{{ url_for('org.org_dashboard', org_id=membership.organisation_id) }}" 
                class="text-decoration-none">
                 <div class="org-card">
@@ -251,9 +254,9 @@
                                         <i class="bi bi-{{ 'shield-check' if membership.organisation.verification_status == 'verified' else 'clock' }} me-1"></i>
                                         {{ membership.organisation.verification_status.title() }}
                                     </span>
-                                    <span class="status-badge {{ membership.role.name.replace('_', '') }}">
-                                        <i class="bi bi-{{ 'crown' if membership.role.name == 'org_owner' else 'person-badge' if membership.role.name == 'org_admin' else 'person' }} me-1"></i>
-                                        {{ membership.role.name.replace('_', ' ').title() }}
+                                    <span class="status-badge {{ _member_role.replace('_', '') }}">
+                                        <i class="bi bi-{{ 'crown' if _member_role == 'org_owner' else 'person-badge' if _member_role == 'org_admin' else 'person' }} me-1"></i>
+                                        {{ _member_role.replace('_', ' ').title() }}
                                     </span>
                                     {% if membership.organisation.is_operational %}
                                     <span class="status-badge verified">
@@ -272,7 +275,7 @@
                             <div class="d-flex justify-content-between align-items-center">
                                 <small class="text-muted">
                                     <i class="bi bi-tag me-1"></i>
-                                    {{ membership.organisation.business_category.value.replace('_', ' ').title() }}
+                                    {{ membership.organisation.business_category.value if membership.organisation.business_category else 'Organisation' }}
                                 </small>
                                 <small class="text-muted">
                                     <i class="bi bi-calendar me-1"></i>

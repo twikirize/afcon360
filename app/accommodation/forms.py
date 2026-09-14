@@ -91,7 +91,7 @@ class PropertyForm(FlaskForm):
         "Nightly rate",
         places=2,
         rounding=None,
-        validators=[DataRequired(), NumberRange(min=0)],
+        validators=[NumberRange(min=0)],
     )
     currency = SelectField(
         "Currency",

@@ -276,7 +276,7 @@ class OrganizationRegistrationService:
         return f"ORG-{uuid.uuid4().hex[:12].upper()}"
     
     @staticmethod
-    def add_org_member(org: Organisation, user: User, role_name: str) -> OrganisationMember:
+    def add_org_member(org: Organisation, user: User, role_name: str, *, assigned_by: Optional[int] = None) -> OrganisationMember:
         """Add a member to an organization and assign the specified org role.
 
         Creates:
@@ -291,6 +291,13 @@ class OrganizationRegistrationService:
         idempotent via the ``uq_org_user_role`` constraint.
 
         The caller is responsible for committing the transaction.
+
+        Args:
+            org:         Target organisation.
+            user:        Target user to add as a member.
+            role_name:   Canonical org-role name (e.g. ``"org_admin"``).
+            assigned_by: PK of the acting member who authorised the
+                         addition (audit field). ``None`` records no actor.
 
         Raises:
             ValueError: If the ``OrgRole`` cannot be resolved for the
@@ -320,7 +327,7 @@ class OrganizationRegistrationService:
         user_role = OrgUserRole(
             organisation_member_id=member.id,
             role_id=org_role.id,
-            assigned_by=user.id,
+            assigned_by=assigned_by,
         )
         db.session.add(user_role)
         db.session.flush()

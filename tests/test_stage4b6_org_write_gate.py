@@ -461,7 +461,7 @@ class TestRouteOrganisationBranch:
             app, ProviderCapabilityStatus.ACTIVATED.value,
         )
 
-        def _fake_host_identity(user, org_id_=None):
+        def _fake_host_identity(user, org_id=None):
             return {
                 "type": "organisation",
                 "id": org_id,
@@ -485,7 +485,7 @@ class TestRouteOrganisationBranch:
             app, ProviderCapabilityStatus.INTENT.value,
         )
 
-        def _fake_host_identity(user, org_id_=None):
+        def _fake_host_identity(user, org_id=None):
             return {
                 "type": "organisation",
                 "id": org_id,

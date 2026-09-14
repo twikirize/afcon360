@@ -153,37 +153,27 @@ class OrganizationSettingsForm(FlaskForm):
 
 
 class OrganizationMemberForm(FlaskForm):
-    """Form for adding organization members"""
-    
+    """Form for adding organization members (canonical org-role vocabulary)."""
+
     user_email = StringField('User Email', validators=[
         DataRequired(),
         Email()
     ])
-    
+
     role = SelectField('Role', coerce=str, validators=[
         DataRequired()
     ])
-    
-    send_invite = BooleanField('Send invitation email', default=True)
-    
-    def __init__(self, organization_type=None, *args, **kwargs):
+
+    def __init__(self, role_choices=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
-        # Set role choices based on organization type
-        if organization_type:
-            from app.identity.models.organization_types import get_available_roles
-            available_roles = get_available_roles(organization_type)
-            self.role.choices = [
-                (role.value, role.value.replace('_', ' ').title())
-                for role in available_roles
-            ]
+
+        # Canonical org-role vocabulary only - the caller (route) derives
+        # the assignable set from the organisation's provisioned OrgRole
+        # rows and the acting member's authority. No legacy enum roles here.
+        if role_choices:
+            self.role.choices = list(role_choices)
         else:
-            # Default roles
-            self.role.choices = [
-                ('staff_member', 'Staff Member'),
-                ('agent', 'Agent'),
-                ('viewer', 'Viewer')
-            ]
+            self.role.choices = [('org_member', 'Org Member')]
 
 
 class OrganizationDocumentForm(FlaskForm):

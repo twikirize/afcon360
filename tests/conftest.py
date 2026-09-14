@@ -45,6 +45,13 @@ from flask_migrate import stamp as alembic_stamp
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 os.environ['FLASK_ENV'] = 'testing'
 
+# Disable live Redis for the test suite: tests must mock Redis, never depend
+# on a running instance. Without this, boot-time Production Console logging
+# (attached in create_app) tries to connect to redis:6379 on every log record
+# and blocks pytest when Redis is down. REDIS_AVAILABLE is computed at app
+# module import, so this MUST be set before `from app import create_app`.
+os.environ['DISABLE_REDIS'] = '1'
+
 from app import create_app
 from app.config import TestingConfig
 from app.extensions import db, cache
@@ -138,6 +145,28 @@ if not _TEST_DATABASE_URL:
         "in .env.testing or .env.test at project root."
     )
 TEST_DATABASE_URL: str = _TEST_DATABASE_URL
+
+# --- Test-database isolation guard (fail fast at URL resolution time) ---
+# The test suite MUST NEVER connect to a development/production database.
+# TestingConfig always derives a dedicated `<name>_test` database from
+# DATABASE_URL, but the TEST_DATABASE_URL fallback above takes DATABASE_URL
+# verbatim.  Enforce the same `*_test` boundary here, BEFORE setup_database
+# acquires the advisory lock or touches any schema, mirroring
+# tests/postgres_contract.assert_migrated_postgres_database but earlier.
+_parsed_test_url = urlparse(TEST_DATABASE_URL)
+_test_database_name = (_parsed_test_url.path or "").rsplit("/", 1)[-1]
+if not (_parsed_test_url.scheme or "").startswith("postgres"):
+    raise RuntimeError(
+        "The test suite requires a PostgreSQL database; "
+        f"TEST_DATABASE_URL resolved to scheme '{_parsed_test_url.scheme}'."
+    )
+if not _test_database_name.endswith("_test"):
+    raise RuntimeError(
+        "Refusing to run the test suite against a non-test database "
+        f"'{_test_database_name}' (resolved from TEST_DATABASE_URL/DATABASE_URL). "
+        "Tests require a dedicated database whose name ends with '_test'; do "
+        "not point TEST_DATABASE_URL at development or production."
+    )
 
 parsed = urlparse(TEST_DATABASE_URL)
 masked_url = (

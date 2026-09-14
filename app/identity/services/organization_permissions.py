@@ -262,41 +262,39 @@ class OrganizationPermissionService:
     
     @staticmethod
     def get_accessible_modules(user: User, organization: Organisation) -> List[str]:
-        """Get list of modules user can access in organization"""
+        """Get list of modules user can access in organization.
+
+        Derived from canonical ``org.*`` permissions only. Legacy
+        ``org.manage_*`` gates are never consulted (they are not seeded).
+        Modules with no canonical permission definition (events, tourism,
+        wallet, reports) stay closed by design (fail-closed): a disabled or
+        unspecified module must never be silently opened.
+        """
         if not OrganizationPermissionService.is_member(user, organization):
             return []
-        
+
         modules = organization.get_active_modules()
         accessible_modules = []
-        
-        # Check module-specific permissions
-        if 'events' in modules and OrganizationPermissionService.can_create_events(user, organization):
-            accessible_modules.append('events')
-        
-        if 'accommodation' in modules and OrganizationPermissionService.can_manage_accommodation(user, organization):
+
+        # Org administration - canonical org.members.view
+        if OrganizationPermissionService.has_permission(user, organization, 'org.members.view'):
+            accessible_modules.append('staff')
+
+        # Domain modules gated by their canonical manage permission
+        if 'accommodation' in modules and OrganizationPermissionService.has_permission(
+            user, organization, 'org.accommodation.manage'
+        ):
             accessible_modules.append('accommodation')
-        
-        if 'transport' in modules and OrganizationPermissionService.can_manage_transport(user, organization):
+
+        if 'transport' in modules and OrganizationPermissionService.has_permission(
+            user, organization, 'org.transport.manage'
+        ):
             accessible_modules.append('transport')
-        
-        if 'wallet' in modules and OrganizationPermissionService.can_manage_wallet(user, organization):
-            accessible_modules.append('wallet')
-        
-        if 'tourism' in modules and OrganizationPermissionService.can_manage_tourism(user, organization):
-            accessible_modules.append('tourism')
-        
-        # Always add basic modules for managers and above
-        if OrganizationPermissionService.is_manager(user, organization):
-            if 'staff' not in accessible_modules:
-                accessible_modules.append('staff')
-            if 'reports' not in accessible_modules:
-                accessible_modules.append('reports')
-        
-        # Add settings for admins and owners
-        if OrganizationPermissionService.is_admin(user, organization):
-            if 'settings' not in accessible_modules:
-                accessible_modules.append('settings')
-        
+
+        # Settings - canonical org.settings.manage
+        if OrganizationPermissionService.has_permission(user, organization, 'org.settings.manage'):
+            accessible_modules.append('settings')
+
         return accessible_modules
     
     @staticmethod
@@ -313,43 +311,68 @@ class OrganizationPermissionService:
     
     @staticmethod
     def get_organization_hierarchy(organization: Organisation) -> Dict[str, List]:
-        """Get organization role hierarchy"""
+        """Get organization role hierarchy from canonical role assignments.
+
+        A canonical ``OrganisationMember`` never carries ``member.role`` -
+        roles live on ``OrgUserRole`` → ``OrgRole``. This builder reads the
+        canonical chain and never touches the legacy ``OrganizationRole``
+        enum. Each row exposes:
+            user_id/public_id/username/email     identity
+            role          primary canonical role name (first assignment)
+            roles         all canonical role names for the member
+            role_label    display label for ``role``
+            permissions   sorted canonical permission names
+            is_owner      True when ``org_owner`` is assigned
+            member        the OrganisationMember object (for lifecycle UI)
+        """
         hierarchy = {
             'executive': [],
             'management': [],
             'staff': [],
             'support': []
         }
-        
+
+        bucket_by_role = {
+            'org_owner': 'executive',
+            'org_admin': 'executive',
+            'finance_manager': 'management',
+            'transport_manager': 'management',
+            'hr_manager': 'management',
+            'project_manager': 'management',
+            'dispatcher': 'staff',
+            'org_member': 'staff',
+            'org_guest': 'support',
+        }
+
         members = OrganisationMember.query.filter_by(
             organisation_id=organization.id,
             is_active=True,
             is_deleted=False
         ).all()
-        
+
         for member in members:
+            role_names = sorted({
+                our.role.name for our in member.roles if our.role and our.role.name
+            })
+            primary_role = role_names[0] if role_names else 'org_member'
+            permissions = sorted(member.effective_permissions)
+
             user_info = {
                 'user_id': member.user_id,
+                'public_id': getattr(member.user, 'public_id', None),
                 'username': member.user.username,
                 'email': member.user.email,
-                'role': member.role.value,
-                'joined_at': member.created_at
+                'role': primary_role,
+                'roles': role_names,
+                'role_label': primary_role.replace('_', ' ').title(),
+                'permissions': permissions,
+                'is_owner': 'org_owner' in role_names,
+                'member': member,
             }
-            
-            if member.role in [OrganizationRole.ORG_OWNER, OrganizationRole.ORG_ADMIN]:
-                hierarchy['executive'].append(user_info)
-            elif member.role in [OrganizationRole.ORG_MANAGER, OrganizationRole.OPERATIONS_MANAGER, 
-                                OrganizationRole.FINANCE_MANAGER, OrganizationRole.HR_MANAGER, 
-                                OrganizationRole.MARKETING_MANAGER]:
-                hierarchy['management'].append(user_info)
-            elif member.role in [OrganizationRole.STAFF_MEMBER, OrganizationRole.AGENT, 
-                                OrganizationRole.REPRESENTATIVE, OrganizationRole.EVENT_MANAGER,
-                                OrganizationRole.TRANSPORT_MANAGER, OrganizationRole.ACCOMMODATION_MANAGER,
-                                OrganizationRole.TOURISM_MANAGER]:
-                hierarchy['staff'].append(user_info)
-            else:
-                hierarchy['support'].append(user_info)
-        
+
+            bucket = bucket_by_role.get(primary_role, 'staff')
+            hierarchy[bucket].append(user_info)
+
         return hierarchy
     
     @staticmethod

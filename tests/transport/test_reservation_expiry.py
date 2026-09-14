@@ -7,9 +7,23 @@ from app.transport.services.reservation_expiry_service import TransportReservati
 
 
 def test_expiry_releases_only_due_unpaid_held_reservation(db_session):
+    from app.identity.models.user import User
+    import uuid as _uuid
+
+    uid = str(_uuid.uuid4())[:8]
+    user = User(
+        username=f'user_{uid}',
+        email=f'user_{uid}@test.example.com',
+        is_verified=True,
+        is_active=True,
+    )
+    user.set_password('TestPass123!')
+    db.session.add(user)
+    db.session.commit()
+
     reservation = TransportReservation(
         reservation_reference="RSVEXPIRY001", idempotency_key="expiry-001", request_fingerprint="a" * 64,
-        reserving_user_id=1, offering_code="van", provider_type="organisation", provider_id=1,
+        reserving_user_id=user.id, offering_code="van", provider_type="organisation", provider_id=user.id,
         window_start=datetime.now(timezone.utc), window_end=datetime.now(timezone.utc) + timedelta(hours=1),
         required_quantity=1, mode="capacity", state="held", obligation_state="unpaid",
         deposit_required=True, deposit_due_at=datetime.now(timezone.utc) - timedelta(minutes=1),

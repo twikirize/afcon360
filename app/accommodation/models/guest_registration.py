@@ -11,6 +11,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from app.extensions import db
 from app.models.base import BaseModel
+from app.utils.id_kinds import IDKind
 
 
 class GuestRegistration(BaseModel):
@@ -83,6 +84,19 @@ class GuestRegistration(BaseModel):
         ForeignKey("event_assignments.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+    )
+
+    # Source-side cross-module reference to a Transport booking coordinated for
+    # this guest (BIGINT, no db-level FK). Set only by the Accommodation module
+    # when it coordinates a booked transport resource for an accommodation
+    # guest. The passenger reservation on the Transport side is created by the
+    # Transport coordination contract (identity-keyed); this column is the
+    # accommodation-owned reference back to that booking.
+    transport_booking_id = Column(
+        BigInteger,
+        nullable=True,
+        index=True,
+        info={"id_kind": IDKind.CROSS_MODULE_REF},
     )
 
     # -------------------------------

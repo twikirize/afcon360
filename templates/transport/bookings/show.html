@@ -241,6 +241,29 @@
       </div>
     </div>
 
+    <!-- Accommodation coordination (Stage 5 – TASK2) -->
+    <div class="card" id="accommodationPane"
+         data-pane-url="{{ url_for('transport.booking_accommodation_pane', booking_id=id) }}"
+         data-available-url="{{ url_for('transport.booking_accommodation_available', booking_id=id) }}"
+         data-csrf="{{ raw_csrf_token }}"
+         data-booking-ref="{{ booking.booking_reference }}"
+         data-book-url="{{ url_for('accommodation.guest_search', next=url_for('transport.bookings_show', id=id)) }}">
+      <div class="card-header">
+        <span class="card-title">Accommodation</span>
+      </div>
+      <div class="card-body">
+        <p class="small text-muted mb-2">Pick an available accommodation booking and assign it to a passenger.</p>
+        <div id="accommodationPaneContent">
+          <p class="text-muted small">Loading accommodation assignments…</p>
+        </div>
+        <div class="mt-3">
+          <a href="{{ url_for('accommodation.guest_search', next=url_for('transport.bookings_show', id=id)) }}" class="btn btn-sm btn-outline-primary w-100">
+            <i class="fa-solid fa-bed"></i> Book Accommodation
+          </a>
+        </div>
+      </div>
+    </div>
+
     <!-- Quick actions -->
     <div class="card">
       <div class="card-header"><span class="card-title">Quick Actions</span></div>
@@ -287,12 +310,29 @@
   </div><!-- /right col -->
 </div>
 
+<!-- Accommodation assignment confirmation (Stage 5 – TASK2) -->
+<div id="confirmAccommodationModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;"
+     onclick="if(event.target===this&&!document.getElementById('confirmAccommodationSubmit').disabled)this.style.display='none'">
+  <div class="card" style="max-width:460px;width:90%;margin:0;max-height:85vh;overflow-y:auto;">
+    <div class="card-header"><span class="card-title">Confirm accommodation assignment</span></div>
+    <div class="card-body">
+      <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:10px;">Review the proposed assignment before confirming it.</p>
+      <div id="confirmAccommodationDetails" style="font-size:0.83rem;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+        <button type="button" class="btn btn-secondary" id="confirmAccommodationBack">Back</button>
+        <button type="button" class="btn btn-primary" id="confirmAccommodationSubmit">Confirm assignment</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Confirm delete modal -->
 {% include "transport/partials/modals/confirm_delete.html" %}
 
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/modules/transport/accommodation_pane.js') }}"></script>
 <script>
 function updateStatus(newStatus) {
   if (!confirm(`Transition to "${newStatus.replace(/_/g,' ')}"?`)) return;

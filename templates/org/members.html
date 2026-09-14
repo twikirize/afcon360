@@ -198,12 +198,23 @@
     font-weight: 500;
 }
 
+.permission-tag {
+    font-size: 0.72rem;
+    background: #eef2ff;
+    color: #4f46e5;
+    border-radius: 10px;
+    padding: 0.15rem 0.5rem;
+    margin-right: 0.3rem;
+    margin-bottom: 0.2rem;
+    display: inline-block;
+}
+
 @media (max-width: 768px) {
     .member-stats {
         flex-direction: column;
         gap: 1rem;
     }
-    
+
     .filter-pills {
         justify-content: center;
     }
@@ -212,6 +223,15 @@
 {% endblock %}
 
 {% block content %}
+{# Canonical role label for the acting member (never legacy member.role.enum) #}
+{% set _actor_roles = [] %}
+{% for _our in member.roles %}{% if _our.role and _our.role.name %}{% set _actor_roles = _actor_roles + [_our.role.name] %}{% endif %}{% endfor %}
+{% set _actor_role = _actor_roles[0] if _actor_roles else 'member' %}
+
+{% macro role_badge_class(role, is_owner=False) -%}
+{%- if is_owner -%}owner{%- elif role == 'org_admin' -%}admin{%- elif role in ['finance_manager', 'transport_manager', 'hr_manager', 'project_manager'] -%}manager{%- elif role == 'org_guest' -%}viewer{%- else -%}staff{%- endif -%}
+{%- endmacro %}
+
 <div class="container-fluid p-4">
     <!-- Team Header -->
     <div class="team-header">
@@ -226,10 +246,10 @@
                         <p class="mb-1 opacity-90">{{ org.legal_name }} • {{ hierarchy.executive|length + hierarchy.management|length + hierarchy.staff|length + hierarchy.support|length }} Members</p>
                         <div class="d-flex gap-2 flex-wrap mt-2">
                             <span class="badge bg-white text-dark px-3 py-2">
-                                <i class="bi bi-building me-1"></i> {{ org.business_category.value.replace('_', ' ').title() }}
+                                <i class="bi bi-building me-1"></i> {{ org.business_category.value if org.business_category else 'Organisation' }}
                             </span>
                             <span class="badge bg-white text-dark px-3 py-2">
-                                <i class="bi bi-shield-check me-1"></i> {{ member.role.value.replace('_', ' ').title() }}
+                                <i class="bi bi-shield-check me-1"></i> {{ _actor_role.replace('_', ' ').title() }}
                             </span>
                         </div>
                     </div>
@@ -237,12 +257,11 @@
             </div>
             <div class="col-md-4 text-md-end">
                 <div class="d-flex gap-2 justify-content-md-end mt-3 mt-md-0">
-                    <button class="btn btn-light action-btn" data-bs-toggle="modal" data-bs-target="#inviteModal">
-                        <i class="bi bi-person-plus me-2"></i> Invite Member
+                    {% if can_manage_members %}
+                    <button class="btn btn-light action-btn" data-bs-toggle="modal" data-bs-target="#addMemberModal">
+                        <i class="bi bi-person-plus me-2"></i> Add Member
                     </button>
-                    <button class="btn btn-light action-btn" onclick="exportTeamData()">
-                        <i class="bi bi-download me-2"></i> Export
-                    </button>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -292,7 +311,7 @@
         <h4 class="mb-4">
             <i class="bi bi-diagram-3 me-2"></i> Organization Structure
         </h4>
-        
+
         <!-- Executive Level -->
         {% if hierarchy.executive %}
         <div class="hierarchy-level">
@@ -301,7 +320,7 @@
             </div>
             {% for exec_member in hierarchy.executive %}
             <div class="hierarchy-member" data-role="executive">
-                <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div class="d-flex align-items-center">
                         <div class="member-avatar me-3">
                             {{ exec_member.username[0]|upper }}
@@ -309,14 +328,38 @@
                         <div>
                             <h6 class="mb-1 fw-semibold">{{ exec_member.username }}</h6>
                             <p class="mb-0 text-muted small">{{ exec_member.email }}</p>
+                            <div class="mt-1">
+                                {% for perm in exec_member.permissions %}
+                                <span class="permission-tag">{{ perm }}</span>
+                                {% endfor %}
+                            </div>
                         </div>
                     </div>
                     <div class="text-end">
-                        <span class="role-badge {{ exec_member.role }}">{{ exec_member.role.replace('_', ' ') }}</span>
-                        <div class="mt-1">
-                            <span class="status-indicator online"></span>
-                            <small class="text-muted">Online</small>
+                        <span class="role-badge {{ role_badge_class(exec_member.role, exec_member.is_owner) }}">{{ exec_member.role_label }}</span>
+                        {% if can_manage_roles and not exec_member.is_owner %}
+                        <div class="d-flex gap-2 mt-2 justify-content-end">
+                            <form method="POST" action="{{ url_for('org.change_member_role', org_id=org.org_id, user_public_id=exec_member.public_id) }}" class="d-flex gap-1 align-items-center">
+                                {{ csrf_token() }}
+                                <select name="role" class="form-select form-select-sm" style="width:auto">
+                                    {% for role_name, role_label in assignable_roles %}
+                                    <option value="{{ role_name }}" {% if role_name == exec_member.role %}selected{% endif %}>{{ role_label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-outline-primary action-btn" title="Change Role">
+                                    <i class="bi bi-pencil me-1"></i> Change
+                                </button>
+                            </form>
+                            {% if can_manage_members %}
+                            <form method="POST" action="{{ url_for('org.remove_member', org_id=org.org_id, user_public_id=exec_member.public_id) }}" onsubmit="return confirm('Remove {{ exec_member.username }} from the organization?');">
+                                {{ csrf_token() }}
+                                <button type="submit" class="btn btn-sm btn-outline-danger action-btn" title="Remove Member">
+                                    <i class="bi bi-person-x me-1"></i> Remove
+                                </button>
+                            </form>
+                            {% endif %}
                         </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -332,7 +375,7 @@
             </div>
             {% for mgmt_member in hierarchy.management %}
             <div class="hierarchy-member" data-role="management">
-                <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div class="d-flex align-items-center">
                         <div class="member-avatar me-3">
                             {{ mgmt_member.username[0]|upper }}
@@ -340,14 +383,38 @@
                         <div>
                             <h6 class="mb-1 fw-semibold">{{ mgmt_member.username }}</h6>
                             <p class="mb-0 text-muted small">{{ mgmt_member.email }}</p>
+                            <div class="mt-1">
+                                {% for perm in mgmt_member.permissions %}
+                                <span class="permission-tag">{{ perm }}</span>
+                                {% endfor %}
+                            </div>
                         </div>
                     </div>
                     <div class="text-end">
-                        <span class="role-badge {{ mgmt_member.role }}">{{ mgmt_member.role.replace('_', ' ') }}</span>
-                        <div class="mt-1">
-                            <span class="status-indicator {{ 'online' if loop.index0 % 2 == 0 else 'away' }}"></span>
-                            <small class="text-muted">{{ 'Online' if loop.index0 % 2 == 0 else 'Away' }}</small>
+                        <span class="role-badge {{ role_badge_class(mgmt_member.role, mgmt_member.is_owner) }}">{{ mgmt_member.role_label }}</span>
+                        {% if can_manage_roles and not mgmt_member.is_owner %}
+                        <div class="d-flex gap-2 mt-2 justify-content-end">
+                            <form method="POST" action="{{ url_for('org.change_member_role', org_id=org.org_id, user_public_id=mgmt_member.public_id) }}" class="d-flex gap-1 align-items-center">
+                                {{ csrf_token() }}
+                                <select name="role" class="form-select form-select-sm" style="width:auto">
+                                    {% for role_name, role_label in assignable_roles %}
+                                    <option value="{{ role_name }}" {% if role_name == mgmt_member.role %}selected{% endif %}>{{ role_label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-outline-primary action-btn" title="Change Role">
+                                    <i class="bi bi-pencil me-1"></i> Change
+                                </button>
+                            </form>
+                            {% if can_manage_members %}
+                            <form method="POST" action="{{ url_for('org.remove_member', org_id=org.org_id, user_public_id=mgmt_member.public_id) }}" onsubmit="return confirm('Remove {{ mgmt_member.username }} from the organization?');">
+                                {{ csrf_token() }}
+                                <button type="submit" class="btn btn-sm btn-outline-danger action-btn" title="Remove Member">
+                                    <i class="bi bi-person-x me-1"></i> Remove
+                                </button>
+                            </form>
+                            {% endif %}
                         </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -363,7 +430,7 @@
             </div>
             {% for staff_member in hierarchy.staff %}
             <div class="hierarchy-member" data-role="staff">
-                <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div class="d-flex align-items-center">
                         <div class="member-avatar me-3">
                             {{ staff_member.username[0]|upper }}
@@ -371,14 +438,38 @@
                         <div>
                             <h6 class="mb-1 fw-semibold">{{ staff_member.username }}</h6>
                             <p class="mb-0 text-muted small">{{ staff_member.email }}</p>
+                            <div class="mt-1">
+                                {% for perm in staff_member.permissions %}
+                                <span class="permission-tag">{{ perm }}</span>
+                                {% endfor %}
+                            </div>
                         </div>
                     </div>
                     <div class="text-end">
-                        <span class="role-badge {{ staff_member.role }}">{{ staff_member.role.replace('_', ' ') }}</span>
-                        <div class="mt-1">
-                            <span class="status-indicator {{ 'online' if loop.index0 % 3 == 0 else 'offline' }}"></span>
-                            <small class="text-muted">{{ 'Online' if loop.index0 % 3 == 0 else 'Offline' }}</small>
+                        <span class="role-badge {{ role_badge_class(staff_member.role, staff_member.is_owner) }}">{{ staff_member.role_label }}</span>
+                        {% if can_manage_roles and not staff_member.is_owner %}
+                        <div class="d-flex gap-2 mt-2 justify-content-end">
+                            <form method="POST" action="{{ url_for('org.change_member_role', org_id=org.org_id, user_public_id=staff_member.public_id) }}" class="d-flex gap-1 align-items-center">
+                                {{ csrf_token() }}
+                                <select name="role" class="form-select form-select-sm" style="width:auto">
+                                    {% for role_name, role_label in assignable_roles %}
+                                    <option value="{{ role_name }}" {% if role_name == staff_member.role %}selected{% endif %}>{{ role_label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-outline-primary action-btn" title="Change Role">
+                                    <i class="bi bi-pencil me-1"></i> Change
+                                </button>
+                            </form>
+                            {% if can_manage_members %}
+                            <form method="POST" action="{{ url_for('org.remove_member', org_id=org.org_id, user_public_id=staff_member.public_id) }}" onsubmit="return confirm('Remove {{ staff_member.username }} from the organization?');">
+                                {{ csrf_token() }}
+                                <button type="submit" class="btn btn-sm btn-outline-danger action-btn" title="Remove Member">
+                                    <i class="bi bi-person-x me-1"></i> Remove
+                                </button>
+                            </form>
+                            {% endif %}
                         </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -394,7 +485,7 @@
             </div>
             {% for support_member in hierarchy.support %}
             <div class="hierarchy-member" data-role="support">
-                <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div class="d-flex align-items-center">
                         <div class="member-avatar me-3">
                             {{ support_member.username[0]|upper }}
@@ -402,14 +493,38 @@
                         <div>
                             <h6 class="mb-1 fw-semibold">{{ support_member.username }}</h6>
                             <p class="mb-0 text-muted small">{{ support_member.email }}</p>
+                            <div class="mt-1">
+                                {% for perm in support_member.permissions %}
+                                <span class="permission-tag">{{ perm }}</span>
+                                {% endfor %}
+                            </div>
                         </div>
                     </div>
                     <div class="text-end">
-                        <span class="role-badge {{ support_member.role }}">{{ support_member.role.replace('_', ' ') }}</span>
-                        <div class="mt-1">
-                            <span class="status-indicator offline"></span>
-                            <small class="text-muted">Offline</small>
+                        <span class="role-badge {{ role_badge_class(support_member.role, support_member.is_owner) }}">{{ support_member.role_label }}</span>
+                        {% if can_manage_roles and not support_member.is_owner %}
+                        <div class="d-flex gap-2 mt-2 justify-content-end">
+                            <form method="POST" action="{{ url_for('org.change_member_role', org_id=org.org_id, user_public_id=support_member.public_id) }}" class="d-flex gap-1 align-items-center">
+                                {{ csrf_token() }}
+                                <select name="role" class="form-select form-select-sm" style="width:auto">
+                                    {% for role_name, role_label in assignable_roles %}
+                                    <option value="{{ role_name }}" {% if role_name == support_member.role %}selected{% endif %}>{{ role_label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-outline-primary action-btn" title="Change Role">
+                                    <i class="bi bi-pencil me-1"></i> Change
+                                </button>
+                            </form>
+                            {% if can_manage_members %}
+                            <form method="POST" action="{{ url_for('org.remove_member', org_id=org.org_id, user_public_id=support_member.public_id) }}" onsubmit="return confirm('Remove {{ support_member.username }} from the organization?');">
+                                {{ csrf_token() }}
+                                <button type="submit" class="btn btn-sm btn-outline-danger action-btn" title="Remove Member">
+                                    <i class="bi bi-person-x me-1"></i> Remove
+                                </button>
+                            </form>
+                            {% endif %}
                         </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -417,108 +532,15 @@
         </div>
         {% endif %}
     </div>
-
-    <!-- All Members Grid View -->
-    <div class="row" id="membersGrid">
-        {% for exec_member in hierarchy.executive %}
-        <div class="col-lg-4 col-md-6 mb-4 member-item" data-role="executive">
-            <div class="member-card">
-                <div class="card-body">
-                    <div class="d-flex align-items-start">
-                        <div class="member-avatar me-3">
-                            {{ exec_member.username[0]|upper }}
-                        </div>
-                        <div class="flex-grow-1">
-                            <h5 class="card-title mb-1">{{ exec_member.username }}</h5>
-                            <p class="card-text text-muted small mb-2">{{ exec_member.email }}</p>
-                            <div class="d-flex align-items-center justify-content-between mb-3">
-                                <span class="role-badge {{ exec_member.role }}">{{ exec_member.role.replace('_', ' ') }}</span>
-                                <span class="status-indicator online"></span>
-                            </div>
-                            <div class="d-flex gap-2">
-                                <button class="btn btn-sm btn-outline-primary action-btn">
-                                    <i class="bi bi-envelope me-1"></i> Message
-                                </button>
-                                <button class="btn btn-sm btn-outline-secondary action-btn">
-                                    <i class="bi bi-three-dots"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endfor %}
-
-        {% for mgmt_member in hierarchy.management %}
-        <div class="col-lg-4 col-md-6 mb-4 member-item" data-role="management">
-            <div class="member-card">
-                <div class="card-body">
-                    <div class="d-flex align-items-start">
-                        <div class="member-avatar me-3">
-                            {{ mgmt_member.username[0]|upper }}
-                        </div>
-                        <div class="flex-grow-1">
-                            <h5 class="card-title mb-1">{{ mgmt_member.username }}</h5>
-                            <p class="card-text text-muted small mb-2">{{ mgmt_member.email }}</p>
-                            <div class="d-flex align-items-center justify-content-between mb-3">
-                                <span class="role-badge {{ mgmt_member.role }}">{{ mgmt_member.role.replace('_', ' ') }}</span>
-                                <span class="status-indicator {{ 'online' if loop.index0 % 2 == 0 else 'away' }}"></span>
-                            </div>
-                            <div class="d-flex gap-2">
-                                <button class="btn btn-sm btn-outline-primary action-btn">
-                                    <i class="bi bi-envelope me-1"></i> Message
-                                </button>
-                                <button class="btn btn-sm btn-outline-secondary action-btn">
-                                    <i class="bi bi-three-dots"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endfor %}
-
-        {% for staff_member in hierarchy.staff %}
-        <div class="col-lg-4 col-md-6 mb-4 member-item" data-role="staff">
-            <div class="member-card">
-                <div class="card-body">
-                    <div class="d-flex align-items-start">
-                        <div class="member-avatar me-3">
-                            {{ staff_member.username[0]|upper }}
-                        </div>
-                        <div class="flex-grow-1">
-                            <h5 class="card-title mb-1">{{ staff_member.username }}</h5>
-                            <p class="card-text text-muted small mb-2">{{ staff_member.email }}</p>
-                            <div class="d-flex align-items-center justify-content-between mb-3">
-                                <span class="role-badge {{ staff_member.role }}">{{ staff_member.role.replace('_', ' ') }}</span>
-                                <span class="status-indicator {{ 'online' if loop.index0 % 3 == 0 else 'offline' }}"></span>
-                            </div>
-                            <div class="d-flex gap-2">
-                                <button class="btn btn-sm btn-outline-primary action-btn">
-                                    <i class="bi bi-envelope me-1"></i> Message
-                                </button>
-                                <button class="btn btn-sm btn-outline-secondary action-btn">
-                                    <i class="bi bi-three-dots"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
 </div>
 
-<!-- Invite Member Modal -->
-<div class="modal fade" id="inviteModal" tabindex="-1">
+<!-- Add Member Modal -->
+<div class="modal fade" id="addMemberModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">
-                    <i class="bi bi-person-plus me-2"></i> Invite Team Member
+                    <i class="bi bi-person-plus me-2"></i> Add Team Member
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -527,7 +549,7 @@
                 <div class="modal-body">
                     <div class="mb-3">
                         {{ form.user_email.label(class="form-label") }}
-                        {{ form.user_email(class="form-control", placeholder="Enter email address") }}
+                        {{ form.user_email(class="form-control", placeholder="Enter email address of an existing user") }}
                         {% if form.user_email.errors %}
                             <div class="text-danger">
                                 {% for error in form.user_email.errors %}
@@ -547,17 +569,11 @@
                             </div>
                         {% endif %}
                     </div>
-                    <div class="mb-3">
-                        <div class="form-check">
-                            {{ form.send_invite(class="form-check-input") }}
-                            {{ form.send_invite.label(class="form-check-label") }}
-                        </div>
-                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-send me-2"></i> Send Invitation
+                        <i class="bi bi-person-check me-2"></i> Add Member
                     </button>
                 </div>
             </form>
@@ -571,8 +587,8 @@
 // Search functionality
 document.getElementById('memberSearch').addEventListener('input', function(e) {
     const searchTerm = e.target.value.toLowerCase();
-    const memberItems = document.querySelectorAll('.member-item');
-    
+    const memberItems = document.querySelectorAll('.member-item, .hierarchy-member');
+
     memberItems.forEach(item => {
         const text = item.textContent.toLowerCase();
         if (text.includes(searchTerm)) {
@@ -583,69 +599,29 @@ document.getElementById('memberSearch').addEventListener('input', function(e) {
     });
 });
 
-// Filter functionality
+// Filter functionality (executive/management/staff/support groups)
 document.querySelectorAll('.filter-pill').forEach(pill => {
     pill.addEventListener('click', function() {
-        // Update active state
         document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
         this.classList.add('active');
-        
-        // Filter members
+
         const filter = this.dataset.filter;
-        const memberItems = document.querySelectorAll('.member-item');
-        
-        memberItems.forEach(item => {
+        const groupRows = document.querySelectorAll('.hierarchy-level');
+
+        groupRows.forEach(group => {
+            const role = group.querySelector('.hierarchy-title').textContent.trim().toLowerCase();
+            let visible = false;
             if (filter === 'all') {
-                item.style.display = 'block';
+                visible = true;
             } else {
-                if (item.dataset.role === filter) {
-                    item.style.display = 'block';
-                } else {
-                    item.style.display = 'none';
-                }
+                const key = role.includes('executive') ? 'executive'
+                    : role.includes('management') ? 'management'
+                    : role.includes('staff') ? 'staff'
+                    : 'support';
+                visible = key === filter;
             }
+            group.style.display = visible ? 'block' : 'none';
         });
-    });
-});
-
-// Export team data
-function exportTeamData() {
-    const members = [];
-    document.querySelectorAll('.member-item').forEach(item => {
-        if (item.style.display !== 'none') {
-            const name = item.querySelector('.card-title').textContent;
-            const email = item.querySelector('.text-muted').textContent;
-            const role = item.querySelector('.role-badge').textContent;
-            members.push({ name, email, role });
-        }
-    });
-    
-    const csv = 'Name,Email,Role\n' + members.map(m => `"${m.name}","${m.email}","${m.role}"`).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'team-members.csv';
-    a.click();
-    window.URL.revokeObjectURL(url);
-}
-
-// Add smooth animations
-document.addEventListener('DOMContentLoaded', function() {
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                entry.target.style.opacity = '1';
-                entry.target.style.transform = 'translateY(0)';
-            }
-        });
-    });
-
-    document.querySelectorAll('.member-card, .hierarchy-member').forEach(card => {
-        card.style.opacity = '0';
-        card.style.transform = 'translateY(20px)';
-        card.style.transition = 'all 0.6s ease';
-        observer.observe(card);
     });
 });
 </script>

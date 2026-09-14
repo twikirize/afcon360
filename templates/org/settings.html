@@ -300,7 +300,7 @@ input:checked + .toggle-slider:before {
                         <p class="mb-1 opacity-90">{{ org.legal_name }} • {{ org.org_id }}</p>
                         <div class="d-flex gap-2 flex-wrap mt-2">
                             <span class="badge bg-white text-dark px-3 py-2">
-                                <i class="bi bi-tag me-1"></i> {{ org.business_category.value.replace('_', ' ').title() }}
+                                <i class="bi bi-tag me-1"></i> {{ org.business_category.value if org.business_category else 'Organisation' }}
                             </span>
                             <span class="status-badge {{ org.verification_status }}">
                                 <i class="bi bi-shield-check me-1"></i> {{ org.verification_status.title() }}
@@ -1340,7 +1340,7 @@ function exportSettings() {
         organization: {
             name: '{{ org.legal_name }}',
             id: '{{ org.org_id }}',
-            type: '{{ org.business_category.value }}',
+            type: '{{ org.business_category.value if org.business_category else '' }}',
             email: '{{ org.contact_email }}',
             phone: '{{ org.contact_phone }}',
             website: '{{ org.website }}'

@@ -7,7 +7,10 @@ import sqlalchemy as sa
 
 from app.extensions import db
 from app.transport.models import TransportReservation, TransportReservationLine
-from app.transport.services.reservation_service import ACTIVE_LINE_STATES
+from app.transport.services.reservation_service import (
+    ACTIVE_LINE_STATES,
+    TransportReservationService,
+)
 from app.transport.services.reservation_state_machine import ReservationState
 
 
@@ -38,6 +41,15 @@ class TransportReservationExpiryService:
         ).scalars().all()
         summary = {"examined": len(candidates), "expired": 0, "skipped": 0}
         for reservation_id in candidates:
+            # TH-3-D3-B: serialize expiry against concurrent reservations on
+            # the same physical vehicle (ascending vehicle lock) before the
+            # resource is released.
+            specific_ids = TransportReservationService._active_specific_vehicle_ids(
+                reservation_id=reservation_id,
+            )
+            if specific_ids:
+                TransportReservationService._lock_vehicles_for_reservation(specific_ids)
+
             result = db.session.execute(
                 sa.update(TransportReservation.__table__)
                 .where(

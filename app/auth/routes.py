@@ -1007,7 +1007,7 @@ def login():
                         active_orgs.append({
                             "org_id": membership.organisation_id,
                             "org_name": org_name,
-                            "membership": membership
+                            "membership_id": membership.id
                         })
 
                 if active_orgs:

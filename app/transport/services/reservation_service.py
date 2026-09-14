@@ -1,11 +1,12 @@
-"""AFCON360 Transport - Reservation service (TH-3-D3).
+"""AFCON360 Transport - Reservation service (TH-3-D3, TH-3-D3-B).
 
 Frozen boundaries:
     Reservation ≠ Booking ≠ Assignment ≠ Payment ≠ Execution
 
 Concurrency:
-  - specific-resource lines: Postgres GiST exclusion constraint on
-    (vehicle_id, tstzrange)
+  - specific-resource lines: application-level deterministic locking of
+    Vehicle rows (`SELECT ... FOR UPDATE`, ascending id) plus an active
+    reservation-line overlap check before materialisation
   - capacity accounting: `SELECT ... FOR UPDATE` on all overlapping supply
     rows in deterministic order
 
@@ -169,13 +170,21 @@ class TransportReservationService:
         if not decision.allowed:
             raise PermissionError(decision.reason or "Reservation policy denied")
 
-        # -- 6. Specific-mode vehicle ownership + eligibility proof
+        # -- 6. Specific-mode vehicle lock + ownership/eligibility proof
         if mode == "specific":
+            locked_vehicles = cls._lock_vehicles_for_reservation(specific_vehicle_ids)
             cls._prove_vehicle_ownership(
                 vehicle_ids=specific_vehicle_ids,
+                locked_vehicles=locked_vehicles,
                 provider_type=provider_type,
                 provider_id=provider_id,
                 offering=offering,
+            )
+            # -- 6b. Overlap guard — serialized by the vehicle locks above.
+            cls._check_vehicle_overlap(
+                vehicle_ids=specific_vehicle_ids,
+                window_start=window_start,
+                window_end=window_end,
             )
 
         # -- 7. Supply coverage + capacity check (locked)
@@ -320,12 +329,15 @@ class TransportReservationService:
     # Vehicle ownership proof
     # ==================================================================
     @classmethod
-    def _prove_vehicle_ownership(cls, *, vehicle_ids, provider_type, provider_id, offering):
-        rows = Vehicle.query.filter(
-            Vehicle.id.in_(vehicle_ids),
-            Vehicle.is_deleted.is_(False),
-        ).all()
-        by_id = {v.id: v for v in rows}
+    def _prove_vehicle_ownership(cls, *, vehicle_ids, locked_vehicles,
+                                 provider_type, provider_id, offering):
+        """Validate each requested vehicle belongs to the provider.
+
+        Runs against the rows already locked by
+        `_lock_vehicles_for_reservation` so ownership/eligibility can never
+        be observed from an unlocked read.
+        """
+        by_id = locked_vehicles
 
         for vid in vehicle_ids:
             v = by_id.get(int(vid))
@@ -365,6 +377,79 @@ class TransportReservationService:
                     raise ValidationError(
                         f"Vehicle {vid} (class={vc}) is not eligible for offering '{offering.code}'"
                     )
+
+    # ==================================================================
+    # Vehicle locking + overlap guard (TH-3-D3-B)
+    # ==================================================================
+    @classmethod
+    def _lock_vehicles_for_reservation(cls, vehicle_ids) -> Dict[int, Vehicle]:
+        """Lock specific-vehicle rows in deterministic ascending id order.
+
+        The `FOR UPDATE` row locks serialize concurrent reservations against
+        the same physical vehicle: a contender blocks here until the holder's
+        transaction commits/rolls back, so the subsequent overlap check can
+        never race a not-yet-committed line.
+        """
+        ids = sorted({int(v) for v in (vehicle_ids or [])})
+        if not ids:
+            return {}
+        rows = db.session.execute(
+            sa.select(Vehicle)
+            .where(
+                Vehicle.id.in_(ids),
+                Vehicle.is_deleted.is_(False),
+            )
+            .order_by(Vehicle.id.asc())
+            .with_for_update()
+        ).scalars().all()
+        return {v.id: v for v in rows}
+
+    @classmethod
+    def _active_specific_vehicle_ids(cls, *, reservation_id) -> List[int]:
+        """Active specific-mode vehicle ids for a reservation (sorted)."""
+        rows = db.session.execute(
+            sa.select(TransportReservationLine.vehicle_id)
+            .where(
+                TransportReservationLine.reservation_id == reservation_id,
+                TransportReservationLine.vehicle_id.isnot(None),
+                TransportReservationLine.state.in_(ACTIVE_LINE_STATES),
+                TransportReservationLine.is_deleted.is_(False),
+            )
+        ).all()
+        return sorted({int(r.vehicle_id) for r in rows})
+
+    @classmethod
+    def _check_vehicle_overlap(cls, *, vehicle_ids, window_start, window_end,
+                               exclude_reservation_id=None):
+        """Reject a specific-vehicle request overlapping an active line.
+
+        Half-open `[start, end)` semantics — an existing line that ends
+        exactly at `window_start` (or starts exactly at `window_end`) is
+        adjacent and does NOT conflict. Runs under the per-vehicle row locks
+        acquired by `_lock_vehicles_for_reservation`.
+        """
+        ids = sorted({int(v) for v in (vehicle_ids or [])})
+        if not ids:
+            return
+        q = (
+            db.session.query(TransportReservationLine.id)
+            .join(TransportReservation,
+                  TransportReservationLine.reservation_id == TransportReservation.id)
+            .filter(
+                TransportReservationLine.vehicle_id.in_(ids),
+                TransportReservationLine.is_deleted.is_(False),
+                TransportReservationLine.state.in_(ACTIVE_LINE_STATES),
+                TransportReservationLine.window_start < window_end,
+                TransportReservationLine.window_end > window_start,
+                TransportReservation.is_deleted.is_(False),
+            )
+        )
+        if exclude_reservation_id is not None:
+            q = q.filter(TransportReservation.id != exclude_reservation_id)
+        if q.limit(1).first() is not None:
+            raise ReservationConflictError(
+                "Vehicle(s) already reserved for an overlapping window"
+            )
 
     # ==================================================================
     # Supply coverage + capacity
@@ -568,6 +653,16 @@ class TransportReservationService:
         target = (target_obligation.value if isinstance(target_obligation, ReservationObligationState)
                   else str(target_obligation).lower())
         current = row.obligation_state
+
+        # ── B-3: terminal reservation guard ──────────────────────────────
+        # A terminal reservation cannot receive a NEW obligation transition.
+        # Idempotent no-op replays (target == current) are permitted.
+        if SM.is_terminal(row.state) and target != current:
+            raise ValidationError(
+                f"Reservation is in terminal state '{row.state}'; "
+                "obligation cannot transition"
+            )
+
         # A duplicate callback is a no-op, provided it identifies the same
         # external financial event.  It must never manufacture another state
         # transition or audit entry.
@@ -585,12 +680,32 @@ class TransportReservationService:
         elif target == ReservationObligationState.PAID.value and row.required_total_amount is not None:
             proposed_received = max(proposed_received, Decimal(str(row.required_total_amount)))
 
+        # ── B-2: DEPOSITED fail-closed ───────────────────────────────────
+        # A deposit transition must not succeed without a valid deposit
+        # reference amount.
         if target == ReservationObligationState.DEPOSITED.value:
-            if row.deposit_required and row.deposit_amount is not None and proposed_received < Decimal(str(row.deposit_amount)):
-                raise ValidationError("Deposit event does not satisfy the required deposit amount")
-        if target == ReservationObligationState.PAID.value and row.required_total_amount is not None:
+            if row.deposit_amount is None:
+                raise ValidationError(
+                    "Deposit event requires a valid deposit reference amount"
+                )
+            if proposed_received < Decimal(str(row.deposit_amount)):
+                raise ValidationError(
+                    "Deposit event does not satisfy the required deposit amount"
+                )
+
+        # ── B-1: PAID fail-closed ────────────────────────────────────────
+        # A full-settlement transition must not succeed without a valid
+        # required total amount.  Do NOT silently treat NULL as zero.
+        if target == ReservationObligationState.PAID.value:
+            if row.required_total_amount is None:
+                raise ValidationError(
+                    "Paid state requires a valid required total amount"
+                )
             if proposed_received < Decimal(str(row.required_total_amount)):
-                raise ValidationError("Full-settlement event does not satisfy the required total amount")
+                raise ValidationError(
+                    "Full-settlement event does not satisfy the required total amount"
+                )
+
         if target != current:
             SM.transition_obligation(row, target, trigger="wallet_obligation_event")
         row.amount_received = proposed_received
@@ -629,6 +744,12 @@ class TransportReservationService:
 
         if SM.is_terminal(row.state):
             return row
+
+        # TH-3-D3-B: serialize cancellation of specific-vehicle reservations
+        # with concurrent reservations against the same physical vehicle.
+        specific_ids = cls._active_specific_vehicle_ids(reservation_id=row.id)
+        if specific_ids:
+            cls._lock_vehicles_for_reservation(specific_ids)
 
         result = db.session.execute(
             sa.update(TransportReservation.__table__)

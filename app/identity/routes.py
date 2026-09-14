@@ -30,6 +30,80 @@ def _get_organisation_by_public_id(org_id):
     return org
 
 
+# Canonical organisation-role vocabulary. Only these nine names are
+# assignable through the org administration flows. Legacy enum names
+# (staff_member, agent, viewer, ...) are rejected at the route boundary.
+CANONICAL_ORG_ROLES = (
+    'org_owner',
+    'org_admin',
+    'finance_manager',
+    'transport_manager',
+    'hr_manager',
+    'dispatcher',
+    'project_manager',
+    'org_member',
+    'org_guest',
+)
+
+
+def _get_active_member(org, user):
+    """Return the user's active, non-deleted membership in ``org`` (or None)."""
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return None
+    return OrganisationMember.query.filter_by(
+        user_id=user.id,
+        organisation_id=org.id,
+        is_active=True,
+        is_deleted=False,
+    ).first()
+
+
+def _has_canonical_role(member, role_name: str) -> bool:
+    """True if ``member`` holds the named canonical org role."""
+    if not member:
+        return False
+    return any(
+        our.role and our.role.name == role_name
+        for our in member.roles
+    )
+
+
+def _ensure_roles_provisioned(org) -> None:
+    """Provision the organisation's canonical OrgRole instances if missing.
+
+    Uses ``commit=False`` so nothing is written until the caller's outer
+    transaction commits.
+    """
+    from app.identity.services.organisation_role_provisioning import (
+        provision_organisation_roles,
+    )
+
+    provision_organisation_roles(org, commit=False)
+
+
+def _assignable_role_choices(org, actor) -> list[tuple[str, str]]:
+    """Canonical role choices the actor may assign.
+
+    Only the nine canonical org roles are assignable. ``org_owner`` is an
+    elevated assignment: only a member holding ``org_owner`` may grant it
+    (no self-escalation, no grant above the actor's authority).
+    """
+    _ensure_roles_provisioned(org)
+    if actor and _has_canonical_role(actor, 'org_owner'):
+        names = list(CANONICAL_ORG_ROLES)
+    else:
+        names = [name for name in CANONICAL_ORG_ROLES if name != 'org_owner']
+    return [(name, name.replace('_', ' ').title()) for name in names]
+
+
+def _require_org_permission(org, user, permission: str):
+    """Return the active membership if the user holds ``permission`` in org."""
+    member = _get_active_member(org, user)
+    if not member or not member.has_permission(permission):
+        return None
+    return member
+
+
 @org_bp.route('/')
 @login_required
 def dashboard():
@@ -50,7 +124,20 @@ def dashboard():
         return redirect(url_for('org.org_dashboard', org_id=memberships[0].organisation.org_id))
     
     # Otherwise show organization selector
-    return render_template('org/selector.html', memberships=memberships)
+    owned_count = 0
+    verified_count = 0
+    for mship in memberships:
+        role_names = {our.role.name for our in mship.roles if our.role and our.role.name}
+        if 'org_owner' in role_names:
+            owned_count += 1
+        if getattr(mship.organisation, 'verification_status', None) == 'verified':
+            verified_count += 1
+    return render_template(
+        'org/selector.html',
+        memberships=memberships,
+        owned_count=owned_count,
+        verified_count=verified_count,
+    )
 
 
 @org_bp.route('/register', methods=['GET', 'POST'])
@@ -207,64 +294,250 @@ def org_kyb(org_id):
 @org_bp.route('/<org_id>/members', methods=['GET', 'POST'])
 @login_required
 def members(org_id):
-    """View and manage organization members"""
+    """View and manage organization members (canonical org RBAC).
+
+    Read gate:   ``org.members.view``       (view the member list)
+    Write gate:  ``org.members.manage``     (POST — add a member)
+    Role admin:  ``org.members.manage_roles`` (change/remove routes)
+    """
     org = _get_organisation_by_public_id(org_id)
-    # Verify permissions
-    if not OrganizationPermissionService.can_manage_staff(current_user, org):
-        flash('You do not have permission to manage members.', 'danger')
+
+    member = _require_org_permission(org, current_user, 'org.members.view')
+    if not member:
+        flash('You do not have permission to view members.', 'danger')
         return redirect(url_for('org.org_dashboard', org_id=org_id))
-    
-    # Handle member addition
-    form = OrganizationMemberForm(organization_type=org.business_category)
-    
+
+    can_manage = bool(member.has_permission('org.members.manage'))
+    can_manage_roles = bool(member.has_permission('org.members.manage_roles'))
+
+    assignable = _assignable_role_choices(org, member)
+    form = OrganizationMemberForm(role_choices=assignable)
+
     if form.validate_on_submit():
+        if not can_manage:
+            flash('You do not have permission to add members.', 'danger')
+            return redirect(url_for('org.members', org_id=org_id))
+
         try:
             from app.identity.models.user import User
-            from app.identity.models.organization_types import OrganizationRole
-            
-            # Find user by email
-            user = User.query.filter_by(email=form.user_email.data).first()
+
+            email = (form.user_email.data or '').strip().lower()
+            user = User.query.filter_by(email=email).first()
             if not user:
                 flash('User with this email not found.', 'danger')
                 return redirect(url_for('org.members', org_id=org_id))
-            
-            # Check if user is already a member
-            existing_member = OrganisationMember.query.filter_by(
+
+            if not bool(getattr(user, 'is_active', False)):
+                flash('This user account is not active and cannot join an organisation.', 'danger')
+                return redirect(url_for('org.members', org_id=org_id))
+
+            verified = bool(getattr(user, 'email_verified', False)) or bool(
+                getattr(user, 'is_verified', False)
+            )
+            if not verified:
+                flash('User must first verify their email or identity before joining an organisation.', 'danger')
+                return redirect(url_for('org.members', org_id=org_id))
+
+            existing = OrganisationMember.query.filter_by(
                 user_id=user.id,
                 organisation_id=org.id,
-                is_deleted=False
+                is_deleted=False,
             ).first()
-            
-            if existing_member:
+            if existing:
                 flash('User is already a member of this organization.', 'warning')
                 return redirect(url_for('org.members', org_id=org_id))
-            
-            # Validate role assignment
-            role = OrganizationRole(form.role.data)
-            is_valid, error_msg = OrganizationPermissionService.validate_role_assignment(org, role)
-            if not is_valid:
-                flash(error_msg, 'danger')
+
+            # Only canonical, actor-assignable role names are accepted.
+            assignable_names = {name for name, _label in assignable}
+            role_name = form.role.data
+            if role_name not in assignable_names:
+                flash('That role cannot be assigned by you.', 'danger')
                 return redirect(url_for('org.members', org_id=org_id))
-            
-            # Add member
-            OrganizationRegistrationService.add_org_member(org, user, role.value)
-            
-            if form.send_invite.data:
-                # TODO: Send invitation email
-                flash(f'User {user.email} added to organization with role {role.value.replace("_", " ").title()}', 'success')
-            else:
-                flash(f'User {user.email} added to organization with role {role.value.replace("_", " ").title()}', 'success')
-            
+
+            _ensure_roles_provisioned(org)
+            OrganizationRegistrationService.add_org_member(
+                org,
+                user,
+                role_name,
+                assigned_by=current_user.id,
+            )
+            db.session.commit()
+            flash(
+                f'User {user.email} added to organization with role '
+                f'{role_name.replace("_", " ").title()}',
+                'success',
+            )
             return redirect(url_for('org.members', org_id=org_id))
-            
+
         except Exception as e:
-            current_app.logger.error(f"Error adding member: {e}")
+            db.session.rollback()
+            current_app.logger.error(f"Error adding member: {e}", exc_info=True)
             flash('An error occurred while adding the member.', 'danger')
-    
-    # Get organization hierarchy
+
     hierarchy = OrganizationPermissionService.get_organization_hierarchy(org)
-    
-    return render_template('org/members.html', org=org, form=form, hierarchy=hierarchy)
+
+    return render_template(
+        'org/members.html',
+        org=org,
+        member=member,
+        form=form,
+        hierarchy=hierarchy,
+        can_manage_members=can_manage,
+        can_manage_roles=can_manage_roles,
+        assignable_roles=assignable,
+    )
+
+
+@org_bp.route('/<org_id>/members/<user_public_id>/role', methods=['POST'])
+@login_required
+def change_member_role(org_id, user_public_id):
+    """Change a member's role to a single canonical org role.
+
+    Gate:       ``org.members.manage_roles`` (org_owner and org_admin).
+    Protections:
+        - the organisation owner can never be changed/removed
+        - granting ``org_owner`` requires the actor to hold it
+        - no self role-change (prevents self-escalation)
+        - cross-organisation targets are unreachable (org-bound lookup)
+    """
+    org = _get_organisation_by_public_id(org_id)
+    actor = _require_org_permission(org, current_user, 'org.members.manage_roles')
+    if not actor:
+        flash('You do not have permission to manage roles.', 'danger')
+        return redirect(url_for('org.org_dashboard', org_id=org_id))
+
+    from app.identity.models.user import User
+
+    target_user = User.query.filter_by(public_id=str(user_public_id)).first()
+    if not target_user:
+        abort(404)
+
+    target = OrganisationMember.query.filter_by(
+        user_id=target_user.id,
+        organisation_id=org.id,
+        is_active=True,
+        is_deleted=False,
+    ).first()
+    if not target:
+        abort(404)
+
+    target_names = {
+        our.role.name for our in target.roles if our.role and our.role.name
+    }
+    if 'org_owner' in target_names:
+        flash('The organisation owner role cannot be changed.', 'danger')
+        return redirect(url_for('org.members', org_id=org_id))
+
+    if target.user_id == current_user.id:
+        flash('You cannot change your own role.', 'danger')
+        return redirect(url_for('org.members', org_id=org_id))
+
+    new_role = (request.form.get('role') or '').strip()
+    assignable_names = {
+        name for name, _label in _assignable_role_choices(org, actor)
+    }
+    if new_role not in assignable_names:
+        flash('That role cannot be assigned by you.', 'danger')
+        return redirect(url_for('org.members', org_id=org_id))
+
+    from app.auth.roles import assign_org_role, revoke_org_role
+
+    try:
+        for name in target_names:
+            revoke_org_role(
+                target.user_id,
+                org.id,
+                name,
+                revoked_by_id=current_user.id,
+            )
+        assign_org_role(
+            target.user_id,
+            org.id,
+            new_role,
+            assigned_by_id=current_user.id,
+        )
+        target.invalidate_permission_cache()
+        db.session.commit()
+        flash(
+            f"Role of {target_user.email} changed to "
+            f"{new_role.replace('_', ' ').title()}",
+            'success',
+        )
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error changing role: {e}", exc_info=True)
+        flash('An error occurred while changing the role.', 'danger')
+
+    return redirect(url_for('org.members', org_id=org_id))
+
+
+@org_bp.route('/<org_id>/members/<user_public_id>/remove', methods=['POST'])
+@login_required
+def remove_member(org_id, user_public_id):
+    """Remove a member from the organisation (soft-delete lifecycle).
+
+    Gate:       ``org.members.manage``; a non-owner may also leave the
+                organisation themselves (self-leave).
+    Protections:
+        - the organisation owner can never be removed
+        - role assignments and direct permission overrides are purged so
+          the member cannot retain residual authority
+        - cross-organisation targets are unreachable (org-bound lookup)
+    """
+    org = _get_organisation_by_public_id(org_id)
+    actor = _get_active_member(org, current_user)
+
+    from app.identity.models.user import User
+
+    target_user = User.query.filter_by(public_id=str(user_public_id)).first()
+    if not target_user:
+        abort(404)
+
+    target = OrganisationMember.query.filter_by(
+        user_id=target_user.id,
+        organisation_id=org.id,
+        is_active=True,
+        is_deleted=False,
+    ).first()
+    if not target:
+        abort(404)
+
+    can_manage = bool(actor and actor.has_permission('org.members.manage'))
+    is_self = bool(actor and actor.user_id == target.user_id)
+    if not (can_manage or is_self):
+        flash('You do not have permission to remove members.', 'danger')
+        return redirect(url_for('org.members', org_id=org_id))
+
+    target_names = {
+        our.role.name for our in target.roles if our.role and our.role.name
+    }
+    if 'org_owner' in target_names:
+        flash('The organisation owner cannot be removed.', 'danger')
+        return redirect(url_for('org.members', org_id=org_id))
+
+    try:
+        from app.identity.models.organisation_member import (
+            OrgMemberPermission,
+            OrgUserRole,
+        )
+
+        OrgUserRole.query.filter_by(
+            organisation_member_id=target.id
+        ).delete(synchronize_session=False)
+        OrgMemberPermission.query.filter_by(
+            member_id=target.id
+        ).delete(synchronize_session=False)
+        target.is_active = False
+        target.soft_delete()
+        target.invalidate_permission_cache()
+        db.session.commit()
+        flash(f'Member {target_user.email} removed from the organization.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error removing member: {e}", exc_info=True)
+        flash('An error occurred while removing the member.', 'danger')
+
+    return redirect(url_for('org.members', org_id=org_id))
 
 
 @org_bp.route('/<org_id>/settings', methods=['GET', 'POST'])
@@ -272,15 +545,11 @@ def members(org_id):
 def settings(org_id):
     """Organization settings"""
     org = _get_organisation_by_public_id(org_id)
-    # Verify permissions
-    if not OrganizationPermissionService.can_manage_settings(current_user, org):
+    # Verify permissions (canonical org.settings.manage — org_owner only)
+    member = _require_org_permission(org, current_user, 'org.settings.manage')
+    if not member:
         flash('You do not have permission to manage settings.', 'danger')
         return redirect(url_for('org.org_dashboard', org_id=org_id))
-    member = OrganisationMember.query.filter_by(
-        user_id=current_user.id,
-        organisation_id=org.id,
-        is_deleted=False
-    ).first()
     
     form = OrganizationSettingsForm(obj=org)
     
@@ -315,7 +584,20 @@ def settings(org_id):
     form.public_profile.data = org.get_setting('public_profile', False)
     form.allow_member_invites.data = org.get_setting('allow_member_invites', True)
     
-    return render_template('org/settings.html', org=org, member=member, form=form)
+    return render_template('org/settings.html', org=org, member=member, form=form,
+                           stats={
+                               'total_members': OrganisationMember.query.filter_by(
+                                   organisation_id=org.id, is_deleted=False, is_active=True
+                               ).count(),
+                               'active_modules': org.get_active_modules(),
+                               'can_create_events': org.can_create_events(),
+                               'can_manage_accommodation': org.can_manage_accommodation(),
+                               'can_manage_transport': org.can_manage_transport(),
+                               'can_manage_tourism': org.can_manage_tourism(),
+                               'can_process_payments': org.can_process_payments(),
+                               'requires_license': org.requires_license(),
+                               'requires_insurance': org.requires_insurance(),
+                           })
 
 
 @org_bp.route('/<org_id>/settings/kyc', methods=['POST'])
@@ -323,10 +605,10 @@ def settings(org_id):
 def kyc_settings(org_id):
     """Save KYC settings for organization"""
     org = _get_organisation_by_public_id(org_id)
-    # Verify permissions
-    if not OrganizationPermissionService.can_manage_settings(current_user, org):
+    # Verify permissions (canonical org.settings.manage)
+    if not _require_org_permission(org, current_user, 'org.settings.manage'):
         return jsonify({'success': False, 'message': 'Access denied'}), 403
-    
+
     try:
         import json
         data = json.loads(request.data)
@@ -441,8 +723,8 @@ def events(org_id):
 def accommodation(org_id):
     """Organization accommodation management"""
     org = _get_organisation_by_public_id(org_id)
-    # Verify permissions
-    if not OrganizationPermissionService.can_manage_accommodation(current_user, org):
+    # Verify permissions (canonical org.accommodation.manage)
+    if not _require_org_permission(org, current_user, 'org.accommodation.manage'):
         flash('You do not have permission to manage accommodation.', 'danger')
         return redirect(url_for('org.org_dashboard', org_id=org_id))
     
@@ -458,7 +740,7 @@ def accommodation(org_id):
 def bookings(org_id):
     """View bookings for properties owned by the selected organisation."""
     org = _get_organisation_by_public_id(org_id)
-    if not OrganizationPermissionService.can_manage_accommodation(current_user, org):
+    if not _require_org_permission(org, current_user, 'org.accommodation.manage'):
         flash('You do not have permission to manage accommodation.', 'danger')
         return redirect(url_for('org.org_dashboard', org_id=org_id))
 
@@ -482,14 +764,18 @@ def bookings(org_id):
 def transport(org_id):
     """Organization transport management"""
     org = _get_organisation_by_public_id(org_id)
-    # Verify permissions
-    if not OrganizationPermissionService.can_manage_transport(current_user, org):
+    # Verify permissions (canonical org.transport.manage)
+    if not _require_org_permission(org, current_user, 'org.transport.manage'):
         flash('You do not have permission to manage transport.', 'danger')
         return redirect(url_for('org.org_dashboard', org_id=org_id))
     
     # Get organization transport fleet
     from app.transport.models import Vehicle
-    vehicles = Vehicle.query.filter_by(operator_id=org.id).all()
+    vehicles = Vehicle.query.filter(
+        Vehicle.owner_type == 'organisation',
+        Vehicle.owner_id == org.id,
+        Vehicle.is_deleted == False,  # noqa: E712
+    ).all()
     
     return render_template('org/transport.html', org=org, vehicles=vehicles)
 

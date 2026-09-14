@@ -758,6 +758,7 @@ class GuestCoordinationService:
             assignment = GuestCoordinationService._assignment(event, registration)
             previous = assignment.accommodation_booking_id
             if previous == booking.id:
+                db.session.commit()
                 return assignment
             if not GuestCoordinationService._provider_allows_assignment(
                 booking, registration, "accommodation"
@@ -830,6 +831,7 @@ class GuestCoordinationService:
             assignment = GuestCoordinationService._assignment(event, registration)
             previous = assignment.transport_booking_id
             if previous == booking.id:
+                db.session.commit()
                 return assignment
             if not GuestCoordinationService._provider_allows_assignment(
                 booking, registration, "transport"
@@ -891,9 +893,11 @@ class GuestCoordinationService:
             event_id=event.id, registration_id=registration.id, is_deleted=False
         ).with_for_update().first()
         if assignment is None:
+            db.session.rollback()
             raise CoordinationError("ASSIGNMENT_NOT_FOUND", "No active assignment exists for this attendee")
         previous_id = getattr(assignment, f"{capability}_booking_id")
         if previous_id is None:
+            db.session.rollback()
             raise CoordinationError("ASSIGNMENT_NOT_FOUND", f"No {capability} assignment exists for this attendee")
         if capability == "accommodation":
             from app.accommodation.models.booking import AccommodationBooking

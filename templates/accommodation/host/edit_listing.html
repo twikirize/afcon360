@@ -544,6 +544,12 @@
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Updating...';
       });
+
+      // Re-enable button after server response (page reload with flash messages)
+      window.addEventListener('load', function() {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="bi bi-check-lg me-2"></i> Update Listing';
+      });
     }
 
     // ── Image preview (from URL input) ──────────────────────

@@ -108,7 +108,7 @@ class ModerationService:
         user_id: int,
         notification_type: str,
         title: str,
-        message: str,
+message: str,
         property_title: str = None
     ):
         """Send notification with proper error handling."""
@@ -119,7 +119,7 @@ class ModerationService:
                     notification_type=notification_type,
                     title=title,
                     message=message,
-                    channels=['in_app', 'email']
+                    channels=['email', 'sms', 'in_app']
                 )
         except Exception as e:
             logger.error(f"Failed to send notification: {e}")

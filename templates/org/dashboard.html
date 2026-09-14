@@ -227,7 +227,7 @@
                         <p class="mb-1 opacity-90">{{ org.org_id }} • {{ org.contact_email }}</p>
                         <div class="d-flex gap-2 flex-wrap">
                             <span class="badge bg-white text-dark px-3 py-2">
-                                <i class="bi bi-tag me-1"></i> {{ org.business_category.value.replace('_', ' ').title() }}
+                                <i class="bi bi-tag me-1"></i> {{ org.business_category.value if org.business_category else 'Organisation' }}
                             </span>
                             <span class="badge bg-{{ 'success' if org.verification_status == 'verified' else 'warning' }} px-3 py-2">
                                 <i class="bi bi-shield-check me-1"></i> {{ org.verification_status.title() }}
@@ -243,7 +243,7 @@
             </div>
             <div class="col-md-4 text-md-end">
                 <div class="d-flex gap-2 justify-content-md-end mt-3 mt-md-0">
-                    <button class="btn btn-light quick-action-btn" onclick="window.location.href='{{ url_for('org.kyb', org_id=org.org_id) }}'">
+                    <button class="btn btn-light quick-action-btn" onclick="window.location.href='{{ url_for('org.org_kyb', org_id=org.org_id) }}'">
                         <i class="bi bi-shield-check me-2"></i> KYB
                     </button>
                     <button class="btn btn-light quick-action-btn" onclick="window.location.href='{{ url_for('org.settings', org_id=org.org_id) }}'">

@@ -1308,7 +1308,7 @@ class NotificationService:
             title="Property Submitted for Review",
             message=f"Your property '{property_obj.title}' has been submitted and is under review.",
             data={'property_id': property_obj.public_id, 'title': property_obj.title},
-            channels=['email', 'in_app'],
+            channels=['email', 'sms', 'in_app'],
             link=f"/accommodation/host/listings",
             priority='normal',
         )
@@ -1319,6 +1319,7 @@ class NotificationService:
             data={'property_id': property_obj.public_id},
             link="/accommodation/admin/properties",
             domain='accommodation',
+            channels=['email', 'sms', 'in_app'],
         )
 
     @classmethod

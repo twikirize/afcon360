@@ -444,6 +444,52 @@ def _bootstrap_policies() -> None:
           channels=['in_app', 'email'], priority='high', module='events',
           link='/events/{event_ref}'),
 
+        # --- cross-module coordination: accommodation ↔ transport -----
+        # TASK1: Accommodation → Transport
+        # Audience.SUBJECT resolves to envelope.user_id which falls back to
+        # actor_id (the admin/operator) because the payload carries no user_id.
+        # Customer notification is handled separately by the direct
+        # _notify_*_customer() call in the coordination service (mirrors
+        # Event's _email_invite pattern).
+        P(event_type=E.GUEST_TRANSPORT_ASSIGNED,
+          notification_type='guest_transport_assigned',
+          title='Transport assigned to guest',
+          message='Transport has been assigned to guest {guest_ref} for accommodation booking {booking_ref}.',
+          channels=['in_app', 'email'], priority='high',
+          module='transport', link='/transport/bookings'),
+        P(event_type=E.GUEST_TRANSPORT_CHANGED,
+          notification_type='guest_transport_changed',
+          title='Guest transport assignment updated',
+          message='Transport assignment for guest {guest_ref} has been updated.',
+          channels=['in_app', 'email'], priority='high',
+          module='transport', link='/transport/bookings'),
+        P(event_type=E.GUEST_TRANSPORT_REMOVED,
+          notification_type='guest_transport_removed',
+          title='Guest transport assignment removed',
+          message='Transport assignment for guest {guest_ref} has been removed.',
+          channels=['in_app', 'email'], priority='high',
+          module='transport', link='/transport/bookings'),
+
+        # TASK2: Transport → Accommodation
+        P(event_type=E.PASSENGER_ACCOMMODATION_ASSIGNED,
+          notification_type='passenger_accommodation_assigned',
+          title='Accommodation assigned to passenger',
+          message='Accommodation has been assigned to passenger {passenger_ref} for transport booking {booking_ref}.',
+          channels=['in_app', 'email'], priority='high',
+          module='accommodation', link='/accommodation/bookings'),
+        P(event_type=E.PASSENGER_ACCOMMODATION_CHANGED,
+          notification_type='passenger_accommodation_changed',
+          title='Passenger accommodation assignment updated',
+          message='Accommodation assignment for passenger {passenger_ref} has been updated.',
+          channels=['in_app', 'email'], priority='high',
+          module='accommodation', link='/accommodation/bookings'),
+        P(event_type=E.PASSENGER_ACCOMMODATION_REMOVED,
+          notification_type='passenger_accommodation_removed',
+          title='Passenger accommodation assignment removed',
+          message='Accommodation assignment for passenger {passenger_ref} has been removed.',
+          channels=['in_app', 'email'], priority='high',
+          module='accommodation', link='/accommodation/bookings'),
+
         # ---------------- messaging / system ----------------
         P(event_type=E.MESSAGE_SENT,
           notification_type='message_notification',

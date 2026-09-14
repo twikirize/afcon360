@@ -37,12 +37,12 @@ import uuid as uuid_lib
 
 from sqlalchemy import (
     Index, UniqueConstraint, CheckConstraint, Enum as SQLEnum,
-    ForeignKeyConstraint, event, DDL, and_
+    ForeignKeyConstraint, event, and_,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID, ExcludeConstraint
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import validates, relationship, backref
-from sqlalchemy.sql import column, expression, func
+from sqlalchemy.sql import column, expression
 
 from app.extensions import db
 from app.models.base import BaseModel
@@ -1228,6 +1228,17 @@ class TransportPassenger(TransportBase):
     # seat on this booking. Events never writes transport tables directly; the
     # value is a logical reference into app/events/models EventAssignment.
     event_assignment_id = db.Column(
+        db.BigInteger, nullable=True, index=True,
+        info={"id_kind": IDKind.CROSS_MODULE_REF},
+    )
+
+    # Source-side cross-module reference to an Accommodation booking
+    # coordinated for this passenger (BIGINT, no db-level FK). Set only by the
+    # Transport module when it coordinates a booked accommodation resource for
+    # a transport passenger. The guest slot on the Accommodation side is
+    # created by the Accommodation coordination contract (identity-keyed); this
+    # column is the transport-owned reference back to that booking.
+    accommodation_booking_id = db.Column(
         db.BigInteger, nullable=True, index=True,
         info={"id_kind": IDKind.CROSS_MODULE_REF},
     )
@@ -2635,7 +2646,7 @@ class TransportReservation(TransportBase):
     # Reservation-side obligation facts only; Wallet/Payment remains the
     # authoritative owner of money movement and transaction history.
     required_total_amount = db.Column(db.Numeric(10, 2), nullable=True)
-    amount_received = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    amount_received = db.Column(db.Numeric(10, 2), nullable=False, default=0, server_default="0")
     deposit_amount = db.Column(db.Numeric(10, 2), nullable=True)
     deposit_currency = db.Column(db.String(10), nullable=True)
     deposit_due_at = db.Column(db.DateTime(timezone=True), nullable=True)
@@ -2667,16 +2678,6 @@ class TransportReservationLine(TransportBase):
         Index("ix_line_vehicle", "vehicle_id", "state"),
         Index("ix_line_offering", "offering_code", "state"),
         CheckConstraint("vehicle_id IS NULL OR vehicle_id > 0", name="chk_line_vehicle_id"),
-        ExcludeConstraint(
-            ("vehicle_id", "="),
-            (func.tstzrange(column("window_start"), column("window_end"), "[)"), "&&"),
-            name="ex_reservation_line_vehicle_window",
-            using="gist",
-            where=and_(
-                column("vehicle_id").isnot(None),
-                column("state").in_(("held", "reserved", "materialized")),
-            ),
-        ),
     )
 
     reservation_id = db.Column(db.BigInteger, db.ForeignKey("transport_reservations.id"), nullable=False)
@@ -2715,15 +2716,6 @@ class ProviderOfferingSupply(TransportBase):
         Index("ix_supply_window", "window_start", "window_end"),
         CheckConstraint("total_units > 0", name="chk_supply_total_positive"),
         CheckConstraint("window_end > window_start", name="chk_supply_window"),
-        ExcludeConstraint(
-            ("provider_type", "="),
-            ("provider_id", "="),
-            ("offering_code", "="),
-            (func.tstzrange(column("window_start"), column("window_end"), "[)"), "&&"),
-            name="ex_supply_provider_offering_window",
-            using="gist",
-            where=column("is_deleted") == expression.false(),
-        ),
     )
 
     provider_type = db.Column(db.String(20), nullable=False)
@@ -2740,21 +2732,6 @@ class ProviderOfferingSupply(TransportBase):
 
     # Relationships
     vehicle = relationship("Vehicle", foreign_keys=[vehicle_id])
-
-
-# Equality operators in the GiST exclusion constraint require PostgreSQL's
-# btree_gist extension.  This also makes metadata-driven test schema creation
-# faithful to the production migration.
-event.listen(
-    ProviderOfferingSupply.__table__,
-    "before_create",
-    DDL("CREATE EXTENSION IF NOT EXISTS btree_gist").execute_if(dialect="postgresql"),
-)
-event.listen(
-    TransportReservationLine.__table__,
-    "before_create",
-    DDL("CREATE EXTENSION IF NOT EXISTS btree_gist").execute_if(dialect="postgresql"),
-)
 
 
 # ===========================================================================

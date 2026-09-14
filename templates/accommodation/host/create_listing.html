@@ -564,6 +564,12 @@
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Creating...';
       });
+
+      // Re-enable button after server response (page reload with flash messages)
+      window.addEventListener('load', function() {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="bi bi-plus-lg me-2"></i> Create Listing';
+      });
     }
 
     // ── Image preview (from URL input) ──────────────────────

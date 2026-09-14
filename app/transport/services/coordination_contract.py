@@ -382,6 +382,78 @@ class TransportCoordinationContract:
         db.session.flush()
         return True
 
+    @classmethod
+    def release_passenger_for_guest(
+        cls,
+        booking_reference: str,
+        *,
+        email: str = None,
+        user_id: int = None,
+        removed_by_user_id: int = None,
+        reason: str = None,
+    ) -> bool:
+        """Retire the active Transport passenger reservation created for a
+        non-event guest (accommodation-coordination) on one booking.
+
+        Transport owns passenger lifecycle. The reservation is located on the
+        booking by passenger identity (email or user id) and only releases
+        reservations that are NOT bound to an event assignment, so releasing an
+        accommodation-coordinated seat never cancels an Event-coordinated one
+        (UNASSIGN is not CANCEL). Idempotent: returns True when at least one
+        active reservation was retired, False when none matched. Does NOT
+        delete history - the reservation moves to CANCELLED and carries its
+        release metadata. Flushes only; commit is owned by the caller.
+        """
+        from app.transport.models import TransportPassenger, PassengerStatus
+
+        booking = cls._load_booking(booking_reference, lock=False)
+        email_norm = (email or "").strip().lower() or None
+        if not email_norm and not user_id:
+            raise TransportCoordinationContractError(
+                "PASSENGER_IDENTITY_REQUIRED",
+                "A passenger email or user id is required to release the reservation",
+            )
+        query = TransportPassenger.query.filter(
+            TransportPassenger.booking_id == booking.id,
+            TransportPassenger.event_assignment_id.is_(None),
+            TransportPassenger.is_deleted == False,  # noqa: E712
+            TransportPassenger.status != PassengerStatus.CANCELLED,
+        )
+        if email_norm and user_id:
+            from sqlalchemy import or_
+
+            query = query.filter(
+                or_(
+                    TransportPassenger.email == email_norm,
+                    TransportPassenger.user_id == user_id,
+                )
+            )
+        elif email_norm:
+            query = query.filter(TransportPassenger.email == email_norm)
+        elif user_id:
+            query = query.filter(TransportPassenger.user_id == user_id)
+        passengers = query.all()
+        if not passengers:
+            return False
+        released_at = datetime.now(timezone.utc)
+        release_reason = (reason or "assignment cancelled").strip()
+        for passenger in passengers:
+            passenger.status = PassengerStatus.CANCELLED
+            metadata = dict(passenger.passenger_metadata or {})
+            metadata["released_at"] = released_at.isoformat()
+            metadata["release_reason"] = release_reason
+            metadata["released_by_user_id"] = removed_by_user_id
+            passenger.passenger_metadata = metadata
+            audit_log(
+                action="transport_passenger_released",
+                resource_type="transport_passenger",
+                resource_id=passenger.id,
+                user_id=removed_by_user_id,
+                details={"accommodation_guest": bool(email_norm), "reason": release_reason},
+            )
+        db.session.flush()
+        return True
+
     # ------------------------------------------------------------------
     # Booking -> event tag
     # ------------------------------------------------------------------

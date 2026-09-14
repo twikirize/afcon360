@@ -255,6 +255,7 @@ def test_accommodation_slot_path_exists_without_event_wiring(booking):
     assert slot.registration_source == "event_coordination"
     assert slot.guest_name == "Direct Guest"
     assert slot.guest_email == "direct.guest@example.com"
+    db.session.commit()
 
 
 def test_event_handoff_creates_coordination_slot(
@@ -277,6 +278,7 @@ def test_event_handoff_creates_coordination_slot(
     assert slot.guest_email == registration.email
     assert assignment.acc_link_token_hash is not None
     assert assignment.acc_link_expires_at is not None
+    db.session.commit()
 
 
 def test_registration_link_pool_consumption_100_to_98(actor, property_):
@@ -353,6 +355,7 @@ def test_no_stock_request_rejected_by_accommodation_capability(booking):
             email="three@example.com",
         )
     assert exc.value.code == "BOOKING_CAPACITY_EXCEEDED"
+    db.session.commit()
 
 
 def test_events_side_never_writes_accommodation_directly():
@@ -411,6 +414,7 @@ def test_release_recovers_abandoned_slot_capacity(booking):
         booking_id=booking.id, is_active=True
     ).count()
     assert remaining == 0
+    db.session.commit()
 
 
 def test_completion_resolves_same_slot_and_reference(
@@ -472,3 +476,4 @@ def test_ensure_event_guest_slot_idempotent(booking, assignment):
         is_active=True,
     ).count()
     assert count == 1
+    db.session.commit()

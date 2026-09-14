@@ -261,7 +261,7 @@
                         <p class="mb-1 opacity-90">{{ org.legal_name }} • Manage your organization's content</p>
                         <div class="d-flex gap-2 flex-wrap mt-2">
                             <span class="badge bg-white text-dark px-3 py-2">
-                                <i class="bi bi-tag me-1"></i> {{ org.business_category.value.replace('_', ' ').title() }}
+                                <i class="bi bi-tag me-1"></i> {{ org.business_category.value if org.business_category else 'Organisation' }}
                             </span>
                             <span class="badge bg-white text-dark px-3 py-2">
                                 <i class="bi bi-collection me-1"></i> {{ items|length if items else 0 }} Items

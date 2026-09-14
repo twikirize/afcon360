@@ -117,6 +117,14 @@ class EventType:
     EVENT_TRANSPORT_CHANGED = 'event.transport_changed'
     EVENT_COORDINATION_CANCELLED = 'event.coordination_cancelled'
 
+    # --- cross-module coordination (Stage 5: accommodation <-> transport) -----
+    GUEST_TRANSPORT_ASSIGNED = 'accommodation.guest_transport_assigned'
+    GUEST_TRANSPORT_CHANGED = 'accommodation.guest_transport_changed'
+    GUEST_TRANSPORT_REMOVED = 'accommodation.guest_transport_removed'
+    PASSENGER_ACCOMMODATION_ASSIGNED = 'transport.passenger_accommodation_assigned'
+    PASSENGER_ACCOMMODATION_CHANGED = 'transport.passenger_accommodation_changed'
+    PASSENGER_ACCOMMODATION_REMOVED = 'transport.passenger_accommodation_removed'
+
     # --- messaging / system ---------------------------------------------
     MESSAGE_SENT = 'message.sent'
     SYSTEM_ALERT_RAISED = 'system.alert_raised'
@@ -343,6 +351,34 @@ def _bootstrap_registry() -> None:
                    'event_assignment', ['event_ref', 'registration_ref', 'previous_booking_ref', 'booking_ref'])
     register_event(E.EVENT_COORDINATION_CANCELLED, 1, 'Event coordination assignment cancelled',
                    'event_assignment', ['event_ref', 'registration_ref', 'capability'])
+
+    # cross-module coordination (Stage 5: accommodation <-> transport)
+    register_event(E.GUEST_TRANSPORT_ASSIGNED, 1,
+                   'Transport coordinated for an accommodation guest',
+                   'accommodation_booking',
+                   ['booking_ref', 'guest_ref', 'transport_booking_ref'])
+    register_event(E.GUEST_TRANSPORT_CHANGED, 1,
+                   'Transport coordination changed for an accommodation guest',
+                   'accommodation_booking',
+                   ['booking_ref', 'guest_ref', 'previous_transport_booking_ref',
+                    'transport_booking_ref'])
+    register_event(E.GUEST_TRANSPORT_REMOVED, 1,
+                   'Transport coordination removed for an accommodation guest',
+                   'accommodation_booking',
+                   ['booking_ref', 'guest_ref', 'previous_transport_booking_ref'])
+    register_event(E.PASSENGER_ACCOMMODATION_ASSIGNED, 1,
+                   'Accommodation coordinated for a transport passenger',
+                   'transport_booking',
+                   ['booking_ref', 'passenger_ref', 'accommodation_booking_ref'])
+    register_event(E.PASSENGER_ACCOMMODATION_CHANGED, 1,
+                   'Accommodation coordination changed for a transport passenger',
+                   'transport_booking',
+                   ['booking_ref', 'passenger_ref', 'previous_accommodation_booking_ref',
+                    'accommodation_booking_ref'])
+    register_event(E.PASSENGER_ACCOMMODATION_REMOVED, 1,
+                   'Accommodation coordination removed for a transport passenger',
+                   'transport_booking',
+                   ['booking_ref', 'passenger_ref', 'previous_accommodation_booking_ref'])
 
     # messaging / system
     register_event(E.MESSAGE_SENT, 1, 'Internal message sent', 'message')

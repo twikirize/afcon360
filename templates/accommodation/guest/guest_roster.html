@@ -41,16 +41,37 @@
 
   <div class="card shadow-sm">
     <div class="card-body">
-      <h2 class="h6">Current seats and history</h2>
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <h2 class="h6 mb-0">Current seats and history</h2>
+        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('transport.book_transport', next=url_for('accommodation.guest_roster', booking_id=booking.id)) }}">Book Transport</a>
+      </div>
+      <p class="small text-muted mb-3">Pick an available booked transport from the list and assign it to a guest. No suitable transport? <a href="{{ url_for('transport.book_transport', next=url_for('accommodation.guest_roster', booking_id=booking.id)) }}">Book Transport</a> first, then return here to select it.</p>
       <div class="table-responsive">
         <table class="table align-middle">
-          <thead><tr><th>Name</th><th>Status</th><th>Source</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Name</th><th>Status</th><th>Source</th><th>Transport</th><th>Actions</th></tr></thead>
           <tbody>
           {% for registration in registrations %}
-            <tr class="{% if not registration.is_active %}text-muted{% endif %}">
+            <tr class="{% if not registration.is_active %}text-muted{% endif %}" data-guest-row data-registration-id="{{ registration.id }}">
               <td>{{ registration.guest_name }}{% if registration.is_placeholder %} <span class="badge bg-secondary">TBD</span>{% endif %}</td>
               <td>{% if registration.is_active %}{{ registration.status }}{% else %}removed{% endif %}</td>
               <td>{{ registration.registration_source or '—' }}</td>
+              <td>
+                {% if registration.transport_booking_id %}
+                <span class="badge bg-info">Booked</span>
+                <div class="small text-muted mt-1" data-transport-detail></div>
+                {% if registration.is_active %}
+                <form method="post" action="{{ url_for('accommodation.unassign_transport_for_guest', booking_id=booking.id, registration_id=registration.id) }}" class="d-inline">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-sm btn-outline-warning" type="submit">Remove</button>
+                </form>
+                {% endif %}
+                {% elif registration.is_active %}
+                <button type="button" class="btn btn-sm btn-outline-primary" data-assign-transport data-guest-name="{{ registration.guest_name }}" data-assign-url="{{ url_for('accommodation.assign_transport_for_guest', booking_id=booking.id, registration_id=registration.id) }}">Assign</button>
+                <span class="text-muted small d-block">—</span>
+                {% else %}
+                <span class="text-muted small">—</span>
+                {% endif %}
+              </td>
               <td>
                 {% if registration.is_active %}
                 {% if registration.is_placeholder %}
@@ -63,9 +84,58 @@
                 {% else %}<small>Reason: {{ registration.removed_reason }}</small>{% endif %}
               </td>
             </tr>
-          {% else %}<tr><td colspan="4" class="text-muted">No registrations yet.</td></tr>{% endfor %}
+          {% else %}<tr><td colspan="5" class="text-muted">No registrations yet.</td></tr>{% endfor %}
           </tbody>
         </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="assignTransportModal" tabindex="-1" aria-labelledby="assignTransportModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="assignTransportForm" novalidate
+            data-pane-url="{{ url_for('accommodation.guest_roster_transport_pane', booking_id=booking.id) }}"
+            data-available-url="{{ url_for('accommodation.guest_roster_transport_available', booking_id=booking.id) }}"
+            data-book-url="{{ url_for('transport.book_transport', next=url_for('accommodation.guest_roster', booking_id=booking.id)) }}"
+            data-accomm-ref="{{ booking.booking_reference }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header">
+          <h5 class="modal-title" id="assignTransportModalLabel">Assign transport</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-2" id="assignTransportGuest"></p>
+          <label class="form-label" for="transportSelect">Available booked transport</label>
+          <select class="form-select" id="transportSelect" name="transport_booking_ref" required>
+            <option value="">Loading available transport…</option>
+          </select>
+          <div id="transportEmpty" hidden></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="assignTransportSubmit">Assign</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="confirmTransportModal" tabindex="-1" aria-labelledby="confirmTransportModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="confirmTransportModalLabel">Confirm transport assignment</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <dl class="row mb-0" id="confirmTransportDetails"></dl>
+        <p class="small text-muted mb-0 mt-2">The transport booking will reserve a passenger seat for this guest and the full assignment will be recorded.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" id="confirmTransportBack">Back</button>
+        <button type="button" class="btn btn-primary" id="confirmTransportSubmit">Confirm assignment</button>
       </div>
     </div>
   </div>

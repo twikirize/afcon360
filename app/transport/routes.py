@@ -297,6 +297,11 @@ def bookings_new():
 def book_transport():
     """Submit a booking"""
     if request.method == "GET":
+        # Cross-domain return journey: remember a safe local "back to" target
+        # (e.g. a guest roster that called "Book Transport"). The value is
+        # honored on successful booking so the operator lands back on the
+        # assignment page with the fresh resource list loaded.
+        _capture_return_to("transport_book_return_to")
         return render_template("transport/book.html")
 
     try:
@@ -317,6 +322,9 @@ def book_transport():
         booking_id = booking["data"]["booking_id"]
         logger.info(f"Booking created: user_id={_uid()}, ref={ref}")
         flash(f"Booking confirmed! Reference: {ref}", "success")
+        return_to = session.pop("transport_book_return_to", None)
+        if return_to:
+            return redirect(return_to)
         return redirect(url_for("transport.bookings_show", id=booking_id))
 
     except ServiceUnavailableError:
@@ -329,6 +337,14 @@ def book_transport():
         logger.error(f"Booking error for user_id={_uid()}: {e}")
         flash(f"Booking error: {str(e)}", "danger")
         return redirect(url_for("transport.book_transport"))
+
+
+def _capture_return_to(session_key: str):
+    """Store only a root-relative, same-origin path in the session. Absolute
+    URLs and protocol-relative URLs are rejected (open-redirect guard)."""
+    target = (request.args.get("next") or "").strip()
+    if target.startswith("/") and not target.startswith("//"):
+        session[session_key] = target
 
 
 @transport_bp.route("/bookings/<int:id>")
@@ -416,6 +432,235 @@ def bookings_cancel(id):
         flash("Unable to cancel booking", "danger")
 
     return redirect(url_for("transport.bookings_show", id=id))
+
+
+# ---------------------------------------------------------------------------
+# Stage 5 – cross-domain accommodation coordination (TASK2: Transport → Accommodation)
+# ---------------------------------------------------------------------------
+
+@transport_bp.route("/bookings/<int:booking_id>/passengers/accommodation/pane", methods=["GET"], endpoint="booking_accommodation_pane")
+@module_enabled_required("transport")
+@login_required
+def booking_accommodation_pane(booking_id):
+    """Read-side pane data for the booking show page: every passenger plus its
+    accommodation assignment summary."""
+    from app.transport.models import Booking
+    from app.transport.services.accommodation_coordination import (
+        PassengerAccommodationCoordinationService,
+        TransportAccommodationCoordinationError,
+    )
+    try:
+        booking_model = db.session.get(Booking, booking_id)
+        if not booking_model:
+            return jsonify({"success": False, "error": "Booking not found"}), 404
+        _require_ownership(booking_model, "user_id")
+        result = PassengerAccommodationCoordinationService.pane(current_user, booking_id)
+        for item in result.get("items", []):
+            item["assign_url"] = url_for(
+                "transport.assign_accommodation_for_passenger",
+                booking_id=booking_id,
+                passenger_id=item["passenger_id"],
+            )
+            item["unassign_url"] = url_for(
+                "transport.unassign_accommodation_for_passenger",
+                booking_id=booking_id,
+                passenger_id=item["passenger_id"],
+            )
+        return jsonify({"success": True, **result})
+    except TransportAccommodationCoordinationError as exc:
+        return jsonify({"success": False, "code": exc.code, "error": exc.message}), 400
+    except Exception:
+        logger.exception("Accommodation pane failed for transport booking %s", booking_id)
+        return jsonify({"success": False, "error": "The accommodation pane could not be loaded"}), 500
+
+
+@transport_bp.route("/bookings/<int:booking_id>/passengers/accommodation/available", methods=["GET"], endpoint="booking_accommodation_available")
+@module_enabled_required("transport")
+@login_required
+def booking_accommodation_available(booking_id):
+    """Eligible Accommodation bookings owned by the current user, for the
+    assign dropdown on the booking show page.
+
+    Read-only cross-module query: Transport presents candidate target
+    resources from the operator's own accommodation bookings, but
+    Accommodation revalidates ownership/status/room/capacity atomically on
+    every assignment — this list is a convenience for the operator, never a
+    gate. The only client input on assignment is one of the booking references
+    returned here."""
+    from app.transport.services.accommodation_coordination import (
+        PassengerAccommodationCoordinationService,
+        ACCOMMODATION_ASSIGNABLE_STATUSES,
+        _module_available,
+        _status_value,
+    )
+    booking_model = db.session.get(Booking, booking_id)
+    if not booking_model:
+        return jsonify({"success": False, "error": "Booking not found"}), 404
+    _require_ownership(booking_model, "user_id")
+
+    items = []
+    count_total = 0
+    if _module_available("accommodation"):
+        from app.accommodation.models.booking import AccommodationBooking
+
+        owned = AccommodationBooking.query.filter(
+            AccommodationBooking.is_deleted == False,  # noqa: E712
+            db.or_(
+                AccommodationBooking.booked_by_user_id == current_user.id,
+                AccommodationBooking.booking_owner_id == current_user.id,
+            ),
+        ).all()
+        count_total = len(owned)
+        for candidate in owned:
+            status = _status_value(getattr(candidate, "status", ""))
+            if status not in ACCOMMODATION_ASSIGNABLE_STATUSES:
+                continue
+            entry = PassengerAccommodationCoordinationService._accommodation_summary(candidate)
+            entry["status"] = status
+            items.append(entry)
+    return jsonify({
+        "success": True,
+        "count_total": count_total,
+        "items": items,
+        "assignable": sorted(ACCOMMODATION_ASSIGNABLE_STATUSES),
+        "book_url": url_for(
+            "accommodation.guest_search",
+            next=url_for("transport.bookings_show", id=booking_id),
+        ),
+    })
+
+
+def _accommodation_coordination_redirect(booking_id: int, *, unassign: bool = False, assignment_info: dict | None = None):
+    """Post-change navigational fallback: flash and return to the booking show
+    page (the assignment page) instead of a JSON response."""
+    if assignment_info:
+        passenger_name = assignment_info.get("passenger_name") or "Passenger"
+        accommodation_ref = assignment_info.get("accommodation_booking_ref") or ""
+        flash_message = (
+            f"Accommodation assignment confirmed: {passenger_name} → "
+            f"accommodation booking {accommodation_ref}."
+        )
+    else:
+        flash_message = (
+            "Accommodation booking assignment released."
+            if unassign else
+            "Accommodation booking assigned to the passenger."
+        )
+    flash(flash_message, "success")
+    return redirect(url_for("transport.bookings_show", id=booking_id))
+
+
+@transport_bp.route("/bookings/<int:booking_id>/passengers/<int:passenger_id>/accommodation/assign", methods=["POST"], endpoint="assign_accommodation_for_passenger")
+@module_enabled_required("transport")
+@login_required
+def assign_accommodation_for_passenger(booking_id, passenger_id):
+    """Assign an accommodation booking to a transport passenger."""
+    from app.transport.services.accommodation_coordination import (
+        PassengerAccommodationCoordinationService,
+        TransportAccommodationCoordinationError,
+    )
+    if not request.is_json:
+        ref = request.form.get("accommodation_booking_ref") or request.form.get("ref") or ""
+        if not ref:
+            flash("An accommodation booking reference is required", "danger")
+            return _accommodation_coordination_redirect(booking_id)
+        try:
+            from app.transport.models import Booking
+            booking_model = db.session.get(Booking, booking_id)
+            if not booking_model:
+                return _accommodation_coordination_redirect(booking_id)
+            _require_ownership(booking_model, "user_id")
+            result = PassengerAccommodationCoordinationService.assign_accommodation(
+                current_user,
+                transport_booking_id=booking_id,
+                passenger_id=passenger_id,
+                accommodation_booking_ref=ref,
+            )
+            return _accommodation_coordination_redirect(
+                booking_id, assignment_info=result.get("assignment_info")
+            )
+        except TransportAccommodationCoordinationError as exc:
+            db.session.rollback()
+            flash(exc.message, "danger")
+        except Exception:
+            db.session.rollback()
+            logger.exception("Accommodation assign failed for transport booking %s", booking_id)
+            flash("The accommodation assignment could not be completed", "danger")
+        return _accommodation_coordination_redirect(booking_id)
+    try:
+        from app.transport.models import Booking
+        booking_model = db.session.get(Booking, booking_id)
+        if not booking_model:
+            return jsonify({"success": False, "error": "Booking not found"}), 404
+        _require_ownership(booking_model, "user_id")
+        data = request.get_json(silent=True) or {}
+        ref = data.get("accommodation_booking_ref") or data.get("ref") or ""
+        if not ref:
+            return jsonify({"success": False, "error": "accommodation_booking_ref is required"}), 400
+        result = PassengerAccommodationCoordinationService.assign_accommodation(
+            current_user,
+            transport_booking_id=booking_id,
+            passenger_id=passenger_id,
+            accommodation_booking_ref=ref,
+        )
+        return jsonify({"success": True, **result})
+    except TransportAccommodationCoordinationError as exc:
+        db.session.rollback()
+        return jsonify({"success": False, "code": exc.code, "error": exc.message}), 400
+    except Exception as exc:
+        db.session.rollback()
+        logger.exception("Accommodation assign failed for transport booking %s", booking_id)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@transport_bp.route("/bookings/<int:booking_id>/passengers/<int:passenger_id>/accommodation/unassign", methods=["POST"], endpoint="unassign_accommodation_for_passenger")
+@module_enabled_required("transport")
+@login_required
+def unassign_accommodation_for_passenger(booking_id, passenger_id):
+    """Release the accommodation booking assignment from a transport passenger."""
+    from app.transport.services.accommodation_coordination import (
+        PassengerAccommodationCoordinationService,
+        TransportAccommodationCoordinationError,
+    )
+    if not request.is_json:
+        try:
+            from app.transport.models import Booking
+            booking_model = db.session.get(Booking, booking_id)
+            if booking_model is None:
+                return _accommodation_coordination_redirect(booking_id)
+            _require_ownership(booking_model, "user_id")
+            PassengerAccommodationCoordinationService.unassign_accommodation(
+                current_user,
+                transport_booking_id=booking_id,
+                passenger_id=passenger_id,
+            )
+        except TransportAccommodationCoordinationError as exc:
+            db.session.rollback()
+            flash(exc.message, "danger")
+        except Exception:
+            db.session.rollback()
+            logger.exception("Accommodation unassign failed for transport booking %s", booking_id)
+            flash("The accommodation unassignment could not be completed", "danger")
+        return _accommodation_coordination_redirect(booking_id, unassign=True)
+    try:
+        from app.transport.models import Booking
+        booking_model = db.session.get(Booking, booking_id)
+        if not booking_model:
+            return jsonify({"success": False, "error": "Booking not found"}), 404
+        _require_ownership(booking_model, "user_id")
+        result = PassengerAccommodationCoordinationService.unassign_accommodation(
+            current_user,
+            transport_booking_id=booking_id,
+            passenger_id=passenger_id,
+        )
+        return jsonify({"success": True, **result})
+    except TransportAccommodationCoordinationError as exc:
+        db.session.rollback()
+        return jsonify({"success": False, "code": exc.code, "error": exc.message}), 400
+    except Exception as exc:
+        db.session.rollback()
+        logger.exception("Accommodation unassign failed for transport booking %s", booking_id)
+        return jsonify({"success": False, "error": str(exc)}), 500
 
 
 @transport_bp.route("/bookings/<int:id>/edit")

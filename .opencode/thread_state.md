@@ -156,3 +156,9 @@ aise ServiceUnavailableError( inside the concurrently-written update_vehicle_sta
 - **Risks:** M5 UNRECONCILED deferred (web PENDING_PAYMENT vs API DRAFT divergence persists; D3 does not create bookings, so does not resolve creation-path divergence); M2 chk_pickup_time_future risk in web path (D3 does not create bookings); M1 incomplete non-blocking; D2 defects A/B DEFERRED NON-BLOCKING; schedule_pattern interval advance deferred.
 - **Deferred Work:** (1) schedule_pattern interval advance of next_departure (operator re-arms via PUT API, documented deferred/manual); (2) M5 creation-path resolution; (3) D2 defect cleanup per BACKLOG.md entries; (4) M1/M2 fixes; (5) front_page test exclusion from 161 baseline.
 - **Documentation:** BACKLOG.md, this thread_state.md.
+TH-3-D3-B PASS — Reservation/Concurrency Cleanup (2026-09-14)
+- **Status:** PASS — all 38 tests pass across test_reservation_d3.py and test_reservation_expiry.py including sequential overlap/release and two threaded concurrency races (same-vehicle winner/conflict, capacity 60+60 vs 100 supply).
+- **Verification:** `flask db current == flask db heads == 5e80dc4ac345` (single head). Both threaded tests proved real PostgreSQL concurrent correctness: exactly one winner + one ReservationConflictError for same-vehicle race; exactly one success + one conflict for capacity race 60+60 on total_units=100. Stale sweep: 0 btree_gist/ExcludeConstraint entries in active source. `STARTUP_OK`. No new migration.
+- **Owner/area:** transport / TH-3-D3
+- **Links:** `app/transport/models.py`, `app/transport/services/reservation_service.py`, `app/transport/services/reservation_expiry_service.py`, `tests/transport/test_reservation_d3.py`, `tests/transport/test_reservation_expiry.py`
+- **Closure gate:** PASS — next node D4 may begin per explicit authorization. Do NOT start D4 in this node.

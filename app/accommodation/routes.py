@@ -130,14 +130,6 @@ def moderate_property_approve(property_id):
     notes = request.form.get('notes')
     success, error = ModerationService.approve_property(property_id, current_user.id, notes)
     if success:
-        from app.accommodation.models.property import Property as _Prop
-        _prop = db.session.get(_Prop, property_id)
-        if _prop:
-            try:
-                from app.notifications.services import NotificationService
-                NotificationService.notify_property_approved(_prop)
-            except Exception as _ne:
-                current_app.logger.warning(f"Property approve notification failed: {_ne}")
         flash("Property approved successfully.", "success")
     else:
         flash(f"Error: {error}", "danger")
@@ -200,14 +192,6 @@ def moderate_property_reject(property_id):
     notes = request.form.get('notes')
     success, error = ModerationService.reject_property(property_id, current_user.id, reason, notes)
     if success:
-        from app.accommodation.models.property import Property as _Prop
-        _prop = db.session.get(_Prop, property_id)
-        if _prop:
-            try:
-                from app.notifications.services import NotificationService
-                NotificationService.notify_property_rejected(_prop, reason=reason)
-            except Exception as _ne:
-                current_app.logger.warning(f"Property reject notification failed: {_ne}")
         flash("Property rejected.", "success")
     else:
         flash(f"Error: {error}", "danger")
@@ -234,14 +218,6 @@ def moderate_property_suspend(property_id):
     notes = request.form.get('notes')
     success, error = ModerationService.suspend_property(property_id, current_user.id, reason, notes)
     if success:
-        from app.accommodation.models.property import Property as _Prop
-        _prop = db.session.get(_Prop, property_id)
-        if _prop:
-            try:
-                from app.notifications.services import NotificationService
-                NotificationService.notify_property_suspended(_prop, reason=reason)
-            except Exception as _ne:
-                current_app.logger.warning(f"Property suspend notification failed: {_ne}")
         flash("Property suspended.", "success")
     else:
         flash(f"Error: {error}", "danger")
@@ -1045,9 +1021,22 @@ def moderate():
 # GUEST ROUTES (URL prefix: /guest)
 # ============================================================================
 
+def _accommodation_capture_return_to():
+    """Store only a root-relative, same-origin path in the session. Absolute
+    URLs and protocol-relative URLs are rejected (open-redirect guard)."""
+    target = (request.args.get("next") or "").strip()
+    if target.startswith("/") and not target.startswith("//"):
+        session["accommodation_book_return_to"] = target
+
+
 @accommodation_bp.route("/guest/", endpoint="guest_search")
 def guest_search():
     """Accommodation search page"""
+    # Cross-domain return journey: remember a safe local "back to" target
+    # (e.g. a transport booking show page that called "Book Accommodation").
+    # The value is honored when the check-out completes so the operator lands
+    # back on the assignment page with the fresh resource list loaded.
+    _accommodation_capture_return_to()
     city = request.args.get('city')
     check_in = request.args.get('check_in')
     check_out = request.args.get('check_out')
@@ -2485,6 +2474,12 @@ def guest_checkout():
         # ============================================================
         # STEP 9: Final redirect
         # ============================================================
+        return_to = session.pop("accommodation_book_return_to", None)
+        if return_to:
+            # Cross-domain return journey (Stage 5): the operator started this
+            # booking from a coordination page; send them back so the freshly
+            # created resource appears in the assign list right away.
+            return redirect(return_to)
         if payment_timing in ('pay_on_arrival', 'invoice'):
             flash(f'Booking created! Your reference: {booking.booking_reference}. Awaiting host approval.', 'success')
         elif booking_type == 'third_party':
@@ -2937,6 +2932,189 @@ def bulk_registration_upload(booking_id):
         db.session.rollback()
         current_app.logger.exception("Bulk registration upload failed for booking %s", booking_id)
         return jsonify({"success": False, "error": "Upload could not be processed"}), 500
+
+
+# ---------------------------------------------------------------------------
+# Stage 5 – cross-domain transport coordination (TASK1: Accommodation → Transport)
+# ---------------------------------------------------------------------------
+
+@accommodation_bp.route("/booking/<int:booking_id>/registrations/transport/pane", methods=["GET"], endpoint="guest_roster_transport_pane")
+@login_required
+def guest_roster_transport_pane(booking_id):
+    """Read-side pane data for the guest roster: every active guest plus its
+    transport assignment summary."""
+    from app.accommodation.services.transport_coordination import (
+        GuestTransportCoordinationService,
+        AccommodationTransportCoordinationError,
+    )
+    try:
+        result = GuestTransportCoordinationService.roster(current_user, booking_id)
+        return jsonify({"success": True, **result})
+    except AccommodationTransportCoordinationError as exc:
+        return jsonify({"success": False, "code": exc.code, "error": exc.message}), 400
+    except Exception:
+        current_app.logger.exception("Transport pane failed for booking %s", booking_id)
+        return jsonify({"success": False, "error": "The transport pane could not be loaded"}), 500
+
+
+@accommodation_bp.route("/booking/<int:booking_id>/registrations/transport/available", methods=["GET"], endpoint="guest_roster_transport_available")
+@login_required
+def guest_roster_transport_available(booking_id):
+    """Eligible Transport bookings owned by the current user, for the assign
+    dropdown on the guest roster.
+
+    Read-only cross-module query: Accommodation presents candidate target
+    resources from the operator's own transport bookings, but Transport
+    revalidates ownership/status/capacity atomically on every reservation —
+    this list is a convenience for the operator, never a gate. The only client
+    input on assignment is one of the booking references returned here."""
+    from app.accommodation.services.transport_coordination import (
+        GuestTransportCoordinationService,
+        TRANSPORT_ASSIGNABLE_STATUSES,
+        _module_available,
+        _status_value,
+    )
+
+    _managed_registration_booking(booking_id)
+    items = []
+    count_total = 0
+    if _module_available("transport"):
+        from sqlalchemy.orm import joinedload
+
+        from app.transport.models import Booking
+
+        owned = Booking.query.options(
+            joinedload(Booking.driver), joinedload(Booking.vehicle)
+        ).filter(
+            Booking.user_id == current_user.id,
+            Booking.is_deleted == False,  # noqa: E712
+        ).all()
+        count_total = len(owned)
+        for candidate in owned:
+            status = _status_value(getattr(candidate, "status", ""))
+            if status not in TRANSPORT_ASSIGNABLE_STATUSES:
+                continue
+            entry = GuestTransportCoordinationService._transport_summary(candidate)
+            entry["status"] = status
+            items.append(entry)
+    return jsonify({
+        "success": True,
+        "count_total": count_total,
+        "items": items,
+        "assignable": sorted(TRANSPORT_ASSIGNABLE_STATUSES),
+        "book_url": url_for(
+            "transport.book_transport",
+            next=url_for("accommodation.guest_roster", booking_id=booking_id),
+        ),
+    })
+
+
+def _transport_coordination_redirect(booking_id: int, *, unassign: bool = False, assignment_info: dict | None = None):
+    """Post-change navigational fallback: flash and return to the guest roster
+    (the assignment page) instead of a JSON response."""
+    from flask import flash, redirect, url_for
+
+    if assignment_info:
+        guest_name = assignment_info.get("guest_name") or "Guest"
+        transport_ref = assignment_info.get("transport_booking_ref") or ""
+        flash_message = (
+            f"Transport assignment confirmed: {guest_name} → "
+            f"transport booking {transport_ref}."
+        )
+    else:
+        flash_message = (
+            "Transport booking assignment released."
+            if unassign else
+            "Transport booking assigned to the guest."
+        )
+    flash(flash_message, "success")
+    return redirect(url_for("accommodation.guest_roster", booking_id=booking_id))
+
+
+@accommodation_bp.route("/booking/<int:booking_id>/registrations/<int:registration_id>/transport/assign", methods=["POST"], endpoint="assign_transport_for_guest")
+@login_required
+def assign_transport_for_guest(booking_id, registration_id):
+    """Assign a transport booking to a guest registration."""
+    from app.accommodation.services.transport_coordination import (
+        GuestTransportCoordinationService,
+        AccommodationTransportCoordinationError,
+    )
+    if not request.is_json:
+        ref = request.form.get("transport_booking_ref") or request.form.get("ref") or ""
+        try:
+            result = GuestTransportCoordinationService.assign_transport(
+                current_user,
+                booking_id=booking_id,
+                registration_id=registration_id,
+                transport_booking_ref=ref,
+            )
+            return _transport_coordination_redirect(
+                booking_id, assignment_info=result.get("assignment_info")
+            )
+        except AccommodationTransportCoordinationError as exc:
+            db.session.rollback()
+            flash(exc.message, "danger")
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Transport assign failed for booking %s", booking_id)
+            flash("The transport assignment could not be completed", "danger")
+        return _transport_coordination_redirect(booking_id)
+    try:
+        data = request.get_json(silent=True) or {}
+        ref = data.get("transport_booking_ref") or data.get("ref") or ""
+        result = GuestTransportCoordinationService.assign_transport(
+            current_user,
+            booking_id=booking_id,
+            registration_id=registration_id,
+            transport_booking_ref=ref,
+        )
+        return jsonify({"success": True, **result})
+    except AccommodationTransportCoordinationError as exc:
+        db.session.rollback()
+        return jsonify({"success": False, "code": exc.code, "error": exc.message}), 400
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception("Transport assign failed for booking %s", booking_id)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@accommodation_bp.route("/booking/<int:booking_id>/registrations/<int:registration_id>/transport/unassign", methods=["POST"], endpoint="unassign_transport_for_guest")
+@login_required
+def unassign_transport_for_guest(booking_id, registration_id):
+    """Release the transport booking assignment from a guest registration."""
+    from app.accommodation.services.transport_coordination import (
+        GuestTransportCoordinationService,
+        AccommodationTransportCoordinationError,
+    )
+    if not request.is_json:
+        try:
+            GuestTransportCoordinationService.unassign_transport(
+                current_user,
+                booking_id=booking_id,
+                registration_id=registration_id,
+            )
+        except AccommodationTransportCoordinationError as exc:
+            db.session.rollback()
+            flash(exc.message, "danger")
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Transport unassign failed for booking %s", booking_id)
+            flash("The transport unassignment could not be completed", "danger")
+        return _transport_coordination_redirect(booking_id, unassign=True)
+    try:
+        result = GuestTransportCoordinationService.unassign_transport(
+            current_user,
+            booking_id=booking_id,
+            registration_id=registration_id,
+        )
+        return jsonify({"success": True, **result})
+    except AccommodationTransportCoordinationError as exc:
+        db.session.rollback()
+        return jsonify({"success": False, "code": exc.code, "error": exc.message}), 400
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception("Transport unassign failed for booking %s", booking_id)
+        return jsonify({"success": False, "error": str(exc)}), 500
 
 
 @accommodation_bp.route("/booking/<int:booking_id>/registrations/placeholder", methods=["POST"], endpoint="create_registration_placeholder")
@@ -4167,13 +4345,41 @@ def _ensure_host_identity():
     if not can_host:
         flash(f"Cannot access host tools: {reason}", "warning")
         return None
-    host_info = AccommodationIdentityService.get_host_identity(current_user)
-    if not host_info:
-        return None
 
     from app.auth.context import ContextType, get_active_context
 
     active_context = get_active_context(current_user)
+
+    # Organisation host: the active ACCOMMODATION_HOST context carries the
+    # organisation's PUBLIC org id, while get_host_identity() only resolves the
+    # organisation identity when passed the organisation's INTERNAL id. Resolve
+    # the org from the selected context first (Stage 4B-6 / G-1) so the
+    # organisation host path is reachable; get_host_identity() still enforces
+    # that the user is an active member with the required org accommodation
+    # authority (falling back to 'individual' otherwise, which is rejected here).
+    if (
+        active_context.type is ContextType.ACCOMMODATION_HOST
+        and str(active_context.public_id) != str(current_user.public_id)
+    ):
+        from app.identity.models.organisation import Organisation
+
+        organisation = Organisation.query.filter(
+            Organisation.org_id == str(active_context.public_id),
+            Organisation.is_deleted.is_(False),
+        ).first()
+        if not organisation:
+            abort(403)
+        host_info = AccommodationIdentityService.get_host_identity(
+            current_user, org_id=organisation.id
+        )
+        if not host_info or host_info["type"] != "organisation":
+            abort(403)
+        return host_info
+
+    host_info = AccommodationIdentityService.get_host_identity(current_user)
+    if not host_info:
+        return None
+
     if active_context.type is ContextType.PLATFORM:
         return host_info
     if active_context.type is not ContextType.ACCOMMODATION_HOST:
@@ -4546,17 +4752,25 @@ def host_create_listing():
 
     if form.validate_on_submit():
         try:
-            HostService.create_property(
+            prop = HostService.create_property(
                 form.data,
                 owner_user_id=host_info["id"] if host_info["type"] == "individual" else None,
                 owner_org_id=host_info["id"] if host_info["type"] == "organisation" else None,
             )
             db.session.commit()
+            # Notify host + accommodation admins (email/sms/in-app) so a new
+            # property pending review is surfaced to the moderation queue.
+            try:
+                from app.notifications.services import NotificationService
+                NotificationService.notify_property_submitted(prop)
+            except Exception as _ne:
+                current_app.logger.warning(f"Property submitted notification failed: {_ne}")
             flash(
-                "Listing submitted for review. We'll notify you once moderation completes.",
+                "Listing created successfully and submitted for review. Manage it below — "
+                "add rooms and edit details while the moderation team reviews.",
                 "success",
             )
-            return redirect(url_for("accommodation.host_dashboard"))
+            return redirect(url_for("accommodation.host_property_manage", property_id=prop.id))
         except Exception as exc:
             db.session.rollback()
             logger.exception("Failed to create listing")
@@ -5784,6 +5998,50 @@ def host_room_type_edit(room_type_id):
     return redirect(url_for('accommodation.host_rooms', property_id=prop.id))
 
 
+@accommodation_bp.route('/host/room-type/<int:room_type_id>/delete', methods=['POST'], endpoint='host_room_type_delete')
+@login_required
+def host_room_type_delete(room_type_id):
+    host_info = _ensure_host_identity()
+    if not host_info:
+        return redirect(url_for('index'))
+
+    room_type = RoomType.query.get_or_404(room_type_id)
+    prop = Property.query.get_or_404(room_type.property_id)
+    if not AccommodationIdentityService.can_manage_property(
+        current_user,
+        property_owner_user_id=prop.owner_user_id,
+        property_owner_org_id=prop.owner_org_id,
+    ):
+        abort(403)
+
+    if room_type.rooms:
+        flash(
+            f'Cannot delete room type "{room_type.name}": remove its rooms first.',
+            'danger',
+        )
+        return redirect(url_for('accommodation.host_rooms', property_id=prop.id))
+
+    if room_type.inventory_blocks:
+        flash(
+            f'Cannot delete room type "{room_type.name}": clear its inventory '
+            'blocks first.',
+            'danger',
+        )
+        return redirect(url_for('accommodation.host_rooms', property_id=prop.id))
+
+    try:
+        db.session.delete(room_type)
+        db.session.commit()
+        flash(f'Room type "{room_type.name}" deleted.', 'success')
+        HostService.sync_room_type_inventory(prop.id)
+    except Exception as e:
+        db.session.rollback()
+        logger.exception('Failed to delete room type')
+        flash(f'Failed to delete room type: {str(e)}', 'danger')
+
+    return redirect(url_for('accommodation.host_rooms', property_id=prop.id))
+
+
 @accommodation_bp.route('/host/property/<int:property_id>/rooms/add', methods=['POST'], endpoint='host_room_add')
 @login_required
 def host_room_add(property_id):
@@ -5911,6 +6169,56 @@ def host_room_delete(room_id):
         db.session.rollback()
         logger.exception('Failed to delete room')
         flash(f'Failed to delete room: {str(e)}', 'danger')
+
+    return redirect(url_for('accommodation.host_rooms', property_id=prop.id))
+
+
+@accommodation_bp.route('/host/room/<int:room_id>/edit', methods=['POST'], endpoint='host_room_edit')
+@login_required
+def host_room_edit(room_id):
+    host_info = _ensure_host_identity()
+    if not host_info:
+        return redirect(url_for('index'))
+
+    room = Room.query.get_or_404(room_id)
+    prop = Property.query.get_or_404(room.property_id)
+    if not AccommodationIdentityService.can_manage_property(
+        current_user,
+        property_owner_user_id=prop.owner_user_id,
+        property_owner_org_id=prop.owner_org_id,
+    ):
+        abort(403)
+
+    try:
+        name = request.form.get('name', '').strip()
+        room_number = request.form.get('room_number', '').strip()
+        floor = request.form.get('floor', '').strip()
+        notes = request.form.get('notes', '').strip() or None
+        is_active = request.form.get('is_active') == 'on'
+
+        if room_number:
+            existing = Room.query.filter(
+                Room.property_id == prop.id,
+                Room.room_number == room_number,
+                Room.id != room.id,
+            ).first()
+            if existing:
+                flash(f'Room number "{room_number}" already exists in this property.', 'danger')
+                return redirect(url_for('accommodation.host_rooms', property_id=prop.id))
+            room.room_number = room_number
+
+        if name:
+            room.name = name
+        room.floor = floor or None
+        room.notes = notes
+        room.is_active = is_active
+        db.session.commit()
+        flash(f'Room {room.room_number} updated.', 'success')
+        HostService.sync_room_type_inventory(prop.id)
+    except Exception as e:
+        db.session.rollback()
+        logger.exception('Failed to update room')
+        flash(f'Failed to update room: {str(e)}', 'danger')
 
     return redirect(url_for('accommodation.host_rooms', property_id=prop.id))
 
