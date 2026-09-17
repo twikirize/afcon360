@@ -527,23 +527,31 @@ class TestCapabilityAPI:
 
     def test_list_capabilities_endpoint(self, app, client, db_session, owner_user, org, intent_capability):
         self._login(app, client, owner_user)
-        r = client.get(f"/org/{org.org_id}/capabilities")
+        r = client.get(f"/org/{org.slug}/capabilities")
         assert r.status_code == 200
         data = r.get_json()
         assert len(data["capabilities"]) == 1
         assert data["capabilities"][0]["capability_code"] == "accommodation"
         assert data["capabilities"][0]["status"] == "intent"
 
+    def test_legacy_uuid_get_redirects_to_canonical_slug(self, app, client, db_session, owner_user, org, intent_capability):
+        self._login(app, client, owner_user)
+        slug = org.slug
+        r = client.get(f"/org/{org.org_id}/capabilities")
+        assert r.status_code == 301
+        location = r.headers.get("Location")
+        assert location and location.endswith(f"/org/{slug}/capabilities")
+
     def test_list_capabilities_empty(self, app, client, db_session, owner_user, org):
         self._login(app, client, owner_user)
-        r = client.get(f"/org/{org.org_id}/capabilities")
+        r = client.get(f"/org/{org.slug}/capabilities")
         assert r.status_code == 200
         data = r.get_json()
         assert data["capabilities"] == []
 
     def test_activate_endpoint(self, app, client, db_session, owner_user, org, intent_capability):
         self._login(app, client, owner_user)
-        r = client.post(f"/org/{org.org_id}/capabilities/accommodation/activate")
+        r = client.post(f"/org/{org.slug}/capabilities/accommodation/activate")
         assert r.status_code == 200
         data = r.get_json()
         assert data["capability"]["status"] == "activated"
@@ -551,42 +559,42 @@ class TestCapabilityAPI:
 
     def test_deactivate_endpoint(self, app, client, db_session, owner_user, org, activated_capability):
         self._login(app, client, owner_user)
-        r = client.post(f"/org/{org.org_id}/capabilities/transport/deactivate")
+        r = client.post(f"/org/{org.slug}/capabilities/transport/deactivate")
         assert r.status_code == 200
         assert r.get_json()["capability"]["status"] == "deactivated"
 
     def test_suspend_endpoint(self, app, client, db_session, owner_user, org, activated_capability):
         self._login(app, client, owner_user)
-        r = client.post(f"/org/{org.org_id}/capabilities/transport/suspend")
+        r = client.post(f"/org/{org.slug}/capabilities/transport/suspend")
         assert r.status_code == 200
         assert r.get_json()["capability"]["status"] == "suspended"
 
     def test_revoke_endpoint(self, app, client, db_session, owner_user, org, activated_capability):
         self._login(app, client, owner_user)
-        r = client.post(f"/org/{org.org_id}/capabilities/transport/revoke")
+        r = client.post(f"/org/{org.slug}/capabilities/transport/revoke")
         assert r.status_code == 200
         assert r.get_json()["capability"]["status"] == "revoked"
 
     def test_non_owner_gets_403(self, app, client, db_session, member_user, org, intent_capability):
         self._login(app, client, member_user)
-        r = client.post(f"/org/{org.org_id}/capabilities/accommodation/activate")
+        r = client.post(f"/org/{org.slug}/capabilities/accommodation/activate")
         assert r.status_code == 403
 
     def test_invalid_code_gets_400(self, app, client, db_session, owner_user, org, intent_capability):
         self._login(app, client, owner_user)
-        r = client.post(f"/org/{org.org_id}/capabilities/bogus/activate")
+        r = client.post(f"/org/{org.slug}/capabilities/bogus/activate")
         assert r.status_code == 400
 
     def test_transition_conflict_gets_409(self, app, client, db_session, owner_user, org, activated_capability):
         self._login(app, client, owner_user)
-        r = client.post(f"/org/{org.org_id}/capabilities/transport/activate")
+        r = client.post(f"/org/{org.slug}/capabilities/transport/activate")
         assert r.status_code == 409
 
     def test_not_found_gets_404(self, app, client, db_session, owner_user, org):
         self._login(app, client, owner_user)
-        r = client.post(f"/org/{org.org_id}/capabilities/venue/activate")
+        r = client.post(f"/org/{org.slug}/capabilities/venue/activate")
         assert r.status_code == 404
 
     def test_unauthenticated_gets_redirect(self, app, client, db_session, org, intent_capability):
-        r = client.get(f"/org/{org.org_id}/capabilities")
+        r = client.get(f"/org/{org.slug}/capabilities")
         assert r.status_code in (302, 401)

@@ -575,3 +575,107 @@ class DriverTripResource(Resource):
             db.session.rollback()
             logger.error(f"Error on driver trip action '{action}' for booking {booking_id}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}, 500
+
+
+class DriverStatusResource(Resource):
+    """POST /api/transport/drivers/<int:driver_id>/status
+
+    Self-service driver operational status transition (go-live toggle).
+
+    Contract:
+      * ownership     — the authenticated user must own the profile (or be an
+                        admin / super_admin / owner).  Denied otherwise: 403.
+      * eligibility   — ``can_go_live`` composes the authoritative gates (KYC
+                        capability, not-blocked, compliance approved, valid
+                        licence, vehicle where the mode requires one).  An
+                        attempt to go online while not ready is refused: 403
+                        with the checklist so the UI can render the reason.
+      * state write   — delegated to ``ProviderService.set_driver_operational_status``
+                        (a self-service transition; deliberately does NOT use the
+                        obsolete ``driver:update_status`` permission decorator).
+
+    This separation keeps ``can_go_live`` as the single decision authority and
+    the service method as the safe execution of an already-authorized change.
+    """
+
+    @login_required
+    def post(self, driver_id):
+        from app.auth.helpers import has_global_role
+        from app.transport.services.go_live_service import can_go_live
+        from app.transport.services.provider_service import get_provider_service
+        from app.utils.exceptions import (
+            NotFoundError,
+            PermissionError as AppPermissionError,
+            ValidationError,
+        )
+
+        driver = DriverProfile.query.filter_by(
+            id=driver_id, is_deleted=False
+        ).first()
+        if driver is None:
+            return {"success": False, "error": "driver not found"}, 404
+
+        is_admin = has_global_role(current_user, "admin", "super_admin", "owner")
+        if driver.user_id != current_user.id and not is_admin:
+            return {
+                "success": False,
+                "error": "not allowed to update this driver's status",
+            }, 403
+
+        data = request.get_json(silent=True) or {}
+        is_online = data.get("is_online")
+        is_available = data.get("is_available")
+
+        if is_online is None and is_available is None:
+            return {"success": False, "error": "is_online or is_available required"}, 400
+
+        if is_online is not None:
+            is_online = bool(is_online)
+        if is_available is not None:
+            is_available = bool(is_available)
+
+        if is_available and not is_online:
+            return {
+                "success": False,
+                "error": "Driver must be online to become available",
+            }, 422
+
+        # Eligibility gate: going online is only allowed when can_go_live is
+        # ready.  Refuse with a 403 + checklist so the UI can explain why.
+        if is_online:
+            checklist = can_go_live(driver)
+            if not checklist.ready:
+                return {
+                    "success": False,
+                    "error": "driver is not eligible to go live",
+                    "go_live": checklist.to_dict(),
+                }, 403
+
+        try:
+            result = get_provider_service().set_driver_operational_status(
+                driver_id=driver_id,
+                user_id=current_user.id,
+                is_online=is_online,
+                is_available=is_available,
+            )
+            return {"success": True, "data": result["data"]}, 200
+        except NotFoundError:
+            return {"success": False, "error": "driver not found"}, 404
+        except AppPermissionError:
+            return {
+                "success": False,
+                "error": "not allowed to update this driver's status",
+            }, 403
+        except ValidationError as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "go_live": e.details.get("go_live") if getattr(e, "details", None) else None,
+            }, 422
+        except Exception as e:
+            db.session.rollback()
+            logger.error(
+                f"Error updating driver status for driver {driver_id}: {e}",
+                exc_info=True,
+            )
+            return {"success": False, "error": str(e)}, 500

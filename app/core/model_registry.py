@@ -14,6 +14,10 @@ def register_all_models():
     # Identity domain
     from app.identity.models.user import User
     from app.identity.models.organisation import Organisation
+    from app.identity.models.organisation_catalogues import (
+        OrganisationCategory,
+        OrganisationTypeCatalogue,
+    )
     from app.identity.models.organisation_provider_capability import OrganisationProviderCapability
     from app.identity.models.provider_participation import ProviderParticipation
     from app.identity.models.roles_permission import Role, Permission
@@ -103,6 +107,12 @@ def register_all_models():
             ContingencyPlan,
             TransportPassenger,
         )
+    except ImportError:
+        pass
+
+    # Transport permissions (dynamic) - core model
+    try:
+        from app.core.transport_permissions import TransportPermission
     except ImportError:
         pass
 

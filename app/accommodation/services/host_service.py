@@ -80,11 +80,12 @@ class HostService:
     @staticmethod
     def create_property(data: Dict, *, owner_user_id: Optional[int], owner_org_id: Optional[int]) -> Property:
         """Persist a new property from validated form data.
-        
-        Auto-creates a default RoomType with total_units=1 for every property,
-        individual or organisation-owned, so it is immediately bookable.
-        Organisation hosts can add additional RoomTypes afterward via Room Type
-        Management or bulk import.
+
+        The property is the entity; inventory is a separate operational resource.
+        Creating a property creates property-level details ONLY - no RoomTypes,
+        units, or other synthetic inventory are auto-created. The host configures
+        inventory afterward through the existing inventory workflow
+        (Room Type management, room management, bulk import).
 
         Write-boundary invariant (Stage 4B-6 / G-1): an organisation-owned
         property (owner_org_id set) may only be persisted when BOTH the
@@ -175,26 +176,12 @@ class HostService:
 
         db.session.add(prop)
         db.session.flush()
-        
-        # Auto-create a default RoomType for every new property (total_units=1).
-        # Organisation hosts can add more RoomTypes afterward via Room Type Management
-        # or bulk import — this just guarantees every property is bookable from creation.
-        default_room_type = RoomType(
-            property_id=prop.id,
-            name="Standard Room",
-            description="Default room type for this property",
-            max_guests=prop.max_guests,
-            bedrooms=prop.bedrooms,
-            beds=prop.beds,
-            bathrooms=prop.bathrooms,
-            base_price_per_night=prop.base_price_per_night,
-            currency=prop.currency,
-            cleaning_fee=prop.cleaning_fee,
-            service_fee_pct=prop.service_fee_pct,
-            total_units=1,
-            is_active=True,
-        )
-        db.session.add(default_room_type)
+
+        # NOTE: No automatic inventory is created here. Per the approved
+        # lifecycle, property creation creates the entity + property-level
+        # details only; RoomTypes/inventory are configured by the host via
+        # the inventory workflow before publication. See Property.status
+        # transitions and AccommodationReadinessService.check_readiness.
 
         # Auto-create default property payment methods so every new property
         # is immediately bookable. Start with wallet; additional methods are
@@ -262,18 +249,10 @@ class HostService:
         prop.gallery = _extract_gallery(data.get("main_image"), data.get("gallery_urls"))
         prop.meta_title = data.get("meta_title")
         prop.meta_description = data.get("meta_description")
-        
-        # Sync default RoomType if there is exactly one single-unit room type
-        default_rt = RoomType.query.filter_by(property_id=prop.id).order_by(RoomType.id.asc()).first()
-        if default_rt and default_rt.total_units == 1 and RoomType.query.filter_by(property_id=prop.id).count() == 1:
-            default_rt.max_guests = prop.max_guests
-            default_rt.bedrooms = prop.bedrooms
-            default_rt.beds = prop.beds
-            default_rt.bathrooms = prop.bathrooms
-            default_rt.base_price_per_night = prop.base_price_per_night
-            default_rt.currency = prop.currency
-            default_rt.cleaning_fee = prop.cleaning_fee
-            default_rt.service_fee_pct = prop.service_fee_pct
+
+        # NOTE: No default-RoomType sync here. Inventory is a separate
+        # operational resource configured by the host; property edits must
+        # not mutate the host's configured RoomTypes.
 
         return prop
 

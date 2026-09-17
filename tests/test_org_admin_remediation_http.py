@@ -104,6 +104,7 @@ def _org_handle(org):
     return {
         "id": org.id,
         "org_id": org.org_id,
+        "slug": org.slug,
         "legal_name": org.legal_name,
     }
 
@@ -219,7 +220,7 @@ class TestMembersGETGates:
         client = app.test_client()
         _login(client, actors["owner"]["public_id"])
 
-        resp = client.get(f"/org/{org['org_id']}/members")
+        resp = client.get(f"/org/{org['slug']}/members")
 
         assert resp.status_code == 200, resp.status_code
         assert b"Team Management" in resp.data
@@ -230,7 +231,7 @@ class TestMembersGETGates:
         client = app.test_client()
         _login(client, actors["admin"]["public_id"])
 
-        resp = client.get(f"/org/{org['org_id']}/members")
+        resp = client.get(f"/org/{org['slug']}/members")
 
         assert resp.status_code == 200, resp.status_code
         assert b"Team Management" in resp.data
@@ -241,7 +242,7 @@ class TestMembersGETGates:
         client = app.test_client()
         _login(client, actors["hr"]["public_id"])
 
-        resp = client.get(f"/org/{org['org_id']}/members")
+        resp = client.get(f"/org/{org['slug']}/members")
 
         assert resp.status_code == 200, resp.status_code
 
@@ -250,7 +251,7 @@ class TestMembersGETGates:
         client = app.test_client()
         _login(client, actors["plain"]["public_id"])
 
-        resp = client.get(f"/org/{org['org_id']}/members")
+        resp = client.get(f"/org/{org['slug']}/members")
 
         assert resp.status_code == 302, resp.status_code
         assert "/dashboard" in resp.headers.get("Location", "")
@@ -262,7 +263,7 @@ class TestMembersGETGates:
         client = app.test_client()
         _login(client, outsider["public_id"])
 
-        resp = client.get(f"/org/{org['org_id']}/members")
+        resp = client.get(f"/org/{org['slug']}/members")
 
         assert resp.status_code == 302, resp.status_code
         assert "/dashboard" in resp.headers.get("Location", "")
@@ -272,7 +273,7 @@ class TestMembersGETGates:
         client = app.test_client()
         _login(client, actors["owner"]["public_id"])
 
-        resp = client.get(f"/org/{org['org_id']}/members")
+        resp = client.get(f"/org/{org['slug']}/members")
 
         assert resp.status_code == 200
         assert b"staff_member" not in resp.data
@@ -293,7 +294,7 @@ class TestAddMemberPOST:
         _login(client, actors["owner"]["public_id"])
 
         resp = client.post(
-            f"/org/{org['org_id']}/members",
+            f"/org/{org['slug']}/members",
             data={"user_email": target["email"], "role": "org_admin"},
             follow_redirects=False,
         )
@@ -318,7 +319,7 @@ class TestAddMemberPOST:
         _login(client, actors["admin"]["public_id"])
 
         resp = client.post(
-            f"/org/{org['org_id']}/members",
+            f"/org/{org['slug']}/members",
             data={"user_email": target["email"], "role": "org_member"},
             follow_redirects=False,
         )
@@ -337,7 +338,7 @@ class TestAddMemberPOST:
         _login(client, actors["owner"]["public_id"])
 
         resp = client.post(
-            f"/org/{org['org_id']}/members",
+            f"/org/{org['slug']}/members",
             data={"user_email": actors["admin"]["email"], "role": "org_admin"},
             follow_redirects=False,
         )
@@ -353,7 +354,7 @@ class TestAddMemberPOST:
         _login(client, actors["owner"]["public_id"])
 
         resp = client.post(
-            f"/org/{org['org_id']}/members",
+            f"/org/{org['slug']}/members",
             data={"user_email": inactive["email"], "role": "org_member"},
             follow_redirects=False,
         )
@@ -369,7 +370,7 @@ class TestAddMemberPOST:
         _login(client, actors["owner"]["public_id"])
 
         resp = client.post(
-            f"/org/{org['org_id']}/members",
+            f"/org/{org['slug']}/members",
             data={"user_email": unverified["email"], "role": "org_member"},
             follow_redirects=False,
         )
@@ -385,7 +386,7 @@ class TestAddMemberPOST:
         _login(client, actors["owner"]["public_id"])
 
         resp = client.post(
-            f"/org/{org['org_id']}/members",
+            f"/org/{org['slug']}/members",
             data={"user_email": target["email"], "role": "staff_member"},
             follow_redirects=True,
         )
@@ -404,7 +405,7 @@ class TestAddMemberPOST:
         _login(client, actors["plain"]["public_id"])
 
         resp = client.post(
-            f"/org/{org['org_id']}/members",
+            f"/org/{org['slug']}/members",
             data={"user_email": target["email"], "role": "org_member"},
             follow_redirects=False,
         )
@@ -433,7 +434,7 @@ class TestChangeMemberRole:
         client = app.test_client()
         _login(client, actors["admin"]["public_id"])
         resp = client.post(
-            f"/org/{org['org_id']}/members/{target['public_id']}/role",
+            f"/org/{org['slug']}/members/{target['public_id']}/role",
             data={"role": "org_admin"},
             follow_redirects=False,
         )
@@ -447,7 +448,7 @@ class TestChangeMemberRole:
         client = app.test_client()
         _login(client, actors["admin"]["public_id"])
         resp = client.post(
-            f"/org/{org['org_id']}/members/{target['public_id']}/role",
+            f"/org/{org['slug']}/members/{target['public_id']}/role",
             data={"role": "org_owner"},
             follow_redirects=False,
         )
@@ -462,7 +463,7 @@ class TestChangeMemberRole:
         client = app.test_client()
         _login(client, actors["owner"]["public_id"])
         resp = client.post(
-            f"/org/{org['org_id']}/members/{target['public_id']}/role",
+            f"/org/{org['slug']}/members/{target['public_id']}/role",
             data={"role": "org_owner"},
             follow_redirects=False,
         )
@@ -477,7 +478,7 @@ class TestChangeMemberRole:
         client = app.test_client()
         _login(client, owner["public_id"])
         resp = client.post(
-            f"/org/{org['org_id']}/members/{owner['public_id']}/role",
+            f"/org/{org['slug']}/members/{owner['public_id']}/role",
             data={"role": "org_admin"},
             follow_redirects=False,
         )
@@ -491,7 +492,7 @@ class TestChangeMemberRole:
         client = app.test_client()
         _login(client, actors["admin"]["public_id"])
         resp = client.post(
-            f"/org/{org['org_id']}/members/{actors['admin']['public_id']}/role",
+            f"/org/{org['slug']}/members/{actors['admin']['public_id']}/role",
             data={"role": "org_member"},
             follow_redirects=False,
         )
@@ -506,7 +507,7 @@ class TestChangeMemberRole:
         client = app.test_client()
         _login(client, actors["hr"]["public_id"])
         resp = client.post(
-            f"/org/{org['org_id']}/members/{target['public_id']}/role",
+            f"/org/{org['slug']}/members/{target['public_id']}/role",
             data={"role": "org_admin"},
             follow_redirects=False,
         )
@@ -535,7 +536,7 @@ class TestRemoveMember:
         client = app.test_client()
         _login(client, actors["owner"]["public_id"])
         resp = client.post(
-            f"/org/{org['org_id']}/members/{target['public_id']}/remove",
+            f"/org/{org['slug']}/members/{target['public_id']}/remove",
             follow_redirects=False,
         )
 
@@ -552,7 +553,7 @@ class TestRemoveMember:
         client = app.test_client()
         _login(client, actors["admin"]["public_id"])
         resp = client.post(
-            f"/org/{org['org_id']}/members/{target['public_id']}/remove",
+            f"/org/{org['slug']}/members/{target['public_id']}/remove",
             follow_redirects=False,
         )
 
@@ -573,7 +574,7 @@ class TestRemoveMember:
         client = app.test_client()
         _login(client, actors["owner"]["public_id"])
         resp = client.post(
-            f"/org/{org['org_id']}/members/{target['public_id']}/remove",
+            f"/org/{org['slug']}/members/{target['public_id']}/remove",
             follow_redirects=False,
         )
 
@@ -586,7 +587,7 @@ class TestRemoveMember:
         client = app.test_client()
         _login(client, actors["owner"]["public_id"])
         resp = client.post(
-            f"/org/{org['org_id']}/members/{actors['owner']['public_id']}/remove",
+            f"/org/{org['slug']}/members/{actors['owner']['public_id']}/remove",
             follow_redirects=False,
         )
 
@@ -600,7 +601,7 @@ class TestRemoveMember:
         client = app.test_client()
         _login(client, actors["plain"]["public_id"])
         resp = client.post(
-            f"/org/{org['org_id']}/members/{actors['plain']['public_id']}/remove",
+            f"/org/{org['slug']}/members/{actors['plain']['public_id']}/remove",
             follow_redirects=False,
         )
 
@@ -613,7 +614,7 @@ class TestRemoveMember:
         client = app.test_client()
         _login(client, actors["plain"]["public_id"])
         resp = client.post(
-            f"/org/{org['org_id']}/members/{target['public_id']}/remove",
+            f"/org/{org['slug']}/members/{target['public_id']}/remove",
             follow_redirects=False,
         )
 
@@ -631,7 +632,7 @@ class TestTemplateAndGates:
         client = app.test_client()
         _login(client, actors["owner"]["public_id"])
 
-        resp = client.get(f"/org/{org['org_id']}/dashboard")
+        resp = client.get(f"/org/{org['slug']}/dashboard")
 
         assert resp.status_code == 200, resp.status_code
 
@@ -657,11 +658,11 @@ class TestTemplateAndGates:
 
         owner_client = app.test_client()
         _login(owner_client, actors["owner"]["public_id"])
-        assert owner_client.get(f"/org/{org['org_id']}/settings").status_code == 200
+        assert owner_client.get(f"/org/{org['slug']}/settings").status_code == 200
 
         plain_client = app.test_client()
         _login(plain_client, actors["plain"]["public_id"])
-        resp = plain_client.get(f"/org/{org['org_id']}/settings")
+        resp = plain_client.get(f"/org/{org['slug']}/settings")
         assert resp.status_code == 302, resp.status_code
         assert "/dashboard" in resp.headers.get("Location", "")
 
@@ -670,11 +671,11 @@ class TestTemplateAndGates:
 
         owner_client = app.test_client()
         _login(owner_client, actors["owner"]["public_id"])
-        assert owner_client.get(f"/org/{org['org_id']}/accommodation").status_code == 200
+        assert owner_client.get(f"/org/{org['slug']}/accommodation").status_code == 200
 
         plain_client = app.test_client()
         _login(plain_client, actors["plain"]["public_id"])
-        resp = plain_client.get(f"/org/{org['org_id']}/accommodation")
+        resp = plain_client.get(f"/org/{org['slug']}/accommodation")
         assert resp.status_code == 302, resp.status_code
         assert "/dashboard" in resp.headers.get("Location", "")
 
@@ -683,10 +684,10 @@ class TestTemplateAndGates:
 
         owner_client = app.test_client()
         _login(owner_client, actors["owner"]["public_id"])
-        assert owner_client.get(f"/org/{org['org_id']}/transport").status_code == 200
+        assert owner_client.get(f"/org/{org['slug']}/transport").status_code == 200
 
         plain_client = app.test_client()
         _login(plain_client, actors["plain"]["public_id"])
-        resp = plain_client.get(f"/org/{org['org_id']}/transport")
+        resp = plain_client.get(f"/org/{org['slug']}/transport")
         assert resp.status_code == 302, resp.status_code
         assert "/dashboard" in resp.headers.get("Location", "")

@@ -122,13 +122,22 @@
                 <span class="kyc-tier-pill">Tier 2 Required</span>
               </p>
 
+              {% if canonical_id_type %}
+              <div class="kyc-alert-info">
+                <i class="bi bi-person-check me-2"></i>
+                Your identity details come from your profile
+                {% if canonical_full_name %}(<strong>{{ canonical_full_name }}</strong>, {{ canonical_id_type|replace('_', ' ') }}){% else %}({{ canonical_id_type|replace('_', ' ') }}){% endif %}
+                — you only need to upload a matching document{% if canonical_id_number %}; your ID number is already on file{% endif %}.
+              </div>
+              {% endif %}
+
               <form method="POST" action="{{ url_for('kyc.upload') }}" id="individualForm" class="kyc-form-pure" enctype="multipart/form-data">
                 <input type="hidden" name="kyc_type" value="individual">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                 <div class="kyc-field-group">
                   <label for="id_type" class="kyc-label">Document Type <span class="kyc-req">*</span></label>
-                  <select class="kyc-select" id="id_type" name="id_type" required>
+                  <select class="kyc-select" id="id_type" name="id_type" required data-canonical-type="{{ canonical_id_type or '' }}">
                     <option value="" {% if not preselect_id_type %}selected{% endif %} disabled>Select document type…</option>
                     <option value="national_id" {% if preselect_id_type == 'national_id' %}selected{% endif %}{% if 'national_id' in verified_id_types %}disabled{% endif %}{% if accepted_id_types is defined and 'national_id' not in accepted_id_types %}disabled{% endif %}>National ID (NIRA){% if 'national_id' in verified_id_types %} — verified{% elif accepted_id_types is defined and 'national_id' not in accepted_id_types %} — not accepted{% endif %}</option>
                     <option value="passport" {% if preselect_id_type == 'passport' %}selected{% endif %}{% if 'passport' in verified_id_types %}disabled{% endif %}{% if accepted_id_types is defined and 'passport' not in accepted_id_types %}disabled{% endif %}>Passport{% if 'passport' in verified_id_types %} — verified{% elif accepted_id_types is defined and 'passport' not in accepted_id_types %} — not accepted{% endif %}</option>
@@ -138,14 +147,16 @@
                     <option value="income_source" {% if preselect_id_type == 'income_source' %}selected{% endif %}{% if 'income_source' in verified_id_types %}disabled{% endif %}>Income Source Proof{% if 'income_source' in verified_id_types %} — verified{% endif %}</option>
                     <option value="bank_reference" {% if preselect_id_type == 'bank_reference' %}selected{% endif %}{% if 'bank_reference' in verified_id_types %}disabled{% endif %}>Bank Reference Letter{% if 'bank_reference' in verified_id_types %} — verified{% endif %}</option>
                   </select>
-                  <span class="kyc-help">Select the document you are uploading.</span>
+                  <span class="kyc-help">{% if canonical_id_number %}Your document type and number are taken from your profile identity.{% else %}Select the document you are uploading.{% endif %}</span>
                 </div>
 
                 <div class="kyc-field-group">
                   <label for="id_number" class="kyc-label">ID / Reference Number <span class="kyc-req">*</span></label>
                   <input type="text" class="kyc-input" id="id_number" name="id_number"
-                         placeholder="e.g. CM1234567890AB or TIN-123456" required>
-                  <span class="kyc-help">Document number as shown on the original.</span>
+                         value="{{ canonical_id_number or '' }}"
+                         data-canonical-number="{{ canonical_id_number or '' }}"
+                         placeholder="e.g. CM1234567890AB or TIN-123456" required{% if canonical_lock %} readonly{% endif %}>
+                  <span class="kyc-help">{% if canonical_lock %}Reused from your profile identity (single entry) - it cannot be changed here.{% else %}Document number as shown on the original.{% endif %}</span>
                 </div>
 
                 <div class="kyc-field-group">
@@ -165,10 +176,57 @@
                 </div>
 
                 <div class="kyc-field-group">
-                  <label for="selfie_file" class="kyc-label">Selfie / Biometric File</label>
-                  <input type="file" class="kyc-input-file" id="selfie_file" name="selfie_file"
-                         accept="image/*" capture="user">
-                  <span class="kyc-help">Required for National ID and biometric verification. Leave blank for address or TIN docs.</span>
+                  <label class="kyc-label">Selfie Capture (Required for identity verification)</label>
+                  <span class="kyc-help">Use the live camera to take your selfie. Your face, shoulders, and upper chest must be clearly visible. This links your identity to your verification.</span>
+
+                  <div class="sc-wrap">
+                    <div id="selfie-capture" class="sc-anchor"></div>
+                    <input type="hidden" name="selfie_data_url" id="selfie_data_url" value="">
+                    <input type="hidden" name="selfie_captured" id="selfie_captured" value="0">
+                    <input type="hidden" name="selfie_pair_nonce" id="selfie_pair_nonce" value="">
+                    <input type="file" class="sc-hidden-input" id="selfie_file" name="selfie_file"
+                           accept="image/*" capture="user" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
+                  </div>
+                  <noscript>
+                    <input type="file" class="kyc-input-file mt-2" id="selfie_file_noscript" name="selfie_file" accept="image/*" capture="user">
+                    <span class="kyc-help">JavaScript is required for live camera capture. You can still upload a selfie photo file.</span>
+                  </noscript>
+
+                  <div class="kyc-phone-pair mt-3" id="kyc-phone-pair">
+                    <button type="button" class="kyc-phone-pair-toggle" id="kyc-phone-pair-btn">
+                      <i class="bi bi-phone me-1"></i> No camera? Use your phone to take the selfie
+                    </button>
+                    <div id="kyc-phone-pair-panel" class="kyc-phone-pair-panel" style="display:none;">
+                      <p class="kyc-help">A timed, single-use link will appear. Scan the QR code with your phone's camera, take the selfie there, and it will be sent to this computer automatically.</p>
+                      <div id="kyc-phone-pair-status" class="kyc-phone-pair-status"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="sc-guide-explainer">
+                  <h4><i class="bi bi-person-check"></i> Selfie Requirements</h4>
+                  <ul class="sc-guide-items">
+                    <li class="sc-guide-item">
+                      <span class="sc-guide-item-icon do"><i class="bi bi-check-lg"></i></span>
+                      <span><strong>Face clearly visible</strong> — centered, looking directly at the camera, with a neutral expression.</span>
+                    </li>
+                    <li class="sc-guide-item">
+                      <span class="sc-guide-item-icon do"><i class="bi bi-check-lg"></i></span>
+                      <span><strong>Shoulders and upper chest visible</strong> — the guide oval should frame your head and shoulders.</span>
+                    </li>
+                    <li class="sc-guide-item">
+                      <span class="sc-guide-item-icon do"><i class="bi bi-check-lg"></i></span>
+                      <span><strong>Good lighting</strong> — face should be well-lit from the front, not from behind or in shadow.</span>
+                    </li>
+                    <li class="sc-guide-item">
+                      <span class="sc-guide-item-icon dont"><i class="bi bi-x-lg"></i></span>
+                      <span><strong>No sunglasses, hats, or face coverings</strong> that hide your eyes or face.</span>
+                    </li>
+                    <li class="sc-guide-item">
+                      <span class="sc-guide-item-icon dont"><i class="bi bi-x-lg"></i></span>
+                      <span><strong>No other people</strong> in the frame — the selfie must be only you.</span>
+                    </li>
+                  </ul>
                 </div>
 
                 <div class="kyc-field-group">
@@ -199,7 +257,7 @@
                     <div class="kyc-grid-3">
                       <div class="kyc-field-group">
                         <label for="city" class="kyc-label">City</label>
-                        <input type="text" class="kyc-input" id="city" name="city" placeholder="Kampala">
+                        <input type="text" class="kyc-input" id="city" name="city" placeholder="Kampala" value="{{ canonical_city or '' }}">
                       </div>
                       <div class="kyc-field-group">
                         <label for="state" class="kyc-label">State / Region</label>
@@ -207,7 +265,7 @@
                       </div>
                       <div class="kyc-field-group">
                         <label for="country" class="kyc-label">Country</label>
-                        <input type="text" class="kyc-input" id="country" name="country" value="UG" maxlength="2">
+                        <input type="text" class="kyc-input" id="country" name="country" value="{{ canonical_country or 'UG' }}" maxlength="2">
                       </div>
                     </div>
                     <div class="kyc-field-group">
@@ -248,7 +306,7 @@
                   <select class="kyc-select" id="org_id" name="org_id" required>
                     <option value="" selected disabled>Select your organization…</option>
                     {% for org in user_orgs %}
-                      <option value="{{ org.id }}" {% if org.org_id|string == active_org_id|string %}selected{% endif %}>{{ org.legal_name }} ({{ org.org_id }})</option>
+                      <option value="{{ org.slug or org.org_id }}" {% if org.slug and org.slug|string == active_org_slug|string %}selected{% endif %}>{{ org.legal_name }} ({{ org.slug or org.org_id }})</option>
                     {% endfor %}
                   </select>
                   <span class="kyc-help">Only active organizations where you are a member are shown.</span>
@@ -451,7 +509,8 @@
     .kyc-standalone-body {
       padding: 1.5rem 1rem;
     }
-    .kyc-standalone-card {
+.kyc-standalone-card {
+      padding: 1.25rem;
       margin: 1rem 0.5rem 2rem 0.5rem;
       border-radius: 12px;
     }
@@ -534,6 +593,42 @@
     border-radius: 10px;
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02);
   }
+  /* ── Cross-device phone pairing panel ───────────────────────────────── */
+  .kyc-phone-pair-toggle {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    background: none; border: none; color: #2563eb; font-size: 0.85rem;
+    font-weight: 600; cursor: pointer; padding: 0.25rem 0; margin-top: 0.5rem;
+  }
+  .kyc-phone-pair-toggle:hover { text-decoration: underline; }
+  .kyc-phone-pair-panel {
+    margin-top: 0.5rem; padding: 0.75rem 1rem;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+  }
+  .kyc-phone-pair-qr {
+    display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+  .kyc-phone-pair-qr img {
+    max-width: 160px; max-height: 160px; border: 1px solid #e2e8f0;
+    border-radius: 6px; background: #fff;
+  }
+  .kyc-phone-pair-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.95rem; letter-spacing: 0.12em; font-weight: 700; color: #1e293b;
+  }
+  .kyc-phone-pair-timer { color: #64748b; font-size: 0.8rem; }
+  .kyc-phone-pair-status {
+    font-size: 0.85rem; margin-top: 0.5rem;
+    padding: 0.5rem 0.75rem; border-radius: 8px;
+    background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534;
+    font-weight: 600;
+  }
+  .kyc-phone-pair-status.waiting {
+    background: #fffbeb; border-color: #fed7aa; color: #92400e;
+  }
+  .kyc-phone-pair-status.error {
+    background: #fef2f2; border-color: #fecaca; color: #991b1b;
+  }
   .kyc-submit-wrap {
     margin-top: 2.5rem;
     padding-bottom: 1rem;
@@ -601,9 +696,11 @@
     align-items: center;
   }
 </style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/user/selfie-capture.css') }}">
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/modules/user/selfie-capture.js') }}"></script>
 <script>
 /**
  * Clean Custom KYC Script (No Bootstrap Collide/Collapse JS dependencies).
@@ -656,10 +753,27 @@
   // Presigned upload handler with XMLHttpRequest progress tracking and local fallback
   async function handlePresignedUpload(event) {
     const form = event.target;
+    const isIndividual = form.id === 'individualForm';
+
+    // Ensure any camera-captured selfie is attached as a real file before we
+    // decide which submission path to take.
+    if (isIndividual && typeof window.__attachSelfieToForm === 'function') {
+      await window.__attachSelfieToForm();
+    }
+
     const fileInputId = form.id === 'organizationForm' ? 'org_doc_file' : 'kyc_doc_file';
     const fileInput = document.getElementById(fileInputId);
     if (!fileInput || !fileInput.files || !fileInput.files[0]) {
       // Let regular form submission handle URL-only or empty validation
+      return;
+    }
+
+    // If the individual submission carries a selfie, the presigned path (which
+    // uploads only the document then redirects) would drop the selfie. Submit
+    // the form synchronously so both document and selfie reach the KYC route.
+    if (isIndividual && typeof window.__individualSelfie === 'function' && window.__individualSelfie()) {
+      event.preventDefault();
+      form.submit();
       return;
     }
 
@@ -791,6 +905,180 @@
     }
   }
 
+/* ── Selfie camera capture integration ────────────────────────────────── */
+  var selfieAnchor = document.getElementById('selfie-capture');
+  if (selfieAnchor && typeof SelfieCapture === 'function') {
+    var selfieWidget = new SelfieCapture({
+      containerId: 'selfie-capture',
+      onCapture: function (dataUrl) {
+        var dataUrlInput = document.getElementById('selfie_data_url');
+        var capturedInput = document.getElementById('selfie_captured');
+        if (dataUrlInput) dataUrlInput.value = dataUrl;
+        if (capturedInput) capturedInput.value = '1';
+      },
+      onError: function (err) {
+        console.error('Selfie capture unavailable:', err);
+      }
+    });
+    selfieWidget.init();
+
+    // Turn a camera-captured JPEG data URL into a real File attached to the
+    // form so it is carried by any submission path. When DataTransfer is not
+    // available the hidden selfie_data_url field remains populated and the
+    // server decodes it as a fallback.
+    window.__attachSelfieToForm = function () {
+      var dataUrlInput = document.getElementById('selfie_data_url');
+      var fileInput = document.getElementById('selfie_file');
+      if (!dataUrlInput || !dataUrlInput.value) return Promise.resolve();
+      if (fileInput && fileInput.files && fileInput.files.length) return Promise.resolve();
+      return fetch(dataUrlInput.value)
+        .then(function (res) { return res.blob(); })
+        .then(function (blob) {
+          if (!fileInput || typeof DataTransfer !== 'function') return;
+          var file = new File([blob], 'selfie-captured.jpg', { type: 'image/jpeg' });
+          var dt = new DataTransfer();
+          dt.items.add(file);
+          fileInput.files = dt.files;
+        })
+        .catch(function () { /* server reads selfie_data_url instead */ });
+    };
+
+    // True when a selfie is present (camera capture, file or pasted URL).
+    window.__individualSelfie = function () {
+      var capturedEl = document.getElementById('selfie_captured');
+      var dataUrlEl = document.getElementById('selfie_data_url');
+      var fileEl = document.getElementById('selfie_file');
+      var urlEl = document.getElementById('selfie_url');
+      var viaCamera = capturedEl && capturedEl.value === '1' && dataUrlEl && dataUrlEl.value;
+      var viaFile = fileEl && fileEl.files && fileEl.files.length > 0;
+      var viaUrl = urlEl && urlEl.value && urlEl.value.trim();
+      // A selfie delivered through the cross-device phone pairing counts too.
+      var viaPhone = window.__phonePairReady && pairNonceInput && pairNonceInput.value;
+      return !!(viaCamera || viaFile || viaUrl || viaPhone);
+    };
+  }
+
+  /* ── Cross-device phone pairing ("scan & selfie") ──────────────────────
+     Desktop without a camera: starts a timed, single-use pairing link,
+     shows the QR code for the phone, polls for the phone's selfie and
+     stores the returned nonce in the hidden selfie_pair_nonce field so the
+     KYC submit consumes the phone-captured photo. */
+  var phonePairBtn = document.getElementById('kyc-phone-pair-btn');
+  var phonePairPanel = document.getElementById('kyc-phone-pair-panel');
+  var phonePairStatus = document.getElementById('kyc-phone-pair-status');
+  var pairNonceInput = document.getElementById('selfie_pair_nonce');
+  var phonePairTimer = null;
+  var phonePairPoll = null;
+  window.__phonePairReady = false;
+
+  function setPhonePairStatus(msg, cls) {
+    if (!phonePairStatus) return;
+    phonePairStatus.className = 'kyc-phone-pair-status' + (cls ? ' ' + cls : '');
+    phonePairStatus.textContent = msg;
+  }
+
+  function stopPhonePairTimers() {
+    if (phonePairTimer) { clearTimeout(phonePairTimer); phonePairTimer = null; }
+    if (phonePairPoll) { clearTimeout(phonePairPoll); phonePairPoll = null; }
+  }
+
+  function pollPairStatus(nonce, deadline) {
+    var remaining = Math.max(0, Math.floor((deadline - Date.now()) / 1000));
+    if (remaining <= 0) {
+      stopPhonePairTimers();
+      setPhonePairStatus('This pairing link has expired. Tap the button to create a new one.', 'error');
+      if (pairNonceInput) pairNonceInput.value = '';
+      window.__phonePairReady = false;
+      return;
+    }
+    var indForm = document.getElementById('individualForm');
+    var csrfToken = indForm && indForm.querySelector('input[name="csrf_token"]');
+    csrfToken = csrfToken ? csrfToken.value : '';
+    fetch('/kyc/selfie/companion/status?nonce=' + encodeURIComponent(nonce), {
+      headers: { 'X-CSRFToken': csrfToken }
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (data.status === 'ready') {
+          stopPhonePairTimers();
+          window.__phonePairReady = true;
+          setPhonePairStatus('Selfie received on your phone. You can now submit the form.', '');
+          return;
+        }
+        if (data.status === 'expired' || data.status === 'consumed' || data.status === 'forbidden') {
+          stopPhonePairTimers();
+          window.__phonePairReady = false;
+          if (pairNonceInput) pairNonceInput.value = '';
+          setPhonePairStatus(
+            data.status === 'forbidden'
+              ? 'This pairing link is no longer valid. Tap the button to create a new one.'
+              : 'This pairing link has expired. Tap the button to create a new one.',
+            'error');
+          return;
+        }
+        phonePairTimer = setTimeout(function () { pollPairStatus(nonce, deadline); }, 3000);
+      })
+      .catch(function () {
+        phonePairTimer = setTimeout(function () { pollPairStatus(nonce, deadline); }, 3000);
+      });
+  }
+
+  if (phonePairBtn && phonePairPanel) {
+    phonePairBtn.addEventListener('click', function () {
+      stopPhonePairTimers();
+      phonePairPanel.style.display = 'block';
+      phonePairBtn.disabled = true;
+      setPhonePairStatus('Preparing a secure link for your phone…', 'waiting');
+
+      var indForm = document.getElementById('individualForm');
+      var csrfToken = indForm && indForm.querySelector('input[name="csrf_token"]');
+      csrfToken = csrfToken ? csrfToken.value : '';
+
+      fetch('/kyc/selfie/pair', {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'Accept': 'application/json'
+        }
+      })
+        .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, status: res.status, data: d }; }); })
+        .then(function (r) {
+          if (!r.ok) {
+            phonePairBtn.disabled = false;
+            setPhonePairStatus(r.data.error || 'Pairing is temporarily unavailable. Use the on-device camera or upload a selfie photo.', 'error');
+            return;
+          }
+          var nonce = r.data.nonce;
+          if (pairNonceInput) pairNonceInput.value = nonce;
+          window.__phonePairReady = false;
+          var qrImg = document.createElement('img');
+          qrImg.src = r.data.qr_svg_data_uri;
+          qrImg.alt = 'Scan this QR code with your phone to take the selfie';
+          qrImg.width = 160; qrImg.height = 160;
+          var code = document.createElement('div');
+          code.className = 'kyc-phone-pair-code';
+          code.textContent = 'Code: ' + r.data.pairing_code;
+          var timer = document.createElement('div');
+          timer.className = 'kyc-phone-pair-timer';
+          timer.textContent = 'Expires in ' + r.data.expires_in + ' seconds';
+          phonePairStatus.parentElement.querySelectorAll('.kyc-phone-pair-qr').forEach(function (el) { el.remove(); });
+          var qrWrap = document.createElement('div');
+          qrWrap.className = 'kyc-phone-pair-qr';
+          qrWrap.appendChild(qrImg);
+          qrWrap.appendChild(code);
+          qrWrap.appendChild(timer);
+          phonePairStatus.insertAdjacentElement('afterend', qrWrap);
+          setPhonePairStatus('Scan the QR code with your phone, take the selfie there, and it will be sent to this computer automatically.', 'waiting');
+          var deadline = Date.now() + (r.data.expires_in * 1000);
+          phonePairTimer = setTimeout(function () { pollPairStatus(nonce, deadline); }, 3000);
+        })
+        .catch(function () {
+          phonePairBtn.disabled = false;
+          setPhonePairStatus('Network error. Tap the button to try again.', 'error');
+        });
+    });
+  }
+
   var indForm = document.getElementById('individualForm');
   if (indForm) {
     indForm.addEventListener('submit', handlePresignedUpload);
@@ -904,6 +1192,26 @@
     form.addEventListener('submit', function () {
       try { localStorage.removeItem(draftKey); } catch (e) {}
     });
+
+    // ── Canonical identity single-entry lock ────────────────────────────
+    // The ID number is read from UserProfile (single entry). If the selected
+    // document type matches the type held in the profile, the number is
+    // re-pinned to the canonical value; the server enforces the same rule on
+    // submit, so this is a UX affordance rather than the security boundary.
+    var idTypeSel = document.getElementById('id_type');
+    var idNum = document.getElementById('id_number');
+    var canonicalType = idTypeSel ? idTypeSel.getAttribute('data-canonical-type') : '';
+    var canonicalNumber = idNum ? idNum.getAttribute('data-canonical-number') : '';
+    if (idTypeSel && idNum && canonicalNumber) {
+      idTypeSel.addEventListener('change', function () {
+        if (canonicalType && idTypeSel.value === canonicalType) {
+          idNum.value = canonicalNumber;
+          idNum.readOnly = true;
+        } else {
+          idNum.readOnly = false;
+        }
+      });
+    }
   })();
 })();
 </script>

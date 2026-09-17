@@ -8,7 +8,7 @@ import os
 print("APP_ENV =", os.getenv("APP_ENV"))
 print("FLASK_ENV =", os.getenv("FLASK_ENV"))
 #print("DATABASE_URL =", os.getenv("DATABASE_URL"))
-print("REDIS_URL =", os.getenv("REDIS_URL"))
+print("REDIS_URL set:", bool(os.getenv("REDIS_URL")))
 
 
 # Setup logging to show errors in console
@@ -77,6 +77,7 @@ if __name__ == "__main__":
     logger.info(f"Debug mode: {debug_mode}")
     logger.info(f"Host: {os.getenv('FLASK_HOST', '127.0.0.1')}")
     logger.info(f"Port: {os.getenv('FLASK_PORT', '5000')}")
+    logger.info(f"→ Open your browser at http://127.0.0.1:5000/")
 
     try:
         socketio.run(

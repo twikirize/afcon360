@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#1E3A5F">
+  <title>Selfie Capture</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f8fafc; --card: #fff; --text: #1e293b; --muted: #64748b;
+      --border: #e2e8f0; --accent: #1E3A5F; --success: #16a34a;
+      --error: #dc2626; --danger-bg: #fef2f2; --danger-border: #fecaca;
+      --success-bg: #f0fdf4; --success-border: #bbf7d0;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0f172a; --card: #1e293b; --text: #f1f5f9; --muted: #94a3b8; --border: #334155; --accent: #60a5fa; --success: #4ade80; --error: #f87171; --danger-bg: #2d1a1a; --danger-border: #553030; --success-bg: #14261b; --success-border: #1e4d2d; }
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100dvh;
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+      padding: 1rem 0.75rem env(safe-area-inset-bottom, 0); -webkit-text-size-adjust: 100%;
+    }
+    .cp-card {
+      width: 100%; max-width: 360px; background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 1.25rem 1rem 1.5rem; margin-top: 1rem;
+    }
+    .cp-logo { text-align: center; font-weight: 800; color: var(--accent); font-size: 1.1rem; letter-spacing: -0.02em; }
+    .cp-logo-sub { font-weight: 400; color: var(--muted); font-size: 0.82rem; display: block; margin-top: 0.15rem; }
+    .cp-divider { height: 1px; background: var(--border); margin: 0.75rem 0; }
+    .cp-center { text-align: center; }
+    .cp-sun { font-size: 1.8rem; line-height: 1; margin-bottom: 0.5rem; }
+    .cp-title { font-size: 1.1rem; font-weight: 700; }
+    .cp-sub { color: var(--muted); font-size: 0.88rem; margin-top: 0.25rem; line-height: 1.35; }
+    .cp-warning {
+      background: var(--danger-bg); border: 1px solid var(--danger-border); color: var(--error);
+      border-radius: 8px; padding: 0.75rem; font-size: 0.85rem; margin-top: 0.75rem; text-align: center;
+      line-height: 1.35; word-break: break-word;
+    }
+    .cp-success {
+      background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success);
+      border-radius: 8px; padding: 0.75rem; font-size: 0.9rem; margin-top: 0.75rem; text-align: center;
+    }
+    .cp-success strong { display: block; font-size: 1rem; margin-bottom: 0.15rem; }
+    .cp-back { display: inline-block; margin-top: 0.5rem; font-size: 0.82rem; color: var(--accent); }
+
+    /* ── Selfie guide (same semantics as verify_upload.html) ───────────── */
+    .sc-guide-explainer {
+      margin-top: 0.75rem; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.75rem;
+    }
+    .sc-guide-explainer h4 { font-size: 0.85rem; margin-bottom: 0.5rem; }
+    .sc-guide-items { list-style: none; padding-left: 0; margin-bottom: 0; }
+    .sc-guide-item { display: flex; gap: 0.5rem; margin-bottom: 0.4rem; font-size: 0.8rem; line-height: 1.35; }
+    .sc-guide-item-icon { flex-shrink: 0; width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem; margin-top: 1px; }
+    .sc-guide-item-icon.do  { background: #dcfce7; color: #166534; }
+    .sc-guide-item-icon.dont { background: #fee2e2; color: #991b1b; }
+
+    /* ── Capture widget anchor ────────────────────────────────────────── */
+    .cp-capture-wrap { margin-top: 0.75rem; }
+    .cp-capture-anchor { min-height: 220px; border-radius: 8px; border: 1px solid var(--border); overflow: hidden; }
+    .cp-hidden { position: absolute !important; width: 1px !important; height: 1px !important; opacity: 0 !important; overflow: hidden !important; }
+  </style>
+</head>
+<body>
+  <main class="cp-card" role="main">
+    <div class="cp-logo">
+      <span>AFCON360</span>
+      <span class="cp-logo-sub">KYC Selfie Verification</span>
+    </div>
+
+    {% if pairing_expired or error %}
+      <div class="cp-divider"></div>
+      <div class="cp-sun">&#9788;</div>
+      <p class="cp-title">Link Expired</p>
+      <p class="cp-sub">{{ error or "This selfie link has expired." }}</p>
+      <div class="cp-warning">
+        Pairing links are valid for 5 minutes. Ask the person on the
+        computer to generate a fresh QR code, then scan it with your phone.
+      </div>
+    {% elif already_received %}
+      <div class="cp-divider"></div>
+      <div class="cp-sun">&#127881;</div>
+      <p class="cp-title">Selfie Received</p>
+      <p class="cp-sub">Your selfie has been captured. You can close this page and return to your computer.</p>
+    {% else %}
+      <div class="cp-divider"></div>
+      <div class="cp-center">
+        <p class="cp-title">Take Your Selfie</p>
+        <p class="cp-sub">
+          Your face, shoulders, and upper chest must be visible.
+          This links your photo to the verification on the computer.
+        </p>
+      </div>
+
+      <div class="sc-guide-explainer">
+        <ul class="sc-guide-items">
+          <li class="sc-guide-item"><span class="sc-guide-item-icon do"><i>&#10003;</i></span><span>Face clearly visible — centered, looking directly at the camera</span></li>
+          <li class="sc-guide-item"><span class="sc-guide-item-icon do"><i>&#10003;</i></span><span>Shoulders and upper chest visible</span></li>
+          <li class="sc-guide-item"><span class="sc-guide-item-icon do"><i>&#10003;</i></span><span>Good front lighting — no shadows covering your face</span></li>
+          <li class="sc-guide-item"><span class="sc-guide-item-icon dont"><i>&#10007;</i></span><span>No sunglasses, hats, or face coverings</span></li>
+          <li class="sc-guide-item"><span class="sc-guide-item-icon dont"><i>&#10007;</i></span><span>No other people in the frame</span></li>
+        </ul>
+      </div>
+
+      <div class="cp-capture-wrap">
+        <div id="selfie-capture" class="sc-anchor cp-capture-anchor"></div>
+      </div>
+      <input type="hidden" id="selfie_data_url" value="">
+      <input type="file" class="cp-hidden" id="selfie_file" name="selfie_file"
+             accept="image/*" capture="user">
+
+      <button type="button" id="cp-submit" disabled
+              style="display:block;width:100%;margin-top:1rem;padding:0.85rem;font-size:1rem;font-weight:700;border:none;border-radius:8px;background:#1E3A5F;color:#fff;cursor:pointer;opacity:0.5;">
+        Submit Selfie
+      </button>
+      <p id="cp-status" class="cp-sub cp-center" style="margin-top:0.5rem;"></p>
+    {% endif %}
+  </main>
+
+  <script src="{{ url_for('static', filename='js/modules/user/selfie-capture.js') }}"></script>
+  <script>
+  (function () {
+    var token = {{ token | default(none) | tojson }};
+    var submitBtn = document.getElementById('cp-submit');
+    var statusBar = document.getElementById('cp-status');
+    if (!submitBtn || !token) return;
+
+    var capturedDataUrl = null;
+    var submitting = false;
+
+    var widget = new SelfieCapture({
+      containerId: 'selfie-capture',
+      onCapture: function (dataUrl) {
+        capturedDataUrl = dataUrl;
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = '1';
+        statusBar.textContent = 'Selfie captured — tap Submit when ready.';
+      },
+      onError: function (err) {
+        statusBar.textContent = 'Camera unavailable: ' + err.message;
+      }
+    });
+    widget.init();
+
+    submitBtn.addEventListener('click', function () {
+      if (submitting || !capturedDataUrl) return;
+      submitting = true;
+      submitBtn.disabled = true;
+      submitBtn.style.opacity = '0.5';
+      statusBar.textContent = 'Submitting…';
+
+      fetch('/kyc/selfie/companion/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: token, selfie_data_url: capturedDataUrl })
+      })
+      .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, status: res.status, data: d }; }); })
+      .then(function (r) {
+        if (r.ok && r.data.ok) {
+          statusBar.textContent = '';
+          submitBtn.parentElement.innerHTML =
+            '<div class="cp-success"><strong>Selfie received.</strong>You can close this page and return to your computer.</div>';
+        } else if (r.status === 409) {
+          statusBar.textContent = 'This link has already been used or is no longer active.';
+        } else if (r.status === 401 || r.status === 410) {
+          statusBar.textContent = 'This link has expired. Ask for a fresh code.';
+        } else {
+          statusBar.textContent = r.data.error || 'Could not submit. Please try again.';
+          submitting = false;
+          submitBtn.disabled = false;
+          submitBtn.style.opacity = '1';
+        }
+      })
+      .catch(function () {
+        statusBar.textContent = 'Network error. Check your connection and try again.';
+        submitting = false;
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = '1';
+      });
+    });
+  })();
+  </script>
+</body>
+</html>

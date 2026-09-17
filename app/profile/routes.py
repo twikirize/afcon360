@@ -242,6 +242,18 @@ def edit_profile():
             'email': (request.form.get('email') or '').strip() or None,
         }
 
+        # Canonical date_of_birth write path (single identity entry).
+        # Parsed to a real date so the immutable firewall compares like values
+        # and the model validator receives a date, not a raw form string.
+        # An empty/absent field is left untouched (no clearing, no false block).
+        dob_raw = (request.form.get('date_of_birth') or '').strip()
+        if dob_raw:
+            try:
+                editable_data['date_of_birth'] = datetime.strptime(dob_raw, '%Y-%m-%d').date()
+            except ValueError:
+                flash('Date of birth must use the format YYYY-MM-DD.', 'danger')
+                return redirect(url_for('profile.edit_profile'))
+
         # Email-lock guard & change handling on User model
         new_email = editable_data.get('email')
         if new_email and new_email != current_user.email:

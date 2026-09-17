@@ -43,6 +43,89 @@ Wallet pages hosted by `templates/wallet/base_wallet.html` were unaffected (stan
 
 ---
 
+## 0.2 Accommodation Guest Detail — Dark Mode Readability (2026-09-15)
+
+**Risk Level:** Low (CSS/template only; no schema, color/branding identity, or responsive changes)
+
+### What changed
+
+- `static/css/modules/accommodation/detail.css` — **UPDATED**: replaced hardcoded light-only colors
+  (white surfaces, `#1a1a1a` text, `#003580` CTA, light urgency bars) with theme tokens
+  (`--bg-surface`, `--bg-surface-alt`, `--text-primary`, `--text-secondary`, `--text-muted`,
+  `--border-*`, `--brand-primary`). Added dark-mode overrides so `.card`, `main#main`, and
+  breadcrumb text re-assert the dark tokens (admin `owner.css` + global `style.css` force white).
+- `templates/accommodation/guest/detail.html` — **UPDATED**: selected-room highlight and the price
+  breakdown box no longer use Bootstrap's fixed `.bg-light` (replaced with theme-token classes
+  `.detail-room-list-selected` / `.detail-price-breakdown`).
+- `static/css/global/theme-variables.css` — **UPDATED**: dark-mode blocks now also lighten
+  `--success` and heading color (`--green-mid`) for contrast on dark surfaces.
+- `static/css/global/theme-components.css` — **UPDATED**: added theme-aware `.list-group-item`
+  and `.text-muted` / `.text-secondary` / `.text-body` utilities; `.text-primary` and
+  `.btn-outline-primary` now use the dark-mode-aware `--color-primary` token.
+
+### Verification
+
+- Dark mode (`body.dark-mode`) + system-preference dark: `main`, `.card`, `.list-group-item`,
+  gallery button, price breakdown, breadcrumb, headings, and muted/secondary text all computed
+  from dark tokens (light text on dark surfaces, WCAG-aimed contrast).
+- Light mode unchanged: white surfaces, dark text, `#006400` headings, `--bg-surface-alt` room
+  highlight preserved.
+
+---
+
+## 0.3 Global Theming — Uniform Dark Mode App-Wide (2026-09-15)
+
+**Risk Level:** Low (CSS + one link in `base.html`; no schema, color-identity, or light-mode changes)
+
+### What changed
+
+- `static/css/global/dark-mode.css` — **NEW** global dark-mode override layer, loaded last in
+  `base.html`'s shared stylesheet chain (after `owner.css`, before per-page `module_styles`).
+  Every rule is scoped under `:where(body.dark-mode)` (zero specificity), so dark-mode styles
+  can never leak into light mode and per-page/module CSS still wins where it disagrees. Converts
+  the remaining hardcoded light-only surfaces to theme tokens:
+  - Website/global shell (`style.css`): `main#main`, `.drop-menu`/`.drop-item`/`.drop-divider`,
+    `.drop-header--sub .fw-bold`
+  - Homepage (`home.css`): `.top-search`, `.search-select-wrap` (+`select`),
+    `.trending-tag`/`.trending-label`, `.home-right`, `.right-ad` (+title/sub),
+    `.quick-actions` (+label), `.section-title`, `.section-link`
+  - Owner dashboard shell (`owner.css`): `.owner-dashboard`, `.sidebar-header p`, `.admin-info`,
+    `.content-header h1`/`.subtitle`, `.section-header h2`, `.card-header` (+h3),
+    `.activity-item`/`.activity-action`/`.activity-time`, `.stat-value`/`.stat-label`/`.stat-meta`,
+    `.health-footer`, `.action-btn`, `.btn-ghost`, `.btn-view`, `.badge-system`, `.nav-item`
+  - Bootstrap widgets not yet tokenized: `.form-control`/`.form-select` (owner.css forces white),
+    `.breadcrumb` active/link, `.btn-close`, `.offcanvas`/`.toast`/`.accordion-*`,
+    `.input-group-text`, `.form-label`, `.text-dark`, form placeholder
+- `static/css/global/theme-variables.css` — **UPDATED**:
+  - Dark-mode blocks (`:root:not(.light-mode)` media block and `body.dark-mode`) now also set
+    `--bg-card`, `--bg-page`, `--bg-sidebar` so owner-dashboard cards/page/sidebar follow dark.
+  - New rule `@media (prefers-color-scheme: dark) { :root:not(.light-mode)
+    body:not(.light-mode):not(.dark-mode) { …dark tokens… } }`: applies the dark token set to
+    `body` itself when the device prefers dark and no explicit theme class is set (pre-JS first
+    paint and pages where ThemeManager is disabled). `:not(...)` guards ensure an explicit
+    light/dark theme is never overridden.
+- `templates/base.html` — **UPDATED**: added the `css/global/dark-mode.css` link after `owner.css`.
+
+### Why
+
+`style.css`, `home.css`, and `owner.css` shipped hardcoded light colors (white `main#main`, white
+dropdowns, `#f5f7fa` dashboard page, `#fafbfc` card headers, white form controls). In dark mode
+the token layer flips to light text (`#e0e0e0`), so those hardcoded-white surfaces rendered light
+text on white — the "lost viewability" reported on non-accommodation pages. The new layer points
+every such surface at the dark tokens, and is active only under `body.dark-mode`, which
+ThemeManager applies for both the AFCON360 theme setting and the device/system preference.
+
+### Verification
+
+- Dark (`body.dark-mode`) + device-preference dark: homepage search bar, trending tags, quick
+  actions, dropdowns, page `main`, form controls, and owner dashboard cards/sidebar all render dark
+  surfaces with light token text; computed styles resolve from the dark tokens.
+- Light mode: no rule can match (`:where(body.dark-mode)` requires the class), so existing
+  light-mode computed styles are unchanged.
+- An explicitly forced light/dark theme cannot be overridden by the pre-JS/device media rule.
+
+---
+
 ## 0.1 Host Listing Create Form — Standardized to System Pattern (2026-09-07)
 
 **Risk Level:** Low (CSS/template only; no schema, color, or branding changes)
@@ -969,6 +1052,79 @@ templates/
 - [x] `static/MOBILE_OPTIMIZATION.md` updated for every changed HTML template.
 
 **Migration needed?** No — replacement metadata is stored in existing compliance notes.
+
+---
+
+### KYC Live Selfie Capture (2026-09-16)
+
+#### File Tree — What Was Touched
+```
+static/
+├── js/modules/user/selfie-capture.js        ← NEW (WebRTC front-camera capture widget)
+└── css/modules/user/selfie-capture.css      ← NEW (mobile-first .sc-* styles)
+templates/
+└── kyc/verify_upload.html                   ← UPDATED (live selfie camera + guide + capture wiring)
+app/
+└── kyc/routes.py                            ← UPDATED (selfie required for identity docs; data-URL fallback)
+```
+
+#### Responsive Change Log
+- `verify_upload.html`: identity verification now uses a camera-based selfie capture widget.
+  - Mobile-first: the preview fills the fluid container (`aspect-ratio`-locked, no fixed `min-width`), and the capture ring/control buttons are ≥44px touch targets.
+  - Works on phones (front camera by default) and laptops; falls back to a file-picker selfie upload when no camera is present.
+  - The user guide (face centered, shoulders + upper chest visible, even lighting, no glaring accessories) renders in a single wrapping column at phone widths.
+  - A hidden real-file input is kept so the captured photo travels through the standard multipart submission — no new upload endpoint.
+- Dark mode respected via `prefers-color-scheme` in the new stylesheet.
+
+### Verification Checklist
+- [x] Camera preview, capture and retake controls exceed 44px touch targets.
+- [x] No fixed layout `min-width`; preview and guide wrap cleanly on narrow viewports.
+- [x] Selfie guide and controls readable on phones and laptops.
+- [x] `static/MOBILE_OPTIMIZATION.md` updated for the changed HTML template.
+- [x] Fallback (no camera / permission denied) still submits a selfie photo via the file picker.
+
+**Migration needed?** No — captured selfie reuses the existing `selfie_file` field / `selfie_url` storage.
+
+---
+
+### KYC Cross-Device Phone Pairing for Selfie (2026-09-16)
+
+#### File Tree — What Was Touched
+```
+templates/
+├── kyc/selfie_companion.html              ← NEW (standalone phone capture page, no base.html)
+└── kyc/verify_upload.html                 ← UPDATED ("No camera? Use your phone" QR/code panel + polling)
+app/
+└── kyc/
+    ├── selfie_pair.py                     ← NEW (pairing backend: token, Redis session, QR, phone upload)
+    └── routes.py                          ← UPDATED (selfie_pair_nonce consumption on verify_upload)
+tests/
+└── test_kyc_selfie_pairing.py             ← NEW (7 tests, FakeRedis stub)
+```
+
+#### What Changed
+- Desktop (no camera) can start a **single-use, time-limited pairing**: POST `/kyc/selfie/pair` returns a signed token, pairing code, and SVG QR data-URI (qrcode, `SvgPathImage` — no Pillow). TTL default 300 s (`KYC_SELFIE_PAIR_TTL_SECONDS`).
+- The companion page (`selfie_companion.html`) is **standalone** (no `base.html`) so it loads and works over a QR scan with no login. It reuses the `selfie-capture.js` widget, then JSON-POSTs `{token, selfie_data_url}` to `/kyc/selfie/companion/upload` (`@csrf.exempt` — the phone has no CSRF token).
+- Upload calls `MediaService.upload_photo(... module='kyc', entity_id=<owner public_id>, uploader_user_id=<owner int id>)` so the photo is stored under the real owner, not the anonymous provisional user. Result is written to the pairing record (pending→ready); the desktop page polls `/kyc/selfie/companion/status?nonce=` every 3 s and marks `__phonePairReady` + injects the nonce.
+- `verify_upload()` consumes the `selfie_pair_nonce` on submit: if `selfie_url` is still unset after the camera/data-URL fallback, it consumes the paired upload (`consume_pair(nonce, current_user.id)`); wrong owner or a consumed nonce rejects with a flash and redirect.
+- Redis keys `kyc:selfie:pair:{nonce}` / `kyc:selfie:pair:user:{user_id}` enforce one active pairing per user; pending→ready→consumed is single-use (replays return 409/expired). If Redis is unavailable, pairing degrades gracefully (501 "service unavailable") and the file-picker fallback still works.
+- Rate limits: pair 6/min, upload 20/min, status 60/min.
+
+#### Responsive Change Log
+- `selfie_companion.html` is mobile-first and standalone: full-viewport capture widget, ≥44px capture/submit controls, guide text stacks below the preview on narrow screens, dark-mode aware.
+- `verify_upload.html` phone panel (`#kyc-phone-pair-*`) shows the QR image or pairing code with instructions; status line updates from polling; collapse to a single column at phone widths.
+- No fixed `min-width`, no `overflow: hidden` on containers holding the polling UI.
+
+#### Verification Checklist
+- [x] Companion page renders from a QR scan with no login and shows the capture widget.
+- [x] Invalid/expired pairing token rejected (401 on upload, 410 on companion page).
+- [x] Pairing is single-use: replay upload returns 409/expired; wrong-owner consume rejected.
+- [x] Phone upload is CSRF-exempt; desktop desktop POST requests still carry the CSRF token.
+- [x] `qrcode==8.2` already declared in `requirements.txt` — no dependency change.
+- [x] `static/MOBILE_OPTIMIZATION.md` updated for the changed HTML templates.
+
+**Migration needed?** No — selfies reuse the existing `selfie_url` storage; pairing is ephemeral Redis state.
+**Manual steps:** none (Redis must be up for pairing; degrade path if not).
 
 ---
 

@@ -19,6 +19,7 @@
 
   <!-- Theme System CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/global/dark-mode.css') }}">
   <style>
     /* ── DESIGN TOKENS ── */
     :root {
@@ -937,6 +938,7 @@
 
     {% block extra_script %}{% endblock %}
   </script>
+  <script src="{{ url_for('static', filename='js/global/theme-manager.js') }}" defer></script>
 </body>
 </html>
 {% else %}

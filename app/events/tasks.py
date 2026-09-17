@@ -371,8 +371,14 @@ def process_waitlist_auto_conversion(self, event_id, ticket_type_id, seats_relea
             for entry in waitlist_entries:
                 try:
                     user = entry.user
-                    full_name = user.full_name if user else entry.email
-                    email = entry.email
+                    # Canonical profile identity is the source of full name; the
+                    # User account row has no full_name column (Identity Center).
+                    from app.profile.services.canonical_identity import get_canonical_identity
+                    identity = get_canonical_identity(user) if user else None
+                    full_name = identity.full_name if identity else None
+                    if not full_name:
+                        full_name = user.username if user else entry.email
+                    email = entry.email or (user.email if user else None)
 
                     reg, qr_code, error = EventService.register_for_event_optimistic(
                         identifier=event.slug,

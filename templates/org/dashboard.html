@@ -1,781 +1,775 @@
 {% extends "base.html" %}
 
-{% block title %}{{ org.legal_name }} - Organization Dashboard{% endblock %}
+{% block title %}
+{{ org.legal_name }} - Organization Dashboard
+{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/global/kyc-ribbon.css') }}">
 <style>
-/* Modern Dashboard Styles */
-.dashboard-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 16px;
+/* ============================================================
+   AFCON 360 DASHBOARD — MODERN CARD LAYOUT
+   Incorporates design patterns from reference stylesheet:
+   - .container with rounded card background
+   - .stat-box with colored backgrounds & rounded corners
+   - .placeholder for empty states
+   - Dark mode via CSS variables
+   ============================================================ */
+
+:root {
+  --acc-primary: #2d5a2d;
+  --acc-primary-dark: #1a3a1a;
+  --acc-accent: #ffcc00;
+  --acc-success: #006400;
+  --acc-warning: #dc3545;
+  --acc-info: #17a2b8;
+}
+
+/* Page container — mimics reference .container style */
+.dashboard-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: var(--color-background-primary, #ffffff);
     padding: 2rem;
-    color: white;
-    margin-bottom: 2rem;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-}
-
-.dashboard-header .org-avatar {
-    width: 80px;
-    height: 80px;
-    border-radius: 16px;
-    background: rgba(255,255,255,0.2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 2rem;
-    margin-bottom: 1rem;
-}
-
-.stat-card {
-    border: none;
     border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-    transition: all 0.3s ease;
-    overflow: hidden;
-    position: relative;
+    box-shadow: var(--shadow-sm, 0 4px 12px rgba(0,0,0,0.08));
+    font-family: var(--font-family-body, 'Open Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
 }
 
-.stat-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
-}
-
-.stat-card .stat-icon {
-    width: 60px;
-    height: 60px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    margin-bottom: 1rem;
-}
-
-.stat-card.primary .stat-icon { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
-.stat-card.success .stat-icon { background: linear-gradient(135deg, #11998e, #38ef7d); color: white; }
-.stat-card.info .stat-icon { background: linear-gradient(135deg, #2196F3, #21CBF3); color: white; }
-.stat-card.warning .stat-icon { background: linear-gradient(135deg, #F2994A, #F2C94C); color: white; }
-
-.module-card {
-    border: none;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-    transition: all 0.3s ease;
-    height: 100%;
-    position: relative;
-    overflow: hidden;
-}
-
-.module-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(90deg, #667eea, #764ba2);
-}
-
-.module-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
-}
-
-.module-card .module-icon {
-    width: 80px;
-    height: 80px;
-    border-radius: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 2rem;
-    margin: 0 auto 1rem;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: white;
-}
-
-.quick-action-btn {
-    border-radius: 8px;
-    padding: 0.75rem 1.5rem;
-    font-weight: 500;
-    transition: all 0.3s ease;
-    border: none;
-}
-
-.quick-action-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-}
-
-.activity-item {
-    padding: 1rem;
-    border-left: 3px solid #667eea;
-    margin-bottom: 1rem;
-    background: #f8f9fa;
-    border-radius: 0 8px 8px 0;
-    transition: all 0.3s ease;
-}
-
-.activity-item:hover {
-    background: #e9ecef;
-    transform: translateX(5px);
-}
-
-.capability-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.5rem 1rem;
-    border-radius: 20px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    margin: 0.25rem;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: white;
-}
-
-.progress-ring {
-    width: 60px;
-    height: 60px;
-    margin: 0 auto 1rem;
-}
-
-.progress-ring circle {
-    transition: stroke-dashoffset 0.5s ease;
-}
-
-.metric-card {
-    background: white;
-    border-radius: 12px;
-    padding: 1.5rem;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-    border: 1px solid #e9ecef;
-}
-
-.metric-card .metric-value {
-    font-size: 2rem;
+/* Heading style — mimics reference h1 */
+.dashboard-page h1 {
+    color: var(--color-text-primary, #1a1a1a);
+    border-bottom: 3px solid var(--color-primary, #2d5a2d);
+    padding-bottom: 0.75rem;
+    margin-bottom: 1.5rem;
     font-weight: 700;
-    color: #495057;
 }
 
-.metric-card .metric-label {
-    color: #6c757d;
-    font-size: 0.875rem;
-    font-weight: 500;
+/* Empty state placeholder — mimics reference .placeholder */
+.dashboard-placeholder {
+    padding: 3rem 1.5rem;
+    text-align: center;
+    background: var(--color-background-secondary, #f8f9fa);
+    border: 2px dashed var(--color-border-medium, #dee2e6);
+    border-radius: 10px;
+    margin: 2rem 0;
+    color: var(--color-text-tertiary, #6c757d);
+}
+
+/* Stats row — mimics reference .stats / .stat-box */
+.dashboard-stats {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+}
+
+.dashboard-stat {
+    flex: 1;
+    min-width: 140px;
+    padding: 1rem 1.25rem;
+    background: linear-gradient(135deg, var(--color-primary, #2d5a2d), var(--color-primary-hover, #3a6b3a));
+    color: var(--color-on-primary, #ffffff);
+    border-radius: 8px;
+    text-align: center;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dashboard-stat:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.dashboard-stat .stat-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    display: block;
+    margin-bottom: 0.25rem;
+}
+
+.dashboard-stat .stat-label {
+    font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    opacity: 0.8;
 }
 
-.floating-action-btn {
-    position: fixed;
-    bottom: 2rem;
-    right: 2rem;
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: white;
-    border: none;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    transition: all 0.3s ease;
-    z-index: 1000;
+/* Dark mode adjustments */
+body.dark-mode .dashboard-page {
+    background: var(--color-background-primary, #ffffff);
+    box-shadow: var(--shadow-sm, 0 4px 12px rgba(0,0,0,0.1));
 }
 
-.floating-action-btn:hover {
-    transform: scale(1.1);
-    box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+body.dark-mode .dashboard-placeholder {
+    background: var(--color-background-secondary, #f8f9fa);
+    border-color: var(--color-border-medium, #dee2e6);
+    color: var(--color-text-tertiary, #6c757d);
 }
 
-@media (max-width: 768px) {
-    .dashboard-header {
-        padding: 1.5rem;
-    }
-    
-    .stat-card {
-        margin-bottom: 1rem;
-    }
-    
-    .module-card {
-        margin-bottom: 1rem;
-    }
+body.dark-mode .dashboard-stat {
+    background: linear-gradient(135deg, var(--color-primary, #2d5a2d), var(--color-primary-hover, #3a6b3a));
+    color: var(--color-on-primary, #ffffff);
+}
+
+/* Ensure existing stat-card and module-card styles still work */
+.dashboard-page .stat-card,
+.dashboard-page .module-card,
+.dashboard-page .panel {
+    /* Existing styles take precedence; this just ensures compatibility */
+    margin-bottom: 1rem;
+    border-radius: 10px;
 }
 </style>
 {% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/global/kyc-ribbon.css') }}">
+
+{% set org_type = org_type or org.get_effective_org_type() %}
+{% set active_modules = stats.active_modules or [] %}
+{% set provider_caps = provider_capabilities or {} %}
+{% set host_events = provider_caps.get('events', {}).get('status') == 'activated' %}
+{% set host_accommodation = provider_caps.get('accommodation', {}).get('status') == 'activated' %}
+{% set host_transport = provider_caps.get('transport', {}).get('status') == 'activated' %}
+{% set host_tourism = provider_caps.get('tourism', {}).get('status') == 'activated' %}
+
 {# Global KYC ribbon — scoped to the organisation dashboard (not site-wide). #}
 {# NOTE: kyc_info currently reflects the viewing member's personal KYC; wiring #}
 {# the organisation's own KYB status into this ribbon is a separate follow-up.  #}
 {% include 'components/kyc_ribbon.html' %}
 <script src="{{ url_for('static', filename='js/modules/user/kyc-ribbon.js') }}"></script>
 
-<div class="container-fluid p-4">
-    <!-- Organization Header -->
-    <div class="dashboard-header">
-        <div class="row align-items-center">
-            <div class="col-md-8">
-                <div class="d-flex align-items-center">
-                    <div class="org-avatar">
-                        <i class="bi bi-building"></i>
-                    </div>
-                    <div class="ms-4">
-                        <h1 class="mb-2 fw-bold">{{ org.legal_name }}</h1>
-                        <p class="mb-1 opacity-90">{{ org.org_id }} • {{ org.contact_email }}</p>
-                        <div class="d-flex gap-2 flex-wrap">
-                            <span class="badge bg-white text-dark px-3 py-2">
-                                <i class="bi bi-tag me-1"></i> {{ org.business_category.value if org.business_category else 'Organisation' }}
-                            </span>
-                            <span class="badge bg-{{ 'success' if org.verification_status == 'verified' else 'warning' }} px-3 py-2">
-                                <i class="bi bi-shield-check me-1"></i> {{ org.verification_status.title() }}
-                            </span>
-                            {% if org.is_operational %}
-                            <span class="badge bg-info px-3 py-2">
-                                <i class="bi bi-lightning me-1"></i> Operational
-                            </span>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 text-md-end">
-                <div class="d-flex gap-2 justify-content-md-end mt-3 mt-md-0">
-                    <button class="btn btn-light quick-action-btn" onclick="window.location.href='{{ url_for('org.org_kyb', org_id=org.org_id) }}'">
-                        <i class="bi bi-shield-check me-2"></i> KYB
-                    </button>
-                    <button class="btn btn-light quick-action-btn" onclick="window.location.href='{{ url_for('org.settings', org_id=org.org_id) }}'">
-                        <i class="bi bi-gear me-2"></i> Settings
-                    </button>
-                    <button class="btn btn-light quick-action-btn" onclick="window.location.href='{{ url_for('org.members', org_id=org.org_id) }}'">
-                        <i class="bi bi-people me-2"></i> Members
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
+<div class="org-shell">
 
-    <!-- Key Metrics -->
-    <div class="row mb-4">
-        <div class="col-lg-3 col-md-6 mb-4">
-            <div class="stat-card primary">
-                <div class="card-body text-center">
-                    <div class="stat-icon">
-                        <i class="bi bi-people"></i>
-                    </div>
-                    <h3 class="card-title mb-1">{{ stats.total_members }}</h3>
-                    <p class="card-text text-muted">Total Members</p>
-                    <div class="progress" style="height: 4px;">
-                        <div class="progress-bar bg-primary" style="width: 75%"></div>
-                    </div>
-                </div>
+    <!-- ============ LEFT PANE ============ -->
+    <aside class="org-sidebar" id="orgSidebar" aria-label="Organization navigation">
+        <div class="sidebar-brand">
+            <div class="brand-mark"><i class="bi bi-building"></i></div>
+            <div class="brand-text">
+                <span class="brand-name" title="{{ org.legal_name }}">{{ org.legal_name }}</span>
+                <span class="brand-sub">
+                    {{ org.get_effective_org_type().value if org.business_category else 'Organization' }}
+                </span>
             </div>
+            <button type="button" class="sidebar-close d-lg-none" id="sidebarClose" aria-label="Close navigation">
+                <i class="bi bi-x-lg"></i>
+            </button>
         </div>
-        <div class="col-lg-3 col-md-6 mb-4">
-            <div class="stat-card success">
-                <div class="card-body text-center">
-                    <div class="stat-icon">
-                        <i class="bi bi-grid-3x3-gap"></i>
-                    </div>
-                    <h3 class="card-title mb-1">{{ stats.active_modules|length }}</h3>
-                    <p class="card-text text-muted">Active Modules</p>
-                    <div class="progress" style="height: 4px;">
-                        <div class="progress-bar bg-success" style="width: 60%"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-3 col-md-6 mb-4">
-            <div class="stat-card info">
-                <div class="card-body text-center">
-                    <div class="stat-icon">
-                        <i class="bi bi-wallet2"></i>
-                    </div>
-                    <h3 class="card-title mb-1">UGX 0</h3>
-                    <p class="card-text text-muted">Wallet Balance</p>
-                    <div class="progress" style="height: 4px;">
-                        <div class="progress-bar bg-info" style="width: 30%"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-3 col-md-6 mb-4">
-            <div class="stat-card warning">
-                <div class="card-body text-center">
-                    <div class="stat-icon">
-                        <i class="bi bi-calendar-event"></i>
-                    </div>
-                    <h3 class="card-title mb-1">0</h3>
-                    <p class="card-text text-muted">Active Events</p>
-                    <div class="progress" style="height: 4px;">
-                        <div class="progress-bar bg-warning" style="width: 45%"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
-    <section class="card border-0 shadow-sm mb-4" aria-labelledby="workspace-context-heading">
-        <div class="card-body">
-            <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
-                <div>
-                    <p class="text-uppercase small text-muted mb-1">Organisation context</p>
-                    <h2 id="workspace-context-heading" class="h4 mb-2">Operating as {{ org.legal_name }}</h2>
-                    <p class="mb-0 text-muted">
-                        <strong>Role / authority:</strong> {{ organisation_role_label }}
+        <nav class="sidebar-nav">
+            <span class="nav-section-label">Overview</span>
+            <a class="nav-item active" href="{{ url_for('org.dashboard', org_id=org.slug) }}">
+                <i class="bi bi-speedometer2"></i> Dashboard
+            </a>
+{% if 'reports' in accessible_modules or 'reports' in active_modules %}
+            <a class="nav-item" href="{{ url_for('org.reports', org_id=org.slug) }}">
+                <i class="bi bi-graph-up"></i> Analytics
+            </a>
+            {% endif %}
+
+            {% if host_events or host_accommodation or host_transport or host_tourism %}
+            <span class="nav-section-label">Operations</span>
+            {% endif %}
+
+            {% if host_events %}
+            <a class="nav-item" href="{{ url_for('org.events', org_id=org.slug) }}">
+                <i class="bi bi-calendar-event"></i> Events
+            </a>
+            {% endif %}
+
+            {% if host_accommodation %}
+            <a class="nav-item" href="{{ url_for('org.accommodation', org_id=org.slug) }}">
+                <i class="bi bi-building"></i> Properties
+            </a>
+            <a class="nav-item" href="{{ url_for('org.bookings', org_id=org.slug) }}">
+                <i class="bi bi-calendar-check"></i> Bookings
+            </a>
+            {% endif %}
+
+            {% if host_transport %}
+            <a class="nav-item" href="{{ url_for('org.transport', org_id=org.slug) }}">
+                <i class="bi bi-truck"></i> Transport
+            </a>
+            {% endif %}
+
+            {% if host_tourism %}
+            <a class="nav-item" href="{{ url_for('org.tourism', org_id=org.slug) }}">
+                <i class="bi bi-map"></i> Tourism
+            </a>
+            {% endif %}
+
+            {% if 'wallet' in accessible_modules or 'wallet' in active_modules %}
+            <a class="nav-item" href="{{ url_for('org.wallet', org_id=org.slug) }}">
+                <i class="bi bi-wallet2"></i> Wallet
+            </a>
+            {% endif %}
+
+            {% if 'staff' in accessible_modules %}
+            <a class="nav-item" href="{{ url_for('org.members', org_id=org.slug) }}">
+                <i class="bi bi-people"></i> Members
+                <span class="nav-count">{{ stats.total_members }}</span>
+            </a>
+            {% endif %}
+
+            <a class="nav-item" href="{{ url_for('org.org_kyb', org_id=org.slug) }}">
+                <i class="bi bi-shield-check"></i> KYB
+            </a>
+
+            {% if 'settings' in accessible_modules %}
+            <a class="nav-item" href="{{ url_for('org.settings', org_id=org.slug) }}">
+                <i class="bi bi-gear"></i> Settings
+            </a>
+            {% endif %}
+        </nav>
+
+        {% if 'wallet' in accessible_modules or 'wallet' in active_modules %}
+        <div class="sidebar-footer">
+            <a class="wallet-chip" href="{{ url_for('org.wallet', org_id=org.slug) }}">
+                <span class="wallet-icon"><i class="bi bi-wallet2"></i></span>
+                <span class="wallet-meta">
+                    <span class="wallet-label">Wallet balance</span>
+                    <span class="wallet-value">UGX {{ org.wallet_balance }}</span>
+                </span>
+            </a>
+        </div>
+        {% endif %}
+{% if organisation_role_label and ('Owner' in organisation_role_label or 'Admin' in organisation_role_label) %}
+        <!-- Update capabilities CTA removed - use dedicated capabilities management page -->
+        {{ organisation_role_label }}
+        {% endif %}
+    </aside>
+
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- ============ RIGHT PANE ============ -->
+    <main class="org-main">
+
+        <!-- Mobile topbar -->
+        <div class="main-topbar d-lg-none">
+            <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-label="Open navigation" aria-controls="orgSidebar" aria-expanded="false">
+                <i class="bi bi-list"></i>
+            </button>
+            <strong class="text-truncate">{{ org.legal_name }}</strong>
+        </div>
+
+        <!-- Organization Header -->
+        <header class="org-header">
+            <div class="row align-items-center g-3">
+                <div class="col-lg-8">
+                    <h1 class="org-title">{{ org.legal_name }}</h1>
+                    <p class="org-subtitle mb-3">
+                        {{ org.slug }}{% if org.contact_email %} • {{ org.contact_email }}{% endif %}
                     </p>
-                </div>
-                <span class="badge text-bg-light border">One user · one identity</span>
-            </div>
-            <div class="row g-3 mt-2" aria-label="Organisation workspace areas">
-                <div class="col-12 col-md-6">
-                    <div class="border rounded-3 h-100 p-3">
-                        <h3 class="h6 mb-2"><i class="bi bi-gear-wide-connected me-2"></i>Operations</h3>
-                        <p class="small text-muted mb-3">Work on resources owned by this organisation.</p>
-                        <div class="d-flex flex-wrap gap-2">
-                            {% if stats.can_create_events and 'events' in accessible_modules %}
-                            <a class="btn btn-sm btn-outline-success" href="{{ url_for('org.events', org_id=org.org_id) }}">Events</a>
-                            {% endif %}
-                            {% if stats.can_manage_accommodation and 'accommodation' in accessible_modules %}
-                            <a class="btn btn-sm btn-outline-info" href="{{ url_for('org.accommodation', org_id=org.org_id) }}">Properties</a>
-                            {% endif %}
-                        </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <span class="badge bg-white text-dark px-3 py-2">
+                            <i class="bi bi-tag me-1"></i>
+                            {{ org.get_effective_org_type().value if org.business_category else 'Organization' }}
+                        </span>
+                        <span class="badge bg-{{ 'success' if org.verification_status == 'verified' else 'warning' }} px-3 py-2">
+                            <i class="bi bi-shield-check me-1"></i> {{ org.verification_status.title() }}
+                        </span>
+                        {% if org.is_operational %}
+                        <span class="badge bg-info px-3 py-2">
+                            <i class="bi bi-lightning me-1"></i> Operational
+                        </span>
+                        {% endif %}
                     </div>
                 </div>
-                {% if stats.can_manage_accommodation and 'accommodation' in accessible_modules %}
-                <div class="col-12 col-md-6">
-                    <div class="border rounded-3 h-100 p-3">
-                        <h3 class="h6 mb-2"><i class="bi bi-calendar-check me-2"></i>Bookings</h3>
-                        <p class="small text-muted mb-3">Review bookings for this organisation’s properties.</p>
-                        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('org.bookings', org_id=org.org_id) }}">View bookings</a>
-                    </div>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-    </section>
-
-    <!-- Module Access Grid -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h4 class="fw-bold">
-                    <i class="bi bi-grid-3x3-gap me-2"></i> Organization Modules
-                </h4>
-                <span class="text-muted">Access based on your organization type and permissions</span>
-            </div>
-        </div>
-        
-        <!-- Staff Management -->
-        {% if 'staff' in accessible_modules %}
-        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-            <div class="module-card">
-                <div class="card-body text-center p-4">
-                    <div class="module-icon">
-                        <i class="bi bi-people-fill"></i>
-                    </div>
-                    <h5 class="card-title mb-2">Staff Management</h5>
-                    <p class="card-text text-muted small mb-3">Manage team members, roles, and permissions</p>
-                    <button class="btn btn-primary btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.members', org_id=org.org_id) }}'">
-                        Manage Staff
-                    </button>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Events -->
-        {% if stats.can_create_events and 'events' in accessible_modules %}
-        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-            <div class="module-card">
-                <div class="card-body text-center p-4">
-                    <div class="module-icon">
-                        <i class="bi bi-calendar-event-fill"></i>
-                    </div>
-                    <h5 class="card-title mb-2">Events</h5>
-                    <p class="card-text text-muted small mb-3">Create and manage events, conferences, and meetings</p>
-                    <button class="btn btn-success btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.events', org_id=org.org_id) }}'">
-                        Manage Events
-                    </button>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Accommodation -->
-        {% if stats.can_manage_accommodation and 'accommodation' in accessible_modules %}
-        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-            <div class="module-card">
-                <div class="card-body text-center p-4">
-                    <div class="module-icon">
-                        <i class="bi bi-building-fill"></i>
-                    </div>
-                    <h5 class="card-title mb-2">Accommodation</h5>
-                    <p class="card-text text-muted small mb-3">Manage properties, rooms, and bookings</p>
-                    <button class="btn btn-info btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.accommodation', org_id=org.org_id) }}'">
-                        Manage Properties
-                    </button>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Transport -->
-        {% if stats.can_manage_transport and 'transport' in accessible_modules %}
-        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-            <div class="module-card">
-                <div class="card-body text-center p-4">
-                    <div class="module-icon">
-                        <i class="bi bi-truck-fill"></i>
-                    </div>
-                    <h5 class="card-title mb-2">Transport</h5>
-                    <p class="card-text text-muted small mb-3">Manage fleet, scheduling, and logistics</p>
-                    <button class="btn btn-warning btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.transport', org_id=org.org_id) }}'">
-                        Manage Fleet
-                    </button>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Tourism -->
-        {% if stats.can_manage_tourism and 'tourism' in accessible_modules %}
-        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-            <div class="module-card">
-                <div class="card-body text-center p-4">
-                    <div class="module-icon">
-                        <i class="bi bi-map-fill"></i>
-                    </div>
-                    <h5 class="card-title mb-2">Tourism</h5>
-                    <p class="card-text text-muted small mb-3">Manage tours, packages, and attractions</p>
-                    <button class="btn btn-secondary btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.tourism', org_id=org.org_id) }}'">
-                        Manage Tours
-                    </button>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Wallet -->
-        {% if 'wallet' in accessible_modules %}
-        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-            <div class="module-card">
-                <div class="card-body text-center p-4">
-                    <div class="module-icon">
-                        <i class="bi bi-wallet-fill"></i>
-                    </div>
-                    <h5 class="card-title mb-2">Wallet</h5>
-                    <p class="card-text text-muted small mb-3">Manage finances, payments, and transactions</p>
-                    <button class="btn btn-dark btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.wallet', org_id=org.org_id) }}'">
-                        Manage Wallet
-                    </button>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Reports -->
-        {% if 'reports' in accessible_modules %}
-        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-            <div class="module-card">
-                <div class="card-body text-center p-4">
-                    <div class="module-icon">
-                        <i class="bi bi-graph-up"></i>
-                    </div>
-                    <h5 class="card-title mb-2">Reports</h5>
-                    <p class="card-text text-muted small mb-3">View analytics, insights, and performance metrics</p>
-                    <button class="btn btn-success btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.reports', org_id=org.org_id) }}'">
-                        View Reports
-                    </button>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Settings -->
-        {% if 'settings' in accessible_modules %}
-        <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
-            <div class="module-card">
-                <div class="card-body text-center p-4">
-                    <div class="module-icon">
-                        <i class="bi bi-gear-fill"></i>
-                    </div>
-                    <h5 class="card-title mb-2">Settings</h5>
-                    <p class="card-text text-muted small mb-3">Configure organization preferences and policies</p>
-                    <button class="btn btn-primary btn-sm rounded-pill" onclick="window.location.href='{{ url_for('org.settings', org_id=org.org_id) }}'">
-                        Manage Settings
-                    </button>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-    </div>
-
-    <!-- Organization Insights -->
-    <div class="row mb-4">
-        <div class="col-lg-8 mb-4">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white border-0">
-                    <h5 class="card-title mb-0">
-                        <i class="bi bi-graph-up me-2"></i> Organization Performance
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <canvas id="performanceChart" height="100"></canvas>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-4 mb-4">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white border-0">
-                    <h5 class="card-title mb-0">
-                        <i class="bi bi-lightning me-2"></i> Quick Actions
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <div class="d-grid gap-2">
-                        {% if stats.can_create_events and 'events' in accessible_modules %}
-                        <button class="btn btn-outline-primary" onclick="createNewEvent()">
-                            <i class="bi bi-plus-circle me-2"></i> Create New Event
-                        </button>
+                <div class="col-lg-4">
+                    <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
+                        <a class="btn btn-light btn-sm rounded-pill px-3" href="{{ url_for('org.org_kyb', org_id=org.slug) }}">
+                            <i class="bi bi-shield-check me-1"></i> KYB
+                        </a>
+                        {% if 'settings' in accessible_modules %}
+                        <a class="btn btn-light btn-sm rounded-pill px-3" href="{{ url_for('org.settings', org_id=org.slug) }}">
+                            <i class="bi bi-gear me-1"></i> Settings
+                        </a>
                         {% endif %}
                         {% if 'staff' in accessible_modules %}
-                        <button class="btn btn-outline-success" onclick="inviteNewMember()">
-                            <i class="bi bi-person-plus me-2"></i> Invite Team Member
-                        </button>
+                        <a class="btn btn-light btn-sm rounded-pill px-3" href="{{ url_for('org.members', org_id=org.slug) }}">
+                            <i class="bi bi-people me-1"></i> Members
+                        </a>
                         {% endif %}
-                        {% if 'wallet' in accessible_modules %}
-                        <button class="btn btn-outline-info" onclick="viewTransactions()">
-                            <i class="bi bi-clock-history me-2"></i> Recent Transactions
-                        </button>
-                        {% endif %}
-                        <button class="btn btn-outline-secondary" onclick="downloadReport()">
-                            <i class="bi bi-download me-2"></i> Download Report
-                        </button>
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
+        </header>
 
-    <!-- Recent Activity & Capabilities -->
-    <div class="row">
-        <div class="col-lg-6 mb-4">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white border-0">
-                    <h5 class="card-title mb-0">
-                        <i class="bi bi-clock-history me-2"></i> Recent Activity
-                    </h5>
+        <!-- Key Metrics -->
+        <section class="stat-grid" aria-label="Key metrics">
+            <div class="stat-card primary">
+                <div class="stat-icon"><i class="bi bi-people"></i></div>
+                <div class="stat-body">
+                    <p class="stat-value">{{ stats.total_members }}</p>
+                    <p class="stat-label">Total Members</p>
                 </div>
-                <div class="card-body">
-                    <div class="text-center py-5 text-muted">
-                        <i class="bi bi-inbox display-1"></i>
-                        <h5 class="mt-3">No recent activity</h5>
-                        <p class="text-muted">Your organization activity will appear here once you start using the system.</p>
+            </div>
+            <div class="stat-card success">
+                <div class="stat-icon"><i class="bi bi-grid-3x3-gap"></i></div>
+                <div class="stat-body">
+                    <p class="stat-value">{{ stats.active_modules|length }}</p>
+                    <p class="stat-label">Active Modules</p>
+                </div>
+            </div>
+            <div class="stat-card info">
+                <div class="stat-icon"><i class="bi bi-wallet2"></i></div>
+                <div class="stat-body">
+                    <p class="stat-value">UGX {{ org.wallet_balance }}</p>
+                    <p class="stat-label">Wallet Balance</p>
+                </div>
+            </div>
+            <div class="stat-card warning">
+                <div class="stat-icon"><i class="bi bi-calendar-event"></i></div>
+                <div class="stat-body">
+                    <p class="stat-value">{{ 'Active' if stats.active_modules|length > 0 else '0' }}</p>
+                    <p class="stat-label">Active Events</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chart + Quick actions -->
+        <section class="row g-3 mb-4">
+            <div class="col-xl-8">
+                <div class="panel">
+                    <div class="panel-head">
+                        <h2 class="panel-title"><i class="bi bi-graph-up"></i> Organization Performance</h2>
+                        <span class="panel-hint">Last 6 months</span>
+                    </div>
+                    <div class="panel-body chart-body">
+                        <canvas id="performanceChart" height="110"></canvas>
                     </div>
                 </div>
             </div>
-        </div>
-        <div class="col-lg-6 mb-4">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white border-0">
-                    <h5 class="card-title mb-0">
-                        <i class="bi bi-shield-check me-2"></i> Organization Capabilities
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <div class="d-flex flex-wrap gap-2">
-                        {% if stats.can_create_events %}
-                        <span class="capability-badge">
-                            <i class="bi bi-calendar-event me-1"></i> Event Creation
-                        </span>
-                        {% endif %}
-                        {% if stats.can_manage_accommodation %}
-                        <span class="capability-badge">
-                            <i class="bi bi-building me-1"></i> Accommodation
-                        </span>
-                        {% endif %}
-                        {% if stats.can_manage_transport %}
-                        <span class="capability-badge">
-                            <i class="bi bi-truck me-1"></i> Transport
-                        </span>
-                        {% endif %}
-                        {% if stats.can_manage_tourism %}
-                        <span class="capability-badge">
-                            <i class="bi bi-map me-1"></i> Tourism
-                        </span>
-                        {% endif %}
-                        {% if stats.can_process_payments %}
-                        <span class="capability-badge">
-                            <i class="bi bi-credit-card me-1"></i> Payment Processing
-                        </span>
-                        {% endif %}
-                        {% if stats.can_manage_staff %}
-                        <span class="capability-badge">
-                            <i class="bi bi-people me-1"></i> Staff Management
-                        </span>
-                        {% endif %}
+            <div class="col-xl-4">
+                <div class="panel">
+                    <div class="panel-head">
+                        <h2 class="panel-title"><i class="bi bi-lightning"></i> Quick Actions</h2>
                     </div>
-                    
-                    {% if stats.requires_license or stats.requires_insurance %}
-                    <div class="alert alert-warning mt-3 mb-0">
-                        <h6 class="alert-heading">
-                            <i class="bi bi-exclamation-triangle me-2"></i> Compliance Requirements
-                        </h6>
-                        <p class="mb-2">
-                            {% if stats.requires_license %}
-                            <i class="bi bi-file-text me-1"></i> Business License Required<br>
+                    <div class="panel-body">
+                        <div class="quick-list">
+                            {% if host_events %}
+                            <button type="button" class="quick-action-btn" onclick="createNewEvent()">
+                                <i class="bi bi-plus-circle"></i> Create New Event
+                            </button>
                             {% endif %}
-                            {% if stats.requires_insurance %}
-                            <i class="bi bi-shield me-1"></i> Insurance Certificate Required
+                            {% if 'staff' in accessible_modules %}
+                            <button type="button" class="quick-action-btn" onclick="inviteNewMember()">
+                                <i class="bi bi-person-plus"></i> Invite Team Member
+                            </button>
                             {% endif %}
-                        </p>
-                        <button class="btn btn-sm btn-warning" onclick="uploadDocuments()">
-                            <i class="bi bi-upload me-1"></i> Upload Documents
-                        </button>
+                            {% if 'wallet' in accessible_modules or 'wallet' in active_modules %}
+                            <button type="button" class="quick-action-btn" onclick="viewTransactions()">
+                                <i class="bi bi-clock-history"></i> Recent Transactions
+                            </button>
+                            {% endif %}
+                            {% if 'reports' in accessible_modules or 'reports' in active_modules %}
+                            <button type="button" class="quick-action-btn" onclick="downloadReport()">
+                                <i class="bi bi-download"></i> Download Report
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Workspace Context -->
+        <section class="panel mb-4">
+            <div class="panel-head">
+                <h2 class="panel-title"><i class="bi bi-diagram-3"></i> Organisation context</h2>
+                <span class="panel-hint">One user · one identity</span>
+            </div>
+            <div class="panel-body">
+                <p class="mb-3 small text-muted">
+                    <strong>Role / authority:</strong> {{ organisation_role_label }}
+                </p>
+                <div class="row g-3">
+                    {% if host_events or host_accommodation %}
+                    <div class="col-12 col-md-6">
+                        <div class="border rounded-3 h-100 p-3">
+                            <h3 class="h6 mb-2"><i class="bi bi-calendar-event me-2"></i>Operations</h3>
+                            <p class="small text-muted mb-3">Work on resources owned by this organisation.</p>
+                            <div class="d-flex flex-wrap gap-2">
+                                {% if host_events %}
+                                <a class="btn btn-success btn-sm rounded-pill" href="{{ url_for('org.events', org_id=org.slug) }}">Events</a>
+                                {% endif %}
+                                {% if host_accommodation %}
+                                <a class="btn btn-info btn-sm rounded-pill" href="{{ url_for('org.accommodation', org_id=org.slug) }}">Properties</a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if host_accommodation %}
+                    <div class="col-12 col-md-6">
+                        <div class="border rounded-3 h-100 p-3">
+                            <h3 class="h6 mb-2"><i class="bi bi-calendar-check me-2"></i>Bookings</h3>
+                            <p class="small text-muted mb-3">Review bookings for this organisation's properties.</p>
+                            <a class="btn btn-primary btn-sm rounded-pill" href="{{ url_for('org.bookings', org_id=org.slug) }}">View bookings</a>
+                        </div>
                     </div>
                     {% endif %}
                 </div>
             </div>
-        </div>
-    </div>
+        </section>
+
+        <!-- Module Access Grid -->
+        <section class="panel mb-4">
+            <div class="panel-head">
+                <h2 class="panel-title"><i class="bi bi-grid-3x3-gap"></i> Organization Modules</h2>
+                <span class="panel-hint d-none d-md-inline">Access based on your organization type and permissions</span>
+            </div>
+            <div class="panel-body">
+                <div class="module-grid">
+
+                    {% if 'staff' in accessible_modules %}
+                    <div class="module-card">
+                        <div class="module-icon"><i class="bi bi-people-fill"></i></div>
+                        <h3 class="module-title">Staff Management</h3>
+                        <p class="module-desc">Manage team members, roles, and permissions</p>
+                        <a class="btn btn-primary btn-sm" href="{{ url_for('org.members', org_id=org.slug) }}">Manage Staff</a>
+                    </div>
+                    {% endif %}
+
+                    {% if host_events %}
+                    <div class="module-card">
+                        <div class="module-icon"><i class="bi bi-calendar-event-fill"></i></div>
+                        <h3 class="module-title">Events</h3>
+                        <p class="module-desc">Create and manage events, conferences, and meetings</p>
+                        <a class="btn btn-success btn-sm" href="{{ url_for('org.events', org_id=org.slug) }}">Manage Events</a>
+                    </div>
+                    {% endif %}
+
+                    {% if host_accommodation %}
+                    <div class="module-card">
+                        <div class="module-icon"><i class="bi bi-building-fill"></i></div>
+                        <h3 class="module-title">Accommodation</h3>
+                        <p class="module-desc">Manage properties, rooms, and bookings</p>
+                        <a class="btn btn-info btn-sm" href="{{ url_for('org.accommodation', org_id=org.slug) }}">Manage Properties</a>
+                    </div>
+                    {% endif %}
+
+                    {% if host_transport %}
+                    <div class="module-card">
+                        <div class="module-icon"><i class="bi bi-truck"></i></div>
+                        <h3 class="module-title">Transport</h3>
+                        <p class="module-desc">Manage fleet, scheduling, and logistics</p>
+                        <a class="btn btn-warning btn-sm" href="{{ url_for('org.transport', org_id=org.slug) }}">Manage Fleet</a>
+                    </div>
+                    {% endif %}
+
+                    {% if host_tourism %}
+                    <div class="module-card">
+                        <div class="module-icon"><i class="bi bi-map-fill"></i></div>
+                        <h3 class="module-title">Tourism</h3>
+                        <p class="module-desc">Manage tours, packages, and attractions</p>
+                        <a class="btn btn-secondary btn-sm" href="{{ url_for('org.tourism', org_id=org.slug) }}">Manage Tours</a>
+                    </div>
+                    {% endif %}
+
+                    {% if 'wallet' in accessible_modules or 'wallet' in active_modules %}
+                    <div class="module-card">
+                        <div class="module-icon"><i class="bi bi-wallet-fill"></i></div>
+                        <h3 class="module-title">Wallet</h3>
+                        <p class="module-desc">Manage finances, payments, and transactions</p>
+                        <a class="btn btn-dark btn-sm" href="{{ url_for('org.wallet', org_id=org.slug) }}">Manage Wallet</a>
+                    </div>
+                    {% endif %}
+
+                    {% if 'reports' in accessible_modules or 'reports' in active_modules %}
+                    <div class="module-card">
+                        <div class="module-icon"><i class="bi bi-graph-up"></i></div>
+                        <h3 class="module-title">Reports</h3>
+                        <p class="module-desc">View analytics, insights, and performance metrics</p>
+                        <a class="btn btn-success btn-sm" href="{{ url_for('org.reports', org_id=org.slug) }}">View Reports</a>
+                    </div>
+                    {% endif %}
+
+                    {% if 'settings' in accessible_modules or 'settings' in active_modules %}
+                    <div class="module-card">
+                        <div class="module-icon"><i class="bi bi-gear-fill"></i></div>
+                        <h3 class="module-title">Settings</h3>
+                        <p class="module-desc">Configure organization preferences and policies</p>
+                        <a class="btn btn-primary btn-sm" href="{{ url_for('org.settings', org_id=org.slug) }}">Manage Settings</a>
+                    </div>
+                    {% endif %}
+
+                </div>
+            </div>
+        </section>
+
+<!-- Organization Dashboard Content: Two-column layout mimicking user dashboard -->
+        <section class="row g-3 mb-4">
+            <div class="col-lg-7">
+                <div class="panel">
+                    <div class="panel-head">
+                        <h2 class="panel-title"><i class="bi bi-clock-history"></i> Recent Activity</h2>
+                    </div>
+                    <div class="panel-body p-0">
+                        {% set has_activity =
+                          host_events or
+                          host_transport or
+                          host_accommodation or
+                          host_tourism
+                        %}
+
+                        {% if has_activity %}
+                            {% if host_events %}
+                            <div class="activity-item">
+                                <i class="bi bi-calendar-event-fill text-primary"></i>
+                                <div>
+                                    <h6>Event Hosting Active</h6>
+                                    <p>Event management capability is enabled for this organisation</p>
+                                </div>
+                            </div>
+                            {% endif %}
+                            {% if host_transport %}
+                            <div class="activity-item">
+                                <i class="bi bi-truck-fill text-success"></i>
+                                <div>
+                                    <h6>Transport Hosting Active</h6>
+                                    <p>Fleet and logistics capability is enabled for this organisation</p>
+                                </div>
+                            </div>
+                            {% endif %}
+                            {% if host_accommodation %}
+                            <div class="activity-item">
+                                <i class="bi bi-bed-fill text-info"></i>
+                                <div>
+                                    <h6>Accommodation Hosting Active</h6>
+                                    <p>Property and booking capability is enabled for this organisation</p>
+                                </div>
+                            </div>
+                            {% endif %}
+                            {% if host_tourism %}
+                            <div class="activity-item">
+                                <i class="bi bi-map-fill text-warning"></i>
+                                <div>
+                                    <h6>Tourism Hosting Active</h6>
+                                    <p>Tour and attraction capability is enabled for this organisation</p>
+                                </div>
+                            </div>
+                            {% endif %}
+                        {% else %}
+                            <div class="dashboard-placeholder small">
+                                <i class="bi bi-inbox"></i>
+                                <h6>No provider capabilities active</h6>
+                                <p>Platform services remain available — activate a provider capability to start hosting.</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-5">
+                <div class="panel">
+                    <div class="panel-head">
+                        <h2 class="panel-title"><i class="bi bi-shield-check"></i> Organization Capabilities</h2>
+                    </div>
+                    <div class="panel-body">
+                        <div class="d-flex flex-wrap gap-2">
+                            {% if host_events %}
+                            <span class="capability-badge text-primary"><i class="bi bi-calendar-event"></i> Event Mgmt</span>
+                            {% endif %}
+                            {% if host_transport %}
+                            <span class="capability-badge text-success"><i class="bi bi-truck"></i> Transport</span>
+                            {% endif %}
+                            {% if host_accommodation %}
+                            <span class="capability-badge text-info"><i class="bi bi-bed"></i> Rooms</span>
+                            {% endif %}
+                            {% if host_tourism %}
+                            <span class="capability-badge text-warning"><i class="bi bi-map"></i> Tours</span>
+                            {% endif %}
+
+                            <span class="capability-badge text-body"><i class="bi bi-shop"></i> Consumer</span>
+
+                            {% if 'staff' in accessible_modules %}
+                            <span class="capability-badge text-dark"><i class="bi bi-people"></i> Staff</span>
+                            {% endif %}
+                            {% if 'wallet' in accessible_modules or 'wallet' in active_modules %}
+                            <span class="capability-badge text-dark"><i class="bi bi-wallet"></i> Finance</span>
+                            {% endif %}
+                            {% if 'reports' in accessible_modules or 'reports' in active_modules %}
+                            <span class="capability-badge text-dark"><i class="bi bi-graph-up"></i> Analytics</span>
+                            {% endif %}
+                        </div>
+
+                        {% if stats.requires_license or stats.requires_insurance %}
+                        <div class="alert alert-warning mt-3 mb-0">
+                            <h6 class="alert-heading">
+                                <i class="bi bi-exclamation-triangle me-2"></i> Compliance Requirements
+                            </h6>
+                            <p class="mb-2 small">
+                                {% if stats.requires_license %}
+                                <i class="bi bi-file-text me-1"></i> Business License Required<br>
+                                {% endif %}
+                                {% if stats.requires_insurance %}
+                                <i class="bi bi-shield me-1"></i> Insurance Certificate Required
+                                {% endif %}
+                            </p>
+                            <button type="button" class="btn btn-sm btn-warning" onclick="uploadDocuments()">
+                                <i class="bi bi-upload me-1"></i> Upload Documents
+                            </button>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- End two-column organization dashboard content -->
+    </main>
 </div>
 
 <!-- Floating Action Button -->
-<button class="floating-action-btn" onclick="openQuickActions()">
+<button class="floating-action-btn d-none d-lg-flex" onclick="openQuickActions()" aria-label="Quick actions">
     <i class="bi bi-plus"></i>
 </button>
 
 <!-- Quick Actions Modal -->
-<div class="modal fade" id="quickActionsModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
+<div class="modal fade" id="quickActionsModal" tabindex="-1" aria-modal="true" aria-labelledby="quickActionsModalLabel">
+    <div class="modal-dialog modal-dialog-centered" role="document">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Quick Actions</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="quickActionsModalLabel">Quick Actions</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="d-grid gap-2">
-                    {% if stats.can_create_events and 'events' in accessible_modules %}
-                    <button class="btn btn-primary" onclick="createNewEvent()">
+                    {% if host_events %}
+                    <button type="button" class="btn btn-primary" onclick="createNewEvent()">
                         <i class="bi bi-calendar-event me-2"></i> Create New Event
                     </button>
                     {% endif %}
                     {% if 'staff' in accessible_modules %}
-                    <button class="btn btn-success" onclick="inviteNewMember()">
+                    <button type="button" class="btn btn-success" onclick="inviteNewMember()">
                         <i class="bi bi-person-plus me-2"></i> Invite Team Member
                     </button>
                     {% endif %}
-                    {% if 'wallet' in accessible_modules %}
-                    <button class="btn btn-info" onclick="addFunds()">
+                    {% if 'wallet' in accessible_modules or 'wallet' in active_modules %}
+                    <button type="button" class="btn btn-info" onclick="addFunds()">
                         <i class="bi bi-wallet2 me-2"></i> Add Funds to Wallet
                     </button>
                     {% endif %}
-                    <button class="btn btn-secondary" onclick="generateReport()">
+                    {% if 'reports' in accessible_modules or 'reports' in active_modules %}
+                    <button type="button" class="btn btn-secondary" onclick="generateReport()">
                         <i class="bi bi-file-text me-2"></i> Generate Report
                     </button>
+                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
 </div>
+
 {% endblock %}
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-// Initialize performance chart
-const ctx = document.getElementById('performanceChart');
-if (ctx) {
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-            datasets: [{
-                label: 'Revenue',
-                data: [0, 0, 0, 0, 0, 0],
-                borderColor: '#667eea',
-                backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                tension: 0.4
-            }, {
-                label: 'Active Users',
-                data: [0, 0, 0, 0, 0, 0],
-                borderColor: '#764ba2',
-                backgroundColor: 'rgba(118, 75, 162, 0.1)',
-                tension: 0.4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'top',
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
-            }
-        }
+document.addEventListener('DOMContentLoaded', function () {
+
+    /* ---------- Sidebar drawer (mobile) ---------- */
+    const sidebar  = document.getElementById('orgSidebar');
+    const backdrop = document.getElementById('sidebarBackdrop');
+    const toggle   = document.getElementById('sidebarToggle');
+    const closeBtn = document.getElementById('sidebarClose');
+
+    function setSidebar(open) {
+        if (!sidebar) return;
+        sidebar.classList.toggle('open', open);
+        backdrop.classList.toggle('show', open);
+        if (toggle) toggle.setAttribute('aria-expanded', String(open));
+        document.body.style.overflow = open ? 'hidden' : '';
+    }
+
+    toggle   && toggle.addEventListener('click', () => setSidebar(true));
+    closeBtn && closeBtn.addEventListener('click', () => setSidebar(false));
+    backdrop && backdrop.addEventListener('click', () => setSidebar(false));
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') setSidebar(false);
     });
-}
+    window.addEventListener('resize', () => {
+        if (window.innerWidth >= 992) setSidebar(false);
+    });
 
-// Quick action functions
-function openQuickActions() {
-    const modal = new bootstrap.Modal(document.getElementById('quickActionsModal'));
-    modal.show();
-}
-
-function createNewEvent() {
-    window.location.href = '{{ url_for("org.events", org_id=org.org_id) }}';
-}
-
-function inviteNewMember() {
-    window.location.href = '{{ url_for("org.members", org_id=org.org_id) }}';
-}
-
-function viewTransactions() {
-    window.location.href = '{{ url_for("org.wallet", org_id=org.org_id) }}';
-}
-
-function downloadReport() {
-    window.location.href = '{{ url_for("org.reports", org_id=org.org_id) }}';
-}
-
-function uploadDocuments() {
-    window.location.href = '{{ url_for("org.settings", org_id=org.org_id) }}';
-}
-
-function addFunds() {
-    window.location.href = '{{ url_for("org.wallet", org_id=org.org_id) }}';
-}
-
-function generateReport() {
-    window.location.href = '{{ url_for("org.reports", org_id=org.org_id) }}';
-}
-
-// Add smooth scrolling and animations
-document.addEventListener('DOMContentLoaded', function() {
-    // Animate stats on scroll
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                entry.target.style.opacity = '1';
-                entry.target.style.transform = 'translateY(0)';
+    /* ---------- Performance chart ---------- */
+    const ctx = document.getElementById('performanceChart');
+    if (ctx && window.Chart) {
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                datasets: [
+                    {
+                        label: 'Revenue',
+                        data: [0, 0, 0, 0, 0, 0],
+                        borderColor: '#2d5a2d',
+                        backgroundColor: 'rgba(45, 90, 45, 0.10)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2,
+                        pointRadius: 3
+                    },
+                    {
+                        label: 'Active Users',
+                        data: [0, 0, 0, 0, 0, 0],
+                        borderColor: '#38ef7d',
+                        backgroundColor: 'rgba(56, 239, 125, 0.10)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2,
+                        pointRadius: 3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8 } }
+                },
+                scales: {
+                    y: { beginAtZero: true, grid: { color: 'rgba(148,163,184,0.18)' } },
+                    x: { grid: { display: false } }
+                }
             }
         });
-    });
+    }
 
-    document.querySelectorAll('.stat-card, .module-card').forEach(card => {
-        card.style.opacity = '0';
-        card.style.transform = 'translateY(20px)';
-        card.style.transition = 'all 0.6s ease';
-        observer.observe(card);
-    });
+    /* ---------- Reveal on scroll ---------- */
+    const reveal = document.querySelectorAll('.stat-card, .panel, .module-card');
+    if ('IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+
+        reveal.forEach(el => {
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(16px)';
+            el.style.transition = 'opacity .5s ease, transform .5s ease';
+            observer.observe(el);
+        });
+    }
 });
+
+/* ---------- Quick action handlers ---------- */
+function openQuickActions() {
+    const el = document.getElementById('quickActionsModal');
+    if (el && window.bootstrap) new bootstrap.Modal(el).show();
+}
+function createNewEvent()  { window.location.href = '{{ url_for("org.events",      org_id=org.slug) }}'; }
+function inviteNewMember() { window.location.href = '{{ url_for("org.members",     org_id=org.slug) }}'; }
+function viewTransactions(){ window.location.href = '{{ url_for("org.wallet",      org_id=org.slug) }}'; }
+function downloadReport()  { window.location.href = '{{ url_for("org.reports",     org_id=org.slug) }}'; }
+function addFunds()        { window.location.href = '{{ url_for("org.wallet",      org_id=org.slug) }}'; }
+function generateReport()  { window.location.href = '{{ url_for("org.reports",     org_id=org.slug) }}'; }
+function uploadDocuments() { window.location.href = '{{ url_for("org.settings",    org_id=org.slug) }}'; }
 </script>
 {% endblock %}

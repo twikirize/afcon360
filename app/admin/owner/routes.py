@@ -628,6 +628,26 @@ def dashboard():
         except Exception as e:
             logger.warning(f"Could not load accommodation dashboard widgets: {e}")
 
+        # KYC submission statistics
+        kyc_pending_count = 0
+        kyc_recent_pending = []
+        kyc_total_subs = 0
+        try:
+            from app.kyc.models import KycRecord
+            kyc_pending_count = KycRecord.query.filter(
+                KycRecord.status.in_(('pending', 'manual_review')),
+                KycRecord.is_deleted == False,
+            ).count()
+            kyc_recent_pending = KycRecord.query.filter(
+                KycRecord.status.in_(('pending', 'manual_review')),
+                KycRecord.is_deleted == False,
+            ).order_by(KycRecord.created_at.desc()).limit(8).all()
+            kyc_total_subs = KycRecord.query.filter(
+                KycRecord.is_deleted == False
+            ).count()
+        except Exception as e:
+            logger.warning(f"Could not load KYC dashboard stats: {e}")
+
         return render_template('owner/dashboard.html',
                                # User stats
                                total_users=total_users,
@@ -685,9 +705,14 @@ def dashboard():
                                org_registration_mode=org_registration_mode,
 
                                # Accommodation dashboard widgets
-                               unclaimed_count=unclaimed_count,
-                               readiness_issues_count=readiness_issues_count,
-                               )
+                                unclaimed_count=unclaimed_count,
+                                readiness_issues_count=readiness_issues_count,
+
+                                # KYC submission stats
+                                kyc_pending_count=kyc_pending_count,
+                                kyc_recent_pending=kyc_recent_pending,
+                                kyc_total_subs=kyc_total_subs,
+                                )
     except Exception as e:
         logger.error(f"Owner dashboard error: {e}")
         return render_template('owner/dashboard.html',
@@ -719,6 +744,11 @@ def dashboard():
                                # Accommodation dashboard widgets
                                unclaimed_count=0,
                                readiness_issues_count=0,
+
+                               # KYC submission stats (fallback defaults)
+                               kyc_pending_count=0,
+                               kyc_recent_pending=[],
+                               kyc_total_subs=0,
                                )
 
 # ============================================================================
@@ -1286,6 +1316,8 @@ def revoke_role():
         # Revoke the role
         user_role = UserRole.query.filter_by(user_id=internal_user_id, role_id=role_id).first()
         if user_role:
+            from app.auth.deletion_guard import authorize_privileged_deletion_from_form
+            authorize_privileged_deletion_from_form(db.session, actor=current_user)
             db.session.delete(user_role)
             db.session.commit()
 
@@ -1548,6 +1580,8 @@ def remove_super_admin(user_id):
             flash("User not found", "danger")
             return redirect(url_for('admin.owner.dashboard'))
 
+        from app.auth.deletion_guard import authorize_privileged_deletion_from_form
+        authorize_privileged_deletion_from_form(db.session, actor=current_user)
         revoke_global_role(user.id, 'super_admin', revoked_by_id=current_user.id)
         flash(f"✅ Super admin privileges removed from {user.username}", "success")
 
@@ -1694,6 +1728,20 @@ def manual_kyc_upgrade(user_id):
         )
 
         db.session.add(verification)
+
+        # Sync the canonical identity bank so the profile gate (profile/
+        # routes.py, edit_profile) and the immutability listener agree with
+        # the verification authority. Manual upgrades to tier 0 (unverified)
+        # are left alone - only a real verified tier flips the profile.
+        if target_tier >= 1:
+            from app.profile.models import get_profile_by_user
+            profile = get_profile_by_user(user)
+            if profile and profile.verification_status != "verified":
+                profile.verification_status = "verified"
+                profile.verified_by = str(current_user.id)
+                profile.last_reviewed_at = datetime.now(timezone.utc)
+                db.session.add(profile)
+
         db.session.commit()
 
         # Log the action

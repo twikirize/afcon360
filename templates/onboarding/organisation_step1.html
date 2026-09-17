@@ -20,7 +20,8 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="ob-field">
         <label>Your Full Name <span class="ob-req">*</span></label>
-        <input type="text" name="full_name" placeholder="The person registering this organisation" required>
+        <input type="text" name="full_name" placeholder="The person registering this organisation" value="{{ profile.full_name if profile else '' }}" {% if profile and profile.full_name %}readonly title="Already provided"{% endif %} required>
+        {% if profile and profile.full_name %}<p class="ob-hint">Already provided.</p>{% endif %}
       </div>
       <div class="ob-field">
         <label>Legal Name <span class="ob-req">*</span></label>
@@ -28,7 +29,9 @@
       </div>
       <div class="ob-field">
         <label>Country <span class="ob-req">*</span></label>
-        <input type="text" name="country" placeholder="UG" required>
+        <input type="text" name="country" placeholder="e.g. Uganda or UG" value="{{ profile.country if profile else '' }}" {% if profile and profile.country %}readonly title="Already provided"{% endif %} required maxlength="100">
+        {% if profile and profile.country %}<p class="ob-hint">Already provided.</p>{% endif %}
+        <span class="ob-hint">Enter your full country name or 2-letter code (e.g. Uganda or UG)</span>
       </div>
       <div class="ob-field">
         <label>Registration Number</label>

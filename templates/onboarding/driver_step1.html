@@ -12,19 +12,23 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="ob-field">
         <label>Full Name <span class="ob-req">*</span></label>
-        <input type="text" name="full_name" required>
+        <input type="text" name="full_name" value="{{ profile.full_name if profile else '' }}" {% if profile and profile.full_name %}readonly title="Already provided"{% endif %} required>
+        {% if profile and profile.full_name %}<p class="ob-hint">Already provided.</p>{% endif %}
       </div>
       <div class="ob-field">
         <label>Date of Birth <span class="ob-req">*</span></label>
-        <input type="date" name="date_of_birth" required>
+        <input type="date" name="date_of_birth" value="{{ profile.date_of_birth.isoformat() if profile and profile.date_of_birth else '' }}" {% if profile and profile.date_of_birth %}readonly title="Already provided"{% endif %} required>
+        {% if profile and profile.date_of_birth %}<p class="ob-hint">Already provided.</p>{% endif %}
       </div>
       <div class="ob-field">
         <label>Nationality <span class="ob-req">*</span></label>
-        <input type="text" name="nationality" required>
+        <input type="text" name="nationality" value="{{ profile.nationality if profile else '' }}" {% if profile and profile.nationality %}readonly title="Already provided"{% endif %} required>
+        {% if profile and profile.nationality %}<p class="ob-hint">Already provided.</p>{% endif %}
       </div>
       <div class="ob-field">
         <label>National ID Number <span class="ob-req">*</span></label>
-        <input type="text" name="national_id_number" required>
+        <input type="text" name="national_id_number" value="{{ profile.id_number if profile else '' }}" {% if profile and profile.id_number %}readonly title="Already provided"{% endif %} required>
+        {% if profile and profile.id_number %}<p class="ob-hint">Already provided.</p>{% endif %}
       </div>
       <div class="ob-form-footer">
         <button class="ob-btn ob-btn--primary" type="submit">Continue →</button>

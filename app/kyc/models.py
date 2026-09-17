@@ -92,9 +92,12 @@ class KycRecord(ProtectedModel):
         risk_score = 0.0
         risk_factors = []
         
-        # Age risk
-        if self.user and self.user.date_of_birth:
-            age = datetime.now(timezone.utc).year - self.user.date_of_birth.year
+        # Age risk - date of birth is canonical person data stored on the
+        # UserProfile identity bank, never on the User account row.
+        from app.profile.models import get_profile_by_user
+        profile = get_profile_by_user(self.user) if self.user else None
+        if profile and profile.date_of_birth:
+            age = datetime.now(timezone.utc).year - profile.date_of_birth.year
             if age < 18:
                 risk_score += 0.8
                 risk_factors.append('under_age')

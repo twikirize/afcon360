@@ -1,4 +1,4 @@
-{% extends "transport/base_dashboard.html" %}
+{% extends "transport/dashboard/base_dashboard.html" %}
 {% block title %}Dashboard{% endblock %}
 {% block breadcrumb %}<span class="sep">/</span><span class="current">Overview</span>{% endblock %}
 
@@ -45,10 +45,10 @@
         {% if recent_bookings %}
           {% for b in recent_bookings %}
           <tr>
-            <td><a href="{{ safe_url('transport.bookings_show', id=b.id) }}" class="td-mono" style="color:var(--amber);">{{ b.booking_reference }}</a></td>
-            <td>{{ b.service_type.value|replace('_',' ')|title }}</td>
-            <td><span class="badge badge-gray">{{ b.status.value|replace('_',' ')|title }}</span></td>
-            <td class="td-mono">{{ b.created_at.strftime('%d %b %H:%M') if b.created_at else '—' }}</td>
+            <td><span class="td-mono" style="color:var(--amber);">{{ b.booking_reference }}</span></td>
+            <td>{{ (b.service_type or '')|replace('_',' ')|title }}</td>
+            <td><span class="badge badge-gray">{{ (b.status or '')|replace('_',' ')|title }}</span></td>
+            <td class="td-mono">{{ b.created_at[:16]|replace('T',' ') if b.created_at else '—' }}</td>
           </tr>
           {% endfor %}
         {% else %}

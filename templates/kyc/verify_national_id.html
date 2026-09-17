@@ -62,7 +62,64 @@
   <form class="kyc-form" method="POST" action="{{ url_for('kyc.submit_national_id') }}" novalidate>
     {{ csrf_token_field() if csrf_token_field is defined }}
 
-    {# NIN field #}
+    {% if collect_identity %}
+    {# KYC-first identity entry: the canonical bank has no full name yet. This
+       form is the first legitimate source, so the shared facts are entered
+       once here and written to the canonical profile (bidirectional single
+       entry). #}
+    <div class="kyc-info-strip">
+      <span>🔒 Your name and date of birth are entered here once and saved to your profile for all KYC.</span>
+    </div>
+
+    <div class="form-group">
+      <label for="full_name">
+        Full name
+        <span class="form-hint">As shown on your National ID</span>
+      </label>
+      <input
+        type="text"
+        id="full_name"
+        name="full_name"
+        class="form-control"
+        maxlength="128"
+        placeholder="Jane Doe"
+        autocomplete="name"
+        required
+      >
+    </div>
+
+    <div class="form-group">
+      <label for="date_of_birth">
+        Date of birth
+        <span class="form-hint">Optional — as shown on your National ID</span>
+      </label>
+      <input
+        type="date"
+        id="date_of_birth"
+        name="date_of_birth"
+        class="form-control"
+        {% if today %}max="{{ today }}"{% endif %}
+      >
+    </div>
+    {% else %}
+    {# Canonical identity - read-only summary from the identity bank. #}
+    <div class="kyc-info-strip">
+      <span>🔒 Your identity comes from your profile and is not re-entered here.</span>
+    </div>
+
+    <div class="canonical-identity">
+      <div class="canonical-row">
+        <span class="canonical-label">Full name</span>
+        <span class="canonical-value">{{ canonical.full_name }}</span>
+      </div>
+      <div class="canonical-row">
+        <span class="canonical-label">Date of birth</span>
+        <span class="canonical-value">{{ canonical.date_of_birth or '—' }}</span>
+      </div>
+    </div>
+    {% endif %}
+
+    {# NIN field - the only evidence collected here #}
     <div class="form-group">
       <label for="id_number">
         National Identification Number (NIN)
@@ -77,52 +134,6 @@
         placeholder="CM1234567890AB"
         autocomplete="off"
         required
-      >
-    </div>
-
-    {# Surname #}
-    <div class="form-group">
-      <label for="surname">
-        Surname
-        <span class="form-hint">As it appears on your National ID card</span>
-      </label>
-      <input
-        type="text"
-        id="surname"
-        name="surname"
-        class="form-control"
-        placeholder="e.g. Nakamura"
-        required
-      >
-    </div>
-
-    {# Given names #}
-    <div class="form-group">
-      <label for="given_names">
-        Given Names
-        <span class="form-hint">First and middle names as shown on your ID</span>
-      </label>
-      <input
-        type="text"
-        id="given_names"
-        name="given_names"
-        class="form-control"
-        placeholder="e.g. David Joseph"
-        required
-      >
-    </div>
-
-    {# Date of birth (optional) #}
-    <div class="form-group">
-      <label for="date_of_birth">
-        Date of Birth
-        <span class="form-hint">Optional — helps speed up manual review</span>
-      </label>
-      <input
-        type="date"
-        id="date_of_birth"
-        name="date_of_birth"
-        class="form-control"
       >
     </div>
 
@@ -233,6 +244,31 @@
 
   /* Form */
   .kyc-form { display: flex; flex-direction: column; gap: 1.25rem; }
+
+  .canonical-identity {
+    border: 1px solid #dde8e2;
+    background: #fbfdfc;
+    border-radius: 5px;
+    padding: 0.85rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .canonical-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    font-size: 0.9rem;
+  }
+  .canonical-label {
+    color: #7a9485;
+    font-weight: 500;
+  }
+  .canonical-value {
+    color: #1a2e22;
+    font-weight: 600;
+    text-align: right;
+  }
 
   .form-group { display: flex; flex-direction: column; gap: 0.35rem; }
 

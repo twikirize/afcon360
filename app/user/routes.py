@@ -169,7 +169,7 @@ def _get_role_dashboard_links(user=None, current_context='individual', current_o
         'event_manager': ('Event Manager', 'fa-calendar-star', 'admin.event_manager_dashboard'),
         'transport_admin': ('Transport Admin', 'fa-shuttle-van', 'admin.transport_admin_dashboard'),
         'wallet_admin': ('Wallet Admin', 'fa-vault', 'admin.wallet_admin_dashboard'),
-        'accommodation_admin': ('Accommodation Admin', 'fa-hotel', 'admin.accommodation_admin_dashboard'),
+        'accommodation_admin': ('Accommodation Admin', 'fa-hotel', 'accommodation.admin_dashboard'),
         'tourism_admin': ('Tourism Admin', 'fa-map-marked-alt', 'admin.tourism_admin_dashboard'),
     }
 
@@ -207,19 +207,19 @@ def _get_role_dashboard_links(user=None, current_context='individual', current_o
         if role_name in role_names:
             add_link(role_name)
 
-    org_internal_id = None
+    org_public_id = None
     if current_org_id:
         try:
             for membership in getattr(user, 'organisations', []) or []:
                 org = getattr(membership, 'organisation', None)
                 if getattr(org, 'org_id', None) == current_org_id or str(getattr(membership, 'organisation_id', None)) == str(current_org_id):
-                    org_internal_id = getattr(membership, 'organisation_id', None)
+                    org_public_id = getattr(org, 'slug', None) or getattr(org, 'org_id', None)
                     break
         except Exception:
-            org_internal_id = None
+            org_public_id = None
 
-    org_endpoint = 'org.org_dashboard' if org_internal_id else 'org.dashboard'
-    org_kwargs = {'org_id': org_internal_id} if org_internal_id else {}
+    org_endpoint = 'org.org_dashboard' if org_public_id else 'org.dashboard'
+    org_kwargs = {'org_id': org_public_id} if org_public_id else {}
     if 'org_owner' in org_role_names:
         add_link('org_owner', label='Organisation Owner', icon='fa-building', endpoint=org_endpoint, **org_kwargs)
     if 'org_admin' in org_role_names:

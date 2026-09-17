@@ -566,10 +566,16 @@ class EventPaymentService:
         else:
             user = db.session.get(User, user_id)
             if user:
-                full_name = getattr(user, "username", None) or getattr(user, "full_name", None) or user.email
-                email = user.email
-                phone = getattr(user, "phone", None)
-                nationality = getattr(user, "nationality", None)
+                from app.profile.services.canonical_identity import get_canonical_identity
+                identity = get_canonical_identity(user)
+                full_name = (
+                    identity.full_name
+                    or getattr(user, "username", None)
+                    or user.email
+                )
+                email = identity.email or user.email
+                phone = identity.phone or getattr(user, "phone", None)
+                nationality = identity.nationality
 
         ticket_type = db.session.get(TicketType, ticket_type_id)
         if not ticket_type:

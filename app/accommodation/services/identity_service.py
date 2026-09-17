@@ -71,13 +71,21 @@ class AccommodationIdentityService:
         if not org.is_operational:
             return False, "Organisation is not operational. Please complete all requirements."
 
-        if not org.business_category:
+        # Canonical classification: a COMPLETELY unclassified organisation
+        # (no organisation_type_code AND no legacy business_category) must
+        # fail closed for accommodation-host eligibility — no classification,
+        # no host eligibility (security gate, not a read resolution).
+        # For explicitly classified organisations, classification is resolved
+        # via the single chokepoint get_effective_org_type()
+        # (organisation_type_code → business_category fallback → CORPORATE
+        # default). Accommodation eligibility is derived from the
+        # repository-owned organisation capability mapping
+        # (get_capabilities().can_manage_accommodation), NOT from a legacy
+        # string vocabulary ("service_provider"/"merchant"). The actual
+        # accommodation write is still gated by ProviderParticipation
+        # (G-1 accommodation requires an ACTIVATED participation intent).
+        if not org.organisation_type_code and org.business_category is None:
             return False, "Organisation type not set"
-
-        # Canonical classification: business_category is an OrganizationType
-        # member. Accommodation eligibility is derived from the repository-owned
-        # organisation capability mapping (get_capabilities().can_manage_accommodation),
-        # NOT from a legacy string vocabulary ("service_provider"/"merchant").
         if not org.can_manage_accommodation():
             return False, "Organisation type not eligible for accommodation hosting"
 

@@ -21,7 +21,7 @@ def setup_postgres(app):
         db.session.rollback()
         db.session.remove()
 
-def test_room_type_auto_creation_and_update(app):
+def test_property_creation_does_not_create_inventory(app):
     with app.app_context():
         # Setup test users
         host = User.query.filter_by(email="host_test@example.com").first()
@@ -87,22 +87,18 @@ def test_room_type_auto_creation_and_update(app):
         )
         db.session.flush()
 
-        # Create property - should auto-create RoomType regardless of owner
+        # Create property - approved lifecycle: creation must NOT auto-create
+        # any RoomType/inventory. Inventory is configured separately afterward.
         prop = HostService.create_property(property_data, owner_user_id=None, owner_org_id=org.id)
         db.session.commit()
 
         assert prop.id is not None
-        
-        # Verify RoomType was auto-created
-        rts = RoomType.query.filter_by(property_id=prop.id).all()
-        assert len(rts) == 1
-        rt = rts[0]
-        assert rt.name == "Standard Room"
-        assert rt.total_units == 1
-        assert rt.base_price_per_night == 150.00
-        assert rt.max_guests == 4
 
-        # Update Property
+        # Verify NO RoomType was auto-created
+        rts = RoomType.query.filter_by(property_id=prop.id).all()
+        assert rts == []
+
+        # Update Property must not manufacture inventory either
         update_data = property_data.copy()
         update_data["title"] = "Marriott Nakasero Updated"
         update_data["max_guests"] = 5
@@ -111,10 +107,9 @@ def test_room_type_auto_creation_and_update(app):
         HostService.update_property(prop, update_data)
         db.session.commit()
 
-        # Verify RoomType synced updated fields
-        db.session.refresh(rt)
-        assert rt.max_guests == 5
-        assert rt.base_price_per_night == 180.00
+        # Verify still no RoomType after update
+        rts_after = RoomType.query.filter_by(property_id=prop.id).all()
+        assert rts_after == []
 
 def test_available_units_and_booking_creation(app):
     with app.app_context():
@@ -159,6 +154,27 @@ def test_available_units_and_booking_creation(app):
         prop = HostService.create_property(property_data, owner_user_id=host.id, owner_org_id=None)
         db.session.commit()
 
+        # No inventory is auto-created anymore (approved lifecycle); the host
+        # must configure a RoomType explicitly before the property can hold a
+        # booking.
+        rt = RoomType(
+            property_id=prop.id,
+            name="Standard Room",
+            description="Default room type for this property",
+            max_guests=prop.max_guests,
+            bedrooms=prop.bedrooms,
+            beds=prop.beds,
+            bathrooms=prop.bathrooms,
+            base_price_per_night=prop.base_price_per_night,
+            currency=prop.currency,
+            cleaning_fee=prop.cleaning_fee,
+            service_fee_pct=prop.service_fee_pct,
+            total_units=5,
+            is_active=True,
+        )
+        db.session.add(rt)
+        db.session.commit()
+
         # A property is bookable only after approval: HostService.create_property
         # produces status="pending_review"/is_verified=False; promote it through
         # the moderation-approval outcome so the property is in a valid bookable
@@ -167,12 +183,6 @@ def test_available_units_and_booking_creation(app):
         prop.is_verified = True
         prop.verification_status = "verified"
         prop.is_active = True
-        db.session.commit()
-
-        rt = RoomType.query.filter_by(property_id=prop.id).first()
-        
-        # Make total_units = 5 for hotel scenario
-        rt.total_units = 5
         db.session.commit()
 
         # Check availability originally (should be 5)

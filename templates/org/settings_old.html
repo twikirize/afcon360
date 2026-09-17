@@ -10,7 +10,7 @@
             <div class="d-flex justify-content-between align-items-center">
                 <div>
                     <h1><i class="bi bi-building"></i> {{ org.legal_name }}</h1>
-                    <p class="text-muted">{{ org.org_id }} • {{ org.contact_email }}</p>
+                    <p class="text-muted">{{ org.slug }} • {{ org.contact_email }}</p>
                 </div>
                 <div>
                     <span class="badge bg-{{ 'success' if org.verification_status == 'verified' else 'warning' }}">
@@ -52,9 +52,9 @@
                             </div>
                             <div class="col-md-6">
                                 <div class="form-group mb-3">
-                                    <label class="form-label">Organization ID</label>
+                                    <label class="form-label">Organization Slug</label>
                                     <input type="text" class="form-control" name="org_id" 
-                                           value="{{ org.org_id }}" readonly>
+                                           value="{{ org.slug }}" readonly>
                                 </div>
                             </div>
                             <div class="col-md-6">
@@ -157,7 +157,7 @@
                                 <button type="submit" class="btn btn-primary">
                                     <i class="bi bi-check-circle"></i> Save Changes
                                 </button>
-                                <a href="{{ url_for('org.org_dashboard', org_id=org.id) }}" class="btn btn-outline-secondary ms-2">
+                                <a href="{{ url_for('org.org_dashboard', org_id=org.slug) }}" class="btn btn-outline-secondary ms-2">
                                     <i class="bi bi-arrow-left"></i> Back to Dashboard
                                 </a>
                             </div>
@@ -214,10 +214,10 @@
                 </div>
                 <div class="card-body">
                     <div class="d-grid gap-2">
-                        <a href="{{ url_for('org.members', org_id=org.id) }}" class="btn btn-outline-primary">
+                        <a href="{{ url_for('org.members', org_id=org.slug) }}" class="btn btn-outline-primary">
                             <i class="bi bi-people"></i> Manage Members
                         </a>
-                        <a href="{{ url_for('org.org_dashboard', org_id=org.id) }}" class="btn btn-outline-info">
+                        <a href="{{ url_for('org.org_dashboard', org_id=org.slug) }}" class="btn btn-outline-info">
                             <i class="bi bi-speedometer2"></i> View Dashboard
                         </a>
                         {% if member.role.name == 'org_owner' %}

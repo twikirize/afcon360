@@ -188,7 +188,7 @@
                     <div class="list-group list-group-flush mt-3">
                         {% for rt in property_model.room_types %}
                             {% if rt.is_active %}
-                            <div class="list-group-item d-flex justify-content-between align-items-center py-3 {% if selected_room_type_id == rt.id %}bg-light border-start border-primary border-4{% endif %}">
+                            <div class="list-group-item d-flex justify-content-between align-items-center py-3 {% if selected_room_type_id == rt.id %}detail-room-list-selected border-start border-primary border-4{% endif %}">
                                 <div>
                                     <h6 class="mb-1 fw-bold">{{ rt.name }}</h6>
                                     <p class="mb-1 text-muted small">{{ rt.description or 'Comfortable room type.' }}</p>
@@ -344,7 +344,7 @@
                             </div>
 
                             <!-- Price Breakdown -->
-                            <div class="bg-light p-3 rounded mb-3">
+                            <div class="bg-light p-3 rounded mb-3 detail-price-breakdown">
                                 <p class="mb-2 fw-bold">Price Breakdown</p>
                                 <div class="small">
                                     <div class="d-flex justify-content-between mb-1">

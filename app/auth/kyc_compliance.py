@@ -782,6 +782,42 @@ def get_user_kyc_tier(user_identifier) -> int:
     kyc_info = calculate_kyc_tier(user.id)  # Pass internal BIGINT id
     return kyc_info["tier"]
 
+
+# Canonical minimum KYC tier for the Driver GO-LIVE capability (can_go_live).
+# This is a downstream operational capability, NOT a workspace entry
+# requirement: entering the Driver Workspace is participation/context-based
+# (see app/auth/context.py _driver_contexts) and never checks KYC tier. The
+# threshold value equals the transport_booking activity capability requirement
+# (tier 2 = verified phone + National ID + selfie) defined in
+# DEFAULT_ACTIVITY_TIER_REQUIREMENTS, but the Go Live capability is
+# independent of that activity. Enforced via calculate_kyc_tier() — the
+# canonical KYC authority — never via the User.kyc_level snapshot nor
+# User.is_fully_verified() (Identity Center rule §13).
+DRIVER_GO_LIVE_MIN_KYC_TIER = TIER_2_STANDARD
+
+
+def driver_go_live_kyc_qualified(user_id) -> bool:
+    """Canonical KYC capability gate for the Driver GO-LIVE capability.
+
+    Returns True only when the user's canonical KYC tier (calculate_kyc_tier)
+    is at or above DRIVER_GO_LIVE_MIN_KYC_TIER. Any evaluation failure closes
+    the gate (fail-closed). This is consumed by ``can_go_live`` — never by
+    workspace authorization.
+    """
+    try:
+        return (
+            calculate_kyc_tier(user_id)["tier"]
+            >= DRIVER_GO_LIVE_MIN_KYC_TIER
+        )
+    except Exception:
+        current_app.logger.warning(
+            "driver_go_live_kyc_qualified: KYC evaluation failed for user %s",
+            user_id,
+            exc_info=True,
+        )
+        return False
+
+
 def get_missing_requirements(user_identifier, target_tier: int) -> List[str]:
     """Get requirements missing for target tier."""
     from app.identity.models.user import User

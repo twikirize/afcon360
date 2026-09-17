@@ -396,11 +396,13 @@
             <div class="action-description">View the host-facing dashboard and listing tools</div>
         </a>
 
+        {% if current_user.has_global_role('moderator', 'admin', 'super_admin', 'owner') %}
         <a href="{{ url_for('accommodation.moderate') }}" class="action-card">
             <div class="action-icon"><i class="bi bi-flag-fill"></i></div>
             <div class="action-title">Moderation Queue</div>
             <div class="action-description">Review flagged properties, bookings, and reviews</div>
         </a>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

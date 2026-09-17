@@ -379,10 +379,9 @@
                       <i class="bi bi-arrow-up-circle"></i>
                     </button>
                   </form>
-                  <form method="post" action="{{ url_for('admin.demote_user', user_id=user.public_id) }}" style="display:inline">
+                  <form method="post" action="{{ url_for('admin.demote_user', user_id=user.public_id) }}" style="display:inline" class="secure-action" data-secure-label="Demote {{ user.username }} — your password + owner MFA code required">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button class="sad-btn sm" style="background:rgba(245,166,35,0.1);color:var(--sad-amber);border-color:rgba(245,166,35,0.25)"
-                            onclick="return confirm('Demote {{ user.username }}?')" title="Demote">
+                    <button class="sad-btn sm" style="background:rgba(245,166,35,0.1);color:var(--sad-amber);border-color:rgba(245,166,35,0.25)" title="Demote">
                       <i class="bi bi-arrow-down-circle"></i>
                     </button>
                   </form>
@@ -400,10 +399,9 @@
                     <i class="bi bi-shield-exclamation"></i>
                   </button>
                   {% if user.public_id != current_user.public_id %}
-                  <form method="post" action="{{ url_for('admin.delete_user', user_id=user.public_id) }}" style="display:inline">
+                  <form method="post" action="{{ url_for('admin.delete_user', user_id=user.public_id) }}" style="display:inline" class="secure-action" data-secure-label="PERMANENTLY delete {{ user.username }} — your password + owner MFA code required">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button class="sad-btn sm" style="background:rgba(220,53,69,0.1);color:var(--sad-red);border-color:rgba(220,53,69,0.25)"
-                            onclick="return confirm('⚠️ PERMANENT: Delete {{ user.username }}?')" title="Delete">
+                    <button class="sad-btn sm" style="background:rgba(220,53,69,0.1);color:var(--sad-red);border-color:rgba(220,53,69,0.25)" title="Delete">
                       <i class="bi bi-trash"></i>
                     </button>
                   </form>
@@ -618,4 +616,5 @@
   })();
 })();
 </script>
+{% include "components/secure_action_modal.html" %}
 {% endblock %}

@@ -240,8 +240,8 @@ class OrganizationPermissionService:
         if not user_role:
             return []
         
-        # Get all available roles for organization type
-        all_roles = get_available_roles(organization.business_category)
+        # Get all available roles for organization type (canonical chokepoint)
+        all_roles = get_available_roles(organization.get_effective_org_type())
         
         # Filter based on user's role
         assignable_roles = []
@@ -378,9 +378,10 @@ class OrganizationPermissionService:
     @staticmethod
     def validate_role_assignment(organization: Organisation, role: OrganizationRole) -> tuple[bool, str]:
         """Validate if role can be assigned to organization type"""
-        available_roles = get_available_roles(organization.business_category)
-        
+        effective_type = organization.get_effective_org_type()
+        available_roles = get_available_roles(effective_type)
+
         if role not in available_roles:
-            return False, f"Role '{role.value}' is not available for {organization.business_category.value} organizations"
-        
+            return False, f"Role '{role.value}' is not available for {effective_type.value} organizations"
+
         return True, ""

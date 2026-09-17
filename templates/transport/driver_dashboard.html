@@ -1,4 +1,4 @@
-{% extends "transport/base.html" %}
+{% extends "transport/driver/base.html" %}
 {% block title %}Driver Dashboard{% endblock %}
 {% block breadcrumb %}<span class="sep">/</span><span class="current">Driver Dashboard</span>{% endblock %}
 
@@ -20,10 +20,17 @@
 .trip-card:last-child { border-bottom:none; }
 .trip-time { min-width:70px; text-align:center; padding:8px; background:var(--bg-elevated); border-radius:8px; }
 .trip-time .th { font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted); }
-.trip-time .td { font-family:var(--font-display); font-size:1rem; font-weight:700; color:var(--amber); }
+.trip-time .td { font-family:var(--font-display); font-size:0.85rem; font-weight:700; color:var(--amber); }
 .trip-info { flex:1; min-width:0; }
 .trip-route { font-size:0.86rem; color:var(--text-primary); margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .trip-meta { font-size:0.72rem; color:var(--text-muted); }
+.vehicle-row { display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--border); }
+.vehicle-row:last-child { border-bottom:none; }
+.vehicle-icon { width:38px; height:38px; border-radius:9px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; color:var(--amber); flex-shrink:0; }
+.vehicle-name { font-size:0.86rem; font-weight:600; }
+.vehicle-meta { font-size:0.72rem; color:var(--text-muted); }
+.workspace-actions { display:flex; flex-direction:column; gap:8px; padding:12px; }
+.workspace-actions .btn { justify-content:flex-start; }
 </style>
 {% endblock %}
 
@@ -31,13 +38,13 @@
 <div class="page-header">
   <div class="page-header-left">
     <h1 class="page-title">Driver Dashboard</h1>
-    <p class="page-subtitle">Your assignments and availability</p>
+    <p class="page-subtitle">Your assignments, vehicles and availability</p>
   </div>
   <div class="page-actions">
     <a href="{{ safe_url('transport.register_vehicle') }}" class="btn btn-secondary btn-sm">
       <i class="fa-solid fa-plus"></i> Register Vehicle
     </a>
-    <a href="{{ safe_url('transport.vehicles_index') }}" class="btn btn-secondary btn-sm">
+    <a href="{{ safe_url('transport.vehicle_dashboard') }}" class="btn btn-secondary btn-sm">
       <i class="fa-solid fa-van-shuttle"></i> My Vehicles
     </a>
   </div>
@@ -60,6 +67,7 @@
       ★ {{ '%.1f'|format(driver_profile.average_rating|float) if driver_profile.average_rating else '—' }}
     </div>
   </div>
+  {% if go_live and go_live.ready %}
   <div class="online-toggle">
     <div>
       <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Online</div>
@@ -72,6 +80,15 @@
       <span class="toggle-slider"></span>
     </label>
   </div>
+  {% elif go_live %}
+  <div class="online-toggle">
+    <div>
+      <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Online</div>
+      <div style="font-size:0.78rem;font-weight:600;">Unavailable</div>
+    </div>
+    <span class="badge badge-amber" style="cursor:not-allowed;">Go-live requirements pending</span>
+  </div>
+  {% endif %}
 </div>
 
 <div class="grid-4" style="margin-bottom:16px;">
@@ -97,11 +114,36 @@
   </div>
 </div>
 
+{% if go_live and not go_live.ready %}
+<div class="card" style="margin-bottom:16px;border-left:3px solid var(--amber);">
+  <div class="card-header">
+    <span class="card-title"><i class="fa-solid fa-rocket"></i> Ready to go live</span>
+    <span class="badge badge-amber">Requirements pending</span>
+  </div>
+  <div style="padding:14px 16px;">
+    <p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:12px;">
+      Complete the items below to go online and start accepting rides:
+    </p>
+    <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;">
+      {% for check in go_live.checks %}
+      <li style="display:flex;align-items:flex-start;gap:10px;">
+        <i class="fa-solid {{ 'fa-circle-check' if check.ok else 'fa-circle-xmark' }}" style="color:{{ 'var(--green)' if check.ok else 'var(--red)' }};font-size:0.95rem;margin-top:2px;"></i>
+        <div>
+          <div style="font-size:0.86rem;font-weight:600;">{{ check.label }}</div>
+          {% if not check.ok and check.hint %}
+            <div style="font-size:0.76rem;color:var(--text-muted);">{{ check.hint }}</div>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
 {% if driver_profile.compliance_status.value == 'pending_review' %}
 <div class="alert alert-amber" style="margin-bottom:16px;">
   <i class="fa-solid fa-clock"></i>
   <span>Your driver account is <strong>pending review</strong>. You will be able to accept rides once approved.</span>
-  <a href="{{ safe_url('transport.drivers_verification', id=driver_profile.id) }}" class="btn btn-secondary btn-sm" style="margin-left:auto;">View Verification</a>
 </div>
 {% elif driver_profile.compliance_status.value != 'approved' %}
 <div class="alert alert-red" style="margin-bottom:16px;">
@@ -111,57 +153,140 @@
 {% endif %}
 
 <div class="grid-2" style="align-items:start;">
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">Upcoming Assignments</span>
-      <span class="badge badge-amber">{{ bookings|length if bookings else 0 }}</span>
+  <div style="display:flex;flex-direction:column;gap:16px;">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Upcoming Assignments</span>
+        <span class="badge badge-amber">{{ (upcoming or bookings)|length if (upcoming or bookings) else 0 }}</span>
+      </div>
+      {% set upcoming_list = upcoming if upcoming else bookings %}
+      {% if upcoming_list %}
+        {% for b in upcoming_list %}
+        <div class="trip-card">
+          {% set pt = b.pickup_time if b.pickup_time is string else (b.pickup_time.strftime('%Y-%m-%dT%H:%M') if b.pickup_time else '') %}
+          <div class="trip-time">
+            <div class="th">{{ pt[11:16] if pt else '—' }}</div>
+            <div class="td">{{ pt[:10] if pt else '—' }}</div>
+          </div>
+          <div class="trip-info">
+            <div class="trip-route">
+              {{ b.pickup_address or (b.pickup_location.get('address') if b.pickup_location is mapping else None) or 'Pickup' }}
+              <i class="fa-solid fa-arrow-right" style="opacity:0.4;font-size:0.7rem;"></i>
+              {{ b.dropoff_address or (b.dropoff_location.get('address') if b.dropoff_location is mapping else None) or 'Dropoff' }}
+            </div>
+            <div class="trip-meta">
+              {{ b.booking_reference }} · {{ b.passenger_count|default(1) }} pax · {{ (b.service_type or 'trip')|replace('_',' ')|title }}
+            </div>
+          </div>
+          <span class="badge badge-{{ 'green' if b.status == 'completed' else 'blue' if b.status in ['assigned','confirmed','driver_en_route','in_progress'] else 'amber' if b.status in ['pending','pending_payment'] else 'red' if b.status in ['cancelled','disputed'] else 'gray' }}">
+            {{ (b.status or 'unknown')|replace('_',' ')|title }}
+          </span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state" style="padding:32px;">
+          <i class="fa-solid fa-calendar"></i>
+          <p>No upcoming assignments</p>
+        </div>
+      {% endif %}
     </div>
-    {% if bookings %}
-      {% for b in bookings %}
-      <div class="trip-card">
-        <div class="trip-time">
-          <div class="th">{{ b.pickup_time.strftime('%H:%M') if b.pickup_time else '—' }}</div>
-          <div class="td">{{ b.pickup_time.strftime('%d %b') if b.pickup_time else '—' }}</div>
-        </div>
-        <div class="trip-info">
-          <div class="trip-route">
-            {{ b.pickup_address or (b.pickup_location.get('address') if b.pickup_location else 'Pickup') }}
-            <i class="fa-solid fa-arrow-right" style="opacity:0.4;font-size:0.7rem;"></i>
-            {{ b.dropoff_address or (b.dropoff_location.get('address') if b.dropoff_location else 'Dropoff') }}
-          </div>
-          <div class="trip-meta">
-            {{ b.booking_reference }} · {{ b.passenger_count|default(1) }} pax · {{ b.service_type.value|replace('_',' ')|title }}
-          </div>
-        </div>
-        <div>
-          <a href="{{ safe_url('transport.bookings_show', id=b.id) }}" class="btn btn-primary btn-sm">View</a>
-        </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Recent Trips</span>
+        <span class="badge badge-gray">{{ recent|length if recent else 0 }}</span>
       </div>
-      {% endfor %}
-    {% else %}
-      <div class="empty-state" style="padding:32px;">
-        <i class="fa-solid fa-calendar"></i>
-        <p>No upcoming assignments</p>
-      </div>
-    {% endif %}
+      {% if recent %}
+        {% for b in recent %}
+        {% if b.status not in ['assigned','confirmed','driver_en_route','in_progress'] %}
+        <div class="trip-card">
+          {% set pt = b.pickup_time if b.pickup_time is string else (b.pickup_time.strftime('%Y-%m-%dT%H:%M') if b.pickup_time else '') %}
+          <div class="trip-time">
+            <div class="th">{{ pt[11:16] if pt else '—' }}</div>
+            <div class="td">{{ pt[:10] if pt else '—' }}</div>
+          </div>
+          <div class="trip-info">
+            <div class="trip-route">
+              {{ b.pickup_address or (b.pickup_location.get('address') if b.pickup_location is mapping else None) or 'Pickup' }}
+              <i class="fa-solid fa-arrow-right" style="opacity:0.4;font-size:0.7rem;"></i>
+              {{ b.dropoff_address or (b.dropoff_location.get('address') if b.dropoff_location is mapping else None) or 'Dropoff' }}
+            </div>
+            <div class="trip-meta">{{ b.booking_reference }} · {{ (b.service_type or 'trip')|replace('_',' ')|title }}</div>
+          </div>
+          <span class="badge badge-{{ 'green' if b.status == 'completed' else 'red' if b.status in ['cancelled','disputed'] else 'gray' }}">
+            {{ (b.status or 'unknown')|replace('_',' ')|title }}
+          </span>
+        </div>
+        {% endif %}
+        {% endfor %}
+      {% else %}
+        <div class="empty-state" style="padding:32px;">
+          <i class="fa-solid fa-clock-rotate-left"></i>
+          <p>No trip history yet</p>
+        </div>
+      {% endif %}
+    </div>
   </div>
 
   <div style="display:flex; flex-direction:column; gap:16px;">
     <div class="card">
-      <div class="card-header"><span class="card-title">Quick Actions</span></div>
-      <div style="padding:12px;display:flex;flex-direction:column;gap:8px;">
-        <a href="{{ safe_url('transport.drivers_verification', id=driver_profile.id) }}" class="btn btn-secondary">
-          <i class="fa-solid fa-shield-check"></i> Verification Status
-        </a>
-        <a href="{{ safe_url('transport.drivers_history', id=driver_profile.id) }}" class="btn btn-secondary">
-          <i class="fa-solid fa-clock-rotate-left"></i> Trip History
-        </a>
-        <a href="{{ safe_url('transport.drivers_location', id=driver_profile.id) }}" class="btn btn-secondary">
-          <i class="fa-solid fa-location-dot"></i> My Location
-        </a>
+      <div class="card-header">
+        <span class="card-title">My Transport</span>
+        <span class="badge badge-gray">{{ owned_vehicles|length if owned_vehicles else 0 }} owned</span>
+      </div>
+
+      {% if assigned_vehicle %}
+      <div class="vehicle-row">
+        <div class="vehicle-icon"><i class="fa-solid fa-van-shuttle"></i></div>
+        <div style="flex:1;min-width:0;">
+          <div class="vehicle-name">{{ assigned_vehicle.make }} {{ assigned_vehicle.model }}{% if assigned_vehicle.year %} ({{ assigned_vehicle.year }}){% endif %}</div>
+          <div class="vehicle-meta">
+            {{ assigned_vehicle.license_plate }}
+            {% if assigned_vehicle.vehicle_class %} · {{ assigned_vehicle.vehicle_class.value|replace('_',' ')|title }}{% endif %}
+            · <span style="color:var(--green);">Assigned</span>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if owned_vehicles %}
+        {% for v in owned_vehicles[:3] %}
+        <div class="vehicle-row">
+          <div class="vehicle-icon"><i class="fa-solid fa-car"></i></div>
+          <div style="flex:1;min-width:0;">
+            <div class="vehicle-name">{{ v.make }} {{ v.model }}{% if v.year %} ({{ v.year }}){% endif %}</div>
+            <div class="vehicle-meta">
+              {{ v.license_plate }}
+              {% if v.vehicle_class %} · {{ v.vehicle_class.value|replace('_',' ')|title }}{% endif %}
+              · {{ (v.status or 'active')|replace('_',' ')|title }}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      {% elif not assigned_vehicle %}
+        <div class="empty-state" style="padding:28px;">
+          <i class="fa-solid fa-van-shuttle"></i>
+          <p>No vehicle registered yet</p>
+        </div>
+      {% endif %}
+
+      <div class="workspace-actions">
         <a href="{{ safe_url('transport.vehicle_dashboard') }}" class="btn btn-secondary">
           <i class="fa-solid fa-van-shuttle"></i> My Vehicles
         </a>
+        <a href="{{ safe_url('transport.register_vehicle') }}" class="btn btn-secondary">
+          <i class="fa-solid fa-plus"></i> Register Vehicle
+        </a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">Earnings</span></div>
+      <div style="padding:16px;">
+        <div style="font-family:var(--font-display);font-size:1.6rem;font-weight:800;color:var(--green);">
+          UGX {{ '%.2f'|format(earnings|float) if earnings else '0.00' }}
+        </div>
+        <div style="font-size:0.76rem;color:var(--text-muted);margin-top:2px;">Total captured earnings</div>
       </div>
     </div>
 
@@ -196,16 +321,22 @@
 document.getElementById('onlineToggle')?.addEventListener('change', function() {
   const online = this.checked;
   const label = document.getElementById('onlineLabel');
-  if (label) label.textContent = online ? 'Available' : 'Offline';
+  if (label) label.textContent = online ? 'Pending' : 'Offline';
   fetch('/api/transport/drivers/{{ driver_profile.id if driver_profile else 0 }}/status', {
     method: 'POST',
-    headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
     body: JSON.stringify({is_online: online, is_available: online})
-  }).then(r => r.json()).then(d => {
+  }).then(async r => {
+    const d = await r.json();
     if (!d.success) {
       this.checked = !online;
       if (label) label.textContent = !online ? 'Available' : 'Offline';
-      alert('Could not update availability');
+      let msg = 'Could not update availability';
+      if (d.error) msg = d.error;
+      if (d.go_live && d.go_live.ready === false) msg = 'Complete the go-live requirements before going online';
+      alert(msg);
+    } else {
+      if (label) label.textContent = online ? 'Available' : 'Offline';
     }
   }).catch(() => {
     this.checked = !online;

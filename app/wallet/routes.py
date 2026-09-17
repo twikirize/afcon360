@@ -517,9 +517,11 @@ def overview():
         balance = service.get_balance(account.user_id)
         
         # Mock data for template compatibility
+        from app.profile.services.canonical_identity import get_canonical_identity
+        identity = get_canonical_identity(current_user)
         wallet = {
             'user_id': current_user.id,
-            'nationality': getattr(current_user, 'nationality', 'UG'),
+            'nationality': identity.nationality or 'UG',
             'location': getattr(current_user, 'location', 'Kampala'),
             'home_currency': account.currency,
             'local_currency': account.currency,

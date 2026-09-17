@@ -9,7 +9,7 @@ from wtforms import (
     BooleanField, HiddenField, FieldList, FormField
 )
 from wtforms.validators import (
-    DataRequired, Email, Optional, URL, Length, Regexp
+    DataRequired, Email, Optional, URL, Length, Regexp, ValidationError
 )
 from app.identity.models.organization_types import OrganizationType
 
@@ -107,46 +107,91 @@ class OrganizationRegistrationForm(FlaskForm):
 
 class OrganizationSettingsForm(FlaskForm):
     """Organization settings form"""
-    
+
     # Basic Settings
     legal_name = StringField('Legal Name', validators=[
         DataRequired(),
         Length(min=3, max=255)
     ])
-    
+
     contact_email = StringField('Contact Email', validators=[
         DataRequired(),
         Email(),
         Length(max=255)
     ])
-    
+
     contact_phone = TelField('Contact Phone', validators=[
         Optional(),
         Regexp(r'^\+?[\d\s\-\(\)]+$'),
         Length(max=32)
     ])
-    
+
     headquarters_address = TextAreaField('Headquarters Address', validators=[
         Optional(),
         Length(max=1000)
     ])
-    
+
     website = URLField('Website', validators=[
         Optional(),
         URL(),
         Length(max=255)
     ])
-    
+
+    # Classification — canonical write target for the organisation type.
+    # Client submits ONLY the type code; the server derives category
+    # server-side and never accepts a client-submitted category.
+    organisation_type_code = SelectField(
+        'Organisation Type',
+        choices=[],
+        validators=[Optional()],
+        render_kw={'class': 'form-select'},
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._set_classification_choices()
+
+    def _set_classification_choices(self):
+        """Populate the organisation type SelectField with every active
+        catalogue type code + label, ordered by category (server-side source
+        of truth). The first entry is a placeholder for 'no classification'.
+        """
+        from app.identity.services.organisation_classification_service import type_options
+
+        choices = [('', '— Not classified —')]
+        for opt in type_options():
+            choices.append((opt['code'], opt['label']))
+        self.organisation_type_code.choices = choices
+
+    def validate_organisation_type_code(self, field):
+        """Validate the submitted type code against the canonical catalogue
+        on the SERVER side. Category is never accepted from the client."""
+        raw = (field.data or '').strip()
+        if not raw:
+            # Empty = preserve existing classification (no-op, no error)
+            return
+        from app.identity.services.organisation_classification_service import (
+            validate_type,
+            category_for,
+        )
+        try:
+            code = validate_type(raw)
+        except ValueError as exc:
+            raise ValidationError(str(exc))
+        # Derive category server-side (defense-in-depth; proves the
+        # type → category mapping is resolvable in the frozen catalogue).
+        category_for(code)
+
     # Business Settings
     business_description = TextAreaField('Business Description', validators=[
         Optional(),
         Length(max=2000)
     ])
-    
+
     # Notification Settings
     email_notifications = BooleanField('Email Notifications')
     sms_notifications = BooleanField('SMS Notifications')
-    
+
     # Privacy Settings
     public_profile = BooleanField('Make organization profile public')
     allow_member_invites = BooleanField('Allow members to invite others')

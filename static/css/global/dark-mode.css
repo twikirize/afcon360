@@ -1,0 +1,281 @@
+/* ============================================
+   DARK MODE — Global Surface Overrides
+   ============================================
+   Active only when body.dark-mode is present.
+   ThemeManager (static/js/global/theme-manager.js)
+   applies body.dark-mode for BOTH the AFCON360
+   theme setting AND the device/system preference,
+   so this single guard covers every dark path.
+
+   Every rule is scoped with :where(body.dark-mode),
+   which has ZERO specificity. That means:
+   - light mode is provably untouched (the guard
+     never matches), and
+   - per-page/module CSS (loaded after this file)
+     still wins wherever it disagrees.
+
+   This layer only converts hardcoded light-only
+   surfaces (style.css / home.css / owner.css and a
+   few Bootstrap widgets) to the theme tokens. The
+   token layer itself already flips in dark mode.
+   ============================================ */
+
+/* ---- Standalone pages without style.css (auth, reset, kyc, wallet…) ---- */
+:where(body.dark-mode) body {
+  background-color: var(--bg-body);
+  color: var(--text-primary);
+}
+
+/* ---- Page & shell surfaces (style.css) ---- */
+:where(body.dark-mode) main#main {
+  background: var(--bg-surface);
+}
+:where(body.dark-mode) .drop-menu {
+  background: var(--bg-elevated);
+  border-color: var(--border-medium);
+}
+:where(body.dark-mode) .drop-item {
+  color: var(--text-primary) !important;
+}
+:where(body.dark-mode) .drop-item:hover {
+  background: var(--bg-surface-alt);
+  color: var(--text-primary) !important;
+}
+:where(body.dark-mode) .drop-header--sub .fw-bold {
+  color: var(--text-primary);
+}
+:where(body.dark-mode) .drop-divider {
+  background: var(--border-light);
+}
+
+/* ---- Homepage (home.css) ---- */
+:where(body.dark-mode) .top-search {
+  background: var(--bg-surface-alt);
+  border-bottom-color: var(--border-light);
+}
+:where(body.dark-mode) .search-select-wrap {
+  background: var(--bg-surface);
+  border-color: var(--border-medium);
+}
+:where(body.dark-mode) .search-select-wrap select {
+  color: var(--text-primary);
+}
+:where(body.dark-mode) .trending-label {
+  color: var(--text-muted);
+}
+:where(body.dark-mode) .trending-tag {
+  background: var(--bg-surface);
+  border-color: var(--border-light);
+  color: var(--color-primary);
+}
+:where(body.dark-mode) .home-right {
+  background: var(--bg-body);
+}
+:where(body.dark-mode) .right-ad {
+  background: var(--bg-surface);
+  border-color: var(--border-light);
+}
+:where(body.dark-mode) .right-ad-title {
+  color: var(--text-primary);
+}
+:where(body.dark-mode) .right-ad-sub {
+  color: var(--text-muted);
+}
+:where(body.dark-mode) .quick-actions {
+  background: var(--bg-surface);
+  border-color: var(--border-light);
+}
+:where(body.dark-mode) .quick-action span {
+  color: var(--text-primary);
+}
+:where(body.dark-mode) .section-title {
+  color: var(--text-primary);
+}
+:where(body.dark-mode) .section-link {
+  color: var(--color-primary);
+}
+
+/* ---- Owner dashboard shell (owner.css) ---- */
+:where(body.dark-mode) .owner-dashboard {
+  background: var(--bg-page);
+}
+:where(body.dark-mode) .sidebar-header p,
+:where(body.dark-mode) .admin-info strong,
+:where(body.dark-mode) .content-header h1,
+:where(body.dark-mode) .section-header h2,
+:where(body.dark-mode) .card-header h3,
+:where(body.dark-mode) .activity-action,
+:where(body.dark-mode) .stat-value {
+  color: var(--text-primary);
+}
+:where(body.dark-mode) .content-header .subtitle,
+:where(body.dark-mode) .admin-info span,
+:where(body.dark-mode) .activity-time,
+:where(body.dark-mode) .stat-label,
+:where(body.dark-mode) .stat-meta {
+  color: var(--text-muted);
+}
+:where(body.dark-mode) .nav-item {
+  color: var(--text-secondary);
+}
+:where(body.dark-mode) .nav-item:hover {
+  background: var(--bg-surface-alt);
+}
+:where(body.dark-mode) .card-header {
+  background: var(--bg-surface-alt);
+  border-bottom-color: var(--border-light);
+}
+:where(body.dark-mode) .activity-item {
+  border-bottom-color: var(--border-light);
+}
+:where(body.dark-mode) .activity-item:hover {
+  background: var(--bg-surface-alt);
+}
+:where(body.dark-mode) .health-footer,
+:where(body.dark-mode) .action-btn {
+  background: var(--bg-surface);
+  border-color: var(--border-light);
+  color: var(--text-secondary);
+}
+:where(body.dark-mode) .action-btn:hover {
+  background: var(--bg-elevated);
+}
+:where(body.dark-mode) .btn-ghost {
+  border-color: var(--border-light);
+  color: var(--text-secondary);
+}
+:where(body.dark-mode) .btn-view {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+:where(body.dark-mode) .btn-view:hover {
+  background: var(--bg-surface-alt);
+}
+:where(body.dark-mode) .badge-system {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+
+/* ---- Form controls (owner.css forces white) ---- */
+:where(body.dark-mode) .form-control,
+:where(body.dark-mode) .form-select {
+  background-color: var(--bg-surface);
+  border-color: var(--border-medium);
+  color: var(--text-primary);
+}
+:where(body.dark-mode) .form-control::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+:where(body.dark-mode) .input-group-text {
+  background-color: var(--bg-surface-alt);
+  border-color: var(--border-medium);
+  color: var(--text-secondary);
+}
+:where(body.dark-mode) .form-label {
+  color: var(--text-secondary);
+}
+:where(body.dark-mode) .text-dark {
+  color: var(--text-primary) !important;
+}
+
+/* ---- Bootstrap widgets not yet tokenized ---- */
+:where(body.dark-mode) .breadcrumb-item.active,
+:where(body.dark-mode) .breadcrumb-item + .breadcrumb-item::before {
+  color: var(--text-muted);
+}
+:where(body.dark-mode) .breadcrumb a {
+  color: var(--color-primary);
+}
+:where(body.dark-mode) .btn-close {
+  filter: invert(1) grayscale(100%) brightness(200%);
+}
+:where(body.dark-mode) .offcanvas,
+:where(body.dark-mode) .toast,
+:where(body.dark-mode) .accordion-item,
+:where(body.dark-mode) .accordion-button,
+:where(body.dark-mode) .accordion-body {
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+}
+:where(body.dark-mode) .accordion-item {
+  border-color: var(--border-light);
+}
+
+/* ---- Bootstrap card (standalone + base.html pages) ---- */
+:where(body.dark-mode) .card {
+  background-color: var(--bg-elevated);
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+:where(body.dark-mode) .card-header {
+  background-color: var(--bg-surface-alt);
+  border-bottom-color: var(--border-light);
+  color: var(--text-primary);
+}
+:where(body.dark-mode) .card-body {
+  color: var(--text-primary);
+}
+
+/* ---- Bootstrap alerts ---- */
+:where(body.dark-mode) .alert-danger {
+  background-color: rgba(220, 53, 69, 0.15);
+  color: #ff6b6b;
+  border-left: 4px solid #ff6b6b;
+}
+:where(body.dark-mode) .alert-success {
+  background-color: rgba(0, 100, 0, 0.15);
+  color: var(--success);
+  border-left: 4px solid var(--success);
+}
+:where(body.dark-mode) .alert-info {
+  background-color: rgba(23, 162, 184, 0.15);
+  color: var(--info);
+  border-left: 4px solid var(--info);
+}
+
+/* ---- Bootstrap form helpers & checks ---- */
+:where(body.dark-mode) .form-text {
+  color: var(--text-muted);
+}
+:where(body.dark-mode) .form-check-label {
+  color: var(--text-primary);
+}
+:where(body.dark-mode) .form-check-input {
+  background-color: var(--bg-surface);
+  border-color: var(--border-medium);
+}
+:where(body.dark-mode) .form-check-input:checked {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+:where(body.dark-mode) .form-check-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 0.25rem rgba(58, 122, 58, 0.25);
+}
+
+/* ---- Bootstrap list group ---- */
+:where(body.dark-mode) .list-group-item {
+  background-color: var(--bg-elevated);
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+
+/* ---- Bootstrap progress ---- */
+:where(body.dark-mode) .progress {
+  background-color: var(--bg-surface-alt);
+}
+
+/* ---- Bootstrap button primary (keep brand green in dark) ---- */
+:where(body.dark-mode) .btn-primary {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--text-light);
+}
+:where(body.dark-mode) .btn-primary:hover {
+  background-color: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+:where(body.dark-mode) .btn-link {
+  color: var(--color-primary);
+}

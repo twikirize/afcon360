@@ -119,13 +119,13 @@ def _increment_view_count(property_id, max_retries=3):
 
 @accommodation_bp.route('/admin/pending-properties')
 @login_required
-@require_role('admin', 'moderator', 'owner')
+@require_role('admin', 'moderator', 'owner', 'accommodation_admin')
 def pending_properties():
     return redirect(url_for('accommodation.admin_properties', workflow_stage='under_review'))
 
 @accommodation_bp.route('/moderate/property/<int:property_id>/approve', methods=['POST'])
 @login_required
-@require_role('admin', 'moderator', 'owner')
+@require_role('admin', 'moderator', 'owner', 'accommodation_admin')
 def moderate_property_approve(property_id):
     notes = request.form.get('notes')
     success, error = ModerationService.approve_property(property_id, current_user.id, notes)
@@ -137,7 +137,7 @@ def moderate_property_approve(property_id):
 
 @accommodation_bp.route('/moderate/property/<int:property_id>/publish', methods=['POST'])
 @login_required
-@require_role('admin', 'moderator', 'owner')
+@require_role('admin', 'moderator', 'owner', 'accommodation_admin')
 def moderate_property_publish(property_id):
     notes = request.form.get('notes')
     success, error = ModerationService.publish_property(property_id, current_user.id, notes)
@@ -186,7 +186,7 @@ def host_publish_property(property_id):
 
 @accommodation_bp.route('/moderate/property/<int:property_id>/reject', methods=['POST'])
 @login_required
-@require_role('admin', 'moderator', 'owner')
+@require_role('admin', 'moderator', 'owner', 'accommodation_admin')
 def moderate_property_reject(property_id):
     reason = request.form.get('reason')
     notes = request.form.get('notes')
@@ -199,7 +199,7 @@ def moderate_property_reject(property_id):
 
 @accommodation_bp.route('/moderate/property/<int:property_id>/request-changes', methods=['POST'])
 @login_required
-@require_role('admin', 'moderator', 'owner')
+@require_role('admin', 'moderator', 'owner', 'accommodation_admin')
 def moderate_property_request_changes(property_id):
     changes = request.form.get('changes')
     notes = request.form.get('notes')
@@ -212,7 +212,7 @@ def moderate_property_request_changes(property_id):
 
 @accommodation_bp.route('/moderate/property/<int:property_id>/suspend', methods=['POST'])
 @login_required
-@require_role('admin', 'moderator', 'owner')
+@require_role('admin', 'moderator', 'owner', 'accommodation_admin')
 def moderate_property_suspend(property_id):
     reason = request.form.get('reason')
     notes = request.form.get('notes')
@@ -225,7 +225,7 @@ def moderate_property_suspend(property_id):
 
 @accommodation_bp.route('/moderate/property/<int:property_id>/reinstate', methods=['POST'])
 @login_required
-@require_role('admin', 'moderator', 'owner')
+@require_role('admin', 'moderator', 'owner', 'accommodation_admin')
 def moderate_property_reinstate(property_id):
     notes = request.form.get('notes')
     success, error = ModerationService.reinstate_property(property_id, current_user.id, notes)
@@ -238,7 +238,7 @@ def moderate_property_reinstate(property_id):
 
 @accommodation_bp.route('/moderate/property/<int:property_id>/archive', methods=['POST'])
 @login_required
-@require_role('admin', 'moderator', 'owner')
+@require_role('admin', 'moderator', 'owner', 'accommodation_admin')
 def moderate_property_archive(property_id):
     # Ensure property exists (admin-only route; internal id is intentional)
     Property.query.get_or_404(property_id)
@@ -254,7 +254,7 @@ def moderate_property_archive(property_id):
 
 @accommodation_bp.route('/moderate/property/<int:property_id>/restore', methods=['POST'])
 @login_required
-@require_role('admin', 'moderator', 'owner')
+@require_role('admin', 'moderator', 'owner', 'accommodation_admin')
 def moderate_property_restore(property_id):
     """Restore an archived property back to draft (undo soft-delete)."""
     Property.query.get_or_404(property_id)
@@ -436,13 +436,17 @@ from app.utils.module_guard import require_module_enabled
 @require_module_enabled("accommodation")
 def home():
     """Accommodation home page - Public access, no login required"""
-    # Fetch featured properties - include both 'active' and 'published'
+    # Fetch featured properties - include both 'active' and 'published'.
+    # Mirror the canonical public visibility boundary used by guest search and
+    # the detail gate (is_publicly_viewable): at least one active room type, so
+    # a property advertised on the home page can never 404 on its detail page.
     featured_properties = Property.query.filter(
         Property.status.in_(['active', 'published']),  # ✅ Include published
         Property.is_verified == True,
         Property.is_active == True,
         Property.is_publicly_visible == True,
-        Property.is_deleted == False
+        Property.is_deleted == False,
+        Property.room_types.any(RoomType.is_active == True)
     ).order_by(Property.views_last_24h.desc()).limit(8).all()
 
     # Fetch popular destinations
@@ -456,7 +460,8 @@ def home():
         Property.is_verified == True,
         Property.is_active == True,
         Property.is_publicly_visible == True,
-        Property.is_deleted == False
+        Property.is_deleted == False,
+        Property.room_types.any(RoomType.is_active == True)
     ).group_by(Property.city, Property.country) \
         .order_by(func.count(Property.id).desc()) \
         .limit(6).all()
@@ -3391,7 +3396,14 @@ def guest_register(booking_id):
         id_document_type = request.form.get("id_document_type")
         id_document_number = request.form.get("id_document_number", "").strip()
         age = request.form.get("age", type=int)
-        date_of_birth = request.form.get("date_of_birth") or None
+        date_of_birth_raw = request.form.get("date_of_birth")
+        date_of_birth = None
+        if date_of_birth_raw:
+            try:
+                date_of_birth = datetime.strptime(date_of_birth_raw.strip(), "%Y-%m-%d").date()
+            except ValueError:
+                flash("Date of birth must be a valid date in YYYY-MM-DD format.", "danger")
+                return redirect(request.url)
         nationality = request.form.get("nationality") or None
 
         # Validate host-configured required registration fields (D-024)

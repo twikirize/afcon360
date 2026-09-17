@@ -1118,7 +1118,6 @@ class ProviderService:
 
     @monitor_endpoint("update_driver_status")
     @rate_limit("driver_status_update", limit=60, period=60)
-    @require_permission('driver:update_status')
     def update_driver_status(self, driver_id: int, status_data,
                              user_id: Optional[int] = None) -> Dict[str, Any]:
         """Update driver status.
@@ -1127,6 +1126,17 @@ class ProviderService:
         plain string representing a compliance/approval action
         (``"approved"`` / ``"rejected"``).  The string form is a convenience
         used by the admin approve/reject web routes.
+
+        Authorization (DRIVER_GATE-3): this method intentionally carries NO
+        RBAC permission decorator.  The ``driver:update_status`` permission was
+        never granted to any role, so the removed decorator denied every
+        legitimate admin approve/reject while solving nothing.  The single
+        authorization boundary is the calling route's guard: the transport
+        admin ``approve_driver`` / ``reject_driver`` web routes are gated by
+        ``@module_enabled_required`` + ``@login_required`` +
+        ``@role_required("admin")``.  Partial-status keys that carry their own
+        lifecycle checks (e.g. ``is_available`` requires ``is_online``) remain
+        enforced in the body below.
         """
         try:
             driver = db.session.get(DriverProfile, driver_id)
@@ -1224,6 +1234,104 @@ class ProviderService:
                 service_name="driver_status",
                 retry_after=60,
             )
+
+    # =========================================================================
+    # DRIVER SELF-SERVICE GO-LIVE / STATUS TRANSITION
+    # =========================================================================
+    #
+    # This is the driver's OWN operational state transition (toggle online /
+    # availability), used by the driver dashboard toggle and the REST endpoint
+    # ``driver_go_live_status``.  Separation of concerns:
+    #
+    #   ``can_go_live(driver)`` (go_live_service)  decides whether the driver is
+    #                                              ALLOWED to become operational
+    #   this method                                 safely performs the
+    #                                              ALREADY-AUTHORIZED state change
+    #
+    # Unlike ``update_driver_status`` (admin compliance approve/reject path,
+    # see DRIVER_GATE-3), this method carries NO RBAC permission decorator:
+    # the ``driver:update_status`` permission was retired because it was never
+    # granted to any role and would block the driver's own legitimate toggle
+    # while solving nothing.  Ownership is enforced via ``user_id`` matching
+    # the profile owner, exactly like the location-publish gate.
+
+    @monitor_endpoint("driver_self_service_status")
+    @rate_limit("driver_status_update", limit=60, period=60)
+    def set_driver_operational_status(
+        self,
+        driver_id: int,
+        user_id: int,
+        is_online: Optional[bool] = None,
+        is_available: Optional[bool] = None,
+    ) -> Dict[str, Any]:
+        """Transition the caller's own driver profile operational state.
+
+        Ownership is enforced here (``user_id`` must be the profile owner) and
+        the go-live eligibility is re-derived from ``can_go_live`` as the
+        authoritative answer — a transition can never slip through as a remote
+        side effect.  The REST endpoint performs the same checks to return a
+        clean 403 with the checklist before reaching the service.
+
+        Raises ``NotFoundError`` if the profile does not exist and
+        ``PermissionError`` if ``user_id`` is not the profile owner.
+        """
+        from app.transport.services.go_live_service import can_go_live
+
+        driver = db.session.get(DriverProfile, driver_id)
+        if not driver or driver.is_deleted:
+            raise NotFoundError(
+                message="Driver not found",
+                resource_type="driver",
+                resource_id=driver_id,
+            )
+
+        if driver.user_id != user_id:
+            raise PermissionError(
+                message="Cannot update another driver's status"
+            )
+
+        checklist = can_go_live(driver)
+        if not checklist.ready:
+            raise ValidationError(
+                message="Driver is not eligible to go live",
+                field="is_online",
+                details={"go_live": checklist.to_dict()},
+            )
+
+        if is_online is None and is_available is None:
+            raise ValidationError(
+                message="Nothing to update",
+                field="status",
+            )
+
+        updates: Dict[str, Any] = {}
+        if is_online is not None:
+            driver.is_online = bool(is_online)
+            driver.last_seen_at = datetime.now(timezone.utc)
+            updates['is_online'] = driver.is_online
+
+        if is_available is not None:
+            if bool(is_available) and not driver.is_online:
+                raise ValidationError(
+                    message="Driver must be online to become available",
+                    field="is_available",
+                )
+            driver.is_available = bool(is_available)
+            updates['is_available'] = driver.is_available
+
+        db.session.commit()
+        self._invalidate_driver_caches(driver_id)
+        self._invalidate_available_drivers_cache()
+
+        return {
+            'success': True,
+            'message': 'Driver status updated',
+            'data': {
+                'driver_id': driver_id,
+                'updates': updates,
+                'go_live': checklist.to_dict(),
+            },
+        }
 
     # ===========================================================================
     # VEHICLE STATUS MANAGEMENT

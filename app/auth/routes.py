@@ -17,6 +17,7 @@ from flask import (Blueprint, current_app, flash, jsonify, redirect, render_temp
 from flask_login import current_user, login_required, login_user, logout_user
 
 from app.auth.decorators import require_role, require_fresh_user  # noqa: F401
+from app.core.transport_permissions import TransportPermission
 from app.extensions import db, limiter
 from app.profile.models import get_profile_by_user
 
@@ -180,7 +181,8 @@ def _dashboard_for_user(user) -> str:
 
     if current_context == "organization" and current_org_id:
         try:
-            return url_for("org.dashboard", org_id=current_org_id)
+            from app.auth.context import _organisation_public_id_to_slug
+            return url_for("org.dashboard", org_id=_organisation_public_id_to_slug(current_org_id))
         except:
             pass
 
@@ -227,7 +229,7 @@ def _dashboard_for_user(user) -> str:
 
     if "accommodation_admin" in role_names:
         try:
-            return url_for("admin.accommodation_admin_dashboard")
+            return url_for("accommodation.admin_dashboard")
         except:
             return url_for("index")
 
@@ -1687,4 +1689,153 @@ def test_csrf():
     token = generate_csrf_token()
     print(f"CSRF Token generated: {token}")
     return f"CSRF Token: {token} (check console for value)"
+
+
+# ---------------------------------------------------------------------------
+# Dynamic Transport Permissions
+# ---------------------------------------------------------------------------
+
+@auth_bp.route("/grant-transport-permission", methods=["POST"])
+@login_required
+def grant_transport_permission():
+    """
+    Owner/super_admin grants dynamic transport permissions to a user/role.
+
+    Request JSON body:
+    {
+        "grantee_user_id": 42,
+        "grantee_role": "admin",
+        "can_manage_drivers": true,
+        "can_manage_vehicles": false,
+        "can_view_dashboard": true,
+        "expires_at": "2026-12-31T23:59:59"  // optional ISO format
+    }
+
+    Only owner and super_admin can grant permissions.
+    """
+    from app.core.transport_permissions import TransportPermission
+
+    # Check if granter is owner or super_admin
+    from app.auth.helpers import is_owner
+    if not (is_owner(current_user) or current_user.is_super_admin):
+        flash("Only platform owner or super_admin can grant transport permissions.", "danger")
+        return redirect(url_for("auth.index"))
+
+    data = request.get_json()
+    if not data:
+        flash("Invalid request data.", "danger")
+        return redirect(url_for("auth.index"))
+
+    grantee_user_id = data.get("grantee_user_id")
+    grantee_role = data.get("grantee_role", "")
+    can_manage_drivers = data.get("can_manage_drivers", False)
+    can_manage_vehicles = data.get("can_manage_vehicles", False)
+    can_view_dashboard = data.get("can_view_dashboard", False)
+    expires_at_str = data.get("expires_at")
+
+    # Validate grantee user exists
+    from app.identity.models.user import User as UserModel
+    grantee_user = db.session.get(UserModel, grantee_user_id)
+    if not grantee_user:
+        flash("Target user not found.", "danger")
+        return redirect(url_for("auth.index"))
+
+    # Parse optional expiry
+    expires_at = None
+    if expires_at_str:
+        try:
+            from datetime import datetime, timezone
+            if expires_at_str.endswith("Z"):
+                expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+            else:
+                expires_at = datetime.fromisoformat(expires_at_str)
+        except (ValueError, TypeError):
+            flash("Invalid expires_at format. Use ISO 8601 string.", "warning")
+            expires_at = None
+
+    # Grant the permission
+    perm = TransportPermission.grant_permission(
+        grantee_user_id=grantee_user_id,
+        grantee_role=grantee_role,
+        can_manage_drivers=can_manage_drivers,
+        can_manage_vehicles=can_manage_vehicles,
+        can_view_dashboard=can_view_dashboard,
+        granted_by_user_id=current_user.id,
+        expires_at=expires_at,
+    )
+
+    # Log the permission grant
+    from app.audit.forensic_audit import log_attempt
+    log_attempt(
+        user_id=current_user.id,
+        action="transport_permission_grant",
+        status="success",
+        details={
+            "grantee_user_id": grantee_user_id,
+            "grantee_role": grantee_role,
+            "permissions": {
+                "can_manage_drivers": can_manage_drivers,
+                "can_manage_vehicles": can_manage_vehicles,
+                "can_view_dashboard": can_view_dashboard,
+            },
+            "granted_by_user_id": current_user.id,
+        },
+    )
+
+    flash(
+        f"Transport permission granted to user {grantee_user_id} as role '{grantee_role}'.",
+        "success",
+    )
+    return redirect(url_for("auth.index"))
+
+
+@auth_bp.route("/revoke-transport-permission", methods=["POST"])
+@login_required
+def revoke_transport_permission():
+    """
+    Revoke a dynamic transport permission by permission ID.
+
+    Request JSON body:
+    {
+        "permission_id": 5
+    }
+
+    Only owner and super_admin can revoke permissions.
+    """
+    from app.core.transport_permissions import TransportPermission
+
+    # Check if granter is owner or super_admin
+    from app.auth.helpers import is_owner
+    if not (is_owner(current_user) or current_user.is_super_admin):
+        flash("Only platform owner or super_admin can revoke transport permissions.", "danger")
+        return redirect(url_for("auth.index"))
+
+    data = request.get_json()
+    if not data or "permission_id" not in data:
+        flash("Invalid request data. permission_id required.", "danger")
+        return redirect(url_for("auth.index"))
+
+    permission_id = data["permission_id"]
+
+    # Revoke the permission
+    success = TransportPermission.revoke_permission(permission_id)
+
+    if not success:
+        flash("Permission not found.", "danger")
+        return redirect(url_for("auth.index"))
+
+    # Log the permission revocation
+    from app.audit.forensic_audit import log_attempt
+    log_attempt(
+        user_id=current_user.id,
+        action="transport_permission_revoke",
+        status="success",
+        details={
+            "permission_id": permission_id,
+            "revoked_by_user_id": current_user.id,
+        },
+    )
+
+    flash("Transport permission revoked successfully.", "success")
+    return redirect(url_for("auth.index"))
 

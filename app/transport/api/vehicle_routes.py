@@ -27,6 +27,30 @@ def _vehicle_or_404(vehicle_id):
     return Vehicle.query.filter_by(id=vehicle_id, is_deleted=False).first_or_404()
 
 
+def _parse_utc_day_datetime(value, field_name):
+    """Parse a maintenance/compliance date into an explicit timezone-aware UTC
+    datetime.
+
+    Accepts YYYY-MM-DD (stored as midnight UTC) or an ISO-8601 datetime
+    (including a trailing Z or explicit offset; naive datetimes are assumed
+    UTC to match the project convention).  Returns None for None/empty input
+    and raises ValueError for anything malformed, so callers can return a
+    controlled 400 instead of letting the DB session timezone interpret a raw
+    string.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"{field_name} must be a valid YYYY-MM-DD date or ISO-8601 datetime"
+        )
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 # ===========================================================================
 # Vehicle List
 # ===========================================================================
@@ -323,35 +347,46 @@ class VehicleMaintenanceResource(Resource):
         event_type = data.get("event_type")
         now = datetime.now(timezone.utc)
 
-        if event_type == "service":
-            vehicle.last_service_date = now
-            vehicle.last_service_km = data.get("odometer_km", vehicle.odometer_reading_km)
-            vehicle.next_service_date = data.get("next_service_date")
-            vehicle.next_service_km = data.get("next_service_km")
-            vehicle.maintenance_status = "ok"
-            vehicle.odometer_reading_km = data.get("odometer_km", vehicle.odometer_reading_km)
+        try:
+            if event_type == "service":
+                vehicle.last_service_date = now
+                vehicle.last_service_km = data.get("odometer_km", vehicle.odometer_reading_km)
+                vehicle.next_service_date = _parse_utc_day_datetime(
+                    data.get("next_service_date"), "next_service_date"
+                )
+                vehicle.next_service_km = data.get("next_service_km")
+                vehicle.maintenance_status = "ok"
+                vehicle.odometer_reading_km = data.get("odometer_km", vehicle.odometer_reading_km)
 
-        elif event_type == "inspection":
-            vehicle.last_inspection_date = now
-            vehicle.next_inspection_due = data.get("next_inspection_due")
-            vehicle.roadworthiness_certificate = data.get("certificate_number")
-            vehicle.roadworthiness_expiry = data.get("roadworthiness_expiry")
+            elif event_type == "inspection":
+                vehicle.last_inspection_date = now
+                vehicle.next_inspection_due = _parse_utc_day_datetime(
+                    data.get("next_inspection_due"), "next_inspection_due"
+                )
+                vehicle.roadworthiness_certificate = data.get("certificate_number")
+                vehicle.roadworthiness_expiry = _parse_utc_day_datetime(
+                    data.get("roadworthiness_expiry"), "roadworthiness_expiry"
+                )
 
-        elif event_type == "insurance":
-            vehicle.insurance_provider = data.get("provider")
-            vehicle.insurance_policy_number = data.get("policy_number")
-            vehicle.insurance_expiry = data.get("expiry")
-            vehicle.insurance_coverage_amount = data.get("coverage_amount")
-            vehicle.insurance_verified = True
+            elif event_type == "insurance":
+                vehicle.insurance_provider = data.get("provider")
+                vehicle.insurance_policy_number = data.get("policy_number")
+                vehicle.insurance_expiry = _parse_utc_day_datetime(
+                    data.get("expiry"), "expiry"
+                )
+                vehicle.insurance_coverage_amount = data.get("coverage_amount")
+                vehicle.insurance_verified = True
 
-        elif event_type == "odometer":
-            new_reading = data.get("odometer_km")
-            if new_reading and new_reading < vehicle.odometer_reading_km:
-                return {"success": False, "error": "Odometer cannot decrease"}, 400
-            vehicle.odometer_reading_km = new_reading
+            elif event_type == "odometer":
+                new_reading = data.get("odometer_km")
+                if new_reading and new_reading < vehicle.odometer_reading_km:
+                    return {"success": False, "error": "Odometer cannot decrease"}, 400
+                vehicle.odometer_reading_km = new_reading
 
-        else:
-            return {"success": False, "error": f"Unknown event_type: {event_type}"}, 400
+            else:
+                return {"success": False, "error": f"Unknown event_type: {event_type}"}, 400
+        except ValueError as ve:
+            return {"success": False, "error": str(ve)}, 400
 
         try:
             db.session.commit()

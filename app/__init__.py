@@ -930,6 +930,25 @@ def create_app(config_object=None) -> Flask:
 
             threading.Thread(target=_load_rate_limit_defaults, daemon=True).start()
 
+            # Deferred organisation classification catalogue seed — the lookup
+            # tables are the DB source of truth for the org-type vocabulary on
+            # onboarding. Seeded once on first request (cheap COUNT guard) so a
+            # fresh environment never hits the FK trap where the default UI
+            # offers types the DB still can't accept; no-op once populated or
+            # before the migration has created the tables.
+            def _auto_seed_organisation_catalogues():
+                try:
+                    with app.app_context():
+                        from app.identity.services.organisation_classification_service import (
+                            seed_organisation_catalogues,
+                        )
+                        if seed_organisation_catalogues():
+                            logger.info("✅ Organisation classification catalogues seeded (deferred)")
+                except Exception as exc:
+                    logger.warning(f"Deferred organisation catalogue seed failed: {exc}")
+
+            threading.Thread(target=_auto_seed_organisation_catalogues, daemon=True).start()
+
     # ------------------------------------------------------------------
     # Lazy Imports - Blueprints & Models
     # ------------------------------------------------------------------
@@ -1370,6 +1389,7 @@ def create_app(config_object=None) -> Flask:
         _in_org_context = False
         _org_name = None
         _org_id = None
+        _org_slug = None
         _org_role = None
 
         # Resolve auth defensively: a detached/stale current_user (long-lived
@@ -1406,6 +1426,11 @@ def create_app(config_object=None) -> Flask:
                     _org_id = _active_context.public_id
                     _org_role = _active_context.role
                     _org_name = (_active_context.label or "Organisation").split(" — ", 1)[0]
+                    try:
+                        from app.auth.context import _organisation_public_id_to_slug
+                        _org_slug = _organisation_public_id_to_slug(_org_id)
+                    except Exception:
+                        _org_slug = _org_id
             except Exception:
                 logger.debug("Could not resolve canonical navigation context", exc_info=True)
 
@@ -1413,6 +1438,11 @@ def create_app(config_object=None) -> Flask:
                 _in_org_context = True
                 _org_id = _session.get("current_org_id")
                 _org_name = _session.get("current_org_name", "Organisation")
+                try:
+                    from app.auth.context import _organisation_public_id_to_slug
+                    _org_slug = _organisation_public_id_to_slug(_org_id)
+                except Exception:
+                    _org_slug = _org_id
         # ── end nav state ───────────────────────────────────────────
 
         return {
@@ -1427,6 +1457,7 @@ def create_app(config_object=None) -> Flask:
             "nav_in_org_context": _in_org_context,
             "nav_org_name": _org_name,
             "nav_org_id": _org_id,
+            "nav_org_slug": _org_slug,
             "nav_org_role": _org_role,
             "active_global_role": _session.get("active_global_role"),
         }

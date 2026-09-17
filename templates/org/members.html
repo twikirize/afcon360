@@ -339,7 +339,7 @@
                         <span class="role-badge {{ role_badge_class(exec_member.role, exec_member.is_owner) }}">{{ exec_member.role_label }}</span>
                         {% if can_manage_roles and not exec_member.is_owner %}
                         <div class="d-flex gap-2 mt-2 justify-content-end">
-                            <form method="POST" action="{{ url_for('org.change_member_role', org_id=org.org_id, user_public_id=exec_member.public_id) }}" class="d-flex gap-1 align-items-center">
+                            <form method="POST" action="{{ url_for('org.change_member_role', org_id=org.slug, user_public_id=exec_member.public_id) }}" class="d-flex gap-1 align-items-center">
                                 {{ csrf_token() }}
                                 <select name="role" class="form-select form-select-sm" style="width:auto">
                                     {% for role_name, role_label in assignable_roles %}
@@ -351,7 +351,7 @@
                                 </button>
                             </form>
                             {% if can_manage_members %}
-                            <form method="POST" action="{{ url_for('org.remove_member', org_id=org.org_id, user_public_id=exec_member.public_id) }}" onsubmit="return confirm('Remove {{ exec_member.username }} from the organization?');">
+                            <form method="POST" action="{{ url_for('org.remove_member', org_id=org.slug, user_public_id=exec_member.public_id) }}" onsubmit="return confirm('Remove {{ exec_member.username }} from the organization?');">
                                 {{ csrf_token() }}
                                 <button type="submit" class="btn btn-sm btn-outline-danger action-btn" title="Remove Member">
                                     <i class="bi bi-person-x me-1"></i> Remove
@@ -394,7 +394,7 @@
                         <span class="role-badge {{ role_badge_class(mgmt_member.role, mgmt_member.is_owner) }}">{{ mgmt_member.role_label }}</span>
                         {% if can_manage_roles and not mgmt_member.is_owner %}
                         <div class="d-flex gap-2 mt-2 justify-content-end">
-                            <form method="POST" action="{{ url_for('org.change_member_role', org_id=org.org_id, user_public_id=mgmt_member.public_id) }}" class="d-flex gap-1 align-items-center">
+                            <form method="POST" action="{{ url_for('org.change_member_role', org_id=org.slug, user_public_id=mgmt_member.public_id) }}" class="d-flex gap-1 align-items-center">
                                 {{ csrf_token() }}
                                 <select name="role" class="form-select form-select-sm" style="width:auto">
                                     {% for role_name, role_label in assignable_roles %}
@@ -406,7 +406,7 @@
                                 </button>
                             </form>
                             {% if can_manage_members %}
-                            <form method="POST" action="{{ url_for('org.remove_member', org_id=org.org_id, user_public_id=mgmt_member.public_id) }}" onsubmit="return confirm('Remove {{ mgmt_member.username }} from the organization?');">
+                            <form method="POST" action="{{ url_for('org.remove_member', org_id=org.slug, user_public_id=mgmt_member.public_id) }}" onsubmit="return confirm('Remove {{ mgmt_member.username }} from the organization?');">
                                 {{ csrf_token() }}
                                 <button type="submit" class="btn btn-sm btn-outline-danger action-btn" title="Remove Member">
                                     <i class="bi bi-person-x me-1"></i> Remove
@@ -449,7 +449,7 @@
                         <span class="role-badge {{ role_badge_class(staff_member.role, staff_member.is_owner) }}">{{ staff_member.role_label }}</span>
                         {% if can_manage_roles and not staff_member.is_owner %}
                         <div class="d-flex gap-2 mt-2 justify-content-end">
-                            <form method="POST" action="{{ url_for('org.change_member_role', org_id=org.org_id, user_public_id=staff_member.public_id) }}" class="d-flex gap-1 align-items-center">
+                            <form method="POST" action="{{ url_for('org.change_member_role', org_id=org.slug, user_public_id=staff_member.public_id) }}" class="d-flex gap-1 align-items-center">
                                 {{ csrf_token() }}
                                 <select name="role" class="form-select form-select-sm" style="width:auto">
                                     {% for role_name, role_label in assignable_roles %}
@@ -461,7 +461,7 @@
                                 </button>
                             </form>
                             {% if can_manage_members %}
-                            <form method="POST" action="{{ url_for('org.remove_member', org_id=org.org_id, user_public_id=staff_member.public_id) }}" onsubmit="return confirm('Remove {{ staff_member.username }} from the organization?');">
+                            <form method="POST" action="{{ url_for('org.remove_member', org_id=org.slug, user_public_id=staff_member.public_id) }}" onsubmit="return confirm('Remove {{ staff_member.username }} from the organization?');">
                                 {{ csrf_token() }}
                                 <button type="submit" class="btn btn-sm btn-outline-danger action-btn" title="Remove Member">
                                     <i class="bi bi-person-x me-1"></i> Remove
@@ -504,7 +504,7 @@
                         <span class="role-badge {{ role_badge_class(support_member.role, support_member.is_owner) }}">{{ support_member.role_label }}</span>
                         {% if can_manage_roles and not support_member.is_owner %}
                         <div class="d-flex gap-2 mt-2 justify-content-end">
-                            <form method="POST" action="{{ url_for('org.change_member_role', org_id=org.org_id, user_public_id=support_member.public_id) }}" class="d-flex gap-1 align-items-center">
+                            <form method="POST" action="{{ url_for('org.change_member_role', org_id=org.slug, user_public_id=support_member.public_id) }}" class="d-flex gap-1 align-items-center">
                                 {{ csrf_token() }}
                                 <select name="role" class="form-select form-select-sm" style="width:auto">
                                     {% for role_name, role_label in assignable_roles %}
@@ -516,7 +516,7 @@
                                 </button>
                             </form>
                             {% if can_manage_members %}
-                            <form method="POST" action="{{ url_for('org.remove_member', org_id=org.org_id, user_public_id=support_member.public_id) }}" onsubmit="return confirm('Remove {{ support_member.username }} from the organization?');">
+                            <form method="POST" action="{{ url_for('org.remove_member', org_id=org.slug, user_public_id=support_member.public_id) }}" onsubmit="return confirm('Remove {{ support_member.username }} from the organization?');">
                                 {{ csrf_token() }}
                                 <button type="submit" class="btn btn-sm btn-outline-danger action-btn" title="Remove Member">
                                     <i class="bi bi-person-x me-1"></i> Remove

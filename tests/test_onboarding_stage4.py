@@ -2,12 +2,13 @@
 Stage 4 tests: Organisation Onboarding architecture.
 
 Confirms the new onboarding model:
-  Organisation Type = canonical organisation type (-> Organisation.business_category)
+  Organisation Type = canonical organisation type (-> Organisation.organisation_type_code)
   + optional Provider Capabilities[] (-> provider_participations org rows,
     status=intent, via the canonical ProviderParticipation service — Stage 4B-3)
 
 Proves:
-  * organisation type persists to business_category
+  * organisation type persists to organisation_type_code
+  * business_category (legacy enum) is NOT written by new onboarding
   * zero / one / multiple provider capabilities are all valid
   * consumer is NOT an organisation type
   * a capability creates NO member authority / role change
@@ -113,6 +114,59 @@ def _seed_org_roles(app):
     # and triggered DetachedInstanceError on current_user.is_authenticated.
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _seed_org_catalog(app):
+    """Seed the organisation classification catalog lookup tables.
+
+    The frozen catalogue (``ORGANISATION_CATEGORIES`` /
+    ``ORGANISATION_TYPE_CATALOG``) is the FK source-of-truth for the new
+    ``organisations.organisation_type_code`` writes. Session-scoped so the
+    real commit helper (``_commit_organisation_onboarding``) can persist the
+    canonical type code in any test that reaches it.
+    """
+    from app.extensions import db
+    from app.identity.catalog_data import (
+        ORGANISATION_CATEGORIES,
+        ORGANISATION_TYPE_CATALOG,
+    )
+    from app.identity.models.organisation_catalogues import (
+        OrganisationCategory,
+        OrganisationTypeCatalogue,
+    )
+
+    with app.app_context():
+        for sort_order, (code, label) in enumerate(ORGANISATION_CATEGORIES.items()):
+            if (
+                db.session.query(OrganisationCategory).filter_by(code=code).first()
+                is None
+            ):
+                db.session.add(
+                    OrganisationCategory(
+                        code=code,
+                        label=label,
+                        sort_order=sort_order,
+                        is_active=True,
+                    )
+                )
+        db.session.flush()
+        for sort_order, (code, meta) in enumerate(ORGANISATION_TYPE_CATALOG.items()):
+            if (
+                db.session.query(OrganisationTypeCatalogue)
+                .filter_by(code=code).first()
+                is None
+            ):
+                db.session.add(
+                    OrganisationTypeCatalogue(
+                        code=code,
+                        label=meta["label"],
+                        category_code=meta["category_code"],
+                        sort_order=sort_order,
+                        is_active=True,
+                    )
+                )
+        db.session.commit()
+
+
 @pytest.fixture
 def verified_user(app):
     from app.extensions import db
@@ -203,27 +257,19 @@ def _session_login(client, user):
 
 
 # ---------------------------------------------------------------------------
-# 1. Organisation type persists to business_category
+# 1. Organisation type persists to organisation_type_code (not business_category)
 # ---------------------------------------------------------------------------
 
 def test_organisation_type_persists_to_business_category(app):
     org, user = _commit(app, org_type="hotel")
-    val = (
-        org.business_category.value
-        if hasattr(org.business_category, "value")
-        else org.business_category
-    )
-    assert str(val) == "hotel"
+    assert org.organisation_type_code == "hotel"
+    assert org.business_category is None
 
 
 def test_organisation_type_persists_football_club(app):
     org, user = _commit(app, org_type="football_team")
-    val = (
-        org.business_category.value
-        if hasattr(org.business_category, "value")
-        else org.business_category
-    )
-    assert str(val) == "football_team"
+    assert org.organisation_type_code == "football_team"
+    assert org.business_category is None
 
 
 def test_legacy_org_type_field_untouched(app):
@@ -593,7 +639,7 @@ class TestEndToEndOrganisationOnboarding:
         choose → choose/organisation → POST type+caps → step1 → POST →
         step2 → POST → redirect to org dashboard.
 
-        Verify: ONE Organisation created, business_category correct,
+        Verify: ONE Organisation created, organisation_type_code correct,
         capability rows exist with status=intent, creator is org_owner,
         OrgUserRole.role_id references org_roles.id, default_org_id set,
         session context set, NO wallet created.
@@ -691,10 +737,9 @@ class TestEndToEndOrganisationOnboarding:
 
             org = Organisation.query.order_by(Organisation.id.desc()).first()
 
-            # 2. business_category = hotel
-            bc = org.business_category
-            bc_val = bc.value if hasattr(bc, "value") else bc
-            assert str(bc_val) == "hotel", f"Expected 'hotel', got {bc_val!r}"
+            # 2. organisation_type_code = hotel (business_category NOT written)
+            assert org.organisation_type_code == "hotel"
+            assert org.business_category is None
 
             # 3. Two capability rows with status=intent (PP — no OPC writes)
             caps = ProviderParticipation.query.filter_by(
@@ -740,6 +785,96 @@ class TestEndToEndOrganisationOnboarding:
                 f"Onboarding must not create wallet rows; "
                 f"before={accounts_before} after={accounts_after}"
             )
+
+    def test_registration_document_upload_persists(self, app, client, monkeypatch):
+        """Step 2 file upload: the registration certificate is persisted through
+        the canonical media path and a compliance-reviewed
+        ``OrganisationKYBDocument`` row lands in the SAME transaction as the
+        organisation commit (atomic — no orphan doc without an org).
+        """
+        import io
+        from types import SimpleNamespace as _NS
+
+        from app.extensions import db
+        from app.identity.models import Organisation
+        from app.identity.models.kyb import OrganisationKYBDocument
+
+        # MediaService enqueues async processing when it flushes the Media row;
+        # with no broker (tests run DISABLE_REDIS=1) that call would raise, so
+        # short-circuit the enqueue exactly where the service invokes .delay().
+        from app.media.tasks import process_media_task
+        monkeypatch.setattr(
+            process_media_task,
+            "delay",
+            lambda *a, **k: _NS(id="fake-task-id"),
+        )
+
+        verified_user = self._make_e2e_user(app)
+        _http_login(client, verified_user)
+
+        # POST organisation type + capabilities → step 1
+        r = _fresh_post(
+            client,
+            "/onboarding/organisation",
+            data={
+                "org_type": "hotel",
+                "provider_capabilities": ["accommodation"],
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert "/onboarding/organisation/step/1" in r.headers["Location"]
+
+        # POST step 1 details → step 2
+        unique_suffix = uuid.uuid4().hex[:8]
+        r = _fresh_post(
+            client,
+            "/onboarding/organisation/step/1",
+            data={
+                "full_name": "E2E Upload User",
+                "legal_name": f"E2E Upload Hotel {unique_suffix}",
+                "country": "UG",
+                "contact_email": f"up_{unique_suffix}@test.com",
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert "/onboarding/organisation/step/2" in r.headers["Location"]
+
+        # POST step 2 with a real (tiny) PDF upload + confirmation
+        pdf_bytes = b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n%%EOF\n"
+        r = _fresh_post(
+            client,
+            "/onboarding/organisation/step/2",
+            data={
+                "confirm": "on",
+                "registration_document": (
+                    io.BytesIO(pdf_bytes),
+                    f"reg_{unique_suffix}.pdf",
+                ),
+            },
+            content_type="multipart/form-data",
+            follow_redirects=False,
+        )
+        assert r.status_code == 302, f"expected redirect, got {r.status_code}"
+        assert "/org/" in r.headers["Location"]
+
+        # The document row exists, is pending review, and references the stored
+        # raw object through the canonical KYB document store.
+        with app.app_context():
+            org = Organisation.query.order_by(Organisation.id.desc()).first()
+            assert org is not None
+            doc = OrganisationKYBDocument.query.filter_by(
+                organisation_id=org.id, is_deleted=False,
+            ).first()
+            assert doc is not None, "registration document row not persisted"
+            assert doc.document_type == "registration_certificate"
+            assert doc.verification_status == "pending"
+            assert doc.checksum
+            assert doc.storage_key
+            # storage_key is a servable local URL holding the raw object
+            assert doc.storage_key.startswith("/"), doc.storage_key
+            assert "/kyc/" in doc.storage_key, doc.storage_key
 
     def test_zero_capabilities_flow(self, app, client):
         """Organisation type + zero provider capabilities must be valid.

@@ -719,13 +719,13 @@ def org_action(org_id):
         org.compliance_reviewed_at = datetime.now(timezone.utc)
         org.compliance_reviewed_by = current_user.id
         org.compliance_notes = notes
-        flash(f'Organisation {org_id} approved from compliance.', 'success')
+        flash(f'Organisation {org.slug} approved from compliance.', 'success')
     elif action == 'reject':
         org.compliance_status = 'rejected'
         org.compliance_reviewed_at = datetime.now(timezone.utc)
         org.compliance_reviewed_by = current_user.id
         org.rejection_reason = request.form.get('rejection_reason', notes)
-        flash(f'Organisation {org_id} rejected from compliance.', 'warning')
+        flash(f'Organisation {org.slug} rejected from compliance.', 'warning')
     elif action == 'request_reupload':
         document_id = request.form.get('document_id', '').strip()
         document_type = request.form.get('document_type', '').strip()
@@ -773,7 +773,7 @@ def org_action(org_id):
         reason = request.form.get('escalation_reason', notes)
         ComplianceCaseService.create_case(
             case_type=ComplianceCaseType.KYB_REVIEW,
-            title=f'KYB Review - Organisation {org.org_id}',
+            title=f'KYB Review - Organisation {org.slug}',
             description=f'Organisation escalated for compliance review: {reason}',
             created_by=current_user.id,
             organisation_id=org_id,
@@ -781,7 +781,7 @@ def org_action(org_id):
             escalated_from=current_user.id,
             escalation_reason=reason
         )
-        flash(f'Organisation {org_id} escalated.', 'warning')
+        flash(f'Organisation {org.slug} escalated.', 'warning')
     else:
         flash('Invalid action.', 'danger')
     

@@ -4,8 +4,8 @@
 .gallery-hero-img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; }
 .gallery-hero-img--empty {
     width: 100%; height: 100%; display: flex; align-items: center;
-    justify-content: center; color: #ccc; font-size: 13px;
-    background: #f5f5f5;
+    justify-content: center; color: var(--text-muted); font-size: 13px;
+    background: var(--bg-surface-alt);
 }
 .gallery-thumbs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .gallery-thumb { width: 100%; height: 100%; object-fit: cover; cursor: pointer;
@@ -13,18 +13,18 @@
 .gallery-thumb:hover { filter: brightness(0.88); }
 .gallery-all-btn {
     position: absolute; bottom: 14px; right: 14px;
-    background: white; border: 1px solid #ddd; border-radius: 8px;
+    background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 8px;
     padding: 7px 13px; font-size: 12px; font-weight: 600; cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12); color: var(--text-primary);
 }
-.gallery-all-btn:hover { background: #f5f5f5; }
+.gallery-all-btn:hover { background: var(--bg-surface-alt); }
 
 .photo-modal[hidden] { display: none; }
 .photo-modal { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center;
     justify-content: center; padding: 24px; }
 .photo-modal-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.78); }
 .photo-modal-panel { position: relative; z-index: 1; width: min(100%, 1000px); max-height: 90vh;
-    overflow: auto; background: #fff; border-radius: 12px; padding: 20px; }
+    overflow: auto; background: var(--bg-surface); border-radius: 12px; padding: 20px; }
 .photo-modal-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .photo-modal-header h2 { margin: 0; font-size: 1.25rem; }
 .photo-modal-close { min-width: 44px; min-height: 44px; border: 0; background: transparent;
@@ -32,7 +32,7 @@
 .photo-modal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 .photo-modal-image { padding: 0; border: 0; background: transparent; cursor: zoom-in; }
 .photo-modal-image img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; }
-.photo-modal-category { display: block; padding: 6px 2px 0; color: #555; font-size: .85rem; text-align: left; }
+.photo-modal-category { display: block; padding: 6px 2px 0; color: var(--text-secondary); font-size: .85rem; text-align: left; }
 .photo-modal-open { overflow: hidden; }
 .photo-lightbox[hidden] { display: none; }
 .photo-lightbox { position: fixed; inset: 0; z-index: 2; display: flex; align-items: center;
@@ -50,7 +50,7 @@
 .photo-lightbox-nav:hover { background: rgba(255,255,255,.25); }
 .media-category-picker { display: flex; align-items: center; gap: 10px; max-width: 360px; margin: 12px 0; }
 .media-category-picker span { font-weight: 600; white-space: nowrap; }
-.media-item-category { display: block; color: #666; text-transform: capitalize; }
+.media-item-category { display: block; color: var(--text-secondary); text-transform: capitalize; }
 @media(max-width:768px) {
     .detail-gallery { grid-template-columns: 1fr; }
     .gallery-thumbs-grid { display: none; }
@@ -66,21 +66,31 @@
 /* Sticky bar */
 .sticky-book-bar {
     display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
-    background: white; border-top: 1px solid #e0e0e0;
+    background: var(--bg-surface); border-top: 1px solid var(--border-light);
     padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-    box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
     align-items: center; justify-content: space-between; gap: 12px;
 }
 @media(max-width:768px) { .sticky-book-bar { display: flex; } body { padding-bottom: 80px; } }
-.sbb-amount { font-size: 20px; font-weight: 800; color: #1a1a1a; }
-.sbb-per { font-size: 12px; color: #888; }
-.sbb-rating { font-size: 12px; color: #555; }
+.sbb-amount { font-size: 20px; font-weight: 800; color: var(--text-primary); }
+.sbb-per { font-size: 12px; color: var(--text-muted); }
+.sbb-rating { font-size: 12px; color: var(--text-secondary); }
 .sbb-cta {
-    background: #003580; color: white; padding: 12px 22px; border-radius: 8px;
+    background: var(--brand-primary); color: var(--text-light); padding: 12px 22px; border-radius: 8px;
     font-weight: 700; font-size: 14px; text-decoration: none; min-height: 46px;
     display: flex; align-items: center; white-space: nowrap;
 }
-.sbb-cta:hover { background: #00224f; color: white; }
+.sbb-cta:hover { background: var(--brand-primary-dark); color: var(--text-light); }
+
+/* Price breakdown box (overrides Bootstrap's fixed .bg-light in dark mode) */
+.detail-price-breakdown {
+    background-color: var(--bg-surface-alt) !important;
+}
+
+/* Selected room-type list item highlight */
+.detail-room-list-selected {
+    background-color: var(--bg-surface-alt);
+}
 
 @media (max-width: 768px) {
   .sbb-cta {
@@ -89,8 +99,32 @@
   }
 }
 
+/* ===== DARK MODE =====
+   Admin owner.css + global style.css force white surfaces (.card, main#main).
+   These rules re-assert the dark tokens when dark mode is active.
+*/
+body.dark-mode main#main,
+:root:not(.light-mode) main#main {
+  background: var(--bg-body);
+}
+
+body.dark-mode .card,
+:root:not(.light-mode) .card {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-light) !important;
+  color: var(--text-primary);
+}
+
+body.dark-mode .breadcrumb-item,
+:root:not(.light-mode) .breadcrumb-item {
+  color: var(--text-secondary);
+}
+body.dark-mode .breadcrumb-item.active,
+:root:not(.light-mode) .breadcrumb-item.active {
+  color: var(--text-muted);
+}
 /* Urgency */
 .urgency-bar { padding: 8px 14px; border-radius: 6px; font-size: 13px;
     font-weight: 600; margin: 8px 0; display: flex; align-items: center; gap: 6px; }
-.urgency-demand { background: #fff3e0; color: #e65100; border: 1px solid #ffcc80; }
-.urgency-social { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+.urgency-demand { background: rgba(255, 152, 0, 0.15); color: #e65100; border: 1px solid rgba(255, 204, 128, 0.5); }
+.urgency-social { background: rgba(76, 175, 80, 0.15); color: #4caf50; border: 1px solid rgba(165, 214, 167, 0.5); }

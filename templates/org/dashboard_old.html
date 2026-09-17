@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Organization Dashboard</title>
+    <meta name="user-authenticated" content="true">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/global/dark-mode.css') }}">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -47,6 +50,13 @@
             text-align: center;
         }
     </style>
+    <style>
+        body.dark-mode { background: var(--bg-body) !important; color: var(--text-primary); }
+        body.dark-mode .container { background: var(--bg-surface); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        body.dark-mode h1 { color: var(--text-primary); border-bottom-color: var(--accent-primary); }
+        body.dark-mode .placeholder { background: var(--bg-surface-alt); color: var(--text-secondary); border-color: var(--border-medium); }
+        body.dark-mode .stat-box { box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -74,5 +84,6 @@
             <p><strong>This is a placeholder template.</strong> Replace with actual organization dashboard components.</p>
         </div>
     </div>
+    <script src="{{ url_for('static', filename='js/global/theme-manager.js') }}" defer></script>
 </body>
 </html>

@@ -108,22 +108,42 @@ def _post_form(client, url, data=None, **kwargs):
 
 
 def _make_kyc_verified(app, user):
-    """Approve identity verification for *user* so is_fully_verified() is True.
+    """Approve identity verification for *user* at the canonical Driver
+    Workspace capability: verified phone + National ID + selfie = canonical
+    KYC tier 2 (calculate_kyc_tier).
 
     can_host() — the runtime gate that makes the accommodation_host context
     eligible for switch_context — reads IndividualVerification records, NOT
     UserProfile.verification_status. Completion tests therefore create an
     approved IndividualVerification row, mirroring the owner/admin approval
-    path (app/admin/owner/routes.py) that makes a host context available.
+    path (app/admin/owner/routes.py) that makes a host context available. The
+    real User row's phone flags (tier 1) are flipped too, so the canonical
+    KYC authority sees the identity as tier-2 qualified.
     """
-    from app.identity.individuals.individual_verification import IndividualVerification
+    from datetime import datetime, timezone
+
+    from app.identity.individuals.individual_verification import (
+        IndividualVerification,
+    )
+    from app.identity.models.user import User
 
     with app.app_context():
+        real_user = db.session.get(User, user.id)
+        if real_user is not None:
+            real_user.phone_verified = True
+            real_user.phone_verified_at = datetime.now(timezone.utc)
+            if not real_user.phone:
+                real_user.phone = f"+2567{uuid.uuid4().hex[:7]}"
         db.session.add(
             IndividualVerification(
                 user_id=user.id,
                 status="verified",
-                scope={"identity": True, "address": True},
+                scope={
+                    "identity": True,
+                    "address": True,
+                    "national_id": True,
+                    "biometric": True,
+                },
             )
         )
         db.session.commit()

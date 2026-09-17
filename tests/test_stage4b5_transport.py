@@ -176,6 +176,153 @@ def test_driver_wizard_commit_guard_prevents_duplicate_driver_profile(db_session
 
 
 # ---------------------------------------------------------------------------
+# Canonical identity ownership: driver onboarding must NOT mutate UserProfile
+# ---------------------------------------------------------------------------
+
+def _make_canonical_profile(db_session, user, **overrides):
+    """Create the user's canonical UserProfile with identity fields."""
+    from app.profile.models import UserProfile
+
+    fields = {
+        "user_id": user.public_id,
+        "full_name": "Canonical Full Name",
+        "date_of_birth": date(1990, 1, 1),
+        "nationality": "UG",
+        "id_type": "national_id",
+        "id_number": "NID-CANONICAL-001",
+    }
+    fields.update(overrides)
+
+    profile = UserProfile(**fields)
+    db_session.add(profile)
+    db_session.flush()
+    return profile
+
+
+def test_driver_commit_preserves_existing_canonical_dob(db_session):
+    """Canonical UserProfile.date_of_birth must remain unchanged when driver
+    onboarding commits, even when Step 1 carries a different DOB value."""
+    from datetime import datetime
+
+    from app.auth.onboarding_routes import _commit_driver_onboarding
+    from app.profile.models import get_profile_by_user
+
+    user = _make_user(db_session)
+    _make_canonical_profile(db_session, user)
+
+    wizard = _driver_wizard_data()
+    wizard["step1"]["date_of_birth"] = "1995-05-05"  # raw HTML string
+
+    _commit_driver_onboarding(user, wizard)
+    db_session.flush()
+
+    prof = get_profile_by_user(user.public_id)
+    assert prof.date_of_birth == date(1990, 1, 1)
+
+
+def test_driver_commit_preserves_existing_canonical_id_number(db_session):
+    """Canonical UserProfile.id_number must not be overwritten by the driver
+    Step 1 national_id_number input."""
+    from app.auth.onboarding_routes import _commit_driver_onboarding
+    from app.profile.models import get_profile_by_user
+
+    user = _make_user(db_session)
+    _make_canonical_profile(db_session, user)
+
+    wizard = _driver_wizard_data()
+    wizard["step1"]["national_id_number"] = "NID-DRIVER-INPUT-999"
+
+    _commit_driver_onboarding(user, wizard)
+    db_session.flush()
+
+    prof = get_profile_by_user(user.public_id)
+    assert prof.id_number == "NID-CANONICAL-001"
+    assert prof.id_type == "national_id"
+
+
+def test_driver_commit_preserves_all_canonical_identity(db_session):
+    """full_name, nationality, date_of_birth, id_type and id_number are all
+    preserved after driver onboarding commit — driver onboarding consumes
+    canonical identity, it does not replace it."""
+    from app.auth.onboarding_routes import _commit_driver_onboarding
+    from app.profile.models import get_profile_by_user
+
+    user = _make_user(db_session)
+    _make_canonical_profile(db_session, user)
+
+    wizard = _driver_wizard_data()
+    wizard["step1"].update({
+        "full_name": "Submitted Driver Name",
+        "nationality": "KE",
+        "date_of_birth": "2000-01-01",
+        "national_id_number": "NID-SUBMITTED-777",
+    })
+
+    _commit_driver_onboarding(user, wizard)
+    db_session.flush()
+
+    prof = get_profile_by_user(user.public_id)
+    assert prof.full_name == "Canonical Full Name"
+    assert prof.nationality == "UG"
+    assert prof.date_of_birth == date(1990, 1, 1)
+    assert prof.id_type == "national_id"
+    assert prof.id_number == "NID-CANONICAL-001"
+
+
+def test_driver_commit_does_not_create_canonical_profile(db_session):
+    """A user with no UserProfile must NOT gain one from driver onboarding.
+    Canonical identity creation is not owned by the driver flow."""
+    from app.auth.onboarding_routes import _commit_driver_onboarding
+    from app.profile.models import UserProfile
+
+    user = _make_user(db_session)
+    _commit_driver_onboarding(user, _driver_wizard_data())
+    db_session.flush()
+
+    assert UserProfile.query.filter_by(user_id=user.public_id).count() == 0
+
+
+def test_driver_commit_converts_license_expiry_to_datetime(db_session):
+    """Driver-owned licence_expiry (raw form string) must be converted to a
+    datetime at the domain boundary before persistence."""
+    from app.auth.onboarding_routes import _commit_driver_onboarding
+
+    user = _make_user(db_session)
+    _commit_driver_onboarding(user, _driver_wizard_data())
+    db_session.flush()
+
+    driver = DriverProfile.query.filter_by(
+        user_id=user.id, is_deleted=False,
+    ).one()
+    assert driver.license_expiry is not None
+    assert driver.license_expiry.date() == date(2030, 12, 31)
+
+
+def test_driver_commit_accepts_string_dob_without_type_error(db_session):
+    """Committing driver onboarding with a raw string DOB (the exact HTML
+    form shape that previously raised ``TypeError``) must succeed. Driver
+    onboarding never assigns the string to UserProfile.date_of_birth."""
+    from app.auth.onboarding_routes import _commit_driver_onboarding
+    from app.profile.models import get_profile_by_user
+
+    user = _make_user(db_session)
+    _make_canonical_profile(db_session, user, date_of_birth=None)
+
+    wizard = _driver_wizard_data()
+    wizard["step1"]["date_of_birth"] = "1995-05-05"  # raw HTML string
+
+    _commit_driver_onboarding(user, wizard)
+    db_session.flush()
+
+    prof = get_profile_by_user(user.public_id)
+    # Missing canonical identity is NOT written by driver onboarding.
+    assert prof.date_of_birth is None
+    assert DriverProfile.query.filter_by(
+        user_id=user.id, is_deleted=False,
+    ).count() == 1
+
+
+# ---------------------------------------------------------------------------
 # Uniform vehicle ownership: owner_type='driver'
 # ---------------------------------------------------------------------------
 

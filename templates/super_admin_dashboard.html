@@ -441,6 +441,15 @@ document.addEventListener('DOMContentLoaded', function() {
             All Security Active
           </div>
         </div>
+        <div class="sad-stat s-cyan">
+          <div class="sad-stat-label">KYC Pending Review</div>
+          <div class="sad-stat-value">{{ kyc_pending_count|default(0) }}</div>
+          <div class="sad-stat-sub" style="color:var(--sad-amber);font-size:11px">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="vertical-align:middle;margin-right:2px"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            {{ kyc_total_subs|default(0) }} total submissions
+          </div>
+          <a href="{{ url_for('admin.compliance.kyc_queue') }}" class="sad-stat-link">Review queue →</a>
+        </div>
       </div>
 
       <!-- NEW: Events Statistics Card -->
@@ -555,6 +564,11 @@ document.addEventListener('DOMContentLoaded', function() {
               <div class="sad-qa-icon" style="background:rgba(240,106,106,0.1)">📋</div>
               <div class="sad-qa-label">Review Submissions</div>
               <div class="sad-qa-sub">Pending review</div>
+            </a>
+            <a href="{{ url_for('admin.compliance.kyc_queue') }}" class="sad-qa-btn">
+              <div class="sad-qa-icon" style="background:rgba(212,168,67,0.1)">🛡️</div>
+              <div class="sad-qa-label">Review KYC</div>
+              <div class="sad-qa-sub">{{ kyc_pending_count|default(0) }} pending review</div>
             </a>
             <!-- NEW: Events Admin Quick Action -->
             <a href="{{ safe_url('events.admin_dashboard') }}" class="sad-qa-btn">
@@ -1159,6 +1173,56 @@ document.addEventListener('DOMContentLoaded', function() {
               {% endfor %}
               <a href="{{ safe_url('events.admin_events') }}?status=pending" class="sad-btn" style="width:100%;justify-content:center;margin-top:8px;font-size:11px;">
                 View All Pending →
+              </a>
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- Pending KYC Submissions -->
+          {% if kyc_recent_pending is defined %}
+          <div class="sad-card" style="border-color:rgba(212,168,67,0.25);margin-top:16px">
+            <div class="sad-card-head" style="background:rgba(212,168,67,0.06)">
+              <div class="sad-card-title">
+                <div class="sad-card-icon" style="background:rgba(212,168,67,0.12);color:var(--sad-amber)">🛡️</div>
+                KYC Submissions ({{ kyc_pending_count|default(0) }} pending)
+              </div>
+            </div>
+            <div class="sad-card-body">
+              {% if kyc_recent_pending and kyc_recent_pending|length > 0 %}
+                {% for record in kyc_recent_pending %}
+                <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--sad-border);">
+                  <div class="sad-feature-name">{{ record.user.username|default('User')|truncate(30) if record.user else 'User' }}</div>
+                  <div class="sad-feature-desc" style="font-size:11px;margin-bottom:8px">
+                    {{ (record.id_type or record.record_type)|replace('_',' ')|title }}
+                    · {{ record.created_at.strftime('%b %d, %H:%M') if record.created_at else '-' }}
+                  </div>
+                  <div style="display:flex;gap:8px;align-items:center">
+                    {% if record.status == 'pending' %}
+                    <form method="POST" action="{{ url_for('admin.compliance.kyc_action', kyc_id=record.id) }}" style="display:inline;margin:0">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="action" value="approve">
+                      <button class="sad-btn sm" style="background:rgba(62,207,142,0.1);color:var(--sad-green);padding:4px 8px;font-size:11px;border:none;cursor:pointer">
+                        ✓ Approve
+                      </button>
+                    </form>
+                    {% endif %}
+                    <a class="sad-btn sm" style="background:rgba(108,143,255,0.1);color:var(--sad-accent);padding:4px 8px;font-size:11px;"
+                       href="{{ url_for('admin.compliance.view_kyc', kyc_id_or_uuid=record.id) }}">
+                      Review
+                    </a>
+                    {% if record.status == 'manual_review' %}
+                    <span style="font-size:10px;color:var(--sad-amber);margin-left:auto">⚠️ Manual review</span>
+                    {% endif %}
+                  </div>
+                </div>
+                {% endfor %}
+              {% else %}
+                <div style="padding:20px;text-align:center;color:var(--sad-text3);font-size:12px">
+                  No pending KYC submissions
+                </div>
+              {% endif %}
+              <a href="{{ url_for('admin.compliance.kyc_queue') }}" class="sad-btn" style="width:100%;justify-content:center;margin-top:8px;font-size:11px;">
+                View KYC Review Queue →
               </a>
             </div>
           </div>

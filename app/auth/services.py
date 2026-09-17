@@ -702,6 +702,10 @@ def remove_role(
     if not existing:
         return True
 
+    # Authorize the hard delete for the DB trigger (transaction-scoped GUC).
+    from app.auth.deletion_guard import authorize_deletion
+    authorize_deletion(db.session, actor=f"user:{revoked_by_id or 'system'}")
+
     db.session.delete(existing)
 
     # Revoke sessions to force re-authorization

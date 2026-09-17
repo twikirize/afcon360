@@ -191,6 +191,30 @@
         </div>
     </div>
 
+    <!-- Your Transport Permissions -->
+    {% if permissions_info %}
+    <div class="stats-grid">
+        <div class="stat-card" style="background: #e0f7fa; border-color: #0288d1;">
+            <div class="stat-icon"><i class="fas fa-shield-alt"></i></div>
+            <div class="stat-value" style="color: #0288d1;">
+                {% if granted_by_owner %}
+                    Owner-granted
+                {% else %}
+                    Dynamic perm(s)
+                {% endif %}
+            </div>
+            <div class="stat-label">Your Transport Permissions</div>
+            <div style="margin-top: 0.5rem;">
+                <span style="color: #0288d1; font-weight: 500;">
+                    {% if can_manage_drivers %}Drivers ✅{% else %}Drivers ❌{% endif %}
+                </span>
+                {% if can_manage_vehicles %} | {% endif %}
+                {% if can_view_dashboard %} | Dashboard ✅{% else %}Dashboard ❌{% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Statistics Overview -->
     <div class="stats-grid">
         <div class="stat-card">

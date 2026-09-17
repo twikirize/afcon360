@@ -277,7 +277,8 @@ class TestOrgWriteProductionPath:
 
     def test_org_host_posts_property_via_real_route(self, app, client, accommodation_module_on):
         """Full write through the unpatched route: POST create persists an
-        organisation-owned Property and redirects to the host dashboard."""
+        organisation-owned Property and redirects to THAT property's
+        management page (not the host dashboard)."""
         actor, org_id, org_public_id = self._make_scenario(
             app, pp_status=ProviderCapabilityStatus.ACTIVATED.value,
         )
@@ -291,7 +292,6 @@ class TestOrgWriteProductionPath:
             follow_redirects=False,
         )
         assert r.status_code == 302
-        assert "/host/dashboard" in r.headers["Location"]
 
         from app.accommodation.models.property import Property
         with app.app_context():
@@ -304,6 +304,9 @@ class TestOrgWriteProductionPath:
             assert created is not None
             assert created.owner_org_id == org_id
             assert created.owner_user_id is None
+            expected = f"/accommodation/host/property/{created.id}/manage"
+
+        assert expected in r.headers["Location"]
 
     def test_foreign_org_context_sanitized_to_personal(self, app, client, accommodation_module_on):
         """Actor who belongs only to Org A cannot act under Org B's context.

@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <title>Title</title>
+    <meta name="user-authenticated" content="true">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/global/dark-mode.css') }}">
 </head>
 <body>
 <!-- templates/admin/bulk_verify.html -->
@@ -18,5 +21,6 @@
 </form>
 
 
+    <script src="{{ url_for('static', filename='js/global/theme-manager.js') }}" defer></script>
 </body>
 </html>

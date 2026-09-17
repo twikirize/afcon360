@@ -654,11 +654,15 @@ def register(identifier):
                 event_data=json_context,
             )
         
+        # Canonical identity prefill (Identity Center rule §5 in AGENTS.md):
+        # read person data from UserProfile, never from the User account row.
+        from app.profile.services.canonical_identity import get_canonical_identity
+        identity = get_canonical_identity(current_user)
         user_data = {
-            'full_name': getattr(current_user, 'username', current_user.email),
-            'email': current_user.email,
-            'phone': getattr(current_user, 'phone', ''),
-            'nationality': getattr(current_user, 'nationality', ''),
+            'full_name': identity.full_name or getattr(current_user, 'username', current_user.email),
+            'email': identity.email or current_user.email,
+            'phone': identity.phone or getattr(current_user, 'phone', ''),
+            'nationality': identity.nationality or '',
         }
         
         # Pass both: 'event' for template dot notation, 'event_data' for JSON serialization

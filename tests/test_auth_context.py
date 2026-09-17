@@ -19,6 +19,7 @@ def _user():
     org = SimpleNamespace(
         id=101,
         org_id="org-abc",
+        slug="abc_hotel",
         legal_name="ABC Hotel",
         is_active=True,
         is_deleted=False,
@@ -115,23 +116,32 @@ def test_available_contexts_normalize_existing_assignments(request_context):
     assert all(context.to_dict()["public_id"] != 101 for context in contexts)
 
 
-def test_organisation_context_uses_public_workspace_identifier(request_context):
+def test_organisation_context_uses_public_workspace_identifier(request_context, monkeypatch):
+    monkeypatch.setattr(
+        "app.auth.context._organisation_public_id_to_slug",
+        lambda public_id: "abc_hotel",
+    )
     organisation_context = next(
         context
         for context in get_available_contexts(_user())
         if context.type is ContextType.ORGANISATION
     )
 
-    assert organisation_context.workspace_url == "/org/org-abc/dashboard"
+    assert organisation_context.workspace_url == "/org/abc_hotel/dashboard"
     assert "101" not in organisation_context.workspace_url
+    assert organisation_context.public_id == "org-abc"
 
 
-def test_context_workspace_urls_target_registered_dashboards(request_context):
+def test_context_workspace_urls_target_registered_dashboards(request_context, monkeypatch):
+    monkeypatch.setattr(
+        "app.auth.context._organisation_public_id_to_slug",
+        lambda public_id: "abc_hotel",
+    )
     contexts = get_available_contexts(_user())
 
     urls = {(context.type, context.role): context.workspace_url for context in contexts}
 
-    assert urls[(ContextType.ORGANISATION, "org_owner")] == "/org/org-abc/dashboard"
+    assert urls[(ContextType.ORGANISATION, "org_owner")] == "/org/abc_hotel/dashboard"
     assert urls[(ContextType.EVENT, "organiser")] == "/events/organizer/dashboard/event-xyz"
     assert urls[(ContextType.DRIVER, "driver")] == "/transport/driver-dashboard"
     assert urls[(ContextType.PLATFORM, "admin")] == "/admin/super"

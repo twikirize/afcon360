@@ -14,6 +14,7 @@ from app.identity.models.organisation import Organisation
 from app.identity.models.organisation_member import OrganisationMember, OrgRole, OrgUserRole
 from app.identity.models.organization_types import OrganizationType, get_available_roles, get_organization_capabilities
 from app.identity.models.user import User
+from app.identity.services.organisation_slug import ensure_unique_slug
 
 
 class OrganizationRegistrationService:
@@ -187,6 +188,8 @@ class OrganizationRegistrationService:
                 org.set_setting('registration_date', datetime.now(timezone.utc).isoformat())
                 org.set_setting('creator_user_id', creator_user.id)
                 org.set_setting('setup_completed', False)
+
+                ensure_unique_slug(org)
 
                 if org_settings:
                     org.set_setting('kyc_enabled', org_settings.get('kyc_enabled', False))

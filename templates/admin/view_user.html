@@ -354,7 +354,7 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-promote" style="padding: 5px 10px; font-size: 12px;">Add Admin Role</button>
                 </form>
-                <form method="post" action="{{ url_for('admin.remove_user_role', user_id=user.public_id, role_name='admin') }}" style="display: inline;">
+                <form method="post" action="{{ url_for('admin.remove_user_role', user_id=user.public_id, role_name='admin') }}" style="display: inline;" class="secure-action" data-secure-label="Remove Admin role from {{ user.username }} — your password + owner MFA code required">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-demote" style="padding: 5px 10px; font-size: 12px;">Remove Admin Role</button>
                 </form>
@@ -390,9 +390,9 @@
                 <button type="submit" class="btn btn-promote"><i class="bi bi-arrow-up-circle"></i> Promote</button>
             </form>
 
-            <form method="post" action="{{ url_for('admin.demote_user', user_id=user.public_id) }}">
+            <form method="post" action="{{ url_for('admin.demote_user', user_id=user.public_id) }}" class="secure-action" data-secure-label="Demote {{ user.username }} — your password + owner MFA code required">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-demote" onclick="return confirm('Demote {{ user.username }}?')"><i class="bi bi-arrow-down-circle"></i> Demote</button>
+                <button type="submit" class="btn btn-demote"><i class="bi bi-arrow-down-circle"></i> Demote</button>
             </form>
 
             {% if user.public_id != current_user.public_id %}
@@ -405,9 +405,9 @@
             <button type="button" class="btn btn-suspend" onclick="showSuspendModal('{{ user.public_id }}', '{{ user.username }}')"><i class="bi bi-shield-exclamation"></i> Suspend</button>
 
             {% if user.public_id != current_user.public_id %}
-            <form method="post" action="{{ url_for('admin.delete_user', user_id=user.public_id) }}">
+            <form method="post" action="{{ url_for('admin.delete_user', user_id=user.public_id) }}" class="secure-action" data-secure-label="PERMANENTLY delete {{ user.username }} — your password + owner MFA code required">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-delete" onclick="return confirm('⚠️ PERMANENT: Delete {{ user.username }}?')"><i class="bi bi-trash"></i> Delete</button>
+                <button type="submit" class="btn btn-delete"><i class="bi bi-trash"></i> Delete</button>
             </form>
             {% endif %}
 
@@ -474,4 +474,5 @@
         }
     };
 </script>
+{% include "components/secure_action_modal.html" %}
 {% endblock %}

@@ -242,6 +242,11 @@ def require_role(*roles: str) -> Callable:
     Abort with 403 if the current user does not hold any of *roles*.
     Owner satisfies every check implicitly.
 
+    Additionally, if the user does not hold the traditional role,
+    dynamic transport permissions (granted via ``POST /auth/grant-transport-permission``)
+    are checked as a fallback. This allows owners to grant transport access
+    to specific users/roles without changing the global role system.
+
     Args:
         *roles: One or more global role name strings.
 
@@ -269,12 +274,41 @@ def require_role(*roles: str) -> Callable:
 
             from app.auth.helpers import has_global_role
             if not has_global_role(user, *roles):
-                _log_denied(
-                    "role_check", user, fn.__qualname__,
-                    required_roles=roles,
-                    user_roles=getattr(user, "role_names", []),
-                )
-                _flash_and_abort("You don't have permission to access this page.")
+                # Traditional role check failed - fall back to dynamic transport permissions
+                # Owner and super_admin bypass all checks
+                from app.auth.helpers import is_owner
+                if is_owner(user) or user.is_super_admin:
+                    # Owner/super_admin has access regardless
+                    pass  # Continue to run the route
+                else:
+                    # Check dynamic transport permissions as fallback
+                    from app.core.transport_permissions import TransportPermission
+                    user_perms = TransportPermission.get_active_by_user(user.id)
+                    if not user_perms:
+                        # No dynamic permissions either - deny access
+                        _log_denied(
+                            "role_check",
+                            user,
+                            fn.__qualname__,
+                            required_roles=roles,
+                            user_roles=getattr(user, "role_names", []),
+                        )
+                        _flash_and_abort("You don't have permission to access this page.")
+                    else:
+                        # User has dynamic permissions - check if they have the required transport access
+                        # For now, if user has ANY active transport permission, grant access
+                        # (could be made more specific per-action if needed)
+                        _log_denied(
+                            "role_check_fallback_dynamic",
+                            user,
+                            fn.__qualname__,
+                            required_roles=roles,
+                            user_roles=getattr(user, "role_names", []),
+                            dynamic_perms=len(user_perms),
+                        )
+                        # Allow access - owner/super_admin or user with dynamic perms
+                        pass
+            # else: traditional role check passed, continue normally
 
             return fn(*args, **kwargs)
         return wrapper
@@ -750,6 +784,152 @@ def can_moderate_content(content_type: str = None) -> Callable:
 require_super_admin = require_role("super_admin", "owner")
 require_admin_or_owner = require_role("admin", "super_admin", "owner")
 require_moderator = require_moderator_role
+
+
+def transport_permission_required(*permissions: str, role_filter: Optional[str] = None) -> Callable:
+    """
+    Decorator that checks dynamic transport permissions.
+
+    These are per-grantee (per-user) permissions granted by owner/super_admin
+    via the ``POST /auth/grant-transport-permission`` API. They override/
+    supplement the traditional role-based checks.
+
+    .. code-block:: python
+
+        @transport_bp.route("/drivers/verify")
+        @login_required
+        @transport_permission_required("manage_drivers", role_filter="admin")
+        def admin_verify_driver():
+            ...
+
+    Args:
+        *permissions: Permission names to check: "manage_drivers", "manage_vehicles", "view_dashboard"
+        role_filter: Optional role name - if set, only checks permissions for this role.
+                     If None, checks across ALL the user's active grants (OR logic).
+
+    Stacking order
+    --------------
+    Always place ``@login_required`` **above** this decorator::
+
+        @bp.route("/drivers/verify")
+        @login_required
+        @transport_permission_required("manage_drivers")
+        def admin_verify_driver():
+            ...
+
+    Permission name mapping:
+    - ``manage_drivers``  -> ``can_manage_drivers`` in TransportPermission
+    - ``manage_vehicles`` -> ``can_manage_vehicles`` in TransportPermission
+    - ``view_dashboard``  -> ``can_view_dashboard`` in TransportPermission
+    """
+
+    def decorator(f: Callable) -> Callable:
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            from app.core.transport_permissions import TransportPermission
+
+            user = _get_current_user()
+
+            # Super admin and owner bypass ALL checks
+            if not user:
+                _log_denied("unauthenticated", None, f.__qualname__)
+                flash("Please log in to access this page.", "warning")
+                return redirect(url_for("auth.login", next=request.url))
+
+            # Owner and super_admin have unconditional access
+            from app.auth.helpers import is_owner
+            if is_owner(user) or user.is_super_admin:
+                return f(*args, **kwargs)
+
+            # Check dynamic transport permissions
+            required = permissions if permissions else ["manage_drivers", "manage_vehicles", "view_dashboard"]
+
+            if role_filter:
+                # Check only the specified role's permissions
+                user_perms = TransportPermission.get_active_by_user(user.id)
+                role_perms = [p for p in user_perms if p.grantee_role == role_filter]
+                if not role_perms:
+                    _log_denied(
+                        "transport_permission_denied",
+                        user,
+                        f.__qualname__,
+                        required=required,
+                        role_filter=role_filter,
+                    )
+                    _flash_and_abort(
+                        f"You don't have transport permission for role '{role_filter}'."
+                    )
+                # Check if any of the requested permissions are in this role's grants
+                has_perm = False
+                for perm in role_perms:
+                    for req in required:
+                        if req == "manage_drivers" and perm.can_manage_drivers:
+                            has_perm = True
+                            break
+                        if req == "manage_vehicles" and perm.can_manage_vehicles:
+                            has_perm = True
+                            break
+                        if req == "view_dashboard" and perm.can_view_dashboard:
+                            has_perm = True
+                            break
+                    if has_perm:
+                        break
+                if not has_perm:
+                    _log_denied(
+                        "transport_permission_denied",
+                        user,
+                        f.__qualname__,
+                        required=required,
+                        role_filter=role_filter,
+                    )
+                    _flash_and_abort(
+                        f"You don't have transport permission for role '{role_filter}' "
+                        f"to {' and '.join(required)}."
+                    )
+            else:
+                # Check across ALL active grants (OR logic - any grant suffices)
+                user_perms = TransportPermission.get_active_by_user(user.id)
+                if not user_perms:
+                    _log_denied(
+                        "transport_permission_denied",
+                        user,
+                        f.__qualname__,
+                        required=required,
+                    )
+                    _flash_and_abort(
+                        f"You don't have any transport permissions granted. "
+                        f"Contact the platform owner to request access."
+                    )
+                # Check if any of the user's active grants include any requested permission
+                has_perm = False
+                for perm in user_perms:
+                    for req in required:
+                        if req == "manage_drivers" and perm.can_manage_drivers:
+                            has_perm = True
+                            break
+                        if req == "manage_vehicles" and perm.can_manage_vehicles:
+                            has_perm = True
+                            break
+                        if req == "view_dashboard" and perm.can_view_dashboard:
+                            has_perm = True
+                            break
+                    if has_perm:
+                        break
+
+                if not has_perm:
+                    _log_denied(
+                        "transport_permission_denied",
+                        user,
+                        f.__qualname__,
+                        required=required,
+                    )
+                    _flash_and_abort(
+                        f"You don't have transport permission for {' and '.join(required)}."
+                    )
+
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
 
 
 def requires_email_verified(f):

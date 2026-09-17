@@ -1,0 +1,423 @@
+/* ═══════════════════════════════════════════════════════════════
+   AFCON360 Selfie Capture — Styles
+   Mobile-first, follows §22 (touch targets ≥44×44px, clamp())
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Wrapper ─────────────────────────────────────────────── */
+.sc-wrapper {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ── Camera preview ──────────────────────────────────────── */
+.sc-camera-section { text-align: center; }
+
+.sc-preview-container {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  max-height: 420px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #111;
+  margin-bottom: clamp(12px, 3vw, 20px);
+}
+
+.sc-preview-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  /* Mirror for front camera */
+}
+
+[data-state="preview"] .sc-preview-video {
+  transform: scaleX(-1);
+}
+
+.sc-review-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sc-canvas { display: none; }
+
+/* ── Guide overlay ───────────────────────────────────────── */
+.sc-guide-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.sc-guide-oval {
+  width: 58%;
+  aspect-ratio: 3 / 4;
+  max-height: 75%;
+  border: 2.5px solid rgba(255, 255, 255, 0.55);
+  border-radius: 50%;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+}
+
+.sc-guide-labels {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.sc-label {
+  position: absolute;
+  font-size: clamp(10px, 2.5vw, 12px);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+/* Position labels relative to the oval */
+.sc-label-face {
+  top: 18%;
+}
+
+.sc-label-shoulders {
+  top: 60%;
+}
+
+.sc-label-chest {
+  top: 78%;
+}
+
+/* Corner brackets around the oval */
+.sc-guide-corners { display: none; }
+
+/* ── Quality badge (live preview) ────────────────────────── */
+.sc-quality-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 3;
+  font-size: 11px;
+  font-weight: 500;
+  color: #fff;
+}
+
+.sc-quality-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sc-quality-ok { background: #22c55e; box-shadow: 0 0 4px #22c55e88; }
+.sc-quality-warn { background: #f59e0b; box-shadow: 0 0 4px #f59e0b88; animation: sc-pulse 1.2s ease-in-out infinite; }
+
+@keyframes sc-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ── Capture buttons ─────────────────────────────────────── */
+.sc-preview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(16px, 5vw, 32px);
+  padding-bottom: 8px;
+}
+
+.sc-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s, opacity 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sc-btn:active { transform: scale(0.92); }
+
+/* Capture ring button */
+.sc-btn-capture {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: transparent;
+  padding: 0;
+}
+
+.sc-btn-capture-ring {
+  display: block;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 4px solid #fff;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.sc-btn-capture-ring::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: #fff;
+  transition: background 0.15s;
+}
+
+.sc-btn-capture:hover .sc-btn-capture-ring::after { background: #f0f0f0; }
+.sc-btn-capture:active .sc-btn-capture-ring::after { background: #ddd; width: 56px; height: 56px; inset: 6px; }
+
+/* Switch / retake icon buttons */
+.sc-btn-switch,
+.sc-btn-retake {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 20px;
+  backdrop-filter: blur(4px);
+}
+
+.sc-btn-switch:hover,
+.sc-btn-retake:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* ── Review section ──────────────────────────────────────── */
+.sc-review-section { text-align: center; }
+
+.sc-review-container {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  max-height: 420px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #111;
+  margin-bottom: clamp(12px, 3vw, 20px);
+}
+
+.sc-review-confirm-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sc-review-quality {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 10px 14px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+  color: #fbbf24;
+  font-size: clamp(11px, 2.5vw, 13px);
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.sc-review-quality i { flex-shrink: 0; margin-top: 2px; }
+
+.sc-review-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.sc-btn-secondary,
+.sc-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: clamp(10px, 2.5vw, 14px) clamp(16px, 4vw, 28px);
+  border-radius: 10px;
+  border: none;
+  font-size: clamp(13px, 3vw, 15px);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sc-btn-secondary:active,
+.sc-btn-primary:active { transform: scale(0.96); }
+
+.sc-btn-secondary {
+  background: #374151;
+  color: #e5e7eb;
+}
+
+.sc-btn-secondary:hover { background: #4b5563; }
+
+.sc-btn-primary {
+  background: #2563eb;
+  color: #fff;
+}
+
+.sc-btn-primary:hover { background: #1d4ed8; }
+
+/* ── Confirmed section ───────────────────────────────────── */
+.sc-confirmed-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+}
+
+.sc-confirmed-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: 12px;
+  background: #065f46;
+  color: #a7f3d0;
+  font-size: clamp(14px, 3vw, 16px);
+  font-weight: 600;
+}
+
+.sc-confirmed-badge i { font-size: 20px; }
+
+.sc-btn-link {
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 8px;
+}
+
+.sc-btn-link:hover { color: #9ca3af; }
+
+/* ── Unavailable section ─────────────────────────────────── */
+.sc-unavailable-section {
+  text-align: center;
+  padding: clamp(20px, 5vw, 40px);
+}
+
+.sc-unavailable-icon {
+  font-size: 48px;
+  color: #6b7280;
+  margin-bottom: 16px;
+}
+
+.sc-unavailable-msg {
+  color: #d1d5db;
+  font-size: clamp(13px, 3vw, 15px);
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+/* ── Guide explainer (below camera) ──────────────────────── */
+.sc-guide-explainer {
+  margin-top: clamp(16px, 4vw, 24px);
+  padding: clamp(14px, 3vw, 20px);
+  border-radius: 12px;
+  background: #1e293b;
+  border: 1px solid #334155;
+}
+
+.sc-guide-explainer h4 {
+  margin: 0 0 12px;
+  font-size: clamp(14px, 3vw, 16px);
+  font-weight: 700;
+  color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sc-guide-explainer h4 i { color: #60a5fa; }
+
+.sc-guide-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sc-guide-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: clamp(12px, 2.8vw, 14px);
+  color: #cbd5e1;
+  line-height: 1.45;
+}
+
+.sc-guide-item-icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  margin-top: 1px;
+}
+
+.sc-guide-item-icon.do { background: #065f46; color: #6ee7b7; }
+.sc-guide-item-icon.dont { background: #7f1d1d; color: #fca5a5; }
+
+.sc-guide-diagram {
+  margin-top: 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.sc-diagram-box {
+  width: 140px;
+  padding: 14px 0;
+  border: 2px dashed #475569;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: #94a3b8;
+  font-size: 11px;
+  text-align: center;
+}
+
+.sc-diagram-box .sc-diagram-icon { font-size: 28px; color: #60a5fa; }
+.sc-diagram-box .sc-diagram-label { font-weight: 600; color: #e2e8f0; }
+.sc-diagram-box .sc-diagram-sub { color: #64748b; font-size: 10px; }
+
+/* ── Mobile adjustments ──────────────────────────────────── */
+@media (max-width: 480px) {
+  .sc-preview-container { border-radius: 12px; max-height: 360px; }
+  .sc-review-container { border-radius: 12px; max-height: 360px; }
+  .sc-guide-oval { width: 62%; }
+  .sc-btn-capture { width: 56px; height: 56px; }
+  .sc-btn-capture-ring { width: 56px; height: 56px; }
+}
+
+/* ── Dark mode support ───────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  .sc-guide-explainer { background: #0f172a; border-color: #1e293b; }
+}

@@ -228,7 +228,22 @@ class OrganisationDetailResource(Resource):
         if "insurance_verified" in data:
             org.insurance_verified = data["insurance_verified"]
             if data["insurance_verified"] and "insurance_expiry" in data:
-                org.insurance_expiry = data["insurance_expiry"]
+                raw_expiry = data["insurance_expiry"]
+                if raw_expiry is None or raw_expiry == "":
+                    org.insurance_expiry = None
+                else:
+                    try:
+                        parsed = datetime.fromisoformat(
+                            str(raw_expiry).replace("Z", "+00:00")
+                        )
+                        if parsed.tzinfo is None or parsed.utcoffset() is None:
+                            parsed = parsed.replace(tzinfo=timezone.utc)
+                        org.insurance_expiry = parsed.astimezone(timezone.utc)
+                    except (TypeError, ValueError):
+                        return {
+                            "success": False,
+                            "error": "insurance_expiry must be a valid YYYY-MM-DD date or ISO-8601 datetime",
+                        }, 400
 
         try:
             db.session.commit()

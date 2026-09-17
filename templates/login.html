@@ -6,6 +6,9 @@
     <title>Login - {{ app_name }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <meta name="user-authenticated" content="false">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/global/dark-mode.css') }}">
     <style>
         :root {
             --afcon-green: #006400;
@@ -286,6 +289,79 @@
             }
         }
     </style>
+
+    <style>
+        /* AFCON360 theme: login page dark override (ThemeManager sets body.dark-mode) */
+        body.dark-mode {
+            background: linear-gradient(135deg, var(--bg-body) 0%, var(--bg-elevated) 100%);
+            color: var(--text-primary);
+        }
+        body.dark-mode .back-home a {
+            background-color: var(--bg-elevated);
+            color: var(--color-primary);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+        body.dark-mode .back-home a:hover {
+            background-color: var(--color-primary);
+            color: var(--text-light);
+        }
+        body.dark-mode .login-card {
+            background: var(--bg-elevated);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+        }
+        body.dark-mode .login-body {
+            color: var(--text-primary);
+        }
+        body.dark-mode .form-label {
+            color: var(--text-primary);
+        }
+        body.dark-mode .social-btn {
+            background: var(--bg-surface);
+            border-color: var(--border-medium);
+            color: var(--text-primary) !important;
+        }
+        body.dark-mode .social-btn.facebook {
+            border-color: #1877f2;
+            color: #6ea2f5 !important;
+        }
+        body.dark-mode .social-btn.google {
+            border-color: #db4437;
+            color: #e2857c !important;
+        }
+        body.dark-mode .social-btn.gmail {
+            border-color: #d14836;
+            color: #e2857c !important;
+        }
+        body.dark-mode .social-login .divider::before,
+        body.dark-mode .social-login .divider::after {
+            border-bottom-color: var(--border-medium);
+        }
+        body.dark-mode .social-login .divider span {
+            color: var(--text-muted);
+        }
+        body.dark-mode .phone-id-signup {
+            border-top-color: var(--border-medium);
+        }
+        body.dark-mode .phone-id-btn {
+            background: linear-gradient(to right, var(--bg-surface-alt), var(--bg-elevated));
+            color: var(--text-light);
+        }
+        body.dark-mode .forgot-link,
+        body.dark-mode .register-link {
+            color: var(--color-primary-hover);
+        }
+        body.dark-mode .register-link:hover {
+            color: var(--text-primary);
+        }
+        body.dark-mode .form-check-input {
+            background-color: var(--bg-surface);
+            border-color: var(--border-medium);
+        }
+        body.dark-mode .form-check-input:checked {
+            background-color: var(--color-primary);
+            border-color: var(--color-primary);
+        }
+    </style>
 </head>
 <body>
     <div class="back-home">
@@ -403,6 +479,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/global/theme-manager.js') }}" defer></script>
     <script>
         // Form validation
         (function() {

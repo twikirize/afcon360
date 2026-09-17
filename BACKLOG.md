@@ -1295,17 +1295,17 @@ the proposed design, and the ownership boundary. NOT yet implemented unless note
 ---
 
 ## Accommodation notification types still silently dropped — `owner_claim_invite` / `payment_failed` / `guest_registration_removed` / `property_published`
-- **Status:** Not started (classification D — separate backlog defect; discovered 2026-09-09, NOT fixed in the notification-repair node)
+- **Status:** PARTIAL — `property_published` RE-RESOLVED (2026-09-15, mapped to canonical `property_approved` per the sanctioned non-enum-expansion path below); `owner_claim_invite` / `payment_failed` / `guest_registration_removed` still open
 - **Raised:** 2026-09-09 — during the EGGE notification functionality repair node's end-to-end type-validation trace.
 - **Context:** `NotificationService.send()` coerces `notification_type` via `NotificationType(value)` and swallows any ValueError (services.py:312-427), returning None. These accommodation call sites pass string literals that are NOT members of `NotificationType`, so the notification is silently dropped every time:
   - `owner_claim_invite` — `app/accommodation/routes.py:2213`
   - `payment_failed` — `app/accommodation/routes.py:2266`
   - `guest_registration_removed` — `app/accommodation/routes.py:2970`
-  - `property_published` — `app/accommodation/services/moderation_service.py:233`
+  - `property_published` — `app/accommodation/services/moderation_service.py:233` (RESOLVED 2026-09-15: mapped to `property_approved` — the canonical member whose policy message is "your property listing is now live on AFCON360"; same "now live" semantics as the old `property_published`; no enum expansion, no §20.2 sync required. Fix: `publish_property` now sends `notification_type='property_approved'`.)
   (In contrast, `booking_confirmed`, `booking_pending`, `third_party_booking`, `accommodation_complaint_opened`, `property_approved/rejected/changes_requested/suspended/reinstated/archived/restored`, and `system_alert` are valid enum values and persist normally.)
 - **What needs to happen:** Authorized decision node: either map each legacy string to an existing canonical enum member (e.g. `property_published` → `property_approved` semantics) with a documented contract, or add enum members (NO enum expansion without explicit approval — requires §20.2 CHECK-constraint sync + per-type email templates). Then verify each notification persists. Do NOT fix silently inside a non-authorized node.
 - **Owner/area:** notifications / accommodation
-- **Links:** app/accommodation/routes.py:2213,2266,2970, app/accommodation/services/moderation_service.py:233, app/notifications/services.py:312-427, app/notifications/models.py:40-105 (NotificationType), AGENTS.md §6, §9, §17, §34
+- **Links:** app/accommodation/routes.py:2213,2266,2970, app/accommodation/services/moderation_service.py:233 (fixed), app/notifications/services.py:312-427, app/notifications/models.py:40-105 (NotificationType), AGENTS.md §6, §9, §17, §34
 
 ---
 
@@ -1575,13 +1575,13 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 ---
 
 ## Flask-RESTful × Flask-Login — anonymous 401 rendered as 500 (pre-existing, repo-wide)
-- **Status:** RESOLVED 2026-09-17 (fixed: enhanced `unauthorized()` handler in `app/__init__.py` to check `request.path.startswith('/api/')` first and return proper JSON 401 for API requests; web routes retain flash+redirect login behavior; regression tests `tests/test_transport_restful_auth.py` key test `test_anonymous_driver_location_post_returns_401` passes; auth route security test `test_d1_anonymous_guarded_route_redirects_to_login` passes preserving web backward compatibility).
+- **Status:** REOPENED 2026-09-17 (EGGE DRIVER GATE CLEANUP evidence contradicts the earlier RESOLVED claim — see CORRECTION below; Defect B is RECORD-ONLY for this node per its brief, NOT fixed here)
 - **Raised:** 2026-09-12 (proven during TH-3-D2 FINAL EVIDENCE GATE)
-- **Context:** Any `@login_required` POST/route on a **flask-restful Resource** anonymously returns HTTP 500 (`TypeError: Object of type Response is not JSON serializable`) instead of 401. Mechanism: the app login-manager `unauthorized()` handler (`app/__init__.py:664-671`) returns a `Response`; the flask-restful `Api` error path (via protected-route `@login_required`) tries to jsonify that Response and crashes. Proven on TWO endpoints: TH-3-D2 `DriverLocationResource.post` AND the non-D2 `/api/transport/drivers/me/offers/REF-1/decline` (both 500 under anonymous, CSRF disabled in tests). Affects roughly every flask-restful endpoint using `@login_required`. **Security property HOLDS:** the unauthenticated write is still denied — no data read or mutation — so the D2 gate anonymous negative rows assert `status_code >= 400` + `error` key, NOT an exact 401.
-- **What needs to happen (COMPLETED):** Enhanced `unauthorized()` handler in `app/__init__.py` to check `request.path.startswith('/api/')` first and return `jsonify({"error": "Unauthorized"}), 401` for API requests, while preserving the existing flash+redirect behavior for non-API (web) routes. This narrow, additive 3-line change at the top of the handler resolves the 500→401 mismatch for all flask-restful protected endpoints without redesigning auth, without touching the login_manager, and without affecting web route login flows.
-- **Resolution (2026-09-17):** Added `/api/` path check at line 667-668 in `app/__init__.py` `unauthorized()` handler: `if request.path.startswith('/api/'): return jsonify({"error": "Unauthorized"}), 401`. Verified: anonymous `DriverLocationResource.post` now returns 401 JSON instead of 500; anonymous `/api/transport/drivers/me/offers/REF-1/decline` now returns 401 JSON; web route `test_d1_anonymous_guarded_route_redirects_to_login` still passes (flash+redirect preserved); regression tests `tests/test_transport_restful_auth.py` key test passes; `tests/test_exception_keyword_args.py` 12/12 pass (Defect A also resolved). No auth redesign, no migration, no schema change.
+- **Context:** Any `@login_required` POST/route on a **flask-restful Resource** anonymously returns HTTP 500 (`TypeError: Object of type Response is not JSON serializable`) instead of 401. Mechanism: the app login-manager `unauthorized()` handler (`app/__init__.py:664-671`) returns a tuple `(jsonify(...), 401)`; the flask-restful `Api` error path (via protected-route `@login_required`) tries to jsonify that Response and crashes. Proven on TWO endpoints: TH-3-D2 `DriverLocationResource.post` AND the non-D2 `/api/transport/drivers/me/offers/REF-1/decline` (both 500 under anonymous, CSRF disabled in tests). Affects roughly every flask-restful endpoint using `@login_required`. **Security property HOLDS:** the unauthenticated write is still denied — no data read or mutation — so the D2 gate anonymous negative rows assert `status_code >= 400` + `error` key, NOT an exact 401.
+- **What needs to happen (COMPLETED):** Previously recorded as done by checking `request.path.startswith('/api/')` first. **CORRECTION (2026-09-17):** That check exists at `app/__init__.py:668-669` but is INEFFECTIVE for Flask-RESTful resources: `unauthorized()` still RETURNS A TUPLE `(jsonify(...), 401)`, and flask_restful's `output()` wrapper (`.venv/Lib/site-packages/flask_restful/__init__.py:487-494`) receives the tuple (not a `ResponseBase`), unpacks it, gets the already-serialized `Response` as `data`, and `make_response` → `output_json` → `json.dumps(Response)` → `TypeError`. Empirically re-proven after the DRIVER_GATE-2 fixture fix: `tests/test_transport_restful_auth.py::test_anonymous_driver_location_post_returns_401` and `::test_anonymous_cannot_mutate_driver_location` still get `Expected 401, got 500` with `"error": "Object of type <class 'pytest_flask.plugin.JSONResponse'> is not JSON serializable"`. A working fix MUST ensure `unauthorized()` returns a bare `Response` (e.g. `return jsonify(...)`) instead of a tuple for `/api/` requests, so flask_restful's `isinstance(resp, ResponseBase)` short-circuit returns it directly — then re-verify the two anonymous 401 tests AND the web-route redirect test. Out of scope for the EGGE DRIVER GATE CLEANUP node (record-only); requires a separate authorized framework-integration node.**
+- **Resolution (2026-09-17):** Earlier fix (the `/api/` path check + `jsonify(...), 401`) resolved the PLAIN-WEB route redirect behavior but NOT the flask-restful serialization 500 — see CORRECTION above; the two anonymous 401 tests in `tests/test_transport_restful_auth.py` still fail (3 pass / 2 fail post-fixture-fix).
 - **Owner/area:** framework integration / flask-restful / auth
-- **Links:** `app/__init__.py:664-671` (`unauthorized_handler`); `app/transport/api/driver_routes.py:255-299` (`DriverLocationResource`); evidence assertions in `tests/test_transport_d2_evidence.py` (anonymous location test); `tests/test_transport_restful_auth.py` (5 regression tests, key 401 test passes); `tests/test_exception_keyword_args.py` (12/12 pass, Defect A)
+- **Links:** `app/__init__.py:664-671` (`unauthorized_handler`); `.venv/Lib/site-packages/flask_restful/__init__.py:487-494` (`output()` wrapper); `app/transport/api/driver_routes.py:278-328` (`DriverLocationResource.post`); evidence: `tests/test_transport_restful_auth.py` (3 pass / 2 fail); `tests/test_exception_keyword_args.py` (12/12 pass, Defect A)
 - **Adjudication (TH-3-D2 FINAL GATE, 2026-09-12):** DEPENDENCY-ON-NEXT-NODE = NONE (Transport dispatch/claim/offer/matching/recovery assertions use tolerant `status_code >= 400`, already asserted in D2 evidence suite). Blocking classification: NON-BLOCKING. Security property verified on both endpoints; defect recorded for a later architectural node. NOT caused by TH-3-D2 (reproduced on a pre-existing non-D2 endpoint).
 
 ---
@@ -1704,3 +1704,214 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 - What needs to happen: Register a `datetimeformat` template filter (likely in app.py launcher alongside strftime, or app/__init__.py alongside format_number) formatting datetimes consistently, then render-transport pages smoke test. Requires user decision: fixing touches shared launcher outside the coordination subtree (scope-expansion per scope-discipline rule, AGENTS.md §5).
 - Owner/area: transport / shared templates
 - Links: templates/transport/bookings/show.html:60,122,126,187,216-237, templates/transport/bookings/index.html:110, templates/transport/incidents/index.html:12,147, templates/transport/routes/index.html:54, app.py:55, app/__init__.py:1654
+## KYC moderator document view does not resolve bare media UUID references (PRE-EXISTING)
+- Status: Not started
+- Raised: 2026-09-15
+- Context: `app/kyc/routes.py::moderate_document` (route `kyc.moderate_document`) passes `record.document_url` straight to `templates/kyc/moderate_document.html` without resolving storage references. If the stored value is a bare Media `public_id` (UUID) rather than a full path (uploads that completed before async URL generation), the "View Document" link points at an unresolvable UUID and the document cannot be opened. The compliance route already solves this via `_resolve_kyc_media_url()` in `app/admin/compliance/routes.py:222-242`.
+- What needs to happen: Reuse the same resolution logic in `moderate_document` (or move the resolver into a shared media helper) so moderator-facing document links resolve bare UUIDs to servable `/api/media/files/...` paths.
+- Owner/area: kyc / media
+- Links: app/kyc/routes.py:1093-1101, templates/kyc/moderate_document.html:137-150, app/admin/compliance/routes.py:222-242
+
+## receiver_wallet.html renders internal wallet.user_id (SECURITY / dual-ID exposure)
+- Status: Needs review
+- Raised: 2026-09-15 (observed during theme-unification pass; outside theme scope)
+- Context: `templates/receiver_wallet.html` renders `wallet.user_id` directly to the user. Per §12.1 Dual ID System, internal `id` must NEVER be exposed in templates/APIs/logs; references should resolve through `public_id`. This predates the theme work and was intentionally NOT fixed during the theming task (scope discipline).
+- What needs to happen: Replace the template's use of `wallet.user_id` with the wallet's public reference (e.g. `wallet.public_id` or user `public_id`); verify the route context supplies the public value.
+- Owner/area: wallet / templates
+- Links: templates/receiver_wallet.html, app/wallet/
+
+## Dead {% extends %} targets cause 500 for 21 templates (PRE-EXISTING)
+- Status: Needs review
+- Raised: 2026-09-15 (discovered while mapping template parentage for theme coverage)
+- Context: The following `{% extends %}` targets have NO file at the referenced path: `admin/base.html` (used by wallet_adjustments.html, wallet/admin/{financial_controller,payment_aggregator,regulator_access,sandbox_testing}.html), `admin/base_admin.html` (content_dashboard.html), `admin/owner/base.html` (admin/owner/kyc_tiers.html, compliance/dashboard.html), `owner/base.html` (aggregator_settings, compliance_settings, error_logs, wallet_settings), `owner/admin.html` (add_payment_gateway, configure_fraud_detection, configure_nonce_protection, configure_travel_rule), `owner/layout.html` (owner/wallet_config/* x5), `transport/base_dashboard.html` (transport/dashboard/overview.html). These pages would raise TemplateNotFound if rendered.
+- What needs to happen: Either create the missing bases (reuse existing themed shell, e.g. admin/admin.html or wallet/base_wallet.html) or re-point/delete the dead templates. Requires user decision — touches multiple modules and possibly route availability.
+- Owner/area: cross-module / templates
+- Links: listed extends targets above
+
+## static/js/theme-manager.js is a 0-byte stale duplicate (cleanup candidate)
+- Status: Not started
+- Raised: 2026-09-15 (theme-unification pass)
+- Context: `static/js/theme-manager.js` (root of static/js) is 0 bytes. All templates previously referencing it (transport/base.html, transport/dashboard/base_dashboard.html) now point at the real `static/js/global/theme-manager.js` (34,504 bytes). One stale comment in `templates/user/preferences.html:472` was updated to the correct path.
+- What needs to happen: Delete the empty file (verify no remaining references first) — pure cleanup, safe to do whenever convenient.
+- Owner/area: static / theme
+- Links: static/js/theme-manager.js (empty), static/js/global/theme-manager.js
+
+## Theme dark-mode residual: custom inline-styled admin/standalone surfaces stay light
+- Status: Not started
+- Raised: 2026-09-15
+- Context: Theme-unification added theme assets to all renderable user-facing pages. Generic Bootstrap + standalone-body dark rules now flip most surfaces. Pages with heavy custom inline styling (`admin/settings.html` 84KB custom CSS, several `admin/*` standalone templates with `<style>`-block hex colors e.g. status badges, `.card-header` overrides) may keep light surfaces for components not covered by dark-mode.css tokens. These are cosmetic residuals, not functional regressions.
+- What needs to happen: Optionally harden specific surfaces per page with `body.dark-mode` overrides as they are audited (follow the login.html/auditor dashboard pattern). Track in docs/THEME_COVERAGE.md.
+- Owner/area: templates / theme
+- Links: templates/admin/settings.html, templates/admin/{kyc_documents,view_user,payment_methods,manage_users}.html, docs/THEME_COVERAGE.md
+
+## AUTHORIZATION_REFACTOR-1 — Transport provider registration still gated on legacy `is_organisation` only
+- Status: Not started
+- Raised: 2026-09-16
+- Context: `app/transport/services/provider_service.py:292` checks `is_organisation` but NOT `has_platform_role(org, 'provider')`. PP is the canonical write-side source for provider capabilities. This path is out of scope of the current DASHBOARD_REALIGN_PP node but was identified as deferred work.
+- What needs to happen: Either gate on `has_platform_role` (matching the accommodation/event dual-gate) or retire the provider-service registration if it is superseded by PP activation. Requires decision — affects who may register as a transport provider.
+- Owner/area: transport / provider service
+- Links: app/transport/services/provider_service.py:292, app/identity/services/authorization_service.py:76-83
+
+## AUTHORIZATION_REFACTOR-2 — `get_accessible_modules` short-circuits bypass Platform role when `is_organisation`
+- Status: Not started
+- Raised: 2026-09-16
+- Context: `app/identity/services/organization_permissions.py:106/113/120/127` — when `is_organisation` is truthy, the code returns `True` immediately, bypassing the `has_platform_role(org, 'provider')` check that accommodation and events use for dual gating. This means the legacy org-type enum can grant capabilities that PP activation is designed to gate.
+- What needs to happen: Short-circuits should check both `is_organisation` AND `has_platform_role`, or be removed in favour of a single PP-backed gate. Affects events, accommodation, transport, tourism accessible-module derivation.
+- Owner/area: identity / organization_permissions
+- Links: app/identity/services/organization_permissions.py:100-129
+
+## AUTHORIZATION_REFACTOR-3 — `can_org_host` gate in accommodation uses `get_capabilities()` (legacy-only)
+- Status: Not started
+- Raised: 2026-09-16
+- Context: `app/accommodation/services/identity_service.py:89` gates accommodation hosting on `can_org_host`, which is derived from `get_capabilities()` — the legacy OrganisationType-based method. PP has a separate `is_capability_operational('accommodation')` gate that is the canonical write-side check. Both paths exist, meaning the write path may be gated differently from the presentation.
+- What needs to happen: Remove `can_org_host` gate from `identity_service.py` (the PP write-boundary in `host_service.py:98-125` is the authoritative check), or merge into one canonical path. Affects accommodation module listing.
+- Owner/area: accommodation / identity_service
+- Links: app/accommodation/services/identity_service.py:89, app/accommodation/services/host_service.py:98-125
+
+## AUTHORIZATION_REFACTOR-4 — Retire `organisation_provider_capabilities` model/OPC as PP becomes single source of truth
+- Status: Not started
+- Raised: 2026-09-16
+- Context: With PP now the canonical write and presentation source, the OPC model/table is no longer a production write or read target. It is registered for backward-compat but should be retired via an approved migration review (§20). Retirement affects: `organisation_provider_capability.py`, `OrganizationProviderCapability` model, `get_capabilities()` / `get_active_modules()` on Organisation, `capability_service.py` write-path references.
+- What needs to happen: Audit all remaining OPC references; authorise retirement; review with §20 migration constraints; remove model + table + registry entry. All application code should read PP; no application code should write OPC.
+- Owner/area: identity / model retirement
+- Links: app/identity/models/organisation_provider_capability.py, app/identity/models/organisation.py:278-305, app/identity/services/capability_service.py, app/core/model_registry.py
+
+## EGGE date-boundary — compliance/KYC `User.date_of_birth` read sites (AttributeError risk)
+- Status: Not started
+- Raised: 2026-09-16 (EGGE date-boundary track — VERIFY node)
+- Context: During the date-boundary implementation node (only the four PROVEN-DEFECTIVE HTTP write boundaries were changed), a NON-INPUT finding surfaced: `User.date_of_birth` is read in app/compliance/aml_service.py:381-382 (age checks) and app/kyc/models.py:96-97 (KYC profile age) via attribute access. A raw string stored into the Date column (the pre-fix defect at the guest registration route) makes that read raise `AttributeError` at runtime. Read-only sites; out of scope of the write-boundary node; NOT modified.
+- What needs to happen: Audit both read sites for defensive handling (or rely on the now-corrected write boundary). Confirm whether any other surface still writes raw strings to `date_of_birth`. Separate BEHAVIORAL scope decision required before any fix.
+- Owner/area: compliance / kyc / identity
+- Links: app/compliance/aml_service.py:381-382, app/kyc/models.py:96-97, app/accommodation/routes.py:3399-3406, tests/test_date_boundary_conversions.py
+## KYC Live Selfie — record-ownership decision + liveness gap (2026-09-16 selfie capture work)
+- Status: Open (infra retained; universal upload-time requirement REMOVED 2026-09-17)
+- Raised: 2026-09-16
+- Context: Real-selfie capture was implemented on the KYC individual upload form (verify_upload.html): WebRTC front-camera widget, guided framing (face, shoulders, upper chest), client-side quality analysis, selfie originally REQUIRED for identity doc types (national_id, passport, driver_license, voter_card) at both client guard and server route. Captured image is injected into the existing selfie_file input (DataTransfer) with a selfie_data_url base64 fallback decoded server-side (_save_selfie_data_url). Storage still targets the existing KycRecord.selfie_url — the user explicitly deferred where the selfie should ultimately be owned ("we shall later decide what kyc record it should belong to").
+- Update (2026-09-17): The universal upload-time selfie requirement was REMOVED (Refinement D). `IDENTITY_DOC_TYPES_REQUIRING_SELFIE` and the server enforcement block were deleted from kyc/routes.py; the client-side `__selfieRequiredForSubmit` guard was removed from verify_upload.html. Users may submit a National ID / passport / driver licence WITHOUT a selfie again. All capture/upload/QR-pairing infrastructure remains intact and is still offered as evidence; the tier engine still derives the `biometric` scope flag from `selfie_url` (`_aggregate_kyc_scope`), so a selfie remains enhanced assurance toward tier 2.
+- What needs to happen: (1) Product/compliance decision on which KYC record should own the captured selfie long-term; (2) biometric liveness/anti-spoofing is NOT implemented — current verification relies on a real camera capture + quality heuristics, which gives evidence but not liveness; approve a spec before adding any liveness step. Also consider a configured size cap on selfie_data_url to bound request size.
+- Owner/area: kyc / compliance / identity
+- Links: app/kyc/routes.py (_save_selfie_data_url, _save_uploaded_file), templates/kyc/verify_upload.html, static/js/modules/user/selfie-capture.js, static/css/modules/user/selfie-capture.css
+- Follow-up (2026-09-16): Cross-device phone pairing SHIPPED for camera-less desktop — single-use timed QR/code pairing (`/kyc/selfie/pair` → standalone `selfie_companion.html` capture → `/kyc/selfie/companion/upload`). Covering tests pass (7/7, `tests/test_kyc_selfie_pairing.py`) and existing KYC tests still pass (5/5). Still deferred from this flow: real-device end-to-end manual test (QR scan → phone capture → desktop poll/submit); pairing QR/code carries no liveness check either. Storage for paired selfies reuses `selfie_url`/MediaService under the real owner's public_id — the ownership decision above still applies.
+- Links (pairing): app/kyc/selfie_pair.py, app/kyc/routes.py (selfie_pair_nonce consumption + bottom route registration), templates/kyc/selfie_companion.html, templates/kyc/verify_upload.html (phone-pair panel), tests/test_kyc_selfie_pairing.py
+
+## DRIVER_GATE-1 — Pre-existing driver-workspace test failures (NOT caused by 2026-09-17 identity refinements)
+- Status: DONE — resolved by the EGGE CLEANUP — Driver Workspace vs KYC Boundary Reconciliation node (2026-09-17)
+- Resolved: 2026-09-17
+- Raised: 2026-09-17 (KYC/identity refinement verification run)
+- Context: A combined regression run of `tests/test_identity_bank_refinements.py tests/test_kyc_selfie_pairing.py tests/test_kyc_upload_validation.py tests/test_kyc_reupload.py tests/test_canonical_identity_center.py` reported 3 failures, all in `tests/test_canonical_identity_center.py`:
+  1. `TestDriverWorkspaceCanonicalGate::test_below_tier2_driver_denied_workspace` — expects a sub-tier-2 user (no KYC) to be DENIED the `driver` workspace context; `get_available_contexts()` currently returns `['personal', 'driver']` because `_driver_contexts()` (app/auth/context.py:491-522) treats ANY non-blocked DriverProfile as a PARTICIPATION context (deliberate prior design — a PENDING driver must complete their profile), so the canonical KYC tier gate is intentionally not applied there.
+  2. `TestDriverWorkspaceCanonicalGate::test_phone_only_tier1_driver_denied_workspace` — same base cause as #1 for a tier-1 phone-only user.
+  3. `TestIdentitySecurityBoundary::test_driver_wizard_does_not_change_canonical_identity` — driver onboarding step-3 response differs from test expectation (wizard/onboarding_routes.py flow was reworked by earlier driver-workspace work).
+- These failures are in driver-workspace / driver-onboarding areas (`app/auth/context.py`, `app/auth/onboarding_routes.py`) that the 2026-09-17 KYC-identity refinement work did NOT touch. They reflect a spec/tests-vs-implementation conflict between the OLD canonical-gate expectation (driver context requires KYC tier ≥ 2) and the NEW participation-context model. NEITHER the tests nor the implementation were modified as part of the refinement work (out of authorized scope).
+- What needs to happen: Separate BEHAVIORAL scope decision — either (a) reconcile `_driver_contexts()` to apply the canonical KYC gate (breaking PENDING drivers' profile-completion ability), or (b) update the two driver-gate tests to the participation-context contract, and fix the driver-wizard test to match the reworked onboarding flow. Do NOT process until a decision authorizes which side is the intended contract.
+- Owner/area: transport / auth context
+- Links: app/auth/context.py:491-522, app/auth/onboarding_routes.py:336-334, tests/test_canonical_identity_center.py:209-278,389
+
+## DRIVER_GATE-2 — `test_transport_restful_auth.py` pre-existing fixture failures (driver_code > VARCHAR(20))
+- Status: RESOLVED 2026-09-17 (EGGE DRIVER GATE CLEANUP node)
+- Raised: 2026-09-17 (EGGE CLEANUP regression run)
+- Context: `tests/test_transport_restful_auth.py` had 4 pre-existing failures, all from the FILE'S OWN fixture: it creates `DriverProfile(driver_code="DRV-authmutate-<HEX>")` (e.g. `DRV-authmutate-E8D619`) which exceeds the `driver_profiles.driver_code VARCHAR(20)` column and raises `psycopg2.errors.StringDataRightTruncation` at INSERT. The 401 regression test (`test_anonymous_driver_location_post_returns_401`) also FAILED in-file because the fixture insert failed before the route was exercised. NOT a production defect (the app column/validation is correct). Do NOT alter production schema to accommodate it.
+- Resolution: TEST-ONLY fix in `tests/test_transport_restful_auth.py` — `_create_driver()` now clamps `label` to 9 chars (pattern `DRV-<label>-<6-hex>` = ≤ 20 chars) and accepts an optional `owner_id`; corrected two test constructions that previously logged in as a user who was NOT the profile owner (the "success" test had no real owner, and the "forbidden" test relied on a coincidental non-owner). Post-fix: 3 pass / 2 fail (`test_anonymous_driver_location_post_returns_401`, `test_anonymous_cannot_mutate_driver_location`). The two remaining failures are NOT fixture-related: both anonymous Flask-RESTful 401 tests still hit the serialization 500 of Defect B (see BACKLOG entry below; this node authorized record-only for Defect B).
+- Owner/area: transport / tests (fixture defect)
+- Links: tests/test_transport_restful_auth.py, app/transport/models.py (driver_profiles.driver_code), BACKLOG.md:1578 (Defect B), BACKLOG.md:1801 (DRIVER_GATE-1)
+
+## DRIVER_GATE-3 — `driver:update_status` reference on admin approve/reject service is granted to NO role
+- Status: RESOLVED 2026-09-17 (EGGE DRIVER GATE CLEANUP node — Case A)
+- Raised: 2026-09-17 (EGGE CLEANUP — evidence trace)
+- Context: `ProviderService.update_driver_status` (`app/transport/services/provider_service.py:1121`) carried `@require_permission('driver:update_status')`. That permission string is NOT defined in `GLOBAL_PERMISSION_DEFS`/`ORG_PERMISSION_DEFS` (`app/auth/seed_roles.py:89-241`) nor seeded anywhere — grep found it only in provider_service.py:1121 and docstrings/comments. `verify_permission()`/`has_global_permission()` therefore only ever pass via the `is_owner` bypass (`app/utils/security.py:150`, `app/auth/helpers.py:262`); a non-owner ADMIN calling approve/reject (`app/transport/routes.py:1590-1626` → `update_driver_status(driver_id, "approved"/"rejected")`) hit `PermissionError` → route's generic `except Exception` path (flash "Unable to approve driver", rollback). The DRIVER self-service go-live path intentionally does NOT use this permission (`set_driver_operational_status`, `DriverStatusResource` driver_routes.py:580-681) — that is by design and correct.
+- Resolution (Case A): removed the `@require_permission('driver:update_status')` decorator from `update_driver_status` (provider_service.py L1121) and updated the stale docstring/comment to state the final authorization model: the transport admin `approve_driver` / `reject_driver` web routes are the SOLE authorization boundary (`@module_enabled_required("transport")` + `@login_required` + `@role_required("admin")` at routes.py:1590-1626); the service method now carries no RBAC decorator and its ownership/state validation remains intact. Preserved `@monitor_endpoint("update_driver_status")` and `@rate_limit("driver_status_update",... )`. No replacement permission registered, no route changes, no migration. Verified: `tests/test_transport_service_integrity.py` 49 passed (T15 direct service calls), `tests/test_driver_workspace_activation.py` + `tests/test_canonical_identity_center.py` 32 passed, `tests/test_onboarding.py` + `tests/test_auth_context.py` 45 passed.
+- Outstanding (pre-existing, recorded here NOT fixed — do not silently repair): §6 "prove non-owner admin approve/reject works" is still blocked because `@role_required("admin")` in `app/transport/decorator.py:52-65` is a never-granting stub (`'admin' in current_user.roles` against `UserRole` objects with no `__eq__` → always False), affecting ALL 18 admin web routes in `app/transport/routes.py`. Also `transport_admin_reject_driver` (app/admin/route_modules/transport_admin.py:319) calls a nonexistent `provider_service.reject_driver(...)` → AttributeError. Both are admin-workflow defects beyond the specific `update_driver_status` authorization issue and require a separate authorized node / identity-authorization review (§18.2).
+- Owner/area: transport / auth authorization
+- Links: app/transport/services/provider_service.py:1119-1137, app/transport/routes.py:1590-1626, app/transport/decorator.py:52-65, app/admin/route_modules/transport_admin.py:306-328, app/utils/security.py:128-203, app/auth/helpers.py:243-282, app/auth/seed_roles.py:89-241
+
+## IDENTITY-REFINEMENT-1 - AML `date_of_birth` read sites raise AttributeError on raw-string values (deferred)
+- Status: Not started
+- Raised: 2026-09-17 (single-entry identity refinement session, tracked from EGGE date-boundary)
+- Context: During the canonical-identity single-entry refinement the identity model was confirmed as: `User` = account/auth; `UserProfile` = canonical personal identity (full_name + date_of_birth + nationality + id_type/id_number); `KycRecord` = evidence snapshot; `IndividualVerification` = tier state. Two read sites access `date_of_birth` via attribute access and would raise `AttributeError` if a raw string were stored in the Date column (the pre-fix defect class fixed at the guest-registration write boundary): app/compliance/aml_service.py:381-382 (age checks) and app/kyc/models.py:96-97 (KYC profile age). Read-only sites; NOT modified (out of the write-path node scope, matches EGGE date-boundary deferral at BACKLOG.md:1783).
+- What needs to happen: Separate BEHAVIORAL scope decision - audit both read sites for defensive handling (or rely on corrected write boundaries), and confirm no other surface writes raw strings to date_of_birth. Also decide whether canonical identity (UserProfile) should be the single read source for AML age checks vs the legacy User/UserProfile split.
+- Owner/area: compliance / kyc / identity
+- Links: app/compliance/aml_service.py:381-382, app/kyc/models.py:96-97, app/profile/models.py (IMMUTABLE_AFTER_VERIFICATION :35-38, validate_date_of_birth :280-287), BACKLOG.md:1783 (original EGGE deferral)
+
+## IDENTITY-REFINEMENT-2 - Verification-authority & identity-gate consolidation (architectural, deferred)
+- Status: Not started
+- Raised: 2026-09-17 (single-entry identity refinement session)
+- Context: The single-entry refinement made `UserProfile` the canonical identity bank and the NIRA National-ID flow consume it (no re-entry). Two architectural follow-ups were identified but explicitly out of scope (no migration, no new models): (1) `CanonicalIdentity` derives `kyc_tier` via `calculate_kyc_tier()` - the canonical KYC authority - but `UserProfile.verification_status` / `User.kyc_level` snapshots still exist as secondary signals; a consolidation decision is needed on which surface drives tier gates long-term. (2) The `app/kyc/upgrade_routes.py` file is an orphaned duplicate blueprint (live KYC blueprint = app/kyc/routes.py kyc_bp registered at app/__init__.py:988/1051); it is dead code that should be retired. Both are read-only findings from this session; NOT changed.
+- What needs to happen: Authorized architectural decision before any change: (a) reconcile verification-status source (canonical `calculate_kyc_tier` vs UserProfile.verification_status vs User.kyc_level) into one authoritative gate surface; (b) confirm and retire `app/kyc/upgrade_routes.py` (verify it is not registered anywhere, then delete under an authorized cleanup node).
+- Owner/area: kyc / identity / architecture
+- Links: app/kyc/routes.py (kyc_bp), app/kyc/upgrade_routes.py (orphan), app/__init__.py:988/1051, app/profile/services/canonical_identity.py (get_canonical_identity :73), app/auth/kyc_compliance.py (calculate_kyc_tier)
+
+## DRIVER_WORKSPACE_SEP-1 — Driver Workspace now uses a dedicated shell (separate from Transport Admin/Operations) — DONE
+- Status: DONE
+- Resolved: 2026-09-17
+- Raised: 2026-09-17 (EGGE — Driver Workspace vs Transport Admin/Operations separation node)
+- Context (PROVEN, pre-change): `templates/transport/driver_dashboard.html`, `vehicle_dashboard.html`, and `register_vehicle.html` all extended `transport/base.html`, a shell that hard-codes `<div class="user-role">Transport Admin</div>` (line 109) and renders the full admin/operations nav (Overview/Dashboard, Operations/Bookings/Drivers/Vehicles/Routes, Management/Organisations/Incidents, Insights/Analytics, Config/Settings — lines 57-100). A driver viewing their own Dashboard was therefore presented with the Transport Admin/Operations surface (visual/structural conflation). A role-aware twin shell ALREADY existed at `templates/transport/dashboard/base_dashboard.html` (Platform Admin / Org Admin / Driver / Regular branches; Driver section lines 324-349) but was ORPHANED: `dashboard/overview.html` extends the NON-EXISTENT `transport/base_dashboard.html` (render-time TemplateNotFound), and nothing else extended it.
+- Resolution (minimal, template-only): NEW `templates/transport/driver/base.html` — a Driver shell forked from the WORKING `transport/base.html` mechanics (same theme CSS `css/modules/transport/base.css`, theme-variables/dark-mode, pane-mode `?_pane=1`, topbar, flash handling, `js/modules/transport/base.js`), but with role label `Driver` and ONLY driver navigation (Overview -> `transport.driver_dashboard`, My Vehicle -> `transport.vehicle_dashboard`, Register Vehicle -> `transport.register_vehicle`, breadcrumb home -> driver workspace, plus main-site link and logout). No admin/operations endpoints in the shell. Re-pointed the three unambiguous driver self-service templates: `driver_dashboard.html`, `vehicle_dashboard.html`, `register_vehicle.html` now extend `transport/driver/base.html`. Transport Admin/Operations pages (`admin/dashboard.html`, `bookings/*`, `drivers/*`, `vehicles/*`, `incidents/*`, `routes/*`, `analytics/*`, `settings/*`, `organisations/*`) remain on `transport/base.html`. NO route, RBAC, wallet, KYC, migration, or service changes.
+- Verification: `pytest tests/test_driver_workspace_activation.py tests/test_canonical_identity_center.py` -> 32 passed; `pytest tests/test_onboarding.py tests/test_auth_context.py` -> 45 passed; startup `python -c "from app import create_app"` -> STARTUP_OK; Jinja proof: all three driver templates resolve to `transport/driver/base.html` (leaf) and compile; driver shell contains NO ops endpoints.
+- Owner/area: transport / templates (driver workspace)
+- Links: templates/transport/driver/base.html (NEW), templates/transport/driver_dashboard.html, templates/transport/vehicle_dashboard.html, templates/transport/register_vehicle.html, templates/transport/base.html, templates/transport/dashboard/base_dashboard.html (orphan role-aware shell — see D-WORKSPACE-4)
+
+## D-WORKSPACE-1 — `transport.drivers_verification` and `transport.drivers_location` pass only `id`; templates need the `driver` object ("undefined driver")
+- Status: Needs review
+- Raised: 2026-09-17 (EGGE — Driver Workspace separation trace)
+- Context: `app/transport/routes.py:1043-1049` (`drivers_verification`) and `:1034-1040` (`drivers_location`) call `_json_or_template("transport/drivers/verification.html", id=id)` / `location.html` — the context contains ONLY `id`; neither route loads the DriverProfile (contrast `drivers_show` at :993-1022 which calls `db.session.get(DriverProfile, id)` + `_require_ownership`). The templates reference `driver.driver_code`, `driver.user.name`, `driver.compliance_status`, `driver.is_online`, `driver.last_location` etc. → the driver page renders empty/garbage (chainable Undefined) rather than real data. The driver_dashboard "Verification Status"/"My Location" quick actions link straight into these broken pages. `driver_dashboard.html` also carries a stale link to `transport.drivers_history` (see D-WORKSPACE-2) and a side-appeared `transport.bookings_show` per assignment (shared datetimeformat defect — BACKLOG.md:1704).
+- What needs to happen: Fix the two routes to load the driver (ownership-checked like `drivers_show`) OR pass real context; classify as a BEHAVIORAL follow-on (renders personal data across an ownership boundary — requires the same `_require_ownership(driver_model, "user_id", admin_allowed=True)` treatment). Decide whether these two pages belong on the Driver shell or the Admin shell once fixed.
+- Owner/area: transport / routes
+- Links: app/transport/routes.py:1034-1049, templates/transport/drivers/verification.html, templates/transport/drivers/location.html
+
+## D-WORKSPACE-2 — `transport.drivers_history` endpoint does not exist; driver dashboard "Trip History" link is dead
+- Status: Needs review
+- Raised: 2026-09-17 (EGGE — Driver Workspace separation trace)
+- Context: `driver_dashboard.html:192` does `safe_url('transport.drivers_history', id=driver_profile.id)`. No such endpoint exists anywhere in `app/transport/` (grep: single match, the template). `safe_url` degrades missing endpoints to `'#'` (app/utils/module_guard.py:11-49). The driver Workspace therefore has a "Trip History" quick action that goes nowhere.
+- What needs to happen: Either create the `transport.drivers_history` route (driver-scoped history view, ownership-checked) or remove the link. Requires a separate implementation node.
+- Owner/area: transport / routes
+- Links: templates/transport/driver_dashboard.html:192, app/utils/module_guard.py:11-49
+
+## D-WORKSPACE-3 — `transport/base.html:183` references missing asset `static/transport/js/utils.js` (browser 404, non-fatal)
+- Status: Not started
+- Raised: 2026-09-17 (EGGE — Driver Workspace separation trace)
+- Context: Both `transport/base.html` and the new `transport/driver/base.html` include `transport/js/utils.js`, which does NOT exist on disk (checked: static/transport/js/... returns False for all of utils/base/charts/realtime). The working core JS is `static/js/modules/transport/base.js` (exists). The 404 is browser-side and non-fatal (no app-level error), but the utility functions `base.js` is documented to use (`utils`) never load.
+- What needs to happen: Either create `static/transport/js/utils.js`, or drop the reference and inline/port any `utils.*` helpers used by `base.js`. Cosmetic/hygiene cleanup.
+- Owner/area: static / transport
+- Links: templates/transport/base.html:183, templates/transport/driver/base.html (new, same include), static/js/modules/transport/base.js
+
+## D-WORKSPACE-4 — Orphaned role-aware shell `transport/dashboard/base_dashboard.html` + broken `dashboard/overview.html` extends target
+- Status: Partially Done — extends target fixed 2026-09-17; missing CSS/JS assets still open (intersects existing BACKLOG.md:1727 dead-extends entry)
+- Raised: 2026-09-17 (EGGE — Driver Workspace separation trace)
+- Context: `templates/transport/dashboard/base_dashboard.html` is a complete role-aware shell (Driver branch :324-349 "My Day"/My Vehicle/Earnings/History; Platform Admin branch :186-300 with submenu accordion + user dropdown) but NOTHING extends it (orphan), and it references missing static assets (transport/css/base.css, transport/css/dashboard.css, transport/js/{utils,base,charts,realtime}.js). `dashboard/overview.html` (`/transport/dashboard` and `/transport/dashboard/overview`, `routes.py:248-255`, login-only) extends the NON-EXISTENT `transport/base_dashboard.html` → render-time TemplateNotFound 500. This is the "Dashboard" nav target and breadcrumb home in `transport/base.html` (lines 59, 132) — admin navigation to Dashboard 500s.
+- What needs to happen: Authorized decision — either (a) re-point `dashboard/overview.html` to `transport/dashboard/base_dashboard.html` and restore/build the missing CSS/JS assets, or (b) retire overview.html and re-point the nav to `transport_admin.dashboard`. Both are admins-surface fixes; separate from the driver shell. General dead-extends family tracked at BACKLOG.md:1727.
+- Resolution (2026-09-17, /transport/dashboard/overview node): option (a) taken for the extends target — `templates/transport/dashboard/overview.html` now extends `transport/dashboard/base_dashboard.html`, and `dashboard_overview` (`routes.py`) now supplies real context (admin dashboard ctx + `open_incidents`/`open_incidents_count`/`pending_bookings_count`). Regression: `tests/test_transport_dashboard_overview.py` (2 pass). Remaining: `base_dashboard.html` still references missing `transport/css/base.css`, `transport/css/dashboard.css`, `transport/js/{utils,base,charts,realtime}.js`.
+- Owner/area: transport / templates
+- Links: templates/transport/dashboard/base_dashboard.html, templates/transport/dashboard/overview.html, app/transport/routes.py:248-255, templates/transport/base.html:59,132, BACKLOG.md:1727
+
+## D-ADMIN-1 — `GET /transport/drivers/new` returns 500 for an authorized transport admin
+- Status: Needs review
+- Raised: 2026-09-17 (/transport/drivers admin-lock node)
+- Context: While adding the admin-only lock to the `/transport/drivers*` surfaces, `GET /transport/drivers/new` returned HTTP 500 for a user who passed `@admin_required` (verified in `tests/test_transport_drivers_admin_lock.py`). The auth gate itself is correct (403 for non-admins); the 500 is the view/template render, not authorization. `/transport/drivers` (index) renders 200 for an admin. Likely the same family as the dead-extends / missing-asset defects (BACKLOG.md:1727, D-WORKSPACE-3/4) or the incomplete `drivers_new`/`drivers_create` CRUD pair noted at BACKLOG.md:1037.
+- What needs to happen: Capture the 500 traceback, fix `drivers_new` render (either finish the GET form context or redirect to `become_driver`), then extend the positive assertion in `tests/test_transport_drivers_admin_lock.py` to require 200 for `/transport/drivers/new`.
+- Owner/area: transport / routes + templates
+- Links: app/transport/routes.py (`drivers_new`), templates/transport/drivers/new.html, templates/transport/drivers/_form.html, tests/test_transport_drivers_admin_lock.py
+
+## EGGE-PRES-1 — Named Transport dashboard preservation contract is absent from the repo — DONE
+- Status: Done
+- Resolved: 2026-09-18
+- Raised: 2026-09-18 (EGGE Master Node — Transport Dashboard Preservation, Phase A)
+- Context: The authorized node names the durable record `AFCON360_Transport_Dashboard_Preservation_and_Architecture_Contract.md` and directs the agent to read it as a guardrail. At Phase A time a recursive `*.md` search found no such file anywhere in the repository, so Phase A proceeded on root `AGENTS.md`, `docs/transport/geographic-graph-map.md`, `docs/transport/d2-atomic-dispatch-claim.md`, and live code, and recorded this gap.
+- Resolution (2026-09-18, Phase C): The named contract **now exists at the repository root** (311 lines, dated 2026-09-18) and was read as the governing guardrail for Phase C. `docs/transport/dashboard-preservation-inventory.md` was updated with a contract note and a `§11 Phase C` status section. No contract content was authored or altered by the agent; only the durable Phase A record was reconciled.
+- Owner/area: transport / docs
+- Links: AFCON360_Transport_Dashboard_Preservation_and_Architecture_Contract.md (root), docs/transport/dashboard-preservation-inventory.md, root AGENTS.md §2/§40, docs/transport/d2-atomic-dispatch-claim.md
+
+## PHASE-C-1 — `vehicle_dashboard` / `register_vehicle` still lack the DRIVER active-context gate (deferred; needs decision)
+- Status: Needs decision
+- Raised: 2026-09-18 (EGGE Master Node — Phase C Driver Workspace consolidation)
+- Context: Contract §11 lists "`vehicle_dashboard` / `register_vehicle` currently lack the Driver active-context decorator even though they are presented as Driver Workspace surfaces." Phase C did **not** add `@active_context_required(ContextType.DRIVER)`, because evidence shows these routes are not exclusively Driver surfaces: `templates/events/service_provider/service_provider_dashboard.html:38` links `transport.vehicle_dashboard`; `register_vehicle` is referenced from `templates/transport/home.html`, `homes.html`, `vehicles/index.html`, `vehicles/_form.html`, `dashboard/base_dashboard.html`, `dashboard/keep.html`. Adding the gate now would 403 existing cross-context consumers, violating the non-destructive preservation rule (contract §2/§14, AGENTS.md §1/§5.1). Both routes already require a real driver flow (DriverProfile + KYC tier 3) via their existing decorators. The Driver Home "My Vehicles" link now targets `transport.vehicle_dashboard` (driver-owned surface), not the global `transport.vehicles_index`.
+- What needs to happen: Authorized decision on whether to (a) add the DRIVER gate and re-point/repair every cross-context consumer first, (b) introduce a driver-safe vehicle management surface that replaces the consumer links, or (c) formally accept the current dual-context behavior. No change without specification (BEHAVIORAL).
+- Owner/area: transport / routes + auth context
+- Links: app/transport/routes.py (`vehicle_dashboard` :1311, `register_vehicle` :1163), app/auth/context.py (`active_context_required` :754), templates/events/service_provider/service_provider_dashboard.html:38, templates/transport/home.html, templates/transport/homes.html, templates/transport/vehicles/index.html, templates/transport/vehicles/_form.html
+
+## PHASE-C-2 — Driver Workspace consolidation is partial: trips/offers/history/settings UI remain gaps
+- Status: Needs review
+- Raised: 2026-09-18 (EGGE Master Node — Phase C Driver Workspace consolidation)
+- Context: Phase C consolidated the Driver **Home** (`transport.driver_dashboard`): online/offline + Go-Live readiness, upcoming assignments, recent trips, assigned vehicle, owned vehicles, earnings, and driver-safe navigation. Several Driver Workspace target capabilities from contract §6 still have no driver-facing presentation entry point and were deliberately **not invented** (AGENTS.md §6/§23, contract §10): (1) trip detail for an assigned driver — `transport.bookings_show` is booker-ownership and 403s the assigned driver; (2) driver trip history — `transport.drivers_history` still does not exist (D-WORKSPACE-2), only the admin-only `transport_api.driver_history`; (3) offers/trips web UI — `DriverOfferListResource` (`/api/transport/drivers/me/offers`) and `DriverTripResource` exist as REST only; (4) availability/schedule settings UI; (5) notifications/support/safety dedicated surfaces (shared notification bell is present in the shell).
+- What needs to happen: Separate authorized nodes to add driver-scoped presentation for each gap, reusing existing services/APIs (no new second transport engine). For assigned-driver booking detail, specify the access rule before touching `bookings_show`'s ownership check.
+- Owner/area: transport / routes + services + templates
+- Links: app/transport/routes.py:395 (`bookings_show` `_require_ownership`), app/transport/api/driver_routes.py (`DriverOfferListResource`, `DriverTripResource`), app/transport/repositories/driver_repository.py (history), docs/transport/dashboard-preservation-inventory.md §11

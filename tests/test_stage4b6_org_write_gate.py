@@ -97,13 +97,58 @@ def _make_user(session, *, owner=False):
 def _make_org(session, *, org_type, verification_status="verified", is_operational=True, is_active=True):
     """Fully-gated Organisation row for the given canonical type.
 
-    ``org_type`` must be an ``OrganizationType`` member so SQLAlchemy adapts
-    it to the PostgreSQL ``org_business_category`` enum (member name labels)."""
+    ``org_type`` must be an ``OrganizationType`` member. The canonical
+    ``organisation_type_code`` column (lowercase enum value) is the write
+    target; the legacy ``business_category`` enum is left NULL. The catalogue
+    FK row is ensured on demand so the write succeeds in an unseeded test DB."""
+    from app.identity.catalog_data import (
+        ORGANISATION_CATEGORIES,
+        ORGANISATION_TYPE_CATALOG,
+    )
+    from app.identity.models.organisation_catalogues import (
+        OrganisationCategory,
+        OrganisationTypeCatalogue,
+    )
+
+    code = org_type.value
+    meta = ORGANISATION_TYPE_CATALOG.get(code)
+    if meta is not None:
+        category_code = meta["category_code"]
+        if (
+            session.query(OrganisationCategory)
+            .filter_by(code=category_code)
+            .first()
+            is None
+        ):
+            session.add(
+                OrganisationCategory(
+                    code=category_code,
+                    label=ORGANISATION_CATEGORIES[category_code],
+                    sort_order=0,
+                    is_active=True,
+                )
+            )
+            session.flush()
+        existing = (
+            session.query(OrganisationTypeCatalogue).filter_by(code=code).first()
+        )
+        if existing is None:
+            session.add(
+                OrganisationTypeCatalogue(
+                    code=code,
+                    label=meta["label"],
+                    category_code=category_code,
+                    sort_order=0,
+                    is_active=True,
+                )
+            )
+            session.flush()
+
     org = Organisation(
         org_id=f"org_{uuid.uuid4().hex[:10]}",
         legal_name=f"Org {uuid.uuid4().hex[:8]}",
         country="UG",
-        business_category=org_type,
+        organisation_type_code=code,
         verification_status=verification_status,
         lifecycle_state="registered",
         is_active=is_active,

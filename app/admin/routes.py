@@ -54,21 +54,14 @@ logger = logging.getLogger(__name__)
 
 def assign_role(user_uuid, role_name):
     """Helper function to assign a role to a user using their UUID."""
-    from app.identity.models import Role, UserRole, User
+    from app.auth.roles import assign_global_role
+    from app.identity.models import User
     try:
         user = User.query.filter_by(public_id=user_uuid).first()
         if not user:
             return False
-
-        role = Role.query.filter_by(name=role_name).first()
-        if role:
-            user_role = UserRole.query.filter_by(user_id=user.id, role_id=role.id).first()
-            if not user_role:
-                user_role = UserRole(user_id=user.id, role_id=role.id)
-                db.session.add(user_role)
-                db.session.commit()
-                return True
-        return False
+        assign_global_role(user.id, role_name, assigned_by_id=getattr(current_user, 'id', None))
+        return True
     except Exception as e:
         logger.error(f"Error assigning role: {e}")
         db.session.rollback()
@@ -77,20 +70,14 @@ def assign_role(user_uuid, role_name):
 
 def remove_role(user_uuid, role_name):
     """Helper function to remove a role using user UUID."""
-    from app.identity.models import Role, UserRole, User
+    from app.auth.roles import revoke_global_role
+    from app.identity.models import User
     try:
         user = User.query.filter_by(public_id=user_uuid).first()
         if not user:
             return False
-
-        role = Role.query.filter_by(name=role_name).first()
-        if role:
-            user_role = UserRole.query.filter_by(user_id=user.id, role_id=role.id).first()
-            if user_role:
-                db.session.delete(user_role)
-                db.session.commit()
-                return True
-        return False
+        revoke_global_role(user.id, role_name, revoked_by_id=getattr(current_user, 'id', None))
+        return True
     except Exception as e:
         logger.error(f"Error removing role: {e}")
         db.session.rollback()
@@ -208,6 +195,29 @@ def super_dashboard():
             ).count()
         except Exception as e:
             logger.warning(f"Could not load accommodation dashboard stats: {e}")
+
+        # KYC submission statistics
+        kyc_pending_count = 0
+        kyc_recent_pending = []
+        kyc_total_subs = 0
+        kyc_stats = {}
+        try:
+            from app.kyc.models import KycRecord
+            from app.kyc.services import KycService
+            kyc_pending_count = KycRecord.query.filter(
+                KycRecord.status.in_(('pending', 'manual_review')),
+                KycRecord.is_deleted == False,
+            ).count()
+            kyc_recent_pending = KycRecord.query.filter(
+                KycRecord.status.in_(('pending', 'manual_review')),
+                KycRecord.is_deleted == False,
+            ).order_by(KycRecord.created_at.desc()).limit(8).all()
+            kyc_total_subs = KycRecord.query.filter(
+                KycRecord.is_deleted == False
+            ).count()
+            kyc_stats = KycService.get_kyc_stats()
+        except Exception as e:
+            logger.warning(f"Could not load KYC dashboard stats: {e}")
 
         return render_template(
             "super_admin_dashboard.html",
@@ -426,6 +436,8 @@ def delete_user(user_id):
             return redirect(url_for("admin.manage_users"))
 
         username = user.username
+        from app.auth.deletion_guard import authorize_privileged_deletion_from_form
+        authorize_privileged_deletion_from_form(db.session, actor=current_user)
         db.session.delete(user)
         db.session.commit()
         flash(f"User {username} deleted permanently.", "success")
@@ -586,6 +598,8 @@ def demote_user(user_id):
                         user_id=user.id, role_id=current_role_obj.id
                     ).first()
                     if user_role:
+                        from app.auth.deletion_guard import authorize_privileged_deletion_from_form
+                        authorize_privileged_deletion_from_form(db.session, actor=current_user)
                         db.session.delete(user_role)
 
                 existing = UserRole.query.filter_by(user_id=user.id, role_id=role.id).first()
@@ -1040,6 +1054,8 @@ def remove_user_role(user_id, role_name):
         if role:
             user_role = UserRole.query.filter_by(user_id=user.id, role_id=role.id).first()
             if user_role:
+                from app.auth.deletion_guard import authorize_privileged_deletion_from_form
+                authorize_privileged_deletion_from_form(db.session, actor=current_user)
                 db.session.delete(user_role)
                 db.session.commit()
                 flash(f"Role '{role_name}' removed from {user.username}.", "success")
@@ -2224,7 +2240,6 @@ def role_settings(role_name):
             'event_manager': 'admin/event_manager/settings.html',
             'transport_admin': 'admin/transport_admin/settings.html',
             'wallet_admin': 'admin/wallet_admin/settings.html',
-            'accommodation_admin': 'admin/accommodation_admin/settings.html',
             'tourism_admin': 'admin/tourism_admin/settings.html',
             'org_admin': 'admin/org_admin/settings.html',
             'org_member': 'admin/org_member/settings.html'

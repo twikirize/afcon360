@@ -478,6 +478,17 @@
         <label for="revokeReason">Reason (optional)</label>
         <textarea id="revokeReason" name="reason" class="form-control" rows="3" placeholder="Reason for role revocation..."></textarea>
       </div>
+
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label for="revokePassword">Your Password</label>
+        <input type="password" id="revokePassword" name="delete_password" class="form-control" required autocomplete="current-password" placeholder="Enter your admin password">
+      </div>
+
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label for="revokeOtp">Owner MFA Code</label>
+        <input type="text" id="revokeOtp" name="delete_otp" class="form-control" required inputmode="numeric" maxlength="8" placeholder="6-digit code from the owner's authenticator">
+        <small style="color: #9ca3af;">The platform owner's TOTP or backup code (8 hex chars)</small>
+      </div>
       
       <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
         <button type="button" onclick="hideRevokeRoleModal()" class="btn-sm" style="background: #f3f4f6; color: #374151;">

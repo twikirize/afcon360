@@ -195,6 +195,12 @@
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
     --color-primary: #3a7a3a;
     --color-primary-hover: #4e9a4e;
+    --success: #4caf50;
+    --success-rgb: 76, 175, 80;
+    --green-mid: #59ba59;
+    --bg-card: #1e1e1e;
+    --bg-page: #121212;
+    --bg-sidebar: #1e1e1e;
   }
 }
 
@@ -215,6 +221,12 @@ body.dark-mode {
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
   --color-primary: #3a7a3a;
   --color-primary-hover: #4e9a4e;
+  --success: #4caf50;
+  --success-rgb: 76, 175, 80;
+  --green-mid: #59ba59;
+  --bg-card: #1e1e1e;
+  --bg-page: #121212;
+  --bg-sidebar: #1e1e1e;
 }
 
 /* Force light mode - default theme */
@@ -242,6 +254,36 @@ body {
   --bg-elevated: #ffffff;
   --border-light: #e9ecef;
   --border-medium: #dee2e6;
+}
+
+/* Device/system dark preference: apply dark tokens to body itself so descendants
+   render dark before ThemeManager adds body.dark-mode (and on pages where
+   ThemeManager is disabled). body.light-mode/body.dark-mode are guarded out via
+   :not(...) so an explicitly chosen theme is never overridden. */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light-mode) body:not(.light-mode):not(.dark-mode) {
+    --text: #e0e0e0;
+    --text-primary: #e0e0e0;
+    --text-secondary: #b0b0b0;
+    --text-muted: #8a8a8a;
+    --bg: #121212;
+    --bg-body: #121212;
+    --bg-surface: #1e1e1e;
+    --bg-surface-alt: #2d2d2d;
+    --bg-elevated: #252525;
+    --border-light: #2d2d2d;
+    --border-medium: #404040;
+    --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    --color-primary: #3a7a3a;
+    --color-primary-hover: #4e9a4e;
+    --success: #4caf50;
+    --success-rgb: 76, 175, 80;
+    --green-mid: #59ba59;
+    --bg-card: #1e1e1e;
+    --bg-page: #121212;
+    --bg-sidebar: #1e1e1e;
+  }
 }
 
 /* ===== USER ACCESSIBILITY OVERRIDES ===== */

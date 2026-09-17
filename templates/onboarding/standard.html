@@ -12,15 +12,17 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="ob-field">
         <label>Full Name <span class="ob-req">*</span></label>
-        <input type="text" name="full_name" value="{{ profile.full_name if profile else '' }}" required>
+        <input type="text" name="full_name" value="{{ profile.full_name if profile else '' }}" {% if profile and profile.full_name %}readonly title="Already provided"{% endif %} required>
+        {% if profile and profile.full_name %}<p class="ob-hint">Already provided.</p>{% endif %}
       </div>
       <div class="ob-field">
         <label>City</label>
-        <input type="text" name="city" value="{{ profile.city if profile else '' }}">
+        <input type="text" name="city" value="{{ profile.city if profile else '' }}" {% if profile and profile.city %}readonly{% endif %}>
       </div>
       <div class="ob-field">
         <label>Country <span class="ob-req">*</span></label>
-        <input type="text" name="country" value="{{ profile.country if profile else '' }}" required>
+        <input type="text" name="country" value="{{ profile.country if profile else '' }}" {% if profile and profile.country %}readonly title="Already provided"{% endif %} required>
+        {% if profile and profile.country %}<p class="ob-hint">Already provided.</p>{% endif %}
       </div>
       <div class="ob-form-footer">
         <button class="ob-btn ob-btn--primary" type="submit">Complete Profile →</button>

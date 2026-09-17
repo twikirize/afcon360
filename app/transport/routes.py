@@ -19,13 +19,23 @@ from flask_login import login_required, current_user
 
 from app.transport.decorator import module_enabled_required, role_required, rate_limit
 from app.auth.kyc_compliance import require_kyc_tier
-from app.auth.decorators import require_profile_completion, require_moderator
-from app.auth.context import ContextType, active_context_required
+from app.auth.decorators import (
+    require_profile_completion,
+    require_moderator,
+    admin_required,
+)
+from app.auth.context import (
+    ContextType,
+    active_context_required,
+    switch_context,
+    ContextSwitchError,
+)
 from app.transport import transport_bp, transport_admin_bp
 from app.utils.module_guard import module_enabled as check_module_enabled
 from app.utils.exceptions import NotFoundError, ServiceUnavailableError, ValidationError
 from app.utils.audit import audit_log
 from app.transport.services import get_booking_service, get_provider_service, get_dashboard_service
+from app.transport.services.go_live_service import can_go_live
 from app.transport.services.passenger_service import get_passenger_service
 from app.transport.models import Booking, DriverProfile, Vehicle, TransportPassenger, ServiceType
 from app.transport.models import ComplianceStatus
@@ -97,6 +107,20 @@ def _require_vehicle_ownership(vehicle_model):
         f"vehicle owned by {owner_type}:{owner_id}"
     )
     abort(403)
+
+def _count_open_incidents():
+    """Count transport incidents that are still open."""
+    from app.transport.models import TransportIncident
+
+    try:
+        return TransportIncident.query.filter(
+            TransportIncident.is_deleted == False,  # noqa: E712
+            TransportIncident.status.in_(["reported", "under_investigation"]),
+        ).count()
+    except Exception as e:
+        logger.warning(f"Unable to count open incidents: {e}")
+        return 0
+
 
 def _json_or_template(template, status=200, **ctx):
     """
@@ -246,7 +270,25 @@ def service_detail(service_id):
 def dashboard_overview():
     """Transport dashboard overview"""
     logger.info(f"Dashboard overview accessed by user_id={_uid()}")
-    return _json_or_template("transport/dashboard/overview.html")
+    try:
+        ctx = dict(get_dashboard_service().get_cached_admin_dashboard())
+    except Exception as e:
+        logger.error(
+            f"Error building dashboard overview for user_id={_uid()}: {e}",
+            exc_info=True,
+        )
+        ctx = {}
+
+    ctx.setdefault('total_bookings', 0)
+    ctx.setdefault('active_drivers', 0)
+    ctx.setdefault('available_vehicles', 0)
+    ctx.setdefault('recent_bookings', [])
+
+    ctx['open_incidents'] = _count_open_incidents()
+    ctx['open_incidents_count'] = ctx['open_incidents']
+    ctx['pending_bookings_count'] = ctx.get('pending_bookings', 0)
+
+    return _json_or_template("transport/dashboard/overview.html", **ctx)
 
 
 @transport_bp.route("/dashboard/performance")
@@ -912,6 +954,7 @@ def passenger_assign_vehicle(passenger_id):
 @transport_bp.route("/drivers")
 @module_enabled_required("transport")
 @login_required
+@admin_required
 def drivers_index():
     """Drivers index"""
     logger.info(f"Drivers index accessed by user_id={_uid()}")
@@ -921,6 +964,7 @@ def drivers_index():
 @transport_bp.route("/drivers/new")
 @module_enabled_required("transport")
 @login_required
+@admin_required
 def drivers_new():
     """New driver form"""
     return render_template("transport/drivers/new.html")
@@ -930,7 +974,6 @@ def drivers_new():
 @module_enabled_required("transport")
 @login_required
 @require_profile_completion
-@require_kyc_tier(3)  # Tier 3 required to become a driver
 def become_driver():
     """Register as a transport driver"""
     if request.method == "GET":
@@ -958,6 +1001,20 @@ def become_driver():
         )
         driver_id = result['data']['driver_id']
         logger.info(f"Driver registered: user_id={_uid()}, driver_id={driver_id}")
+        driver = db.session.get(DriverProfile, driver_id)
+        driver_public_id = getattr(driver, "public_id", None) or getattr(
+            driver, "driver_code", None
+        )
+
+        if driver_public_id:
+            try:
+                switch_context(current_user, {
+                    "type": "driver",
+                    "public_id": str(driver_public_id),
+                })
+            except ContextSwitchError:
+                return redirect(url_for("transport.driver_dashboard"))
+
         flash("Driver registration submitted for verification!", "success")
         return redirect(url_for("transport.driver_dashboard"))
 
@@ -971,6 +1028,7 @@ def become_driver():
 @transport_bp.route("/drivers/<int:id>")
 @module_enabled_required("transport")
 @login_required
+@admin_required
 def drivers_show(id):
     """View driver profile"""
     try:
@@ -1006,6 +1064,7 @@ def drivers_show(id):
 @transport_bp.route("/drivers/<int:id>/edit")
 @module_enabled_required("transport")
 @login_required
+@admin_required
 def drivers_edit(id):
     """Edit driver profile"""
     logger.info(f"Driver edit {id} accessed by user_id={_uid()}")
@@ -1015,6 +1074,7 @@ def drivers_edit(id):
 @transport_bp.route("/drivers/<int:id>/location")
 @module_enabled_required("transport")
 @login_required
+@admin_required
 def drivers_location(id):
     """Driver live location"""
     logger.info(f"Driver location {id} accessed by user_id={_uid()}")
@@ -1024,6 +1084,7 @@ def drivers_location(id):
 @transport_bp.route("/drivers/<int:id>/verification")
 @module_enabled_required("transport")
 @login_required
+@admin_required
 def drivers_verification(id):
     """Driver verification details"""
     logger.info(f"Driver verification {id} accessed by user_id={_uid()}")
@@ -1034,26 +1095,71 @@ def drivers_verification(id):
 @module_enabled_required("transport")
 @login_required
 @active_context_required(ContextType.DRIVER)
-@role_required("driver")
 def driver_dashboard():
-    """Driver's personal dashboard"""
+    """Driver's personal dashboard (Driver Workspace home).
+
+    Presentation-only consolidation (Phase C): the view reuses the existing
+    transport services and adds no business logic. Workspace entry stays a
+    PARTICIPATION capability — ``@active_context_required(ContextType.DRIVER)``
+    above is unchanged, and go-live readiness remains composed solely by
+    ``can_go_live``. Operational data (earnings, owned vs assigned vehicles,
+    upcoming/recent bookings) is surfaced from the authoritative services so
+    the home presents one coherent driver workspace instead of admin links.
+    """
+    provider_service = get_provider_service()
+    booking_service = get_booking_service()
     try:
-        profile = get_provider_service().get_driver_profile(current_user.id)
+        profile = provider_service.get_driver_profile(current_user.id)
+        approved = bool(
+            profile and profile.compliance_status == ComplianceStatus.APPROVED
+        )
         bookings = (
-            get_booking_service().get_driver_bookings(current_user.id)
-            if profile and profile.compliance_status == ComplianceStatus.APPROVED
+            booking_service.get_driver_bookings(current_user.id) if approved else []
+        )
+        upcoming = (
+            booking_service.get_driver_upcoming_bookings(current_user.id, limit=5)
+            if approved
             else []
         )
+        recent = (
+            booking_service.get_driver_recent_bookings(current_user.id, limit=5)
+            if approved
+            else []
+        )
+        earnings = (
+            booking_service.get_driver_earnings(current_user.id) if profile else 0.0
+        )
+        owned_vehicles = (
+            provider_service.get_user_vehicles(current_user.id) if profile else []
+        )
+        assigned_vehicle = profile.current_vehicle if profile else None
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error loading driver dashboard for user_id={_uid()}: {e}")
         profile = None
         bookings = []
+        upcoming = []
+        recent = []
+        earnings = 0.0
+        owned_vehicles = []
+        assigned_vehicle = None
+
+    # GO-LIVE capability: entering the Driver Workspace is participation;
+    # going online composes the authoritative readiness gates. The result is
+    # rendered to the template so the online toggle is disabled and the
+    # checklist panel is shown until every required gate passes.
+    go_live = can_go_live(profile) if profile is not None else None
 
     return _json_or_template(
         "transport/driver_dashboard.html",
         driver_profile=profile,
         bookings=bookings,
+        upcoming=upcoming,
+        recent=recent,
+        earnings=earnings,
+        owned_vehicles=owned_vehicles,
+        assigned_vehicle=assigned_vehicle,
+        go_live=go_live,
     )
 
 
@@ -1061,7 +1167,6 @@ def driver_dashboard():
 @module_enabled_required("transport")
 @login_required
 @active_context_required(ContextType.DRIVER)
-@role_required("driver")
 def driver_dashboard_slash():
     """Alias of driver_dashboard.
 

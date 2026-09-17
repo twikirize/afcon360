@@ -122,13 +122,36 @@ class IncidentListResource(Resource):
                 "error": f"Invalid severity. Choose from: {[s.value for s in IncidentSeverity]}"
             }, 400
 
+        # Parse occurred_at as an explicit ISO-8601 datetime. The database
+        # would otherwise interpret naive strings in its session timezone,
+        # so require an explicit offset and normalize to UTC.
+        occurred_at_value = data["occurred_at"]
+        if not isinstance(occurred_at_value, str) or not occurred_at_value.strip():
+            return {
+                "success": False,
+                "error": "Invalid occurred_at: expected a non-empty ISO-8601 datetime string (e.g. 2026-09-30T14:30:00+03:00 or Z)"
+            }, 400
+        try:
+            occurred_at = datetime.fromisoformat(occurred_at_value.replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return {
+                "success": False,
+                "error": "Invalid occurred_at: expected ISO-8601 datetime (e.g. 2026-09-30T14:30:00+03:00 or Z)"
+            }, 400
+        if occurred_at.tzinfo is None or occurred_at.utcoffset() is None:
+            return {
+                "success": False,
+                "error": "Invalid occurred_at: a timezone offset is required (e.g. +03:00 or Z); naive datetimes are not accepted"
+            }, 400
+        occurred_at = occurred_at.astimezone(timezone.utc)
+
         try:
             incident = TransportIncident(
                 incident_type=data["incident_type"],
                 severity=data["severity"],
                 title=data["title"],
                 description=data["description"],
-                occurred_at=data["occurred_at"],
+                occurred_at=occurred_at,
                 reported_by=data["reported_by"],
                 reported_via=data["reported_via"],
                 reported_by_id=data.get("reported_by_id"),

@@ -81,6 +81,7 @@ def make_celery(app=None):
             "app.tasks.backup_tasks",
             "app.events.tasks",
             "app.tasks.transport_recovery",
+            "app.tasks.transport_permission_purge",
             # add future task modules here
         ],
     )
@@ -153,6 +154,12 @@ def make_celery(app=None):
         "events-cleanup-ledger": {
             "task": "events.cleanup_ledger",
             "schedule": 86400.0,  # daily retention pruning
+        },
+
+        # --- Transport permissions auto-revoke (daily) ---
+        "transport-permission-purge-expired": {
+            "task": "app.tasks.transport_permission_purge.purge_expired_transport_permissions",
+            "schedule": 86400.0,  # once per day
         },
 
         # --- Events onsale: auto-release expired ticket holds ---

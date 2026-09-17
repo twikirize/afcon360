@@ -97,6 +97,9 @@ class ContextSwitchError(ValueError):
 
 _SESSION_KEYS = ("active_context_type", "active_context_id", "active_role")
 _BLOCKED_EVENT_STATES = {"suspended", "deactivated", "deleted", "archived"}
+# Operational approval tiers for a driver (workspace entry must NOT require
+# them — see _driver_contexts). Kept here as the single reference so the
+# transport services can enforce operational access without duplicating it.
 _APPROVED_DRIVER_TIERS = {"platform_verified", "event_certified"}
 _BLOCKED_DRIVER_STATES = {"suspended", "revoked", "blacklisted"}
 
@@ -122,6 +125,32 @@ def _safe_url(endpoint: str, **values: Any) -> Optional[str]:
         return None
 
 
+def _organisation_public_id_to_slug(public_id):
+    """Resolve the browser slug for an organisation public identifier.
+
+    Accepts the stable ``org_id`` UUID or an existing slug; returns the
+    canonical slug (falls back to the given identifier when the organisation
+    cannot be resolved or a legacy row has no slug yet).
+    """
+    if not public_id:
+        return None
+    try:
+        from app.identity.models.organisation import Organisation
+
+        org = Organisation.query.filter_by(
+            org_id=str(public_id), is_deleted=False
+        ).first()
+        if not org:
+            org = Organisation.query.filter_by(
+                slug=str(public_id), is_deleted=False
+            ).first()
+        if org and org.slug:
+            return org.slug
+    except (ImportError, AttributeError, RuntimeError):
+        pass
+    return public_id
+
+
 def _workspace_url(
     context_type: ContextType,
     public_id: Optional[str],
@@ -143,7 +172,7 @@ def _workspace_url(
         "event_manager": ("admin.event_manager_dashboard",),
         "transport_admin": ("admin.transport_admin_dashboard",),
         "wallet_admin": ("admin.wallet_admin_dashboard",),
-        "accommodation_admin": ("admin.accommodation_admin_dashboard",),
+        "accommodation_admin": ("accommodation.admin_dashboard",),
         "tourism_admin": ("admin.tourism_admin_dashboard",),
         "org_admin": ("admin.org_admin_dashboard",),
         "org_member": ("admin.org_member_dashboard",),
@@ -161,7 +190,7 @@ def _workspace_url(
     for endpoint in candidates:
         values = {}
         if context_type == ContextType.ORGANISATION and public_id and endpoint == "org.org_dashboard":
-            values["org_id"] = public_id
+            values["org_id"] = _organisation_public_id_to_slug(public_id)
         elif context_type == ContextType.EVENT and endpoint == "events.organizer_dashboard" and public_id:
             values["identifier"] = public_id
         url = _safe_url(endpoint, **values)
@@ -463,12 +492,21 @@ def _driver_contexts(user: Any) -> list[ContextDescriptor]:
     driver = _loaded_driver(user)
     if not driver:
         return []
-    tier = getattr(getattr(driver, "verification_tier", None), "value", getattr(driver, "verification_tier", None))
     compliance = getattr(getattr(driver, "compliance_status", None), "value", getattr(driver, "compliance_status", None))
-    if str(tier).lower() not in _APPROVED_DRIVER_TIERS:
-        return []
+    # Driver Workspace gate: operational approval is NOT required to enter the
+    # workspace — a PENDING driver must be able to complete their profile,
+    # upload documents, add vehicles, and see their status. Go-online, claim,
+    # dispatch, and event-service access remain gated independently by the
+    # operational contracts (compliance_status == approved + approved
+    # verification tier) in the transport services.
     if str(compliance).lower() in _BLOCKED_DRIVER_STATES:
         return []
+    # The Driver Workspace is a PARTICIPATION context, not a go-live context:
+    # any authenticated user with their own live, non-blocked DriverProfile
+    # may enter it. Identity verification, compliance approval, licence
+    # validity, and (where required by the operating mode) a vehicle are all
+    # enforced by the transport GO-LIVE capability (can_go_live) — never
+    # here. See app/transport/services/go_live_service.py.
     public_id = getattr(driver, "public_id", None) or getattr(driver, "driver_code", None)
     if not public_id:
         return []

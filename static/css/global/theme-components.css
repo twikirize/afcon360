@@ -28,12 +28,13 @@
 }
 
 .btn-outline-primary {
-  color: var(--brand-primary);
-  border-color: var(--brand-primary);
+  color: var(--color-primary);
+  border-color: var(--color-primary);
 }
 .btn-outline-primary:hover {
   background-color: var(--brand-primary);
   border-color: var(--brand-primary);
+  color: #fff;
 }
 
 .btn-success {
@@ -74,6 +75,21 @@
   background-color: var(--bg-surface-alt);
   border-top: 1px solid var(--border-light);
   padding: var(--space-4) var(--space-5);
+}
+
+/* ===== CARD SUB-COMPONENTS / LIST GROUPS ===== */
+.list-group-item {
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-light);
+}
+.list-group-item .text-muted,
+.list-group-item .text-secondary,
+.list-group-item small {
+  color: var(--text-secondary) !important;
+}
+.list-group-item:hover {
+  background-color: var(--bg-surface-alt);
 }
 
 /* ===== BADGES ===== */
@@ -283,7 +299,7 @@
   background-color: var(--info) !important;
 }
 .text-primary {
-  color: var(--brand-primary) !important;
+  color: var(--color-primary) !important;
 }
 .text-success {
   color: var(--success) !important;
@@ -293,6 +309,15 @@
 }
 .text-warning {
   color: var(--warning) !important;
+}
+.text-muted {
+  color: var(--text-muted) !important;
+}
+.text-secondary {
+  color: var(--text-secondary) !important;
+}
+.text-body {
+  color: var(--text-primary) !important;
 }
 .border-primary {
   border-color: var(--brand-primary) !important;

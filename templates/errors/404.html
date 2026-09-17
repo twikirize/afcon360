@@ -6,6 +6,9 @@
   <title>Page Not Found - AFCON360</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <meta name="user-authenticated" content="false">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/global/dark-mode.css') }}">
   <style>
     .error-container {
       min-height: 100vh;
@@ -43,6 +46,11 @@
       color: white;
     }
   </style>
+  <style>
+    body.dark-mode .error-card { background: var(--bg-elevated); color: var(--text-primary); }
+    body.dark-mode .error-card h2 { color: var(--text-primary); }
+    body.dark-mode .error-card .text-muted { color: var(--text-muted); }
+  </style>
 </head>
 <body>
   <div class="error-container">
@@ -54,5 +62,6 @@
       <button onclick="history.back()" class="btn btn-outline-secondary rounded-pill ms-2 mt-3"><i class="fas fa-arrow-left me-2"></i>Go Back</button>
     </div>
   </div>
+  <script src="{{ url_for('static', filename='js/global/theme-manager.js') }}" defer></script>
 </body>
 </html>

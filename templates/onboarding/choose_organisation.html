@@ -5,229 +5,271 @@
 <div class="ob-choose-root">
   <div class="ob-choose-inner">
 
-    <div class="ob-choose-header">
+    <a href="{{ url_for('onboarding.choose') }}" class="ob-back">&larr; Back</a>
+
+    <header class="ob-hero">
+      <span class="ob-hero-badge">Organisation Workspace</span>
       <h1>Set up your organisation</h1>
       <p>
         Your personal AFCON 360 identity remains yours. The organisation
         becomes your operating workspace.
       </p>
-    </div>
+    </header>
 
     <form method="POST" action="{{ url_for('onboarding.organisation_onboarding') }}" class="ob-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-      <!-- SECTION: Organisation Type -->
-      <div class="ob-section">
+      <!-- SECTION: Organisation Type (classification) -->
+      <section class="ob-section">
         <h2 class="ob-section-title">What kind of organisation are you?</h2>
-        <p class="ob-section-sub">Select the type that best describes your organisation.</p>
+        <p class="ob-section-sub">
+          Choose the type that best describes your organisation. The platform
+          derives your classification from this and uses it to match the right
+          capabilities.
+        </p>
+
         <div class="ob-field">
           <label for="org_type">Organisation Type <span class="ob-req">*</span></label>
-          <select name="org_type" id="org_type" required>
+          <select name="org_type" id="org_type" class="form-select" required>
             <option value="" disabled selected>Choose a type...</option>
-            <optgroup label="Hospitality & Tourism">
-              <option value="hotel">Hotel</option>
-              <option value="restaurant">Restaurant</option>
-              <option value="tour_operator">Tour Operator</option>
-              <option value="travel_agency">Travel Agency</option>
-              <option value="tourism_board">Tourism Board</option>
-              <option value="accommodation_provider">Accommodation Provider</option>
-              <option value="hostel">Hostel</option>
-              <option value="vacation_rental">Vacation Rental</option>
-              <option value="camping_site">Camping Site</option>
+            {% for category in classification_categories %}
+            <optgroup label="{{ category.label }}">
+              {% for type_option in category.types %}
+              <option value="{{ type_option.code }}">{{ type_option.label }}</option>
+              {% endfor %}
             </optgroup>
-            <optgroup label="Events & Venues">
-              <option value="event_management">Event Management</option>
-              <option value="conference_center">Conference Center</option>
-              <option value="venue_operator">Venue Operator</option>
-              <option value="exhibition_org">Exhibition Organisation</option>
-            </optgroup>
-            <optgroup label="Sports & Recreation">
-              <option value="sports_team">Sports Team</option>
-              <option value="football_team">Football Team</option>
-              <option value="sports_federation">Sports Federation</option>
-              <option value="fitness_center">Fitness Center</option>
-              <option value="recreation_facility">Recreation Facility</option>
-            </optgroup>
-            <optgroup label="Transportation">
-              <option value="transport_company">Transport Company</option>
-              <option value="airline">Airline</option>
-              <option value="bus_operator">Bus Operator</option>
-              <option value="taxi_service">Taxi Service</option>
-              <option value="car_rental">Car Rental</option>
-            </optgroup>
-            <optgroup label="Business Services">
-              <option value="corporate">Corporate</option>
-              <option value="consulting_firm">Consulting Firm</option>
-              <option value="marketing_agency">Marketing Agency</option>
-              <option value="it_services">IT Services</option>
-            </optgroup>
-            <optgroup label="Government & Institutions">
-              <option value="government">Government</option>
-              <option value="ngo">NGO</option>
-              <option value="educational_institution">Educational Institution</option>
-              <option value="healthcare_provider">Healthcare Provider</option>
-            </optgroup>
-            <optgroup label="Financial Services">
-              <option value="bank">Bank</option>
-              <option value="insurance_company">Insurance Company</option>
-              <option value="investment_firm">Investment Firm</option>
-              <option value="fintech">Fintech</option>
-            </optgroup>
-            <optgroup label="Media & Entertainment">
-              <option value="media_company">Media Company</option>
-              <option value="broadcasting">Broadcasting</option>
-              <option value="entertainment">Entertainment</option>
-              <option value="publishing">Publishing</option>
-            </optgroup>
+            {% endfor %}
           </select>
+          <div class="ob-type-preview" id="ob-type-preview">
+            <i class="bi bi-patch-check"></i>
+            <span id="ob-type-preview-label">No type selected yet</span>
+          </div>
+          <span class="ob-hint">
+            Classification is read-only after onboarding and can be updated
+            later from organisation settings.
+          </span>
         </div>
-      </div>
+      </section>
 
       <!-- SECTION: Provider Capabilities -->
-      <div class="ob-section">
+      <section class="ob-section">
         <h2 class="ob-section-title">What services do you want to provide?</h2>
         <p class="ob-section-sub">
           Select zero or more provider capabilities. You can also continue
           without selecting any — every organisation can use AFCON 360 services.
         </p>
         <div class="ob-capabilities">
-          <label class="ob-capability-option">
-            <input type="checkbox" name="provider_capabilities" value="accommodation">
-            <span class="ob-capability-label">
-              <span class="ob-capability-icon">&#127968;</span>
+          <label class="ob-capability-option ob-capability-option--none">
+            <input type="checkbox" name="provider_capabilities" value="none" id="ob-cap-none">
+            <span class="ob-capability-label ob-capability-label--none">
+              <span class="ob-capability-icon ob-capability-icon--none"><i class="bi bi-dash-circle"></i></span>
               <span class="ob-capability-text">
-                <strong>Accommodation</strong>
-                <span>List and manage rooms, stays and bookings.</span>
+                <strong>None — not yet</strong>
+                <span>I don't plan to provide services on AFCON 360 right now. I can add this later.</span>
               </span>
             </span>
           </label>
+          <div class="ob-capability-divider"></div>
+          {% for option in capability_options %}
           <label class="ob-capability-option">
-            <input type="checkbox" name="provider_capabilities" value="transport">
+            <input type="checkbox" name="provider_capabilities" value="{{ option.code }}">
             <span class="ob-capability-label">
-              <span class="ob-capability-icon">&#128653;</span>
+              <span class="ob-capability-icon"><i class="{{ option.icon }}"></i></span>
               <span class="ob-capability-text">
-                <strong>Transport</strong>
-                <span>Manage vehicles, drivers, trips and transport services.</span>
+                <strong>{{ option.label }}</strong>
+                {% if option.description %}
+                <span>{{ option.description }}</span>
+                {% endif %}
               </span>
             </span>
           </label>
-          <label class="ob-capability-option">
-            <input type="checkbox" name="provider_capabilities" value="events">
-            <span class="ob-capability-label">
-              <span class="ob-capability-icon">&#127914;</span>
-              <span class="ob-capability-text">
-                <strong>Events</strong>
-                <span>Create, organise and manage events and attendees.</span>
-              </span>
-            </span>
-          </label>
-          <label class="ob-capability-option">
-            <input type="checkbox" name="provider_capabilities" value="tourism">
-            <span class="ob-capability-label">
-              <span class="ob-capability-icon">&#127758;</span>
-              <span class="ob-capability-text">
-                <strong>Tourism</strong>
-                <span>Offer tours, activities and local experiences.</span>
-              </span>
-            </span>
-          </label>
-          <label class="ob-capability-option">
-            <input type="checkbox" name="provider_capabilities" value="venue">
-            <span class="ob-capability-label">
-              <span class="ob-capability-icon">&#127963;</span>
-              <span class="ob-capability-text">
-                <strong>Venue</strong>
-                <span>Offer venue spaces for events and gatherings.</span>
-              </span>
-            </span>
-          </label>
+          {% endfor %}
         </div>
         <p class="ob-capability-note">
+          <i class="bi bi-info-circle"></i>
           You can add or change provider capabilities later.
         </p>
-      </div>
+      </section>
 
       <div class="ob-form-footer">
-        <button class="ob-btn ob-btn--primary" type="submit">Continue &rarr;</button>
+        <button class="ob-btn ob-btn--primary" type="submit">
+          Continue <i class="bi bi-arrow-right"></i>
+        </button>
       </div>
     </form>
 
   </div>
 </div>
 
+<script nonce="{{ csp_nonce }}">
+(function () {
+  var sel = document.getElementById("org_type");
+  var out = document.getElementById("ob-type-preview-label");
+  if (!sel || !out) { return; }
+  var labels = {
+    {% for category in classification_categories %}{% for t in category.types %}"{{ t.code }}": "{{ t.label }}",{% endfor %}{% endfor %}
+  };
+  function update() {
+    var label = labels[sel.value] || "";
+    out.textContent = label ? "Selected: " + label : "No type selected yet";
+  }
+  sel.addEventListener("change", update);
+  update();
+
+  /* Mutual exclusion: "None" vs provider capabilities */
+  var none = document.getElementById("ob-cap-none");
+  var others = document.querySelectorAll('input[name="provider_capabilities"]:not(#ob-cap-none)');
+  if (none) {
+    none.addEventListener("change", function () {
+      if (none.checked) {
+        for (var i = 0; i < others.length; i++) others[i].checked = false;
+      }
+    });
+  }
+  for (var i = 0; i < others.length; i++) {
+    others[i].addEventListener("change", function () {
+      if (this.checked && none) none.checked = false;
+    });
+  }
+})();
+</script>
+
 <style>
+/* ============================================
+   ORGANISATION ONBOARDING — CHOOSE (brand refresh)
+   Inherits AFCON360 global theme tokens.
+   ============================================ */
 .ob-choose-root {
   min-height: 80vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 20px;
-  background: var(--bs-body-bg, #f8f9fa);
+  padding: 40px 20px 80px;
+  background: var(--bg-body, #f2f4f2);
 }
 .ob-choose-inner {
-  max-width: 720px;
-  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
 }
-.ob-choose-header {
+.ob-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-tertiary, #6c757d);
+  text-decoration: none;
+  margin-bottom: 20px;
+  min-height: 44px;
+}
+.ob-back:hover {
+  color: var(--brand-primary, #2d5a2d);
+}
+.ob-hero {
+  background: linear-gradient(135deg, var(--dark, #1a1a1a) 0%, var(--brand-primary-dark, #1a3a1a) 100%);
+  border-bottom: 4px solid var(--brand-accent, #ffcc00);
+  border-radius: var(--radius-lg, 12px);
+  padding: clamp(28px, 5vw, 48px);
   text-align: center;
-  margin-bottom: 36px;
+  margin-bottom: 28px;
+  box-shadow: var(--shadow-lg, 0 10px 15px -3px rgba(0,0,0,0.1));
 }
-.ob-choose-header h1 {
-  font-size: clamp(24px, 4vw, 36px);
-  font-weight: 700;
-  margin: 0 0 10px;
+.ob-hero-badge {
+  display: inline-block;
+  background: rgba(var(--brand-accent-rgb, 255, 204, 0), 0.15);
+  color: var(--brand-accent, #ffcc00);
+  font-size: 0.72rem;
+  font-weight: var(--font-weight-semibold, 600);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 6px 18px;
+  border-radius: 50px;
+  border: 1px solid rgba(var(--brand-accent-rgb, 255, 204, 0), 0.25);
+  margin-bottom: 18px;
 }
-.ob-choose-header p {
-  font-size: 16px;
-  color: #6c757d;
-  margin: 0;
+.ob-hero h1 {
+  font-family: var(--font-family-heading, 'Playfair Display', serif);
+  font-weight: var(--font-weight-extrabold, 800);
+  font-size: clamp(28px, 5vw, 40px);
+  color: var(--text-light, #ffffff);
+  line-height: 1.15;
+  margin: 0 0 12px;
+}
+.ob-hero h1 span,
+.ob-hero-title-accent {
+  color: var(--brand-accent, #ffcc00);
+}
+.ob-hero p {
+  font-size: clamp(14px, 2.5vw, 16px);
+  color: rgba(255, 255, 255, 0.75);
+  max-width: 560px;
+  margin: 0 auto;
+  line-height: 1.6;
 }
 .ob-section {
-  background: #fff;
-  border: 1.5px solid #e9ecef;
-  border-radius: 16px;
-  padding: 28px;
+  background: var(--bg-surface, #ffffff);
+  border: 1px solid var(--border-light, #e9ecef);
+  border-left: 5px solid var(--brand-primary, #2d5a2d);
+  border-radius: var(--radius-lg, 12px);
+  padding: clamp(20px, 4vw, 28px);
+  box-shadow: var(--shadow-md, 0 4px 6px -1px rgba(0,0,0,0.1));
   margin-bottom: 20px;
 }
 .ob-section-title {
   font-size: 18px;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold, 700);
   margin: 0 0 6px;
-  color: #212529;
+  color: var(--text-primary, #1a1a1a);
 }
 .ob-section-sub {
   font-size: 14px;
-  color: #6c757d;
+  color: var(--text-secondary, #374151);
   margin: 0 0 20px;
-  line-height: 1.5;
-}
-.ob-field {
-  margin-bottom: 16px;
+  line-height: 1.55;
 }
 .ob-field label {
   display: block;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold, 600);
   margin-bottom: 6px;
-  color: #343a40;
+  color: var(--text-primary, #1a1a1a);
 }
 .ob-req {
-  color: #dc3545;
+  color: var(--danger, #dc3545);
 }
 .ob-field select {
   width: 100%;
+  min-height: 46px;
   padding: 10px 14px;
   font-size: 15px;
-  border: 1.5px solid #dee2e6;
-  border-radius: 10px;
-  background: #fff;
-  color: #212529;
-  appearance: auto;
+  border: 1.5px solid var(--border-medium, #dee2e6);
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-surface, #ffffff);
+  color: var(--text-primary, #1a1a1a);
 }
 .ob-field select:focus {
   outline: none;
-  border-color: #FFC107;
-  box-shadow: 0 0 0 3px rgba(255,193,7,0.15);
+  border-color: var(--brand-primary, #2d5a2d);
+  box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb, 45, 90, 45), 0.15);
+}
+.ob-type-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 14px;
+  background: var(--brand-primary-light, #e8f0e8);
+  border: 1px solid rgba(var(--brand-primary-rgb, 45, 90, 45), 0.2);
+  border-radius: 50px;
+  font-size: 13px;
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--brand-primary-dark, #1a3a1a);
+}
+.ob-type-preview i {
+  color: var(--brand-primary, #2d5a2d);
+}
+.ob-hint {
+  display: block;
+  font-size: 12px;
+  color: var(--text-tertiary, #6c757d);
+  margin-top: 8px;
 }
 .ob-capabilities {
   display: flex;
@@ -240,10 +282,10 @@
   cursor: pointer;
 }
 .ob-capability-option input[type="checkbox"] {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   margin-right: 14px;
-  accent-color: #FFC107;
+  accent-color: var(--brand-primary, #2d5a2d);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -252,19 +294,43 @@
   align-items: center;
   flex: 1;
   padding: 12px 16px;
-  background: #f8f9fa;
-  border: 1.5px solid #e9ecef;
-  border-radius: 12px;
-  transition: border-color .2s, background .2s;
+  background: var(--bg-surface-alt, #f8f9fa);
+  border: 1.5px solid var(--border-light, #e9ecef);
+  border-radius: var(--radius-md, 8px);
+  transition: border-color .2s, background .2s, box-shadow .2s;
 }
 .ob-capability-option input:checked + .ob-capability-label {
-  border-color: #FFC107;
-  background: #fffdf0;
+  border-color: var(--brand-primary, #2d5a2d);
+  background: var(--brand-primary-light, #e8f0e8);
+  box-shadow: var(--shadow-sm, 0 1px 3px 0 rgba(0,0,0,0.1));
+}
+.ob-capability-divider {
+  height: 1px;
+  background: var(--border-light, #e9ecef);
+  margin: 4px 0;
+}
+.ob-capability-option--none input:checked + .ob-capability-label {
+  border-color: var(--text-tertiary, #6c757d);
+  background: var(--bg-surface-alt, #f8f9fa);
+}
+.ob-capability-icon--none {
+  background: var(--text-tertiary, #6c757d);
+}
+.ob-capability-option--none input:checked + .ob-capability-label .ob-capability-icon--none {
+  background: var(--text-tertiary, #6c757d);
 }
 .ob-capability-icon {
-  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--brand-primary, #2d5a2d);
+  color: var(--text-light, #ffffff);
+  font-size: 20px;
   margin-right: 14px;
-  line-height: 1;
+  flex-shrink: 0;
 }
 .ob-capability-text {
   display: flex;
@@ -272,41 +338,64 @@
 }
 .ob-capability-text strong {
   font-size: 15px;
-  font-weight: 600;
-  color: #212529;
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--text-primary, #1a1a1a);
 }
 .ob-capability-text span {
   font-size: 13px;
-  color: #6c757d;
+  color: var(--text-secondary, #374151);
   margin-top: 2px;
 }
 .ob-capability-note {
   font-size: 13px;
-  color: #6c757d;
+  color: var(--text-secondary, #374151);
   margin: 12px 0 0;
+}
+.ob-capability-note i {
+  color: var(--brand-primary, #2d5a2d);
 }
 .ob-form-footer {
   text-align: center;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 .ob-btn {
-  display: inline-block;
-  padding: 12px 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 12px 36px;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold, 600);
   border: none;
-  border-radius: 10px;
+  border-radius: 50px;
   cursor: pointer;
   text-decoration: none;
-  transition: background .2s, transform .1s;
+  transition: transform var(--transition-base, 250ms ease), box-shadow var(--transition-base, 250ms ease);
 }
 .ob-btn--primary {
-  background: #FFC107;
-  color: #212529;
+  background: var(--brand-primary, #2d5a2d);
+  color: var(--text-light, #ffffff);
+  box-shadow: 0 6px 24px rgba(var(--brand-primary-rgb, 45, 90, 45), 0.35);
 }
 .ob-btn--primary:hover {
-  background: #e0a800;
-  transform: translateY(-1px);
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 12px 36px rgba(var(--brand-primary-rgb, 45, 90, 45), 0.45);
+}
+
+@media (max-width: 480px) {
+  .ob-choose-root {
+    padding: 24px 14px 60px;
+  }
+  .ob-capability-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+    margin-right: 12px;
+  }
+  .ob-btn {
+    width: 100%;
+  }
 }
 </style>
 

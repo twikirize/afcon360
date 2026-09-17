@@ -415,7 +415,7 @@
             </button>
         </form>
 
-        <form method="post" action="{{ url_for('admin_ultimate.demote_user', user_id=user.public_id) }}" style="display: inline;">
+        <form method="post" action="{{ url_for('admin_ultimate.demote_user', user_id=user.public_id) }}" style="display: inline;" class="secure-action" data-secure-label="Demote {{ user.username }} — your password + owner MFA code required">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="action-btn btn-demote">
                 <i class="bi bi-arrow-down"></i> Demote
@@ -431,7 +431,7 @@
         </form>
         {% endif %}
 
-        <form method="post" action="{{ url_for('admin_ultimate.delete_user', user_id=user.public_id) }}" style="display: inline;" onsubmit="return confirm('Delete user {{ user.username }} permanently? This action cannot be undone and will remove all user data.')">
+        <form method="post" action="{{ url_for('admin_ultimate.delete_user', user_id=user.public_id) }}" style="display: inline;" class="secure-action" data-secure-label="Delete {{ user.username }} permanently? This cannot be undone — your password + owner MFA code required">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="action-btn btn-delete" title="Delete user permanently">
                 <i class="bi bi-trash"></i> Delete
@@ -439,4 +439,5 @@
         </form>
     </div>
 </div>
+{% include "components/secure_action_modal.html" %}
 {% endblock %}

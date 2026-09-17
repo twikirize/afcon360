@@ -22,17 +22,24 @@ class Organisation(BaseModel):
     __tablename__ = "organisations"
     __table_args__ = (
         UniqueConstraint("org_id", name="uq_org_id"),
+        UniqueConstraint("slug", name="uq_org_slug"),
         UniqueConstraint("country", "tax_id", name="uq_org_country_tax"),
         UniqueConstraint("country", "vat_number", name="uq_org_country_vat"),
         Index("ix_org_is_deleted_is_active", "is_deleted", "is_active"),
         Index("ix_org_is_operational", "is_operational"),
         Index("ix_org_verification_status_country", "verification_status", "country"),
+        Index("ix_org_slug_unique", "slug", unique=True),
     )
 
     # -------------------
     # Core Identifiers
     # -------------------
     org_id = Column(String(64), unique=True, nullable=False, index=True)
+
+    # Browser-facing routing identifier. Human-readable, unique, stable.
+    # Generated from the first two meaningful words of ``legal_name`` at
+    # creation (see organisation_slug). Never used for authorization.
+    slug = Column(String(120), nullable=False)
 
     # -------------------
     # Legal Jurisdiction
@@ -72,14 +79,20 @@ class Organisation(BaseModel):
     # -------------------
     # Compliance Integration (KYB)
     # -------------------
-    # Deferrable FK to break the organisations <-> compliance_cases cycle:
+    # Break the organisations <-> compliance_cases cycle:
     # compliance_cases.organisation_id also references organisations, so a normal
     # (immediate) FK on this side makes the two tables un-sortable for Alembic
-    # (SAWarning: unresolvable cycles). Deferring to COMMIT lets inserts happen
-    # in either order and lets Alembic sort the tables. PostgreSQL only.
+    # (SAWarning: unresolvable cycles). use_alter=True defers DDL emission for
+    # this FK so Alembic can compute a valid table creation order, while
+    # deferrable=True keeps runtime in-transaction insert ordering unchanged.
     compliance_case_id = Column(
         BigInteger,
-        ForeignKey("compliance_cases.id", deferrable=True, initially="deferred"),
+        ForeignKey(
+            "compliance_cases.id",
+            use_alter=True,
+            deferrable=True,
+            initially="deferred",
+        ),
         nullable=True,
         index=True,
     )
@@ -120,7 +133,21 @@ class Organisation(BaseModel):
     # -------------------
     # Classification
     # -------------------
+    # Canonical type from the frozen classification catalogue
+    # (organisation_types.code — 1:1 with OrganizationType values). This is the
+    # write target for new organisations, resolved via
+    # get_effective_org_type(). Do NOT add an organisation_type_id — the
+    # catalogue code is the public contract.
+    organisation_type_code = Column(
+        String(40),
+        ForeignKey("organisation_types.code"),
+        nullable=True,
+        index=True,
+    )
     industry_code = Column(String(32), index=True)
+    # LEGACY / RETIRE AFTER COMPATIBILITY VERIFICATION: kept as a read
+    # fallback for organisations created before organisation_type_code existed.
+    # New organisations no longer write this column.
     business_category = Column(
         Enum(OrganizationType, name="org_business_category"),
         index=True
@@ -232,9 +259,31 @@ class Organisation(BaseModel):
     # Organization Type Methods
     # -------------------
     
+    def get_effective_org_type(self) -> OrganizationType:
+        """Chokepoint for an organisation's canonical classification.
+
+        Resolution order:
+          1. ``organisation_type_code`` — the canonical write target for new
+             organisations (matches an ``OrganizationType`` value 1:1).
+          2. ``business_category`` — legacy fallback for organisations created
+             before the catalogue existed.
+          3. ``OrganizationType.CORPORATE`` — universal default so no
+             organisation is ever type-less.
+
+        All classification reads (capabilities, role availability, host
+        eligibility, admin labels) MUST flow through this single resolution so
+        a stored code is always honoured.
+        """
+        code = self.organisation_type_code
+        if code:
+            return OrganizationType(code)
+        if self.business_category is not None:
+            return self.business_category
+        return OrganizationType.CORPORATE
+
     def get_capabilities(self):
-        """Get capabilities based on organization type"""
-        org_type = self.business_category or OrganizationType.CORPORATE
+        """Get capabilities based on effective organization type"""
+        org_type = self.get_effective_org_type()
         return get_organization_capabilities(org_type)
     
     def can_manage_staff(self):
@@ -361,3 +410,17 @@ def organisation_before_insert(mapper, connection, target):
 @event.listens_for(Organisation, "before_update")
 def organisation_before_update(mapper, connection, target):
     check_org_duplicates(connection, target, is_update=True)
+
+
+@event.listens_for(Organisation, "before_insert")
+def organisation_before_insert_slug(mapper, connection, target):
+    if not getattr(target, "slug", None):
+        from app.identity.services.organisation_slug import ensure_unique_slug
+        ensure_unique_slug(target)
+
+
+@event.listens_for(Organisation, "before_update")
+def organisation_before_update_slug(mapper, connection, target):
+    if not getattr(target, "slug", None):
+        from app.identity.services.organisation_slug import ensure_unique_slug
+        ensure_unique_slug(target)

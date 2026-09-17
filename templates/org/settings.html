@@ -297,7 +297,7 @@ input:checked + .toggle-slider:before {
                     </div>
                     <div>
                         <h1 class="mb-2 fw-bold">Organization Settings</h1>
-                        <p class="mb-1 opacity-90">{{ org.legal_name }} • {{ org.org_id }}</p>
+                        <p class="mb-1 opacity-90">{{ org.legal_name }} • {{ org.slug }}</p>
                         <div class="d-flex gap-2 flex-wrap mt-2">
                             <span class="badge bg-white text-dark px-3 py-2">
                                 <i class="bi bi-tag me-1"></i> {{ org.business_category.value if org.business_category else 'Organisation' }}
@@ -417,8 +417,8 @@ input:checked + .toggle-slider:before {
                                 </div>
                                 <div class="col-md-4">
                                     <div class="mb-3">
-                                        <label class="form-label">Organization ID</label>
-                                        <input type="text" class="form-control" value="{{ org.org_id }}" readonly>
+                                        <label class="form-label">Organization Slug</label>
+                                        <input type="text" class="form-control" value="{{ org.slug }}" readonly>
                                     </div>
                                 </div>
                             </div>
@@ -470,6 +470,46 @@ input:checked + .toggle-slider:before {
                                 {% if form.website.errors %}
                                     <div class="text-danger">
                                         {% for error in form.website.errors %}
+                                            <small>{{ error }}</small>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <div class="mb-3">
+                                {{ form.organisation_type_code.label(class="form-label") }}
+                                {% if classification_label %}
+                                    <div class="text-muted small mb-2">
+                                        <i class="bi bi-patch-check me-1"></i>
+                                        Currently: <strong>{{ classification_label }}</strong>
+                                    </div>
+                                {% else %}
+                                    <div class="alert-modern alert-warning py-2 mb-2">
+                                        <i class="bi bi-exclamation-triangle me-1"></i>
+                                        Your organisation is not classified yet. Select a type below so
+                                        it can use its platform capabilities.
+                                    </div>
+                                {% endif %}
+                                <select name="organisation_type_code" class="form-select">
+                                    <option value="">— Not classified —</option>
+                                    {% for category in classification_categories %}
+                                    <optgroup label="{{ category.label }}">
+                                        {% for type_option in category.types %}
+                                        <option value="{{ type_option.code }}"
+                                            {{ 'selected' if form.organisation_type_code.data == type_option.code else '' }}>
+                                            {{ type_option.label }}
+                                        </option>
+                                        {% endfor %}
+                                    </optgroup>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text">
+                                    Select the type that best describes your organisation. The
+                                    platform derives everything else from this classification.
+                                </div>
+                                {% if form.organisation_type_code.errors %}
+                                    <div class="text-danger">
+                                        {% for error in form.organisation_type_code.errors %}
                                             <small>{{ error }}</small>
                                         {% endfor %}
                                     </div>
@@ -1331,7 +1371,7 @@ document.querySelector('#deleteModal input[type="text"]').addEventListener('inpu
 
 // Preview profile
 function previewProfile() {
-    window.open(`/org/{{ org.id }}/profile/preview`, '_blank');
+    window.open('{{ url_for('org.org_dashboard', org_id=org.slug) }}', '_blank');
 }
 
 // Export settings
@@ -1339,7 +1379,7 @@ function exportSettings() {
     const settings = {
         organization: {
             name: '{{ org.legal_name }}',
-            id: '{{ org.org_id }}',
+            id: '{{ org.slug }}',
             type: '{{ org.business_category.value if org.business_category else '' }}',
             email: '{{ org.contact_email }}',
             phone: '{{ org.contact_phone }}',
@@ -1384,7 +1424,7 @@ function saveKycSettings() {
     };
 
     // Send settings to server
-    fetch(`/org/{{ org.id }}/settings/kyc`, {
+    fetch(`/org/{{ org.slug }}/settings/kyc`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

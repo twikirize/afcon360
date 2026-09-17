@@ -18,6 +18,7 @@ from app.extensions import db
 from app.kyc.nira_verification import verify_national_id, check_id_against_watchlist, generate_nira_report
 from app.kyc.models import KycRecord
 from app.kyc.services import KycService
+from app.profile.services.canonical_identity import get_canonical_identity
 from app.media.service import MediaService
 from app.identity.models.kyb import OrganisationKYBDocument
 import hashlib
@@ -287,6 +288,68 @@ def verify_address():
     return render_template('kyc/verify_address.html')
 
 
+# ── Bidirectional canonical identity (KYC-first write) ──────────────────────
+def _write_canonical_identity_from_kyc(user, *, full_name=None, date_of_birth=None) -> bool:
+    """Write missing shared personal-identity facts (full_name / date_of_birth)
+    to the canonical UserProfile identity bank when a KYC workflow is the FIRST
+    legitimate source of that fact.
+
+    Bidirectional single-entry contract (IDENT-KYC-4):
+    - Only blank/missing canonical values are ever written. An existing
+      canonical value is NEVER overwritten (conflict preserves the bank).
+    - A verified profile is immutable through ordinary flows, so the write is
+      skipped entirely when the profile is already verified.
+    - Fail-soft: any error rolls back the profile write and returns False so
+      the caller can still submit KYC evidence afterward.
+
+    Returns True when the write (or a no-op because the facts already exist)
+    succeeded; False when the write was skipped/degraded for safety.
+    """
+    if not full_name and date_of_birth is None:
+        return True  # nothing to backfill
+
+    try:
+        from app.profile.models import UserProfile, get_profile_by_user
+
+        created = False
+        profile = get_profile_by_user(user.public_id)
+        if profile is None:
+            # full_name is NOT NULL with a non-empty CHECK; mirror the
+            # canonical get-or-create fallback used by onboarding. A fresh
+            # profile is owned by this flow, so the submitted facts always
+            # replace the placeholder.
+            fallback = getattr(user, "username", None) or "AFCON 360 User"
+            profile = UserProfile(user_id=user.public_id, full_name=fallback)
+            db.session.add(profile)
+            db.session.flush()
+            created = True
+
+        if profile.verification_status == "verified":
+            # Canonical identity is immutable once verified - never write.
+            return False
+
+        changed = False
+        if full_name and (created or not (profile.full_name or "").strip()):
+            profile.full_name = full_name.strip()
+            changed = True
+
+        if date_of_birth is not None and (created or profile.date_of_birth is None):
+            # The model validator accepts datetime.date; convert ISO form at
+            # the boundary exactly as the profile editor does (%Y-%m-%d).
+            if isinstance(date_of_birth, str):
+                date_of_birth = datetime.strptime(date_of_birth, "%Y-%m-%d").date()
+            profile.date_of_birth = date_of_birth
+            changed = True
+
+        if changed:
+            db.session.commit()
+        return True
+    except Exception:
+        db.session.rollback()
+        current_app.logger.warning("Canonical identity write from KYC skipped", exc_info=True)
+        return False
+
+
 # ── /kyc/verify/national-id ──────────────────────────────────────────────────
 @kyc_bp.route("/verify/national-id", methods=["GET"])
 @login_required
@@ -301,11 +364,31 @@ def verify_national_id_page():
     already_verified  = existing and existing.status == "verified"
     pending_review    = existing and existing.status in ("pending", "manual_review")
 
+    # Bidirectional canonical identity (single entry): personal identity lives
+    # ONCE in the UserProfile identity bank. Profile-first users already hold
+    # the shared facts there (shown read-only). KYC-first users have no profile
+    # name yet, so this form collects the missing shared facts and the first
+    # legitimate source becomes canonical (written to UserProfile, never
+    # re-asked). Do NOT redirect to the profile editor for a missing name.
+    try:
+        canonical = get_canonical_identity(current_user)
+    except Exception:
+        canonical = None
+
+    show_collection = not already_verified and not pending_review
+    collect_identity = bool(
+        show_collection
+        and (canonical is None or not (canonical.full_name or "").strip())
+    )
+
     return render_template(
         "kyc/verify_national_id.html",
         already_verified=already_verified,
         pending_review=pending_review,
         existing=existing,
+        canonical=canonical,
+        collect_identity=collect_identity,
+        today=datetime.now(timezone.utc).date().isoformat() if collect_identity else None,
     )
 
 
@@ -324,12 +407,45 @@ def submit_national_id():
       5. Generate compliance report
     """
     id_number   = request.form.get("id_number",   "").strip().upper()
-    surname     = request.form.get("surname",     "").strip()
-    given_names = request.form.get("given_names", "").strip()
-    date_of_birth = request.form.get("date_of_birth", None)
+
+    # Bidirectional canonical identity (single entry): shared personal facts
+    # (full name / DOB) come from ONE legitimate source. Profile-first users
+    # reuse their canonical UserProfile values; KYC-first users supply them on
+    # this form and the first source providing a missing fact is written to the
+    # canonical bank (never overwritten afterwards).
+    try:
+        canonical = get_canonical_identity(current_user)
+    except Exception:
+        canonical = None
+
+    kyc_first = not (canonical is not None and (canonical.full_name or "").strip())
+    if kyc_first:
+        full_name = (request.form.get("full_name") or "").strip()
+        if not full_name:
+            flash_form_error("Full name is required to submit your National ID verification.")
+            return redirect(url_for("kyc.verify_national_id_page"))
+        dob_raw = (request.form.get("date_of_birth") or "").strip()
+        date_of_birth = None
+        if dob_raw:
+            try:
+                # HTML date input ships YYYY-MM-DD; convert at the boundary
+                # exactly like the canonical profile editor (%Y-%m-%d).
+                date_of_birth = datetime.strptime(dob_raw, "%Y-%m-%d").date()
+            except ValueError:
+                flash_form_error("Date of birth must be in YYYY-MM-DD format.")
+                return redirect(url_for("kyc.verify_national_id_page"))
+    else:
+        full_name = (canonical.full_name or "").strip()
+        date_of_birth = canonical.date_of_birth
+
+    name_parts = full_name.split()
+    if len(name_parts) >= 2:
+        given_names, surname = " ".join(name_parts[:-1]), name_parts[-1]
+    else:
+        given_names, surname = full_name, full_name
 
     # Basic presence check
-    if not id_number or not surname or not given_names:
+    if not id_number:
         flash_form_error("All fields are required.")
         return redirect(url_for("kyc.verify_national_id_page"))
 
@@ -350,6 +466,18 @@ def submit_national_id():
     if watchlist.get("recommended_action") == "block_and_investigate":
         flash_form_error("Your ID could not be processed at this time. Please contact support.")
         return redirect(url_for("kyc.verify_national_id_page"))
+
+    # ── 2b. KYC-first canonical write ────────────────────────────────────────
+    # Only when KYC is the first legitimate source of a missing shared fact,
+    # and only AFTER format + watchlist gates have passed. The helper never
+    # overwrites an existing canonical value, skips verified profiles, and
+    # fails soft so the evidence record below still submits on any error.
+    if kyc_first:
+        _write_canonical_identity_from_kyc(
+            current_user,
+            full_name=full_name,
+            date_of_birth=date_of_birth,
+        )
 
     # ── 3. Persist KycRecord ─────────────────────────────────────────────────
     try:
@@ -726,6 +854,40 @@ def _load_reupload_target(token):
     return payload, document, org, request_data
 
 
+def _save_selfie_data_url(data_url, doc_key="selfie"):
+    """
+    Persist a client-captured camera selfie submitted as a base64 data URL.
+
+    The in-browser camera produces a JPEG data URL. Modern browsers inject it
+    into the form's ``selfie_file`` via DataTransfer; this path covers
+    environments where that is not possible, so the captured selfie still
+    reaches the server instead of being silently dropped.
+    """
+    if not data_url or not data_url.startswith("data:image/"):
+        return None
+    try:
+        import base64 as _base64
+        from io import BytesIO
+        from werkzeug.datastructures import FileStorage
+
+        header, _, b64 = data_url.partition(",")
+        raw = _base64.b64decode(b64)
+        content_type = (
+            header[len("data:"):].split(";")[0]
+            if header.startswith("data:") else "image/jpeg"
+        )
+        ext = "png" if "png" in content_type else "jpg"
+        storage = FileStorage(
+            stream=BytesIO(raw),
+            filename=f"selfie-captured.{ext}",
+            content_type=content_type,
+        )
+        return _save_uploaded_file(storage, doc_key)
+    except Exception as exc:
+        current_app.logger.warning(f"KYC selfie data URL failed ({doc_key}): {exc}")
+        return None
+
+
 def _save_uploaded_file(file_storage, doc_key):
     """
     Save an uploaded FileStorage (device photo/PDF) via the media service and
@@ -886,11 +1048,24 @@ def verify_upload():
                 flash_form_error('Organization, document type, and a document (uploaded file or URL) are required')
                 return redirect(url_for('kyc.upload'))
 
-            # Verify user belongs to the org
-            org_id_int = int(org_id)
-            if not any(o.id == org_id_int for o in user_orgs):
+            # Verify user belongs to the org.  ``user_orgs`` is the
+            # authorized membership set; the selected identifier (slug or
+            # legacy org_id) is resolved ONLY against that set so the internal
+            # id used for persistence is always derived from an authorized
+            # membership — never from an unverified request value.
+            selected_identifier = (org_id or '').strip()
+            selected_org = next(
+                (
+                    o for o in user_orgs
+                    if (o.slug and o.slug == selected_identifier)
+                    or (o.org_id and o.org_id == selected_identifier)
+                ),
+                None,
+            )
+            if selected_org is None:
                 flash_form_error('You are not authorized to submit documents for this organization.')
                 return redirect(url_for('kyc.upload'))
+            org_id_int = selected_org.id
 
             try:
                 checksum = hashlib.md5(org_document_ref.encode()).hexdigest()
@@ -914,6 +1089,22 @@ def verify_upload():
             # ── Individual KYC ──────────────────────────────────────────────
             id_type = request.form.get('id_type')
             id_number = request.form.get('id_number')
+
+            # Canonical identity (single entry): when the submitted document
+            # type matches the identification already held in UserProfile, the
+            # ID number is read from the canonical profile — never re-entered —
+            # so the verification record cannot diverge from the identity bank.
+            try:
+                canonical_identity = get_canonical_identity(current_user)
+            except Exception:
+                canonical_identity = None
+            if (
+                canonical_identity is not None
+                and canonical_identity.id_type
+                and canonical_identity.id_type == id_type
+                and canonical_identity.id_number
+            ):
+                id_number = canonical_identity.id_number
 
             # Reject document types the Owner/Super Admin have disabled.
             from app.kyc_config_schema import get_kyc_settings
@@ -961,6 +1152,32 @@ def verify_upload():
                 document_url = request.form.get('document_url', '').strip() or None
             if not selfie_url:
                 selfie_url = request.form.get('selfie_url', '').strip() or None
+
+            # Fallback: a camera-captured selfie sent as a base64 data URL (see
+            # _save_selfie_data_url). Ensures the selfie reaches the server even
+            # where the browser cannot inject a File into the form input.
+            if not selfie_url:
+                selfie_url = _save_selfie_data_url(
+                    request.form.get('selfie_data_url', '').strip()
+                )
+
+            # Cross-device pairing: consume a selfie captured on a companion
+            # phone via the sealed "scan & selfie" flow (see selfie_pair.py).
+            # The cargo is consumed exactly once and is bound to this user.
+            if not selfie_url:
+                pair_nonce = request.form.get('selfie_pair_nonce', '').strip()
+                if pair_nonce:
+                    from app.kyc.selfie_pair import consume_pair
+                    paired_url, pair_reason = consume_pair(pair_nonce, current_user.id)
+                    if pair_reason == 'ok':
+                        selfie_url = paired_url
+                    else:
+                        flash_form_error(
+                            'The phone selfie is not ready yet, or this pairing '
+                            'link has expired. Pair your phone again or use the '
+                            'on-device camera instead.'
+                        )
+                        return redirect(url_for('kyc.upload'))
 
             if not all([id_type, id_number, document_url]):
                 flash_form_error('ID type, ID number, and a document (uploaded file or URL) are required')
@@ -1036,6 +1253,10 @@ def verify_upload():
 
     in_org_context = is_acting_as_organization()
     active_org_id = get_current_org_id() if in_org_context else None
+    active_org_slug = None
+    if active_org_id:
+        from app.auth.context import _organisation_public_id_to_slug
+        active_org_slug = _organisation_public_id_to_slug(active_org_id)
     # Show only the form relevant to the active context.
     # Org context  -> Organization KYB only (no individual form).
     # Individual   -> Individual KYC only (no organization form).
@@ -1050,10 +1271,46 @@ def verify_upload():
         ["national_id", "passport", "driver_license", "voter_card"],
     )
 
+    # Canonical identity (single entry): personal identity lives in
+    # UserProfile (set during onboarding / NIRA / profile completion). KYC
+    # reads it here so the form never re-asks for identity details already
+    # held. Any canonical-resolution failure degrades to the existing form.
+    try:
+        canonical_identity = get_canonical_identity(current_user)
+    except Exception:
+        canonical_identity = None
+
+    canonical_id_type = None
+    canonical_id_number = None
+    canonical_country = None
+    canonical_city = None
+    canonical_full_name = ''
+    if canonical_identity is not None:
+        profile = getattr(canonical_identity, 'profile', None)
+        canonical_id_type = canonical_identity.id_type
+        canonical_id_number = canonical_identity.id_number
+        canonical_country = getattr(profile, 'country', None) if profile is not None else None
+        canonical_city = getattr(profile, 'city', None) if profile is not None else None
+        canonical_full_name = (canonical_identity.full_name or '').strip()
+
+    canonical_lock = bool(
+        canonical_id_number
+        and canonical_id_type
+        and preselect_id_type
+        and preselect_id_type == canonical_id_type
+    )
+
+    # Partial identity: a user may arrive at the evidence upload without a
+    # canonical full name (no profile-first step). This form deliberately
+    # collects ONLY the evidence document + id_type/id_number - never
+    # full name / DOB. The canonical id_number/type are prefilled and locked
+    # when available. Missing profile identity is not this form's concern.
+
     return render_template('kyc/verify_upload.html',
                             user_orgs=user_orgs,
                             in_org_context=in_org_context,
                             active_org_id=active_org_id,
+                            active_org_slug=active_org_slug,
                             show_individual=show_individual,
                             show_organization=show_organization,
                             verified_id_types=verified_id_types,
@@ -1061,7 +1318,13 @@ def verify_upload():
                             reupload_requests=individual_reupload_requests,
                             organisation_reupload_requests=organisation_reupload_requests,
                             requested_reupload=requested_reupload,
-                            preselect_id_type=preselect_id_type)
+                            preselect_id_type=preselect_id_type,
+                            canonical_id_type=canonical_id_type,
+                            canonical_id_number=canonical_id_number,
+                            canonical_country=canonical_country,
+                            canonical_city=canonical_city,
+                            canonical_full_name=canonical_full_name,
+                            canonical_lock=canonical_lock)
 
 
 # ============================================================================
@@ -1099,3 +1362,19 @@ def moderate_document(id):
     record = KycRecord.query.get_or_404(id)
     
     return render_template('kyc/moderate_document.html', record=record)
+
+
+# Cross-device "scan & selfie" phone pairing routes. Registered last so the
+# module can import the blueprint above without a circular import.
+def _register_selfie_pair_routes():
+    try:
+        from app.kyc.selfie_pair import register_selfie_pair_routes
+        register_selfie_pair_routes(kyc_bp)
+    except Exception as exc:  # pragma: no cover - fail-safe
+        import logging
+        logging.getLogger(__name__).warning(
+            f"KYC selfie pairing routes not registered: {exc}"
+        )
+
+
+_register_selfie_pair_routes()

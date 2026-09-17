@@ -210,6 +210,7 @@ message: str,
         # Update property
         prop.status = 'published'
         prop.is_publicly_visible = True
+        prop.is_active = True
         prop.is_verified = True
         prop.published_at = datetime.now(timezone.utc)
 
@@ -230,7 +231,7 @@ message: str,
         if owner_id:
             ModerationService._send_notification(
                 user_id=owner_id,
-                notification_type='property_published',
+                notification_type='property_approved',
                 title='🎉 Your Property is Now Live!',
                 message=f'Your property "{prop.title}" is now publicly visible and ready for bookings!'
             )

@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
+from app.auth.deletion_guard import authorize_deletion
 from app.extensions import db
 from app.identity.models.organisation_member import OrgUserRole, OrgRole, OrganisationMember
 from app.identity.models.roles_permission import Role, get_or_create_role
@@ -199,6 +200,13 @@ def assign_global_role(
             assigned_by=assigned_by_id,
         )
         db.session.add(ur)
+        _log_role_change(
+            user_id=user_id,
+            role_name=role_name,
+            operation="assign_role",
+            changed_by=assigned_by_id,
+            extra_data={"action": "assign_global_role"},
+        )
         return ur
 
 
@@ -210,6 +218,13 @@ def revoke_global_role(
 ) -> bool:
     """
     Revoke a global role from a user.
+
+    Guards:
+        - Role removal is hard-deleted; the DB trigger on ``user_roles``
+          requires the ``app.guard.authorized_deletion`` session flag, which
+          :func:`authorize_deletion` sets for this transaction.
+        - The ``owner`` role cannot be revoked from the last remaining
+          owner.
 
     Args:
         user_id:       Primary key of the target ``User``.
@@ -225,13 +240,61 @@ def revoke_global_role(
     """
     role = _get_role(role_name, scope="global")
 
+    # Refuse to strip the owner role from the last remaining owner.
+    if role.name == ROLE_OWNER:
+        owner_count = (
+            UserRole.query.join(Role, UserRole.role_id == Role.id)
+            .filter(Role.name == ROLE_OWNER, Role.scope == "global")
+            .count()
+        )
+        if owner_count <= 1:
+            raise ValueError(
+                "Cannot revoke the owner role from the last remaining owner."
+            )
+
     ur = UserRole.query.filter_by(user_id=user_id, role_id=role.id).first()
     if not ur:
         return False
 
     with db_transaction(f"Revoke global role '{role_name}' from user {user_id}"):
+        # The authorized-deletion session flag unblocks the DB trigger
+        # (trg_guard_user_roles_delete) for this transaction only.
+        authorize_deletion(db.session, actor=f"user:{revoked_by_id or 'script'}")
         db.session.delete(ur)
+        _log_role_change(
+            user_id=user_id,
+            role_name=role_name,
+            operation="revoke_role",
+            changed_by=revoked_by_id,
+            extra_data={"action": "revoke_global_role"},
+        )
         return True
+
+
+def _log_role_change(
+    *,
+    user_id: int,
+    role_name: str,
+    operation: str,
+    changed_by: Optional[int],
+    extra_data: Optional[dict] = None,
+) -> None:
+    """
+    Persist a role assignment/revocation to ``data_change_logs``.
+
+    Imported lazily to avoid a circular import at module load time.
+    """
+    from app.audit.comprehensive_audit import DataChangeLog
+
+    DataChangeLog.log_change(
+        entity_type="user_role",
+        entity_id=str(user_id),
+        operation=operation,
+        old_value=None,
+        new_value={"role": role_name},
+        changed_by=changed_by or 0,
+        extra_data=extra_data or {},
+    )
 
 
 # ---------------------------------------------------------------------------

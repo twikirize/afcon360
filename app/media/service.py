@@ -198,6 +198,7 @@ class MediaService:
         # 10. Save raw file to storage
         backend = get_storage_backend()
         raw_key = f"{module}/{entity_id}/raw/{sha256[:16]}_{file.filename}"
+        file.seek(0)
         backend.save(file, raw_key, file.content_type)
 
         # 11. Create Media record

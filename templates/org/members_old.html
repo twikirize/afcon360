@@ -10,7 +10,7 @@
             <div class="d-flex justify-content-between align-items-center">
                 <div>
                     <h1><i class="bi bi-building"></i> {{ org.legal_name }}</h1>
-                    <p class="text-muted">{{ org.org_id }} • {{ org.contact_email }}</p>
+                    <p class="text-muted">{{ org.slug }} • {{ org.contact_email }}</p>
                 </div>
                 <div>
                     <span class="badge bg-{{ 'success' if org.verification_status == 'verified' else 'warning' }}">
@@ -110,7 +110,7 @@
                 <a href="{{ url_for('org.dashboard') }}" class="btn btn-outline-secondary">
                     <i class="bi bi-arrow-left"></i> Back to Organizations
                 </a>
-                <a href="{{ url_for('org.settings', org_id=org.id) }}" class="btn btn-primary">
+                <a href="{{ url_for('org.settings', org_id=org.slug) }}" class="btn btn-primary">
                     <i class="bi bi-gear"></i> Organization Settings
                 </a>
             </div>

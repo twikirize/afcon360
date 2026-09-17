@@ -701,14 +701,15 @@ class NotificationService:
         return cls.send(
             user_id=user_id,
             notification_type=NotificationType.SYSTEM_ALERT,
-            title=f"Organisation Update: {org.name}",
-            message=f"Your organisation '{org.name}' has been updated.",
+            title=f"Organisation Update: {org.legal_name}",
+            message=f"Your organisation '{org.legal_name}' has been updated.",
             data={
-                'org_id': org.public_id if hasattr(org, 'public_id') else '',
-                'org_name': org.name,
+                'org_id': org.org_id if hasattr(org, 'org_id') else '',
+                'org_name': org.legal_name,
+                'org_slug': getattr(org, 'slug', ''),
             },
             channels=[channel],
-            link=f"/organisations/{org.public_id if hasattr(org, 'public_id') else ''}",
+            link=f"/org/{getattr(org, 'slug', '')}/dashboard",
             priority='normal',
         )
 
@@ -1373,6 +1374,28 @@ class NotificationService:
             link="/profile/kyc",
             priority='normal',
         )
+        # Surface the incoming submission to the review team — owner, super_admin,
+        # admin, compliance_officer and auditor — so it shows up in their dashboard
+        # notification bell (module-scoped "kyc") and review queue.
+        try:
+            submitter = ""
+            if kyc_record is not None and getattr(kyc_record, 'user', None):
+                username = getattr(kyc_record.user, 'username', None)
+                if username:
+                    submitter = f" from {username}"
+            cls._notify_admins(
+                notification_type=NotificationType.ADMIN_NOTIFICATION,
+                title="New KYC Submission",
+                message=f"A new KYC submission{submitter} is awaiting review.",
+                data={
+                    'kyc_id': kyc_record.id if kyc_record else None,
+                    'user_id': user_id,
+                },
+                link="/admin/compliance/kyc-queue",
+                domain='kyc',
+            )
+        except Exception as e:
+            logger.error(f"KYC submission admin alert failed: {e}")
 
     @classmethod
     def notify_kyc_reupload_requested(

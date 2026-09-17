@@ -5,6 +5,7 @@ Users choose their path after OTP verification.
 from __future__ import annotations
 
 import uuid
+import hashlib
 import secrets
 from typing import Optional, Dict, Any, List
 from functools import wraps
@@ -17,6 +18,7 @@ from flask import (
 )
 from flask_login import current_user, login_required
 from app.auth.context import switch_context
+from app.identity.services.organisation_slug import ensure_unique_slug
 from app.identity.services.provider_participation_service import (
     activate_individual_intention,
 )
@@ -186,7 +188,12 @@ def choose_individual():
 @login_required
 def choose_organisation():
     """Organisation onboarding landing page."""
-    return render_template("onboarding/choose_organisation.html")
+    from app.identity.services.organisation_classification_service import category_groups
+    return render_template(
+        "onboarding/choose_organisation.html",
+        classification_categories=category_groups(),
+        capability_options=_capability_options(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -290,8 +297,22 @@ def driver_onboarding(step: int = 1):
 
             # COMMIT EVERYTHING
             try:
-                _commit_driver_onboarding(current_user, data)
+                driver = _commit_driver_onboarding(current_user, data)
                 session.pop("driver_onboarding", None)
+
+                # Verified -> switch into the Driver Workspace context. The
+                # workspace is a PARTICIPATION surface (not a go-live surface):
+                # entering it no longer requires KYC — identity verification,
+                # compliance approval, licence validity, and (where required by
+                # the operating mode) a vehicle are enforced by the transport
+                # GO-LIVE capability (can_go_live) at "go online", never here.
+                # See app/transport/services/go_live_service.py.
+                switch_context(current_user, {
+                    "type": "driver",
+                    "public_id": str(
+                        getattr(driver, "public_id", None) or driver.driver_code
+                    ),
+                })
                 flash(
                     "Driver registration submitted! We will verify your documents within 24 hours.",
                     "success",
@@ -301,14 +322,18 @@ def driver_onboarding(step: int = 1):
                 current_app.logger.error(f"Driver onboarding error: {e}")
                 flash("Something went wrong. Please try again.", "danger")
 
+    from app.profile.models import get_profile_by_user
+    profile = get_profile_by_user(current_user.public_id)
+
     return render_template(
         f"onboarding/driver_step{step}.html",
         data=session.get("driver_onboarding", {}),
         step=step,
+        profile=profile,
     )
 
 
-def _commit_driver_onboarding(user, data: Dict[str, Any]) -> None:
+def _commit_driver_onboarding(user, data: Dict[str, Any]) -> Any:
     """Atomic commit of all driver onboarding data.
 
     DriverProfile is created ONLY after validate_driver_eligibility. The
@@ -316,24 +341,22 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> None:
     Vehicle is a SEPARATE, later operation — never created here (stage 4B-5).
     """
     from app.transport.models import DriverProfile, VerificationTier, ComplianceStatus
-    from app.auth.roles import assign_global_role
     from app.extensions import db
     from app.utils.transactions import db_transaction
 
-    step1 = data.get("step1", {})
+    # step1 (identity fields: full_name, nationality, date_of_birth,
+    # national_id_number) is intentionally NOT persisted by driver onboarding.
+    # Canonical identity lives in UserProfile; driver onboarding may read it
+    # but must not write it. step1 data remains transport/session-only.
     step2 = data.get("step2", {})
 
     with db_transaction("Driver onboarding commit"):
-        # Update UserProfile
-        profile = _get_or_create_profile(user)
-        profile.full_name = step1.get("full_name", profile.full_name)
-        profile.nationality = step1.get("nationality")
-        profile.date_of_birth = step1.get("date_of_birth") or getattr(profile, "date_of_birth", None)
-        profile.id_type = "national_id"
-        profile.id_number = step1.get("national_id_number")
-        profile.profile_completed = True
-        if not profile.display_name:
-            profile.display_name = step1.get("full_name", "")
+        # Canonical UserProfile identity is a READ-ONLY source for driver
+        # onboarding. Driver onboarding must never create, overwrite, or
+        # complete canonical identity (full_name, nationality, date_of_birth,
+        # id_type, id_number, display_name, profile_completed). Identity is
+        # consumed from IdentityService / get_profile_by_user / UserProfile,
+        # never written here.
 
         # Validate driver eligibility (domain authority) BEFORE creating the profile
         from app.transport.services.provider_service import get_provider_service
@@ -380,64 +403,16 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> None:
         db.session.add(driver)
         db.session.flush()
 
-        # Assign driver global role if it exists in the database
-        try:
-            assign_global_role(
-                user_id=user.id,
-                role_name="driver",
-                assigned_by_id=user.id,
-            )
-        except ValueError:
-            current_app.logger.warning("'driver' role not found in DB - skipping role assignment")
+        # The global 'driver' role does not exist and is intentionally not
+        # seeded. Workspace access is governed by the Driver Workspace context
+        # (context.py), not a global role, and operational actions are gated
+        # independently by the transport service layer.
+        return driver
 
 
 # ---------------------------------------------------------------------------
 # Organisation onboarding (universal - type + optional provider capabilities)
 # ---------------------------------------------------------------------------
-
-# Canonical organisation types surfaced in the onboarding UI, drawn from the
-# existing OrganizationType enum. Do NOT add/remove/rename enum members here.
-_ORGANISATION_TYPE_LABELS = {
-    "hotel": "Hotel",
-    "restaurant": "Restaurant",
-    "tour_operator": "Tour Operator",
-    "travel_agency": "Travel Agency",
-    "tourism_board": "Tourism Board",
-    "accommodation_provider": "Accommodation Provider",
-    "hostel": "Hostel",
-    "vacation_rental": "Vacation Rental",
-    "camping_site": "Camping Site",
-    "event_management": "Event Management",
-    "conference_center": "Conference Center",
-    "venue_operator": "Venue Operator",
-    "exhibition_org": "Exhibition Organisation",
-    "sports_team": "Sports Team",
-    "football_team": "Football Team",
-    "sports_federation": "Sports Federation",
-    "fitness_center": "Fitness Center",
-    "recreation_facility": "Recreation Facility",
-    "transport_company": "Transport Company",
-    "airline": "Airline",
-    "bus_operator": "Bus Operator",
-    "taxi_service": "Taxi Service",
-    "car_rental": "Car Rental",
-    "corporate": "Corporate",
-    "consulting_firm": "Consulting Firm",
-    "marketing_agency": "Marketing Agency",
-    "it_services": "IT Services",
-    "government": "Government",
-    "ngo": "NGO",
-    "educational_institution": "Educational Institution",
-    "healthcare_provider": "Healthcare Provider",
-    "bank": "Bank",
-    "insurance_company": "Insurance Company",
-    "investment_firm": "Investment Firm",
-    "fintech": "Fintech",
-    "media_company": "Media Company",
-    "broadcasting": "Broadcasting",
-    "entertainment": "Entertainment",
-    "publishing": "Publishing",
-}
 
 # Canonical provider capability codes (Stage 3 reference set).
 _PROVIDER_CAPABILITY_LABELS = {
@@ -447,6 +422,58 @@ _PROVIDER_CAPABILITY_LABELS = {
     "tourism": "Tourism",
     "venue": "Venue",
 }
+
+# Display metadata keyed by ProviderCapabilityCode.value. New enum members
+# gracefully degrade to the label + default icon via .get() fallbacks.
+_CAPABILITY_METADATA = {
+    "accommodation": {
+        "description": "List and manage rooms, stays and bookings.",
+        "icon": "bi bi-building",
+    },
+    "transport": {
+        "description": "Manage vehicles, drivers, trips and transport services.",
+        "icon": "bi bi-bus-front",
+    },
+    "events": {
+        "description": "Create, organise and manage events and attendees.",
+        "icon": "bi bi-calendar2-heart",
+    },
+    "tourism": {
+        "description": "Offer tours, activities and local experiences.",
+        "icon": "bi bi-globe-americas",
+    },
+    "venue": {
+        "description": "Offer venue spaces for events and gatherings.",
+        "icon": "bi bi-building-check",
+    },
+}
+
+
+def _capability_options() -> List[Dict[str, str]]:
+    """Data-driven provider capability options for the onboarding picker,
+    derived from the canonical ``ProviderCapabilityCode`` enum.
+
+    Adding a capability code to the enum automatically surfaces it here
+    (labels/icons from the metadata above; graceful fallbacks when absent).
+    """
+    from app.identity.models.organisation_provider_capability import (
+        ProviderCapabilityCode,
+    )
+    return [
+        {
+            "code": c.value,
+            "label": _PROVIDER_CAPABILITY_LABELS.get(
+                c.value, c.value.replace("_", " ").title()
+            ),
+            "description": _CAPABILITY_METADATA.get(c.value, {}).get(
+                "description", ""
+            ),
+            "icon": _CAPABILITY_METADATA.get(c.value, {}).get(
+                "icon", "bi bi-box"
+            ),
+        }
+        for c in ProviderCapabilityCode
+    ]
 
 
 def _validate_organisation_type(value: str):
@@ -548,7 +575,16 @@ def organisation_onboarding(step: int = 1):
 
         elif step == 2:
             try:
-                org = _commit_organisation_onboarding(current_user, data)
+                registration_document_ref = None
+                registration_document = request.files.get("registration_document")
+                if registration_document and registration_document.filename:
+                    registration_document_ref = _store_onboarding_registration_document(
+                        registration_document
+                    )
+                org = _commit_organisation_onboarding(
+                    current_user, data,
+                    registration_document_ref=registration_document_ref,
+                )
                 session.pop("org_onboarding", None)
                 session.pop("org_onboarding_type", None)
                 session.pop("org_onboarding_capabilities", None)
@@ -562,17 +598,26 @@ def organisation_onboarding(step: int = 1):
                     f"Organisation '{org.legal_name}' registered successfully!",
                     "success",
                 )
-                return redirect(url_for("org.dashboard", org_id=org.org_id))
+                return redirect(url_for("org.dashboard", org_id=org.slug))
             except ValueError as e:
                 flash(str(e), "danger")
             except Exception as e:
                 current_app.logger.error(f"Org onboarding error: {e}")
-                flash("Registration failed. Please try again.", "danger")
+                if "StringDataRightTruncation" in str(type(e).__name__) or "value too long" in str(e).lower():
+                    flash("One or more fields contain values that are too long. Please check your inputs (e.g. use a 2-letter country code like UG).", "danger")
+                elif "IntegrityError" in str(type(e).__name__) or "unique" in str(e).lower():
+                    flash("An organisation with similar details already exists.", "danger")
+                else:
+                    flash("Registration failed. Please try again.", "danger")
 
-    org_type_label = _ORGANISATION_TYPE_LABELS.get(org_type, org_type or "")
+    from app.identity.services.organisation_classification_service import label_for
+    org_type_label = label_for(org_type)
     capability_labels = [
         _PROVIDER_CAPABILITY_LABELS.get(c, c) for c in capabilities
     ]
+
+    from app.profile.models import get_profile_by_user
+    profile = get_profile_by_user(current_user.public_id)
 
     return render_template(
         f"onboarding/organisation_step{step}.html",
@@ -581,10 +626,66 @@ def organisation_onboarding(step: int = 1):
         org_type_label=org_type_label,
         capabilities=capability_labels,
         step=step,
+        profile=profile,
     )
 
 
-def _commit_organisation_onboarding(user, data: Dict[str, Any]) -> Any:
+def _store_onboarding_registration_document(file_storage) -> Optional[str]:
+    """Persist the uploaded registration certificate via the canonical
+    media/KYB path (mirrors app/kyc/routes.py ``_save_uploaded_file``).
+
+    - Virus scan / quota / forensic audit run inside ``MediaService.upload_photo``.
+    - Prefers an immediate URL, then resolves a servable URL from the Media
+      record, and finally degrades to None when storage is unavailable (the
+      wizard still completes; the document row is simply skipped).
+    - Validation/scan rejections (``ValueError``) propagate so the user sees
+      why their file was refused.
+    """
+    from app.media.models import Media
+    from app.media.service import MediaService
+    from app.media.storage import get_storage_backend
+
+    filename = getattr(file_storage, "filename", "") or ""
+    if not filename:
+        return None
+    try:
+        result = MediaService.upload_photo(
+            file=file_storage,
+            module="kyc",
+            entity_id=str(current_user.public_id),
+            uploader_user_id=current_user.id,
+        )
+        urls = result.get("urls") or {}
+        url = urls.get("original") or (list(urls.values())[0] if urls else None)
+        if url:
+            return url
+        media_id = result.get("media_id")
+        if media_id:
+            media = db.session.query(Media).filter(
+                Media.public_id == media_id, Media.is_deleted == False
+            ).first()
+            if media and media.storage_key:
+                try:
+                    return get_storage_backend().get_url(media.storage_key)
+                except Exception:
+                    pass
+        return None
+    except ValueError:
+        raise
+    except Exception as e:
+        current_app.logger.warning(f"Registration document upload failed: {e}")
+        # MediaService may have left a pending Media insert / written an
+        # orphan object when the async enqueue failed; clear the session so
+        # the organisation commit below starts clean.
+        db.session.rollback()
+        return None
+
+
+def _commit_organisation_onboarding(
+    user,
+    data: Dict[str, Any],
+    registration_document_ref: Optional[str] = None,
+) -> Any:
     """
     Atomic commit of organisation registration:
       Organisation + OrganisationMember + org_owner + provider participation
@@ -607,16 +708,29 @@ def _commit_organisation_onboarding(user, data: Dict[str, Any]) -> Any:
 
     step1 = data.get("step1", {})
     org_type = step1.get("org_type")
-    capabilities = _normalise_capabilities(step1.get("provider_capabilities"))
+    raw_capabilities = step1.get("provider_capabilities") or []
+    chosen_none = "none" in raw_capabilities
+    capabilities = _normalise_capabilities(raw_capabilities)
 
     if not org_type:
         raise ValueError("Organisation type is required.")
 
     # Validate the organisation type against the canonical enum and obtain the
-    # enum member so business_category persists a native enum value correctly.
-    # Note: `business_category` stores the enum MEMBER NAME (e.g. "HOSTEL", not
-    # the lowercase ".value" string "hostel") — see Stage 4B reconciliation.
+    # enum member. The CANONICAL write target is the frozen classification
+    # catalogue: organisation.organisation_type_code stores the lowercase
+    # ".value" string (e.g. "hostel"), which 1:1 maps organisation_types.code
+    # (see get_effective_org_type). The legacy business_category enum column is
+    # intentionally NO LONGER WRITTEN (Stage 4B classification redesign).
     org_type_member = _validate_organisation_type(org_type.lower().strip())
+
+    # Validate country — auto-convert full names to ISO alpha-2.
+    from app.utils.validators import resolve_country_code
+    country_code = resolve_country_code(step1.get("country", ""))
+    if not country_code:
+        raise ValueError(
+            "Country must be a valid country name or 2-letter ISO code "
+            "(e.g. 'Uganda' or 'UG')."
+        )
 
     # Domain contract: a missing/blank optional organisation identifier
     # (tax_id) is "not provided" → None → SQL NULL.  An empty string would
@@ -625,11 +739,11 @@ def _commit_organisation_onboarding(user, data: Dict[str, Any]) -> Any:
     tax_id = step1.get("tax_id") or None
 
     with db_transaction("Organisation onboarding commit"):
-        # Create Organisation (business_category = organisation type)
+        # Create Organisation (organisation_type_code = canonical type code)
         org = Organisation(
             org_id=str(uuid.uuid4()),  # public UUID
             legal_name=step1["legal_name"],
-            country=step1["country"],
+            country=country_code,
             registration_no=step1.get("registration_no"),
             tax_id=tax_id,
             contact_email=step1.get("contact_email"),
@@ -638,8 +752,10 @@ def _commit_organisation_onboarding(user, data: Dict[str, Any]) -> Any:
             primary_contact_user_id=user.id,  # internal FK
             verification_status="pending",
             lifecycle_state="registered",
-            business_category=org_type_member,
+            organisation_type_code=org_type_member.value,
+            meta={"provider_capabilities_none": chosen_none},
         )
+        ensure_unique_slug(org)
         db.session.add(org)
         db.session.flush()  # Get org.id before creating member
 
@@ -700,6 +816,24 @@ def _commit_organisation_onboarding(user, data: Dict[str, Any]) -> Any:
         if not profile.full_name:
             profile.full_name = full_name or org.legal_name
         profile.profile_completed = True
+
+        # Persist the uploaded registration document (optional) into the
+        # canonical, compliance-reviewed KYB document store. The file itself is
+        # stored by MediaService before this transaction; only the reference
+        # row is added here so the whole organisation commit stays atomic.
+        if registration_document_ref:
+            from app.identity.models.kyb import OrganisationKYBDocument
+            db.session.add(
+                OrganisationKYBDocument(
+                    organisation_id=org.id,
+                    document_type="registration_certificate",
+                    storage_key=registration_document_ref,
+                    checksum=hashlib.md5(
+                        registration_document_ref.encode()
+                    ).hexdigest(),
+                    verification_status="pending",
+                )
+            )
 
     return org
 

@@ -720,3 +720,66 @@ def validate_payment(data: Dict[str, Any]) -> Tuple[bool, List[str]]:
 def validate_rating(data: Dict[str, Any]) -> Tuple[bool, List[str]]:
     """Convenience wrapper for rating validation"""
     return TransportValidators.validate_rating(data)
+
+
+# ---------------------------------------------------------------------------
+# Country name → ISO 3166-1 alpha-2 lookup (AFCON360 target markets)
+# ---------------------------------------------------------------------------
+
+COUNTRY_NAME_TO_CODE: Dict[str, str] = {
+    # --- East Africa ---
+    "uganda": "UG", "kenya": "KE", "tanzania": "TZ", "rwanda": "RW",
+    "burundi": "BI", "south sudan": "SS", "ethiopia": "ET", "somalia": "SO",
+    "djibouti": "DJ", "eritrea": "ER", "madagascar": "MG", "mauritius": "MU",
+    "comoros": "KM", "seychelles": "SC",
+    # --- West Africa ---
+    "nigeria": "NG", "ghana": "GH", "senegal": "SN", "ivory coast": "CI",
+    "cote d'ivoire": "CI", "mali": "ML", "burkina faso": "BF",
+    "guinea": "GN", "guinea-bissau": "GW", "sierra leone": "SL",
+    "liberia": "LR", "gambia": "GM", "cape verde": "CV",
+    "togo": "TG", "benin": "BJ", "niger": "NE", "nigeria": "NG",
+    # --- Central Africa ---
+    "cameroon": "CM", "congo": "CG", "republic of congo": "CG",
+    "dr congo": "CD", "democratic republic of congo": "CD",
+    "democratic republic of the congo": "CD", "central african republic": "CF",
+    "chad": "TD", "gabon": "GA", "equatorial guinea": "GQ",
+    "sao tome and principe": "ST",
+    # --- North Africa ---
+    "egypt": "EG", "morocco": "MA", "algeria": "DZ", "tunisia": "TN",
+    "libya": "LY", "sudan": "SD",
+    # --- Southern Africa ---
+    "south africa": "ZA", "zimbabwe": "ZW", "zambia": "ZM",
+    "mozambique": "MZ", "malawi": "MW", "angola": "AO",
+    "namibia": "NA", "botswana": "BW", "lesotho": "LS",
+    "eswatini": "SZ", "swaziland": "SZ", "mauritania": "MR",
+    # --- International ---
+    "united states": "US", "usa": "US", "united kingdom": "GB",
+    "great britain": "GB", "england": "GB", "canada": "CA",
+    "australia": "AU", "india": "IN", "china": "CN", "japan": "JP",
+    "germany": "DE", "france": "FR", "spain": "ES", "italy": "IT",
+    "brazil": "BR", "mexico": "MX", "united arab emirates": "AE",
+    "uae": "AE", "saudi arabia": "SA", "qatar": "QA",
+    "netherlands": "NL", "belgium": "BE", "portugal": "PT",
+    "sweden": "SE", "norway": "NO", "denmark": "DK", "switzerland": "CH",
+    "austria": "AT", "ireland": "IE",
+}
+
+
+def resolve_country_code(raw: Optional[str]) -> Optional[str]:
+    """Resolve a user-supplied country string to an ISO 3166-1 alpha-2 code.
+
+    Accepts:
+      * a 2-letter uppercase code (``UG``) — returned as-is
+      * a full country name (``Uganda``) — looked up case-insensitively
+
+    Returns ``None`` when the input cannot be resolved.
+    """
+    if not raw:
+        return None
+    code = raw.strip()
+    # Already a valid 2-letter alpha code
+    if len(code) == 2 and code.isalpha() and code.isupper():
+        return code
+    # Try lowercase name lookup
+    name = code.lower()
+    return COUNTRY_NAME_TO_CODE.get(name)

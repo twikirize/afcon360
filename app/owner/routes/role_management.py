@@ -18,7 +18,7 @@ from app.identity.models.roles_permission import Role
 from app.identity.models.user import UserRole
 from app.auth.delegation import DelegationService, DelegationScope
 from app.audit.comprehensive_audit import AuditService
-from flask_login import login_required
+from flask_login import login_required, current_user
 import logging
 
 logger = logging.getLogger(__name__)
@@ -229,6 +229,8 @@ def revoke_role():
         
         old_role = user_role.role.name if user_role.role else 'unknown'
         
+        from app.auth.deletion_guard import authorize_privileged_deletion_from_form
+        authorize_privileged_deletion_from_form(db.session, actor=current_user)
         db.session.delete(user_role)
         db.session.commit()
         

@@ -1,0 +1,98 @@
+{# Secure Action Confirmation Modal
+   Include this partial in templates that have privileged delete/revoke forms.
+   Add class="secure-action" to any form that requires the step-up gate.
+   The modal intercepts form submission, collects password + OTP, then submits with those fields.
+#}
+
+<div id="secureConfirmModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:9999">
+  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#1a1a2e;border:1px solid #e74c3c;border-radius:12px;padding:1.5rem 2rem;width:90%;max-width:440px;color:#e0e0e0;box-shadow:0 8px 32px rgba(0,0,0,0.5)">
+    <h3 style="margin:0 0 0.4rem;color:#e74c3c;font-size:1.1rem">
+      <i class="bi bi-shield-lock"></i> Confirm Privileged Action
+    </h3>
+    <p style="margin:0 0 1rem;color:#999;font-size:0.85rem" id="secureActionLabel"></p>
+
+    <form id="secureConfirmForm" method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div style="margin-bottom:0.8rem">
+        <label style="display:block;margin-bottom:0.25rem;font-size:0.82rem;color:#ccc;font-weight:600">
+          Your Password
+        </label>
+        <input type="password" name="delete_password" required autocomplete="current-password"
+               style="width:100%;padding:0.5rem 0.7rem;border:1px solid #444;border-radius:6px;background:#0d0d1a;color:#e0e0e0;font-size:0.9rem"
+               placeholder="Enter your admin password">
+      </div>
+
+      <div style="margin-bottom:1rem">
+        <label style="display:block;margin-bottom:0.25rem;font-size:0.82rem;color:#ccc;font-weight:600">
+          Owner MFA Code
+        </label>
+        <input type="text" name="delete_otp" required inputmode="numeric" pattern="[0-9A-Za-z]{6,8}" maxlength="8"
+               style="width:100%;padding:0.5rem 0.7rem;border:1px solid #444;border-radius:6px;background:#0d0d1a;color:#e0e0e0;font-size:0.9rem;letter-spacing:0.15em"
+               placeholder="6-digit code from the owner's authenticator">
+        <small style="color:#888;font-size:0.72rem">The platform owner's TOTP or backup code (8 hex chars)</small>
+      </div>
+
+      <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+        <button type="button" onclick="document.getElementById('secureConfirmModal').style.display='none'"
+                style="padding:0.45rem 1rem;border:1px solid #555;border-radius:6px;background:transparent;color:#aaa;cursor:pointer;font-size:0.85rem">
+          Cancel
+        </button>
+        <button type="submit"
+                style="padding:0.45rem 1rem;border:none;border-radius:6px;background:#e74c3c;color:#fff;cursor:pointer;font-size:0.85rem;font-weight:600">
+          <i class="bi bi-lock"></i> Confirm
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function() {
+  var _pendingForm = null;
+  window.initSecureActions = function() {
+    document.querySelectorAll('form.secure-action').forEach(function(form) {
+      if (form.dataset.secureInit) return;
+      form.dataset.secureInit = '1';
+      var origAction = form.getAttribute('action') || '';
+      var origLabel = form.dataset.secureLabel || 'This privileged action requires verification.';
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        _pendingForm = form;
+        document.getElementById('secureActionLabel').textContent = origLabel;
+        var modal = document.getElementById('secureConfirmModal');
+        modal.style.display = 'block';
+        var pw = modal.querySelector('input[name="delete_password"]');
+        if (pw) pw.focus();
+      });
+    });
+  };
+
+  document.addEventListener('DOMContentLoaded', function() { initSecureActions(); });
+
+  document.getElementById('secureConfirmForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    if (!_pendingForm) return;
+    var modal = document.getElementById('secureConfirmModal');
+    var pw = modal.querySelector('input[name="delete_password"]').value;
+    var otp = modal.querySelector('input[name="delete_otp"]').value;
+    if (!pw || !otp) return;
+
+    var pwField = document.createElement('input');
+    pwField.type = 'hidden';
+    pwField.name = 'delete_password';
+    pwField.value = pw;
+    _pendingForm.appendChild(pwField);
+
+    var otpField = document.createElement('input');
+    otpField.type = 'hidden';
+    otpField.name = 'delete_otp';
+    otpField.value = otp;
+    _pendingForm.appendChild(otpField);
+
+    modal.style.display = 'none';
+    _pendingForm.submit();
+    _pendingForm = null;
+  });
+})();
+</script>

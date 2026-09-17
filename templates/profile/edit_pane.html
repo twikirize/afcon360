@@ -129,6 +129,22 @@
             {% endif %}
           </div>
 
+          {# Date of birth — canonical identity, entered once #}
+          <div class="field-group {% if is_verified %}field-locked{% endif %}">
+            <label for="date_of_birth">
+              Date of birth
+              {% if is_verified %}
+                <span class="lock-notice"><i class="fas fa-lock"></i> Immutable</span>
+              {% endif %}
+            </label>
+            <input type="date" id="date_of_birth" name="date_of_birth"
+                   value="{{ profile.date_of_birth.isoformat() if profile and profile.date_of_birth else '' }}"
+                   {% if is_verified %}readonly aria-disabled="true"{% endif %}>
+            {% if is_verified %}
+              <div class="field-hint"><i class="fas fa-info-circle"></i> Locked after KYC verification. Contact support to dispute.</div>
+            {% endif %}
+          </div>
+
         </div>
       </div>
 

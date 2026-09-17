@@ -16,19 +16,24 @@ from app.transport.models import ComplianceStatus, VerificationTier
 
 # ---- Helper: create a driver profile ----------------------------------------
 
-def _create_driver(app, label="drv"):
-    """Create a unique user + DriverProfile. Returns (user_id, driver_id).
-    
-    driver_code uses pattern: DRV-<label>-<6-char-uuid> = exactly 20 chars
-    to fit the DB column String(20) constraint.
+def _create_driver(app, label="drv", owner_id=None):
+    """Create a DriverProfile (and owner if owner_id not given).
+
+    Returns (owner_user_id, driver_id).
+
+    driver_code uses pattern: DRV-<label>-<6-char-uuid>.  The label is
+    clamped to 9 chars so the full code always fits the DB column
+    String(20) constraint (DRV- + label + - + 6-hex = at most 20 chars).
     """
     from tests.test_transport_concurrent_claim import _create_user
-    user_id = _create_user(app, f"drv_{label}")
+    if owner_id is None:
+        owner_id = _create_user(app, f"drv_{label}")
+    label = label[:9]
     short_uuid = uuid.uuid4().hex[:6].upper()
     driver_code = f"DRV-{label}-{short_uuid}"
     with app.app_context():
         dp = DriverProfile(
-            user_id=user_id,
+            user_id=owner_id,
             driver_code=driver_code,
             verification_tier=VerificationTier.BASIC_VERIFIED,
             compliance_status=ComplianceStatus.APPROVED,
@@ -40,7 +45,7 @@ def _create_driver(app, label="drv"):
         )
         db.session.add(dp)
         db.session.commit()
-        return user_id, dp.id
+        return owner_id, dp.id
 
 
 # ---- Defect B: Anonymous Flask-RESTful protected endpoint returns 401 ----
@@ -73,6 +78,12 @@ def test_anonymous_driver_location_post_returns_401(
 
 # ---- Defect B: Authenticated authorized path works ----
 
+def _owner_id_in_context(app, user):
+    """Resolve a detached user's internal id inside an app context."""
+    with app.app_context():
+        return db.session.merge(user).id
+
+
 def test_authenticated_driver_location_post_success(
     app, client, test_user, authenticated_client, db_session
 ):
@@ -80,7 +91,8 @@ def test_authenticated_driver_location_post_success(
     Authenticated owner of the driver profile can POST location.
     """
     # Arrange: create a driver profile owned by test_user
-    user_id, driver_id = _create_driver(app, "authsuccess")
+    owner_id = _owner_id_in_context(app, test_user)
+    user_id, driver_id = _create_driver(app, "authsuccess", owner_id=owner_id)
 
     # Act: authenticated POST as the driver owner
     resp = authenticated_client.post(
@@ -97,17 +109,21 @@ def test_authenticated_driver_location_post_success(
 
 
 def test_authenticated_wrong_owner_driver_location_post_forbidden(
-    app, client, test_user, authenticated_client, db_session, another_user
+    app, client, test_user, db_session, another_user
 ):
     """
     Authenticated user who is NOT the owner should get 403 when trying
     to POST driver location.
     """
+    from tests.conftest import _login_client
+
     # Arrange: create a driver profile owned by test_user
-    user_id, driver_id = _create_driver(app, "authforbid")
+    owner_id = _owner_id_in_context(app, test_user)
+    user_id, driver_id = _create_driver(app, "authforbid", owner_id=owner_id)
 
     # Act: authenticated POST as a different user (another_user)
-    resp = authenticated_client.post(
+    _login_client(client, another_user)
+    resp = client.post(
         f"/api/transport/drivers/{driver_id}/location",
         json={"latitude": 0.35, "longitude": 32.5},
     )

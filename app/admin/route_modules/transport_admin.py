@@ -35,11 +35,45 @@ logger = logging.getLogger(__name__)
 def transport_admin_dashboard():
     """Transport Admin Dashboard with comprehensive transport management."""
     try:
-        # Import transport modules
-        from app.transport.models import Vehicle, DriverProfile, Booking, ComplianceStatus
-        from app.transport.services.dashboard_service import get_dashboard_service
+        from app.core.transport_permissions import TransportPermission
+        from app.auth.helpers import is_owner, is_system_admin
+        
+        # Get transport permissions for current user
+        if is_owner(current_user) or current_user.is_super_admin:
+            user_permissions = TransportPermission.get_active_by_user(current_user.id)
+            can_manage_drivers = True
+            can_manage_vehicles = True
+            can_view_dashboard = True
+            permissions_info = {
+                "granted_by_owner": True,
+                "can_manage_drivers": True,
+                "can_manage_vehicles": True,
+                "can_view_dashboard": True,
+                "permissions": [
+                    {"name": "manage_drivers", "granted": True},
+                    {"name": "manage_vehicles", "granted": True},
+                    {"name": "view_dashboard", "granted": True},
+                ]
+            }
+        else:
+            user_permissions = TransportPermission.get_active_by_user(current_user.id)
+            can_manage_drivers = any(p.can_manage_drivers for p in user_permissions) if user_permissions else False
+            can_manage_vehicles = any(p.can_manage_vehicles for p in user_permissions) if user_permissions else False
+            can_view_dashboard = any(p.can_view_dashboard for p in user_permissions) if user_permissions else False
+            permissions_info = {
+                "granted_by_owner": False,
+                "can_manage_drivers": can_manage_drivers,
+                "can_manage_vehicles": can_manage_vehicles,
+                "can_view_dashboard": can_view_dashboard,
+                "permissions": [
+                    {"name": "manage_drivers", "granted": can_manage_drivers},
+                    {"name": "manage_vehicles", "granted": can_manage_vehicles},
+                    {"name": "view_dashboard", "granted": can_view_dashboard},
+                ]
+            }
         
         # Get transport statistics
+        from app.transport.services.dashboard_service import get_dashboard_service
         dashboard_service = get_dashboard_service()
         transport_stats = dashboard_service.get_admin_dashboard_context()
         total_vehicles = transport_stats.get('total_vehicles', 0)
@@ -48,11 +82,13 @@ def transport_admin_dashboard():
         total_revenue = transport_stats.get('total_revenue', 0)
         
         # Get recent vehicles
+        from app.transport.models import Vehicle
         recent_vehicles = Vehicle.query.filter_by(
             is_deleted=False
         ).order_by(Vehicle.created_at.desc()).limit(10).all()
         
         # Get pending driver verifications
+        from app.transport.models import DriverProfile, ComplianceStatus
         pending_drivers = DriverProfile.query.filter_by(
             compliance_status=ComplianceStatus.PENDING_REVIEW,
             is_deleted=False
@@ -66,6 +102,8 @@ def transport_admin_dashboard():
             total_revenue=total_revenue,
             recent_vehicles=recent_vehicles,
             pending_drivers=pending_drivers,
+            **permissions_info,
+            user_permissions=user_permissions if not (is_owner(current_user) or current_user.is_super_admin) else None,
         )
     except Exception as e:
         logger.error(f"Error loading transport admin dashboard: {e}")

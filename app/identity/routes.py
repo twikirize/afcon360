@@ -20,14 +20,51 @@ org_bp = Blueprint('org', __name__, url_prefix='/org')
 
 
 def _get_organisation_by_public_id(org_id):
-    """Resolve an organisation from its public URL identifier."""
+    """Resolve an organisation from its public URL identifier.
+
+    Accepts the human-readable ``slug`` (browser canonical) and the stable
+    ``org_id`` UUID (legacy compatibility boundary — still supported as an
+    input so existing bookmarks/links keep working). Returns the
+    organisation or aborts with 404.
+    """
+    key = str(org_id)
     org = Organisation.query.filter_by(
-        org_id=str(org_id),
+        org_id=key,
         is_deleted=False,
     ).first()
     if not org:
+        org = Organisation.query.filter_by(
+            slug=key,
+            is_deleted=False,
+        ).first()
+    if not org:
         abort(404)
     return org
+
+
+def _canonical_slug_redirect(org, **extra):
+    """Return a 301 redirect to the slug-based URL for the current request.
+
+    Only used on safe (GET) page routes when a legacy ``org_id`` UUID was used:
+    the browser must settle on the canonical slug URL so the internal public
+    UUID is never a navigational destination. Query args are preserved.
+    """
+    args = dict(request.view_args or {})
+    args['org_id'] = org.slug
+    args.update(extra)
+    return redirect(url_for(request.endpoint, **args), code=301)
+
+
+def _canonical_if_legacy(org, org_id):
+    """Return a 301 slug redirect when a legacy ``org_id`` UUID was used on a
+    safe GET page route; otherwise return None (POST flows process normally)."""
+    if (
+        request.method == 'GET'
+        and getattr(org, 'slug', None)
+        and str(org_id) != org.slug
+    ):
+        return _canonical_slug_redirect(org)
+    return None
 
 
 # Canonical organisation-role vocabulary. Only these nine names are
@@ -121,7 +158,7 @@ def dashboard():
     
     # If only one organization, go directly to its dashboard
     if len(memberships) == 1:
-        return redirect(url_for('org.org_dashboard', org_id=memberships[0].organisation.org_id))
+        return redirect(url_for('org.org_dashboard', org_id=memberships[0].organisation.slug))
     
     # Otherwise show organization selector
     owned_count = 0
@@ -181,8 +218,8 @@ def register():
         org, errors = OrganizationRegistrationService.create_organization(data, current_user, default_settings)
         
         if org:
-            flash(f'Organization "{org.legal_name}" registered successfully! Your organization ID is {org.org_id}', 'success')
-            return redirect(url_for('org.org_dashboard', org_id=org.org_id))
+            flash(f'Organization "{org.legal_name}" registered successfully!', 'success')
+            return redirect(url_for('org.org_dashboard', org_id=org.slug))
         else:
             for error in errors:
                 flash(error, 'danger')
@@ -194,20 +231,10 @@ def register():
 @login_required
 def org_dashboard(org_id):
     """Organization-specific dashboard"""
-    org = Organisation.query.filter_by(
-        org_id=str(org_id),
-        is_deleted=False,
-    ).first()
-    if not org and str(org_id).isdigit():
-        # Read-only compatibility for legacy internal-ID links; immediately
-        # redirect to the public organisation boundary when found.
-        legacy_org = Organisation.query.get(int(org_id))
-        if legacy_org and legacy_org.org_id:
-            return redirect(url_for('org.org_dashboard', org_id=legacy_org.org_id))
-    if not org:
-        from flask import abort
-
-        abort(404)
+    org = _get_organisation_by_public_id(org_id)
+    legacy_redirect = _canonical_if_legacy(org, org_id)
+    if legacy_redirect:
+        return legacy_redirect
 
     # Verify membership
     if not OrganizationPermissionService.is_member(current_user, org):
@@ -243,17 +270,36 @@ def org_dashboard(org_id):
     organisation_role = OrganizationPermissionService.get_user_role(current_user, org)
     role_value = getattr(organisation_role, 'value', organisation_role) or 'member'
     organisation_role_label = str(role_value).replace('_', ' ').title()
-    business_category = getattr(org.business_category, 'value', org.business_category)
+    # Canonical classification via the single chokepoint (organisation_type_code
+    # → business_category fallback → CORPORATE default).
+    business_category = org.get_effective_org_type().value
     if role_value == 'org_manager' and str(business_category).lower() in {
         'hotel', 'accommodation_provider', 'hostel', 'vacation_rental'
     }:
         organisation_role_label = 'Hotel Manager'
     
-    return render_template('org/dashboard.html', 
+    # Provider capability state — canonical source (ProviderParticipation).
+    # Presentation-only: base platform (consumer) access is NEVER PP-gated, so
+    # the dashboard derives ONLY the provider-service presentation from this.
+    from app.identity.services.provider_participation_service import (
+        list_organisation_intentions,
+        participation_to_dict,
+    )
+    provider_capabilities = {
+        item["capability_code"]: item
+        for item in (
+            participation_to_dict(row)
+            for row in list_organisation_intentions(org.id)
+        )
+    }
+
+    return render_template('org/dashboard.html',
                          org=org, member=member, stats=stats,
                          user_permissions=user_permissions,
                          accessible_modules=accessible_modules,
-                         organisation_role_label=organisation_role_label)
+                         organisation_role_label=organisation_role_label,
+                         provider_capabilities=provider_capabilities,
+                         org_type=org.get_effective_org_type())
 
 
 def _can_view_all_org_kyb() -> bool:
@@ -269,9 +315,10 @@ def _can_view_all_org_kyb() -> bool:
 def org_kyb(org_id):
     """Organisation KYB dashboard: per-org step status + (for owners/compliance)
     an overview of KYB status across all registered organisations."""
-    org = Organisation.query.filter_by(org_id=str(org_id), is_deleted=False).first()
-    if not org:
-        abort(404)
+    org = _get_organisation_by_public_id(org_id)
+    legacy_redirect = _canonical_if_legacy(org, org_id)
+    if legacy_redirect:
+        return legacy_redirect
 
     can_all = _can_view_all_org_kyb()
     if not can_all and not OrganizationPermissionService.is_member(current_user, org):
@@ -301,11 +348,14 @@ def members(org_id):
     Role admin:  ``org.members.manage_roles`` (change/remove routes)
     """
     org = _get_organisation_by_public_id(org_id)
+    legacy_redirect = _canonical_if_legacy(org, org_id)
+    if legacy_redirect:
+        return legacy_redirect
 
     member = _require_org_permission(org, current_user, 'org.members.view')
     if not member:
         flash('You do not have permission to view members.', 'danger')
-        return redirect(url_for('org.org_dashboard', org_id=org_id))
+        return redirect(url_for('org.org_dashboard', org_id=org.slug))
 
     can_manage = bool(member.has_permission('org.members.manage'))
     can_manage_roles = bool(member.has_permission('org.members.manage_roles'))
@@ -316,7 +366,7 @@ def members(org_id):
     if form.validate_on_submit():
         if not can_manage:
             flash('You do not have permission to add members.', 'danger')
-            return redirect(url_for('org.members', org_id=org_id))
+            return redirect(url_for('org.members', org_id=org.slug))
 
         try:
             from app.identity.models.user import User
@@ -325,18 +375,18 @@ def members(org_id):
             user = User.query.filter_by(email=email).first()
             if not user:
                 flash('User with this email not found.', 'danger')
-                return redirect(url_for('org.members', org_id=org_id))
+                return redirect(url_for('org.members', org_id=org.slug))
 
             if not bool(getattr(user, 'is_active', False)):
                 flash('This user account is not active and cannot join an organisation.', 'danger')
-                return redirect(url_for('org.members', org_id=org_id))
+                return redirect(url_for('org.members', org_id=org.slug))
 
             verified = bool(getattr(user, 'email_verified', False)) or bool(
                 getattr(user, 'is_verified', False)
             )
             if not verified:
                 flash('User must first verify their email or identity before joining an organisation.', 'danger')
-                return redirect(url_for('org.members', org_id=org_id))
+                return redirect(url_for('org.members', org_id=org.slug))
 
             existing = OrganisationMember.query.filter_by(
                 user_id=user.id,
@@ -345,14 +395,14 @@ def members(org_id):
             ).first()
             if existing:
                 flash('User is already a member of this organization.', 'warning')
-                return redirect(url_for('org.members', org_id=org_id))
+                return redirect(url_for('org.members', org_id=org.slug))
 
             # Only canonical, actor-assignable role names are accepted.
             assignable_names = {name for name, _label in assignable}
             role_name = form.role.data
             if role_name not in assignable_names:
                 flash('That role cannot be assigned by you.', 'danger')
-                return redirect(url_for('org.members', org_id=org_id))
+                return redirect(url_for('org.members', org_id=org.slug))
 
             _ensure_roles_provisioned(org)
             OrganizationRegistrationService.add_org_member(
@@ -367,7 +417,7 @@ def members(org_id):
                 f'{role_name.replace("_", " ").title()}',
                 'success',
             )
-            return redirect(url_for('org.members', org_id=org_id))
+            return redirect(url_for('org.members', org_id=org.slug))
 
         except Exception as e:
             db.session.rollback()
@@ -404,7 +454,7 @@ def change_member_role(org_id, user_public_id):
     actor = _require_org_permission(org, current_user, 'org.members.manage_roles')
     if not actor:
         flash('You do not have permission to manage roles.', 'danger')
-        return redirect(url_for('org.org_dashboard', org_id=org_id))
+        return redirect(url_for('org.org_dashboard', org_id=org.slug))
 
     from app.identity.models.user import User
 
@@ -426,11 +476,11 @@ def change_member_role(org_id, user_public_id):
     }
     if 'org_owner' in target_names:
         flash('The organisation owner role cannot be changed.', 'danger')
-        return redirect(url_for('org.members', org_id=org_id))
+        return redirect(url_for('org.members', org_id=org.slug))
 
     if target.user_id == current_user.id:
         flash('You cannot change your own role.', 'danger')
-        return redirect(url_for('org.members', org_id=org_id))
+        return redirect(url_for('org.members', org_id=org.slug))
 
     new_role = (request.form.get('role') or '').strip()
     assignable_names = {
@@ -438,7 +488,7 @@ def change_member_role(org_id, user_public_id):
     }
     if new_role not in assignable_names:
         flash('That role cannot be assigned by you.', 'danger')
-        return redirect(url_for('org.members', org_id=org_id))
+        return redirect(url_for('org.members', org_id=org.slug))
 
     from app.auth.roles import assign_org_role, revoke_org_role
 
@@ -468,7 +518,7 @@ def change_member_role(org_id, user_public_id):
         current_app.logger.error(f"Error changing role: {e}", exc_info=True)
         flash('An error occurred while changing the role.', 'danger')
 
-    return redirect(url_for('org.members', org_id=org_id))
+    return redirect(url_for('org.members', org_id=org.slug))
 
 
 @org_bp.route('/<org_id>/members/<user_public_id>/remove', methods=['POST'])
@@ -506,14 +556,14 @@ def remove_member(org_id, user_public_id):
     is_self = bool(actor and actor.user_id == target.user_id)
     if not (can_manage or is_self):
         flash('You do not have permission to remove members.', 'danger')
-        return redirect(url_for('org.members', org_id=org_id))
+        return redirect(url_for('org.members', org_id=org.slug))
 
     target_names = {
         our.role.name for our in target.roles if our.role and our.role.name
     }
     if 'org_owner' in target_names:
         flash('The organisation owner cannot be removed.', 'danger')
-        return redirect(url_for('org.members', org_id=org_id))
+        return redirect(url_for('org.members', org_id=org.slug))
 
     try:
         from app.identity.models.organisation_member import (
@@ -537,7 +587,7 @@ def remove_member(org_id, user_public_id):
         current_app.logger.error(f"Error removing member: {e}", exc_info=True)
         flash('An error occurred while removing the member.', 'danger')
 
-    return redirect(url_for('org.members', org_id=org_id))
+    return redirect(url_for('org.members', org_id=org.slug))
 
 
 @org_bp.route('/<org_id>/settings', methods=['GET', 'POST'])
@@ -545,11 +595,15 @@ def remove_member(org_id, user_public_id):
 def settings(org_id):
     """Organization settings"""
     org = _get_organisation_by_public_id(org_id)
+    legacy_redirect = _canonical_if_legacy(org, org_id)
+    if legacy_redirect:
+        return legacy_redirect
+
     # Verify permissions (canonical org.settings.manage — org_owner only)
     member = _require_org_permission(org, current_user, 'org.settings.manage')
     if not member:
         flash('You do not have permission to manage settings.', 'danger')
-        return redirect(url_for('org.org_dashboard', org_id=org_id))
+        return redirect(url_for('org.org_dashboard', org_id=org.slug))
     
     form = OrganizationSettingsForm(obj=org)
     
@@ -561,7 +615,15 @@ def settings(org_id):
             org.contact_phone = form.contact_phone.data
             org.headquarters_address = form.headquarters_address.data
             org.website = form.website.data
-            
+
+            # Classification repair — persists organisation_type_code ONLY.
+            # The form validator has already validated the submitted code
+            # against the canonical catalogue and derived the category
+            # server-side; empty submission preserves the current state.
+            type_code = (form.organisation_type_code.data or '').strip()
+            if type_code:
+                org.organisation_type_code = type_code
+
             # Update organization settings
             org.set_setting('business_description', form.business_description.data)
             org.set_setting('email_notifications', form.email_notifications.data)
@@ -571,7 +633,7 @@ def settings(org_id):
             
             db.session.commit()
             flash('Organization settings updated successfully.', 'success')
-            return redirect(url_for('org.settings', org_id=org_id))
+            return redirect(url_for('org.settings', org_id=org.slug))
             
         except Exception as e:
             current_app.logger.error(f"Error updating settings: {e}")
@@ -583,8 +645,15 @@ def settings(org_id):
     form.sms_notifications.data = org.get_setting('sms_notifications', False)
     form.public_profile.data = org.get_setting('public_profile', False)
     form.allow_member_invites.data = org.get_setting('allow_member_invites', True)
+
+    from app.identity.services.organisation_classification_service import (
+        category_groups,
+        label_for,
+    )
     
     return render_template('org/settings.html', org=org, member=member, form=form,
+                           classification_categories=category_groups(),
+                           classification_label=label_for(org.organisation_type_code),
                            stats={
                                'total_members': OrganisationMember.query.filter_by(
                                    organisation_id=org.id, is_deleted=False, is_active=True
@@ -639,10 +708,14 @@ def kyc_settings(org_id):
 def wallet(org_id):
     """Organization wallet management"""
     org = _get_organisation_by_public_id(org_id)
+    legacy_redirect = _canonical_if_legacy(org, org_id)
+    if legacy_redirect:
+        return legacy_redirect
+
     # Verify permissions
     if not OrganizationPermissionService.can_manage_wallet(current_user, org):
         flash('You do not have permission to manage wallet.', 'danger')
-        return redirect(url_for('org.org_dashboard', org_id=org_id))
+        return redirect(url_for('org.org_dashboard', org_id=org.slug))
     
     # Get organization wallet
     from app.wallet.models.ledger import AccountModel, AccountOwnerType
@@ -653,7 +726,7 @@ def wallet(org_id):
     
     if not wallet:
         flash('Organization wallet not found.', 'warning')
-        return redirect(url_for('org.org_dashboard', org_id=org_id))
+        return redirect(url_for('org.org_dashboard', org_id=org.slug))
     
     # Get wallet balance
     try:
@@ -675,7 +748,7 @@ def wallet(org_id):
             
             db.session.commit()
             flash('Wallet settings updated successfully.', 'success')
-            return redirect(url_for('org.wallet', org_id=org_id))
+            return redirect(url_for('org.wallet', org_id=org.slug))
             
         except Exception as e:
             current_app.logger.error(f"Error updating wallet settings: {e}")
@@ -696,10 +769,14 @@ def wallet(org_id):
 def events(org_id):
     """Organization events management"""
     org = _get_organisation_by_public_id(org_id)
+    legacy_redirect = _canonical_if_legacy(org, org_id)
+    if legacy_redirect:
+        return legacy_redirect
+
     # Verify permissions
     if not OrganizationPermissionService.can_create_events(current_user, org):
         flash('You do not have permission to manage events.', 'danger')
-        return redirect(url_for('org.org_dashboard', org_id=org_id))
+        return redirect(url_for('org.org_dashboard', org_id=org.slug))
     
     # Get organization events (Owned or Operated by the selected organization)
     from app.events.models import Event
@@ -723,10 +800,14 @@ def events(org_id):
 def accommodation(org_id):
     """Organization accommodation management"""
     org = _get_organisation_by_public_id(org_id)
+    legacy_redirect = _canonical_if_legacy(org, org_id)
+    if legacy_redirect:
+        return legacy_redirect
+
     # Verify permissions (canonical org.accommodation.manage)
     if not _require_org_permission(org, current_user, 'org.accommodation.manage'):
         flash('You do not have permission to manage accommodation.', 'danger')
-        return redirect(url_for('org.org_dashboard', org_id=org_id))
+        return redirect(url_for('org.org_dashboard', org_id=org.slug))
     
     # Get organization accommodations
     from app.accommodation.models import Property
@@ -740,9 +821,13 @@ def accommodation(org_id):
 def bookings(org_id):
     """View bookings for properties owned by the selected organisation."""
     org = _get_organisation_by_public_id(org_id)
+    legacy_redirect = _canonical_if_legacy(org, org_id)
+    if legacy_redirect:
+        return legacy_redirect
+
     if not _require_org_permission(org, current_user, 'org.accommodation.manage'):
         flash('You do not have permission to manage accommodation.', 'danger')
-        return redirect(url_for('org.org_dashboard', org_id=org_id))
+        return redirect(url_for('org.org_dashboard', org_id=org.slug))
 
     from app.accommodation.models import AccommodationBooking, Property
     bookings = (
@@ -764,10 +849,14 @@ def bookings(org_id):
 def transport(org_id):
     """Organization transport management"""
     org = _get_organisation_by_public_id(org_id)
+    legacy_redirect = _canonical_if_legacy(org, org_id)
+    if legacy_redirect:
+        return legacy_redirect
+
     # Verify permissions (canonical org.transport.manage)
     if not _require_org_permission(org, current_user, 'org.transport.manage'):
         flash('You do not have permission to manage transport.', 'danger')
-        return redirect(url_for('org.org_dashboard', org_id=org_id))
+        return redirect(url_for('org.org_dashboard', org_id=org.slug))
     
     # Get organization transport fleet
     from app.transport.models import Vehicle
@@ -785,10 +874,14 @@ def transport(org_id):
 def tourism(org_id):
     """Organization tourism management"""
     org = _get_organisation_by_public_id(org_id)
+    legacy_redirect = _canonical_if_legacy(org, org_id)
+    if legacy_redirect:
+        return legacy_redirect
+
     # Verify permissions
     if not OrganizationPermissionService.can_manage_tourism(current_user, org):
         flash('You do not have permission to manage tourism.', 'danger')
-        return redirect(url_for('org.org_dashboard', org_id=org_id))
+        return redirect(url_for('org.org_dashboard', org_id=org.slug))
     
     # Get organization tourism offerings
     from app.tourism.models import TourismListing
@@ -802,10 +895,14 @@ def tourism(org_id):
 def reports(org_id):
     """Organization reports"""
     org = _get_organisation_by_public_id(org_id)
+    legacy_redirect = _canonical_if_legacy(org, org_id)
+    if legacy_redirect:
+        return legacy_redirect
+
     # Verify permissions
     if not OrganizationPermissionService.can_view_reports(current_user, org):
         flash('You do not have permission to view reports.', 'danger')
-        return redirect(url_for('org.org_dashboard', org_id=org_id))
+        return redirect(url_for('org.org_dashboard', org_id=org.slug))
     
     # Generate organization reports
     reports_data = {
@@ -861,6 +958,9 @@ def list_capabilities(org_id):
     Any active org member may view capabilities.
     """
     org = _get_organisation_by_public_id(org_id)
+    legacy_redirect = _canonical_if_legacy(org, org_id)
+    if legacy_redirect:
+        return legacy_redirect
 
     if not OrganizationPermissionService.is_member(current_user, org):
         return jsonify({'error': 'Not a member'}), 403

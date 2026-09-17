@@ -108,22 +108,42 @@ def _post_form(client, url, data=None, **kwargs):
 
 
 def _make_kyc_verified(app, user):
-    """Approve identity verification for *user* so is_fully_verified() is True.
+    """Approve identity verification for *user* at the canonical Driver
+    Workspace capability: verified phone + National ID + selfie = canonical
+    KYC tier 2 (calculate_kyc_tier).
 
     can_host() — the runtime gate that makes the accommodation_host context
     eligible for switch_context — reads IndividualVerification records, NOT
     UserProfile.verification_status. Completion tests therefore create an
     approved IndividualVerification row, mirroring the owner/admin approval
-    path (app/admin/owner/routes.py) that makes a host context available.
+    path (app/admin/owner/routes.py) that makes a host context available. The
+    real User row's phone flags (tier 1) are flipped too, so the canonical
+    KYC authority sees the identity as tier-2 qualified.
     """
-    from app.identity.individuals.individual_verification import IndividualVerification
+    from datetime import datetime, timezone
+
+    from app.identity.individuals.individual_verification import (
+        IndividualVerification,
+    )
+    from app.identity.models.user import User
 
     with app.app_context():
+        real_user = db.session.get(User, user.id)
+        if real_user is not None:
+            real_user.phone_verified = True
+            real_user.phone_verified_at = datetime.now(timezone.utc)
+            if not real_user.phone:
+                real_user.phone = f"+2567{uuid.uuid4().hex[:7]}"
         db.session.add(
             IndividualVerification(
                 user_id=user.id,
                 status="verified",
-                scope={"identity": True, "address": True},
+                scope={
+                    "identity": True,
+                    "address": True,
+                    "national_id": True,
+                    "biometric": True,
+                },
             )
         )
         db.session.commit()
@@ -247,6 +267,122 @@ class TestIndividualPaths:
         _session_login(client, verified_user)
         response = client.get("/onboarding/driver")
         assert response.status_code == 200
+
+    def test_driver_step1_prefills_and_locks_canonical_identity(self, app, client, verified_user):
+        """Driver Step 1 must pre-fill canonical UserProfile identity and lock
+        it read-only, never requiring the verified user to re-key it."""
+        import datetime as dt
+
+        with app.app_context():
+            profile = get_profile_by_user(verified_user.public_id)
+            profile.date_of_birth = dt.date(1990, 1, 1)
+            profile.nationality = "UG"
+            profile.id_type = "national_id"
+            profile.id_number = "NID-PREFILL-001"
+            db.session.commit()
+
+        _session_login(client, verified_user)
+        response = client.get("/onboarding/driver/step/1")
+        assert response.status_code == 200
+        assert b'value="1990-01-01"' in response.data
+        assert b'value="UG"' in response.data
+        assert b'value="NID-PREFILL-001"' in response.data
+        assert b'value="Test Customer"' in response.data
+        assert response.data.count(b'readonly title="Already provided"') == 4
+        assert response.data.count(b"Already provided.") == 4
+        field_html = response.data.decode("utf-8")
+        assert 'readonly title="Already provided"' in field_html
+
+    def test_driver_step1_identity_editable_when_canonical_missing(self, app, client, verified_user):
+        """When canonical identity fields (DOB/nationality/ID) are missing,
+        Driver Step 1 must leave them editable and un-locked so the user can
+        supply them. Full name stays locked as it is always canonically set."""
+        with app.app_context():
+            profile = get_profile_by_user(verified_user.public_id)
+            profile.date_of_birth = None
+            profile.nationality = None
+            profile.id_type = None
+            profile.id_number = None
+            db.session.commit()
+
+        _session_login(client, verified_user)
+        response = client.get("/onboarding/driver/step/1")
+        assert response.status_code == 200
+        body = response.data.decode("utf-8")
+        # Only full_name remains locked (canonical, NOT NULL).
+        assert body.count('readonly title="Already provided"') == 1
+        assert body.count("Already provided.") == 1
+        # 1990-01-01 / UG / NID values from the canonical fixture must be gone.
+        assert 'value="1990-01-01"' not in body
+        assert 'value="UG"' not in body
+        assert 'value="NID-PREFILL-001"' not in body
+        # The identity inputs must be present and un-locked (editable).
+        assert 'name="date_of_birth"' in body
+        assert 'name="nationality"' in body
+        assert 'name="national_id_number"' in body
+        assert 'value="1990-01-01"' not in body
+
+    def test_driver_step3_commit_preserves_canonical_identity(self, app, client, verified_user):
+        """Full HTTP driver wizard commit must leave canonical UserProfile
+        identity untouched — verified DOB/ID never regress by re-onboarding,
+        and the historical raw-string DOB TypeError regression must not return."""
+        import datetime as dt
+
+        with app.app_context():
+            profile = get_profile_by_user(verified_user.public_id)
+            profile.date_of_birth = dt.date(1985, 6, 15)
+            profile.nationality = "KE"
+            profile.id_type = "national_id"
+            profile.id_number = "NID-KEEP-001"
+            db.session.commit()
+
+        _session_login(client, verified_user)
+        assert client.get("/onboarding/driver/step/1").status_code == 200
+
+        r1 = client.post(
+            "/onboarding/driver/step/1",
+            data={
+                "full_name": "Attempted Override Name",
+                "date_of_birth": "1999-09-09",
+                "nationality": "TZ",
+                "national_id_number": "NID-OVERRIDE-999",
+            },
+            follow_redirects=False,
+        )
+        assert r1.status_code == 302
+
+        r2 = client.post(
+            "/onboarding/driver/step/2",
+            data={
+                "licence_number": "LIC-456-789",
+                "licence_expiry": "2032-01-15",
+                "licence_class": "B",
+            },
+            follow_redirects=False,
+        )
+        assert r2.status_code == 302
+
+        r3 = client.post(
+            "/onboarding/driver/step/3",
+            data={
+                "vehicle_make": "Toyota",
+                "vehicle_model": "Hiace",
+                "vehicle_year": "2019",
+                "plate_number": "UBD-123K",
+                "vehicle_type": "van",
+            },
+            follow_redirects=False,
+        )
+        # Regression guard: the original bug raised TypeError (500) here.
+        assert r3.status_code != 500
+
+        with app.app_context():
+            prof = get_profile_by_user(verified_user.public_id)
+            assert prof.full_name == "Test Customer"
+            assert prof.date_of_birth == dt.date(1985, 6, 15)
+            assert prof.nationality == "KE"
+            assert prof.id_type == "national_id"
+            assert prof.id_number == "NID-KEEP-001"
 
     def test_host_path_reachable(self, client, verified_user):
         _session_login(client, verified_user)

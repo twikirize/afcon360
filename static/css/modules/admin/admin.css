@@ -332,6 +332,19 @@
   margin-top: 8px;
 }
 
+.sad-stat-link {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 11px;
+  font-family: var(--sad-mono);
+  color: var(--sad-cyan);
+  text-decoration: none;
+}
+.sad-stat-link:hover {
+  color: var(--sad-accent);
+  text-decoration: underline;
+}
+
 .sad-stat-bar {
   height: 3px;
   background: var(--sad-surface3);

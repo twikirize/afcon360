@@ -236,7 +236,7 @@
             {% set _member_roles = [] %}
             {% for _our in membership.roles %}{% if _our.role and _our.role.name %}{% set _member_roles = _member_roles + [_our.role.name] %}{% endif %}{% endfor %}
             {% set _member_role = _member_roles[0] if _member_roles else 'org_member' %}
-            <a href="{{ url_for('org.org_dashboard', org_id=membership.organisation_id) }}" 
+            <a href="{{ url_for('org.org_dashboard', org_id=membership.organisation.slug or membership.organisation.org_id) }}" 
                class="text-decoration-none">
                 <div class="org-card">
                     <div class="card-body p-4">
@@ -247,7 +247,7 @@
                             <div class="org-info">
                                 <div class="org-name">{{ membership.organisation.legal_name }}</div>
                                 <div class="org-id">
-                                    <i class="bi bi-hash me-1"></i>{{ membership.organisation.org_id }}
+                                    <i class="bi bi-hash me-1"></i>{{ membership.organisation.slug or membership.organisation.org_id }}
                                 </div>
                                 <div class="status-badges">
                                     <span class="status-badge {{ membership.organisation.verification_status }}">

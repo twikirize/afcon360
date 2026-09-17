@@ -110,12 +110,14 @@ def delete_user(user_id):
     try:
         user = User.query.get_or_404(user_id)
 
-        # Prevent self-deletion
+# Prevent self-deletion
         if user.id == current_user.id:
             flash("You cannot delete your own account", "danger")
             return redirect(url_for('admin.manage_users'))
 
         username = user.username
+        from app.auth.deletion_guard import authorize_privileged_deletion_from_form
+        authorize_privileged_deletion_from_form(db.session, actor=current_user)
         db.session.delete(user)
         db.session.commit()
 
@@ -343,7 +345,9 @@ def demote_user(user_id):
         if current_index > 0:
             prev_role = role_hierarchy[current_index - 1]
 
-            # Revoke current role and assign lower role
+# Revoke current role and assign lower role
+            from app.auth.deletion_guard import authorize_privileged_deletion_from_form
+            authorize_privileged_deletion_from_form(db.session, actor=current_user)
             revoke_global_role(user.id, current_role)
             assign_global_role(user.id, prev_role)
 

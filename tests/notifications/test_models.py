@@ -50,8 +50,9 @@ class TestNotificationModel:
 
     def test_notification_creation(self, db_session):
         """Test creating a notification record."""
+        user = _make_user(db_session)
         notification = Notification(
-            user_id=1,
+            user_id=user.id,
             type=NotificationType.BOOKING_CONFIRMED,
             subject="Booking Confirmed",
             body="Your booking has been confirmed.",
@@ -69,8 +70,9 @@ class TestNotificationModel:
 
     def test_mark_read(self, db_session):
         """Test marking a notification as read."""
+        user = _make_user(db_session)
         notification = Notification(
-            user_id=1,
+            user_id=user.id,
             type=NotificationType.BOOKING_CONFIRMED,
             subject="Test",
             body="Test body",
@@ -87,8 +89,9 @@ class TestNotificationModel:
 
     def test_mark_sent(self, db_session):
         """Test marking a notification as sent."""
+        user = _make_user(db_session)
         notification = Notification(
-            user_id=1,
+            user_id=user.id,
             type=NotificationType.BOOKING_CONFIRMED,
             subject="Test",
             body="Test body",
@@ -104,8 +107,9 @@ class TestNotificationModel:
 
     def test_mark_delivered(self, db_session):
         """Test marking a notification as delivered."""
+        user = _make_user(db_session)
         notification = Notification(
-            user_id=1,
+            user_id=user.id,
             type=NotificationType.BOOKING_CONFIRMED,
             subject="Test",
             body="Test body",
@@ -121,8 +125,9 @@ class TestNotificationModel:
 
     def test_mark_failed(self, db_session):
         """Test marking a notification as failed."""
+        user = _make_user(db_session)
         notification = Notification(
-            user_id=1,
+            user_id=user.id,
             type=NotificationType.BOOKING_CONFIRMED,
             subject="Test",
             body="Test body",
@@ -138,8 +143,9 @@ class TestNotificationModel:
 
     def test_increment_attempts(self, db_session):
         """Test incrementing delivery attempts."""
+        user = _make_user(db_session)
         notification = Notification(
-            user_id=1,
+            user_id=user.id,
             type=NotificationType.BOOKING_CONFIRMED,
             subject="Test",
             body="Test body",
@@ -216,8 +222,9 @@ class TestNotificationLogModel:
 
     def test_log_creation(self, db_session):
         """Test creating a notification log entry."""
+        user = _make_user(db_session)
         notification = Notification(
-            user_id=1,
+            user_id=user.id,
             type=NotificationType.BOOKING_CONFIRMED,
             subject="Test",
             body="Test body",
@@ -296,8 +303,9 @@ class TestNotificationService:
 
     def test_get_unread_count(self, db_session):
         """Test getting unread notification count."""
+        user = _make_user(db_session)
         notification = Notification(
-            user_id=1,
+            user_id=user.id,
             type=NotificationType.BOOKING_CONFIRMED,
             subject="Test",
             body="Test body",
@@ -306,13 +314,14 @@ class TestNotificationService:
         db_session.add(notification)
         db_session.commit()
 
-        count = NotificationService.get_unread_count(1)
+        count = NotificationService.get_unread_count(user.id)
         assert count >= 1
 
     def test_get_user_notifications(self, db_session):
         """Test getting user notifications."""
+        user = _make_user(db_session)
         notification = Notification(
-            user_id=1,
+            user_id=user.id,
             type=NotificationType.BOOKING_CONFIRMED,
             subject="Test",
             body="Test body",
@@ -320,13 +329,14 @@ class TestNotificationService:
         db_session.add(notification)
         db_session.commit()
 
-        notifications = NotificationService.get_user_notifications(1, limit=10)
+        notifications = NotificationService.get_user_notifications(user.id, limit=10)
         assert len(notifications) >= 1
 
     def test_mark_read(self, db_session):
         """Test marking a notification as read."""
+        user = _make_user(db_session)
         notification = Notification(
-            user_id=1,
+            user_id=user.id,
             type=NotificationType.BOOKING_CONFIRMED,
             subject="Test",
             body="Test body",
@@ -334,7 +344,7 @@ class TestNotificationService:
         db_session.add(notification)
         db_session.commit()
 
-        result = NotificationService.mark_read(notification.id, 1)
+        result = NotificationService.mark_read(notification.id, user.id)
         assert result is True
 
         read_notif = db_session.query(Notification).filter_by(id=notification.id).first()
@@ -342,8 +352,9 @@ class TestNotificationService:
 
     def test_mark_all_read(self, db_session):
         """Test marking all notifications as read."""
+        user = _make_user(db_session)
         notification = Notification(
-            user_id=1,
+            user_id=user.id,
             type=NotificationType.BOOKING_CONFIRMED,
             subject="Test",
             body="Test body",
@@ -351,7 +362,7 @@ class TestNotificationService:
         db_session.add(notification)
         db_session.commit()
 
-        count = NotificationService.mark_all_read(1)
+        count = NotificationService.mark_all_read(user.id)
         assert count >= 1
 
     def test_wallet_notification(self, db_session):
@@ -414,8 +425,9 @@ class TestNotificationService:
 
     def test_resend_failed(self, db_session):
         """Test resending failed notifications."""
+        user = _make_user(db_session)
         notification = Notification(
-            user_id=1,
+            user_id=user.id,
             type=NotificationType.BOOKING_CONFIRMED,
             subject="Test",
             body="Test body",
@@ -455,7 +467,8 @@ class TestPreferenceService:
 
     def test_update_preference(self, db_session):
         """Test updating a preference."""
-        pref = PreferenceService.update_preference(1, "booking_confirmed", "email", False)
+        user = _make_user(db_session)
+        pref = PreferenceService.update_preference(user.id, "booking_confirmed", "email", False)
         assert pref is not None
         assert pref.enabled is False
 
@@ -577,8 +590,9 @@ class TestNotificationIntegration:
 
     def test_notification_connects_to_user(self, db_session):
         """Test that notifications properly reference users."""
+        user = _make_user(db_session)
         notification = Notification(
-            user_id=1,
+            user_id=user.id,
             type=NotificationType.BOOKING_CONFIRMED,
             subject="Test",
             body="Test body",
@@ -586,13 +600,14 @@ class TestNotificationIntegration:
         db_session.add(notification)
         db_session.commit()
 
-        assert notification.user_id == 1
+        assert notification.user_id == user.id
         assert notification.id is not None
 
     def test_notification_context_passes_data(self, db_session):
         """Test that notification context carries data between models."""
+        user = _make_user(db_session)
         notification = Notification(
-            user_id=1,
+            user_id=user.id,
             type=NotificationType.PAYMENT_RECEIVED,
             subject="Payment Received",
             body="UGX 100000 credited to your wallet.",
@@ -621,8 +636,9 @@ class TestNotificationIntegration:
         db_session.add(template)
         db_session.commit()
 
+        user = _make_user(db_session)
         notification = Notification(
-            user_id=1,
+            user_id=user.id,
             type=NotificationType.BOOKING_CONFIRMED,
             subject="Booking Confirmed",
             body="Dear John, your booking is confirmed.",
@@ -652,8 +668,9 @@ class TestNotificationIntegration:
 
     def test_notification_log_links_to_notification(self, db_session):
         """Test that notification logs link to notifications."""
+        user = _make_user(db_session)
         notification = Notification(
-            user_id=1,
+            user_id=user.id,
             type=NotificationType.BOOKING_CONFIRMED,
             subject="Test",
             body="Test body",
