@@ -19,16 +19,6 @@ class RateLimitService:
     CACHE_PREFIX = "rate_limit:settings"
     CACHE_TTL = 60  # 1 minute
 
-    # Known endpoint limit keys
-    ENDPOINT_KEYS = [
-        'register', 'login', 'password_reset', 'media_upload',
-        'media_admin', 'accommodation_checkout', 'accommodation_cancel',
-        'accommodation_host_actions', 'wallet_pin', 'wallet_deposit',
-        'wallet_withdraw', 'wallet_transfer', 'event_create', 'event_checkin',
-        'transport_provider_registration', 'transport_vehicle_registration',
-        'transport_driver_status_update',
-    ]
-
     @staticmethod
     def _build_cache_key(key: str) -> str:
         return f"{RateLimitService.CACHE_PREFIX}:{key}"
