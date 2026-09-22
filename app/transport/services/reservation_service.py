@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import sqlalchemy as sa
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.transport.models import (
@@ -706,6 +707,11 @@ class TransportReservationService:
                     "Full-settlement event does not satisfy the required total amount"
                 )
 
+        if (wallet_transaction_reference
+                and row.wallet_transaction_reference
+                and row.wallet_transaction_reference == wallet_transaction_reference):
+            return row
+
         if target != current:
             SM.transition_obligation(row, target, trigger="wallet_obligation_event")
         row.amount_received = proposed_received
@@ -722,7 +728,20 @@ class TransportReservationService:
                               trigger="obligation_satisfied")
 
         if commit:
-            db.session.commit()
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                db.session.expire_all()
+                logger.warning(
+                    "Reservation callback idempotency collision on "
+                    "wallet_transaction_reference: reservation_id=%s "
+                    "wallet_transaction_reference=%s",
+                    reservation_id,
+                    wallet_transaction_reference,
+                )
+                existing = db.session.get(TransportReservation, reservation_id)
+                return existing
             db.session.expire_all()
             return db.session.get(TransportReservation, row.id)
         return row

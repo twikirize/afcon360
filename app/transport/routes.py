@@ -40,7 +40,7 @@ from app.transport.services.payment_methods import get_available_payment_methods
 from app.transport.services import get_booking_service, get_provider_service, get_dashboard_service
 from app.transport.services.go_live_service import can_go_live
 from app.transport.services.passenger_service import get_passenger_service
-from app.transport.models import Booking, DriverProfile, Vehicle, TransportPassenger, ServiceType
+from app.transport.models import Booking, DriverProfile, Vehicle, TransportPassenger, ServiceType, BookingStatus
 from app.transport.models import (
     ComplianceStatus, VehicleMarketplaceListing, DriverVehicleApplication,
     MarketplaceListingStatus, CompensationModel,
@@ -187,6 +187,12 @@ _PUBLIC_ENDPOINTS = {
     "transport.driver_dashboard",
     "transport.driver_dashboard_slash",
     "transport.vehicle_marketplace",
+    # Booking passenger/accommodation pane — ownership is enforced
+    # inside each handler via _require_ownership.
+    "transport.booking_accommodation_pane",
+    "transport.booking_accommodation_available",
+    "transport.assign_accommodation_for_passenger",
+    "transport.unassign_accommodation_for_passenger",
 }
 
 @transport_bp.before_request
@@ -2064,6 +2070,54 @@ def list_bookings():
         return redirect(url_for("transport.home"))
 
 
+@transport_admin_bp.route("/bookings/<int:booking_id>", methods=["GET"])
+@module_enabled_required("transport")
+@login_required
+@role_required("admin")
+def booking_detail(booking_id):
+    """Admin-facing booking detail. Full data, admin actions, audit trail."""
+    from app.transport.models import Booking, BookingPayment
+
+    booking_model = db.session.get(Booking, booking_id)
+    if not booking_model or booking_model.is_deleted:
+        abort(404)
+
+    try:
+        booking = get_booking_service().get_booking(booking_id)
+    except Exception as e:
+        logger.error(f"Error loading booking {booking_id} for admin: {e}")
+        booking = None
+
+    if not booking:
+        flash("Booking not found", "warning")
+        return redirect(url_for("transport_admin.list_bookings"))
+
+    # Full audit log (the model already accumulates it via booking_routes)
+    audit_log = booking_model.audit_log or []
+
+    # Payments
+    payments = BookingPayment.query.filter_by(
+        booking_id=booking_id, is_deleted=False
+    ).order_by(BookingPayment.created_at.desc()).all()
+
+    # Passenger list
+    try:
+        passenger_list = list(get_passenger_service().passengers_for_booking(booking_id))
+    except Exception:
+        passenger_list = []
+
+    return render_template(
+        "transport/admin/details.html",
+        booking=booking,
+        booking_model=booking_model,
+        booking_id=booking_id,
+        audit_log=audit_log,
+        payments=payments,
+        passengers=passenger_list,
+        status_transitions=[s.value for s in BookingStatus],
+    )
+
+
 @transport_admin_bp.route("/bookings/<int:booking_id>/cancel", methods=["POST"])
 @module_enabled_required("transport")
 @login_required
@@ -2373,24 +2427,11 @@ def dashboard():
     try:
         from datetime import datetime, timezone
 
-        # DEBUG - See what's happening with roles
-        print(f"\n🔍 DASHBOARD ACCESS ATTEMPT")
-        print(f"🔍 User: {current_user.username}")
-        print(f"🔍 User ID: {current_user.id}")
-        print(f"🔍 Is authenticated: {current_user.is_authenticated}")
-        print(f"🔍 Is super admin: {current_user.is_super_admin()}")
-        print(f"🔍 Has admin role: {current_user.has_global_role('admin')}")
-        print(f"🔍 All roles: {current_user.role_names}")
-        print(f"🔍 Session data: {dict(session)}\n")
-
         # Check if user has either admin or super_admin role
         if not (current_user.has_global_role('admin') or current_user.is_super_admin()):
             logger.warning(f"Access denied to transport admin dashboard for user_id={_uid()}")
             flash("Access denied. Admin privileges required.", "danger")
             return redirect(url_for("transport.home"))
-
-        # If we get here, user has permission
-        print(f"✅ ACCESS GRANTED for {current_user.username}")
 
         # Base template requirements (for transport/base.html)
         ctx = {

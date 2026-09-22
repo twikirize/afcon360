@@ -2804,3 +2804,4 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 - Authorization: Not authorized (record only)
 - Evidence/source: app/notifications/services.py:1502-1533, :2172-2189, :2192-2267; app/notifications/listeners.py:256-260; S-15 probe output (0 sends, 1 admin broadcast, 12 recipients)
 - Links: app/notifications/services.py::notify_booking_confirmed, app/notifications/listeners.py::_on_transport_booking
+- Proposed fix shape (for the notifications pass): (1) In notify_booking_confirmed, when module == 'transport', resolve recipient as booking.user_id. (2) Admin broadcast: pending product decision — keep / scope to domain='transport' roles / disable for transport. (3) Fix getattr(booking, 'public_id', booking.id) → use booking.booking_reference when public_id is absent.

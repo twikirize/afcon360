@@ -3,7 +3,7 @@
 Transport-specific decorators
 """
 from functools import wraps
-from flask import abort, redirect, url_for, flash, current_app
+from flask import abort, redirect, url_for, flash, current_app, request
 from flask_login import current_user
 
 # -------------------------------
@@ -50,14 +50,24 @@ def module_enabled_required(module_name):
 # Role decorator (example)
 # -------------------------------
 def role_required(role_name):
+    """Require an authenticated user with the named global role.
+
+    Delegates to app.auth.helpers.has_global_role, which correctly
+    walks UserRole → Role.name, honors the owner bypass, and
+    respects the active-role context. The previous body compared a
+    role-name string against UserRole ORM objects, which is always
+    True, so every decorated route redirected regardless of the
+    caller's roles.
     """
-    Simple role check for transport routes.
-    Replace with your actual role system.
-    """
+    from app.auth.helpers import has_global_role
+
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            if not current_user.is_authenticated or role_name not in getattr(current_user, 'roles', []):
+            if not current_user.is_authenticated:
+                flash("Please log in to continue.", "warning")
+                return redirect(url_for("auth.login", next=request.url))
+            if not has_global_role(current_user, role_name):
                 flash("You do not have permission to access this page.", "danger")
                 return redirect(url_for("transport.home"))
             return f(*args, **kwargs)

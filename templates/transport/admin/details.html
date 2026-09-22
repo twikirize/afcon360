@@ -1,10 +1,214 @@
-﻿<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
-</head>
-<body>
-$END$
-</body>
-</html>
+﻿{% extends "transport/base.html" %}
+{% block title %}{{ booking.booking_reference }}{% endblock %}
+
+{% block breadcrumb %}
+<span class="sep">/</span>
+<a href="{{ url_for('transport_admin.list_bookings') }}">Bookings</a>
+<span class="sep">/</span>
+<span class="current">{{ booking.booking_reference }}</span>
+{% endblock %}
+
+{% macro loc_text(loc) -%}
+  {%- if loc is mapping -%}{{- loc.get('address') or loc.get('name') or loc.get('label') or '—' -}}
+  {%- elif loc -%}{{- loc -}}{%- else -%}—{%- endif -%}
+{%- endmacro %}
+
+{% block extra_css %}
+<style>
+.booking-layout { display:grid; grid-template-columns:1fr 380px; gap:16px; }
+@media(max-width:1000px) { .booking-layout { grid-template-columns:1fr; } }
+.info-grid { display:grid; grid-template-columns:1fr 1fr; gap:0; }
+.info-row { padding:10px 14px; border-bottom:1px solid var(--border); }
+.info-row:nth-child(even) { border-left:1px solid var(--border); }
+.info-k { font-size:0.68rem; color:var(--text-muted); font-weight:600; text-transform:uppercase; margin-bottom:3px; }
+.info-v { font-size:0.85rem; color:var(--text-primary); }
+.audit-entry { padding:9px 14px; border-bottom:1px solid var(--border); font-size:0.78rem; }
+.audit-entry:last-child { border-bottom:none; }
+.audit-action { font-weight:600; color:var(--text-primary); }
+.audit-time { font-size:0.68rem; color:var(--text-muted); font-family:var(--font-mono); }
+.admin-action-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:12px; }
+.admin-action-grid .btn { font-size:0.8rem; }
+.internal-row { background:var(--bg-elevated); font-family:var(--font-mono); font-size:0.72rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">{{ booking.booking_reference }}</h1>
+    <p class="page-subtitle">
+      {{ booking.service_type.value|replace('_',' ')|title if booking.service_type else 'Transport' }} ·
+      {{ booking.pickup_time|datetimeformat|default('—') }} ·
+      Internal ID #{{ booking_id }}
+    </p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('transport_admin.list_bookings') }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-arrow-left"></i> All Bookings
+    </a>
+  </div>
+</div>
+
+<div class="booking-layout">
+  <div style="display:flex; flex-direction:column; gap:16px;">
+
+    {# Core facts #}
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Booking Facts</span>
+        <span class="badge badge-{{ 'green' if booking.status.value == 'completed' else 'amber' if booking.status.value in ['pending_payment','confirmed','assigned'] else 'red' }}">{{ booking.status.value|replace('_',' ')|title }}</span>
+      </div>
+      <div class="info-grid">
+        <div class="info-row internal-row"><div class="info-k">Internal ID</div><div class="info-v">#{{ booking_id }}</div></div>
+        <div class="info-row internal-row"><div class="info-k">Reference</div><div class="info-v">{{ booking.booking_reference }}</div></div>
+        <div class="info-row"><div class="info-k">User ID</div><div class="info-v">#{{ booking.user_id }}</div></div>
+        <div class="info-row"><div class="info-k">User Type</div><div class="info-v">{{ booking.user_type|default('fan') }}</div></div>
+        <div class="info-row"><div class="info-k">Service</div><div class="info-v">{{ booking.service_type.value|replace('_',' ')|title }}</div></div>
+        <div class="info-row"><div class="info-k">Class</div><div class="info-v">{{ booking.service_subtype|title|default('—') }}</div></div>
+        <div class="info-row"><div class="info-k">Provider Type</div><div class="info-v">{{ booking.provider_type.value if booking.provider_type else '—' }}</div></div>
+        <div class="info-row"><div class="info-k">Provider ID</div><div class="info-v">{{ booking.provider_id or '—' }}</div></div>
+        <div class="info-row"><div class="info-k">Pickup</div><div class="info-v">{{ loc_text(booking.pickup_location) }}</div></div>
+        <div class="info-row"><div class="info-k">Drop-off</div><div class="info-v">{{ loc_text(booking.dropoff_location) }}</div></div>
+        <div class="info-row"><div class="info-k">Pickup Time</div><div class="info-v">{{ booking.pickup_time|datetimeformat }}</div></div>
+        <div class="info-row"><div class="info-k">Created</div><div class="info-v">{{ booking.created_at|datetimeformat }}</div></div>
+        <div class="info-row"><div class="info-k">Passengers</div><div class="info-v">{{ booking.passenger_count }}</div></div>
+        <div class="info-row"><div class="info-k">Luggage</div><div class="info-v">{{ booking.luggage_count|default(0) }}</div></div>
+        <div class="info-row"><div class="info-k">Assigned Driver ID</div><div class="info-v">{{ booking.assigned_driver_id or '—' }}</div></div>
+        <div class="info-row"><div class="info-k">Assigned Vehicle ID</div><div class="info-v">{{ booking.assigned_vehicle_id or '—' }}</div></div>
+        <div class="info-row"><div class="info-k">Payment Status</div><div class="info-v">{{ booking.payment_status.value if booking.payment_status else '—' }}</div></div>
+        <div class="info-row"><div class="info-k">Payment Method</div><div class="info-v">{{ booking.payment_method or '—' }}</div></div>
+        <div class="info-row"><div class="info-k">Final Price</div><div class="info-v">{{ booking.final_price or '0.00' }} {{ booking.currency.value if booking.currency else '' }}</div></div>
+        <div class="info-row"><div class="info-k">Version</div><div class="info-v">v{{ booking_model.version or 1 }}</div></div>
+      </div>
+    </div>
+
+    {# Admin actions #}
+    <div class="card">
+      <div class="card-header"><span class="card-title">Admin Actions</span></div>
+      <div class="admin-action-grid">
+        {% if booking.status.value == 'confirmed' %}
+        <a href="{{ url_for('transport.booking_assign', id=booking_id) if 'transport.booking_assign' in config.VIEW_FUNCTIONS else '#' }}" class="btn btn-primary">
+          <i class="fa-solid fa-user-plus"></i> Assign Driver
+        </a>
+        {% endif %}
+        {% if booking.status.value in ['confirmed','assigned','driver_en_route','pickup_arrived'] %}
+        <button class="btn btn-secondary" onclick="adminTransition('in_progress')">
+          <i class="fa-solid fa-play"></i> Force Start
+        </button>
+        {% endif %}
+        {% if booking.status.value in ['assigned','driver_en_route','pickup_arrived','in_progress'] %}
+        <button class="btn btn-success" onclick="adminTransition('completed')">
+          <i class="fa-solid fa-check"></i> Force Complete
+        </button>
+        {% endif %}
+        {% if booking.status.value not in ['completed','cancelled'] %}
+        <button class="btn btn-danger" onclick="adminCancel()">
+          <i class="fa-solid fa-ban"></i> Admin Cancel
+        </button>
+        {% endif %}
+        <a href="{{ url_for('transport.bookings_edit', id=booking_id) if 'transport.bookings_edit' in config.VIEW_FUNCTIONS else '#' }}" class="btn btn-secondary">
+          <i class="fa-solid fa-pen"></i> Edit Details
+        </a>
+        <a href="{{ url_for('transport.bookings_timeline', id=booking_id) }}" class="btn btn-secondary">
+          <i class="fa-solid fa-timeline"></i> Full Timeline
+        </a>
+      </div>
+      <div style="padding:0 12px 12px;">
+        <div style="font-size:0.72rem;color:var(--text-muted);">
+          Force transitions bypass normal state machine ordering. Use only for incident recovery.
+        </div>
+      </div>
+    </div>
+
+    {# Payments #}
+    {% if payments %}
+    <div class="card">
+      <div class="card-header"><span class="card-title">Payment Records</span><span class="badge badge-gray">{{ payments|length }}</span></div>
+      <div style="max-height:280px;overflow-y:auto;">
+        {% for p in payments %}
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:0.8rem;">
+          <div style="display:flex;justify-content:space-between;">
+            <span style="font-weight:600;">{{ p.payment_reference }}</span>
+            <span>{{ p.amount }} {{ p.currency.value if p.currency else '' }}</span>
+          </div>
+          <div style="font-size:0.7rem;color:var(--text-muted);margin-top:3px;">
+            {{ p.payment_method }} ·
+            {{ p.payment_status.value if p.payment_status else '—' }} ·
+            {{ p.created_at|datetimeformat }}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <div style="display:flex; flex-direction:column; gap:16px;">
+
+    {# Passengers #}
+    {% if passengers %}
+    <div class="card">
+      <div class="card-header"><span class="card-title">Passengers</span><span class="badge badge-gray">{{ passengers|length }}</span></div>
+      {% for p in passengers %}
+      <div style="padding:9px 14px;border-bottom:1px solid var(--border);font-size:0.8rem;">
+        <div style="font-weight:600;">{{ p.name or 'Unnamed' }}</div>
+        <div style="font-size:0.68rem;color:var(--text-muted);">ID #{{ p.id }} · {{ p.status.value if p.status else '—' }} · user_id={{ p.user_id or 'accountless' }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {# Audit log #}
+    <div class="card">
+      <div class="card-header"><span class="card-title">Audit Log</span><span class="badge badge-gray">{{ audit_log|length }}</span></div>
+      {% if audit_log %}
+      <div style="max-height:420px;overflow-y:auto;">
+        {% for entry in audit_log|reverse %}
+        <div class="audit-entry">
+          <div class="audit-action">{{ entry.action|replace('_',' ')|title }}</div>
+          {% if entry.from is defined and entry.to is defined %}
+          <div style="font-size:0.72rem;color:var(--text-secondary);">{{ entry.from }} → {{ entry.to }}</div>
+          {% endif %}
+          {% if entry.reason %}<div style="font-size:0.72rem;">Reason: {{ entry.reason }}</div>{% endif %}
+          <div class="audit-time">{{ entry.at|default('—') }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="padding:14px;color:var(--text-muted);font-size:0.8rem;">No audit entries.</div>
+      {% endif %}
+    </div>
+
+    {# Raw metadata #}
+    {% if booking.booking_metadata %}
+    <div class="card">
+      <div class="card-header"><span class="card-title">Metadata</span></div>
+      <div style="padding:12px;font-family:var(--font-mono);font-size:0.7rem;color:var(--text-secondary);white-space:pre-wrap;word-break:break-all;">
+        {{ booking.booking_metadata|tojson(indent=2) }}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
+function adminTransition(newStatus) {
+  var reason = (newStatus === 'cancelled') ? prompt('Reason for cancellation?') : null;
+  if (newStatus === 'cancelled' && !reason) return;
+  if (!confirm('Force transition to "' + newStatus.replace(/_/g,' ') + '"?')) return;
+  fetch('/api/transport/bookings/{{ booking_id }}/status', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': {{ raw_csrf_token|tojson }}},
+    body: JSON.stringify({ status: newStatus, reason: reason })
+  }).then(r => r.json()).then(d => {
+    if (d.success) location.reload();
+    else alert('Error: ' + (d.error || 'Unknown'));
+  }).catch(function() { alert('Request failed'); });
+}
+function adminCancel() { adminTransition('cancelled'); }
+</script>
+{% endblock %}

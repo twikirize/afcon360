@@ -2696,6 +2696,12 @@ class TransportReservation(TransportBase):
     __table_args__ = (
         Index("ix_reservation_reference", "reservation_reference", unique=True),
         UniqueConstraint("reserving_user_id", "idempotency_key", name="uq_reservation_idem"),
+        Index(
+            "ix_reservation_wallet_ref",
+            "wallet_transaction_reference",
+            unique=True,
+            postgresql_where=sa.text("wallet_transaction_reference IS NOT NULL"),
+        ),
         Index("ix_reservation_reserving_user", "reserving_user_id", "created_at"),
         Index("ix_reservation_state", "state", "created_at"),
         Index("ix_reservation_window", "window_start", "window_end"),

@@ -926,18 +926,18 @@ def create_app(config_object=None) -> Flask:
             # forcing SQLAlchemy's one-time configure_mappers() pass). Moved here
             # so it runs after the server is already accepting requests.
             def _load_rate_limit_defaults():
-    # Skip in dev — no DB hit, no overriding the hardcoded defaults.
-    if app.config.get("DEBUG") or app.config.get("APP_ENV") in ("local", "development", "testing"):
-        logger.info("⏭ Rate limit defaults loader skipped (dev)")
-        return
-    try:
-        with app.app_context():
-            from app.admin.owner.rate_limit_service import RateLimitService
-            default_limits = RateLimitService.get_default_limits()
-            limiter.default_limits = default_limits
-            logger.info("✅ Rate limit default_limits loaded (deferred)")
-    except Exception as exc:
-        logger.warning(f"Deferred rate limit defaults load failed: {exc}")
+                # Skip in dev — no DB hit, no overriding the hardcoded defaults.
+                if app.config.get("DEBUG") or app.config.get("APP_ENV") in ("local", "development", "testing"):
+                    logger.info("⏭ Rate limit defaults loader skipped (dev)")
+                    return
+                try:
+                    with app.app_context():
+                        from app.admin.owner.rate_limit_service import RateLimitService
+                        default_limits = RateLimitService.get_default_limits()
+                        limiter.default_limits = default_limits
+                        logger.info("✅ Rate limit default_limits loaded (deferred)")
+                except Exception as exc:
+                    logger.warning(f"Deferred rate limit defaults load failed: {exc}")
 
             threading.Thread(target=_load_rate_limit_defaults, daemon=True).start()
 

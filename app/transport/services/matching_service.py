@@ -18,6 +18,15 @@ from app.utils.exceptions import ValidationError, NotFoundError
 from app.utils.monitoring import monitor_endpoint, record_metric
 
 
+def _pickup_zone(booking) -> Optional[str]:
+    """Extract pickup zone from a JSONB pickup_location that may be
+    a dict, a string, or None."""
+    loc = getattr(booking, "pickup_location", None)
+    if isinstance(loc, dict):
+        return loc.get("zone")
+    return None
+
+
 class MatchingService:
     """Service for matching bookings with providers"""
 
@@ -45,7 +54,7 @@ class MatchingService:
         """pool -> ranker. Returns (available_drivers, ranked_drivers)."""
         provider_service = get_provider_service()
         available_drivers = provider_service.get_available_drivers(
-            zone=booking.pickup_location.get('zone'),
+            zone=_pickup_zone(booking),
             vehicle_class=MatchingService._booking_vehicle_class(booking),
             limit=10
         )

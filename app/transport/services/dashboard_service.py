@@ -62,16 +62,21 @@ class DashboardService:
             logger.error(f"Error building dashboard context: {e}", exc_info=True)
             return self._get_fallback_context()
 
-    def get_cached_admin_dashboard(self) -> Dict[str, Any]:
-        """Get dashboard data from cache or generate fresh"""
-        cached = cache.get(self.CACHE_KEY)
+    def get_cached_admin_dashboard(self, scope: str = "global") -> Dict[str, Any]:
+        """Get dashboard data from cache or generate fresh.
+
+        scope separates caches per actor class. Callers with org-scoped
+        admin rights should pass scope=f"org:{org_id}".
+        """
+        key = f"{self.CACHE_KEY}:{scope}"
+        cached = cache.get(key)
         if cached:
-            logger.debug("Returning cached admin dashboard")
+            logger.debug("Returning cached admin dashboard (%s)", scope)
             return cached
 
         context = self.get_admin_dashboard_context()
-        cache.set(self.CACHE_KEY, context, timeout=self.CACHE_TTL)
-        logger.debug("Admin dashboard cached for 5 minutes")
+        cache.set(key, context, timeout=self.CACHE_TTL)
+        logger.debug("Admin dashboard cached for 5 minutes (%s)", scope)
         return context
 
     # =========================================================
