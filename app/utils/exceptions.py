@@ -100,14 +100,3 @@ class ExternalServiceError(Exception):
         self.code = code
         self.details = details
         super().__init__(self.message)
-
-
-class ServiceUnavailableError(Exception):
-    """Raised when a service is unavailable"""
-    def __init__(self, message="Service unavailable", service_name=None, retry_after=None, code=None, details=None):
-        self.message = message
-        self.service_name = service_name
-        self.retry_after = retry_after
-        self.code = code
-        self.details = details
-        super().__init__(self.message)
