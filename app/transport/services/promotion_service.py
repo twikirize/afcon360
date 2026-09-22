@@ -49,7 +49,7 @@ class PromotionService:
                     'discount_value': 10,
                     'min_amount': Decimal('20.00'),
                     'max_discount': Decimal('10.00'),
-                    'valid_until': datetime(2024, 12, 31, tzinfo=timezone.utc),
+                    'valid_until': datetime(2026, 12, 31, tzinfo=timezone.utc),
                     'usage_limit': 1,
                     'user_specific': False,
                     'service_types': ['on_demand', 'airport_transfer']
@@ -59,7 +59,7 @@ class PromotionService:
                     'discount_value': 25,
                     'min_amount': Decimal('50.00'),
                     'max_discount': Decimal('25.00'),
-                    'valid_until': datetime(2024, 7, 31, tzinfo=timezone.utc),
+                    'valid_until': datetime(2026, 12, 31, tzinfo=timezone.utc),
                     'usage_limit': 3,
                     'user_specific': False,
                     'service_types': ['stadium_shuttle', 'hotel_transfer']
@@ -69,7 +69,7 @@ class PromotionService:
                     'discount_value': Decimal('15.00'),
                     'min_amount': Decimal('25.00'),
                     'max_discount': Decimal('15.00'),
-                    'valid_until': datetime(2024, 12, 31, tzinfo=timezone.utc),
+                    'valid_until': datetime(2026, 12, 31, tzinfo=timezone.utc),
                     'usage_limit': 1,
                     'user_specific': True,
                     'first_ride_only': True
