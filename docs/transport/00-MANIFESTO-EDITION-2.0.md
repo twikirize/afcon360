@@ -820,7 +820,7 @@ Return to this book and identify the next permitted item.
 
   ID    Work item                           Status    Evidence
   ----- ----------------------------------- --------- ----------
-  1.1   Booking idempotency                 NEXT      ---
+  1.1   Booking idempotency                 PASS      1bf34b9, a4c5e8b, 031acf2
   1.2   Rider realtime tracking             PENDING   ---
   1.3   Driver offer notifications          PENDING   ---
   1.4   Spatial candidate indexing          PENDING   ---
