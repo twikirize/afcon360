@@ -225,7 +225,14 @@ class BookingService:
             _applied_surge = _estimate["surge_multiplier"]
 
             try:
-                pickup_time = datetime.fromisoformat(str(sanitized_data["pickup_time"]))
+                raw = sanitized_data["pickup_time"]
+                pickup_time = datetime.fromisoformat(str(raw))
+                if pickup_time.tzinfo is None:
+                    # Assume deployment-local TZ; Postgres TIMESTAMPTZ would
+                    # otherwise coerce via the DB session TZ, which differs
+                    # between dev and prod for the same naive input string.
+                    local_tz = datetime.now().astimezone().tzinfo
+                    pickup_time = pickup_time.replace(tzinfo=local_tz)
             except (ValueError, TypeError, KeyError):
                 pickup_time = datetime.now(timezone.utc)
 
