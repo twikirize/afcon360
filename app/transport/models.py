@@ -1175,6 +1175,38 @@ class Booking(TransportBase):
         )
 
     @property
+    def pickup_location_text(self):
+        """Canonical text representation of pickup location.
+
+        Handles both dict (with lat/lng/address) and string
+        (raw address) JSONB shapes. Returns None when empty so
+        templates can use |default.
+        """
+        loc = self.pickup_location
+        if loc is None:
+            return None
+        if isinstance(loc, dict):
+            return loc.get("address") or loc.get("name") or loc.get("label") or None
+        if isinstance(loc, str) and loc.strip():
+            return loc.strip()
+        return None
+
+    @property
+    def dropoff_location_text(self):
+        """Canonical text representation of dropoff location.
+
+        See pickup_location_text for the same logic.
+        """
+        loc = self.dropoff_location
+        if loc is None:
+            return None
+        if isinstance(loc, dict):
+            return loc.get("address") or loc.get("name") or loc.get("label") or None
+        if isinstance(loc, str) and loc.strip():
+            return loc.strip()
+        return None
+
+    @property
     def is_completed_successfully(self):
         """Check if booking was completed successfully"""
         return (
