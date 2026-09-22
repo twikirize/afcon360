@@ -2605,3 +2605,123 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 - **Authorization:** NOT AUTHORIZED (record only)
 - **Evidence/source:** `app/audit/forensic_audit.py`, Celery beat schedules
 - **Links:** `app/audit/forensic_audit.py`, `app/tasks/`
+
+---
+
+## BL-01 — Restore 5-minute cancellation grace window (DEFERRED / TRANSPORT)
+- **Status:** Not started
+- **Raised:** 2026-09-22 (transport S-session, S-05 decision)
+- **Context:** During testing, `_calculate_cancellation_fee` treats any pickup_time at-or-before now as free to cancel (`hours_before <= 0` → 0). Necessary while the app is under active development so test bookings cancel instantly without penalty. Before production, a rider should not cancel a ride starting in 2 minutes for free (industry norm 2–5 min).
+- **What needs to happen:** Replace the `hours_before <= 0` gate with `hours_before <= (5.0 / 60.0)`. Rationale: matches the M-06 DB bound `pickup_time > created_at - INTERVAL '5 minutes'`; forgivable for a new platform; tighten later if needed.
+- **Owner/area:** Transport (booking_service)
+- **Authorization:** NOT AUTHORIZED (production change; do not apply during testing)
+- **Evidence/source:** S-05 commit `c038bcd` (+ follow-up grace-0 revision); `app/transport/services/booking_service.py::_calculate_cancellation_fee`
+- **Links:** `app/transport/services/booking_service.py`
+
+---
+
+## BL-02 — Real online payment integration (DEFERRED / TRANSPORT)
+- **Status:** Not started
+- **Raised:** 2026-09-22 (transport S-session)
+- **Context:** `PaymentService._process_online_payment` raises RuntimeError (PAYMENT_PROCESSING_ENABLED=false) or NotImplementedError (enabled). Bookings with payment_method card/mobile_money/bank_transfer return 500. `get_available_payment_methods()` only advertises cash + wallet so the UI never offers the broken ones, but the DB column accepts any string.
+- **What needs to happen:** Commercial/product decision on gateway(s) (Flutterwave, Paystack, Stripe) + markets + settlement accounts; then route by payment_method with initiate → authorize → capture + webhook handling.
+- **Owner/area:** Transport (payment_service) + Product/Finance
+- **Authorization:** NOT AUTHORIZED (record only)
+- **Evidence/source:** S-session triage
+- **Links:** `app/transport/services/payment_service.py`, `app/transport/services/payment_methods.py`
+
+---
+
+## BL-03 — Replace hardcoded promo codes with DB-backed PromoCode model (DEFERRED / TRANSPORT)
+- **Status:** Not started
+- **Raised:** 2026-09-22 (transport S-session, S-12 report-only)
+- **Context:** `validate_promo_code` uses a hardcoded dict (WELCOME10, AFCON25, FIRSTRIDE) all with `valid_until` in 2024 — every promo returns EXPIRED_CODE today. Interim option: fresh test codes dated 2026-12-31 to keep the feature demoable.
+- **What needs to happen:** Product decision (real model + table + admin CRUD) vs interim test codes vs honest INVALID_CODE. Model columns if real: code (unique), discount_type/value, min/max, valid_from/until, usage_limit/count, user_specific, first_ride_only, service_types (JSONB), is_active + audit fields.
+- **Owner/area:** Transport (promotion_service) + Product
+- **Authorization:** NOT AUTHORIZED (record only; schema change needs §20 path)
+- **Evidence/source:** S-12 findings; `app/transport/services/promotion_service.py:46-77`
+- **Links:** `app/transport/services/promotion_service.py`
+
+---
+
+## BL-04 — Fix driver-assigned notification payload (DEFERRED / NOTIFICATIONS)
+- **Status:** Not started
+- **Raised:** 2026-09-22 (transport S-session, S-14 report-only)
+- **Context:** `send_transport_notification` exists and sends, but for transport bookings: `data['booking_id'] = booking.id` + `link=/transport/bookings/<id>` expose the internal ID (§12.1); message interpolates raw JSONB `pickup_location` dict; `booking_code`/`scheduled_time` are dead fields (absent on transport Booking, silent `''` via hasattr guards).
+- **What needs to happen:** Use `booking_reference` in data + link; render readable text via the `pickup_location_text` property (M-01); remove dead fields; confirm reference field per module. Cross-module — needs the notifications owner.
+- **Owner/area:** Notifications + Transport
+- **Authorization:** NOT AUTHORIZED (record only; §17 cross-module)
+- **Evidence/source:** S-14 findings
+- **Links:** `app/notifications/services.py::send_transport_notification`, `app/transport/services/assignment_service.py::_notify_assigned`
+
+---
+
+## BL-05 — Fix transport booking-created notification routing (DEFERRED / NOTIFICATIONS)
+- **Status:** Not started
+- **Raised:** 2026-09-22 (transport S-session, S-15 investigate-first)
+- **Context:** `notify_booking_confirmed` resolves the rider via `guest_user_id`/`customer_id`, neither of which exists on transport Booking (`user_id`) → the rider is never notified. `_notify_admins` then broadcasts to every admin (12 recipients in dev data) → "12 notifications for one booking" spam.
+- **What needs to happen:** (1) Branch on `module == 'transport'` and resolve the recipient as `booking.user_id` (accommodation/tourism paths untouched). (2) Product decision: is the admin broadcast intended for transport bookings? If not, scope to `domain='transport'` roles or disable for transport.
+- **Owner/area:** Notifications + Transport + Product (admin-policy decision)
+- **Authorization:** NOT AUTHORIZED (record only; §17 cross-module)
+- **Evidence/source:** S-15 findings
+- **Links:** `app/notifications/services.py::notify_booking_confirmed`, `app/notifications/listeners.py::_on_transport_booking`
+
+---
+
+## BL-06 — Snapshot commission rate per booking (DEFERRED / TRANSPORT)
+- **Status:** Not started
+- **Raised:** 2026-09-22 (transport S-session, S-18)
+- **Context:** `get_driver_earnings` (fixed in S-04 to deduct commission) applies the driver's CURRENT `commission_rate` to all historical completed bookings — past payouts shift retroactively when the rate changes. Staging verification of the gross>0 path is also still open (no dev fixture).
+- **What needs to happen:** Add `Booking.driver_commission_rate_applied` (Numeric(5,2)); write the active rate at COMPLETED; read it in `get_driver_earnings`. Migration + backfill via the §20 canonical path. Re-run the EARNINGS_VERIFIED check in staging where a completed+captured booking exists.
+- **Owner/area:** Transport (booking_service + models)
+- **Authorization:** NOT AUTHORIZED (schema change, §20)
+- **Evidence/source:** S-04 report (NO_TEST_DRIVER gap); S-18
+- **Links:** `app/transport/services/booking_service.py::get_driver_earnings`, `app/transport/models.py`
+
+---
+
+## BL-07 — Reader-side updates for JSONB location shape (DEFERRED / TRANSPORT)
+- **Status:** Not started
+- **Raised:** 2026-09-22 (transport S-session)
+- **Context:** `pickup_location`/`dropoff_location` JSONB can be a dict OR a plain string (map pin vs typed address). Readers assuming dict crash: `matching_service._ranked_candidates` `.get('zone')` (S-13 hardens the zone read only) and `tracking_service` (3× `.get('latitude')`/`.get('longitude')`).
+- **What needs to happen:** `pickup_location_text`/`dropoff_location_text` property ships on Booking (M-01) first; then route every reader through it + a paired `pickup_coordinates()` helper returning `(lat, lng)` or `(None, None)`.
+- **Owner/area:** Transport (matching_service, tracking_service)
+- **Authorization:** NOT AUTHORIZED (record only; coordinated with S-session)
+- **Evidence/source:** S-13 findings
+- **Links:** `app/transport/services/matching_service.py`, `app/transport/services/tracking_service.py`
+
+---
+
+## BL-08 — Module-scoped dashboard cache key (DEFERRED / TRANSPORT)
+- **Status:** Not started
+- **Raised:** 2026-09-22 (transport S-session)
+- **Context:** `get_cached_admin_dashboard` uses the global key `transport:admin:dashboard` — org-scoped admins (`organisation_admin`) can receive the platform-wide dashboard from cache. S-16 applies the basic `scope` parameter; a full review of which callers should pass `scope=f"org:{org_id}"` belongs to a later pass.
+- **What needs to happen:** After S-16 lands, audit callers and wire org scope at each org-admin call site.
+- **Owner/area:** Transport (dashboard_service + callers)
+- **Authorization:** NOT AUTHORIZED (follow-up; record only)
+- **Evidence/source:** S-16
+- **Links:** `app/transport/services/dashboard_service.py`
+
+---
+
+## BL-09 — Non-dict pickup_location writer normalization (DEFERRED / TRANSPORT)
+- **Status:** Not started
+- **Raised:** 2026-09-22 (transport S-session)
+- **Context:** `_resolve_canonical_location` stores either a dict or a bare string into JSONB depending on form input — this feeds BL-07. Production shape should ALWAYS be a dict `{"address","latitude","longitude"}` (each optional) with existing string rows migrated.
+- **What needs to happen:** Normalize at write time + migrate existing string rows via the §20 canonical path. Coordinated with BL-07 reader updates.
+- **Owner/area:** Transport (booking_service) + migration authorization
+- **Authorization:** NOT AUTHORIZED (record only; migration involved)
+- **Evidence/source:** S-session triage
+- **Links:** `app/transport/services/booking_service.py::_resolve_canonical_location`
+
+---
+
+## BL-10 — Payment gateway adapters for non-cash bookings (DEFERRED / TRANSPORT)
+- **Status:** Not started
+- **Raised:** 2026-09-22 (transport S-session)
+- **Context:** Cash completes; wallet invokes the wallet service; everything else is dead, and `payment_methods.py` only advertises cash + wallet. Same root cause as BL-02 viewed from the method surface.
+- **What needs to happen:** One adapter per method (Flutterwave card, MTN MoMo, Airtel Money, …); extend `get_available_payment_methods` with the enabled set; feature-gate via TransportSetting. Same commercial decision as BL-02.
+- **Owner/area:** Transport (payment_methods, payment_service) + Product/Finance
+- **Authorization:** NOT AUTHORIZED (record only)
+- **Evidence/source:** S-session triage
+- **Links:** `app/transport/services/payment_methods.py`, `app/transport/services/payment_service.py`

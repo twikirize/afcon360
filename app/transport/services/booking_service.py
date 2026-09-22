@@ -984,12 +984,18 @@ class BookingService:
     # =========================================================
 
     def _calculate_cancellation_fee(self, booking: Booking) -> Decimal:
-        """Cancellation fee tiers with a 5-minute immediate-cancel grace.
+        """Cancellation fee tiers.
 
-        A booking whose pickup_time is within 5 minutes of now (including
-        pickups already at or before now) is "just booked, cancelled
-        immediately" and assessed no fee. Beyond that window, the tiers
-        apply against the time remaining until pickup.
+        DEV/TESTING: the immediate-cancel grace window is 0 minutes — any
+        pickup_time at or before now is free to cancel. This is intentional
+        while the platform is under test. Before production, restore the
+        industry-standard 5-minute grace window (see BACKLOG.md BL-01).
+
+        Tiers when pickup is in the future:
+          > 24h  → 0
+          > 4h   → 10%
+          > 2h   → 25%
+          <= 2h  → 50%
         """
         now = datetime.now(timezone.utc)
         pickup = booking.pickup_time
@@ -1001,11 +1007,8 @@ class BookingService:
         hours_before = (pickup - now).total_seconds() / 3600.0
         final_price = booking.final_price or Decimal("0.00")
 
-        # 5-minute immediate-cancel grace window (matches the
-        # pickup_time > created_at - INTERVAL '5 minutes' sanity bound).
-        if hours_before <= (5.0 / 60.0):
+        if hours_before <= 0:
             return Decimal("0.00")
-
         if hours_before > 24:
             return Decimal("0.00")
         if hours_before > 4:
