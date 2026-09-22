@@ -1,7 +1,7 @@
 # Fix 2.3 — Record
 
 Status:          PASS
-Commit:          <filled after local commit>
+Commit:          f1a3a82
 Date:            2026-09-22
 Owner:           agent + human (migration executed by human)
 
