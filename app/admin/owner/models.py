@@ -151,7 +151,7 @@ class RateLimitSettings(ProtectedModel):
         settings = RateLimitSettings.query.first()
         if not settings:
             settings = RateLimitSettings(
-                enabled=True,
+                enabled=False,
                 strategy='fixed-window',
                 default_per_minute=500,
                 default_per_hour=2000,

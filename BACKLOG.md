@@ -2756,8 +2756,9 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 
 ## BL-14 - Fresh installs start with rate limiting enabled (opt-out instead of opt-in)
 
-- Status: Not started
+- Status: Done
 - Raised: 2026-09-22 (U-session, U-07 investigate-first; no code changed)
+- Resolved: 2026-09-22 (U-07 FIX authorized; one-line auto-create change, verified U07_FIX_VERIFIED)
 - Context: RateLimitService.is_enabled() returns get_setting('enabled', True) (app/admin/owner/rate_limit_service.py:88), but the default-arg is a red herring — it is NEVER consulted for 'enabled'. get_setting (rate_limit_service.py:27-35) calls RateLimitSettings.get_settings(), which auto-creates the singleton row with enabled=True on first read (app/admin/owner/models.py:149-154,168-169); getattr(settings, 'enabled', default) then always finds the mapped column. So a fresh install writes enabled=True before any default can apply. Changing the default-arg True→False would have zero effect (U-07 Q1: NO).
 - What needs to happen (pending decision): one-line code fix — models.py:154 auto-create enabled=True → enabled=False. Optionally align the column default (models.py:117 default=True → False) via a future migration so fresh-schema DDL agrees; not required for the behavior fix since auto-create passes the value explicitly. Blast radius: fresh installs only (existing DBs already have a row; update_settings touches supplied keys only). Dev/local/testing already force the limiter off (app/__init__.py:703-706), so only fresh prod-like deploys change behavior — which is the intent (opt-in). No docstring, comment, or migration justifies the current default-on (U-07 Q3: none found; migrations/versions has zero hits for rate_limit_settings).
 - Owner/area: Rate limiting (app/admin/owner/)
@@ -2790,3 +2791,16 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 - Authorization: Not authorized (record only)
 - Evidence/source: U-05 report-only investigation; app/auth/helpers.py:17-22 vs :155-187; templates/auth/switch_role.html:26
 - Links: app/auth/routes.py:1371-1411 (/switch-role)
+
+---
+
+## BL-15 — Transport booking-created notification misroutes to admins only (DEFERRED / NOTIFICATIONS)
+
+- Status: Not started
+- Raised: 2026-09-22 (transport S-session, S-15 investigate-first)
+- Context: F1 — replaying _on_transport_booking → notify_booking_confirmed with a stubbed transport Booking (user_id set, no guest/customer/host ids) produces ZERO direct sends and exactly one _notify_admins call (domain='transport', link='/transport/admin/dashboard'). The rider gets nothing; admins get everything. F2 — rider skipped because line 1502 resolves guest_id from guest_user_id/customer_id: transport Booking has neither (verified columns: user_id only), while AccommodationBooking has guest_user_id/host_user_id (customer_id exists on neither module — that fallback is dead everywhere). F3 — _notify_admins resolves CORE_ADMIN_ROLES (owner, super_admin, admin) plus DOMAIN_ROLE_MAP['transport'] (transport_admin) via notify_roles against the dev DB: 12 distinct users, exactly matching the "12 notifications per booking" log evidence. Note: line 1517/1528 data uses getattr(booking, 'public_id', booking.id) — transport Booking has no public_id (verified), so the admin payload also carries the internal id; same §12.1 class as BL-13.
+- What needs to happen: in notify_booking_confirmed, when module == 'transport', resolve the rider as booking.user_id (accommodation/tourism paths untouched). Product decision required on the admin broadcast: keep (intended ops visibility), scope to domain='transport' roles only, or disable for transport. Owner is the notifications module.
+- Owner/area: Notifications (+ Product for the broadcast decision)
+- Authorization: Not authorized (record only)
+- Evidence/source: app/notifications/services.py:1502-1533, :2172-2189, :2192-2267; app/notifications/listeners.py:256-260; S-15 probe output (0 sends, 1 admin broadcast, 12 recipients)
+- Links: app/notifications/services.py::notify_booking_confirmed, app/notifications/listeners.py::_on_transport_booking
