@@ -233,27 +233,6 @@ class BookingService:
             if isinstance(special_req, str):
                 special_req = {"note": special_req}
 
-            pickup_location = _resolve_canonical_location(
-                sanitized_data.get("pickup_location"), sanitized_data,
-                "pickup", "pickup_location")
-            dropoff_location = _resolve_canonical_location(
-                sanitized_data.get("dropoff_location"), sanitized_data,
-                "dropoff", "dropoff_location")
-
-            # Measured GEO straight-line distance wins when both ends
-            # resolved to coordinates; otherwise the caller-supplied
-            # estimate (default 5 km planning fallback) is preserved
-            # verbatim. The USED value is stored so the priced distance
-            # is always explainable.
-            measured_km = _measured_distance_km(pickup_location,
-                                                dropoff_location)
-            if measured_km is not None:
-                distance_for_fare = measured_km
-                distance_basis = "straight_line_planner"
-            else:
-                distance_for_fare = sanitized_data.get("estimated_distance", 5)
-                distance_basis = "planning_default"
-
             booking = Booking(
                 user_id=customer_id,
                 provider_type=ProviderType(
