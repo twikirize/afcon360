@@ -13,8 +13,8 @@ class ValidationError(Exception):
         self.details = details
         super().__init__(self.message)
 
-class PermissionError(Exception):
-    """Raised when user lacks permission"""
+class AuthorizationError(Exception):
+    """Raised when a user lacks permission for an operation."""
     def __init__(self, message="Permission denied", user_id=None, required_permission=None, code=None, details=None):
         self.message = message
         self.user_id = user_id
@@ -22,6 +22,10 @@ class PermissionError(Exception):
         self.code = code
         self.details = details
         super().__init__(self.message)
+
+# Backward-compatible alias. New code should import AuthorizationError.
+# Existing imports of `PermissionError` from this module keep working.
+PermissionError = AuthorizationError
 class RateLimitError(Exception):
     """Raised when rate limit is exceeded"""
     def __init__(self, message="Rate limit exceeded", limit=None, window=None, code=None, details=None):
