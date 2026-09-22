@@ -2751,3 +2751,29 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 - Authorization: Not authorized (record only)
 - Evidence/source: app/transport/services/payment_service.py, app/transport/services/payment_methods.py
 - Links: PAYMENT_PROCESSING_ENABLED config, TransportSetting feature gate
+
+---
+
+## BL-13 — Transport driver-assigned notification payload defects (DEFERRED / NOTIFICATIONS)
+
+- Status: Not started
+- Raised: 2026-09-22 (transport S-session, S-14 report-only)
+- Context: NotificationService.send_transport_notification (app/notifications/services.py:562-596) works and addresses the rider, but its payload for transport bookings has four defects, all reproduced 2026-09-22 against the real function with a stubbed Booking (id=12345, dict pickup_location, reference TR260922JLR0K0): (1) line 586 data['booking_id'] = booking.id exposes the internal BigInteger ID (§12.1); (2) line 593 link = f"/transport/bookings/{booking.id}" puts the same internal ID in a rider-visible URL — the public convention is booking_reference (e.g. TR260922JLR0K0); information exposure, not cosmetic; (3) lines 583-584 interpolate booking.pickup_location raw, rendering as "{'address': 'Nakawa, Kampala'}" instead of readable text; (4) line 587 booking.booking_code and line 590 booking.scheduled_time do not exist on transport Booking (verified: no such columns/attrs) and silently yield '' via hasattr guards — dead fields. Rider IS addressed (user_id plumbed to cls.send, which persists a Notification row; delivery still gated by PreferenceService opt-out).
+- What needs to happen: replace booking.id with booking.booking_reference in both data and link; extract readable text from pickup_location via the pickup_location_text property; remove dead booking_code / scheduled_time references. Owner is the notifications module — no transport-side change (assignment_service._notify_assigned call stays as-is).
+- Owner/area: Notifications
+- Authorization: Not authorized (record only)
+- Evidence/source: app/notifications/services.py:583-593, S-14 probe output (captured send kwargs)
+- Links: app/notifications/services.py::send_transport_notification, app/transport/services/assignment_service.py::_notify_assigned
+
+---
+
+## U-05-DOC — Owner-bypass module docstring overstates "unconditional" (DOCUMENTATION ONLY)
+
+- Status: Not started
+- Raised: 2026-09-22 (U-session, U-05 decision: leave behavior as-is)
+- Context: app/auth/helpers.py module docstring (lines 17-22) claims the owner role "satisfies every role and permission check unconditionally". The actual documented behavior is conditional on the active role: when session["active_global_role"] is set to a possessed lower role, has_global_role restricts to that role (helpers.py:183-187) and is_owner returns False. The is_owner docstring, has_global_role docstring, /switch-role route docstring, and switch_role.html UI copy all correctly describe the context-aware behavior — only the module docstring is stale.
+- What needs to happen: Reword the module docstring to "satisfies every check unconditionally except when an active role context is selected, in which case only that role is checked". No code change, no behavior change.
+- Owner/area: Auth / documentation
+- Authorization: Not authorized (record only)
+- Evidence/source: U-05 report-only investigation; app/auth/helpers.py:17-22 vs :155-187; templates/auth/switch_role.html:26
+- Links: app/auth/routes.py:1371-1411 (/switch-role)
