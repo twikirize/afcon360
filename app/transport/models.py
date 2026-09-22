@@ -974,6 +974,8 @@ class Booking(TransportBase):
             "final_price >= 0",
             name="chk_final_price_positive"
         ),
+        Index('ix_booking_idem', 'idempotency_key', unique=True,
+              postgresql_where=db.text("idempotency_key IS NOT NULL")),
     )
 
     # Identification
@@ -1073,6 +1075,7 @@ class Booking(TransportBase):
     # Wallet integration
     wallet_transaction_id = db.Column(db.String(128))
     wallet_balance_used = db.Column(db.Numeric(10, 2), default=0.00)
+    idempotency_key = db.Column(db.String(128), nullable=True)
 
     # Status
     status = db.Column(SQLEnum(BookingStatus), default=BookingStatus.DRAFT, nullable=False)
@@ -1138,7 +1141,6 @@ class Booking(TransportBase):
         foreign_keys=[assigned_vehicle_id],
         backref="assigned_bookings"
     )
-    assigned_route = relationship("ScheduledRoute", back_populates="bookings")
     rating = relationship("Rating", back_populates="booking", uselist=False)
     incidents = relationship("TransportIncident", back_populates="booking")
     payments = relationship("BookingPayment", back_populates="booking")
