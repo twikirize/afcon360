@@ -276,14 +276,22 @@
             if (action === 'switch-personal') {
                 document.querySelectorAll('.context-btn').forEach(b => b.classList.remove('active'));
                 actionBtn.classList.add('active');
-                fetch('/auth/switch-context/individual', { method: 'POST' })
+                fetch('/auth/switch-context/individual', { 
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': '{{ raw_csrf_token }}' },
+                    credentials: 'same-origin'
+                })
                     .then(() => window.location.reload());
             }
             if (action === 'switch-org') {
                 document.querySelectorAll('.context-btn').forEach(b => b.classList.remove('active'));
                 actionBtn.classList.add('active');
                 const orgId = actionBtn.dataset.orgId;
-                fetch(`/auth/switch-context/organization?org_id=${orgId}`, { method: 'POST' })
+                fetch(`/auth/switch-context/organization?org_id=${orgId}`, { 
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': '{{ raw_csrf_token }}' },
+                    credentials: 'same-origin'
+                })
                     .then(() => window.location.reload());
             }
             return;

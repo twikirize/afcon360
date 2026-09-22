@@ -52,6 +52,7 @@
   {# Everything else is loaded by the pages that use it. #}
 
   {% block module_styles %}{% endblock %} {# For specific module pages #}
+  {% block extra_css %}{% endblock %}
   {% block styles %}{% endblock %} {# For page-specific styles #}
   {% block head %}{% endblock %}
   <!-- PWA -->
@@ -400,15 +401,15 @@
           {% elif nav_in_org_context %}
 
             <li class="menu-item">
-              <a href="{% if module_enabled('wallet') %}{{ safe_url('wallet.wallet_dashboard') }}{% else %}#{% endif %}" class="nav-wallet-link">
-                <i class="bi bi-wallet2 me-1"></i>Org Wallet
+              <a href="{% if module_enabled('wallet') %}{{ safe_url('org.wallet', org_id=nav_org_slug or nav_org_id) }}{% else %}#{% endif %}" class="nav-wallet-link">
+                <i class="bi bi-wallet2 me-1"></i>Wallet
               </a>
             </li>
 
             <li class="menu-item">
               <a href="{{ url_for('org.org_dashboard', org_id=nav_org_slug or nav_org_id) }}"
                  class="nav-dashboard-link">
-                <i class="bi bi-speedometer2 me-1"></i>Org Dashboard
+                <i class="bi bi-speedometer2 me-1"></i>Dashboard
               </a>
             </li>
 
@@ -525,6 +526,28 @@
                 </li>
                 <li><hr class="drop-divider"></li>
                 {% endif %}
+                {% set nav_org_ctxs = [] %}
+                {% for ctx in available_contexts|default([]) %}
+                  {% if ctx.type.value == 'organisation' and nav_org_ctxs.append(ctx) %}{% endif %}
+                {% endfor %}
+                {% if nav_org_ctxs %}
+                <li><span class="drop-header">🏢 Switch to Organisation</span></li>
+                {% for ctx in nav_org_ctxs %}
+                <li>
+                  <form method="POST" action="{{ url_for('auth.switch_context') }}">
+                    <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
+                    <input type="hidden" name="type" value="organisation">
+                    <input type="hidden" name="public_id" value="{{ ctx.public_id }}">
+                    <input type="hidden" name="role" value="{{ ctx.role }}">
+                    <button type="submit" class="drop-item drop-item--btn">
+                      <i class="bi bi-building me-2"></i>{{ ctx.label.split(' — ', 1)[0] if ctx.label else 'Organisation' }}
+                      <span class="ms-1" style="opacity:.75;font-size:.72rem;">{{ (ctx.role or '').replace('_', ' ')|title }}</span>
+                    </button>
+                  </form>
+                </li>
+                {% endfor %}
+                <li><hr class="drop-divider"></li>
+                {% endif %}
                 <li><a class="drop-item" href="{{ url_for('profile.account_overview') }}">
                   <i class="bi bi-person-badge me-2"></i>My Account</a></li>
                 <li><a class="drop-item" href="{{ url_for('profile.my_public_profile') }}">
@@ -627,7 +650,12 @@
 
         {# Wallet — always first for authenticated users #}
         {% if nav_profile_completed %}
-          <a class="drawer-link" href="{{ safe_url('wallet.wallet_dashboard') }}">
+          {% if nav_in_org_context %}
+            {% set _nav_wallet_href = safe_url('org.wallet', org_id=nav_org_slug or nav_org_id) if module_enabled('wallet') else '#' %}
+          {% else %}
+            {% set _nav_wallet_href = safe_url('wallet.wallet_dashboard') %}
+          {% endif %}
+          <a class="drawer-link" href="{{ _nav_wallet_href }}">
             <i class="bi bi-wallet2 me-2"></i>Wallet
           </a>
         {% else %}
@@ -644,8 +672,9 @@
             <i class="bi bi-person-plus me-2"></i>Create Account
           </a>
         {% elif nav_in_org_context %}
+          <span class="drawer-sub-label">🏢 Organisation · {{ nav_org_name or 'Organisation' }}</span>
           <a class="drawer-link" href="{{ url_for('org.org_dashboard', org_id=nav_org_slug or nav_org_id) }}">
-            <i class="bi bi-speedometer2 me-2"></i>Org Dashboard
+            <i class="bi bi-speedometer2 me-2"></i>Dashboard
           </a>
           <form method="POST" action="{{ url_for('auth.switch_context') }}">
             <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
@@ -662,6 +691,24 @@
             {% else %}{{ url_for('user.dashboard') }}{% endif %}">
             <i class="bi bi-speedometer2 me-2"></i>Dashboard
           </a>
+          {% set nav_org_ctxs = [] %}
+          {% for ctx in available_contexts|default([]) %}
+            {% if ctx.type.value == 'organisation' and nav_org_ctxs.append(ctx) %}{% endif %}
+          {% endfor %}
+          {% if nav_org_ctxs %}
+          <span class="drawer-sub-label">🏢 Switch to Organisation</span>
+          {% for ctx in nav_org_ctxs %}
+          <form method="POST" action="{{ url_for('auth.switch_context') }}">
+            <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
+            <input type="hidden" name="type" value="organisation">
+            <input type="hidden" name="public_id" value="{{ ctx.public_id }}">
+            <input type="hidden" name="role" value="{{ ctx.role }}">
+            <button type="submit" class="drawer-link drawer-auth">
+              <i class="bi bi-building me-2"></i>{{ ctx.label.split(' — ', 1)[0] if ctx.label else 'Organisation' }}
+            </button>
+          </form>
+          {% endfor %}
+          {% endif %}
         {% endif %}
 
         <div class="drawer-divider"></div>

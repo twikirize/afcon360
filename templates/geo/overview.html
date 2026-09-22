@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}GEO Platform Module - Status{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+#geoMap { height: 380px; border-radius: 8px; border: 1px solid #e2e8f0; z-index: 0; }
+.geo-map-fallback { padding: 32px 24px; text-align: center; color: #4a5568; }
+.geo-map-fallback p { margin: 4px 0; }
+.geo-map-tile-notice { padding: 8px 12px; font-size: 0.8rem; color: #744210; background: #fffff0; border-top: 1px solid #ecc94b; margin: 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 font-weight-bold">GEO — Geospatial / Location Platform</h1>
+            <p class="text-muted">Independent platform capability consumed by Transport, Accommodation, Events, Tourism and Booking/Discovery.</p>
+        </div>
+        <span class="status-badge {{ 'status-online' if geo_enabled else 'status-offline' }}"
+              style="padding:0.25rem 0.75rem;border-radius:20px;font-size:0.75rem;font-weight:600;text-transform:uppercase;{{ 'background:#c6f6d5;color:#22543d;' if geo_enabled else 'background:#fed7d7;color:#742a2a;' }}">
+            {{ 'Enabled' if geo_enabled else 'Disabled' }}
+        </span>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white font-weight-bold">Foundation status</div>
+        <div class="card-body">
+            <ul class="list-unstyled mb-0">
+                <li class="mb-2"><strong>Contracts / validation / distance:</strong> operational</li>
+                <li class="mb-2"><strong>Location freshness boundary:</strong> {{ location_ttl_seconds }} seconds</li>
+                <li class="mb-0"><strong>Source of truth for GEO toggle:</strong> database (<code>SystemConfig MODULE_FLAGS</code>)</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white font-weight-bold">Provider adapters</div>
+        <div class="card-body">
+            <ul class="list-unstyled mb-0">
+                <li class="mb-2"><strong>Routing (Valhalla):</strong>
+                    {{ 'enabled' if valhalla_enabled else 'disabled' }} ·
+                    {{ 'endpoint configured' if valhalla_configured else 'endpoint not configured — road routing unavailable' }}</li>
+                <li class="mb-2"><strong>Geocoding (Photon):</strong>
+                    {{ 'enabled' if photon_enabled else 'disabled' }} ·
+                    {{ 'endpoint configured' if photon_configured else 'endpoint not configured — geocoding unavailable' }}</li>
+                <li class="mb-0"><strong>Tiles ({{ tiles_kind }}):</strong>
+                    {{ 'endpoint configured' if tiles_configured else 'endpoint not configured — self-hosted tiles unavailable' }}</li>
+            </ul>
+            <p class="text-muted mt-3 mb-0">Road routing, live geocoding, PostGIS spatial queries and realtime delivery arrive in later GEO nodes. This page reports only implemented capability.</p>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white font-weight-bold">Shared map renderer</div>
+        <div class="card-body">
+            <div id="geoMap" data-geo-map-status="pending" style="margin-bottom:12px;"></div>
+            <p class="text-muted mb-0">Tiles: {{ map_config.tile_source_label }}{% if map_config.tile_source_label == 'openstreetmap-default' %} (self-hosted tiles not configured){% endif %} · Center: default map center ({{ map_config.default_center.latitude }}, {{ map_config.default_center.longitude }}) — not a tracked location.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{{ url_for('static', filename='js/geo/geo-map.js') }}"></script>
+<script nonce="{{ csp_nonce }}">
+(function () {
+  var config = {{ map_config|tojson }};
+  function boot() {
+    if (!window.GeoMap) {
+      return;
+    }
+    window.GeoMap.init('geoMap', {
+      tileUrl: config.tile_url_template,
+      attribution: config.tile_attribution,
+      center: config.default_center,
+      zoom: config.default_zoom,
+      markers: [{
+        latitude: config.default_center.latitude,
+        longitude: config.default_center.longitude,
+        popup: 'Default map center — not a tracked location.'
+      }]
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
+</script>
+{% endblock %}

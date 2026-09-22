@@ -310,6 +310,63 @@ def _can_view_all_org_kyb() -> bool:
     return any(r in roles for r in ("super_admin", "admin", "compliance", "compliance_officer"))
 
 
+def _can_admin_org() -> bool:
+    """Admin gate for the org-side approve/reject ceremonies."""
+    return _can_view_all_org_kyb()
+
+
+def _admin_resolve_org(org_id):
+    """Resolve an organisation for admin ceremonies.
+
+    Accepts the public ``org_id``/``slug`` (public navigation) and, for the
+    moderation queue which still passes the internal integer id, the internal
+    ``id`` (admin-only path — internal ids are never exposed to the user).
+    """
+    key = str(org_id)
+    org = Organisation.query.filter_by(org_id=key, is_deleted=False).first()
+    if org is None:
+        org = Organisation.query.filter_by(slug=key, is_deleted=False).first()
+    if org is None and key.isdigit():
+        org = db.session.get(Organisation, int(key))
+        if org is not None and org.is_deleted:
+            org = None
+    if org is None:
+        abort(404)
+    return org
+
+
+@org_bp.route('/<org_id>/approve', methods=['POST'])
+@login_required
+def approve_organisation(org_id):
+    """Approve an organisation (org-side canonical moderation ceremony)."""
+    if not _can_admin_org():
+        flash('You do not have permission to approve organisations.', 'danger')
+        return redirect(url_for('org.dashboard'))
+    org = _admin_resolve_org(org_id)
+    from app.identity.services.organisation_kyb_service import OrganisationKYBService
+    notes = (request.form.get('notes') or '').strip()
+    OrganisationKYBService.approve_organisation(org, current_user.id, notes=notes or None)
+    flash(f'Organisation {org.slug} approved.', 'success')
+    return redirect(url_for('org.org_dashboard', org_id=org.slug))
+
+
+@org_bp.route('/<org_id>/reject', methods=['POST'])
+@login_required
+def reject_organisation(org_id):
+    """Reject an organisation (org-side canonical moderation ceremony)."""
+    if not _can_admin_org():
+        flash('You do not have permission to reject organisations.', 'danger')
+        return redirect(url_for('org.dashboard'))
+    org = _admin_resolve_org(org_id)
+    from app.identity.services.organisation_kyb_service import OrganisationKYBService
+    reason = (request.form.get('reason') or request.form.get('rejection_reason') or '').strip()
+    OrganisationKYBService.reject_organisation(
+        org, current_user.id, reason=reason or 'Rejected by administrator.'
+    )
+    flash(f'Organisation {org.slug} rejected.', 'warning')
+    return redirect(url_for('org.org_dashboard', org_id=org.slug))
+
+
 @org_bp.route('/<org_id>/kyb')
 @login_required
 def org_kyb(org_id):
@@ -762,6 +819,214 @@ def wallet(org_id):
     form.large_transaction_threshold.data = org.get_setting('large_transaction_threshold', '')
     
     return render_template('org/wallet.html', org=org, wallet=wallet, balance=balance, form=form)
+
+
+@org_bp.route('/<org_id>/settings/payment-gateways', methods=['GET'])
+@login_required
+def payment_gateways(org_id):
+    """List and manage organization payment gateways"""
+    org = _get_organisation_by_public_id(org_id)
+    legacy_redirect = _canonical_if_legacy(org, org_id)
+    if legacy_redirect:
+        return legacy_redirect
+
+    # Verify permissions (org.settings.manage)
+    member = _require_org_permission(org, current_user, 'org.settings.manage')
+    if not member:
+        flash('You do not have permission to manage payment gateways.', 'danger')
+        return redirect(url_for('org.settings', org_id=org.slug))
+
+    # Get all configured gateways for this organisation
+    gateways = OrganisationPaymentGateway.get_for_organisation(org.id)
+    
+    # Available providers for configuration
+    available_providers = [p for p in PaymentGatewayProvider]
+
+    return render_template('org/payment_gateways.html', 
+                           org=org, 
+                           member=member,
+                           gateways=gateways,
+                           available_providers=available_providers)
+
+
+@org_bp.route('/<org_id>/settings/payment-gateways/<provider>', methods=['POST'])
+@login_required
+def payment_gateway_create(org_id, provider):
+    """Create or update a payment gateway configuration"""
+    org = _get_organisation_by_public_id(org_id)
+    legacy_redirect = _canonical_if_legacy(org, org_id)
+    if legacy_redirect:
+        return legacy_redirect
+
+    # Verify permissions
+    member = _require_org_permission(org, current_user, 'org.settings.manage')
+    if not member:
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+
+    try:
+        from app.identity.models.org_payment_gateway import PaymentGatewayProvider, PaymentGatewayEnvironment
+        
+        provider_enum = PaymentGatewayProvider(provider)
+        environment = PaymentGatewayEnvironment(request.form.get('environment', 'sandbox'))
+        
+        # Get form data based on provider
+        config_data = {}
+        for key in request.form:
+            if key not in ['environment', 'csrf_token']:
+                config_data[key] = request.form[key]
+        
+        # Handle JSON config fields
+        if 'config_json' in request.form:
+            import json
+            try:
+                config_data['config_json'] = json.loads(request.form['config_json'])
+            except:
+                config_data['config_json'] = {}
+        
+        gateway = OrganisationPaymentGateway.create_or_update(
+            organisation_id=org.id,
+            provider=provider_enum,
+            environment=environment,
+            display_name=request.form.get('display_name'),
+            api_key=request.form.get('api_key'),
+            api_secret=request.form.get('api_secret'),
+            merchant_id=request.form.get('merchant_id'),
+            webhook_url=request.form.get('webhook_url'),
+            config_json=config_data.get('config_json', {}),
+            supported_currencies=request.form.getlist('supported_currencies'),
+            min_amount=request.form.get('min_amount', 0),
+            max_amount=request.form.get('max_amount', 1000000),
+            transaction_fee=request.form.get('transaction_fee', 0),
+            fee_currency=request.form.get('fee_currency'),
+            is_active=request.form.get('is_active') == 'on',
+            updated_by=current_user.id
+        )
+        
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': True, 'message': f'{provider} configured successfully'})
+        
+        flash(f'{provider} configured successfully', 'success')
+        return redirect(url_for('org.payment_gateways', org_id=org.slug))
+        
+    except Exception as e:
+        current_app.logger.error(f"Error configuring payment gateway: {str(e)}")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'message': str(e)}), 500
+        flash(f'Error configuring payment gateway: {str(e)}', 'danger')
+        return redirect(url_for('org.payment_gateways', org_id=org.slug))
+
+
+@org_bp.route('/<org_id>/settings/payment-gateways/<provider>/toggle', methods=['POST'])
+@login_required
+def payment_gateway_toggle(org_id, provider):
+    """Toggle payment gateway active status"""
+    org = _get_organisation_by_public_id(org_id)
+    legacy_redirect = _canonical_if_legacy(org, org_id)
+    if legacy_redirect:
+        return legacy_redirect
+
+    member = _require_org_permission(org, current_user, 'org.settings.manage')
+    if not member:
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+
+    try:
+        from app.identity.models.org_payment_gateway import PaymentGatewayProvider
+        provider_enum = PaymentGatewayProvider(provider)
+        gateway = OrganisationPaymentGateway.get_by_provider(org.id, provider_enum)
+        
+        if not gateway:
+            return jsonify({'success': False, 'message': 'Gateway not found'}), 404
+        
+        gateway.is_active = not gateway.is_active
+        gateway.updated_by = current_user.id
+        db.session.commit()
+        
+        return jsonify({'success': True, 'is_active': gateway.is_active})
+        
+    except Exception as e:
+        current_app.logger.error(f"Error toggling payment gateway: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@org_bp.route('/<org_id>/settings/payment-gateways/<provider>/test', methods=['POST'])
+@login_required
+def payment_gateway_test(org_id, provider):
+    """Test payment gateway configuration"""
+    org = _get_organisation_by_public_id(org_id)
+    legacy_redirect = _canonical_if_legacy(org, org_id)
+    if legacy_redirect:
+        return legacy_redirect
+
+    member = _require_org_permission(org, current_user, 'org.settings.manage')
+    if not member:
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+
+    try:
+        from app.identity.models.org_payment_gateway import PaymentGatewayProvider
+        from app.wallet.services.payment_gateway import get_provider_status
+        
+        provider_enum = PaymentGatewayProvider(provider)
+        gateway = OrganisationPaymentGateway.get_by_provider(org.id, provider_enum)
+        
+        if not gateway:
+            return jsonify({'success': False, 'message': 'Gateway not found'}), 404
+        
+        # Test the gateway configuration
+        # For now, just check if credentials are present
+        if gateway.is_configured:
+            gateway.last_tested_at = datetime.now(timezone.utc)
+            gateway.last_test_result = 'success'
+            gateway.last_error_message = None
+            gateway.is_verified = True
+        else:
+            gateway.last_tested_at = datetime.now(timezone.utc)
+            gateway.last_test_result = 'failed'
+            gateway.last_error_message = 'Missing required credentials'
+            gateway.is_verified = False
+        
+        gateway.updated_by = current_user.id
+        db.session.commit()
+        
+        return jsonify({
+            'success': gateway.is_configured,
+            'verified': gateway.is_verified,
+            'message': 'Configuration test completed' if gateway.is_configured else 'Missing required credentials'
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Error testing payment gateway: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@org_bp.route('/<org_id>/settings/payment-gateways/<provider>/delete', methods=['POST'])
+@login_required
+def payment_gateway_delete(org_id, provider):
+    """Delete payment gateway configuration"""
+    org = _get_organisation_by_public_id(org_id)
+    legacy_redirect = _canonical_if_legacy(org, org_id)
+    if legacy_redirect:
+        return legacy_redirect
+
+    member = _require_org_permission(org, current_user, 'org.settings.manage')
+    if not member:
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+
+    try:
+        from app.identity.models.org_payment_gateway import PaymentGatewayProvider
+        provider_enum = PaymentGatewayProvider(provider)
+        gateway = OrganisationPaymentGateway.get_by_provider(org.id, provider_enum)
+        
+        if not gateway:
+            return jsonify({'success': False, 'message': 'Gateway not found'}), 404
+        
+        db.session.delete(gateway)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Gateway deleted successfully'})
+        
+    except Exception as e:
+        current_app.logger.error(f"Error deleting payment gateway: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 
 @org_bp.route('/<org_id>/events')

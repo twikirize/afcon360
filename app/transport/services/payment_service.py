@@ -174,119 +174,20 @@ class PaymentService:
                 message="Payment service temporarily unavailable"
             )
 
-    @staticmethod
-    @monitor_endpoint("calculate_fare")
-    def calculate_fare(booking_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Calculate estimated fare for a booking"""
-        try:
-            # Calculate base fare
-            estimated_price = PaymentService._calculate_estimated_fare(booking_data)
-
-            # Add any applicable charges
-            surge_multiplier = PaymentService._get_surge_multiplier(booking_data)
-            final_price = estimated_price * surge_multiplier
-
-            # Apply discounts if any
-            discount = PaymentService._calculate_discount(booking_data)
-            discounted_price = final_price - discount
-
-            return {
-                'success': True,
-                'data': {
-                    'estimated_price': float(estimated_price),
-                    'surge_multiplier': float(surge_multiplier),
-                    'discount': float(discount),
-                    'final_price': float(discounted_price),
-                    'currency': 'USD',
-                    'breakdown': {
-                        'base_fare': float(estimated_price * Decimal('0.6')),
-                        'distance_charge': float(estimated_price * Decimal('0.3')),
-                        'service_fee': float(estimated_price * Decimal('0.1'))
-                    }
-                }
-            }
-
-        except Exception as e:
-            current_app.logger.error(f"Error calculating fare: {e}", exc_info=True)
-            return {
-                'success': False,
-                'message': f"Error calculating fare: {str(e)}",
-                'data': {}
-            }
 
     @staticmethod
     def _calculate_final_price(booking: Booking) -> Decimal:
-        """Calculate final price for booking"""
-        base_price = booking.base_price or Decimal('0.00')
+        """Calculate final price for booking (canonical fare engine)."""
+        from app.transport.services.fare_service import calculate_final
+        return calculate_final(
+            booking.base_price,
+            toll_fees=booking.toll_fees,
+            parking_fees=booking.parking_fees,
+            promotion_discount=booking.promotion_discount,
+        )
 
-        # Add any additional charges (tolls/parking) if present
-        additional_charges = Decimal('0.00')
-        if booking.toll_fees:
-            additional_charges += booking.toll_fees
-        if booking.parking_fees:
-            additional_charges += booking.parking_fees
 
-        # Apply discount if any
-        discount = booking.promotion_discount or Decimal('0.00')
 
-        final_price = base_price + additional_charges - discount
-
-        # Ensure minimum price
-        min_price = Decimal('5.00')
-        return max(final_price, min_price)
-
-    @staticmethod
-    def _calculate_estimated_fare(booking_data: Dict[str, Any]) -> Decimal:
-        """Calculate estimated fare from booking data"""
-        # Similar to BookingService._calculate_estimated_price
-        base_prices = {
-            'on_demand': 10.00,
-            'airport_transfer': 25.00,
-            'stadium_shuttle': 15.00,
-            'hotel_transfer': 20.00,
-            'city_tour': 30.00
-        }
-
-        service_type = booking_data.get('service_type', 'on_demand')
-        base_price = Decimal(str(base_prices.get(service_type, 10.00)))
-
-        distance = booking_data.get('estimated_distance', 5)
-        distance_rate = Decimal('2.50')
-        distance_cost = Decimal(str(distance)) * distance_rate
-
-        vehicle_class = booking_data.get('vehicle_class', 'comfort')
-        class_multipliers = {
-            'economy': 1.0,
-            'comfort': 1.2,
-            'premium': 1.5,
-            'van': 1.8,
-            'luxury': 2.0
-        }
-        multiplier = Decimal(str(class_multipliers.get(vehicle_class, 1.0)))
-
-        return (base_price + distance_cost) * multiplier
-
-    @staticmethod
-    def _get_surge_multiplier(booking_data: Dict[str, Any]) -> Decimal:
-        """Get surge pricing multiplier"""
-        from datetime import datetime
-        hour = datetime.now().hour
-
-        if (7 <= hour <= 9) or (17 <= hour <= 19):
-            return Decimal('1.3')
-
-        return Decimal('1.0')
-
-    @staticmethod
-    def _calculate_discount(booking_data: Dict[str, Any]) -> Decimal:
-        """Calculate applicable discount"""
-        # Check for promo codes
-        promo_code = booking_data.get('promo_code')
-        if promo_code:
-            # Validate promo code
-            return Decimal('5.00')  # Example discount
-
-        return Decimal('0.00')
 
     @staticmethod
     def _process_online_payment(amount: Decimal, payment_data: Dict[str, Any]) -> bool:

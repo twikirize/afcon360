@@ -5,7 +5,7 @@ Single source of truth for identity management
 """
 
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional, Any, Tuple
 import hashlib
 import secrets
@@ -519,23 +519,36 @@ class ProviderService:
             return None
 
     def get_user_vehicles(self, user_id: int) -> List[Vehicle]:
-        """Get vehicles owned by the user's driver profile(s).
+        """Get vehicles owned by the user.
 
-        Vehicles are owned by the driver profile (owner_type='driver',
-        owner_id=DriverProfile.id), not by the user directly.
+        Ownership resolves through two existing mappings that need no schema
+        change:
+
+        * ``owner_type='driver'`` / ``owner_id=DriverProfile.id`` - vehicles
+          owned through any of the user's driver profiles;
+        * ``owner_type='user'`` / ``owner_id=User.id`` - vehicles owned
+          directly by the user as a personal (non-driver) owner.
+
+        Assignment (``DriverVehicleHistory``) never creates ownership.
         """
         try:
             drivers = DriverProfile.query.filter_by(
                 user_id=user_id,
                 is_deleted=False
             ).all()
-            if not drivers:
-                return []
             driver_ids = [d.id for d in drivers]
             return Vehicle.query.filter(
-                Vehicle.owner_type == 'driver',
-                Vehicle.owner_id.in_(driver_ids),
                 Vehicle.is_deleted.is_(False),
+                or_(
+                    and_(
+                        Vehicle.owner_type == 'driver',
+                        Vehicle.owner_id.in_(driver_ids),
+                    ),
+                    and_(
+                        Vehicle.owner_type == 'user',
+                        Vehicle.owner_id == user_id,
+                    ),
+                ),
             ).order_by(Vehicle.created_at.desc()).all()
         except Exception as e:
             logger.error(f"Error getting vehicles for user {user_id}: {e}", exc_info=True)
@@ -808,15 +821,35 @@ class ProviderService:
         Internal method for vehicle registration
         """
         try:
-            # Validate vehicle data
-            sanitized_data = sanitize_input(vehicle_data)
-            validation_result = validate_vehicle_registration(sanitized_data)
+            # Two coexisting field vocabularies: the UI/route and the
+            # ``Vehicle`` model use ``license_plate`` / ``passenger_capacity``,
+            # while ``validate_vehicle_registration`` expects
+            # ``plate_number`` / ``capacity``. Normalize aliases so both
+            # vocabularies validate.
+            raw_data = dict(vehicle_data or {})
+            if not raw_data.get('plate_number') and raw_data.get('license_plate'):
+                raw_data['plate_number'] = raw_data['license_plate']
+            if not raw_data.get('license_plate') and raw_data.get('plate_number'):
+                raw_data['license_plate'] = raw_data['plate_number']
+            if not raw_data.get('capacity') and raw_data.get('passenger_capacity'):
+                raw_data['capacity'] = raw_data['passenger_capacity']
+            if not raw_data.get('passenger_capacity') and raw_data.get('capacity'):
+                raw_data['passenger_capacity'] = raw_data['capacity']
 
-            if not validation_result['valid']:
+            # Validate vehicle data. ``sanitize_input`` operates on strings,
+            # so sanitize each string value of the mapping (preserving any
+            # non-string values such as ints) instead of passing the dict.
+            sanitized_data = {
+                key: sanitize_input(value) if isinstance(value, str) else value
+                for key, value in raw_data.items()
+            }
+            is_valid, validation_errors = validate_vehicle_registration(sanitized_data)
+
+            if not is_valid:
                 return {
                     'success': False,
                     'error': 'Vehicle validation failed',
-                    'details': validation_result['errors']
+                    'details': validation_errors,
                 }
 
             # Generate identifiers
@@ -848,10 +881,6 @@ class ProviderService:
                 }
             )
 
-            # Link to driver if provided
-            if driver_id and owner_type == 'driver':
-                vehicle.current_driver_id = driver_id
-
             db.session.add(vehicle)
             db.session.flush()
 
@@ -871,7 +900,6 @@ class ProviderService:
 
     @monitor_endpoint("register_vehicle")
     @rate_limit("vehicle_registration", limit=20, period=3600)
-    @require_permission('vehicle:register')
     def register_vehicle(self, owner_type: str, owner_id: int, vehicle_data: Dict[str, Any],
                          request_id: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -891,6 +919,11 @@ class ProviderService:
                     raise ValidationError(
                         "Driver must be approved to register vehicles"
                     )
+            elif owner_type == 'user':
+                # Check the owning User exists (personal, non-driver owner)
+                user = db.session.get(User, owner_id)
+                if not user or getattr(user, 'is_deleted', False):
+                    raise ValidationError("Vehicle owner not found")
             else:  # organisation
                 org_profile = OrganisationTransportProfile.query.filter_by(
                     organisation_id=owner_id,
@@ -1336,6 +1369,133 @@ class ProviderService:
     # ===========================================================================
     # VEHICLE STATUS MANAGEMENT
     # ===========================================================================
+
+    def update_vehicle(self, vehicle_id: int, vehicle_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update a vehicle's editable specification fields.
+
+        Ownership, status, availability, insurance, QR/verification and
+        assignment state are preserved — only the specification fields
+        exposed by the edit form are written.
+        """
+        try:
+            vehicle = db.session.get(Vehicle, vehicle_id)
+            if not vehicle:
+                raise NotFoundError(
+                    message="Vehicle not found",
+                    resource_type="vehicle",
+                    resource_id=vehicle_id
+                )
+
+            # Normalize the two coexisting field vocabularies (same aliases
+            # as registration, so the canonical validator sees both keys).
+            raw_data = dict(vehicle_data or {})
+            if not raw_data.get('plate_number') and raw_data.get('license_plate'):
+                raw_data['plate_number'] = raw_data['license_plate']
+            if not raw_data.get('license_plate') and raw_data.get('plate_number'):
+                raw_data['license_plate'] = raw_data['plate_number']
+            if not raw_data.get('capacity') and raw_data.get('passenger_capacity'):
+                raw_data['capacity'] = raw_data['passenger_capacity']
+            if not raw_data.get('passenger_capacity') and raw_data.get('capacity'):
+                raw_data['passenger_capacity'] = raw_data['capacity']
+
+            sanitized_data = {
+                key: sanitize_input(value) if isinstance(value, str) else value
+                for key, value in raw_data.items()
+            }
+            is_valid, validation_errors = validate_vehicle_registration(sanitized_data)
+            if not is_valid:
+                raise ValidationError(
+                    message="Vehicle validation failed",
+                    details=validation_errors,
+                    code="VEHICLE_VALIDATION_FAILED",
+                )
+
+            def _to_int(value, default):
+                try:
+                    return int(value) if value not in (None, '') else default
+                except (TypeError, ValueError):
+                    return default
+
+            def _to_decimal(value):
+                try:
+                    return Decimal(str(value)) if value not in (None, '') else None
+                except (TypeError, ValueError, InvalidOperation):
+                    return None
+
+            license_plate = (sanitized_data.get('license_plate') or '').strip()
+            if not license_plate:
+                raise ValidationError(
+                    message="License plate is required",
+                    field="license_plate",
+                    code="VEHICLE_LICENSE_REQUIRED",
+                )
+
+            vehicle.license_plate = license_plate.upper()
+            vehicle.registration_number = sanitized_data.get('registration_number')
+            vehicle.make = (sanitized_data.get('make') or vehicle.make).title()
+            vehicle.model = (sanitized_data.get('model') or vehicle.model).title()
+            vehicle.year = _to_int(sanitized_data.get('year'), vehicle.year)
+            vehicle.color = sanitized_data.get('color') or vehicle.color
+            vehicle.vin_number = sanitized_data.get('vin_number')
+            vehicle.vehicle_type = sanitized_data.get('vehicle_type') or vehicle.vehicle_type
+            vehicle.passenger_capacity = _to_int(
+                sanitized_data.get('passenger_capacity'), vehicle.passenger_capacity
+            )
+            vehicle.luggage_capacity = _to_int(
+                sanitized_data.get('luggage_capacity'), vehicle.luggage_capacity
+            )
+            luggage_space = _to_decimal(sanitized_data.get('luggage_space_cubic_meters'))
+            if luggage_space is not None:
+                vehicle.luggage_space_cubic_meters = luggage_space
+
+            vehicle_class_value = sanitized_data.get('vehicle_class')
+            if vehicle_class_value:
+                try:
+                    vehicle.vehicle_class = VehicleClass(vehicle_class_value)
+                except ValueError:
+                    raise ValidationError(
+                        message=f"Invalid vehicle class: {vehicle_class_value}",
+                        field="vehicle_class",
+                        code="VEHICLE_CLASS_INVALID",
+                    )
+
+            db.session.commit()
+
+            cache.delete(f"{self.cache_prefix}:vehicle:{vehicle_id}")
+            self._invalidate_provider_caches()
+
+            return {
+                'success': True,
+                'message': 'Vehicle updated successfully',
+                'data': {'vehicle_id': vehicle_id},
+            }
+
+        except (NotFoundError, ValidationError, ConflictError) as e:
+            db.session.rollback()
+            raise
+        except IntegrityError as e:
+            db.session.rollback()
+            logger.error(
+                "Vehicle update integrity error for vehicle_id=%s: %s",
+                vehicle_id, e, exc_info=True,
+            )
+            raise ConflictError(
+                message="License plate already in use by another vehicle",
+                resource="vehicle",
+                conflict_type="duplicate_license_plate",
+            )
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            logger.error(
+                "Vehicle update failed for vehicle_id=%s: %s",
+                vehicle_id, e, exc_info=True,
+            )
+            raise ServiceUnavailableError(
+                message="Vehicle update unavailable",
+                service_name="vehicle",
+                retry_after=60,
+            )
 
     @monitor_endpoint("update_vehicle_status")
     @rate_limit("vehicle_status_update", limit=60, period=60)

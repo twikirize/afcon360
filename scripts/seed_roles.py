@@ -1,15 +1,28 @@
-"""# scripts/seed_roles.py
+#!/usr/bin/env python
+"""
+Seed all roles, permissions, and role-permission links.
+
+Delegates to the canonical seed in app.auth.seed_roles (the same source
+powering ``flask seed-all``), so every defined permission — including
+``geo.view`` / ``geo.manage`` — and its role links are provisioned here.
+Idempotent: safe to run repeatedly.
+
+Run: python scripts/seed_roles.py
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app import create_app
-from app.extensions import db
-from app.identity.models import Role, Permission, Organization
-app = create_app()
-with app.app_context():
-    roles = ["super_admin","platform_admin","user","guest","org_owner","org_admin","manager","staff","viewer"]
-    for r in roles:
-        if not Role.query.filter_by(name=r).first():
-            db.session.add(Role(name=r, scope="global" if r in ["super_admin","platform_admin","user","guest"] else "org"))
-    db.session.commit()
-    print("Seeded roles")
+from app.auth.seed_roles import seed_all
 
-"""
+
+def main() -> None:
+    app = create_app()
+    with app.app_context():
+        seed_all(verbose=True)
+
+
+if __name__ == "__main__":
+    main()

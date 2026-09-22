@@ -65,6 +65,14 @@ class SystemConfig(BaseModel):
             elif value_type == 'int':
                 setting.value = str(int(value))
             elif value_type == 'json':
+                # Normalise string input so a caller passing a JSON document as
+                # text cannot double-encode it (which previously stored a quoted
+                # string and silently broke every json-typed consumer).
+                if isinstance(value, str):
+                    try:
+                        value = json.loads(value)
+                    except (ValueError, TypeError):
+                        pass
                 setting.value = json.dumps(value)
             else:
                 setting.value = str(value)
@@ -79,6 +87,17 @@ class SystemConfig(BaseModel):
 
         if commit:
             db.session.commit()
+
+        # Invalidate KYC runtime caches whenever a kyc_* setting is written so a
+        # policy change is honoured immediately instead of up to one cache-TTL
+        # later (and without requiring an app restart).
+        if category == 'kyc' or (isinstance(key, str) and key.lower().startswith('kyc_')):
+            try:
+                from app.kyc_config_schema import clear_kyc_config_cache
+                clear_kyc_config_cache()
+            except Exception:
+                pass
+
         return setting
 
     @classmethod

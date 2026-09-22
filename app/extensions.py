@@ -1,7 +1,7 @@
 # app/extensions.py
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-from flask_login import LoginManager
+from flask_login import LoginManager, current_user
 from flask_wtf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -31,10 +31,28 @@ socketio = SocketIO()
 # Use a placeholder that will be replaced when app is initialized
 _redis_url = None
 
+
+# ============================================================
+# RATE LIMIT KEY  — per-user, fall back to IP
+# ============================================================
+def user_or_ip():
+    """
+    Key rate limits by authenticated user when possible, otherwise by IP.
+    Wrapped in try/except so it never raises if current_user isn't
+    available yet (e.g. before Flask-Login's request hook runs).
+    """
+    try:
+        if current_user and current_user.is_authenticated:
+            return f"user:{current_user.get_id()}"
+    except Exception:
+        pass
+    return get_remote_address()
+
 # Rate limiting - storage_uri will be configured in create_app
+
 # Don't set storage_uri here to avoid defaulting to memory://
 limiter = Limiter(
-    key_func=get_remote_address,
+    key_func=user_or_ip,
     default_limits=["2000 per day", "500 per hour"],
     storage_options={"socket_connect_timeout": 30},
     strategy="fixed-window",

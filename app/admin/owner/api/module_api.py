@@ -61,7 +61,7 @@ def toggle_module():
 @login_required
 def get_module_status():
     """Get current status of all modules."""
-    modules = ['tourism', 'transport', 'accommodation', 'events', 'wallet']
+    modules = ['tourism', 'transport', 'accommodation', 'events', 'wallet', 'geo']
     return jsonify({
         module: module_enabled(module) for module in modules
     }), 200

@@ -2301,7 +2301,6 @@ def guest_checkout():
         # 6.5 UPDATE PAYMENT LEDGER via PaymentStateMachine
         from app.accommodation.state_machine import PaymentStateMachine, PaymentState
         from app.accommodation.models.booking_payment import AccommodationBookingPayment
-        from decimal import Decimal
         
         payment_event = AccommodationBookingPayment.query.filter_by(
             booking_id=booking.id

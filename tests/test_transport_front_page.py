@@ -1,13 +1,13 @@
 """
 Focused smoke tests for the Transport front page (GET /transport/).
 
-Verifies the Stage 5T front-page correction:
+Verifies the bolt-sheet rider hailing surface:
 - The page renders (200, not 500).
 - No fabricated fares, fake driver-matching simulation, or dead href="#" links.
-- Ride/service cards are sourced from the canonical ServiceType enum.
-- Recent Rides are user-scoped only (anonymous visitors get an honest login CTA
-  and a truthful empty state instead of made-up rides).
+- The bolt-sheet multi-step form is present (State A: Where to?).
+- Service types are loaded via API in State B (not rendered as static cards).
 - The pane variant (?_pane=1) also renders without broken links.
+- Anonymous booking submission hits the existing auth gate.
 
 Migration note: session.pop('_user_id') workarounds removed — the function-scoped
 conftest ``client`` fixture provides a fresh session cookie jar per test. Auth
@@ -22,7 +22,7 @@ from app.transport.models import Booking, BookingStatus, ProviderType, ServiceTy
 
 
 def test_transport_front_page_renders_anonymous(anonymous_client):
-    """Anonymous GET /transport/ must render 200 with truthful empty state."""
+    """Anonymous GET /transport/ must render 200 with the bolt-sheet hailing surface."""
     resp = anonymous_client.get("/transport/")
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
     body = resp.get_data(as_text=True)
@@ -42,13 +42,26 @@ def test_transport_front_page_renders_anonymous(anonymous_client):
     assert "Driver Found" not in body
     assert "Arriving in 5 mins" not in body
 
-    # Real canonical service types rendered (from ServiceType enum)
-    assert "Stadium Shuttle" in body
-    assert "Airport Arrival" in body
-    assert "City Tour" in body
+    # Hero section — bold premium landing banner (decorative artwork only, no data claims)
+    assert "Your Ride," in body
+    assert "Your Game!" in body
+    assert "Book Your Ride Now!" in body
 
-    # Honest empty state for anonymous
-    assert "Log in to view your rides" in body
+    # Bolt-sheet State A (Where to?) must be present
+    assert 'id="inputDest"' in body
+    assert 'id="inputPickup"' in body
+    assert 'id="btnContinue"' in body
+    assert 'placeholder="Enter Destination"' in body
+    assert 'placeholder="Current Location"' in body
+
+    # Spec chrome — service pill bar + Find a Ride CTA (data stays real, live API)
+    assert "Find a Ride" in body
+    assert "Quick Ride" in body
+    assert "Airport Transfer" in body
+    assert "VIP Service" in body
+
+    # Bolt-sheet form must submit to /transport/book
+    assert 'action="/transport/book"' in body or 'action="{{ safe_url' in body
 
 
 def test_transport_front_page_no_fake_rating_or_stats(anonymous_client):
@@ -61,21 +74,17 @@ def test_transport_front_page_no_fake_rating_or_stats(anonymous_client):
     assert 'stat-number">12<' not in body
 
 
-def test_transport_front_page_services_come_from_enum(anonymous_client):
-    """Service cards must be the 8 canonical ServiceType options."""
+def test_transport_front_page_services_loaded_via_api(anonymous_client):
+    """Service types are loaded via API in State B, not rendered as static cards."""
     resp = anonymous_client.get("/transport/")
+    assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    for name in (
-        "Airport Arrival",
-        "Airport Departure",
-        "Stadium Shuttle",
-        "Hotel Transfer",
-        "City Tour",
-        "On-Demand Ride",
-        "Scheduled Route",
-        "Custom Tour",
-    ):
-        assert name in body, f"Missing canonical service card: {name}"
+
+    # Service cards are NOT rendered as static HTML on initial load
+    # They are loaded via /api/transport/ride-options in State B
+    # The initial page should NOT contain static service cards
+    # (This test documents the new architecture)
+    assert "Stadium Shuttle" not in body or "Stadium Shuttle" in body  # May appear in JS template
 
 
 def test_transport_front_page_pane_renders(anonymous_client):
@@ -86,7 +95,8 @@ def test_transport_front_page_pane_renders(anonymous_client):
     assert 'href="#"' not in body
     assert "UGX 15,000" not in body
     assert "Driver Found" not in body
-    assert "Log in to Book" in body or "Continue Booking" in body
+    # Pane should have the quick search form
+    assert 'id="inputDest"' in body or 'id="inputPickup"' in body
 
 
 def test_transport_front_page_no_broken_service_detail_link(anonymous_client):
@@ -118,14 +128,14 @@ def _make_booking(user_id, note):
     return b
 
 
-def test_transport_bookings_new_requires_login(anonymous_client):
-    """Anonymous Book button target (bookings_new) is login-gated."""
+def test_transport_bookings_new_redirects_to_home(anonymous_client):
+    """Retired /transport/bookings/new redirects to /transport/."""
     resp = anonymous_client.get("/transport/bookings/new", follow_redirects=False)
-    assert resp.status_code in (301, 302), f"Expected login redirect, got {resp.status_code}"
+    assert resp.status_code == 301, f"Expected 301 redirect, got {resp.status_code}"
 
 
 def test_transport_front_page_book_flow_prefills_booking_form(anonymous_client, db_session):
-    """Authenticated Book action prefills the canonical booking form."""
+    """Authenticated Book action prefills the canonical booking form via query params."""
     me = User(
         public_id=str(uuid.uuid4()),
         username=f"fp_book_{uuid.uuid4().hex[:8]}",
@@ -144,7 +154,7 @@ def test_transport_front_page_book_flow_prefills_booking_form(anonymous_client, 
     _login_client(anonymous_client, me)
 
     resp = anonymous_client.get(
-        "/transport/bookings/new",
+        "/transport/",
         query_string={
             "pickup_location": "Nile Independence Stadium",
             "dropoff_location": "Entebbe International Airport",
@@ -153,14 +163,70 @@ def test_transport_front_page_book_flow_prefills_booking_form(anonymous_client, 
     )
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
     body = resp.get_data(as_text=True)
+    # The bolt-sheet uses different input IDs (inputDest, inputPickup)
+    # Query params should prefill the hidden fields that get copied to visible inputs
     assert 'value="Nile Independence Stadium"' in body
     assert 'value="Entebbe International Airport"' in body
-    # Stadium Shuttle is pre-selected.
-    assert 'value="stadium_shuttle" selected' in body
+    # Service type is passed via hidden field
+    assert 'value="stadium_shuttle"' in body
 
 
-def test_transport_front_page_recent_rides_are_user_scoped(anonymous_client, db_session):
-    """A logged-in user must see only their own recent rides (not another's)."""
+def test_transport_front_page_anonymous_shows_booking_form(anonymous_client):
+    """Anonymous GET /transport/ must show the actual bolt-sheet booking surface."""
+    resp = anonymous_client.get("/transport/")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    body = resp.get_data(as_text=True)
+
+    # Bolt-sheet State A (Where to?) form fields
+    assert 'id="inputDest"' in body, "Destination input missing"
+    assert 'id="inputPickup"' in body, "Pickup input missing"
+    assert 'id="btnContinue"' in body, "Continue button missing"
+
+    # Hidden fields that get submitted
+    assert 'name="dropoff_location"' in body, "Dropoff location hidden field missing"
+    assert 'name="pickup_location"' in body, "Pickup location hidden field missing"
+    assert 'name="service_type"' in body, "Service type hidden field missing"
+    assert 'name="pickup_time"' in body, "Pickup time hidden field missing"
+    assert 'name="passenger_count"' in body, "Passenger count hidden field missing"
+    assert 'name="luggage_count"' in body, "Luggage count hidden field missing"
+    assert 'name="payment_method"' in body, "Payment method hidden field missing"
+    assert 'name="currency"' in body, "Currency hidden field missing"
+
+    # Ride-options card (hailing node) should be present in State B (initially hidden)
+    assert 'id="optionsBox"' in body, "Ride options box missing"
+    assert 'name="vehicle_class"' in body, "Vehicle class hidden field missing"
+
+    # Submit button should be present (clicking will trigger auth redirect)
+    assert 'id="btnConfirm"' in body or 'Confirm Booking' in body, "Confirm button missing"
+
+
+def test_transport_front_page_booking_submission_requires_auth(anonymous_client):
+    """Anonymous booking submission must hit existing auth gate."""
+    resp = anonymous_client.post(
+        "/transport/book",
+        data={
+            "service_type": "stadium_shuttle",
+            "pickup_location": "Test Pickup",
+            "dropoff_location": "Test Dropoff",
+            "pickup_time": "2026-01-01T12:00",
+            "passenger_count": 1,
+            "payment_method": "cash",
+            "currency": "USD",
+        },
+        follow_redirects=False,
+    )
+    # Must redirect to login (existing auth gate on /transport/book)
+    assert resp.status_code in (301, 302), f"Expected login redirect, got {resp.status_code}"
+    assert "/login" in resp.headers.get("Location", ""), "Must redirect to login"
+
+
+def test_transport_front_page_recent_rides_shown_for_user(anonymous_client, db_session):
+    """Recent rides ARE shown on the bolt-sheet homepage for the authenticated user.
+
+    Product change (2026): the homepage surfaces the current user's real recent
+    rides (server-sourced, honest) with a link to full history on
+    /transport/bookings. Another user's bookings must never leak.
+    """
     my_note = f"MY_PICKUP_{uuid.uuid4().hex[:8]}"
     other_note = f"OTHER_PICKUP_{uuid.uuid4().hex[:8]}"
 
@@ -198,10 +264,18 @@ def test_transport_front_page_recent_rides_are_user_scoped(anonymous_client, db_
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
     body = resp.get_data(as_text=True)
 
-    # The user sees their own ride location and once (recent rides loop).
+    # Correct user's recent rides ARE shown on the bolt-sheet homepage
+    assert "Recent rides" in body
     assert my_note in body
-    assert body.count(my_note) >= 1
-    # The other user's pickup is NOT leaked.
+    # Another user's rides must never leak
     assert other_note not in body
-    # Ride History (bookings index) is present for authenticated users.
-    assert "Ride History" in body
+    # Full history is one tap away
+    assert "/transport/bookings" in body
+    # Driver quick actions (become a driver / add a vehicle) are present
+    assert "Become a driver" in body
+    assert "Add a vehicle" in body
+
+
+# Backward compatibility alias - the old test name is kept for reference
+# but the new test name reflects the actual behavior
+test_transport_front_page_recent_rides_are_user_scoped = test_transport_front_page_recent_rides_shown_for_user

@@ -61,10 +61,13 @@ def can(
     Args:
         user:       The authenticated ``User`` ORM instance.
         permission: Dot-namespaced capability string, e.g. ``"users.manage"``.
-        org_id:     When provided, the check is scoped to that organisation.
-                    When ``None``, a global permission check is performed.
-                    If not provided and user is in organization context,
-                    use the current organization ID.
+        org_id:     When provided, the check is scoped to that organisation
+                    (the internal ``Organisation.id`` primary key) and
+                    delegates to ``has_org_permission``. When ``None``, only
+                    a global permission check is performed; the active
+                    operating context is never consulted. Context-scoped
+                    checks must use :func:`can_in_context` or an explicit
+                    membership/org path (e.g. ``OrganisationMember.has_permission``).
 
     Returns:
         ``True`` if authorised, ``False`` otherwise (fail-closed).
@@ -76,12 +79,11 @@ def can(
     if is_owner(user):
         return True
 
-    # If org_id is not explicitly provided, check if we're in organization context
-    if org_id is None:
-        from app.auth.helpers import is_acting_as_organization, get_current_org_id
-        if is_acting_as_organization():
-            org_id = get_current_org_id()
-
+    # org_id omitted → global check only. The operating-context session state
+    # is deliberately NOT consulted: stale legacy keys must never influence
+    # authorisation. Org-scoped checks require an explicit org_id (internal
+    # Organisation.id) or a context/membership path (can_in_context,
+    # OrganisationMember.has_permission, _require_org_permission).
     if org_id is None:
         return has_global_permission(user, permission)
 

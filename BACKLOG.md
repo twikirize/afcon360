@@ -17,6 +17,156 @@
 
 ---
 
+## SUPPORTING PLANNING / EVIDENCE RECORDS
+
+GEO work has supporting evidence and planning records in:
+
+- `GEO_DEFERRED_WORK_REGISTER.md`
+  Supporting GEO work register — detailed OPEN / DEFERRED / BLOCKED / ACTIVE DEFECT / TEST GAP /
+  COMPLETED-HISTORICAL inventory with dependencies, authorization state, and links to evidence.
+  Complements the canonical BACKLOG.md; does not replace it.
+
+- `GEO_PLANNING_RECONCILIATION.md`
+  Historical duplicate-resolution and planning reconciliation record.
+
+- `GEO_PLANNING_RECONCILIATION_REPORT.md`
+  Historical reconciliation / evidence report from the GEO nodes investigation.
+
+- `IMPLEMENTATION_LOG.md`
+  Historical implementation-plan and milestone log.
+
+These documents support BACKLOG.md; they do not replace it.
+BACKLOG.md remains the canonical actionable backlog.
+
+---
+
+## GEO-NODE-STATUS — GEO Nodes 1–3 gate record (canonical)
+- **Status:** NODE 1 — PASS | NODE 2 — DEFERRED | NODE 3 — PASS | NEXT — not started until explicitly authorized
+- **Raised:** 2026-09-19
+- **Context:** Post-GEO Nodes 1–3 reconciliation. Node 1 delivered the GEO foundation + control-plane integration (47/47 tests, no PostGIS). Node 2 deferred the PostGIS architectural decision (Option A scalar lat/lng; no migration authorized). Node 3 completed the consumer landscape + fragmentation classification with ownership boundaries (policy stays local; generic GEO capability SHOULD MIGRATE; no implementation performed).
+- **What needs to happen:** No action from this record alone. Derive the next node only from canonical backlog + roadmap ordering + dependency state + authorization state. Do not start GEO consumer migration, radians correction, or PostGIS work without explicit authorization.
+- **Owner/area:** GEO platform + Transport + Accommodation + Events
+- **Dependency:** None for the record itself. Open follow-ups are tracked as GEO-1..GEO-7 below.
+- **Authorization:** NOT AUTHORIZED (record only).
+- **Evidence/source:** Node 1 gate (`EGGE_GEO_APP_INTEGRATION_GATE.md`, `EGGE_GEO_RECONCILIATION_GATE.md`); Node 2 investigation (`EGGE_NODE2_POSTGIS_INVESTIGATION_REPORT.md`); Node 3 consumer reconciliation (session report).
+- **Supporting record:** `GEO_DEFERRED_WORK_REGISTER.md` (GEO-8..GEO-13 completed-historical; GEO-1..GEO-7 open/deferred); `GEO_PLANNING_RECONCILIATION.md` (duplicate-resolution history); `GEO_PLANNING_RECONCILIATION_REPORT.md` (evidence report).
+- **Links:** `app/geo/`, `tests/test_geo_foundation.py`, `tests/test_geo_integration.py`, `tests/test_module_integration.py`, `app/utils/module_guard.py`, `app/config.py`
+
+---
+
+## GEO-1 — PostGIS architectural decision (DEFERRED)
+- **Status:** DEFERRED — NOT AUTHORIZED to implement
+- **Raised:** 2026-09-19
+- **Context:** Node 2 established that the GEO foundation works without PostGIS (47/47 tests pass; test DB bootstraps via `db.create_all()` + stamp head). Option A (continue with scalar lat/lng; GEO services operate on coordinate pairs) was selected. PostGIS remains a future architecture decision requiring concrete capability, workload, scale, or product evidence. The A/B/C/D spatial ownership decision was not forced prematurely.
+- **What needs to happen:** Nothing until a concrete capability/workload/scale/product requirement justifies PostGIS. Do NOT record Option B or C as selected. Do NOT create the extension, Docker change, migration, or GeoAlchemy2 dependency without explicit authorization.
+- **Owner/area:** GEO infrastructure
+- **Dependency:** capability/workload evidence
+- **Authorization:** NOT AUTHORIZED (no migration; no Docker/PostGIS installation)
+- **Evidence/source:** Node 2 (`EGGE_NODE2_POSTGIS_INVESTIGATION_REPORT.md`); `GEO_PLANNING_RECONCILIATION_REPORT.md`
+- **Supporting record:** `GEO_DEFERRED_WORK_REGISTER.md` (GEO-1); duplicate resolution `GEO_PLANNING_RECONCILIATION.md` (GEO-PostGIS-Decision, MERGED)
+- **Links:** `docker-compose.yml` (`postgres:15-alpine`), `migrations/versions/8a0deccce6f6_initial_full_schema_baseline.py`, `tests/conftest.py`, `app/accommodation/models/property.py` (`lat`/`lng` Float)
+
+---
+
+## GEO-2 — Transport generic spatial capability consolidation (OPEN, SHOULD MIGRATE)
+- **Status:** OPEN — SHOULD MIGRATE, NOT AUTHORIZED to implement
+- **Raised:** 2026-09-19
+- **Context:** Node 3 classified generic driver-to-pickup distance / nearby / proximity as GEO capability duplicated in Transport code, while driver eligibility, ranking policy, vehicle class/status rules, acceptance rules, and matching policy remain Transport-owned and MAY REMAIN LOCAL. Do not collapse policy and capability into one task.
+- **What needs to happen:** Authorized future node to migrate only the generic capability to canonical GEO (`app/geo/services.py::straight_line_distance_m`, `NearbyService`), with behavior verification (units metres vs km, rounding, coordinate ordering, null handling, radius inclusivity, tie-breaking). No code change in this reconciliation.
+- **Owner/area:** GEO + Transport (capability migrates; policy stays with Transport)
+- **Dependency:** explicit authorization; GEO-4 regression coverage before touching GEO-3-adjacent matching behavior
+- **Authorization:** NOT AUTHORIZED
+- **Evidence/source:** Node 3 consumer reconciliation; `GEO_PLANNING_RECONCILIATION_REPORT.md`
+- **Supporting record:** `GEO_DEFERRED_WORK_REGISTER.md` (GEO-2); duplicate resolution `GEO_PLANNING_RECONCILIATION.md` (GEO-Consumer-Standardization, MERGED)
+- **Links:** `app/transport/services/matching_service.py`, `app/transport/services/tracking_service.py`, `app/geo/services.py`
+
+---
+
+## GEO-3 — Transport matching radians defect (ACTIVE DEFECT, OPEN / NOT FIXED)
+- **Status:** OPEN — ACTIVE DEFECT, VERIFIED, NOT FIXED
+- **Raised:** 2026-09-19
+- **Context:** `app/transport/services/matching_service.py:_calculate_distance` passes degree inputs to the haversine formula without the required `math.radians()` conversion, while canonical GEO (`straight_line_distance_m`) applies radians correctly. The function is reachable from driver matching (`find_driver_for_booking` path). Documented, not fixed, per node mandate.
+- **What needs to happen:** Fix only in an authorized future correction node, AFTER GEO-4 regression coverage exists so the correction is verifiable. Do NOT fix here.
+- **Owner/area:** Transport consumer / GEO capability boundary
+- **Dependency:** GEO-4 (numerical regression coverage) before correction
+- **Authorization:** NOT AUTHORIZED
+- **Evidence/source:** Node 3 reconciliation (direct function inspection); `GEO_PLANNING_RECONCILIATION_REPORT.md`
+- **Supporting record:** `GEO_DEFERRED_WORK_REGISTER.md` (GEO-3); duplicate resolution `GEO_PLANNING_RECONCILIATION.md` (GEO-Radians-Defect, MERGED)
+- **Links:** `app/transport/services/matching_service.py:_calculate_distance`, `app/geo/services.py::straight_line_distance_m`
+
+---
+
+## GEO-4 — Transport matching numerical regression coverage (TEST GAP, NOT VERIFIED)
+- **Status:** OPEN — TEST GAP, NOT VERIFIED
+- **Raised:** 2026-09-19
+- **Context:** The investigation established that no verified automated regression test currently proves the numerical correctness of the Transport matching distance path. Recorded as NOT VERIFIED (not as a claim of repository-wide test absence).
+- **What needs to happen:** Authorized future node to add a regression test asserting correct numerical distance for the matching path before GEO-3 is corrected.
+- **Owner/area:** Transport (tests)
+- **Dependency:** before GEO-3 defect correction
+- **Authorization:** NOT AUTHORIZED
+- **Evidence/source:** Node 3 reconciliation; `GEO_PLANNING_RECONCILIATION_REPORT.md`
+- **Supporting record:** `GEO_DEFERRED_WORK_REGISTER.md` (GEO-4); duplicate resolution `GEO_PLANNING_RECONCILIATION.md` (GEO-Test-Gaps, MERGED)
+- **Links:** `tests/test_geo_foundation.py` (`test_no_radians_regression_against_naive_degrees` covers GEO service only, not the matching path), `app/transport/services/matching_service.py`
+
+---
+
+## GEO-5 — Transport tracking/freshness GEO consolidation (OPEN, SHOULD MIGRATE)
+- **Status:** OPEN — SHOULD MIGRATE / CONSOLIDATE, NOT AUTHORIZED to implement
+- **Raised:** 2026-09-19
+- **Context:** Node 3 found a generic, radians-correct distance/freshness implementation in `app/transport/services/tracking_service.py`. Only the reusable GEO capability is a consolidation candidate; Transport-specific tracking policy stays Transport-owned.
+- **What needs to happen:** Authorized future node to consolidate only the reusable capability into canonical GEO. Do NOT move Transport tracking policy into GEO.
+- **Owner/area:** GEO + Transport
+- **Dependency:** explicit authorization
+- **Authorization:** NOT AUTHORIZED
+- **Evidence/source:** Node 3 reconciliation; `GEO_PLANNING_RECONCILIATION_REPORT.md`
+- **Supporting record:** `GEO_DEFERRED_WORK_REGISTER.md` (GEO-5); duplicate resolution `GEO_PLANNING_RECONCILIATION.md` (GEO-Consumer-Standardization, MERGED)
+- **Links:** `app/transport/services/tracking_service.py`, `app/geo/services.py`, `app/geo/validation.py`
+
+---
+
+## GEO-6 — Accommodation search spatial consolidation (OPEN, SHOULD MIGRATE)
+- **Status:** OPEN — SHOULD MIGRATE, NOT AUTHORIZED to implement
+- **Raised:** 2026-09-19
+- **Context:** Node 3 found duplicated generic spatial distance logic in `app/accommodation/services/search_service.py` (SQL spherical-cosine radius with radians). Property filtering, availability, business eligibility, and ranking/business policy stay with Accommodation.
+- **What needs to happen:** Authorized future node to migrate only the generic spatial calculation to canonical GEO if and when consumer migration is authorized.
+- **Owner/area:** GEO + Accommodation
+- **Dependency:** explicit authorization
+- **Authorization:** NOT AUTHORIZED
+- **Evidence/source:** Node 3 reconciliation; `GEO_PLANNING_RECONCILIATION_REPORT.md`
+- **Supporting record:** `GEO_DEFERRED_WORK_REGISTER.md` (GEO-6); duplicate resolution `GEO_PLANNING_RECONCILIATION.md` (GEO-Consumer-Standardization, MERGED)
+- **Links:** `app/accommodation/services/search_service.py`, `app/geo/services.py`
+
+---
+
+## GEO-7 — Accommodation availability spatial consolidation (OPEN, SHOULD MIGRATE)
+- **Status:** OPEN — SHOULD MIGRATE, NOT AUTHORIZED to implement
+- **Raised:** 2026-09-19
+- **Context:** Node 3 found generic Haversine/proximity logic in `app/accommodation/services/availability_service.py` (`find_nearby_alternatives`, haversine with `math.radians`). Availability/business decisions stay with Accommodation.
+- **What needs to happen:** Authorized future node to migrate only the generic spatial calculation to canonical GEO.
+- **Owner/area:** GEO + Accommodation
+- **Dependency:** explicit authorization
+- **Authorization:** NOT AUTHORIZED
+- **Evidence/source:** Node 3 reconciliation; `GEO_PLANNING_RECONCILIATION_REPORT.md`
+- **Supporting record:** `GEO_DEFERRED_WORK_REGISTER.md` (GEO-7); duplicate resolution `GEO_PLANNING_RECONCILIATION.md` (GEO-Consumer-Standardization, MERGED)
+- **Links:** `app/accommodation/services/availability_service.py`, `app/geo/services.py`
+
+---
+
+## Phase C-1 — Vehicle ownership/management independence (deferred follow-ups)
+- **Status:** PARTIAL — Phase C-1 IMPLEMENTED and verified; the items below were identified during the node but are out of its authorized scope and remain active.
+- **Raised:** 2026-09-18
+- **Context:** Phase C-1 established that vehicle ownership is independent from driver participation/assignment/dispatch/organisation fleet authority, using the **existing** polymorphic `Vehicle.owner_type`/`owner_id` columns only (no schema change, no migration). Ownership vocabularies: `driver`→`DriverProfile.id`, `user`→`User.id` (personal/non-driver owner), `organisation`→`Organisation.id`. Durable record: `docs/transport/dashboard-preservation-inventory.md` §13.
+- **What needs to happen (deferred):**
+  1. `app/transport/services/provider_service.py:648` (`register_driver`) — carries BOTH defect classes already fixed for vehicle registration: `sanitize_input(data)` passes a **dict** to the string-only `sanitize_input` (`app/utils/security.py:205`) and `validate_driver_registration(...)`'s `(is_valid, errors)` **tuple** is indexed as a dict (`['valid']`/`['errors']`). Registration fails silently as `{'success': False}`. Fix by per-value sanitization + tuple unpacking (same shape as the C-1 vehicle fix at `provider_service.py:~824`).
+  2. `app/transport/services/provider_service.py:~1002` (`register_organisation_transport`) — same dict-to-`sanitize_input` / tuple-vs-dict class; verify and fix in the same remediation.
+  3. `vehicles_show` (`app/transport/routes.py`) swallows its own `abort(403)` inside its `try` → HTML 302 redirect to `vehicles_index`, JSON 404; cross-owner show is not a hard 403. `vehicles_edit` now enforces ownership (hard 403 non-JSON). Decide whether show should surface 403.
+  4. `_json_or_template` on `vehicle_dashboard` / `vehicles_show` serializes ORM `Vehicle` objects under `Accept: application/json` → 500. Positive API consumers need a serialized response (`to_dict`).
+  5. `TransportValidators.validate_vehicle_registration` accepts uppercase `vehicle_class` (`.upper()`), but `VehicleClass` enum **values are lowercase** and the real template emits lowercase; `VehicleClass('COMFORT')` raises. Normalize case in the service or tighten the validator.
+- **Owner/area:** transport / provider registration + presentation
+- **Links:** `app/transport/services/provider_service.py`, `app/transport/routes.py`, `app/transport/models.py` (`Vehicle`, `VehicleClass`), `app/utils/security.py:205`, `app/utils/validators.py:128-208`, `docs/transport/dashboard-preservation-inventory.md` §13, `tests/test_phase_c1_vehicle_ownership.py`.
+
+---
+
 ## TH-3-D1 — Dispatch & Assignment Existing-Graph Fit Review (correction pass)
 - **Status:** DONE (read-only architectural review, FINAL closure pass) — CORRECTED GATE: **PASS — TH-3-D1 COMPLETE** *(supersedes BOTH the earlier "PASS — READY FOR D2 REVIEW" and "PASS WITH OPEN D2-ENTRY EVIDENCE" verdicts; adversarial review found race tables, Race E status, and concurrency evidence had not been fully documented; the two final closure corrections below close the remaining load-bearing items. D2 REMAINS BLOCKED pending MOE review)*
 - **Resolved:** 2026-09-11
@@ -671,7 +821,7 @@ the proposed design, and the ownership boundary. NOT yet implemented unless note
 ---
 
 ## Transport correction node follow-ups (dead services, pre-existing refs, schema sync)
-- **Status:** PARTIAL - routes.py audit_log TypeError FIXED; provider_service.py/settings_service.py ValidationError TypeError + dead-service decision still active
+- **Status:** PARTIAL - routes.py audit_log TypeError FIXED; provider_service.py/settings_service.py ValidationError TypeError + dead-service decision still active. **Phase C-1 (2026-09-18) partially resolved the `span.*` class: `MonitorContext` now exposes `set_status`/`set_attribute`/`end`; the vehicle-registration dict-`sanitize_input` + tuple-vs-dict validator defects are fixed. `register_driver` / `register_organisation_transport` remain — see the Phase C-1 entry above.**
 - **Raised:** 2026-09-02
 - **Context:** The `TRANSPORT_MIN_CORRECTION` node (Transport passengers: booker ≠ payer ≠ passenger, accountless passengers, group/multi-vehicle assignment, claim-by-public-id, canonical vocabulary) is implemented and its own suite passes (`tests/test_transport_passengers.py`, 18 passed). The following were identified during that node as **pre-existing / out of scope** and intentionally left untouched (scope discipline, AGENTS.md §5).
 
@@ -1848,7 +1998,7 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 - Resolution (minimal, template-only): NEW `templates/transport/driver/base.html` — a Driver shell forked from the WORKING `transport/base.html` mechanics (same theme CSS `css/modules/transport/base.css`, theme-variables/dark-mode, pane-mode `?_pane=1`, topbar, flash handling, `js/modules/transport/base.js`), but with role label `Driver` and ONLY driver navigation (Overview -> `transport.driver_dashboard`, My Vehicle -> `transport.vehicle_dashboard`, Register Vehicle -> `transport.register_vehicle`, breadcrumb home -> driver workspace, plus main-site link and logout). No admin/operations endpoints in the shell. Re-pointed the three unambiguous driver self-service templates: `driver_dashboard.html`, `vehicle_dashboard.html`, `register_vehicle.html` now extend `transport/driver/base.html`. Transport Admin/Operations pages (`admin/dashboard.html`, `bookings/*`, `drivers/*`, `vehicles/*`, `incidents/*`, `routes/*`, `analytics/*`, `settings/*`, `organisations/*`) remain on `transport/base.html`. NO route, RBAC, wallet, KYC, migration, or service changes.
 - Verification: `pytest tests/test_driver_workspace_activation.py tests/test_canonical_identity_center.py` -> 32 passed; `pytest tests/test_onboarding.py tests/test_auth_context.py` -> 45 passed; startup `python -c "from app import create_app"` -> STARTUP_OK; Jinja proof: all three driver templates resolve to `transport/driver/base.html` (leaf) and compile; driver shell contains NO ops endpoints.
 - Owner/area: transport / templates (driver workspace)
-- Links: templates/transport/driver/base.html (NEW), templates/transport/driver_dashboard.html, templates/transport/vehicle_dashboard.html, templates/transport/register_vehicle.html, templates/transport/base.html, templates/transport/dashboard/base_dashboard.html (orphan role-aware shell — see D-WORKSPACE-4)
+- Links: templates/transport/driver/base.html (NEW), templates/transport/driver/driver_dashboard.html, templates/transport/vehicle_dashboard.html, templates/transport/register_vehicle.html, templates/transport/base.html, templates/transport/dashboard/base_dashboard.html (orphan role-aware shell — see D-WORKSPACE-4)
 
 ## D-WORKSPACE-1 — `transport.drivers_verification` and `transport.drivers_location` pass only `id`; templates need the `driver` object ("undefined driver")
 - Status: Needs review
@@ -1864,7 +2014,7 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 - Context: `driver_dashboard.html:192` does `safe_url('transport.drivers_history', id=driver_profile.id)`. No such endpoint exists anywhere in `app/transport/` (grep: single match, the template). `safe_url` degrades missing endpoints to `'#'` (app/utils/module_guard.py:11-49). The driver Workspace therefore has a "Trip History" quick action that goes nowhere.
 - What needs to happen: Either create the `transport.drivers_history` route (driver-scoped history view, ownership-checked) or remove the link. Requires a separate implementation node.
 - Owner/area: transport / routes
-- Links: templates/transport/driver_dashboard.html:192, app/utils/module_guard.py:11-49
+- Links: templates/transport/driver/driver_dashboard.html:192, app/utils/module_guard.py:11-49
 
 ## D-WORKSPACE-3 — `transport/base.html:183` references missing asset `static/transport/js/utils.js` (browser 404, non-fatal)
 - Status: Not started
@@ -1915,3 +2065,543 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 - What needs to happen: Separate authorized nodes to add driver-scoped presentation for each gap, reusing existing services/APIs (no new second transport engine). For assigned-driver booking detail, specify the access rule before touching `bookings_show`'s ownership check.
 - Owner/area: transport / routes + services + templates
 - Links: app/transport/routes.py:395 (`bookings_show` `_require_ownership`), app/transport/api/driver_routes.py (`DriverOfferListResource`, `DriverTripResource`), app/transport/repositories/driver_repository.py (history), docs/transport/dashboard-preservation-inventory.md §11
+
+## PHASE-D0-1 — `transport_admin` held no canonical Transport permissions (role↔permission contradiction) — DONE
+- Status: Done
+- Resolved: 2026-09-18
+- Raised: 2026-09-18 (EGGE Master Node — Phase D0 Gate 1 discovery; DISCOVERY GATE: PASS)
+- Context: `transport_admin` is the seeded canonical Transport-domain global role (`app/auth/seed_roles.py`), yet it carried **zero** Transport permissions. The `/admin/transport-admin` family was guarded by `require_role("transport_admin")`, whose only non-broken path was the dynamic `TransportPermission` fallback; all other Transport admin surfaces keyed off `admin_required` (platform admin). The role that should own Transport admin authority was therefore powerless (Gate 1 proven fact).
+- What happened: Gate 2 authorized the existing global permission system as canonical. `transport_admin` was granted `transport.view` + `transport.manage` only (`transport.settings` retained for owner/super_admin) in `seed_roles.py`; all 14 `/admin/transport-admin` guards in `app/admin/route_modules/transport_admin.py` migrated from `require_role("transport_admin")` to `require_permission(...)`. Driver/Organisation/Moderator paths untouched; no schema/migration.
+- Verification: `tests/test_transport_admin_permission_authority.py` — 11 passed; `test_transport_drivers_admin_lock.py` + `test_transport_dashboard_overview.py` + `test_driver_workspace_consolidation.py` + `test_driver_workspace_activation.py` — 47 passed; `create_app()` → `STARTUP_OK`. Durable record: `docs/transport/dashboard-preservation-inventory.md` §12.
+- Owner/area: auth/roles + admin/transport
+- Links: app/auth/seed_roles.py, app/admin/route_modules/transport_admin.py, tests/test_transport_admin_permission_authority.py, docs/transport/dashboard-preservation-inventory.md §12
+
+## PHASE-D0-2 — Broken `app/transport/decorator.py::role_required` and its `/transport/admin/*` consumers (deferred)
+- Status: Not started
+- Raised: 2026-09-18 (Phase D0 Gate 1 discovery)
+- Context: `app/transport/decorator.py::role_required` compares a role-name string against `getattr(current_user,'roles',[])` (a list of `UserRole` objects) and can therefore never match → deny-by-design; its `rate_limit` companion is a no-op. 13 of 14 `transport_admin_bp` routes under `/transport/admin/*` (`routes.py` 1564-1889) use this broken guard and deny everyone except owner/super_admin (and the active-owner fallback). Gate 2 explicitly deferred a global repair; D0 replaced only the approved `/admin/transport-admin` path and preserved all other consumers.
+- What needs to happen: Authorized decision — retire the broken decorator in favour of the canonical permission/role decorators, or repair it, then migrate the `/transport/admin/*` consumers. Do not touch without a spec (BEHAVIORAL/HIGH_RISK).
+- Owner/area: transport / auth decorators
+- Links: app/transport/decorator.py:52-70, app/transport/routes.py:1564-1889, app/auth/decorators.py (`require_permission`, `require_role`)
+
+## PHASE-D0-3 — Dynamic `TransportPermission` is malformed and non-canonical (deferred)
+- Status: Not started
+- Raised: 2026-09-18 (Phase D0 Gate 1 discovery)
+- Context: `app/core/transport_permissions.py` defines a `TransportPermission` model that is not a `BaseModel`, declares `__table_args__` twice (lines 50-53 overwritten by 111-113, losing `schema="public"`), stores three booleans, and is consulted only as a fallback inside the broken `require_role`. Gate 2 designated it NOT canonical and forbade migration/redesign/removal in D0.
+- What needs to happen: Authorized decision on legacy disposition (retire vs formally adopt). Touching it is a schema/architecture change → separate node, migration review required.
+- Owner/area: core / transport permissions
+- Links: app/core/transport_permissions.py, app/auth/decorators.py:283-310
+
+## PHASE-D0-4 — Ungated `/transport/*` web ops and mixed REST `/api/transport` auth (deferred)
+- Status: Not started
+- Raised: 2026-09-18 (Phase D0 Gate 1 discovery)
+- Context: `transport_bp` web ops (`bookings_*`, `vehicles_*`, `incidents_*`, `organisations_*`, `routes_*`, `analytics_*`) require only `@login_required`; several use the broken `role_required`; `/transport/dashboard` is login-only. REST `/api/transport` uses 53 `@admin_required`, 13 `@login_required`, and one unguarded route. Gate 2 forbade a blanket auth rewrite in D0.
+- What needs to happen: Authorized per-capability classification node (`transport.view`/`transport.manage`/`transport.settings` vs platform admin) before changing any guard. HIGH_RISK.
+- Owner/area: transport / routes + api
+- Links: app/transport/routes.py, app/transport/api/
+
+## PHASE-D0-5 — Missing `templates/admin/transport_admin/` sub-templates (deferred)
+- Status: Not started
+- Raised: 2026-09-18 (Phase D0 Gate 1 discovery)
+- Context: `templates/admin/transport_admin/` does not exist; 13/14 `/admin/transport-admin` routes render missing templates. Broad `except` clauses swallow `TemplateNotFound` into a flash + redirect. Only `templates/admin/transport_admin_dashboard.html` exists. `transport_admin_analytics` also calls a nonexistent `dashboard_service.get_analytics_data()`.
+- What needs to happen: Build the missing sub-templates (or re-point to existing transport templates) and supply the analytics service. This is a presentation node that depends on the now-fixed D0 authority.
+- Owner/area: admin / transport templates
+- Links: app/admin/route_modules/transport_admin.py, templates/admin/transport_admin_dashboard.html, app/transport/services/dashboard_service.py
+
+## PHASE-D0-6 — `/transport/drivers*` uses `@admin_required`, excluding `transport_admin` (deferred; needs decision)
+- Status: Needs decision
+- Raised: 2026-09-18 (Phase D0 Gate 1 discovery)
+- Context: The locked `/transport/drivers*` surfaces (`routes.py` 954-1093) use `@admin_required` (`has_global_role("admin","super_admin","owner")`), which excludes the canonical `transport_admin` role. Gate 2 scope was the `/admin/transport-admin` family; this divergence was recorded, not changed.
+- What needs to happen: Authorized decision on whether `transport_admin` should hold these surfaces and, if so, migrate to `require_permission` (likely `transport.view`/`transport.manage`). BEHAVIORAL.
+- Owner/area: transport / routes + auth
+- Links: app/transport/routes.py:954-1093, tests/test_transport_drivers_admin_lock.py, app/auth/decorators.py:422
+
+## PHASE-D1-1 — `datetimeformat` Jinja filter is unregistered → 500 on Transport booking/incident surfaces — DONE (discovered)
+- Status: Not started
+- Raised: 2026-09-18 (Phase D1 Gate 1 discovery)
+- Context: No `datetimeformat` filter is registered anywhere in Python (only `format_number`, `app/__init__.py:1685`), yet four transport templates use it (`bookings/index.html:110`, `bookings/show.html:60,122,126,187,216-237`, `incidents/index.html:12,147`, `routes/index.html:54`). Runtime-proven: `GET /transport/bookings` and `GET /transport/incidents` → 500 `TemplateAssertionError: No filter named 'datetimeformat'`.
+- What needs to happen: Register the filter (or replace usages) in an authorized UI node. Presentation-only; classify before touching.
+- Owner/area: transport / templates (+ app factory filter registration)
+- Links: templates/transport/bookings/index.html:110, templates/transport/bookings/show.html, templates/transport/incidents/index.html:12,147, templates/transport/routes/index.html:54, app/__init__.py:1685
+
+## PHASE-D1-2 — `/transport/admin/dashboard` self-redirect loop due to emoji `print()` on cp1252 — DONE (discovered)
+- Status: Not started
+- Raised: 2026-09-18 (Phase D1 Gate 1 discovery)
+- Context: `transport_admin.dashboard` (`app/transport/routes.py:1915-2008`) debug-prints emoji (`:1924`). On Windows cp1252 stdout the `print` raises `UnicodeEncodeError`, caught by the broad `except` (`:2004`) → `redirect(url_for("transport_admin.dashboard"))` (`:2008`) = redirect to itself. Runtime: 302 `Location: /transport/admin/dashboard` for ordinary, `transport_admin`, and `admin`. Debug prints must not run in production.
+- What needs to happen: Remove the debug `print()` block and correct the error redirect target in an authorized node (pair with PHASE-D0-2).
+- Owner/area: transport / routes
+- Links: app/transport/routes.py:1924-1931, :2004-2008
+
+## PHASE-D1-3 — Dangling endpoint references (`transport_admin.admin_dashboard`, `incidents`, `routes`, `settings`)
+- Status: Not started
+- Raised: 2026-09-18 (Phase D1 Gate 1 discovery)
+- Context: `transport_admin.admin_dashboard` is referenced in `app/transport/routes.py:1903` and `:1909` but only `transport_admin.dashboard` exists → `BuildError` on those except paths. `templates/transport/dashboard/keep.html` references `transport_admin.incidents`, `transport_admin.routes`, `transport_admin.settings`, whose real endpoint names are `admin_incidents`, `admin_routes`, `admin_settings`.
+- What needs to happen: Fix references in the authorized consolidation node (covered by PHASE-D0-2/PHASE-D0-5 scope).
+- Owner/area: transport / routes + templates
+- Links: app/transport/routes.py:1903,1909, templates/transport/dashboard/keep.html
+
+## PHASE-D1-4 — Missing routes / endpoints referenced by templates
+- Status: Not started
+- Raised: 2026-09-18 (Phase D1 Gate 1 discovery)
+- Context: URL-map checks: `transport.driver_update`, `transport.drivers_create`, `transport.driver_history`, `transport.drivers_history`, `transport.booking_assign` are NOT FOUND IN URL MAP though templates reference them. `/transport/analytics/drivers|vehicles|history` return 404 while their templates exist (only `analytics/index|performance|revenue` are routed).
+- What needs to happen: Authorized presentation/route node; specify access rules before adding (BEHAVIORAL).
+- Owner/area: transport / routes + templates
+- Links: templates/transport/drivers/_form.html:16, templates/transport/drivers/show.html:133, templates/transport/bookings/assign.html:22, templates/transport/analytics/
+
+## PHASE-D1-5 — Broken static asset paths in Transport shells
+- Status: Not started
+- Raised: 2026-09-18 (Phase D1 Gate 1 discovery)
+- Context: `templates/transport/dashboard/base_dashboard.html` and `keep.html` load `static/transport/css/*` + `static/transport/js/*`; those paths do not exist (real assets are `static/css/modules/transport/` and `static/js/modules/transport/`). `templates/transport/base.html:183` and `templates/transport/driver/base.html:156` load `transport/js/utils.js` (missing).
+- What needs to happen: Re-point to the canonical asset paths (or add the missing asset) in an authorized UI node.
+- Owner/area: transport / templates + static
+- Links: templates/transport/dashboard/base_dashboard.html:30-31,472-475, templates/transport/dashboard/keep.html:27-28,317-320, templates/transport/base.html:183, templates/transport/driver/base.html:156, static/css/modules/transport/, static/js/modules/transport/
+
+## PHASE-D1-6 — REST auth exposure: settings list login-only; incident-create unguarded (concrete proof for PHASE-D0-4)
+- Status: Need decision
+- Raised: 2026-09-18 (Phase D1 Gate 1 discovery)
+- Context: Runtime-proven — `GET /api/transport/settings` returns **200 for an ordinary authenticated user** (`SettingsListResource.get` is `@login_required`, `transport/api/settings_routes.py:53`); `POST /api/transport/incidents` has **no decorator** (`IncidentListResource.post`, `transport/api/incident_routes.py:102`) so an anonymous JSON POST reaches the handler (400 validation, no auth gate). `/api/transport/reservations` is login-only. Anonymous access to Flask-RESTful `@login_required` routes 500s (known `BACKLOG.md:1584`).
+- What needs to happen: Authorized per-capability classification node (transport.view/manage/settings vs platform admin) before changing guards. HIGH_RISK. Supersedes/extends PHASE-D0-4.
+- Owner/area: transport / api
+- Links: app/transport/api/settings_routes.py:53, app/transport/api/incident_routes.py:102, app/transport/api/reservation_routes.py:60, BACKLOG.md:1584
+
+## PHASE-D1-7 — Duplicate/parallel Transport Admin + shell surfaces (candidate information architecture)
+- Status: Need decision
+- Raised: 2026-09-18 (Phase D1 Gate 1 discovery)
+- Context: Three parallel admin management systems exist — `/admin/transport-admin/*` (D0 canonical, permission-based), `/transport/admin/*` (broken `role_required`), `/admin/moderator/transport/*` (`@require_role(*_MOD)`). Three shells exist — `transport/base.html`, `transport/dashboard/base_dashboard.html`+`keep.html`, `transport/driver/base.html` — plus two driver dashboards and two admin dashboards. Consolidation requires a target-IA decision (contract's preservation rules apply).
+- What needs to happen: Human/product decision node; do NOT delete or reorganize surfaces before authorization. ARCHITECTURAL.
+- Owner/area: transport / architecture
+- Links: docs/transport/dashboard-preservation-inventory.md §14, app/transport/routes.py:1564-2008, app/admin/route_modules/transport_admin.py, app/admin/moderator/routes.py:3136-3414
+
+## PHASE-D1-8 — `transport_permissions` table absent from `db.create_all()` test bootstrap
+- Status: Not started
+- Raised: 2026-09-18 (Phase D1 Gate 1 discovery)
+- Context: `TransportPermission(db.Model)` (`app/core/transport_permissions.py:28`, a direct `db.Model` — violates AGENTS.md §13) is imported lazily, so it is not in `db.metadata` when `tests/conftest.py` runs `db.create_all()`. Result in the test DB: `/admin/transport-admin` raises `UndefinedTable: relation "transport_permissions" does not exist` and 302s to `/admin/dashboard` for an authorized `transport_admin`. A migrated DB has the table (`migrations/versions/b73d33d073e1_add_transport_permissions_table.py`). Model also declares `__table_args__` twice (`:50-53` overwritten by `:111-113`, losing `schema="public"`).
+- What needs to happen: Pair with PHASE-D0-3 (legacy disposition). If the model remains, it must be BaseModel-compliant and registered so test bootstrap includes it. Schema/architecture change → migration review required.
+- Owner/area: core / transport permissions + testing
+- Links: app/core/transport_permissions.py:28,50-53,111-113, migrations/versions/b73d33d073e1_add_transport_permissions_table.py, tests/conftest.py
+
+## PHASE-D2-1 — Transport Admin / Operations decision record — DECIDED (D2 Gate 2 PASS)
+- Status: Done (decision only)
+- Raised: 2026-09-18 (Phase D2 decision gate)
+- Decided: `/admin/transport-admin` is the canonical Platform Transport Admin entry. Authority = `transport_admin` + `transport.view`/`transport.manage`; `transport.settings` owner/super_admin only; broader `owner`/`super_admin`/`admin` authority preserved. Workspaces kept separate: Platform Admin, Organisation Transport (`org.transport.manage`), Driver Workspace (`transport.driver`), Moderator (`require_role(*_MOD)`). Invariant preserved: ownership ≠ driver participation ≠ vehicle assignment ≠ dispatch ≠ organisation fleet authority. Canonical IA: OVERVIEW · OPERATIONS · FLEET · NETWORK · SAFETY · INSIGHTS · CONFIGURATION · OVERSIGHT. No new permissions. No migration.
+- Legacy (preserve, candidate future retirement): `/transport/dashboard`, `/transport/dashboard/overview`, `/transport/admin/*`, `/transport/admin/dashboard`, legacy shells `templates/transport/base.html` + `templates/transport/dashboard/base_dashboard.html` + `keep.html`.
+- Durable record: docs/transport/dashboard-preservation-inventory.md §15.
+- Links: docs/transport/dashboard-preservation-inventory.md §15, §14
+
+## PHASE-D2-2 — D3 authorized batches (Transport Admin consolidation) — AUTHORIZED
+- Status: Not started (authorized for D3)
+- Raised: 2026-09-18 (Phase D2 decision gate)
+- Context: D2 authorized implementation ONLY for the batches below. D3 MAY IMPLEMENT: register/fix `datetimeformat`; build canonical `templates/admin/transport_admin/` sub-templates; repair canonical admin static asset refs; fix dangling refs; surface existing transport services in canonical Admin family; add `get_analytics_data()` to existing `dashboard_service.py`; add missing analytics routes for existing templates.
+- D3 MUST NOT IMPLEMENT: REST auth remediation; new permissions; schema/migration; route deletion; moderator merge; Driver/Organisation workspace changes; dynamic `TransportPermission` redesign; dispatch engine; legacy retirement.
+- D3 MUST PRESERVE: all legacy routes/shells; D0 authority; Org/Driver/Moderator scoping; ownership/dispatch/fleet invariant.
+- Batch order: **D3-A** Admin shell + Overview (prereq: `datetimeformat`); **D3-B** Bookings + Reservations; **D3-C** Drivers + Vehicles + Assignments + Driver Compliance; **D3-D** Scheduled Routes (Dispatch deferred); **D3-E** Incidents; **D3-F** Analytics + Reports; **D3-G** Settings + Oversight.
+- Acceptance: `/admin/transport-admin` renders 200 for `transport_admin`; ordinary user denied; Driver Workspace unchanged (200); Organisation transport unchanged; Overview uses existing `DashboardService` (no business logic in routes); legacy surfaces intact after each batch.
+- Links: docs/transport/dashboard-preservation-inventory.md §15.7, §15.15, app/admin/route_modules/transport_admin.py, app/transport/services/dashboard_service.py
+
+## PHASE-D2-3 — REST authorization remediation (settings exposure, unguarded incident POST) — DEFERRED (separate node)
+- Status: Need decision / Not started
+- Raised: 2026-09-18 (Phase D2 decision gate)
+- Context: D2 explicitly kept `GET /api/transport/settings` (login-only → 200 for ordinary user) and `POST /api/transport/incidents` (no auth decorator) OUT of D3. Deferred to a separate **PHASE-D-AUTH-REST** node unless a direct dependency blocks the canonical Admin UI.
+- Owner/area: transport / api + auth
+- Links: BACKLOG.md PHASE-D1-6, app/transport/api/settings_routes.py:53, app/transport/api/incident_routes.py:102, BACKLOG.md:1584
+
+## PHASE-D2-4 — Dynamic `TransportPermission` redesign / test-bootstrap gap — BLOCKED (future architecture node)
+- Status: Need decision / Blocked
+- Raised: 2026-09-18 (Phase D2 decision gate)
+- Context: `TransportPermission(db.Model)` is not canonical (D0) and is absent from `db.metadata` at `db.create_all()`, causing `UndefinedTable` in the test DB. Fixing it requires a model/registration/schema decision → classified BLOCKED / FUTURE ARCHITECTURE NODE. Not authorized in D3.
+- Owner/area: core / transport permissions + testing
+- Links: BACKLOG.md PHASE-D1-8, app/core/transport_permissions.py:28,50-53,111-113
+
+## PHASE-C2-1 - Driver Workspace home trip quick-action button
+- Status: Done
+- Resolved: 2026-09-18 (Phase C2 full closure pass)
+- Raised: 2026-09-18 (Phase C2 Gate 3)
+- Context: The Active Trip card in the rebuilt Driver Workspace (`templates/transport/driver_dashboard.html`) must not render a quick "En route / Arrived / Start / Complete" action because the ONLY canonical driver trip-action endpoint (`POST /api/transport/drivers/me/trips/<int:booking_id>/status` -> `DriverTripResource`, app/transport/api/driver_routes.py:477) is keyed by internal booking id. The template context comes from `Booking.to_dict()` -> `ModelSerializer`, which reserves internal `id` (AGENTS.md 12.1 / app/core/serializers.py:28), so `active_trip.id` is never available in HTML, and shipping an internal id in the page URL is prohibited. Adding a duplicate endpoint or expanding the API contract is outside Phase C2's presentation-only mandate.
+- What needs to happen: Add reference-keyed (booking_reference) driver trip-action access -- either extend `DriverTripResource` to accept a `<string:booking_reference>` variant (single canonical implementation; backward-compatible public-contract change requiring approval) or provide a driver trip detail/manage page keyed by booking_reference -- then re-wire the Active Trip quick-action button. BEHAVIORAL, needs node authorization.
+- Owner/area: transport / driver workspace + api
+- Links: templates/transport/driver/driver_dashboard.html:226, app/transport/api/driver_routes.py:477-577, app/core/serializers.py:28, tests/test_driver_workspace_sections.py::TestActiveTripSection
+
+## PHASE-C1-1 - /transport/vehicles/<id>/edit|show JSON/AJAX contract returns 500 (pre-existing)
+- Status: PARTIAL - `vehicles_edit` half FIXED (2026-09-18, Phase C-1 browser-proof remediation: `app/transport/routes.py` `vehicles_edit` now branches explicitly - JSON returns `{"status": "ok", "id": id}` (byte-for-byte the pre-fix payload), HTML renders the edit template with `vehicle`; the three C-1 ownership JSON tests pass). `vehicles_show` half STILL OPEN.
+- Raised: 2026-09-18 (Phase C2 Gate 3 verification, pre-existing defect discover)
+- Context: `ProviderService.get_vehicle()` returns a `Vehicle` ORM instance (app/transport/services/provider_service.py:513). `vehicles_share` (`app/transport/routes.py` `vehicles_show`) passes that ORM object directly to `_json_or_template`, which hands it to `jsonify()` when the client sends `Accept: application/json`; Flask cannot serialize a SQLAlchemy object -> 500. HTML (no JSON Accept) renders fine.
+- What needs to happen: Serialize `Vehicle` via the canonical `ModelSerializer`/`to_dict()` before `_json_or_template` when JSON is wanted (Phase C1 remediation node). LOCAL/BEHAVIORAL.
+- Owner/area: transport / vehicle pages
+- Links: app/transport/routes.py:1464-1521, app/transport/services/provider_service.py:513-519, tests/test_phase_c1_vehicle_ownership.py:406-476
+
+## PHASE-D3-A - Canonical Transport Admin Foundation (Overview) - DONE (Gate 3 implementation + Gate 4 verification)
+- Status: Done
+- Resolved: 2026-09-18
+- What was implemented (D3-A only): canonical entry `/admin/transport-admin` (`admin.transport_admin_dashboard`; guard `login_required` + `require_permission("transport.view")` + platform context) fed exclusively by `DashboardService.get_admin_dashboard_context()` (no business logic in route; deterministic `abort(500)` instead of the legacy self-redirect); canonical shell `templates/admin/transport_admin_dashboard.html` (Overview active; B..G sections rendered as disabled Soon chips, no dead links); `datetimeformat` template filter registered centrally in `app/__init__.py`; focused suite `tests/test_transport_admin_canonical_overview.py` (11 tests incl. `module_enabled` service-bool/template-helper collision protection).
+- Verification (D4-A, Gate 4): 93 tests passed across canonical + authority/lock/overview + driver/org/provider suites; `STARTUP_OK`; endpoint validator green; browser proof via live server (throwaway users removed): transport_admin 200 w/ canonical shell+Overview, ordinary user denied->`/`, Driver denied->`/` + Driver Workspace 200, super_admin 200, admin/owner 200; zero console errors on the canonical Overview.
+- NOT implemented: D3-B..D3-G, REST authorization remediation (`PHASE-D2-3`), legacy retirement, dynamic `TransportPermission` redesign (`PHASE-D2-4`), Dispatch engine changes.
+- Pre-existing defects observed + deferred (NOT fixed in D3/D4): Driver Workspace references missing `static/transport/js/utils.js` (404); `tests/test_transport_restful_auth.py` 2 fails (RESTful anonymous `@login_required` -> 500, deferred `PHASE-D2-3`/PHASE-D-AUTH-REST).
+- Owner/area: transport / admin
+- Links: app/admin/route_modules/transport_admin.py:30-57, templates/admin/transport_admin_dashboard.html, app/__init__.py:1700-1715, tests/test_transport_admin_canonical_overview.py, docs/transport/dashboard-preservation-inventory.md �15.15-15.18
+
+## ORG-NAV-SHARED-LABELS - Org-context header menu (Wallet/Dashboard) + org wallet routing
+- Status: Done
+- Resolved: 2026-09-18
+- Context: In organisation context the shared header (desktop + mobile drawer) labelled the items "Org Wallet" / "Org Dashboard", and the Wallet link pointed at the PERSONAL wallet (wallet.wallet_dashboard -> current_user ledger), NOT the organisation wallet. A user who switched to personal had no header affordance to switch back into an organisation (the org dropdown only offered "Switch to Personal", and the personal dropdown had no org entries), so an org owner could feel stranded in one context.
+- What was implemented: (1) Renamed org-context labels to "Wallet" / "Dashboard" in the desktop nav and the mobile drawer (org context remains visibly indicated by the far-right org avatar/name dropdown and a "Organisation · <name>" drawer label). (2) The org-context Wallet link now targets the ORGANISATION wallet route org.wallet (/org/<id>/wallet) instead of the personal wallet_dashboard, in both desktop nav and drawer. (3) Added "Switch to Organisation" entry points: personal-context dropdown + drawer now render one POST auth.switch_context form per available organisation context (public_id + role), so users (incl. org owners) can move freely between contexts. "Switch to Personal" retained in the org dropdown/drawer. (4) Added template-content test test_base_nav_shared_labels_and_org_wallet_routing in tests/test_org_workspace.py.
+- Verification: python -c "from app import create_app" -> IMPORT_OK; pytest tests/test_org_workspace.py -> 4 passed / 1 pre-existing failure (below); `available_contexts`/`active_context` are injected globally by inject_user_context (app/__init__.py:1781-1889); switch_context route validated by tests/test_stage4b8_context_switch_e2e_proof.py.
+- Owner/area: shared navigation (templates/base.html) + org workspace
+- Links: templates/base.html, app/identity/routes.py:706 (org.wallet), app/auth/context.py:638 (switch_context), tests/test_org_workspace.py
+
+## PRE-EXISTING FAIL - test_organisation_dashboard_links_use_public_identifier
+- Status: Not started
+- Raised: 2026-09-18
+- Context: `tests/test_org_workspace.py::test_organisation_dashboard_links_use_public_identifier` fails on main (verified by stashing all working-tree changes and re-running: still FAIL). The test asserts org_id=org.org_id appears somewhere in templates/org/dashboard.html, but the sidebar links use org.slug (e.g. url_for('org.dashboard', org_id=org.slug)) — the template is public-slug-based while the test asserts the legacy org_id reference. Not related to the ORG-NAV-SHARED-LABELS change.
+- What needs to happen: Reconcile the test contract with the current template: either update the test to assert the slug/public-identifier contract actually used, or, if the dashboard must expose org.org_id, align the links. Requires a decision on which contract is intended (slug is the documented canonical and is consistent with _organisation_public_id_to_slug). LOCAL test/template contract decision.
+- Owner/area: identity / organisation workspace (templates/org/dashboard.html, tests/test_org_workspace.py)
+- Links: tests/test_org_workspace.py:13-18, templates/org/dashboard.html (sidebar ~:161-219), app/auth/context.py:128-151
+
+## PHASE-C2-DEFER - Driver Workspace `?_pane=1` renders an empty page - DONE (fixed 2026-09-18)
+- Status: Done
+- Resolved: 2026-09-18
+- Raised: 2026-09-18 (Phase C2 Gate 4 browser verification, pre-existing defect discover)
+- Context: `templates/transport/driver/base.html` rendered the `{% block content %}` ONLY inside `{% if not is_pane %}`, so `_pane=1` emitted just the pane `<style>` block and an empty body. VERIFIED FIXED: content block + flash now render in both modes (`<main class="t-content">` hoisted outside the `is_pane` guard; the non-pane markup keeps identical nesting). Live check: `/transport/driver-dashboard?_pane=1` now serves the full cockpit content (h1, 4 panels, vehicle link; `.t-content` padding 20px) and the normal page is unchanged; `pytest tests/test_driver_workspace_*.py` still 50 passed. This also enables pane rendering for `vehicle_dashboard.html` / `register_vehicle.html`, which share the shell.
+- What needs to happen: none (resolved). Note: in pane mode `extra_css`/`extra_js` are still intentionally excluded (pre-existing shell design), so the cockpit renders bare/stacked there.
+- Owner/area: transport / driver workspace shell (`templates/transport/driver/base.html`)
+- Links: templates/transport/driver/base.html:5-48,148,171; templates/transport/driver/driver_dashboard.html (extends the shell); tests/test_driver_workspace_sections.py (no pane assertions today)
+
+## DRIVER-MVP-5 — Advanced live map (deferred, not MVP)
+- Status: Not started
+- Raised: 2026-09-18
+- Context: Driver Dashboard MVP ships without advanced map infrastructure per node authorization section 12 (no Mapbox/Leaflet, no new geolocation APIs, no WebSockets, no new real-time infrastructure). Existing location data renders only where already safe.
+- What needs to happen: Authorized future node to specify map provider, real-time channel, and location-data contract before implementing. BEHAVIORAL/ARCHITECTURAL.
+- Owner/area: transport / driver workspace
+- Links: templates/transport/driver/driver_dashboard.html, app/transport/api/driver_routes.py (DriverLocationResource)
+
+## DRIVER-MVP-6 — Demand zones / heat visualization (deferred, not MVP)
+- Status: Not started
+- Raised: 2026-09-18
+- Context: No fake demand zones, fake coordinates, or fake timers in MVP (real-data-only). Demand/heat engine does not exist.
+- What needs to happen: Authorized future node to specify demand engine, data source, and rendering contract before implementing. BEHAVIORAL/ARCHITECTURAL.
+- Owner/area: transport / driver workspace
+- Links: templates/transport/driver/driver_dashboard.html
+
+## DRIVER-MVP-7 — Deferred non-MVP findings (earnings, SOS, notifications, vehicle ops-shell)
+- Status: Not started
+- Raised: 2026-09-18
+- Context: MVP shows only existing get_driver_earnings/DashboardService totals. Out of scope per node sections 8 and 16.
+- What needs to happen (each needs its own authorized node; wallet/financial items are HIGH_RISK): full earnings reconciliation; organisation commission breakdown; withdrawal/payout UI (no wallet/financial model changes in MVP); full SOS workflow; advanced notification preferences; vehicle ops-shell alignment; other previously recorded non-MVP findings.
+- Owner/area: transport / wallet (financial items) + driver workspace
+- Links: templates/transport/driver/driver_dashboard.html, app/transport/services/dashboard_service.py, app/wallet/models/ (protected)
+
+---
+
+## GEO-14 — Live Valhalla operational verification (DEFERRED / PROVIDER DEPENDENCY)
+- **Status:** DEFERRED — NOT AUTHORIZED to implement
+- **Raised:** 2026-09-19
+- **Context:** GEO Routing Adapter Foundation is COMPLETE (adapter code + 14 contract tests, real localhost round-trips; truthful miss preserved). No live Valhalla exists in any environment (no compose service, no endpoint configured, provider disabled by default), so live routing was explicitly NOT verified. This entry tracks only the deferred live verification — it does NOT reopen the adapter foundation.
+- **What needs to happen (on reopen):** authorized endpoint or local deployment + provider enablement; then verify a real route request, road distance, duration, geometry decoding, response-shape compatibility, real failure behavior; record provider/version/endpoint; confirm no startup network dependency. Do NOT deploy Valhalla, enable paid providers, or commit credentials to satisfy this item.
+- **Owner/area:** GEO routing / infrastructure
+- **Dependency:** authorized Valhalla endpoint or local deployment
+- **Authorization:** NOT AUTHORIZED
+- **Evidence/source:** routing node report (DEFERRED / PROVIDER DEPENDENCY); `app/geo/providers/valhalla.py`, `tests/test_geo_routing.py`
+- **Supporting record:** `GEO_DEFERRED_WORK_REGISTER.md` (add GEO-14 on next register sync; statuses must agree with this entry)
+- **Links:** `app/geo/providers/valhalla.py`, `app/geo/services.py::build_routing_service`, `tests/test_geo_routing.py`, `docker-compose.yml` (no valhalla service), `.env*` (no GEO_VALHALLA_URL)
+
+---
+
+## GEO-15 — Routing matrix (sources_to_targets) (DEFERRED / NO PRODUCT REQUIREMENT)
+- **Status:** DEFERRED — NOT AUTHORIZED to implement
+- **Raised:** 2026-09-19
+- **Context:** RoutingProvider declares matrix(), but no AFCON360 product path requires multi-origin/multi-destination computation today. The Valhalla adapter returns truthful unresolved matrix results (pinned by test). This is INTERFACE-ONLY by design, not a defect.
+- **What needs to happen (on reopen):** a concrete product requirement (e.g., dispatch planning across N drivers × M bookings) plus authorization; then implement sources_to_targets mapping with the same normalization/error contract as route(). Do NOT confuse with single-origin routing, which is already implemented at adapter level.
+- **Owner/area:** GEO routing
+- **Dependency:** concrete product requirement + authorization
+- **Authorization:** NOT AUTHORIZED
+- **Evidence/source:** routing node report (MATRIX = INTERFACE ONLY / DEFERRED); `app/geo/interfaces.py::RoutingProvider.matrix`
+- **Supporting record:** `GEO_DEFERRED_WORK_REGISTER.md` (add GEO-15 on next register sync; statuses must agree with this entry)
+- **Links:** `app/geo/providers/valhalla.py::matrix`, `app/geo/interfaces.py`, `tests/test_geo_routing.py::test_matrix_returns_unresolved_deferred`
+
+---
+
+## GEO-16 — Live Photon operational verification (DEFERRED / PROVIDER DEPENDENCY)
+- **Status:** DEFERRED — NOT AUTHORIZED to implement
+- **Raised:** 2026-09-19
+- **Context:** GEO Geocoding / Places Adapter Foundation is COMPLETE (adapter code + 20 contract tests, real localhost round-trips; truthful miss preserved). No live Photon exists in any environment, so live geocoding was explicitly NOT verified. This entry tracks only the deferred live verification — it does NOT reopen the adapter foundation. Do NOT enable public Photon/Nominatim merely to close this item.
+- **What needs to happen (on reopen):** authorized Photon endpoint or local deployment + enablement; then verify real forward geocoding, real reverse geocoding, real response shape, normalization, coordinate order, availability, timeout/failure behavior; record provider/version/configuration; confirm no startup dependency.
+- **Owner/area:** GEO geocoding / infrastructure
+- **Dependency:** authorized Photon endpoint or local deployment
+- **Authorization:** NOT AUTHORIZED
+- **Evidence/source:** geocoding node report (LIVE PROVIDER VERIFICATION DEFERRED); `app/geo/providers/photon.py`, `tests/test_geo_geocoding.py`
+- **Supporting record:** `GEO_DEFERRED_WORK_REGISTER.md` (add GEO-16 on next register sync; statuses must agree with this entry)
+- **Links:** `app/geo/providers/photon.py`, `app/geo/services.py::build_geocoding_service`, `tests/test_geo_geocoding.py`
+
+---
+
+## GEO-17 — H3 spatial indexing (DEFERRED / EVIDENCE-GATED)
+- **Status:** DEFERRED — NOT AUTHORIZED to implement
+- **Raised:** 2026-09-19
+- **Context:** H3 was never assessed as a current requirement in any GEO node. It remains deferred until real geographic aggregation/demand/activity requirements justify it. Treating it as future work preserves the evidence-gated principle: no spatial index is introduced merely because GEO may eventually benefit.
+- **What needs to happen:** Nothing until a concrete aggregation/demand/activity requirement justifies H3. Do NOT add the dependency, schema, or index without explicit authorization.
+- **Owner/area:** GEO infrastructure (future)
+- **Dependency:** concrete aggregation/demand/activity requirement
+- **Authorization:** NOT AUTHORIZED
+- **Evidence/source:** GEO roadmap position (deferred unless product-required); no node assessed H3 as needed
+- **Supporting record:** `GEO_DEFERRED_WORK_REGISTER.md` (add GEO-17 on next register sync; statuses must agree with this entry)
+- **Links:** none (no H3 code exists in the repository)
+
+---
+
+## GEO-18 — Migrate existing Leaflet pages to shared GEO renderer + CSP-safe CDN (DEFERRED / NOT AUTHORIZED)
+- **Status:** DEFERRED — NOT AUTHORIZED to implement
+- **Raised:** 2026-09-19
+- **Context:** The shared GEO map renderer (`app/geo/map_renderer.py` + `static/js/geo/geo-map.js`, proven on `/geo/`) exists, but existing domain pages still carry duplicated inline Leaflet initialization AND load Leaflet from `unpkg.com`, which the enforced CSP `script-src` (`'self'` + nonce + `cdn.jsdelivr.net` only) does not allow — so those maps are CSP-blocked whenever enforcement is on. Affected: `templates/transport/drivers/location.html`, `templates/transport/vehicles/location.html`, `templates/accommodation/explore.html` (+ `static/js/modules/accommodation/explore.js`), plus unused Leaflet asset includes in `templates/transport/dashboard/keep.html` / `base_dashboard.html`. Verified by inspection 2026-09-19; no existing page was modified by the map-renderer node.
+- **What needs to happen (on reopen):** authorized node migrates each page to `window.GeoMap.init` with server-supplied `build_public_map_config()`, switches Leaflet assets to the CSP-allowlisted `cdn.jsdelivr.net` builds, removes unused dashboard Leaflet includes, and re-proves each page in a real browser (rendered map, truthful empty states, no CSP violations). Do NOT change map behavior, eligibility, or domain logic during migration.
+- **Owner/area:** GEO renderer + Transport / Accommodation page owners
+- **Dependency:** authorization per page (domain owners)
+- **Authorization:** NOT AUTHORIZED
+- **Evidence/source:** map-renderer node inventory (§4); `app/__init__.py` CSP `script-src`; listed templates above
+- **Supporting record:** `GEO_DEFERRED_WORK_REGISTER.md` (add this item on next register sync; statuses must agree with this entry)
+- **Links:** `static/js/geo/geo-map.js`, `app/geo/map_renderer.py`, `templates/transport/drivers/location.html:10,92,97-98`, `templates/transport/vehicles/location.html:10,34,37-38`, `templates/accommodation/explore.html:9-10`, `static/js/modules/accommodation/explore.js:18-32`
+
+---
+
+## GEO-19 — MapLibre GL JS adoption as future shared renderer (DEFERRED / EVIDENCE-GATED)
+- **Status:** DEFERRED — NOT AUTHORIZED to implement
+- **Raised:** 2026-09-19
+- **Context:** MapLibre GL JS remains the preferred target shared renderer per GEO architecture, but the map-renderer node deliberately did NOT introduce it (CASE B): no MapLibre asset, style, tile source, credential, or provider exists in any environment, and the existing Leaflet renderer satisfies the foundation cleanly behind the shared boundary. Introducing MapLibre now would have required new infrastructure with no product requirement justifying it.
+- **What needs to happen:** Nothing until a concrete product requirement (vector tiles, PMTiles/Martin consumption, richer client rendering) justifies it. Then: authorized node proves package delivery, style/source requirement, provider availability, credentials handling (server-side only), offline/development behavior, no startup network dependency, no production-cost surprise — without mass-migrating existing domain maps in the same change.
+- **Owner/area:** GEO infrastructure (future)
+- **Dependency:** concrete product requirement + authorized tile/style provider
+- **Authorization:** NOT AUTHORIZED
+- **Evidence/source:** map-renderer node §26 decision (CASE B); `app/geo/providers/tiles.py` (PMTiles/Martin seam reserved); no MapLibre code exists in the repository
+- **Supporting record:** `GEO_DEFERRED_WORK_REGISTER.md` (add this item on next register sync; statuses must agree with this entry)
+- **Links:** `app/geo/providers/tiles.py`, `app/geo/README.md` (renderer section)
+
+---
+
+## MARKETPLACE-VERTICAL-SLICE-1 — Marketplace functional slice + test-DB migration outcome (DONE, deferred follow-ups recorded)
+- **Status:** Partially complete (core slice; remaining items listed below)
+- **Raised:** 2026-09-19
+- **Context:** Marketplace vertical slice (owner lists vehicle → driver applies → owner approves → driver accepts → `DriverVehicleHistory` → `can_go_live()`) verified by `tests/transport/test_marketplace_operational_flow.py` (7 tests) + `tests/transport/test_marketplace_service_organisation_ownership.py` (6 tests) + `-k "marketplace or ownership or vehicle"` bundle (22 tests). All green.
+- **Migration outcome (important):** The hand-written `migrations/versions/4dc568c00f86_add_vehicle_marketplace_models.py` was a defective blind spot for Alembic autogenerate — inferred model state but was never executed/applied. It was RETIRED (deleted; backup at `%TEMP%\opencode\4dc568c00f86_defective_backup.py`). Migration head is now `b73d33d073e1`. The test DB had no marketplace tables because `tests/conftest.py` builds via `db.create_all()` only when the schema is missing (fast path skips rebuild when `users` exists) and the test DB predated the marketplace models. The sanctioned fix `python scripts/setup_test_db_schema.py` recreated the test DB from current models (218 tables incl. marketplace tables) and stamped head `b73d33d073e1`. Conftest/`create_all()` remains the source of truth for the test DB; no marketplace migration file exists and none is required for tests.
+- **Bugs fixed:** (1) `create_listing` default `listing_status` changed from `draft` to `active` (owner listing a vehicle should be immediately live, matching the vertical-slice contract); (2) two tests in `test_marketplace_operational_flow.py` created a `vehicle` but never added it to the DB session before `create_listing` (test bug).
+- **What needs to happen (deferred follow-ups):**
+  - `MARKETPLACE-COMMERCIAL-1` concept remains deferred (commercial/earnings model for marketplace contracts).
+  - Owner-to-driver discovery UX (public marketplace browse by external drivers) not in the authorized node; no new endpoint/UI added.
+  - Two-party acceptance columns (driver signature / owner signature on `vehicle_contracts`) NOT added; contract sign-off currently uses the driver-facing accept bridge only. Requires its own authorization + CHECK-constraint sync path (§20.2).
+  - `migrations/env.py` still carries a stale "enums as String" comment; repo-wide enum-representation fix is a migration-law matter (§14, §20), not authorized.
+- **Owner/area:** Transport (marketplace)
+- **Dependency:** none for core slice; each follow-up needs its own authorization.
+- **Authorization:** Vertical slice implementation authorized; no migration file created or applied.
+- **Evidence/source:** 13 tests green (7 flow + 6 ownership); 22 green on broader bundle. Test DB verified: 218 tables, marketplace tables present, `alembic_version = b73d33d073e1`.
+- **Links:** `app/transport/services/marketplace_service.py` (`create_listing` default ACTIVE), `tests/transport/test_marketplace_operational_flow.py`, `tests/transport/test_marketplace_service_organisation_ownership.py`, `scripts/setup_test_db_schema.py`, `tests/conftest.py`, AGENTS.md §20.2
+
+---
+
+## AUTH-REQUIRE-ROLE-FALLBACK — `require_role()` admin bypass via truthy bound method (SECURITY)
+- **Status:** Not started
+- **Raised:** 2026-09-19
+- **Context:** The dynamic-permission fallback inside `require_role()` (`app/auth/decorators.py`) checks `if is_owner(user) or user.is_super_admin: pass`. `User.is_super_admin` is a **method**, so the bound method is always truthy; any authenticated user who fails the named-role check falls through to this branch and is **allowed** (e.g. a plain user passed `@require_role("admin", "super_admin", "owner")` on a GEO health route). Every route gated by `@require_role(...)` with admin roles is therefore effectively open to any logged-in user whenever the primary role check fails. Verified empirically (plain user → 200). The GEO health page was hardened by switching to `@admin_required` (which has no fallback and correctly aborts 403), so GEO is not affected; the shared decorator and all other consumers remain vulnerable.
+- **What needs to happen:** Fix `app/auth/decorators.py` `require_role` fallback to call the method (`user.is_super_admin()`) or use `has_global_role(user, "super_admin", "owner")`; add a regression test asserting a plain authenticated user gets 403 on a `require_role`-gated route. Requires authorization — this is shared auth/security code (HIGH_RISK, §18.2, §23, §34).
+- **Owner/area:** Auth / Security
+- **Dependency:** authorization before touching shared decorators
+- **Authorization:** NOT AUTHORIZED
+- **Evidence/source:** probes during /geo/health UX task (plain no-role user returned 200 through `require_role`; `PLAIN has_global_role admin/sa/owner: False`; `PLAIN transport perms: []`); `app/auth/decorators.py:313-334`; `app/identity/models/user.py:423-424`
+- **Links:** `app/auth/decorators.py` (`require_role` fallback branch), `app/identity/models/user.py:423` (`is_super_admin` method), `tests/test_geo_integration.py` (GEO health switched to `@admin_required`)
+
+---
+
+## Location observation history - durable table migration (BLOCKED / MIGRATION AUTHORIZATION PENDING)
+- **Status:** Done (authorization arrived via roadmap GEO-15 node + AGENTS.md §20.1 automatic-generation rule; implemented 2026-09-20, see resolution note)
+- **Resolved:** 2026-09-20
+- **Resolution:** `app/geo/models.py::LocationObservation` (`geo_location_observations`) created; migration `6f8f4c204b61` autogenerated from model metadata (all columns/indexes detected, no hand-edit), verified, `flask db upgrade` applied (dev head `6f8f4c204b61`); test DB rebuilt via sanctioned `scripts/setup_test_db_schema.py` (219 tables, stamped head); writer wired in `TrackingService.update_location` (same-transaction append, every observation, no sampling); retrieval `app/geo/history.py::get_observations` + admin-guarded `GET /geo/history/location/<type>/<public-ref>`; 15/15 `tests/test_geo_history.py` pass; GEO-13/14 regression intact (39/39); retention still PENDING PRODUCT/COMPLIANCE DECISION (no period invented, no cleanup added); no legitimate existing history UI consumer found (trip-history page is bookings, coordinate-free) so no browser consumer proof.
+- **Raised:** 2026-09-20
+- **Context:** Roadmap GEO-15 (Location History & Retention) MAP finding: no durable location-observation history exists. Current location lives in Redis `transport:tracking:<type>:<id>` (TTL 300s) plus overwrite-in-place `DriverProfile.last_location`/`location_updated_at` and `Vehicle.current_location`/`last_location_update`. `DriverVehicleHistory` is assignment history (no coordinates); `drivers/history.html` is a bookings trip table (no coordinates); wallet audit `geolocation` is request context, not driver observations; notifications Redis Streams are transport-only. The key test (A@T1, B@T2, current=B, history=[A,B]) is unprovable without new durable storage. (Note: roadmap number GEO-15 collides with the existing "GEO-15 - Routing matrix" entry in this file; no renumber performed.)
+- **What needs to happen (on authorization):** reviewed migration creating a GEO-owned observation table (entity_type, public_ref, latitude, longitude, accuracy, observed_at, source, recorded_at; BaseModel dual-ID; index on (entity_type, public_ref, observed_at DESC)); writer = `TrackingService.update_location` append (same-transaction durability + sampling policy TBD); reader = GEO history service + admin-guarded view mirroring SSE auth with a days-cap (see `DriverHistoryResource` precedent); retention NOT invented - see dependency below. Record raw-POST timestamp semantics: `update_location` currently stamps server-receive time and drops any device timestamp.
+- **Owner/area:** GEO storage boundary + Transport producer/consumer
+- **Dependency:** (1) explicit migration authorization; (2) retention-period decision - no project policy exists for location observations (AML 10y baseline is compliance-owned for AML resources; audit 7-10y audit-owned; events 365d; notifications 30d). Do NOT invent 30/90 days.
+- **Authorization:** NOT AUTHORIZED (migration + new endpoint)
+- **Evidence/source:** GEO-15 MAP/TRACE (TrackingService.update_location lines 30-119; DriverLocationResource.post driver_routes.py:278-324; DriverProfile.last_location models.py:333-334; DriverVehicleHistory models.py:884-927); GEO-13/14 regression 39/39 intact; STARTUP_OK
+- **Links:** `app/transport/services/tracking_service.py`, `app/geo/realtime.py`, `app/transport/models.py:333-334,884-927`
+
+---
+
+## Location-history retention policy (DEFERRED / DECISION REQUIRED)
+- **Status:** DEFERRED - product/compliance decision required; intentionally not implemented
+- **Raised:** 2026-09-20 (GEO-15 closeout)
+- **Context:** Durable location history is implemented (`geo_location_observations`, GEO-15 PASS). No arbitrary retention period was invented and no cleanup exists: rows are never auto-purged. No project policy covers location observations (AML 10-year baseline is compliance-owned for AML resources only; audit 7-10y is audit-owned; events prune at 365d; notifications at 30d - none apply to GEO observations). Retention enforcement/cleanup is therefore intentionally absent.
+- **What needs to happen:** Product/compliance determines the appropriate retention period for location observations; a later authorized node implements enforcement. Future cleanup MUST use a sanctioned mechanism (soft-delete, never raw DELETE - `ix_geo_obs_recorded` is pre-placed for the pruning scan). Never silently delete historical location data.
+- **Owner/area:** Product + Compliance (decision); GEO + Transport (implementation)
+- **Dependency:** retention-period decision
+- **Authorization:** NOT AUTHORIZED (no enforcement work scoped)
+- **Evidence/source:** GEO-15 final report (RETENTION_POLICY = PENDING); `app/geo/models.py` module docstring; `app/geo/README.md` history section
+- **Links:** `app/geo/models.py`, `app/geo/history.py`
+
+---
+
+## Location-history sampling / write-amplification policy (DEFERRED / EVIDENCE-GATED)
+- **Status:** DEFERRED - no action until real operational volume demonstrates need
+- **Raised:** 2026-09-20 (GEO-15 closeout)
+- **Context:** GEO-15 persists every authoritative location observation (one INSERT per `update_location` commit - proportional today). No product requirement currently justifies arbitrary sampling or deduplication, so none was invented. Identical consecutive coordinates are still appended (timing truth preserved).
+- **What needs to happen:** If real operational volume demonstrates write-amplification pressure, a later authorized node may introduce sampling/deduplication. Any such change MUST be evidence-driven (measured volume, stated threshold) and MUST preserve truthful history semantics (timestamps, ordering, no fabricated movement, stale stays truthful).
+- **Owner/area:** GEO + Transport (evidence); Product (sampling rule, if ever needed)
+- **Dependency:** measured volume evidence - none exists today
+- **Authorization:** NOT AUTHORIZED (no sampling work scoped)
+- **Evidence/source:** GEO-15 final report (write-amplification decision); `app/transport/services/tracking_service.py` history append block; `tests/test_geo_history.py` (chronology/integrity pins)
+- **Links:** `app/transport/services/tracking_service.py`, `tests/test_geo_history.py`
+
+---
+
+## Transport booking show page 500 - template expects non-existent booking attribute (DEFECT / TRANSPORT)
+- **Status:** Done (repaired 2026-09-20, see resolution note)
+- **Resolved:** 2026-09-20
+- **Resolution:** Root cause was a phantom template key: `scheduled_pickup_time` exists nowhere in code (no column/property/serializer). Authoritative fix in ONE layer - `Booking.to_dict()` override (`app/transport/models.py`) defines the alias as required `pickup_time` ISO-8601 (serializer convention; honors include/exclude). No template change, no migration, no formatting duplication. Verified: new `tests/test_transport_booking_show.py` 3/3 (alias contract, show 200 with reference + scheduled value, API detail carries alias); browser Cases A/B/C (200, correct value, absent datetimes render empty, desktop overflow 0); serialization/auth API + D5/tracking/matching suites green (4 pre-existing moderator timestamp failures unchanged); GEO suite green; STARTUP_OK.
+- **Raised:** 2026-09-20 (GEO-18 evidence audit)
+- **Context:** `GET /transport/bookings/<id>` returns 500 for every booking. `bookings_show` passes the service-dict representation (`get_booking(id)`), but `templates/transport/bookings/show.html:60` dereferences `booking.scheduled_pickup_time`, which exists neither as a `Booking` column nor in the service dict; the `|datetimeformat` filter runs before `|default`, so the guard never applies (`UndefinedError: 'dict object' has no attribute 'scheduled_pickup_time'`). Proven in browser (500) + traceback. Related to the bookings-INDEX data-contract gap recorded at BACKLOG line ~1176 (same missing-serializer class, list vs detail manifestation) - not a duplicate: this is a 500 on the detail page.
+- **What needs to happen:** Transport-owned minimal repair (guard the template access and/or extend the service representation); re-prove the show page for draft through completed bookings. Do NOT bundle with unrelated Transport work.
+- **Owner/area:** Transport (page + service representation)
+- **Dependency:** Transport node authorization for the repair
+- **Authorization:** NOT AUTHORIZED (audit only)
+- **Evidence/source:** GEO-18 audit browser 500 + server traceback (`show.html:60`, `datetimeformat_filter`); `app/transport/routes.py::bookings_show`; `Booking` model has no `scheduled_pickup_time` column
+- **Links:** `templates/transport/bookings/show.html:60`, `app/transport/routes.py` (`bookings_show`)
+
+---
+
+## No user-facing booking-scoped live tracking surface (GAP / TRANSPORT PRODUCT)
+- **Status:** Done (implemented 2026-09-20 in the authorized rider-tracking node, see resolution note)
+- **Resolved:** 2026-09-20
+- **Resolution:** Booking-scoped rider tracking shipped: Transport-owned `TrackingService.get_rider_tracking_subject` (owner-or-admin, canonical active states incl. latched disputed, terminal/released/missing deny) + `GET /geo/stream/booking/<ref>` SSE with per-tick booking revalidation (`closed` frame, reconnect re-authorizes) + booking show-page Live Tracking card (shared GeoMap + GeoRealtime, server-computed flag, CSP-safe jsdelivr Leaflet). Proven: 20/20 `tests/test_geo_rider_tracking.py` (full lifecycle matrix incl. mid-stream completion race), browser rider-live/marker-move/second-rider-denied (page+403)/stale/missing/disconnect/reconnect-recovery/mid-stream-Trip-ended, 266-test GEO+consumer regression green. No global maps, no driver lookup, no admin-auth weakening, no new infra, no migration.
+- **Raised:** 2026-09-20 (GEO-18 evidence audit)
+- **Context:** The full backend chain works end-to-end (proven live: toggle-gated online -> owner location publish -> booking create/confirm -> `discover_and_offer` -> offer -> accept/claim ASSIGNED -> en_route -> arrive -> start -> complete, plus GEO-14 SSE delivery to the admin driver-location page with live marker). But no passenger/user-facing page shows the assigned driver's live position for a booking: the only live map is the admin/ops driver-location surface (`/transport/drivers/<id>/location`, admin-gated). `bookings/show.html` has a lifecycle stepper and no map. GEO realtime/history/nearby/activity primitives are ready and admin-proven; the missing piece is a Transport product surface (booking-scoped, privacy-scoped tracking for the passenger), which is product work for a later authorized Transport node - explicitly NOT GEO-18 scope and NOT a reason to invent UI here.
+- **What needs to happen:** A later authorized Transport node designs the passenger tracking surface (booking scope, privacy, freshness copy) consuming the existing GEO-14 stream + GEO-13 renderer. No GEO changes required.
+- **Owner/area:** Transport product (future authorized node)
+- **Dependency:** Transport product authorization; booking-show 500 repair above (same page family)
+- **Authorization:** NOT AUTHORIZED (audit only; no UI invented)
+- **Evidence/source:** GEO-18 journey proof (all stages OK to COMPLETED); template inventory (no tracking template under `templates/transport/`); GEO-14 browser evidence (admin-only live map)
+- **Links:** `templates/transport/bookings/show.html`, `templates/transport/drivers/location.html`, `app/geo/realtime.py`
+
+---
+
+## Driver dashboard 500 - route renders moved template path (P0 DEFECT / TRANSPORT)
+- **Status:** Done (repaired 2026-09-21, see resolution note)
+- **Resolved:** 2026-09-21
+- **Resolution:** Ownership proven COHERENT-direction/broken-reference: route owner Transport (`transport_bp`, `transport.driver_dashboard`, `driver_dashboard()` + module/login/driver-context guards) and template owner Transport Driver Workspace agree; only the path string was stale after the concurrent move, plus the moved template referenced the never-existing `transport.vehicle_marketplace` endpoint. Minimal fix: (1) render call `transport/driver_dashboard.html` -> `transport/driver/driver_dashboard.html` (follows the concurrent consolidation direction; no duplication, no restore of the stale file); (2) removed the dangling Browse-Marketplace anchor (re-add with the real route when marketplace browse lands; all workspace functions preserved). Verified: new `tests/test_transport_driver_dashboard.py` 3/3 (real switch-context login, 200 + code + sections, 403 without context); browser driver login -> switcher -> workspace 200 with code/availability/checklist/earnings/offers sections; 390/412/desktop overflow 0; console clean of new errors; journey suites green (4 pre-existing moderator failures unchanged); GEO suite green; STARTUP_OK.
+- **Raised:** 2026-09-20 (Transport UX readiness audit)
+- **Context:** `GET /transport/driver-dashboard` returns 500 for every driver: the route renders `transport/driver_dashboard.html`, but concurrent uncommitted work deleted that file and added `transport/driver/driver_dashboard.html` without updating the render call (`Exception: Template transport/driver_dashboard.html not found`, traced server-side). This is the driver home - login redirects drivers here - so every driver lands on a dead end. The new-location template itself looks complete (trip card with next-action buttons, offer accept/decline wired to API, earnings panel, compliance notices).
+- **What needs to happen:** Owning node either updates the render call to the new path or restores/keeps the old path - one coherent move, then re-prove driver login -> dashboard 200. Do NOT fix by duplicating the template in both locations.
+- **Owner/area:** Transport (route + template move owner)
+- **Dependency:** concurrent template-move node landing first
+- **Authorization:** NOT AUTHORIZED (audit only; touching the in-flight move risks conflict)
+- **Evidence/source:** UX audit browser 500 + server traceback (`app/__init__.py:227` loader); `app/transport/routes.py:1343`; `git status` shows `D templates/transport/driver_dashboard.html` + `AM templates/transport/driver/driver_dashboard.html`
+- **Links:** `app/transport/routes.py:1343`, `templates/transport/driver/driver_dashboard.html`
+
+---
+
+## Transport UX Review checkpoint (DEFERRED / BEFORE PRODUCTION-READINESS)
+- **Status:** DEFERRED - recorded, not executed (explicit checkpoint gate before any production-oriented Transport/domain adoption release)
+- **Raised:** 2026-09-20 (booking-show repair node)
+- **Context:** Full rider journey (front page -> Transport entry -> pickup/destination -> options -> price/ETA -> request -> confirmation -> assignment -> driver identity/vehicle -> live tracking -> pickup verification -> progress -> completion -> payment -> receipt/history -> rating/support/safety) and driver journey (onboarding -> approval/go-live -> online -> offer/earnings -> acceptance -> navigation/trip -> completion -> earnings/history -> issue/support) have never had a dedicated UX review. Known inputs already on record: booking-show repair (raw-ISO datetime presentation kept as-is, no redesign), mobile overflow debt on Transport shell/pages (409px at 390px viewport on booking show; 17px on driver location - pre-existing layout, untouched), no passenger tracking surface yet, accommodation-pane 400 on booking show, unpkg Leaflet/CSP migration (GEO-18 item), MapLibre future (GEO-19).
+- **What needs to happen:** A dedicated, separately authorized checkpoint reviews the objectives list (entry clarity, step count, state visibility, transparent pricing/earnings, pickup landmarks, identity confidence, PIN verification, truthful LIVE/STALE/NO DATA states, booking-scoped tracking, mobile, low-bandwidth, accessibility, error recovery, cancellation/refund clarity, safety access, org/event journeys, rider/driver/ops consistency) plus competitive capability discovery (record only; never auto-implement). Findings become separately authorized work.
+- **Owner/area:** Product + Transport (future authorized review node)
+- **Dependency:** passenger tracking surface; booking-show/index data-contract completion
+- **Authorization:** NOT AUTHORIZED (record only - do not execute in the repair node)
+- **Evidence/source:** booking-show repair node browser evidence (desktop/mobile/overflow/console); GEO-18 audit journey proof; UX readiness audit 2026-09-20 (see below); existing BACKLOG UX-adjacent items (GEO-18 leaflet migration, GEO-19, tracking GAP - now Done)
+- **Links:** `templates/transport/bookings/show.html`, `templates/transport/drivers/location.html`
+- **UX readiness audit 2026-09-20 (evidence, not implementation):** Front page: Transport discoverable (nav + card), tagline events-tilted, no H1 (P3). Transport home: H1 + Where-to + ride types + Book-a-Ride CTA, 0 overflow at 360px (good). Request form labeled (service/provider/pickup/dropoff/datetime/pax/payment) BUT no pre-submit fare/ETA preview (P1 pricing transparency; fare appears only post-booking). Gates redirect (profile/KYC) not dead-end. Driver: login landed on 500 home (P0, since repaired) then on bare 403 (P1 context recovery - RESOLVED 2026-09-21, see below); context switcher exists in user menu but KYC ribbon intercepts clicks (P1 still open) and manual switch needs exact payload (P2); toggle/offers/trip/earnings UI present (renderable after P0 repair). Ops: stats + bookings present, NO fleet live map (P2 opportunity; per-driver pages exist). States: stepper + text badges (color-independent - good); waiting copy is bare "No driver assigned" (P2); terminal/422 guards honest. Tracking states truthful (proven). Mobile: entry clean; detail pages carry pre-existing shell overflow. A11y: labels + role=status present; icon-only controls weak names (P3); contrast unmeasured. Pickup/identity: name/phone/rating/plate shown, no PIN (gap). Errors: tile-failure notice, reload recovery. No migration touched.
+- **P1 driver-403 recovery RESOLVED 2026-09-21:** root cause was the login resolver sending verified drivers to the dashboard without establishing Driver context (guard correct, redirect incoherent, 403 page bare). Fix in `_dashboard_for_user` STEP 7 (`app/auth/routes.py`): auto-establish the single eligible Driver context via the existing switch service (same validation), else fall through to user dashboard - never a dead end. Proven: real login POST -> workspace 200, browser login -> workspace with all sections, 390/412/desktop overflow 0; guards intact (non-driver/anon/invalid denied; unverified not routed). Remaining open P1s: KYC ribbon click interception (fare preview shipped 2026-09-21 - see fare node).
+
+---
+
+## Fare configuration governance - admin, audit, versioning (DEFERRED / GOVERNANCE NODE)
+- **Status:** Done (implemented 2026-09-21 in the authorized fare-governance node, see resolution note)
+- **Resolved:** 2026-09-21
+- **Resolution:** Fare tables live in `TransportSetting` row `fare.tables` (category pricing, permission-gated, non-public); versions auto-increment with effective_from (staged futures supported); audit via `modification_history` (old/new/at/by) + denial logging (pre-existing `update_setting` audit-log crash on missing `app.core.logging` repaired to `app.utils.audit`); cache invalidated on write (300s bounded TTL otherwise); engine/preview/final all resolve the effective version (historical explainability via `tables_version_at`, no per-booking stamp, no migration); endpoints `GET/PUT /api/transport/fare/config` gated by `transport.settings` permission (owner unconditional, delegated roles only). Proven: 14/14 governance tests (full auth matrix incl. non-delegated super-admin denial, versions, staged futures, audit, cache, no-ID-leak) + browser owner PUT->version->preview-reflects; 14/14 engine tests intact; 163-test regression green (4 pre-existing moderator failures unchanged); STARTUP_OK. Open limitations recorded: no reason field in shared history schema; no per-booking version stamp; no admin UI (API contract only); staged-future UX none.
+- **Raised:** 2026-09-21 (fare engine node)
+- **Context:** The fare node established ONE canonical engine (`app/transport/services/fare_service.py`, FARE_VERSION=1) with owner=Transport maintainers via reviewed code change. Deliberately NOT built: owner/super-admin configuration UI, change audit (actor/old/new/effective-time/version), effective-dated/versioned tables, per-booking fare-version stamping. Super-admin delegation model for pricing is undefined; ordinary admins/users cannot and must not touch fare tables (no surface exists - nothing to bypass).
+- **What needs to happen:** A separately authorized governance node designs configuration ownership (owner vs delegated super-admin), audit trail, and versioning/effective dates; only then expose any admin surface. Do NOT bolt ad-hoc settings onto unrelated admin pages.
+- **Owner/area:** Product + Transport (future governance node)
+- **Dependency:** product decision on pricing authority model
+- **Authorization:** NOT AUTHORIZED (record only)
+- **Evidence/source:** fare node audit (zero config keys in SystemConfig/TransportSetting; zero admin surfaces; hardcoded tables); `app/transport/services/fare_service.py` (FARE_VERSION + ownership docstring)
+- **Links:** `app/transport/services/fare_service.py`
+
+---
+
+## Booking locations stored as un-geocoded text - unmatchable requests, default-5km fares (PRODUCT GAP / TRANSPORT)
+- **Status:** Open - genuine product gap, evidenced, not implemented (geocoding + form-coordinate work is a separate authorized node)
+- **Raised:** 2026-09-21 (fare engine node)
+- **Context:** The booking form posts TEXT addresses only; `create_booking` stores them verbatim with no geocoding step (no Photon/provider call, no coordinate capture). Consequences proven by code read: (1) `MatchingService`/`get_nearby_drivers` skip bookings whose pickup lacks canonical coordinates (distance None), so text-address bookings can never match a driver; (2) every fare prices the `estimated_distance` default of 5 km (client-supplied, unverified) because no measured distance exists; (3) `app/schemas/transport.py` (BookingSchema) does not exist, so the form path always uses raw data. Related: GEO Photon live verification still deferred (existing BACKLOG item) - not a duplicate, this is the Transport consumption gap.
+- **What needs to happen:** Authorized node adds address->coordinate resolution at booking (Photon adapter exists), captures coordinates on the booking, feeds measured (straight-line, labeled) distance into fare + matching. Do NOT invent road-distance claims; keep GEO-16 semantics.
+- **Owner/area:** Transport product + GEO provider enablement
+- **Dependency:** Photon live endpoint decision (existing item); form coordinate capture design
+- **Authorization:** NOT AUTHORIZED (audit only)
+- **Evidence/source:** fare node MAP (`_form.html` fields; `book_transport` raw-data path; `booking_service.py` default-5; matching `_coordinates_or_none` skip); `app/schemas/` absence
+- **Links:** `templates/transport/bookings/_form.html`, `app/transport/services/booking_service.py`, `app/transport/services/matching_service.py`
+
+---
+
+## EGGE — Authorization context bridge: `policy.can()` when `org_id=None` (NODE C — RESOLVED)
+- **Status:** Done (2026-09-22) — merged into the base-navigation / legacy-context-key lineage. Node A (nav fallback) PASS; Node B (legacy context-key consumers audit) DEFERRED/proven; **Node C (this) = the authorization bridge fix, GATE: PASS**.
+- **Raised:** 2026-09-22 (Node C — user instruction; Node B proved the authorization-context defect)
+- **Context / evidence (Node B probe, live test DB, `org.finance.view` via `org_owner`):** `policy.can()` with `org_id=None` delegated to the legacy session bridge `is_acting_as_organization()`/`get_current_org_id()` (`app/auth/policy.py:79-83`) and passed whatever identifier shape the session held to `has_org_permission` (which matches `membership.organisation_id` = internal PK). Case A1 (org context + legacy PUBLIC id) → False false-negative; Case A2 (org context + legacy INTERNAL id) → True; Case B1 (personal + stale public) → False coincidental; **Case B2 (personal + stale INTERNAL id) → True while `can_in_context` = False = the authorization-context defect** (stale org keys could select an org permission scope outside any canonical org context). No privilege elevation (grants remain membership-authoritative) and, per repo-wide TRACE, NO reachable call site ever invoked `can(user, perm)` with `org_id=None` expecting an org-scoped grant — org authorization flows exclusively via explicit internal-PK `org_id`, `OrganisationMember.has_permission`, `_require_org_permission`, `OrganizationPermissionService.has_permission`, and `can_in_context`. The documented contract (docstring) primary clause + `tests/test_org_permission_read_path.py::test_policy_can_integration` + `tests/test_transport_admin_permission_authority.py` all pin `can(org_id=None)` = GLOBAL check.
+- **Resolution (minimal change, Model 2):** In `app/auth/policy.py`, removed the legacy session-derived org bridge; `org_id=None` now performs ONLY `has_global_permission` (pure/stateless, session never consulted). Explicit `org_id=<internal Organisation.id>` path unchanged (still delegates to `has_org_permission`). Docstring updated to state the contract: context-scoped checks must use `can_in_context`/membership paths. No schema, no wallet/KYC/models change, no migration.
+- **Security check (6/6 passed):** cannot grant org permission in personal context; explicit `org_id` authorization untouched; ownership alone grants nothing; stale session state can no longer influence authorization; membership/eligibility validation unchanged; all existing reachable global-permission call sites identical (verified). Noted: no reachable endpoint ever depended on the bridge, so failure was defense-in-depth for future code plus exact card for stale-grant closure.
+- **Tests:** new `tests/test_policy_can_org_id_contract.py` (4): omissive `can()` is global-only even with escalating stale org sessions in both identifier shapes; stale INTERNAL org PK cannot grant a non-member (former Case B2); global checks identical under stale session; owner bypass preserved. Verification: 4 + RBAC/authority/context/nav/E2E **74 passed**, org production/adversarial **20 passed** (total 98 green), `create_app` STARTUP_OK.
+- **Deferred (roadmap, do NOT reopen C):** Node D login default-org canonicalization (`app/auth/routes.py:1053` internal-id write + post-login redirect); Node E KYC/context presentation migration (`kyc/routes.py:1255`); Node F shell/dashboard legacy presentation cleanup (`user/routes.py:284-291`, `dashboard_shell.html:105-129`, `routes.py:1422-1423`). Pre-existing unrelated failure `test_org_workspace.py::test_organisation_dashboard_links_use_public_identifier` unchanged.
+- **Links:** `app/auth/policy.py`, `tests/test_policy_can_org_id_contract.py`, `tests/test_org_permission_read_path.py`, `tests/test_transport_admin_permission_authority.py`, `tests/test_auth_context.py`, `tests/test_nav_follows_active_context.py`
+
+---
+
+## EGGE — Context switching changes the operating context and the base navigation follows it, proven end-to-end (NODE CONTEXT-SWITCH-E2E — RESOLVED)
+- **Status:** Done (2026-09-22) — GATE: PASS. **NO PRODUCTION CODE CHANGE REQUIRED** (proof-only result); one nav presentation finding recorded as deferred.
+- **Raised:** 2026-09-22 (node continuation after Node C; user instruction: prove the real org→personal→org switch flow at HTTP/render level before Node D; do not touch policy or broaden scope).
+- **Evidence / trace:** Real HTTP journey over the live PostgreSQL test DB and the real Flask test client (no stub of `app.auth.context`, no shortcut through `inject_sitewide`). Switch chain fully wired: `POST /switch-context` (`app/auth/routes.py:1267-1355`) normalizes the payload via `ContextRequest.from_value`, writes ONLY canonical keys `active_context_type/active_context_id/active_role` through `context.switch_context()`; JSON branch returns `{"success":True,"context":...,"redirect":...}`, form branch 302s to `selected.workspace_url`. `get_active_context` (`app/auth/context.py:649`) gives canonical keys precedence; legacy `current_context`/`current_org_id` (internal id written at login `routes.py:1052-1053`) is only a fallback and fails validation → personal. Rendered base nav (`base.html` STATE 2 personal :455, STATE 3 org :399) swaps on the canonical context injected globally (`app/__init__.py:1782 inject_user_context`) + `inject_sitewide` (`:1393`). Org workspace redirect/links use the public slug `/org/<slug>/dashboard` (`app/identity/routes.py:232`), never the internal PK. Driver is a third valid context (`app/transport/models.py:239 DriverProfile`, live unless blocked; descriptor public_id = `driver.public_id or driver_code`).
+- **Proof (tests/test_stage4b9_context_switch_nav_e2e.py, 2 tests):** (1) `test_rendered_nav_follows_org_personal_driver` — real login → rendered PERSONAL nav (has "Switch to Organisation", no org menu, shell switcher `data-context-type=personal`); form POST → org → 302 to `/org/<slug>/dashboard` (slug, no internal PK) + session `active_context_type=organisation`/`active_context_id=<public>`/same `_user_id` + rendered ORG nav (has "Switch to Personal", `nav-org-name`, no internal `org_id=`); form POST → personal → 302 `/user/dashboard` + personal nav restored; JSON → driver (session `active_context_type=driver`, org menu gone) → JSON back to org (org nav restored). (2) `test_stale_legacy_org_keys_render_personal_nav` — canonical personal + stale legacy `current_context="organization"`/`current_org_id=<internal PK>`/`current_org_name` renders the PERSONAL nav (no org menu, no `nav-org-name`, no internal ids); explicit re-switch to org still wins through the canonical resolver.
+- **Root cause of initial test failure (test-only, not production):** the fixture user had no `UserProfile`, so `nav_profile_completed=False` and `base.html:350` STATE 1 ("Create Account", no context switcher) rendered instead of STATE 2/3. Fixed the harness by creating a profile-completed `UserProfile` (matches `test_org10`/`test_stage4b6` helpers and the real completed-onboarding journey).
+- **Finding (deferred — NOT fixed in this node):** `base.html` STATE ordering is `{% if not nav_profile_completed %}` (STATE 1) THEN `{% elif nav_in_org_context %}` (STATE 3), so an org-active user whose personal profile is incomplete renders the "Create Account"/locked-wallet CTA instead of the organisation workspace menu regardless of canonical context. Context switching itself works (session + canonical keys + `/user/dashboard` shell switcher), but the shared nav subordinates org context to onboarding completion. Presentation/behavioral change — requires authorization; candidate for Node F shell/legacy cleanup or a separate nav-spec decision.
+- **Verification:** regressions `test_stage4b9_context_switch_nav_e2e.py` (2) + `test_stage4b8_context_switch_e2e_proof.py` + `test_auth_context.py` + `test_nav_follows_active_context.py` + `test_policy_can_org_id_contract.py` = **23 passed**. No schema change, no wallet/KYC/identity-model change, no migration, `test_policy_can_org_id_contract.py` untouched (Node C locked).
+- **Deferred / next (roadmap, do NOT reopen this node):** Node D login default-org canonicalization; Node E KYC/context presentation; Node F shell/dashboard legacy presentation cleanup; new candidate — base.html STATE-1-over-org ordering (see finding above).
+
+---
+
+## Legacy KYC upgrade surfaces still show read-only requirement lists (DEFERRED / KYC)
+- **Status:** Open - recorded during the `/kyc/upgrade` fill-form work (2026-09-22); NOT implemented
+- **Raised:** 2026-09-22 (KYC upgrade fill-form node)
+- **Context:** The registered `/kyc/upgrade` page (`app/kyc/routes.py:upgrade` + `templates/kyc/upgrade.html`) now links every missing requirement to its fill form (`phone_verified` -> `/verify-phone`, `national_id` -> `/kyc/verify/national-id`, `proof_of_address` -> `/kyc/verify/address`, uploads -> `/kyc/verify/upload` with `preselect`). Two legacy surfaces remain read-only: `app/auth/kyc_routes.py` (`auth_kyc` at `/auth/kyc/upgrade`, same template, falls back to plain-text missing list with no links) and `app/kyc/upgrade_routes.py` (a `kyc` blueprint that is NOT registered anywhere - dead duplicate, renders the same template with an incompatible shape, and its `session['kyc_redirect_url']`/`required_tier` consume logic is unreachable). `app/kyc/routes.py` also still ships a local `TIER_INFO` used only by `/kyc/limits`.
+- **What needs to happen:** Either bring `auth_kyc.upgrade` to parity (pass `missing_actions`), retire the dead `app/kyc/upgrade_routes.py`, or migrate `/auth/kyc/*` consumers onto the registered `kyc` blueprint. Do NOT merge into an unrelated node.
+- **Owner/area:** KYC product + Auth
+- **Authorization:** NOT AUTHORIZED (record only)
+- **Evidence/source:** `app/kyc/routes.py` (upgrade + `_requirement_fill_url`), `templates/kyc/upgrade.html`, `app/auth/kyc_routes.py:47-80`, `app/kyc/upgrade_routes.py:18-135`, `app/__init__.py:989-998` (only `app.kyc.routes.kyc_bp` and `auth_kyc_bp` are registered)
+- **Links:** `app/kyc/routes.py`, `templates/kyc/upgrade.html`, `app/auth/kyc_routes.py`, `app/kyc/upgrade_routes.py`
+
+---
+
+## Tier / KYB status refresh is event-driven, not live (DEFERRED / KYC+KYB)
+- **Status:** Open — noted during the live Tier-5 Corporate demo fix batch (2026-09-22); NOT implemented
+- **Raised:** 2026-09-22 (KYC/KYB demo fixes)
+- **Context:** `kyc_level` snapshots are written by `KycService._sync_kyc_level_snapshot` ONLY at approve/reject events, and individual tier evaluation caches in-process (`kyc_compliance.py`) for ~300s in dev/test. A KYB doc → org-approval → Tier-5 upgrade therefore only reflects after the next event or cache expiry. Acceptable for the demo, but a user who completes Tier-5 outside an approve/reject event sees stale tier until TTL expiry.
+- **What needs to happen:** Deliberate staleness policy: (a) refresh `kyc_level` snapshot on ordinary evidence submissions/milestones, or (b) declare TTL-driven refresh acceptable and document it; do NOT start without authorization.
+- **Owner/area:** KYC product + Identity/KYB
+- **Authorization:** NOT AUTHORIZED (record only)
+- **Evidence/source:** `app/kyc/services.py` (`_sync_kyc_level_snapshot`), `app/auth/kyc_compliance.py` (`calculate_kyc_tier`, cache/TTL), `app/identity/services/organisation_kyb_service.py`
+- **Links:** `app/kyc/services.py`, `app/auth/kyc_compliance.py`
+
+---
+
+## Silent try/except swallows remain in admin/compliance + moderator (DEFERRED / BAN-OF-SILENT-SWALLOW)
+- **Status:** Open — noted during the KYC/KYB demo fix batch (2026-09-22); NOT implemented
+- **Raised:** 2026-09-22
+- **Context:** The demo batch removed the swallow in the moderator org approve/reject redirects and delegated compliance org actions to `OrganisationKYBService`, but the compliance org_action approve branch still sets fields then wraps the service call in try/except, and moderator `_audit()` calls are broadly wrapped (`try: ... except Exception: pass`); many other admin routes use the same pattern. Scope-limited: removing them is a separate audit-of-error-handling node.
+- **What needs to happen:** Target audit of `except Exception: pass` swallows in `app/admin/` (compliance + moderator); replace each with logged degradation or explicit propagation.
+- **Owner/area:** Admin / Compliance / Moderator
+- **Authorization:** NOT AUTHORIZED (record only)
+- **Evidence/source:** `app/admin/compliance/routes.py` org_action, `app/admin/moderator/routes.py` (`_audit` uses + approve/reject guards)
+- **Links:** `app/admin/compliance/routes.py`, `app/admin/moderator/routes.py`
+
+---
+
+## Admin compliance digest surface parity (DEFERRED / ADMIN)
+- **Status:** Open — noted during the KYC/KYB demo fix batch (2026-09-22); NOT implemented
+- **Raised:** 2026-09-22
+- **Context:** Daily compliance reports are scheduled (Celery beat), but the admin digest surface (dashboard summary of pending reviews, stale reviews, suspicious patterns via `app/audit/forensic_audit.py` getters) was not part of the approved fix batch.
+- **What needs to happen:** Separate product decision on where/how the digest is surfaced; not part of any node currently.
+- **Owner/area:** Admin / Compliance
+- **Authorization:** NOT AUTHORIZED (record only)
+- **Evidence/source:** `app/audit/forensic_audit.py`, Celery beat schedules
+- **Links:** `app/audit/forensic_audit.py`, `app/tasks/`

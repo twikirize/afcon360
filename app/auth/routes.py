@@ -262,7 +262,33 @@ def _dashboard_for_user(user) -> str:
         from app.transport.models import DriverProfile, VerificationTier
         driver = DriverProfile.query.filter_by(user_id=user.id).first()
         if driver and driver.verification_tier == VerificationTier.PLATFORM_VERIFIED:
-            return url_for("transport.driver_dashboard")
+            # P1 context recovery: the dashboard requires an active
+            # Driver context, which a fresh login never has. Establish
+            # the single eligible Driver context through the same
+            # switch service (same eligibility validation) as the UI
+            # path, so the redirect target below is reachable. Any
+            # failure (including multiple eligible contexts, which need
+            # an explicit user choice) falls through to the default
+            # dashboard below — never a dead-end 403.
+            try:
+                from app.auth.context import (
+                    ContextType as _CT,
+                    get_available_contexts,
+                    switch_context as _select_context,
+                )
+                _driver_ctx = [
+                    c for c in get_available_contexts(user)
+                    if c.type == _CT.DRIVER
+                ]
+                if len(_driver_ctx) == 1:
+                    _select_context(user, {
+                        "type": "driver",
+                        "public_id": _driver_ctx[0].public_id,
+                        "role": _driver_ctx[0].role,
+                    })
+                    return url_for("transport.driver_dashboard")
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -668,10 +694,15 @@ def verify_phone():
         )
 
     code = request.form.get("code", "").strip()
+    full_name = request.form.get("full_name", "").strip()
 
     if not code or len(code) != 6 or not code.isdigit():
         flash("Please enter a valid 6-digit code.", "danger")
         return redirect(request.referrer or url_for("index"))
+
+    if not full_name:
+        flash("Please enter your full name as it appears on your ID document.", "danger")
+        return redirect(request.referrer or url_for("auth.verify_phone"))
 
     success, message = PhoneVerificationService.verify_code(
         user=current_user,
@@ -680,6 +711,10 @@ def verify_phone():
     )
 
     if success:
+        # Save full name to canonical profile (shared with KYC)
+        if full_name and profile:
+            profile.full_name = full_name
+            db.session.commit()
         flash("Phone number verified successfully!", "success")
         session['phone_verified'] = True
         return redirect(url_for("profile.account_overview"))
@@ -794,7 +829,9 @@ def login():
     from app.auth.services import authenticate_user, AuthResult, start_server_session
 
     if request.method == "POST":
-        identifier = (request.form.get("username") or "").strip()[:64]
+        username   = (request.form.get("username") or "").strip()[:64]
+        email      = (request.form.get("email") or "").strip()[:64]
+        identifier = username or email
         password   = (request.form.get("password") or "")[:128]
         ip         = request.remote_addr
         user_agent = request.headers.get("User-Agent", "")

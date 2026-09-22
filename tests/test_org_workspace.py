@@ -35,3 +35,13 @@ def test_base_navigation_uses_canonical_context_and_post_switch():
     assert "nav_org_id" in base
     assert 'method="POST" action="{{ url_for(\'auth.switch_context\') }}"' in base
     assert "context='individual'" not in base
+
+
+def test_base_nav_shared_labels_and_org_wallet_routing():
+    root = Path(__file__).resolve().parents[1]
+    base = (root / "templates" / "base.html").read_text(encoding="utf-8")
+
+    assert "Org Wallet" not in base
+    assert "Org Dashboard" not in base
+    assert "safe_url('org.wallet'" in base
+    assert "Switch to Organisation" in base

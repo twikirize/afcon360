@@ -228,6 +228,135 @@ class OrganisationKYBService:
         return is_large or is_personal
 
     @classmethod
+    def reconcile_from_documents(cls, org: Organisation, reviewer_id: int) -> Dict[str, Any]:
+        """Derive KYB registry rows from an organisation's approved documents.
+
+        Closing the gap where KYB document approval never created the
+        verification/check/UBO records the registry (and therefore the KYB
+        dashboard and Tier-5 evaluation) actually reads. Called when an
+        organisation is approved from the compliance queue.
+
+        Only rows that are legitimately document-driven are created here:
+        registration documents -> organisation verification + identity check,
+        tax documents -> tax check, licence documents -> license check, a
+        beneficial-ownership declaration -> UBO (default primary contact 100%).
+        The compliance officer's explicit organisation-level approval is also
+        the sign-off point for the sanctions screen.
+        """
+        now = datetime.utcnow()  # naive UTC — matches the app's storage convention
+
+        docs = OrganisationKYBDocument.query.filter_by(
+            organisation_id=org.id, is_deleted=False
+        ).all()
+
+        def _has(*types: str) -> bool:
+            return any(d.document_type in types for d in docs)
+
+        registration_docs = ("registration_certificate", "organisation_registration", "registration")
+        tax_docs = ("tin_certificate", "tax_clearance", "tax_certificate")
+        licence_docs = ("trading_license", "operating_licence", "business_license")
+
+        if _has(*registration_docs):
+            reg = OrganisationVerification.query.filter_by(
+                organisation_id=org.id, status="verified"
+            ).first()
+            if reg is None:
+                db.session.add(OrganisationVerification(
+                    organisation_id=org.id,
+                    reviewer_id=reviewer_id,
+                    status="verified",
+                    scope={"derived_from": "approved registration document"},
+                    notes="Derived from approved KYB registration document.",
+                    decided_at=now,
+                ))
+            else:
+                reg.status = "verified"
+                reg.decided_at = now
+
+        check_types: List[str] = []
+        if _has(*registration_docs):
+            check_types.append("identity")
+        if _has(*tax_docs):
+            check_types.append("tax")
+        if _has(*licence_docs):
+            check_types.append("license")
+        check_types.append("sanctions")
+
+        for check_type in check_types:
+            passed = OrganisationKYBCheck.query.filter_by(
+                organisation_id=org.id, check_type=check_type, status="passed"
+            ).first()
+            if passed is not None:
+                continue
+            prior = OrganisationKYBCheck.query.filter_by(
+                organisation_id=org.id, check_type=check_type
+            ).filter(OrganisationKYBCheck.status != "passed").first()
+            if prior is not None:
+                prior.status = "passed"
+                prior.evidence = {"derived_from": "Compliance approval"}
+                continue
+            db.session.add(OrganisationKYBCheck(
+                organisation_id=org.id,
+                check_type=check_type,
+                status="passed",
+                evidence={"derived_from": "Compliance approval"},
+                notes="Derived from approved KYB documents.",
+            ))
+
+        if _has("beneficial_ownership_declaration", "ubo_declaration", "directors_list"):
+            existing_ubo = OrganisationUBO.query.filter_by(
+                organisation_id=org.id, is_deleted=False
+            ).first()
+            if existing_ubo is None and org.primary_contact_user_id is not None:
+                db.session.add(OrganisationUBO(
+                    organisation_id=org.id,
+                    user_id=org.primary_contact_user_id,
+                    verified_by=reviewer_id,
+                    ubo_type="individual",
+                    ownership_percentage=100,
+                    effective_from=now,
+                    verified_at=now,
+                ))
+
+        for doc in docs:
+            if doc.verification_status != "verified":
+                doc.verification_status = "verified"
+
+        db.session.flush()
+        return cls.compute_status(org)
+
+    @classmethod
+    def approve_organisation(cls, org: Organisation, reviewer_id: int,
+                             notes: Optional[str] = None) -> Dict[str, Any]:
+        """Approve an organisation (moderation/compliance). Canonical org-side
+        mutation: records the approval, derives the document-backed KYB
+        registry rows from the approved documents, and persists."""
+        org.compliance_status = 'approved'
+        org.verification_status = 'verified'
+        org.compliance_reviewed_at = datetime.utcnow()
+        org.compliance_reviewed_by = reviewer_id
+        if notes is not None:
+            org.compliance_notes = notes
+        cls.reconcile_from_documents(org, reviewer_id)
+        db.session.commit()
+        return cls.compute_status(org)
+
+    @classmethod
+    def reject_organisation(cls, org: Organisation, reviewer_id: int,
+                            reason: str, notes: Optional[str] = None) -> Dict[str, Any]:
+        """Reject an organisation (moderation/compliance). Records the outcome
+        and reason without deriving any KYB registry rows."""
+        org.compliance_status = 'rejected'
+        org.verification_status = 'rejected'
+        org.compliance_reviewed_at = datetime.utcnow()
+        org.compliance_reviewed_by = reviewer_id
+        org.rejection_reason = reason or notes
+        if notes is not None:
+            org.compliance_notes = notes
+        db.session.commit()
+        return cls.compute_status(org)
+
+    @classmethod
     def get_all_summaries(cls) -> List[Dict[str, Any]]:
         """Compliance/owner overview of KYB status for all registered orgs."""
         orgs = Organisation.query.filter_by(is_deleted=False).all()

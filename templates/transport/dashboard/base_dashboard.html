@@ -27,8 +27,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/dark-mode.css') }}">
 
   <!-- Core CSS -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='transport/css/base.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='transport/css/dashboard.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/base.css') }}">
 
   <!-- Submenu styles injected here so they work without extra CSS file -->
   <style>
@@ -71,8 +70,8 @@
       transition: color 0.15s, background 0.15s;
     }
     .submenu li a:hover {
-      color: var(--text);
-      background: var(--hover);
+      color: var(--text-primary);
+      background: var(--bg-hover);
     }
     /* ── Topbar user dropdown ── */
     .topbar-user {
@@ -84,7 +83,7 @@
       padding: 4px 8px;
       border-radius: 6px;
     }
-    .topbar-user:hover { background: var(--hover); }
+    .topbar-user:hover { background: var(--bg-hover); }
     .user-avatar-sm {
       width: 28px;
       height: 28px;
@@ -102,7 +101,7 @@
       position: absolute;
       top: calc(100% + 8px);
       right: 0;
-      background: var(--surface);
+      background: var(--bg-surface);
       border: 1px solid var(--border);
       border-radius: 8px;
       min-width: 160px;
@@ -118,10 +117,10 @@
       gap: 8px;
       padding: 8px 14px;
       font-size: 0.82rem;
-      color: var(--text);
+      color: var(--text-primary);
       text-decoration: none;
     }
-    .user-dropdown a:hover { background: var(--hover); }
+    .user-dropdown a:hover { background: var(--bg-hover); }
     .user-dropdown hr {
       border: none;
       border-top: 1px solid var(--border);
@@ -469,10 +468,10 @@
 <div id="modalContainer"></div>
 
 <!-- Scripts -->
-<script src="{{ url_for('static', filename='transport/js/utils.js') }}"></script>
-<script src="{{ url_for('static', filename='transport/js/base.js') }}"></script>
-<script src="{{ url_for('static', filename='transport/js/charts.js') }}"></script>
-<script src="{{ url_for('static', filename='transport/js/realtime.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/transport/utils.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/transport/base.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/transport/charts.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/transport/realtime.js') }}"></script>
 
 <script>
 // ── Sidebar toggle ──

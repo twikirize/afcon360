@@ -679,3 +679,150 @@ class DriverStatusResource(Resource):
                 exc_info=True,
             )
             return {"success": False, "error": str(e)}, 500
+
+
+class DriverVehicleSwitchResource(Resource):
+    """POST /api/transport/drivers/<int:driver_id>/vehicles/switch
+
+    Driver self-service vehicle switch (Phase C2, Driver Workspace).
+
+    Contract:
+      * ownership     — the authenticated user must own the profile (or be an
+                        admin / super_admin / owner).  Denied otherwise: 403.
+      * blocked gate  — a self-service switch is refused while the driver is in
+                        a blocked compliance state (suspended/revoked/
+                        blacklisted); ``can_go_live`` composes that check.
+                        Admin may still reassign a blocked driver's vehicle.
+      * target vehicle— the switch target MUST be a vehicle the driver owns
+                        (``owner_type='driver'``/``owner_id=DriverProfile.id``
+                        or ``owner_type='user'``/``owner_id=User.id``) and MUST
+                        be ``is_active`` and not soft-deleted.  Admins may
+                        pick any active vehicle.
+      * state write   — delegated to the canonical ``assign_driver_to_vehicle``
+                        (models.py), which ends the driver's current active
+                        assignment and any other driver on the target vehicle,
+                        then records a new ``DriverVehicleHistory`` row.  This
+                        never touches Vehicle ownership columns and preserves
+                        the unique active-vehicle partial index.
+
+    The driver may only switch to a vehicle they own: assignment is
+    participation, ownership is separate (and unchanged by switching).
+    """
+
+    def _profile_or_error(self, driver_id):
+        driver = DriverProfile.query.filter_by(
+            id=driver_id, is_deleted=False
+        ).first()
+        if driver is None:
+            return None, {"success": False, "error": "driver not found"}, 404
+        return driver, None, None
+
+    @login_required
+    def post(self, driver_id):
+        from app.auth.helpers import has_global_role
+        from app.transport.models import Vehicle
+        from app.transport.services.go_live_service import can_go_live
+
+        driver, error, status = self._profile_or_error(driver_id)
+        if error:
+            return error, status
+
+        is_admin = has_global_role(current_user, "admin", "super_admin", "owner")
+        if driver.user_id != current_user.id and not is_admin:
+            return {
+                "success": False,
+                "error": "not allowed to switch this driver's vehicle",
+            }, 403
+
+        data = request.get_json(silent=True) or {}
+        vehicle_id = data.get("vehicle_id")
+        if not vehicle_id:
+            return {"success": False, "error": "vehicle_id is required"}, 400
+        reason = data.get("reason") or "shift_start"
+
+        vehicle = Vehicle.query.filter_by(
+            id=vehicle_id, is_deleted=False
+        ).first()
+        if vehicle is None:
+            return {"success": False, "error": "vehicle not found"}, 404
+
+        if not is_admin:
+            checklist = can_go_live(driver)
+            blocked = next(
+                (c for c in checklist.checks if c.key == "blocked"), None
+            )
+            if blocked is not None and not blocked.ok:
+                return {
+                    "success": False,
+                    "error": "blocked driver cannot switch vehicles",
+                    "go_live": checklist.to_dict(),
+                }, 403
+
+            owns = (
+                (vehicle.owner_type == "driver" and vehicle.owner_id == driver.id)
+                or (vehicle.owner_type == "user" and vehicle.owner_id == current_user.id)
+            )
+            if not owns:
+                return {
+                    "success": False,
+                    "error": "you may only switch to a vehicle you own",
+                }, 403
+
+        if vehicle.status != "active":
+            return {"success": False, "error": "vehicle is not active"}, 422
+
+        current = driver.current_vehicle
+        if current is not None and current.id == vehicle.id:
+            return {
+                "success": True,
+                "data": {
+                    "unchanged": True,
+                    "assigned_vehicle": {
+                        "id": vehicle.id,
+                        "license_plate": vehicle.license_plate,
+                        "make": vehicle.make,
+                        "model": vehicle.model,
+                        "year": vehicle.year,
+                    },
+                    "reason": reason,
+                },
+            }
+
+        try:
+            from app.transport.models import assign_driver_to_vehicle
+
+            assign_driver_to_vehicle(
+                driver,
+                vehicle,
+                reason=reason,
+                authorized_by=current_user,
+                notes=data.get("notes"),
+            )
+        except Exception as e:
+            db.session.rollback()
+            logger.error(
+                f"Error switching driver {driver_id} to vehicle {vehicle_id}: {e}",
+                exc_info=True,
+            )
+            return {"success": False, "error": str(e)}, 500
+
+        db.session.refresh(driver)
+        assigned = driver.current_vehicle
+        return {
+            "success": True,
+            "data": {
+                "unchanged": False,
+                "assigned_vehicle": (
+                    {
+                        "id": assigned.id,
+                        "license_plate": assigned.license_plate,
+                        "make": assigned.make,
+                        "model": assigned.model,
+                        "year": assigned.year,
+                    }
+                    if assigned is not None
+                    else None
+                ),
+                "reason": reason,
+            },
+        }

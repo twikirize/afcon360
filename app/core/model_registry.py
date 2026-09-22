@@ -22,6 +22,7 @@ def register_all_models():
     from app.identity.models.provider_participation import ProviderParticipation
     from app.identity.models.roles_permission import Role, Permission
     from app.identity.models.compliance_audit_log import ComplianceAuditLog
+    from app.identity.models.org_payment_gateway import OrganisationPaymentGateway, PaymentGatewayProvider, PaymentGatewayEnvironment
 
     # Profile domain
     from app.profile.models import UserProfile
@@ -90,6 +91,12 @@ def register_all_models():
     # Wallet payment config
     try:
         from app.wallet.models.payment_method import PaymentMethodConfig, EventPaymentPreference
+    except ImportError:
+        pass
+
+    # Organisation payment gateways
+    try:
+        from app.identity.models.org_payment_gateway import OrganisationPaymentGateway
     except ImportError:
         pass
 
@@ -210,5 +217,12 @@ def register_all_models():
     # Payment provider config (for admin payment method configuration)
     try:
         from app.wallet.models.config import PaymentProviderConfig, WalletSystemConfig
+    except ImportError:
+        pass
+
+    # GEO domain - durable location observation history (roadmap GEO-15).
+    # Domain-neutral records; producing domains write via explicit contract.
+    try:
+        from app.geo.models import LocationObservation
     except ImportError:
         pass

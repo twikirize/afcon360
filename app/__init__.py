@@ -341,8 +341,11 @@ def create_app(config_object=None) -> Flask:
         cache.config.update({"CACHE_TYPE": "SimpleCache"})
         logger.warning("Redis cache configuration failed – using SimpleCache")
 
-    # Configure Flask-Limiter to use Redis if available, else memory
-    app.config["RATELIMIT_STORAGE_URI"] = redis_url if _redis_available_for_cache else "memory://"
+    _is_dev = app.config.get("DEBUG") or app.config.get("APP_ENV") in ("local", "development", "testing")
+    app.config["RATELIMIT_STORAGE_URI"] = (
+        "memory://" if _is_dev
+        else (redis_url if _redis_available_for_cache else "memory://")
+    )
     limiter.storage_uri = app.config["RATELIMIT_STORAGE_URI"]
 
     # Get Redis client for sessions – reuse existing connection
@@ -697,6 +700,10 @@ def create_app(config_object=None) -> Flask:
         @app.before_request
         def _apply_dynamic_rate_limits():
             """Dynamically enable/disable rate limiter based on owner settings"""
+            # Dev: always off — ignore the DB setting entirely
+            if app.config.get("DEBUG") or app.config.get("APP_ENV") in ("local", "development", "testing"):
+                limiter.enabled = False
+                return
             try:
                 limiter.enabled = RateLimitService.is_enabled()
             except Exception:
@@ -919,14 +926,18 @@ def create_app(config_object=None) -> Flask:
             # forcing SQLAlchemy's one-time configure_mappers() pass). Moved here
             # so it runs after the server is already accepting requests.
             def _load_rate_limit_defaults():
-                try:
-                    with app.app_context():
-                        from app.admin.owner.rate_limit_service import RateLimitService
-                        default_limits = RateLimitService.get_default_limits()
-                        limiter.default_limits = default_limits
-                        logger.info("✅ Rate limit default_limits loaded (deferred)")
-                except Exception as exc:
-                    logger.warning(f"Deferred rate limit defaults load failed: {exc}")
+    # Skip in dev — no DB hit, no overriding the hardcoded defaults.
+    if app.config.get("DEBUG") or app.config.get("APP_ENV") in ("local", "development", "testing"):
+        logger.info("⏭ Rate limit defaults loader skipped (dev)")
+        return
+    try:
+        with app.app_context():
+            from app.admin.owner.rate_limit_service import RateLimitService
+            default_limits = RateLimitService.get_default_limits()
+            limiter.default_limits = default_limits
+            logger.info("✅ Rate limit default_limits loaded (deferred)")
+    except Exception as exc:
+        logger.warning(f"Deferred rate limit defaults load failed: {exc}")
 
             threading.Thread(target=_load_rate_limit_defaults, daemon=True).start()
 
@@ -960,8 +971,9 @@ def create_app(config_object=None) -> Flask:
     from app.admin import models as admin_models  # Required for Alembic to detect ModerationLog
     from app.event_accommodation import \
         models as event_accommodation_models  # Required for Alembic to detect event accommodation models
+    from app.transport import models as transport_models  # Required for Alembic to detect transport models
     logger.info(
-        f"⏱ lazy model imports (identity/profile/audit/roles/admin/event_accommodation) took {time.time() - _boot_t3:.2f}s")
+        f"⏱ lazy model imports (identity/profile/audit/roles/admin/event_accommodation/transport) took {time.time() - _boot_t3:.2f}s")
 
     # Core Web Blueprints
     from app.auth.routes import auth_bp
@@ -1130,6 +1142,15 @@ def create_app(config_object=None) -> Flask:
         app.logger.info("✅ Tourism module registered with routes")
     except Exception as e:
         app.logger.error(f"❌ Failed to register tourism module: {e}")
+
+    # GEO platform module (independent; domains ──→ GEO)
+    try:
+        from app.geo import geo_bp, init_geo_module
+        init_geo_module(app)
+        app.register_blueprint(geo_bp)
+        app.logger.info("✅ GEO module registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register geo module: {e}")
 
     # Transport module
     try:
@@ -1415,8 +1436,10 @@ def create_app(config_object=None) -> Flask:
                 db.session.rollback()
                 pass
             # The canonical context resolver is the source of truth for the
-            # shared navigation.  The legacy session keys remain a fallback
-            # for older sessions, but must not override a live assignment.
+            # shared navigation.  Legacy-only sessions (i.e. no canonical
+            # selection present) are resolved through ``get_active_context``'s
+            # read-only compatibility path; stale legacy keys MUST NOT override
+            # a live canonical selection.
             try:
                 from app.auth.context import get_active_context
 
@@ -1433,16 +1456,6 @@ def create_app(config_object=None) -> Flask:
                         _org_slug = _org_id
             except Exception:
                 logger.debug("Could not resolve canonical navigation context", exc_info=True)
-
-            if not _in_org_context and _session.get("current_context") == "organization":
-                _in_org_context = True
-                _org_id = _session.get("current_org_id")
-                _org_name = _session.get("current_org_name", "Organisation")
-                try:
-                    from app.auth.context import _organisation_public_id_to_slug
-                    _org_slug = _organisation_public_id_to_slug(_org_id)
-                except Exception:
-                    _org_slug = _org_id
         # ── end nav state ───────────────────────────────────────────
 
         return {
@@ -1696,6 +1709,23 @@ def create_app(config_object=None) -> Flask:
                 return f"{float(value):,.2f}"
             except (ValueError, TypeError):
                 return str(value)
+
+    @app.template_filter('datetimeformat')
+    def datetimeformat_filter(value):
+        """Format a datetime for display (shared template filter).
+
+        Registered centrally because Transport (and other module) templates
+        render datetimes. Follows the existing display convention used by the
+        dashboard contexts (compact date + HH:MM). ``None``/empty renders as an
+        empty string, mirroring the ``strftime`` launcher filter behaviour so
+        ``|datetimeformat`` never crashes template compilation.
+        """
+        if value is None or value == '':
+            return ''
+        try:
+            return value.strftime('%d %b %Y, %H:%M')
+        except (AttributeError, TypeError, ValueError):
+            return str(value)
 
     @app.context_processor
     def inject_kyc_data():

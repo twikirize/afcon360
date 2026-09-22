@@ -1,432 +1,2376 @@
 {% extends "base.html" %}
+{% block title %}Transport — AFCON360{% endblock %}
 
 {% block head %}
 <style>
-/* Uber-style Transport Dashboard - More Specific Styles */
-.transport-dashboard {
-    background: #f8f9fa !important;
-    min-height: 100vh;
-    margin: 0 !important;
-    padding: 0 !important;
+:root {
+  --brand: #0E6B4F;
+  --brand-dark: #0A4E3A;
+  --brand-soft: #E6F2ED;
+  --ink: #0C1512;
+  --muted: #77857F;
+  --line: #E2E8E4;
+  --r-md: 14px;
+  --r-lg: 22px;
+  --shadow-sheet: 0 -12px 40px rgba(12,21,18,.16);
+}
+html, body { margin: 0; padding: 0; }
+body { overflow-x: hidden; background: #F5F5F5; }
+
+/* ============================================================
+   Viewport — full document-flow landing (desktop baseline 1440)
+   ============================================================ */
+
+.bolt {
+  position: relative;
+  max-width: 1440px;
+  margin: 0 auto;
+  min-height: 100vh;
+  overflow-x: hidden;
+  color: var(--ink);
+  font-family: inherit;
+  -webkit-font-smoothing: antialiased;
+  background: #F5F5F5;
+  box-shadow: 0 0 44px rgba(0,0,0,.08);
+}
+.bolt *, .bolt *::before, .bolt *::after { box-sizing: border-box; }
+
+/* Map section — a real, interactive pinning surface (honest, no fake cars/ETAs) */
+.bolt-map {
+  position: relative;
+  width: 100%;
+  height: min(420px, 46vh);
+  background: #E9F0EB;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(0,0,0,.08);
+}
+.bolt-map #pickMap {
+  position: relative;
+  width: 100%;
+  height: 100%;
 }
 
-.transport-dashboard .booking-card {
-    background: white !important;
-    border-radius: 16px !important;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08) !important;
-    border: none !important;
-    overflow: hidden;
+/* Honest fallback shown when the map library/tiles can't render — never blank */
+.geo-map-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 4px;
+  padding: 24px;
+  text-align: center;
+  background: #E9F0EB;
+  color: var(--ink);
+}
+.geo-map-fallback p:first-child { font-weight: 700; margin: 0; }
+.geo-map-fallback p:last-child { margin: 0; color: var(--muted); font-size: .82rem; max-width: 34ch; }
+.geo-map-tile-notice {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 5;
+  margin: 0;
+  padding: 8px 12px;
+  background: rgba(12,21,18,.85);
+  color: #fff;
+  border-radius: 10px;
+  font-size: .75rem;
 }
 
-.transport-dashboard .location-input {
-    border: 2px solid #e9ecef !important;
-    border-radius: 12px !important;
-    padding: 16px !important;
-    font-size: 16px !important;
-    transition: all 0.3s ease !important;
-    width: 100% !important;
+/* Map pulse under the active pin */
+.bolt-pulse {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--brand);
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 0 rgba(14,107,79,.5);
+  animation: boltPulse 1.6s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes boltPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(14,107,79,.45); }
+  70%  { box-shadow: 0 0 0 16px rgba(14,107,79,0); }
+  100% { box-shadow: 0 0 0 0 rgba(14,107,79,0); }
 }
 
-.transport-dashboard .location-input:focus {
-    border-color: #000 !important;
-    box-shadow: 0 0 0 3px rgba(0,0,0,0.1) !important;
-    outline: none !important;
+/* ============================================================
+   Header — green gradient landing bar (62px, desktop baseline)
+   ============================================================ */
+
+.bolt-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  height: 62px;
+  padding: 0 clamp(16px, 4vw, 40px);
+  background: linear-gradient(90deg, #0A4C1C 0%, #11682A 48%, #0A4C1C 100%);
+  color: #fff;
+}
+.bolt-header-back {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  background: rgba(255,255,255,.14);
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #fff;
+  transition: transform .12s ease, background .15s ease;
+  visibility: hidden;
+}
+.bolt-header-back.is-visible { visibility: visible; }
+.bolt-header-back:active { transform: scale(.94); }
+.bolt-header-back:hover { background: rgba(255,255,255,.26); }
+
+.bolt-header-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  color: #fff;
+  font-size: 27px;
+  font-weight: 900;
+  text-decoration: none;
+  letter-spacing: -.4px;
+}
+.bolt-header-logo { width: 34px; height: 34px; flex: none; }
+.bolt-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin-left: auto;
+}
+.bolt-header-nav a {
+  color: #fff;
+  font-size: 17px;
+  font-weight: 500;
+  text-decoration: none;
+  opacity: .96;
+  white-space: nowrap;
+}
+.bolt-header-nav a:hover { color: #F7C948; }
+.bolt-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.bolt-header-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+.bolt-header-link:hover { color: #F7C948; }
+.bolt-signin-btn {
+  display: inline-block;
+  padding: 0 26px;
+  height: 44px;
+  line-height: 44px;
+  background: linear-gradient(180deg, #FBC02D 0%, #F2A007 100%);
+  color: #3B2A05;
+  font-size: 17px;
+  font-weight: 700;
+  border-radius: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: 0 6px 16px rgba(242,160,7,.35);
+  transition: transform .1s ease, box-shadow .15s ease;
+}
+.bolt-signin-btn:hover {
+  box-shadow: 0 8px 20px rgba(242,160,7,.5);
+  transform: translateY(-1px);
+}
+.bolt-signin-btn:active { transform: translateY(0); }
+
+/* ============================================================
+   Booking card — document-flow panel (max 480px, centered)
+   ============================================================ */
+
+.bolt-main {
+  width: 100%;
+  margin: 0 auto;
+}
+.bolt-state { display: none; }
+.bolt-state.is-active {
+  display: block;
+  animation: boltFade .22s ease;
+}
+@keyframes boltFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.bolt-panel {
+  padding: 28px clamp(16px, 4vw, 40px) 12px;
+}
+.bolt-booking {
+  width: min(648px, 100%);
+  margin: -44px auto 0;
+  position: relative;
+  z-index: 5;
+  background: #fff;
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sheet);
+  padding: 20px 22px 22px;
+}
+.bolt-booking .bolt-title { margin-top: 2px; }
+.bolt-below {
+  width: min(700px, 100%);
+  margin: 18px auto 0;
+  padding: 0 clamp(16px, 4vw, 40px);
 }
 
-.transport-dashboard .location-icon {
-    position: absolute !important;
-    left: 20px !important;
-    top: 50% !important;
-    transform: translateY(-50%) !important;
-    color: #6c757d !important;
-    z-index: 10 !important;
+/* Map section — appears only when pinning or after "Find a Ride" */
+.bolt-map-section {
+  margin: 26px auto 0;
+  width: 100%;
+  display: none;
+}
+.bolt-map-section.is-visible,
+.bolt-map-focus .bolt-map-section { display: block; }
+.bolt-map-section-title {
+  margin: 0 0 14px;
+  padding: 0 clamp(16px, 4vw, 40px);
+  font-size: clamp(1.15rem, 2.2vw, 1.55rem);
+  font-weight: 800;
+  letter-spacing: -.01em;
+  color: #0A4C1C;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.bolt-map-section-title .bi { color: #0A4C1C; font-size: 1.15em; }
+.bolt-map-hint {
+  margin: 12px 0 0;
+  padding: 0 clamp(16px, 4vw, 40px);
+  font-size: .8rem;
+  color: var(--muted);
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.bolt-map-hint .bi { color: var(--brand); }
+
+/* Features bar — honest capabilities (no fabricated service claims) */
+.bolt-features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  width: min(1080px, 100%);
+  margin: 22px auto 0;
+  padding: 0 clamp(16px, 4vw, 40px);
+}
+.bolt-feature {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  background: #fff;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 18px;
+  box-shadow: 0 6px 16px rgba(12,21,18,.06);
+}
+.bolt-feature > i {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 1.15rem;
+  font-style: normal;
+}
+.bolt-feature b { display: block; font-size: .96rem; }
+.bolt-feature small { display: block; font-size: .78rem; color: var(--muted); }
+
+/* While pin-placing the map IS the input surface: raise the map and hide
+   the secondary sections that otherwise compete for attention. */
+.bolt-map-focus .bolt-map { height: 62vh; }
+.bolt-map-focus .bolt-chips,
+.bolt-map-focus .bolt-recents,
+.bolt-map-focus .bolt-driver-promo { display: none; }
+
+.bolt-title {
+  margin: 0 0 4px;
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  line-height: 1.2;
+}
+.bolt-sub {
+  margin: 0 0 16px;
+  font-size: .82rem;
+  color: var(--muted);
 }
 
-.transport-dashboard .ride-type-card {
-    border: 2px solid #e9ecef !important;
-    border-radius: 12px !important;
-    padding: 20px !important;
-    text-align: center !important;
-    cursor: pointer !important;
-    transition: all 0.3s ease !important;
-    height: 100% !important;
-    background: white !important;
+/* ============================================================
+   Hero — full-width blue-scene banner (620px desktop baseline)
+   ============================================================ */
+
+.bolt-hero {
+  position: relative;
+  width: 100%;
+  height: clamp(300px, 50vw, 620px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: clamp(48px, 9vw, 110px) clamp(20px, 8vw, 120px) 84px;
+  text-align: left;
+  background: #BFE0F0;
+}
+.bolt-hero-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.bolt-hero-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(10,40,60,.38) 0%, rgba(10,40,60,.14) 42%, rgba(10,40,60,0) 70%);
+  pointer-events: none;
+}
+.bolt-hero-title {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  max-width: 13ch;
+  font-size: clamp(2.1rem, 5.3vw, 4.75rem);   /* 76px @ 1440 */
+  font-weight: 900;
+  letter-spacing: -1.6px;
+  line-height: 1.02;
+  color: #fff;
+  text-shadow: 0 5px 20px rgba(10,40,60,.45);
+}
+.bolt-hero-title span { color: #F6C744; }
+.bolt-hero-sub {
+  position: relative;
+  z-index: 1;
+  margin: 14px 0 0;
+  font-size: clamp(1.15rem, 1.9vw, 1.6875rem);  /* 27px @ 1440 */
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: .01em;
+  text-shadow: 0 3px 14px rgba(10,40,60,.45);
 }
 
-.transport-dashboard .ride-type-card:hover {
-    border-color: #000 !important;
-    transform: translateY(-2px) !important;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.12) !important;
+/* ============================================================
+   Inputs — no labels, icon-led, large touch targets
+   ============================================================ */
+
+.bolt-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  background: #fff;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 14px;
+  margin-bottom: 10px;
+  transition: background .15s ease, border-color .15s ease;
+}
+.bolt-field:focus-within {
+  background: #fff;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
+.bolt-field .dot {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+.bolt-field .dot i { font-size: 13px; }
+.bolt-field .dot-pickup { background: #FEF0C7; color: #F0A020; }
+.bolt-field .dot-dest   { background: #FDE3E3; color: #DC2626; }
+.bolt-field input {
+  flex: 1;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1E293B;
+  padding: 0;
+  min-width: 0;
+}
+.bolt-field input::placeholder { color: #94A3B8; font-weight: 500; }
+.bolt-field-hint {
+  flex: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748B;
+}
+.bolt-field .field-icon {
+  flex: none;
+  color: var(--brand);
+  cursor: pointer;
+  padding: 4px;
+  font-size: 1rem;
+}
+.bolt-chev {
+  flex: none;
+  color: #94A3B8;
+  font-size: 12px;
+  display: inline-flex;
 }
 
-.transport-dashboard .ride-type-card.selected {
-    border-color: #000 !important;
-    background: #f8f9fa !important;
+/* ============================================================
+   Route box — pickup on top, destination below, connected rail
+   ============================================================ */
+
+.bolt-route-box {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 10px;
+  align-items: center;
+  margin: 0 0 16px;
+}
+.bolt-route-fields {
+  display: grid;
+  min-width: 0;
+}
+.bolt-route-fields .bolt-field {
+  margin: 0 0 10px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 14px;
+  box-shadow: 0 4px 14px rgba(56,26,8,.12);
+}
+.bolt-route-fields .bolt-field:focus-within {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
+.bolt-route-fields .bolt-field:last-child { margin-bottom: 0; }
+.bolt-swap {
+  align-self: center;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: 50%;
+  color: var(--brand);
+  cursor: pointer;
+  font-size: 1rem;
+  box-shadow: 0 4px 12px rgba(56,26,8,.14);
+  transition: transform .12s ease, border-color .15s ease, color .15s ease;
+}
+.bolt-swap:hover { border-color: var(--brand); color: var(--brand); }
+.bolt-swap:active { transform: scale(.94); }
+
+/* ============================================================
+   Destination chips — one-tap shortcuts below the destination
+   ============================================================ */
+
+.bolt-chips {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 12px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.bolt-chips::-webkit-scrollbar { display: none; }
+.bolt-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 13px;
+  border: 1.5px solid var(--line);
+  background: #fff;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color .15s ease, color .15s ease, transform .1s ease;
+}
+.bolt-chip .bi { color: var(--brand); }
+.bolt-chip:hover { border-color: var(--brand); color: var(--brand); }
+.bolt-chip:active { transform: scale(.97); }
+
+/* ============================================================
+   Map pin controls — anchored under the inputs
+   ============================================================ */
+
+.bolt-pin-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+}
+.bolt-pin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  background: rgba(12,21,18,.85);
+  color: #fff;
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 600;
+}
+.bolt-pin-badge .bi { color: #7ED3B8; font-size: .55rem; }
+.bolt-pin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  font-size: .74rem;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color .15s ease, color .15s ease, transform .1s ease;
+}
+.bolt-pin-btn:hover { border-color: var(--brand); color: var(--brand); }
+.bolt-pin-btn:active { transform: scale(.97); }
+
+/* ============================================================
+   Driver promo — become a driver / add a vehicle
+   ============================================================ */
+
+.bolt-driver-promo {
+  border-top: 1px solid var(--line);
+  margin-top: 16px;
+  padding-top: 12px;
+}
+.bolt-driver-label {
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.bolt-driver-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.bolt-driver-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--ink);
+  text-decoration: none;
+  transition: border-color .15s ease, background .15s ease, transform .1s ease;
+}
+.bolt-driver-btn .bi {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 1rem;
+}
+.bolt-driver-btn b { display: block; font-size: .82rem; }
+.bolt-driver-btn small { display: block; font-size: .7rem; color: var(--muted); }
+.bolt-driver-btn:hover { border-color: var(--brand); background: var(--brand-soft); }
+.bolt-driver-btn:hover small { color: var(--brand-dark); }
+.bolt-driver-btn:active { transform: scale(.98); }
+
+/* Schedule toggle — Now / Later segmented control */
+.bolt-sched {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 14px;
+}
+.bolt-sched-toggle {
+  display: inline-flex;
+  background: #F0F3F1;
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+}
+.bolt-sched-opt {
+  border: 0;
+  background: transparent;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.bolt-sched-opt.is-active {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(12,21,18,.12);
+}
+.bolt-sched-at {
+  flex: 1;
+  min-width: 0;
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 9px 12px;
+  font-size: .82rem;
+  font-family: inherit;
+  color: var(--ink);
+  background: #fff;
+  display: none;
+}
+.bolt-sched-at.is-visible { display: block; }
+
+/* ============================================================
+   Ride cards — icon + details + price on right
+   ============================================================ */
+
+/* ============================================================
+   Vehicle selector — 4-column card grid with live real fares
+   ============================================================ */
+
+.bolt-vehgrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.bolt-veh {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 128px;
+  padding: 16px 8px 14px;
+  background: #fff;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 16px;
+  box-shadow: 0 6px 16px rgba(12,21,18,.08);
+  cursor: pointer;
+  text-align: center;
+  font: inherit;
+  color: inherit;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .1s ease;
+}
+.bolt-veh:hover { border-color: #0B522B; box-shadow: 0 10px 24px rgba(12,21,18,.14); }
+.bolt-veh:active { transform: scale(.97); }
+.bolt-veh.is-selected {
+  background: #F0FBF2;
+  border-color: #0B522B;
+  box-shadow: 0 8px 22px rgba(11,82,43,.2);
+}
+.bolt-veh-ico {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 1.45rem;
+}
+.bolt-veh-name { font-size: 13px; font-weight: 700; color: #1E293B; }
+.bolt-veh-price {
+  font-size: 15px;
+  font-weight: 800;
+  color: #178A3E;
+  font-variant-numeric: tabular-nums;
+}
+.bolt-veh-sub { font-size: 11px; color: #64748B; }
+
+.bolt-tripnote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .74rem;
+  color: var(--muted);
+  padding: 4px 2px 6px;
+}
+.bolt-tripnote .bi { color: var(--brand); }
+
+/* Fare breakdown — expandable under the selected ride */
+.bolt-fare {
+  margin-bottom: 12px;
+  border: 1px dashed #C8D5CE;
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  background: #FBFCFB;
+  display: none;
+}
+.bolt-fare.is-visible { display: block; animation: boltFade .18s ease; }
+.bolt-fare-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: .82rem;
+  color: var(--muted);
+  padding: 3px 0;
+  font-variant-numeric: tabular-nums;
+}
+.bolt-fare-row.total {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: .94rem;
+}
+.bolt-fare-row .k { display: inline-flex; align-items: center; gap: 6px; }
+.bolt-fare-row .k .bi { font-size: .7rem; color: var(--brand); }
+
+/* ============================================================
+   CTA — the one button
+   ============================================================ */
+
+.bolt-cta {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, #15803D, #0B522B);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(21,128,61,.35);
+  transition: background .15s ease, transform .1s ease, opacity .15s ease;
+  margin-top: 4px;
+}
+.bolt-cta:hover:not([disabled]) {
+  background: linear-gradient(180deg, #15803D, #0B522B);
+  filter: brightness(.96);
+}
+.bolt-cta:active:not([disabled]) { transform: translateY(1px); }
+.bolt-cta[disabled] {
+  background: #DCE3DE;
+  color: #8F9C96;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+.bolt-cta-hint {
+  font-size: .72rem;
+  font-weight: 500;
+  opacity: .85;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.bolt-cta-pay {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.18);
+  font-size: .74rem;
+  font-weight: 600;
 }
 
-.transport-dashboard .ride-icon {
-    font-size: 2.5rem !important;
-    margin-bottom: 10px !important;
-    color: #000 !important;
+/* Spec CTAs — gradients match the reference, data stays real */
+.bolt-find {
+  height: 58px;
+  margin: 16px 0;
+  border-radius: 23px;
+  font-size: 18px;
+  font-weight: 800;
+  background: linear-gradient(180deg, #23A64C 0%, #0F7C37 100%);
+  box-shadow: 0 6px 18px rgba(15,124,55,.38);
+}
+.bolt-find:hover:not([disabled]) {
+  background: linear-gradient(180deg, #23A64C 0%, #0F7C37 100%);
+  filter: brightness(.96);
+  box-shadow: 0 0 0 3px rgba(35,166,76,.18), 0 8px 22px rgba(15,124,55,.48);
+}
+.bolt-book {
+  height: 58px;
+  margin: 12px 0 16px;
+  border-radius: 23px;
+  background: linear-gradient(180deg, #FBC02D 0%, #F2A007 100%);
+  color: #3B2A05;
+  font-size: 18px;
+  font-weight: 800;
+  box-shadow: 0 6px 18px rgba(242,160,7,.42);
+}
+.bolt-book:hover:not([disabled]) {
+  background: linear-gradient(180deg, #FBC02D 0%, #F2A007 100%);
+  filter: brightness(.97);
+  box-shadow: 0 0 0 3px rgba(251,192,45,.24), 0 8px 22px rgba(242,160,7,.5);
+}
+.bolt-book-amt { font-weight: 800; }
+
+/* Service shortcuts — bordered chips (Quick Ride / Airport Transfer / VIP) */
+.bolt-svcbar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin: 0 0 14px;
+}
+.bolt-svc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 64px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 18px;
+  font: inherit;
+  color: #1E293B;
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .1s ease;
+}
+.bolt-svc .bi {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  font-size: 15px;
+  background: #F1F5F9;
+  color: #475569;
+  transition: transform .12s ease, background .15s ease, color .15s ease;
+}
+.bolt-svc:hover {
+  border-color: var(--brand);
+  box-shadow: 0 8px 18px rgba(12,21,18,.1);
+}
+.bolt-svc:hover .bi { transform: translateY(-1px); }
+.bolt-svc:active { transform: scale(.98); }
+.bolt-svc .svc-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+  white-space: nowrap;
+}
+.bolt-svc[data-service="on_demand"].is-active { border-color: #15803D; background: #F0FDF4; }
+.bolt-svc[data-service="on_demand"].is-active .bi { background: #DCFCE7; color: #15803D; }
+.bolt-svc[data-service="airport_departure"].is-active { border-color: #2563EB; background: #EFF6FF; }
+.bolt-svc[data-service="airport_departure"].is-active .bi { background: #DBEAFE; color: #2563EB; }
+.bolt-svc[data-vip="1"].is-active { border-color: #CA8A04; background: #FEFCE8; }
+.bolt-svc[data-vip="1"].is-active .bi { background: #FEF9C3; color: #CA8A04; }
+.bolt-svc.is-active .svc-label { color: #0B522B; }
+.bolt-svc[data-service="airport_departure"].is-active .svc-label { color: #1E40AF; }
+.bolt-svc[data-vip="1"].is-active .svc-label { color: #A16207; }
+
+/* ============================================================
+   Confirmation summary
+   ============================================================ */
+
+.bolt-summary {
+  background: #F5F7F5;
+  border-radius: var(--r-md);
+  padding: 14px;
+  margin-bottom: 12px;
+  display: grid;
+  gap: 10px;
+}
+.bolt-summary-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.bolt-summary-icon {
+  flex: none;
+  width: 16px;
+  color: var(--muted);
+  font-size: .85rem;
+  padding-top: 3px;
+}
+.bolt-summary-body { flex: 1; min-width: 0; }
+.bolt-summary-label {
+  font-size: .66rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  font-weight: 700;
+  margin-bottom: 1px;
+}
+.bolt-summary-value {
+  font-size: .9rem;
+  font-weight: 600;
+  word-break: break-word;
 }
 
-.transport-dashboard .price-tag {
-    font-size: 1.1rem !important;
-    font-weight: 600 !important;
-    color: #000 !important;
+.bolt-confirm-fare {
+  border-top: 1px solid var(--line);
+  margin-top: 2px;
+  padding-top: 10px;
+  display: grid;
+  gap: 5px;
 }
 
-.transport-dashboard .book-ride-btn {
-    background: #000 !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 12px !important;
-    padding: 18px 40px !important;
-    font-size: 18px !important;
-    font-weight: 600 !important;
-    transition: all 0.3s ease !important;
-    width: 100% !important;
+/* ============================================================
+   Matching overlay
+   ============================================================ */
+
+.bolt-matching {
+  text-align: center;
+  padding: 14px 6px 6px;
+}
+.bolt-matching h3 {
+  margin: 14px 0 4px;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+.bolt-matching p {
+  margin: 0 0 18px;
+  font-size: .84rem;
+  color: var(--muted);
 }
 
-.transport-dashboard .book-ride-btn:hover {
-    background: #333 !important;
-    transform: translateY(-1px) !important;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important;
+.bolt-match-progress {
+  display: grid;
+  gap: 10px;
+  text-align: left;
+  margin: 4px 6px 18px;
+}
+.bolt-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: .88rem;
+  color: var(--muted);
+  opacity: .45;
+  transition: opacity .25s ease;
+}
+.bolt-step .dot {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #F0F3F1;
+  color: var(--muted);
+  font-size: .85rem;
+}
+.bolt-step.is-active { opacity: 1; color: var(--ink); font-weight: 600; }
+.bolt-step.is-active .dot {
+  background: var(--brand);
+  color: #fff;
+  animation: boltPulse 1.6s ease-out infinite;
+}
+.bolt-step.is-done { opacity: .85; color: var(--ink); }
+.bolt-step.is-done .dot { background: var(--brand-soft); color: var(--brand); }
+
+.bolt-match-trip {
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  background: #F5F7F5;
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  margin: 0 6px 8px;
+}
+.bolt-match-trip-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: .8rem;
+  color: var(--muted);
+}
+.bolt-match-trip-row .bi { color: var(--brand); font-size: .7rem; margin-top: 3px; }
+.bolt-match-trip-row b { color: var(--ink); font-weight: 600; display: block; font-size: .84rem; }
+
+/* ============================================================
+   Loading / empty / skeleton
+   ============================================================ */
+
+.bolt-loading,
+.bolt-empty {
+  padding: 28px 16px;
+  text-align: center;
+  font-size: .85rem;
+  color: var(--muted);
+}
+.bolt-spinner {
+  display: inline-block;
+  width: 26px;
+  height: 26px;
+  border: 2.5px solid var(--line);
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  margin-bottom: 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.bolt-skeleton { display: grid; gap: 8px; margin-bottom: 10px; }
+.bolt-skeleton-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-md);
+}
+.sk {
+  border-radius: 8px;
+  background: linear-gradient(90deg, #EFF2EF 25%, #E2E8E4 37%, #EFF2EF 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.3s ease infinite;
+}
+@keyframes shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+.sk-ico { flex: none; width: 46px; height: 46px; border-radius: 14px; }
+.sk-line { height: 12px; }
+.sk-main { flex: 1; display: grid; gap: 7px; }
+.sk-price { flex: none; width: 52px; height: 18px; align-self: center; }
+
+/* ============================================================
+   Secondary (only in state A, below the inputs)
+   ============================================================ */
+
+.bolt-recents {
+  margin-top: 20px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.bolt-recents-label {
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.bolt-recent {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px;
+  border-radius: 10px;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  text-decoration: none;
+}
+.bolt-recent:hover { background: #F5F7F5; }
+.bolt-recent-icon {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  background: #F0F3F1;
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: .85rem;
+}
+.bolt-recent-body { flex: 1; min-width: 0; }
+.bolt-recent-name {
+  font-size: .9rem;
+  font-weight: 600;
+}
+.bolt-recent-sub {
+  font-size: .74rem;
+  color: var(--muted);
 }
 
-.transport-dashboard .recent-ride {
-    background: white !important;
-    border-radius: 12px !important;
-    padding: 20px !important;
-    margin-bottom: 15px !important;
-    border: 1px solid #e9ecef !important;
-    transition: all 0.3s ease !important;
+/* Retry link (no inline handler — CSP friendly) */
+.bolt-retry {
+  display: inline-block;
+  cursor: pointer;
+  color: var(--brand);
+  border: 0;
+  background: none;
+  font-weight: 600;
+  padding: 0 2px;
+  font-size: inherit;
 }
 
-.transport-dashboard .recent-ride:hover {
-    box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
-}
+/* ============================================================
+   Responsive — mobile-first refinements of the desktop baseline
+   ============================================================ */
 
-.transport-dashboard .ride-status {
-    padding: 6px 12px !important;
-    border-radius: 20px !important;
-    font-size: 0.85rem !important;
-    font-weight: 600 !important;
+@media (max-width: 960px) {
+  .bolt-header-nav { display: none; }
 }
-
-.transport-dashboard .ride-status.completed {
-    background: #d4edda !important;
-    color: #155724 !important;
+@media (max-width: 700px) {
+  .bolt-hero { height: clamp(300px, 78vw, 440px); padding: clamp(40px, 10vw, 64px) 20px 56px; }
+  .bolt-booking { margin-top: -32px; padding: 16px 14px 18px; }
+  .bolt-vehgrid { grid-template-columns: repeat(2, 1fr); }
+  .bolt-features { grid-template-columns: 1fr; }
 }
-
-.transport-dashboard .ride-status.active {
-    background: #cce5ff !important;
-    color: #004085 !important;
-}
-
-.transport-dashboard .ride-status.cancelled {
-    background: #f8d7da !important;
-    color: #721c24 !important;
-}
-
-.transport-dashboard .quick-action-btn {
-    background: white !important;
-    border: 2px solid #e9ecef !important;
-    border-radius: 12px !important;
-    padding: 20px !important;
-    text-align: center !important;
-    text-decoration: none !important;
-    color: #000 !important;
-    transition: all 0.3s ease !important;
-    display: block !important;
-}
-
-.transport-dashboard .quick-action-btn:hover {
-    border-color: #000 !important;
-    transform: translateY(-2px) !important;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.12) !important;
-    color: #000 !important;
-    text-decoration: none !important;
-}
-
-.transport-dashboard .quick-action-icon {
-    font-size: 2rem !important;
-    margin-bottom: 10px !important;
-    color: #000 !important;
-}
-
-.transport-dashboard .stats-card {
-    background: white !important;
-    border-radius: 12px !important;
-    padding: 25px !important;
-    text-align: center !important;
-    border: 1px solid #e9ecef !important;
-}
-
-.transport-dashboard .stat-number {
-    font-size: 2.5rem !important;
-    font-weight: 700 !important;
-    color: #000 !important;
-    margin-bottom: 5px !important;
-}
-
-.transport-dashboard .stat-label {
-    color: #6c757d !important;
-    font-size: 0.95rem !important;
-}
-
-/* Override any conflicting Bootstrap styles */
-.transport-dashboard .container-fluid {
-    max-width: 1200px !important;
-    margin: 0 auto !important;
-}
-
-.transport-dashboard .btn {
-    border-radius: 12px !important;
-    font-weight: 600 !important;
-}
-
-.transport-dashboard .card {
-    border: none !important;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
-}
-
-/* Remove default body margins */
-body {
-    margin: 0 !important;
-    padding: 0 !important;
-}
-
-.transport-dashboard .empty-state-plain {
-    color: #6c757d;
-    font-size: 0.95rem;
+@media (max-width: 520px) {
+  .bolt-header { padding: 0 14px; }
+  .bolt-header-brand { font-size: 20px; gap: 8px; }
+  .bolt-header-logo { width: 28px; height: 28px; }
+  .bolt-header-link { display: none; }
+  .bolt-signin-btn { height: 40px; line-height: 40px; padding: 0 18px; font-size: 15px; }
+  .bolt-svcbar { grid-template-columns: 1fr; }
+  .bolt-svc { min-height: 56px; }
+  .bolt-route-box { grid-template-columns: 1fr; }
+  .bolt-swap { display: none; }
+  .bolt-map-section-title { font-size: 1.05rem; }
 }
 </style>
 {% endblock %}
 
 {% block content %}
+<div class="bolt">
 
-<div class="transport-dashboard">
-    <div class="container-fluid py-4">
-        <!-- Header -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h1 class="mb-1" style="font-weight: 700; color: #000;">AFCON Transport</h1>
-                        <p class="mb-0" style="color: #6c757d;">Get where you need to go, safely and quickly</p>
-                    </div>
-                    <div class="d-flex gap-3">
-                        {% if is_authenticated %}
-                        <a href="{{ safe_url('transport.bookings_index') }}" class="btn btn-outline-secondary">
-                            <i class="fas fa-history"></i> Ride History
-                        </a>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-        </div>
+{# ==========================================================
+     HEADER — green landing bar (logo · nav · sign in)
+     ========================================================== #}
+  <header class="bolt-header">
+    <button type="button" class="bolt-header-back" id="backBtn" aria-label="Back">
+      <i class="bi bi-arrow-left"></i>
+    </button>
 
-        <!-- Main Booking Section -->
-        <div class="row mb-4">
-            <div class="col-lg-8">
-                <form class="booking-card p-4" method="GET"
-                      action="{{ safe_url('transport.bookings_new') if is_authenticated else safe_url('auth.login', next=request.path) }}">
-                    <h3 class="mb-4" style="font-weight: 600;">Where to?</h3>
+    <a href="{{ safe_url('transport.home') }}" class="bolt-header-brand" aria-label="AFCON360 transport home">
+      <svg class="bolt-header-logo" viewBox="0 0 40 40" aria-hidden="true">
+        <circle cx="20" cy="20" r="19" fill="#0E6B2A"/>
+        <circle cx="20" cy="20" r="15" fill="#F6C744"/>
+        <path d="M20 5 C27 12 13 16 20 22 C27 28 13 32 20 35" stroke="#0E6B2A" stroke-width="5" fill="none" stroke-linecap="round"/>
+      </svg>
+      <span>AFCON360</span>
+    </a>
 
-                    <!-- Location Inputs -->
-                    <div class="mb-4">
-                        <div class="position-relative mb-3">
-                            <span class="location-icon">
-                                <i class="fas fa-circle"></i>
-                            </span>
-                            <input type="text" name="pickup_location" class="form-control location-input"
-                                   placeholder="Enter pickup location" style="padding-left: 50px;" required>
-                        </div>
+    <nav class="bolt-header-nav" aria-label="Primary">
+      <a href="{{ safe_url('transport.home') }}">Home</a>
+      <a href="{{ safe_url('transport.bookings_index') if is_authenticated else safe_url('auth.login') }}">My Rides</a>
+      <a href="{{ safe_url('transport.become_driver') if is_authenticated else safe_url('auth.login') }}">Become a Driver</a>
+      <a href="/support">Support</a>
+    </nav>
 
-                        <div class="position-relative">
-                            <span class="location-icon">
-                                <i class="fas fa-map-marker-alt"></i>
-                            </span>
-                            <input type="text" name="dropoff_location" class="form-control location-input"
-                                   placeholder="Enter destination" style="padding-left: 50px;" required>
-                        </div>
-                    </div>
-
-                    <!-- Ride Type Selection -->
-                    {% if services %}
-                    <div class="mb-4">
-                        <h5 class="mb-3" style="font-weight: 600;">Choose your ride</h5>
-                        <div class="row g-3">
-                            {% for service in services %}
-                            <div class="col-md-4">
-                                <label class="ride-type-card d-flex flex-column {{ 'selected' if loop.first else '' }} mb-0"
-                                       style="cursor: pointer;">
-                                    <input type="radio" name="service_type" value="{{ service.key }}"
-                                           class="d-none ride-type-radio" {{ 'checked' if loop.first else '' }}>
-                                    <div class="ride-icon">
-                                        <i class="fas fa-car"></i>
-                                    </div>
-                                    <h6 class="mb-2">{{ service.name }}</h6>
-                                    <p class="text-muted mb-2 small">Driver availability checked when you request a ride</p>
-                                    <div class="price-tag" style="font-size: 0.9rem;">Fare calculated after trip details</div>
-                                </label>
-                            </div>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    {% endif %}
-
-                    <!-- Book Button -->
-                    <button type="submit" class="book-ride-btn">
-                        <i class="fas fa-car me-2"></i> {% if is_authenticated %}Continue Booking{% else %}Log in to Book{% endif %}
-                    </button>
-                </form>
-            </div>
-
-            <!-- Right Sidebar -->
-            <div class="col-lg-4">
-                <!-- Stats -->
-                <div class="row g-3 mb-4">
-                    <div class="col-6">
-                        <div class="stats-card">
-                            <div class="stat-number">{{ ride_count }}</div>
-                            <div class="stat-label">Total Rides</div>
-                        </div>
-                    </div>
-                    <div class="col-6">
-                        <div class="stats-card">
-                            <div class="stat-number" style="font-size: 1.5rem; padding-top: 10px;">—</div>
-                            <div class="stat-label">Your Rating</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Quick Actions -->
-                <div class="mb-4">
-                    <h5 class="mb-3" style="font-weight: 600;">Quick Actions</h5>
-                    <div class="row g-3">
-                        <div class="col-6">
-                            <a href="{{ safe_url('transport.bookings_new') if is_authenticated else safe_url('auth.login') }}" class="quick-action-btn">
-                                <div class="quick-action-icon">
-                                    <i class="fas fa-car"></i>
-                                </div>
-                                <div>Book a Ride</div>
-                            </a>
-                        </div>
-                        <div class="col-6">
-                            <a href="{{ safe_url('transport.bookings_index') if is_authenticated else safe_url('auth.login') }}" class="quick-action-btn">
-                                <div class="quick-action-icon">
-                                    <i class="fas fa-history"></i>
-                                </div>
-                                <div>Ride History</div>
-                            </a>
-                        </div>
-                        <div class="col-6">
-                            <a href="{{ safe_url('transport.become_driver') if is_authenticated else safe_url('auth.login') }}" class="quick-action-btn">
-                                <div class="quick-action-icon">
-                                    <i class="fas fa-user-tie"></i>
-                                </div>
-                                <div>Become a Driver</div>
-                            </a>
-                        </div>
-                        <div class="col-6">
-                            <a href="{{ safe_url('transport.register_vehicle') if is_authenticated else safe_url('auth.login') }}" class="quick-action-btn">
-                                <div class="quick-action-icon">
-                                    <i class="fas fa-truck"></i>
-                                </div>
-                                <div>Register Vehicle</div>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Recent Rides -->
-                <div>
-                    <h5 class="mb-3" style="font-weight: 600;">Recent Rides</h5>
-                    {% if not is_authenticated %}
-                    <div class="recent-ride">
-                        <p class="empty-state-plain mb-2">Log in to view your rides.</p>
-                        <a href="{{ safe_url('auth.login') }}" class="btn btn-dark btn-sm">Log in</a>
-                    </div>
-                    {% elif recent_rides %}
-                    {% for ride in recent_rides %}
-                    <a href="{{ safe_url('transport.bookings_show', id=ride.booking_id) }}" class="recent-ride d-block" style="text-decoration: none; color: inherit;">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <div>
-                                <div class="fw-bold">{{ ride.pickup_location or ride.pickup_address or 'Pickup' }}</div>
-                                <div class="text-muted small">to {{ ride.dropoff_location or ride.dropoff_address or 'Destination' }}</div>
-                            </div>
-                            <span class="ride-status {% if ride.status == 'completed' %}completed{% elif ride.status == 'cancelled' %}cancelled{% else %}active{% endif %}">{{ ride.status|title }}</span>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span class="text-muted small">{{ ride.pickup_time|default(ride.created_at, true) }}</span>
-                            <span class="fw-bold">{{ ride.final_price if ride.final_price is not none else '—' }}</span>
-                        </div>
-                    </a>
-                    {% endfor %}
-                    {% else %}
-                    <div class="recent-ride">
-                        <p class="empty-state-plain mb-0">No rides yet</p>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-
-        <!-- Driver Options -->
-        <div class="row">
-            <div class="col-12">
-                <div class="booking-card p-4">
-                    <h4 class="mb-4" style="font-weight: 600;">Want to drive with AFCON?</h4>
-                    <div class="row g-4">
-                        <div class="col-md-6">
-                            <a href="{{ safe_url('transport.become_driver') if is_authenticated else safe_url('auth.login') }}"
-                               class="d-flex align-items-center" style="text-decoration: none; color: inherit;">
-                                <div class="me-4">
-                                    <div class="ride-icon">
-                                        <i class="fas fa-user-tie"></i>
-                                    </div>
-                                </div>
-                                <div>
-                                    <h6 class="mb-1">Become a Driver</h6>
-                                    <p class="text-muted mb-0">Earn money during AFCON tournament</p>
-                                </div>
-                            </a>
-                        </div>
-                        <div class="col-md-6">
-                            <a href="{{ safe_url('transport.register_vehicle') if is_authenticated else safe_url('auth.login') }}"
-                               class="d-flex align-items-center" style="text-decoration: none; color: inherit;">
-                                <div class="me-4">
-                                    <div class="ride-icon">
-                                        <i class="fas fa-truck"></i>
-                                    </div>
-                                </div>
-                                <div>
-                                    <h6 class="mb-1">Register Vehicle</h6>
-                                    <p class="text-muted mb-0">Add your vehicle to our fleet</p>
-                                </div>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <div class="bolt-header-actions">
+      <a href="{{ safe_url('transport.bookings_index') if is_authenticated else safe_url('auth.login') }}" class="bolt-header-link">
+        <i class="bi bi-clock-history"></i> Ride History
+      </a>
+      {% if is_authenticated %}
+      <a href="{{ safe_url('transport.bookings_index') }}" class="bolt-signin-btn">My Rides</a>
+      {% else %}
+      <a href="{{ safe_url('auth.login') }}" class="bolt-signin-btn">Sign In</a>
+      {% endif %}
     </div>
+  </header>
+
+  {# ==========================================================
+     BOOKING FLOW — hero · book · map · rides (document flow)
+     ========================================================== #}
+  <form method="POST"
+        action="{{ safe_url('transport.book_transport') }}"
+        id="boltForm"
+        novalidate>
+  <div class="bolt-main">
+
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="service_type"    value="{{ selected_service or 'on_demand' }}">
+      <input type="hidden" name="provider_type"   value="individual_driver">
+      <input type="hidden" name="passenger_count" value="1">
+      <input type="hidden" name="luggage_count"   value="0">
+      <input type="hidden" name="currency"        value="USD">
+      <input type="hidden" name="pickup_time"     id="hPickupTime" value="">
+      <input type="hidden" name="payment_method"  id="hPayment" value="cash">
+      <input type="hidden" name="vehicle_class"   id="hVehicleClass" value="">
+      <input type="hidden" name="dropoff_location" id="hDropoff" value="{{ dropoff_value }}">
+      <input type="hidden" name="pickup_location"  id="hPickup"  value="{{ pickup_value }}">
+      <input type="hidden" id="pickup_latitude"   name="pickup_latitude"  value="">
+      <input type="hidden" id="pickup_longitude"  name="pickup_longitude" value="">
+      <input type="hidden" id="dropoff_latitude"  name="dropoff_latitude" value="">
+      <input type="hidden" id="dropoff_longitude" name="dropoff_longitude" value="">
+      <input type="hidden" id="service_type" name="service_type" value="on_demand">
+
+      {# ==========================================================
+         STATE A — Where to?
+         ========================================================== #}
+      <section class="bolt-state is-active" data-state="a">
+        <header class="bolt-hero" aria-label="AFCON360 transport hero">
+          <svg class="bolt-hero-art" viewBox="0 0 1440 620" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">
+            <defs>
+              <linearGradient id="hSky" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0"   stop-color="#3E92C7"/>
+                <stop offset=".55" stop-color="#8AC7E7"/>
+                <stop offset="1"   stop-color="#D9EDF7"/>
+              </linearGradient>
+              <linearGradient id="hGrass" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#A8D569"/>
+                <stop offset="1" stop-color="#74AE3C"/>
+              </linearGradient>
+              <linearGradient id="hRoad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#D4D4CC"/>
+                <stop offset="1" stop-color="#B4B4AC"/>
+              </linearGradient>
+              <radialGradient id="hGlow" cx=".10" cy=".04" r=".5">
+                <stop offset="0" stop-color="#fff" stop-opacity=".85"/>
+                <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+              </radialGradient>
+
+              <symbol id="bolt-car" viewBox="0 0 228 96">
+                <ellipse cx="114" cy="87" rx="96" ry="7" fill="#000" opacity=".10"/>
+                <path d="M22,72 L22,56 C22,49 26,45 33,44 L74,37 C86,23 102,18 120,18
+                         L146,18 C162,18 176,25 186,37 L196,41 C203,43 206,48 206,55
+                         L206,72 Z"
+                      fill="currentColor" stroke="rgba(0,0,0,.12)" stroke-width="2"/>
+                <path d="M86,38 C94,28 105,25 118,25 L134,25 L134,38 Z" fill="#C3DCEA"/>
+                <path d="M140,25 L146,25 C158,25 168,30 176,38 L140,38 Z" fill="#C3DCEA"/>
+                <circle cx="64" cy="72" r="15" fill="#23292D"/>
+                <circle cx="64" cy="72" r="6" fill="#9AA5AC"/>
+                <circle cx="164" cy="72" r="15" fill="#23292D"/>
+                <circle cx="164" cy="72" r="6" fill="#9AA5AC"/>
+                <rect x="196" y="50" width="10" height="8" rx="3" fill="#F7D774"/>
+                <rect x="22" y="50" width="9" height="7" rx="3" fill="#E4574E"/>
+              </symbol>
+              <symbol id="bolt-van" viewBox="0 0 228 110">
+                <ellipse cx="114" cy="98" rx="98" ry="7" fill="#000" opacity=".10"/>
+                <path d="M18,86 L18,42 C18,28 26,22 40,22 L150,22
+                         C176,22 196,36 206,58 L210,70 C212,76 212,82 212,86 Z"
+                      fill="currentColor" stroke="rgba(0,0,0,.12)" stroke-width="2"/>
+                <path d="M44,36 L86,36 L86,60 L44,60 Z" fill="#C3DCEA"/>
+                <path d="M96,36 L132,36 L132,60 L96,60 Z" fill="#C3DCEA"/>
+                <path d="M142,36 L156,36 C172,38 184,46 192,60 L142,60 Z" fill="#C3DCEA"/>
+                <circle cx="62" cy="86" r="15" fill="#23292D"/>
+                <circle cx="62" cy="86" r="6" fill="#9AA5AC"/>
+                <circle cx="172" cy="86" r="15" fill="#23292D"/>
+                <circle cx="172" cy="86" r="6" fill="#9AA5AC"/>
+              </symbol>
+            </defs>
+
+            <rect width="1440" height="620" fill="url(#hSky)"/>
+            <rect width="1440" height="620" fill="url(#hGlow)"/>
+
+            <g fill="#9FC4DA">
+              <rect x="10"  y="196" width="26" height="104"/>
+              <rect x="42"  y="168" width="20" height="132"/>
+              <rect x="68"  y="212" width="30" height="88"/>
+              <rect x="104" y="150" width="22" height="150"/>
+              <rect x="132" y="188" width="34" height="112"/>
+              <rect x="172" y="216" width="18" height="84"/>
+              <rect x="196" y="162" width="26" height="138"/>
+              <rect x="228" y="196" width="40" height="104"/>
+              <rect x="274" y="176" width="20" height="124"/>
+              <rect x="300" y="210" width="30" height="90"/>
+              <rect x="336" y="186" width="24" height="114"/>
+              <rect x="366" y="222" width="34" height="78"/>
+              <rect x="406" y="172" width="18" height="128"/>
+              <rect x="430" y="200" width="28" height="100"/>
+              <rect x="464" y="182" width="22" height="118"/>
+              <rect x="492" y="214" width="36" height="86"/>
+              <rect x="534" y="192" width="20" height="108"/>
+              <rect x="560" y="170" width="30" height="130"/>
+              <rect x="596" y="206" width="24" height="94"/>
+              <rect x="626" y="188" width="18" height="112"/>
+              <rect x="650" y="216" width="34" height="84"/>
+              <rect x="690" y="180" width="22" height="120"/>
+              <rect x="718" y="204" width="28" height="96"/>
+              <rect x="752" y="190" width="20" height="110"/>
+              <rect x="778" y="220" width="36" height="80"/>
+              <rect x="820" y="176" width="24" height="124"/>
+              <rect x="850" y="200" width="30" height="100"/>
+              <rect x="886" y="186" width="18" height="114"/>
+            </g>
+
+            <g>
+              <ellipse cx="1180" cy="252" rx="252" ry="66" fill="#C6B394"/>
+              <ellipse cx="1180" cy="242" rx="214" ry="52" fill="#E2D6BB"/>
+              <ellipse cx="1180" cy="238" rx="176" ry="40" fill="#CDBE9E"/>
+              <ellipse cx="1180" cy="236" rx="128" ry="27" fill="#B9A985"/>
+              <g stroke="#A79877" stroke-width="3" fill="none" opacity=".75">
+                <path d="M930,252 Q1180,146 1430,252"/>
+                <path d="M966,266 Q1180,180 1394,266"/>
+              </g>
+              <g fill="#B2A17E">
+                <rect x="952"  y="252" width="14" height="34" rx="4"/>
+                <rect x="1394" y="252" width="14" height="34" rx="4"/>
+                <rect x="1173" y="288" width="14" height="30" rx="4"/>
+              </g>
+            </g>
+
+            <rect x="0" y="300" width="1440" height="320" fill="url(#hGrass)"/>
+
+            <path d="M-20,430 C300,392 720,388 1460,430 L1460,548 C720,506 300,510 -20,548 Z"
+                  fill="url(#hRoad)"/>
+            <path d="M-20,485 C300,447 720,443 1460,485"
+                  stroke="#FFFFFF" stroke-width="6" stroke-dasharray="38 32"
+                  fill="none" opacity=".9"/>
+
+            <path d="M-20,588 C320,560 780,556 1460,584 L1460,620 L-20,620 Z"
+                  fill="#C2C2BA"/>
+
+            <path d="M352,430 L470,300 L548,300 L430,430 Z" fill="#C6C6BE" opacity=".92"/>
+
+            <g>
+              <g transform="translate(120,398)">
+                <circle r="22" fill="#4E8F2C"/><circle cx="18" cy="-8" r="16" fill="#5DA336"/>
+                <circle cx="-16" cy="-4" r="14" fill="#3F7B23"/>
+              </g>
+              <g transform="translate(880,392)">
+                <circle r="20" fill="#4E8F2C"/><circle cx="16" cy="-6" r="14" fill="#5DA336"/>
+              </g>
+              <g transform="translate(1010,420)">
+                <circle r="17" fill="#3F7B23"/><circle cx="-14" cy="4" r="13" fill="#4E8F2C"/>
+              </g>
+              <g transform="translate(660,560)">
+                <circle r="24" fill="#4E8F2C"/><circle cx="20" cy="-6" r="17" fill="#5DA336"/>
+                <circle cx="-18" cy="2" r="15" fill="#3F7B23"/>
+              </g>
+              <g transform="translate(1320,556)">
+                <circle r="22" fill="#3F7B23"/><circle cx="18" cy="-4" r="16" fill="#4E8F2C"/>
+              </g>
+            </g>
+
+            <use href="#bolt-car" x="180"  y="418" width="186" height="78" style="color:#242A2E"/>
+            <use href="#bolt-car" x="520"  y="396" width="268" height="113" style="color:#FFFFFF"/>
+            <use href="#bolt-car" x="1040" y="412" width="234" height="98" style="color:#2C3136"/>
+            <use href="#bolt-car" x="820"  y="446" width="196" height="82" style="color:#8E969B"/>
+          </svg>
+          <div class="bolt-hero-scrim" aria-hidden="true"></div>
+          <h1 class="bolt-hero-title">Your Ride, <span>Your Game!</span></h1>
+          <p class="bolt-hero-sub">Book Your Ride Now!</p>
+        </header>
+
+        <h2 class="bolt-title">Where to?</h2>
+        <p class="bolt-sub">Book a ride for the match, the airport, or anywhere you need to go.</p>
+
+        <div class="bolt-booking">
+        <div class="bolt-route-box">
+          <div class="bolt-route-fields">
+            <label class="bolt-field bolt-field-pickup">
+              <span class="dot dot-pickup"><i class="bi bi-geo-alt"></i></span>
+              <input id="inputPickup"
+                     type="text"
+                     placeholder="Current Location"
+                     autocomplete="off"
+                     enterkeyhint="go">
+              <span class="bolt-field-hint" id="pickupHint">Use my location</span>
+              <span class="field-icon" id="btnLocate" title="Use my current location">
+                <i class="bi bi-crosshair"></i>
+              </span>
+              <span class="bolt-chev"><i class="bi bi-chevron-right"></i></span>
+            </label>
+
+            <label class="bolt-field bolt-field-dest">
+              <span class="dot dot-dest"><i class="bi bi-flag"></i></span>
+              <input id="inputDest"
+                     type="text"
+                     placeholder="Enter Destination"
+                     autocomplete="off"
+                     enterkeyhint="next">
+              <span class="bolt-chev"><i class="bi bi-chevron-right"></i></span>
+            </label>
+          </div>
+
+          <button type="button" class="bolt-swap" id="btnSwap"
+                  aria-label="Swap pickup and destination"
+                  title="Swap pickup and destination">
+            <i class="bi bi-arrow-down-up"></i>
+          </button>
+        </div>
+
+        <div class="bolt-chips" id="destChips" aria-label="Popular destinations">
+          <button type="button" class="bolt-chip" data-dest="Mandela National Stadium, Namboole"><i class="bi bi-geo-fill"></i> Namboole Stadium</button>
+          <button type="button" class="bolt-chip" data-dest="Lugogo Cricket Oval, Kampala"><i class="bi bi-geo-fill"></i> Lugogo Oval</button>
+          <button type="button" class="bolt-chip" data-dest="Nile Independence Stadium"><i class="bi bi-geo-fill"></i> Nile Independence</button>
+        </div>
+
+        <div class="bolt-pin-strip" role="group" aria-label="Map pin controls">
+          <span class="bolt-pin-badge" id="pinModeBadge" role="status">
+            <i class="bi bi-circle-fill"></i> Placing: pickup
+          </span>
+          <button type="button" class="bolt-pin-btn" id="pinToggleBtn">
+            <i class="biopencode
+             bi-geo-alt"></i> Place destination
+          </button>
+          <button type="button" class="bolt-pin-btn" id="pinClearBtn">
+            <i class="bi bi-eraser"></i> Clear pins
+          </button>
+        </div>
+
+        <button type="button" class="bolt-cta bolt-find" id="btnContinue" disabled>
+          <span>Find a Ride</span>
+          <span class="bolt-cta-hint"><i class="bi bi-arrow-right"></i></span>
+        </button>
+
+        <div class="bolt-svcbar" role="group" aria-label="Choose a ride service">
+          <button type="button" class="bolt-svc is-active" data-service="on_demand">
+            <i class="bi bi-stopwatch"></i><span class="svc-label">Quick Ride</span>
+          </button>
+          <button type="button" class="bolt-svc" data-service="airport_departure">
+            <i class="bi bi-airplane"></i><span class="svc-label">Airport Transfer</span>
+          </button>
+          <button type="button" class="bolt-svc" data-service="on_demand" data-vip="1">
+            <i class="bi bi-star-fill"></i><span class="svc-label">VIP Service</span>
+          </button>
+        </div>
+
+        <div class="bolt-sched" role="group" aria-label="When do you want to ride?">
+          <div class="bolt-sched-toggle">
+            <button type="button" class="bolt-sched-opt is-active" id="schedNowBtn" aria-pressed="true">
+              <i class="bi bi-lightning-charge"></i> Now
+            </button>
+            <button type="button" class="bolt-sched-opt" id="schedLaterBtn" aria-pressed="false">
+              <i class="bi bi-calendar-event"></i> Later
+            </button>
+          </div>
+          <input type="datetime-local" id="schedAt" class="bolt-sched-at" step="60"
+                 aria-label="Schedule pickup date and time">
+        </div>
+        </div>{# /.bolt-booking #}
+
+        <div class="bolt-below">
+        {% if is_authenticated and recent_rides %}
+        <div class="bolt-recents" id="recentsBox">
+          <div class="bolt-recents-label">Recent rides</div>
+          {% for r in recent_rides[:3] %}
+          <a class="bolt-recent" href="{{ safe_url('transport.bookings_index') }}" data-ride-ref="{{ r.booking_reference }}">
+            <span class="bolt-recent-icon"><i class="bi bi-clock-history"></i></span>
+            <span class="bolt-recent-body">
+              <span class="bolt-recent-name">{{ r.dropoff_location }}</span>
+              <span class="bolt-recent-sub"><i class="bi bi-arrow-return-right"></i> from {{ r.pickup_location }} · {{ r.status|replace('_',' ')|title }}</span>
+            </span>
+          </a>
+          {% endfor %}
+          {% if ride_count > 3 %}
+          <a class="bolt-recent" href="{{ safe_url('transport.bookings_index') }}">
+            <span class="bolt-recent-icon"><i class="bi bi-collection"></i></span>
+            <span class="bolt-recent-body">
+              <span class="bolt-recent-name">View all rides</span>
+              <span class="bolt-recent-sub">{{ ride_count }} total</span>
+            </span>
+          </a>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        <div class="bolt-driver-promo">
+          <div class="bolt-driver-label">Drive with AFCON360</div>
+          <div class="bolt-driver-actions" role="group" aria-label="Driver and vehicle options">
+            <a href="{{ safe_url('transport.become_driver') if is_authenticated else safe_url('auth.login') }}" class="bolt-driver-btn">
+              <i class="bi bi-person-badge"></i>
+              <span><b>Become a driver</b><small>Register your driver profile</small></span>
+            </a>
+            <a href="{{ safe_url('transport.register_vehicle') if is_authenticated else safe_url('auth.login') }}" class="bolt-driver-btn">
+              <i class="bi bi-car-front"></i>
+              <span><b>Add a vehicle</b><small>Register your car, van or bus</small></span>
+            </a>
+          </div>
+        </div>
+        </div>{# /.bolt-below #}
+      </section>
+
+      {# ==========================================================
+         MAP — live pinning surface; hidden until a pin is placed or
+         "Find a Ride" is clicked, then shown after the booking step
+         ========================================================== #}
+      <section class="bolt-map-section" aria-labelledby="mapSectionTitle">
+        <h3 class="bolt-map-section-title" id="mapSectionTitle">
+          <i class="bi bi-geo-alt"></i> Drivers Nearby, Ready to Go!
+        </h3>
+        <div class="bolt-map"><div id="pickMap"></div></div>
+        <p class="bolt-map-hint">
+          <i class="bi bi-info-circle"></i> Pin your exact pickup &amp; destination on this live map, then choose a ride below. Distance is a straight-line estimate until a routing service is connected.
+        </p>
+      </section>
+
+      {# ==========================================================
+         STATE B — Choose your ride
+         ========================================================== #}
+      <section class="bolt-state bolt-panel" data-state="b">
+        <h2 class="bolt-title">Select Your Ride</h2>
+        <p class="bolt-sub" id="tripMeta">Choose the best option for your journey.</p>
+
+        <div class="bolt-options" id="optionsBox" aria-live="polite"></div>
+
+        <div class="bolt-fare" id="farePanel" aria-live="polite">
+          <div class="bolt-fare-row"><span class="k"><i class="bi bi-play-circle"></i> Base fare</span><span id="fbBase">—</span></div>
+          <div class="bolt-fare-row"><span class="k"><i class="bi bi-rulers"></i> Distance (<span id="fbKm">—</span> km)</span><span id="fbDistance">—</span></div>
+          <div class="bolt-fare-row"><span class="k"><i class="bi bi-diagram-3"></i> Class multiplier</span><span id="fbMult">—</span></div>
+          <div class="bolt-fare-row"><span class="k"><i class="bi bi-graph-up-arrow"></i> Surge</span><span id="fbSurge">—</span></div>
+          <div class="bolt-fare-row total"><span class="k">Total</span><span id="fbTotal">—</span></div>
+        </div>
+
+        <button type="button" class="bolt-cta bolt-book" id="btnReview" disabled>
+          <span>Book Now</span>
+          <span class="bolt-book-amt" id="reviewAmount"></span>
+        </button>
+
+        {# Trust indicators — shown with ride selection, before the footer #}
+        <div class="bolt-features" aria-label="Trust and reliability">
+          <div class="bolt-feature">
+            <i class="bi bi-shield-check"></i>
+            <span><b>Safe &amp; Reliable Service</b><small>Secure ride details</small></span>
+          </div>
+          <div class="bolt-feature">
+            <i class="bi bi-headset"></i>
+            <span><b>24/7 Customer Support</b><small>Help when you need it</small></span>
+          </div>
+          <div class="bolt-feature">
+            <i class="bi bi-credit-card"></i>
+            <span><b>Easy Payment Options</b><small>Pay your way</small></span>
+          </div>
+        </div>
+      </section>
+
+      {# ==========================================================
+         STATE C — Confirm
+         ========================================================== #}
+      <section class="bolt-state bolt-panel" data-state="c">
+        <h2 class="bolt-title">Confirm your ride</h2>
+        <p class="bolt-sub" id="confirmTimeSub">Leaving now.</p>
+
+        <div class="bolt-summary">
+          <div class="bolt-summary-row">
+            <div class="bolt-summary-icon"><i class="bi bi-circle-fill" style="color:var(--brand);font-size:.7rem;"></i></div>
+            <div class="bolt-summary-body">
+              <div class="bolt-summary-label">Pickup</div>
+              <div class="bolt-summary-value" id="sumPickup">—</div>
+            </div>
+          </div>
+          <div class="bolt-summary-row">
+            <div class="bolt-summary-icon"><i class="bi bi-square-fill" style="font-size:.7rem;"></i></div>
+            <div class="bolt-summary-body">
+              <div class="bolt-summary-label">Destination</div>
+              <div class="bolt-summary-value" id="sumDest">—</div>
+            </div>
+          </div>
+          <div class="bolt-summary-row">
+            <div class="bolt-summary-icon"><i class="bi bi-car-front" style="font-size:.75rem;"></i></div>
+            <div class="bolt-summary-body">
+              <div class="bolt-summary-label">Ride</div>
+              <div class="bolt-summary-value" id="sumRide">—</div>
+            </div>
+          </div>
+          <div class="bolt-summary-row">
+            <div class="bolt-summary-icon"><i class="bi bi-wallet2" style="font-size:.75rem;"></i></div>
+            <div class="bolt-summary-body">
+              <div class="bolt-summary-label">Fare breakdown</div>
+              <div class="bolt-confirm-fare" id="fareRows"></div>
+            </div>
+          </div>
+        </div>
+
+        <button type="submit" class="bolt-cta" id="btnConfirm">
+          <span>Confirm</span>
+          <span class="bolt-cta-pay">
+            <i class="bi bi-cash-coin"></i>
+            <span>Cash</span>
+          </span>
+        </button>
+      </section>
+
+      {# ==========================================================
+         STATE D — Matching
+         ========================================================== #}
+      <section class="bolt-state bolt-panel" data-state="d">
+        <div class="bolt-matching">
+          <div class="bolt-spinner" style="width:34px;height:34px;border-width:3px;"></div>
+          <h3>Finding your driver</h3>
+          <p>Connecting you with the nearest available driver.</p>
+
+          <div class="bolt-match-progress" id="matchSteps">
+            <div class="bolt-step is-active" data-step="0">
+              <span class="dot"><i class="bi bi-search"></i></span>
+              <span>Finding your driver</span>
+            </div>
+            <div class="bolt-step" data-step="1">
+              <span class="dot"><i class="bi bi-person-badge"></i></span>
+              <span>Driver assigned</span>
+            </div>
+            <div class="bolt-step" data-step="2">
+              <span class="dot"><i class="bi bi-car-front"></i></span>
+              <span>On the way</span>
+            </div>
+          </div>
+
+          <div class="bolt-match-trip" id="matchTrip">
+            <div class="bolt-match-trip-row">
+              <i class="bi bi-circle-fill"></i>
+              <span><b id="mPickup">—</b>Pickup</span>
+            </div>
+            <div class="bolt-match-trip-row">
+              <i class="bi bi-square-fill"></i>
+              <span><b id="mDest">—</b>Destination</span>
+            </div>
+            <div class="bolt-match-trip-row">
+              <i class="bi bi-car-front"></i>
+              <span><b id="mRide">—</b>Ride</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+  </div>{# /.bolt-main #}
+  </form>
+
 </div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{{ url_for('static', filename='js/geo/geo-map.js') }}"></script>
 {% endblock %}
 
-<script nonce="{{ csp_nonce }}">
-document.addEventListener('DOMContentLoaded', function() {
-    // Ride type selection - highlights the selected card
-    const rideTypeCards = document.querySelectorAll('.ride-type-card');
-    rideTypeCards.forEach(card => {
-        card.addEventListener('click', function() {
-            rideTypeCards.forEach(c => c.classList.remove('selected'));
-            this.classList.add('selected');
-            const radio = this.querySelector('.ride-type-radio');
-            if (radio) radio.checked = true;
-        });
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+
+  // ============================================================
+  // State
+  // ============================================================
+  var state = {
+    stage: 'a',
+    dest: '',
+    pickup: '',
+    svcType: 'on_demand',
+    vip: false,
+    selectedClass: null,
+    selectedFare: null,
+    selectedName: null,
+    fareBreakdown: null,
+    distanceKm: null,
+    payment: 'cash',
+    schedule: 'now'
+  };
+
+  // ============================================================
+  // Elements
+  // ============================================================
+  var form        = document.getElementById('boltForm');
+  var backBtn     = document.getElementById('backBtn');
+  var stages      = document.querySelectorAll('.bolt-state');
+  var inputDest   = document.getElementById('inputDest');
+  var inputPickup = document.getElementById('inputPickup');
+  var btnContinue = document.getElementById('btnContinue');
+  var btnReview   = document.getElementById('btnReview');
+  var btnConfirm  = document.getElementById('btnConfirm');
+  var btnLocate   = document.getElementById('btnLocate');
+  var btnSwap     = document.getElementById('btnSwap');
+  var optionsBox  = document.getElementById('optionsBox');
+  var reviewAmt   = document.getElementById('reviewAmount');
+  var sumPickup   = document.getElementById('sumPickup');
+  var sumDest     = document.getElementById('sumDest');
+  var sumRide     = document.getElementById('sumRide');
+  var hDropoff    = document.getElementById('hDropoff');
+  var hPickup     = document.getElementById('hPickup');
+  var hPickupTime = document.getElementById('hPickupTime');
+  var hVehicleCls = document.getElementById('hVehicleClass');
+  var tripMeta    = document.getElementById('tripMeta');
+  var farePanel   = document.getElementById('farePanel');
+  var fbBase      = document.getElementById('fbBase');
+  var fbKm        = document.getElementById('fbKm');
+  var fbDistance  = document.getElementById('fbDistance');
+  var fbMult      = document.getElementById('fbMult');
+  var fbSurge     = document.getElementById('fbSurge');
+  var fbTotal     = document.getElementById('fbTotal');
+  var fareRows    = document.getElementById('fareRows');
+  var confirmTimeSub = document.getElementById('confirmTimeSub');
+  var schedNowBtn   = document.getElementById('schedNowBtn');
+  var schedLaterBtn = document.getElementById('schedLaterBtn');
+  var schedAt       = document.getElementById('schedAt');
+  var mPickup = document.getElementById('mPickup');
+  var mDest   = document.getElementById('mDest');
+  var mRide   = document.getElementById('mRide');
+  var svcBtns = document.querySelectorAll('.bolt-svc');
+  var serviceTypeInput = document.getElementById('service_type');
+  var pickupHint = document.getElementById('pickupHint');
+  var formToken  = form.querySelector('input[name="csrf_token"]');
+  var token   = formToken ? formToken.value : '';
+
+  var SVC_DEFAULT = 'on_demand';
+
+  function esc(t) {
+    var d = document.createElement('div');
+    d.textContent = (t == null) ? '' : String(t);
+    return d.innerHTML;
+  }
+  function numOrNull(id) {
+    var el = document.getElementById(id);
+    if (!el || el.value === '') return null;
+    var n = Number(el.value);
+    return isFinite(n) ? n : null;
+  }
+  function fmtCur(n, cur) {
+    return (cur || 'USD') + ' ' + Number(n || 0).toFixed(2);
+  }
+  function vehicleIcon(vc) {
+    var map = {
+      economy: 'fa-car-side',
+      comfort: 'fa-car',
+      premium: 'fa-car-on',
+      luxury:  'fa-gem',
+      van:     'fa-bus-simple',
+      bus:     'fa-bus'
+    };
+    return map[vc] || 'fa-car';
+  }
+
+  function setPickupTimeNow() {
+    var d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    hPickupTime.value = d.toISOString().slice(0, 16);
+  }
+
+  // ============================================================
+  // Schedule toggle
+  // ============================================================
+  function setSchedule(mode) {
+    state.schedule = mode;
+    schedNowBtn.classList.toggle('is-active', mode === 'now');
+    schedLaterBtn.classList.toggle('is-active', mode === 'later');
+    schedNowBtn.setAttribute('aria-pressed', mode === 'now');
+    schedLaterBtn.setAttribute('aria-pressed', mode === 'later');
+    schedAt.classList.toggle('is-visible', mode === 'later');
+    if (mode === 'later') schedAt.focus();
+  }
+  schedNowBtn.addEventListener('click', function () { setSchedule('now'); });
+  schedLaterBtn.addEventListener('click', function () { setSchedule('later'); });
+
+  // ============================================================
+  // Navigation
+  // ============================================================
+  function goTo(stage) {
+    state.stage = stage;
+    stages.forEach(function (s) {
+      s.classList.toggle('is-active', s.dataset.state === stage);
     });
-});
+    backBtn.classList.toggle('is-visible', stage !== 'a');
+    var mapSection = document.querySelector('.bolt-map-section');
+    if (mapSection) mapSection.classList.toggle('is-visible', stage === 'b');
+    if (stage === 'b' && window.__boltMapInvalidate) window.__boltMapInvalidate();
+    if (stage === 'b') loadOptions();
+    if (stage === 'c') renderConfirm();
+    if (stage === 'd') { finalizePickupTime(); renderMatch(); runMatchSteps(); }
+  }
+  backBtn.addEventListener('click', function () {
+    if (state.stage === 'd') return; // don't back out of matching
+    if (state.stage === 'c') return goTo('b');
+    if (state.stage === 'b') return goTo('a');
+  });
+
+  var menuBtn = document.querySelector('.bolt-menu-btn');
+  if (menuBtn) menuBtn.addEventListener('click', function () {
+    window.location.href = '/';
+  });
+
+  // ============================================================
+  // State A
+  // ============================================================
+  function validateA() {
+    state.dest   = inputDest.value.trim();
+    state.pickup = inputPickup.value.trim();
+    btnContinue.disabled = !state.dest || !state.pickup;
+    if (pickupHint) pickupHint.style.display = state.pickup ? 'none' : '';
+  }
+  // Typing text clears that side's map pin: typed text has no coordinates,
+  // so the map must not keep showing a point that no longer matches the field.
+  inputDest.addEventListener('input', function () {
+    if (window.__mapClearSide) window.__mapClearSide('dest');
+    validateA();
+  });
+  inputPickup.addEventListener('input', function () {
+    if (window.__mapClearSide) window.__mapClearSide('pickup');
+    validateA();
+  });
+  inputDest.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !btnContinue.disabled) {
+      e.preventDefault();
+      goTo('b');
+    }
+  });
+  inputPickup.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !btnContinue.disabled) {
+      e.preventDefault();
+      goTo('b');
+    }
+  });
+
+  btnContinue.addEventListener('click', function () {
+    if (!btnContinue.disabled) goTo('b');
+  });
+
+  if (btnSwap) btnSwap.addEventListener('click', function () {
+    var d = inputDest.value, p = inputPickup.value;
+    inputDest.value = p; inputPickup.value = d;
+    state.dest = p.trim(); state.pickup = d.trim();
+    if (window.__mapSwapSides) window.__mapSwapSides();
+    validateA();
+  });
+
+  btnLocate.addEventListener('click', function () {
+    if (!navigator.geolocation) {
+      inputPickup.value = 'Current location';
+      validateA();
+      return;
+    }
+    inputPickup.value = 'Locating…';
+    btnLocate.innerHTML = '<i class="bi bi-arrow-repeat spin"></i>';
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        inputPickup.value = 'Current location';
+        document.getElementById('pickup_latitude').value  = pos.coords.latitude;
+        document.getElementById('pickup_longitude').value = pos.coords.longitude;
+        validateA();
+        btnLocate.innerHTML = '<i class="bi bi-crosshair"></i>';
+        if (window.__mapPinPickup) window.__mapPinPickup(pos.coords.latitude, pos.coords.longitude, 'Current location');
+      },
+      function () {
+        inputPickup.value = '';
+        if (window.__mapClearSide) window.__mapClearSide('pickup');
+        validateA();
+        btnLocate.innerHTML = '<i class="bi bi-crosshair"></i>';
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  });
+
+  // One-tap destination chips (sourced venues, no inline handlers — CSP friendly)
+  document.querySelectorAll('.bolt-chip').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      inputDest.value = (chip.getAttribute('data-dest') || '').trim();
+      // A saved place has no coordinates — drop any stale dropoff pin so the
+      // map never shows a point that contradicts the chosen destination.
+      if (window.__mapClearSide) window.__mapClearSide('dest');
+      validateA();
+      inputDest.focus();
+    });
+  });
+
+  // Service pills — Quick Ride / Airport Transfer / VIP Service.
+  // These select a real ServiceType (plus a client-side VIP filter to the
+  // premium/luxury vehicle classes). Prices still come from the live fare API.
+  function setService(btn) {
+    var svc = btn.getAttribute('data-service') || SVC_DEFAULT;
+    var vip = btn.getAttribute('data-vip') === '1';
+    svcBtns.forEach(function (b) { b.classList.toggle('is-active', b === btn); });
+    state.svcType = svc;
+    state.vip = vip;
+    if (serviceTypeInput) serviceTypeInput.value = svc;
+  }
+  svcBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () { setService(btn); });
+  });
+
+  // ============================================================
+  // State B — ride options
+  // ============================================================
+  function skeletonBox() {
+    return '' +
+      '<div class="bolt-skeleton" aria-hidden="true">' +
+        '<div class="bolt-skeleton-card"><span class="sk sk-ico"></span>' +
+          '<span class="sk-main"><span class="sk sk-line" style="width:45%"></span>' +
+          '<span class="sk sk-line" style="width:30%"></span></span>' +
+          '<span class="sk sk-price"></span></div>' +
+        '<div class="bolt-skeleton-card"><span class="sk sk-ico"></span>' +
+          '<span class="sk-main"><span class="sk sk-line" style="width:45%"></span>' +
+          '<span class="sk sk-line" style="width:30%"></span></span>' +
+          '<span class="sk sk-price"></span></div>' +
+      '</div>';
+  }
+
+  function loadOptions() {
+    optionsBox.innerHTML = skeletonBox();
+    btnReview.disabled = true;
+    reviewAmt.textContent = '';
+    hideFarePanel();
+    state.selectedClass = null;
+    state.selectedFare = null;
+    state.selectedName = null;
+    state.fareBreakdown = null;
+    hVehicleCls.value = '';
+
+    fetch('/api/transport/ride-options', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': token
+      },
+      body: JSON.stringify({
+        service_type: state.svcType || SVC_DEFAULT,
+        currency: 'USD',
+        pickup_latitude:  numOrNull('pickup_latitude'),
+        pickup_longitude: numOrNull('pickup_longitude'),
+        dropoff_latitude: numOrNull('dropoff_latitude'),
+        dropoff_longitude: numOrNull('dropoff_longitude')
+      })
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d || !d.success) return optionsError();
+      var data = d.data || {};
+      var opts = data.options || [];
+      state.distanceKm = data.distance_km != null ? data.distance_km : null;
+      renderTripNote(data);
+      if (state.vip) {
+        // VIP Service is the on-demand ride restricted to premium/luxury.
+        opts = opts.filter(function (o) {
+          return o.vehicle_class === 'premium' || o.vehicle_class === 'luxury';
+        });
+      }
+      if (!opts.length) return optionsEmpty();
+      renderOptions(opts, data.currency || 'USD');
+    })
+    .catch(optionsError);
+  }
+
+  function renderTripNote(data) {
+    var note = 'Live pricing from real available vehicles.';
+    if (data && data.distance_km != null) {
+      note = '~' + Number(data.distance_km).toFixed(1) + ' km trip · straight-line estimate.';
+    }
+    tripMeta.textContent = note;
+  }
+
+  function optionsError() {
+    optionsBox.innerHTML =
+      '<div class="bolt-empty">We couldn\'t reach the ride service. ' +
+      '<button type="button" class="bolt-retry" id="retryBtn">Retry</button></div>';
+    var rb = document.getElementById('retryBtn');
+    if (rb) rb.addEventListener('click', function () { loadOptions(); });
+    btnReview.disabled = true;
+    hideFarePanel();
+  }
+  function optionsEmpty() {
+    optionsBox.innerHTML =
+      '<div class="bolt-empty"><i class="bi bi-car-front" style="font-size:1.6rem;display:block;margin-bottom:8px;color:#C8D5CE;"></i>' +
+      'No vehicles available right now. Try a different destination or schedule for later.</div>';
+    btnReview.disabled = true;
+    hideFarePanel();
+  }
+
+  function renderOptions(opts, currency) {
+    optionsBox.innerHTML =
+      '<div class="bolt-vehgrid">' +
+      opts.map(function (o) {
+        var seats = o.capacity && o.capacity.max ? String(o.capacity.max) : null;
+        var luggage = (o.luggage
+                       ? (o.luggage.max != null
+                          ? String(o.luggage.max)
+                          : String(o.luggage))
+                       : null);
+        if (luggage === 'null' || luggage === 'undefined') luggage = null;
+        var detail = (seats ? seats + ' seats' : '') +
+          (seats && luggage ? ' · ' : '') +
+          (luggage ? luggage + ' bags' : '');
+
+        return '' +
+          '<button type="button" class="bolt-veh" ' +
+                  'data-class="' + esc(o.vehicle_class) + '" ' +
+                  'data-fare="'  + esc(o.fare_total)    + '" ' +
+                  'data-name="'  + esc(o.display_name)  + '">' +
+            '<span class="bolt-veh-ico"><i class="fas ' + vehicleIcon(o.vehicle_class) + '"></i></span>' +
+            '<span class="bolt-veh-name">' + esc(o.display_name) + '</span>' +
+            '<span class="bolt-veh-price">' + esc(currency) + ' ' +
+              Number(o.fare_total).toFixed(0) + '</span>' +
+            '<span class="bolt-veh-sub">' + esc(detail) + '</span>' +
+          '</button>';
+      }).join('') +
+      '</div>';
+
+    optionsBox.querySelectorAll('.bolt-veh').forEach(function (el) {
+      el.addEventListener('click', function () { selectOption(el, currency); });
+    });
+
+    var first = optionsBox.querySelector('.bolt-veh');
+    if (first) first.click();
+  }
+
+  function selectOption(el, currency) {
+    optionsBox.querySelectorAll('.bolt-veh').forEach(function (x) {
+      x.classList.remove('is-selected');
+    });
+    el.classList.add('is-selected');
+    state.selectedClass = el.dataset.class;
+    state.selectedFare  = Number(el.dataset.fare);
+    state.selectedName  = el.dataset.name;
+    hVehicleCls.value   = state.selectedClass;
+    btnReview.disabled  = false;
+    reviewAmt.textContent = currency + ' ' + state.selectedFare.toFixed(0);
+    showFarePanel(currency);
+  }
+
+  function showFarePanel(currency) {
+    if (!state.fareBreakdown) { hideFarePanel(); return; }
+    var b = state.fareBreakdown;
+    var km = state.distanceKm;
+    fbBase.textContent     = fmtCur(b.base_fare, currency);
+    fbKm.textContent       = km != null ? Number(km).toFixed(1) : '—';
+    fbDistance.textContent = fmtCur(b.distance_charge, currency);
+    fbMult.textContent     = '× ' + Number(b.class_multiplier).toFixed(2);
+    fbSurge.textContent    = '× ' + Number(b.surge_multiplier).toFixed(2);
+    fbTotal.textContent    = fmtCur(state.selectedFare, currency);
+    farePanel.classList.add('is-visible');
+  }
+  function hideFarePanel() {
+    farePanel.classList.remove('is-visible');
+  }
+
+  btnReview.addEventListener('click', function () {
+    if (!btnReview.disabled) goTo('c');
+  });
+
+  // ============================================================
+  // State C — confirm
+  // ============================================================
+  function renderConfirm() {
+    sumPickup.textContent = state.pickup || '—';
+    sumDest.textContent   = state.dest   || '—';
+    sumRide.textContent   = state.selectedName
+      ? state.selectedName + ' · USD ' + state.selectedFare.toFixed(0)
+      : '—';
+
+    var b = state.fareBreakdown;
+    var km = state.distanceKm;
+    if (b) {
+      fareRows.innerHTML =
+        fareRow('Base fare', fmtCur(b.base_fare, 'USD')) +
+        fareRow('Distance (' + (km != null ? Number(km).toFixed(1) + ' km' : '—') + ')', fmtCur(b.distance_charge, 'USD')) +
+        fareRow('Class multiplier', '× ' + Number(b.class_multiplier).toFixed(2)) +
+        fareRow('Surge', '× ' + Number(b.surge_multiplier).toFixed(2)) +
+        fareRow('Total', 'USD ' + state.selectedFare.toFixed(0), true);
+    } else {
+      fareRows.innerHTML = fareRow('Total', 'USD ' + state.selectedFare.toFixed(0), true);
+    }
+
+    confirmTimeSub.textContent = state.schedule === 'later'
+      ? 'Scheduled for ' + (schedAt.value || 'later today').replace('T', ' at ')
+      : 'Leaving now.';
+  }
+  function fareRow(label, value, strong) {
+    return '' +
+      '<div class="bolt-fare-row' + (strong ? ' total' : '') + '">' +
+        '<span class="k">' + (strong
+          ? '<i class="bi bi-check-circle"></i> ' + label
+          : '<i class="bi bi-dot"></i> ' + label) + '</span>' +
+        '<span>' + value + '</span>' +
+      '</div>';
+  }
+
+  function finalizePickupTime() {
+    if (state.schedule === 'later' && schedAt.value) {
+      var d = new Date(schedAt.value);
+      if (!isNaN(d.getTime())) {
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+        hPickupTime.value = d.toISOString().slice(0, 16);
+        return;
+      }
+    }
+    setPickupTimeNow();
+  }
+
+  // ============================================================
+  // State D — matching animation (honest, no fabricated driver)
+  // ============================================================
+  function renderMatch() {
+    mPickup.textContent = state.pickup || '—';
+    mDest.textContent   = state.dest   || '—';
+    mRide.textContent   = state.selectedName || '—';
+  }
+  function runMatchSteps() {
+    var steps = document.querySelectorAll('#matchSteps .bolt-step');
+    var i = 0;
+    var timer = setInterval(function () {
+      i += 1;
+      steps.forEach(function (st, idx) {
+        st.classList.toggle('is-active', idx === i);
+        st.classList.toggle('is-done', idx < i);
+      });
+      if (i >= steps.length - 1) clearInterval(timer);
+    }, 1400);
+  }
+
+  // ============================================================
+  // Submit
+  // ============================================================
+  form.addEventListener('submit', function (e) {
+    if (!state.dest || !state.pickup || !state.selectedClass) {
+      e.preventDefault();
+      if (!state.dest)   return goTo('a');
+      if (!state.pickup) return goTo('a');
+      return goTo('b');
+    }
+    hDropoff.value = state.dest;
+    hPickup.value  = state.pickup;
+    finalizePickupTime();
+    hVehicleCls.value = state.selectedClass;
+    goTo('d');
+  });
+
+  // ============================================================
+  // Map — pin placement + route preview
+  // ============================================================
+  (function initMap() {
+    var mapEl = document.getElementById('pickMap');
+    if (!mapEl) return;
+    if (!window.GeoMap) {
+      // Map capability did not load at all — leave an honest marker instead
+      // of a silent blank area.
+      mapEl.setAttribute('data-geo-map-status', 'unavailable');
+      return;
+    }
+
+    var handle = window.GeoMap.init('pickMap', {
+      tileUrl: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attribution: '\u00a9 OpenStreetMap',
+      center: { latitude: 0.3136, longitude: 32.5811 },
+      zoom: 12
+    });
+    if (!handle || handle.status !== 'rendered') return;
+
+    // The sheet/top bar animate after load; ensure tiles lay out to full size.
+    setTimeout(function () {
+      if (handle.map) handle.map.invalidateSize();
+    }, 250);
+
+    var root = document.querySelector('.bolt');
+    var pins = { pickup: null, dropoff: null };
+    var placing = false;        // map-tap placing mode active
+    var placingDropoff = true;  // which side the next tap sets
+    var routeLine = null;
+
+    var modeBadge = document.getElementById('pinModeBadge');
+    var toggleBtn = document.getElementById('pinToggleBtn');
+    var clearBtn  = document.getElementById('pinClearBtn');
+
+    function syncCoords() {
+      document.getElementById('pickup_latitude').value   = pins.pickup  ? pins.pickup.lat  : '';
+      document.getElementById('pickup_longitude').value  = pins.pickup  ? pins.pickup.lng  : '';
+      document.getElementById('dropoff_latitude').value  = pins.dropoff ? pins.dropoff.lat : '';
+      document.getElementById('dropoff_longitude').value = pins.dropoff ? pins.dropoff.lng : '';
+    }
+    function refreshRoute() {
+      if (!handle || !handle.map) return;
+      var p = pins.pickup, d = pins.dropoff;
+      if (routeLine) { handle.map.removeLayer(routeLine); routeLine = null; }
+      if (p && d) {
+        routeLine = L.polyline([[p.lat, p.lng], [d.lat, d.lng]], {
+          color: '#0E6B4F', weight: 4, dashArray: '8 8', opacity: .85
+        }).addTo(handle.map);
+        handle.map.fitBounds([
+          L.latLng(p.lat, p.lng),
+          L.latLng(d.lat, d.lng)
+        ], { padding: [60, 60] });
+      }
+    }
+    function writeFields() {
+      syncCoords();
+      refreshRoute();
+    }
+    // A map-pinned point has no street address until a geocoder is configured,
+    // so the honest label is the pinned coordinate itself.
+    function pinnedLabel(latlng) {
+      return 'Pinned on map · ' + Number(latlng.lat).toFixed(5) + ', ' +
+             Number(latlng.lng).toFixed(5);
+    }
+    function placePin(kind, latlng, labelOverride) {
+      if (!handle || !handle.map) return;
+      if (pins[kind]) {
+        pins[kind].marker.setLatLng(latlng);
+      } else {
+        pins[kind] = {
+          marker: L.marker(latlng, { draggable: true }).addTo(handle.map)
+        };
+        pins[kind].marker.on('dragend', function () {
+          var ll = pins[kind].marker.getLatLng();
+          pins[kind].lat = ll.lat;
+          pins[kind].lng = ll.lng;
+          setFieldSync(kind === 'pickup' ? inputPickup : inputDest,
+                       pinnedLabel(ll));
+          writeFields();
+          validateA();
+        });
+      }
+      pins[kind].lat = latlng.lat;
+      pins[kind].lng = latlng.lng;
+      setFieldSync(kind === 'pickup' ? inputPickup : inputDest,
+                   labelOverride || pinnedLabel(latlng));
+      writeFields();
+      validateA();
+    }
+    function setFieldSync(el, value) {
+      // Writing the visible field from the map must not trip the "typed text"
+      // handler that clears pins (a programmatic value has matching coords).
+      window.__mapSyncing = true;
+      el.value = value;
+      window.__mapSyncing = false;
+    }
+    function clearSide(kind) {
+      if (pins[kind]) {
+        if (handle.map) handle.map.removeLayer(pins[kind].marker);
+        pins[kind] = null;
+        writeFields();
+      }
+    }
+    function setModeUi() {
+      if (modeBadge) {
+        modeBadge.innerHTML = placing
+          ? (placingDropoff
+              ? '<i class="bi bi-square-fill"></i> Placing: destination — tap the map'
+              : '<i class="bi bi-circle-fill"></i> Placing: pickup — tap the map')
+          : '<i class="bi bi-geo-alt"></i> Map is ready — place pins for exact pricing';
+      }
+      if (toggleBtn) {
+        toggleBtn.innerHTML = placing
+          ? '<i class="bi bi-check2"></i> ' +
+            (placingDropoff ? 'Placing destination' : 'Placing pickup')
+          : '<i class="bi bi-geo-alt"></i> Place on map';
+      }
+    }
+    function setFocus(focused) {
+      if (!root) return;
+      root.classList.toggle('bolt-map-focus', focused);
+      // The sheet height changes immediately after the class flips; give
+      // Leaflet a beat so it re-lays the tiles at the new size.
+      if (handle && handle.map) {
+        setTimeout(function () { handle.map.invalidateSize(); }, 90);
+      }
+    }
+
+    // Pins placed for "use my current location" also write through to the field.
+    window.__mapPinPickup = function (lat, lng, label) {
+      placePin('pickup', L.latLng(lat, lng), label || pinnedLabel(L.latLng(lat, lng)));
+    };
+
+    // Re-lay the tiles once the map becomes visible (pin-focus or State B).
+    window.__boltMapInvalidate = function () {
+      if (handle && handle.map) {
+        setTimeout(function () { handle.map.invalidateSize(); }, 80);
+      }
+    };
+
+    // Typing/selecting text in a field clears that side's pin so the map
+    // never shows a point contradicting the field. (Skipped while the map is
+    // synchronising its own value into the field — see setFieldSync.)
+    window.__mapClearSide = function (side) {
+      if (window.__mapSyncing) return;
+      clearSide(side === 'dest' ? 'dropoff' : 'pickup');
+    };
+
+    // Swap follows the visible text so the map always agrees with the inputs.
+    window.__mapSwapSides = function () {
+      var pk = pins.pickup, df = pins.dropoff;
+      var pkLat = pk ? pk.lat : null, pkLng = pk ? pk.lng : null;
+      var dfLat = df ? df.lat : null, dfLng = df ? df.lng : null;
+      Object.keys(pins).forEach(function (k) {
+        if (pins[k]) { handle.map.removeLayer(pins[k].marker); pins[k] = null; }
+      });
+      if (dfLat != null) placePin('pickup', L.latLng(dfLat, dfLng), inputPickup.value);
+      if (pkLat != null) placePin('dropoff', L.latLng(pkLat, pkLng), inputDest.value);
+      writeFields();
+      validateA();
+    };
+
+    // Map taps only place pins while placing-mode is active, so panning and
+    // zooming never drop stray pins.
+    handle.map.on('click', function (e) {
+      if (!placing) return;
+      placePin(placingDropoff ? 'dropoff' : 'pickup', e.latlng);
+      placing = false;
+      setModeUi();
+      setFocus(false);
+    });
+
+    // Toggle cycles: off -> placing destination -> placing pickup -> off.
+    if (toggleBtn) toggleBtn.addEventListener('click', function () {
+      if (!placing) {
+        placing = true; placingDropoff = true;
+      } else if (placingDropoff) {
+        placingDropoff = false;
+      } else {
+        placing = false;
+      }
+      setModeUi();
+      setFocus(placing);
+    });
+
+    if (clearBtn) clearBtn.addEventListener('click', function () {
+      Object.keys(pins).forEach(clearSide);
+      placing = false;
+      placingDropoff = true;
+      setModeUi();
+      setFocus(false);
+    });
+
+    setModeUi();
+  })();
+
+  // ============================================================
+  // Honest fare-breakdown capture with no fabricated numbers
+  // ============================================================
+  window.__captureFareBreakdown = function (bd) {
+    state.fareBreakdown = bd || null;
+  };
+
+  var __origFetch = window.fetch;
+  window.fetch = function (url, opts) {
+    return __origFetch.apply(this, arguments).then(function (res) {
+      try {
+        if (typeof url === 'string' && url.indexOf('/api/transport/ride-options') !== -1) {
+          res.clone().json().then(function (d) {
+            if (d && d.success && d.data && d.data.options && d.data.options.length) {
+              var first = d.data.options[0];
+              if (first.fare_breakdown) {
+                state.fareBreakdown = first.fare_breakdown;
+                state.distanceKm = d.data.distance_km != null ? d.data.distance_km : null;
+              }
+            }
+          }).catch(function () {});
+        }
+      } catch (e) {}
+      return res;
+    });
+  };
+
+  // ============================================================
+  // Prefill visible fields from query params (hidden values)
+  // ============================================================
+  var prefillDest = (document.getElementById('hDropoff').value || '').trim();
+  var prefillPickup = (document.getElementById('hPickup').value || '').trim();
+  if (prefillDest)   inputDest.value = prefillDest;
+  if (prefillPickup) inputPickup.value = prefillPickup;
+  validateA();
+
+})();
 </script>
+{% endblock %}

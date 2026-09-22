@@ -1729,24 +1729,49 @@ def view_org(org_id):
 @login_required
 @require_role(*_MOD)
 def approve_org(org_id):
-    """Redirect to org module's approve endpoint."""
+    """Approve an organisation. Org-side canonical state change; performed
+    here (with its own audit line) instead of redirecting to a nonexistent
+    endpoint that previously failed silently."""
+    from app.identity.models.organisation import Organisation
+    from app.identity.services.organisation_kyb_service import OrganisationKYBService
+
+    org = Organisation.query.filter_by(id=org_id, is_deleted=False).first()
+    if org is None:
+        flash('Organisation not found.', 'danger')
+        return _redirect_back('admin.moderator.orgs_queue')
+    notes = (request.form.get('notes') or '').strip()
+    OrganisationKYBService.approve_organisation(org, current_user.id, notes=notes or None)
     try:
-        return redirect(url_for('org.approve_organisation', org_id=org_id))
+        _audit('org.approve_organisation', 'organisations', {'org_id': org.id, 'slug': org.slug})
     except Exception:
-        flash('Cannot approve organisation - module unavailable.', 'danger')
-        return redirect(url_for('admin.moderator.orgs_queue'))
+        pass
+    flash(f'Organisation {org.slug} approved.', 'success')
+    return _redirect_back('admin.moderator.orgs_queue')
 
 
 @moderator_bp.route('/orgs/<int:org_id>/reject', methods=['POST'])
 @login_required
 @require_role(*_MOD)
 def reject_org(org_id):
-    """Redirect to org module's reject endpoint."""
+    """Reject an organisation. Org-side canonical state change; performed
+    here instead of redirecting to a nonexistent endpoint."""
+    from app.identity.models.organisation import Organisation
+    from app.identity.services.organisation_kyb_service import OrganisationKYBService
+
+    org = Organisation.query.filter_by(id=org_id, is_deleted=False).first()
+    if org is None:
+        flash('Organisation not found.', 'danger')
+        return _redirect_back('admin.moderator.orgs_queue')
+    reason = (request.form.get('reason') or request.form.get('rejection_reason') or '').strip()
+    OrganisationKYBService.reject_organisation(
+        org, current_user.id, reason=reason or 'Rejected by administrator.'
+    )
     try:
-        return redirect(url_for('org.reject_organisation', org_id=org_id))
+        _audit('org.reject_organisation', 'organisations', {'org_id': org.id, 'slug': org.slug})
     except Exception:
-        flash('Cannot reject organisation - module unavailable.', 'danger')
-        return redirect(url_for('admin.moderator.orgs_queue'))
+        pass
+    flash(f'Organisation {org.slug} rejected.', 'warning')
+    return _redirect_back('admin.moderator.orgs_queue')
 
 
 @moderator_bp.route('/orgs/<int:org_id>/flag', methods=['POST'])

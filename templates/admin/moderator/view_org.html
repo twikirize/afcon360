@@ -117,7 +117,7 @@
       </div>
       <div class="panel-body">
         {% if not org.is_verified %}
-        <form action="{{ url_for('admin.moderator.verify_org', org_id=org.id) }}" method="POST" style="margin-bottom:16px;">
+        <form action="{{ url_for('admin.moderator.approve_org', org_id=org.id) }}" method="POST" style="margin-bottom:16px;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-success" style="width:100%;" onclick="return confirm('Verify this organisation?');">
             <i class="fas fa-check"></i> Verify Organisation

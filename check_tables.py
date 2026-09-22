@@ -1,10 +1,11 @@
 import os
-os.environ['FLASK_APP'] = 'app.py'
+os.environ['FLASK_ENV'] = 'testing'
+os.environ['DATABASE_URL'] = 'postgresql://postgres:postgres@localhost:5432/afcon360_test'
 from app import create_app
+from app.extensions import db
+from sqlalchemy import text
 app = create_app()
 with app.app_context():
-    from app.extensions import db
-    from sqlalchemy import text
-    result = db.session.execute(text("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name LIKE '%onboard%'")).fetchall()
-    for r in result:
-        print(r)
+    result = db.session.execute(text("SELECT table_schema, table_name FROM information_schema.tables WHERE table_name LIKE '%marketplace%'"))
+    for row in result:
+        print(row)

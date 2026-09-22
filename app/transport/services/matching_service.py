@@ -6,10 +6,11 @@ Matches bookings with available drivers/vehicles
 
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any, cast, Tuple
-import math
 from flask import current_app
 
 from app.extensions import db, cache
+from app.geo.interfaces import GeoPoint
+from app.geo.services import straight_line_distance_m
 from app.transport.models import Booking, DriverProfile, BookingStatus, ProviderType
 from app.transport.services import get_provider_service
 from app.transport.services.tracking_service import TrackingService
@@ -297,18 +298,22 @@ class MatchingService:
 
     @staticmethod
     def _calculate_distance(location1: Dict, location2: Dict) -> Optional[float]:
-        """Calculate distance between two locations. Returns None if either location lacks valid canonical coordinates."""
+        """Distance between two locations in kilometres.
+
+        Generic math is owned by canonical GEO (radians-correct haversine,
+        metres); this boundary converts metres → km to preserve
+        Transport's kilometre contract (proximity bands, ETA heuristic).
+        Returns None if either location lacks valid canonical coordinates.
+        """
         lat1, lon1 = MatchingService._coordinates_or_none(location1)
         lat2, lon2 = MatchingService._coordinates_or_none(location2)
 
         if None in (lat1, lon1, lat2, lon2):
             return None
 
-        dlon = lon2 - lon1
-        dlat = lat2 - lat1
-        a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
-        c = 2 * math.asin(math.sqrt(a))
-        return 6371 * c  # km
+        dist_m = straight_line_distance_m(
+            GeoPoint(lat1, lon1), GeoPoint(lat2, lon2))
+        return dist_m / 1000.0  # km
 
     @staticmethod
     @monitor_endpoint("assign_driver_to_booking")

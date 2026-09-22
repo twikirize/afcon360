@@ -1316,6 +1316,45 @@ Before proposing a new migration:
 
 Never patch generated migrations as a workaround for a model/source problem.
 
+## 20.1 Authorized automatic-generation rule
+
+Schema changes may be implemented when the current roadmap/node explicitly
+authorizes them. Roadmap/node authorization is explicit authorization for
+the authorized scope; it does not weaken any other invariant in this
+document.
+
+When migration work is authorized, migration files MUST be generated
+automatically by Flask-Migrate/Alembic from the application's actual model
+metadata:
+
+- Do NOT manually create migration files.
+- Do NOT manually edit, patch, reorder, or repair generated migration
+  files.
+- Do NOT manually create tables, columns, indexes, constraints, enums, or
+  other schema objects with ad-hoc SQL as a substitute for migration
+  generation.
+- Use the project's canonical model/metadata registration and run
+  `flask db migrate -m "description"` to generate the migration.
+- Before any `flask db upgrade`, inspect the generated migration against
+  the expected model/schema changes.
+- If an expected table, column, type, enum, index, constraint,
+  relationship, or other schema change is missing from the generated
+  migration: STOP. Do NOT run `flask db upgrade`. Do NOT edit the
+  migration. Trace why Alembic did not detect the change; fix the
+  detection problem at its source (models, metadata registration,
+  imports, configuration, or comparison setup); delete the incorrectly
+  generated migration; regenerate with `flask db migrate`; repeat until
+  the generated migration automatically captures all intended changes.
+- Only after the generated migration fully matches the intended
+  model/schema state may `flask db upgrade` be executed.
+- The same principle applies across development, test, staging, and
+  production environments.
+- Migrations must remain reproducible from model metadata so the
+  application can move across environments without manually recreating
+  migration files.
+- Never solve an Alembic detection failure by manually editing the
+  migration artifact.
+
 Known defect — missing baseline migration (RESOLVED):
 
 - `ab6dd422c152_initial_schema` (down_revision=None) was the effective root of
@@ -1334,6 +1373,24 @@ Known defect — missing baseline migration (RESOLVED):
 - The test environment still bootstraps via `db.create_all()` + `stamp head`
   (see §21.1 / `scripts/setup_test_db_schema.py` / `tests/conftest.py`); both
   paths use the same model metadata, so the resulting schema is identical.
+
+Known defect — marketplace migration `4dc568c00f86` (RESOLVED):
+
+- `4dc568c00f86_add_vehicle_marketplace_models.py` (down_revision
+  `b73d33d073e1`) was a hand-written migration for the vehicle marketplace
+  models (`vehicle_marketplace_listings`, `driver_vehicle_applications`,
+  `vehicle_contracts`). It inferred model state via Alembic autogenerate but
+  was never executed/applied cleanly and could not be applied against an
+  existing schema.
+- RESOLVED: it has been retired (deleted from `migrations/versions/`; backup at
+  `%TEMP%\opencode\4dc568c00f86_defective_backup.py`). Migration head is now
+  `b73d33d073e1`. NO marketplace migration file exists, and none is required.
+- The test DB gets the marketplace tables from the sanctioned test path:
+  `tests/conftest.py` / `scripts/setup_test_db_schema.py` build the schema from
+  current models via `db.create_all()` + `stamp head`. A pre-existing test DB
+  predating the marketplace models must be recreated with
+  `python scripts/setup_test_db_schema.py` (the conftest fast path skips the
+  rebuild when `users` already exists). See §21.1.
 
 ## 20.2 CHECK-constraint sync (Alembic blind spot)
 
@@ -1393,7 +1450,162 @@ semantics, different SQL form — e.g. `= ANY(ARRAY[...])` vs `IN (...)`)
 is NOT drift and needs no migration. Only `ADD` / `REPLACE` / `ORPHANED`
 (with `--prune-db`) require a migration.
 
----
+### §20.3 Permanent AFCON360 Migration Rule
+
+Database schema/model changes are allowed when the active roadmap node or task explicitly authorizes the schema change. The rule is **NOT** "never use migrations." The rule is:
+
+> **Never manually author or repair migration artifacts. Generate them from the real SQLAlchemy model metadata and make Alembic's autogeneration detect the complete change.**
+
+**Authorized migrations are allowed.** Once a roadmap node or task authorizes a schema change, the canonical flow below is mandatory across all environments (development, test, staging, production).
+
+#### Canonical Flow
+
+```text
+AUTHORIZED SCHEMA CHANGE
+        ↓
+UPDATE SQLALCHEMY MODELS / METADATA
+        ↓
+flask db migrate -m "description"
+        ↓
+INSPECT GENERATED MIGRATION
+        ↓
+DOES IT CONTAIN ALL EXPECTED CHANGES?
+        │
+        ├── NO
+        │    ↓
+        │  STOP
+        │    ↓
+        │  DO NOT RUN flask db upgrade
+        │    ↓
+        │  TRACE WHY ALEMBIC DID NOT DETECT IT
+        │    ↓
+        │  CHECK:
+        │    - model definition
+        │    - model imports
+        │    - metadata registration
+        │    - application factory loading
+        │    - Alembic target metadata
+        │    - enum/type/index/constraint registration
+        │    - comparison configuration where applicable
+        │    ↓
+        │  FIX THE SOURCE OF DETECTION FAILURE
+        │    ↓
+        │  DELETE THE INCORRECTLY GENERATED MIGRATION
+        │    ↓
+        │  RUN flask db migrate AGAIN
+        │    ↓
+        │  REPEAT UNTIL COMPLETE
+        │
+        └── YES
+             ↓
+        REVIEW GENERATED MIGRATION
+             ↓
+        flask db upgrade
+```
+
+### §20.4 Absolute Prohibitions
+
+Future agents MUST NOT:
+
+- manually create migration files;
+- manually edit generated migration files;
+- manually add missing `op.create_table(...)`, `op.add_column(...)`, etc.;
+- manually patch an autogenerated migration;
+- manually rewrite an Alembic migration to make it pass;
+- use ad-hoc SQL as a substitute for the canonical migration workflow;
+- manually create schema objects that should have been detected from models;
+- run `flask db upgrade` when the generated migration is known to be incomplete;
+- conceal an Alembic detection failure by repairing the migration artifact.
+
+When autogeneration misses something, the migration artifact is the symptom. **Return to the model/metadata/detection source and fix that instead.**
+
+### §20.5 Regeneration Rule
+
+When a generated migration is incomplete:
+
+1. **STOP.**
+2. Do not upgrade any database.
+3. Determine why the expected change was not detected.
+4. Fix the actual model/metadata/import/configuration issue.
+5. Delete the incomplete generated migration.
+6. Regenerate using:
+   ```text
+   flask db migrate -m "description"
+   ```
+7. Inspect again.
+8. Repeat until the generated migration captures the intended model/schema state automatically.
+
+Only then is `flask db upgrade` permitted.
+
+### §20.6 Environment Portability
+
+This rule applies across **development**, **test**, **staging**, and **production**. The migration chain must remain reproducible across environments. Do not rely on an engineer manually recreating schema changes in each environment. The models/metadata plus generated migration chain are the source of reproducible schema evolution.
+
+### §20.7 Test Database Rule
+
+The test environment must be brought to the expected schema through the project's sanctioned automatic/reproducible schema process (`tests/conftest.py` → `db.create_all()` + `stamp head`, or `scripts/setup_test_db_schema.py`). Do not manually create missing test tables or columns. Prefer the canonical migration chain where appropriate. The important principle is:
+
+> **The test environment must be reproducible from the application's models/metadata and sanctioned schema process.**
+
+### §20.8 Pre-Upgrade Verification
+
+Agents must compare the generated migration against the intended model change before upgrading. They must verify, as applicable:
+
+- tables;
+- columns;
+- data types;
+- nullability;
+- defaults;
+- indexes;
+- constraints;
+- foreign keys;
+- enum/type changes;
+- relationship-related schema;
+- other model-derived schema changes.
+
+The agent must explicitly report whether all expected changes were detected.
+
+### §20.9 Production Rule
+
+Production must use the same generated migration chain. Do not manually alter production schema to compensate for a migration-generation problem. If production and models diverge:
+
+```text
+STOP
+→ inspect current database state
+→ inspect model metadata
+→ resolve the actual detection/drift problem
+→ regenerate/verify migration
+→ then upgrade
+```
+
+Do not invent a hand-written corrective migration.
+
+### §20.10 Governance Interaction
+
+This rule does **NOT** override:
+
+- roadmap scope;
+- explicit node authorization;
+- schema review requirements;
+- no-unrelated-work rules;
+- evidence-before-editing;
+- minimal-change requirements.
+
+Instead, it defines **HOW an already-authorized schema change must be performed**. Therefore:
+
+```text
+"No migration without authorization"
+```
+
+means:
+
+> No schema change unless the roadmap/node authorizes it.
+
+It does **NOT** mean:
+
+> Never use Flask-Migrate.
+
+Once schema change is authorized, the workflow above (§20.3–§20.9) is mandatory.
 
 # 21. Testing Contract
 

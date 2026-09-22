@@ -6,6 +6,11 @@ Allows clean imports across the app
 # ------------------------
 # Services
 # ------------------------
+from .availability_service import (
+    available_by_class,
+    nearest_eta_minutes_for_class,
+)
+from .payment_methods import get_available_payment_methods
 from .provider_service import ProviderService, get_provider_service
 from .booking_service import BookingService, get_booking_service
 from .matching_service import MatchingService, get_matching_service
@@ -17,6 +22,7 @@ from .external_platforms import ExternalPlatformsService, get_external_platforms
 from .dashboard_service import DashboardService, get_dashboard_service
 from .settings_service import SettingsService, get_settings_service, feature_enabled, development_only, production_only
 from .reservation_expiry_service import TransportReservationExpiryService
+from .marketplace_service import VehicleMarketplaceService, get_marketplace_service
 
 # ------------------------
 # Initialization
@@ -32,6 +38,10 @@ def init_booking_service():
 def init_matching_service():
     """Initialize the matching service singleton"""
     return get_matching_service()
+
+def init_marketplace_service():
+    """Initialize the marketplace service singleton"""
+    return get_marketplace_service()
 
 # ------------------------
 # Public API
@@ -50,6 +60,7 @@ __all__ = [
     'SettingsService',
     'DashboardService',
     'TransportReservationExpiryService',
+    'VehicleMarketplaceService',
 
     # Singleton getters
     'get_provider_service',
@@ -62,6 +73,7 @@ __all__ = [
     'get_external_platforms',
     'get_settings_service',
     'get_dashboard_service',
+    'get_marketplace_service',
 
     # Decorators
     'feature_enabled',
@@ -71,5 +83,6 @@ __all__ = [
     # Initialization
     'init_provider_service',
     'init_booking_service',
-    'init_matching_service'
+    'init_matching_service',
+    'init_marketplace_service'
 ]

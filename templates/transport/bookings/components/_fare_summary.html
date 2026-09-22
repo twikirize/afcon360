@@ -1,0 +1,66 @@
+{#
+  Fare summary component: ride options (vehicle classes) and fare estimate.
+  Consumes real backend data from /api/transport/ride-options and /api/transport/fare/estimate.
+  No hard-coded fares or availability.
+#}
+<div class="card" id="rideOptionsCard" hidden>
+  <div class="card-header"><span class="card-title">Choose Ride Type</span>
+    <span id="rideOptionsState" class="badge" role="status">Enter trip details</span>
+  </div>
+  <div style="padding:16px;" id="rideOptionsBody"></div>
+  <input type="hidden" name="vehicle_class" id="vehicleClassInput" value="" />
+</div>
+
+<div class="card" id="fareEstimateCard" hidden>
+  <div class="card-header"><span class="card-title">Fare Estimate</span>
+    <span id="fareEstimateState" class="badge" role="status">Enter trip details</span>
+  </div>
+  <div style="padding:16px;" id="fareEstimateBody"></div>
+</div>
+
+<style>
+  .ride-options-wrap { margin-top: 4px; }
+  .ride-options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .ride-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    min-height: 44px;
+    text-align: left;
+    padding: 12px 14px;
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    background: var(--bg-surface);
+    cursor: pointer;
+    font: inherit;
+    transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+  }
+  .ride-option:hover { border-color: var(--brand-primary); }
+  .ride-option.selected {
+    border-color: var(--brand-primary);
+    background: var(--brand-primary-light);
+    box-shadow: 0 0 0 1px var(--brand-primary) inset;
+  }
+  .ride-option-name { display: block; font-weight: 600; font-size: .95rem; }
+  .ride-option-meta {
+    display: block;
+    margin-top: 2px;
+    font-size: .78rem;
+    color: var(--text-muted);
+  }
+  .ride-option-price {
+    margin-left: auto;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .ride-option-price b { font-size: 1.05rem; display: block; }
+  .ride-option-price small { font-size: .7rem; color: var(--text-muted); }
+  .ride-opts-hint { font-size: .78rem; color: var(--text-muted); margin-top: 8px; }
+  .ride-opts-error { font-size: .82rem; color: var(--danger); }
+</style>

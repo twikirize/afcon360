@@ -173,6 +173,7 @@ class Config:
     # NOTE: Dashboard is the live source of truth.
     # These are startup defaults only; ModuleToggleService overrides from DB.
     MODULE_FLAGS = {
+        "geo":            True,
         "wallet":         os.getenv("ENABLE_WALLET",        "true").lower()  == "true",
         "tourism":        os.getenv("ENABLE_TOURISM",       "false").lower() == "true",
         "transport":      os.getenv("ENABLE_TRANSPORT",     "true").lower()  == "true",
@@ -461,11 +462,13 @@ class TestingConfig(Config):
     # Disable expensive infrastructure for unit tests
     SESSION_TYPE      = "simple"
     SESSION_REDIS_URL = None
+    SESSION_COOKIE_SECURE = False
     RATELIMIT_ENABLED = False
 
     SECURITY_PASSWORD_SALT = "test-salt-only-not-for-production"
 
     MODULE_FLAGS = {
+        "geo":            True,
         "wallet":         True,
         "tourism":        True,
         "transport":      True,

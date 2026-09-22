@@ -52,6 +52,14 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="mb-3">
+          <label for="full_name" class="form-label">Full name (as on ID document) <span class="text-danger">*</span></label>
+          <input type="text" class="form-control form-control-lg" id="full_name" name="full_name"
+                 placeholder="John William Doe" required autofocus
+                 value="{{ profile.full_name if profile else '' }}">
+          <div class="form-text">Enter your full name exactly as it appears on your passport or national ID.</div>
+        </div>
+
+        <div class="mb-3">
           <label for="code" class="form-label">Verification code</label>
           <input type="text"
                  class="form-control form-control-lg text-center"
@@ -63,8 +71,7 @@
                  maxlength="6"
                  placeholder="000000"
                  style="letter-spacing: 0.5em; font-size: 1.5rem;"
-                 required
-                 autofocus>
+                 required>
         </div>
 
         <div class="d-grid mb-3">

@@ -15,6 +15,9 @@ Contract under test (Canonical Identity Bank / bidirectional single entry):
   never writes back to UserProfile (no reverse copy).
 - A document type different from the canonical profile type is a plain
   evidence submission; the typed number is preserved.
+- Identity-bearing document uploads (national_id/passport/driver_license/
+  voter_card) now require a selfie; evidence-only types
+  (income_source/bank_reference/proof_of_address/tin) stay selfie-optional.
 - The template exposes the canonical markers used for prefill/lock and has no
   duplicate identity re-entry inputs.
 
@@ -130,6 +133,7 @@ def test_upload_post_uses_canonical_id_number_and_does_not_reverse_write(app, cl
             "id_type": "national_id",
             "id_number": "TYPED-RE-ENTRY",
             "kyc_doc_file": (io.BytesIO(b"doc"), "doc.png", "image/png"),
+            "selfie_file": (io.BytesIO(b"selfie"), "selfie.png", "image/png"),
         },
         content_type="multipart/form-data",
         follow_redirects=False,
@@ -161,6 +165,7 @@ def test_upload_post_unrelated_doc_type_keeps_typed_number(app, client, test_use
             "id_type": "passport",
             "id_number": "PASSPORT-100",
             "kyc_doc_file": (io.BytesIO(b"doc"), "doc.png", "image/png"),
+            "selfie_file": (io.BytesIO(b"selfie"), "selfie.png", "image/png"),
         },
         content_type="multipart/form-data",
         follow_redirects=False,
@@ -169,15 +174,27 @@ def test_upload_post_unrelated_doc_type_keeps_typed_number(app, client, test_use
     assert captured.get("id_number") == "PASSPORT-100"
 
 
-def test_upload_selfie_remains_optional_with_canonical_identity(app, client, test_user, monkeypatch):
-    """The selfie stays enhanced assurance (not required) even when identity
-    comes from the canonical profile."""
+def test_upload_selfie_required_for_identity_doc_and_optional_for_evidence(app, client, test_user, monkeypatch):
+    """Identity-bearing uploads are rejected without a selfie; evidence-only
+    uploads (non-identity) still succeed without one."""
     _pair_complete_profile(app, test_user)
     _login_client(client, test_user)
 
-    captured = {}
-    _stub_upload_submit(monkeypatch, captured)
+    # The test DB's default accepted list is identity-docs only; add an
+    # evidence-only type so the acceptance gate does not reject it before the
+    # selfie rule is exercised.
+    import app.kyc_config_schema as kcs
+    monkeypatch.setattr(
+        kcs, "get_kyc_settings",
+        lambda: {"kyc_accepted_id_types": [
+            "national_id", "passport", "driver_license", "voter_card",
+            "income_source"],
+        },
+    )
 
+    # 1) Identity doc (national_id) with NO selfie -> rejected before submit.
+    captured_id = {}
+    _stub_upload_submit(monkeypatch, captured_id)
     resp = client.post(
         "/kyc/verify/upload",
         data={
@@ -190,7 +207,25 @@ def test_upload_selfie_remains_optional_with_canonical_identity(app, client, tes
         follow_redirects=False,
     )
     assert resp.status_code == 302
-    assert captured.get("selfie_url") is None
+    assert captured_id == {}
+
+    # 2) Evidence-only doc (income_source) with NO selfie -> submitted.
+    captured_ev = {}
+    _stub_upload_submit(monkeypatch, captured_ev)
+    resp = client.post(
+        "/kyc/verify/upload",
+        data={
+            "kyc_type": "individual",
+            "id_type": "income_source",
+            "id_number": "INCOME-1",
+            "kyc_doc_file": (io.BytesIO(b"doc"), "doc.png", "image/png"),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert captured_ev.get("id_type") == "income_source"
+    assert captured_ev.get("selfie_url") is None
 
 
 def test_upload_html_has_canonical_marker_and_no_identity_reentry_inputs():

@@ -83,10 +83,31 @@ def rate_limit(key, per_minute=5):
 # -------------------------------
 # Feature decorator
 # -------------------------------
+# Transport Admin Required
+# -------------------------------
+def transport_admin_required(f):
+    """Restrict access to owner, super_admin, admin, or transport_admin roles."""
+    from functools import wraps
+    from flask import abort, redirect, url_for, flash
+    from flask_login import current_user
+    from app.auth.helpers import has_global_role
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            abort(403)
+        if not has_global_role(current_user, "owner", "super_admin", "admin", "transport_admin"):
+            flash("You do not have permission to access this page.", "danger")
+            return redirect(url_for("transport.home"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+# -------------------------------
+# Feature decorator
+# -------------------------------
 def transport_feature_enabled(feature_name):
-    """
-    Decorator factory for transport feature flags
-    """
+    """Decorator factory for transport feature flags"""
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):

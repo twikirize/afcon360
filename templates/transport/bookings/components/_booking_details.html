@@ -1,0 +1,63 @@
+{#
+  Booking details component: pickup time, passengers, luggage, special requirements,
+  payment method, currency.
+  Expects context: none required (uses defaults)
+#}
+<div class="card">
+  <div class="card-header"><span class="card-title">Trip Details</span></div>
+  <div class="card-body">
+    <div class="form-group">
+      <label class="form-label" for="pickup_time">Pickup Time <span class="req">*</span></label>
+      <input id="pickup_time" name="pickup_time" type="datetime-local" class="form-control" required />
+    </div>
+
+    <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label" for="passenger_count">Passengers</label>
+        <input id="passenger_count" name="passenger_count" type="number" min="1" max="100"
+               value="1" class="form-control" />
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="luggage_count">Luggage</label>
+        <input id="luggage_count" name="luggage_count" type="number" min="0"
+               value="0" class="form-control" />
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="special_requirements">Special Requirements</label>
+      <textarea id="special_requirements" name="special_requirements" rows="3"
+                class="form-control" maxlength="500"
+                placeholder="e.g. wait near Gate 3, extra luggage assistance"></textarea>
+      <p class="form-hint">Optional — max 500 characters.</p>
+    </div>
+
+    <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label" for="payment_method">Payment Method</label>
+        <select id="payment_method" name="payment_method" class="form-control">
+          <option value="cash">Cash</option>
+          <option value="card">Card</option>
+          <option value="mobile_money">Mobile Money</option>
+          <option value="wallet">Wallet</option>
+          <option value="voucher">Voucher</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="currency">Currency</label>
+        <select id="currency" name="currency" class="form-control">
+          <option value="USD">USD</option>
+          <option value="EUR">EUR</option>
+          <option value="GBP">GBP</option>
+          <option value="XOF">XOF</option>
+          <option value="XAF">XAF</option>
+          <option value="NGN">NGN</option>
+          <option value="KES">KES</option>
+          <option value="GHS">GHS</option>
+          <option value="ZAR">ZAR</option>
+          <option value="UGX">UGX</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div>

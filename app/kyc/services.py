@@ -130,6 +130,33 @@ class KycService:
             raise e
 
     @staticmethod
+    def _sync_kyc_level_snapshot(user_id: Optional[int]) -> Optional[int]:
+        """Recompute User.kyc_level from the canonical tier authority.
+
+        User.kyc_level is a legacy snapshot column; the effective tier is
+        always calculated by calculate_kyc_tier() at read time. Rewriting the
+        snapshot after each compliance decision keeps the column truthful for
+        reporting and legacy consumers without making it authoritative.
+        """
+        if not user_id:
+            return None
+        user = db.session.get(User, user_id)
+        if not user:
+            return None
+        try:
+            from app.auth.kyc_compliance import calculate_kyc_tier
+            tier = calculate_kyc_tier(user_id)["tier"]
+        except Exception:
+            return None
+        try:
+            user.kyc_level = int(tier)
+            db.session.commit()
+            return user.kyc_level
+        except Exception:
+            db.session.rollback()
+            return None
+
+    @staticmethod
     def approve_kyc(record_id: int, reviewer_id: int, kyc_level: int = 2,
                     ip_address: Optional[str] = None, user_agent: Optional[str] = None):
         """
@@ -173,6 +200,7 @@ class KycService:
 
         db.session.commit()
         KycService.invalidate_user_kyc_cache(record.user_id)
+        KycService._sync_kyc_level_snapshot(record.user_id)
 
         # Log compliance
         try:
@@ -231,6 +259,7 @@ class KycService:
 
         db.session.commit()
         KycService.invalidate_user_kyc_cache(record.user_id)
+        KycService._sync_kyc_level_snapshot(record.user_id)
 
         # Log compliance
         try:
@@ -617,6 +646,7 @@ class KycService:
 
         db.session.commit()
         KycService.invalidate_user_kyc_cache(record.user_id)
+        KycService._sync_kyc_level_snapshot(record.user_id)
 
         # Emit notification signals for email and in-app notifications
         try:
@@ -694,6 +724,7 @@ class KycService:
 
         db.session.commit()
         KycService.invalidate_user_kyc_cache(record.user_id)
+        KycService._sync_kyc_level_snapshot(record.user_id)
 
         # Emit notification signals for email and in-app notifications
         try:

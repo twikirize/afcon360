@@ -402,6 +402,29 @@ class DriverProfile(TransportBase, AuditMixin):
         viewonly=True  # Read-only to avoid conflicts
     )
 
+    # Marketplace applications submitted by this driver
+    marketplace_applications = relationship(
+        "DriverVehicleApplication",
+        foreign_keys="DriverVehicleApplication.driver_id",
+        back_populates="driver",
+        order_by="desc(DriverVehicleApplication.applied_at)",
+    )
+
+    # Marketplace applications approved for this driver
+    approved_applications = relationship(
+        "DriverVehicleApplication",
+        foreign_keys="DriverVehicleApplication.approved_driver_id",
+        back_populates="approved_driver",
+    )
+
+    # Active and past vehicle contracts for this driver
+    vehicle_contracts = relationship(
+        "VehicleContract",
+        foreign_keys="VehicleContract.driver_id",
+        back_populates="driver",
+        order_by="desc(VehicleContract.start_date)",
+    )
+
     # Get current active assignment (if any)
     @property
     def current_assignment(self):
@@ -743,6 +766,15 @@ class Vehicle(TransportBase):
         primaryjoin="Vehicle.id==DriverVehicleHistory.vehicle_id",
         secondaryjoin="DriverProfile.id==DriverVehicleHistory.driver_id",
         viewonly=True
+    )
+
+    # Marketplace listing for this vehicle (if listed)
+    marketplace_listing = relationship(
+        "VehicleMarketplaceListing",
+        foreign_keys="VehicleMarketplaceListing.vehicle_id",
+        back_populates="vehicle",
+        uselist=False,
+        cascade="all, delete-orphan",
     )
 
     def generate_qr_code(self):
@@ -1147,6 +1179,26 @@ class Booking(TransportBase):
                 self.status == BookingStatus.COMPLETED and
                 self.payment_status == PaymentStatus.CAPTURED
         )
+
+    def to_dict(self, include=None, exclude=None):
+        """Booking serialization plus the legacy display alias.
+
+        Templates (`bookings/show.html`, `bookings/index.html`) and
+        external readers reference `scheduled_pickup_time`, which has
+        never existed as a column. It is defined here — once — as the
+        required `pickup_time` rendered ISO-8601 (same convention as
+        every other datetime in the serializer output), so every
+        consumer sees the key and `|datetimeformat|default('-')`
+        degrades safely instead of raising UndefinedError.
+        """
+        data = super().to_dict(include=include, exclude=exclude)
+        if ((include is None or "scheduled_pickup_time" in include)
+                and not (exclude and "scheduled_pickup_time" in exclude)):
+            pickup = getattr(self, "pickup_time", None)
+            data["scheduled_pickup_time"] = (
+                pickup.isoformat() if pickup is not None else None
+            )
+        return data
 
     def calculate_cancellation_fee(self, cancelled_at=None):
         """Calculate cancellation fee based on timing"""
@@ -1983,8 +2035,11 @@ def update_setting(key: str, value: Any, modified_by: Optional[int] = None) -> b
         # Invalidate cache
         cache.delete(f"transport:setting:{key}")
 
-        # Log setting change
-        from app.core.logging import audit_log
+        # Log setting change. (Governance repair: app.core.logging does
+        # not exist, so every settings write previously raised here
+        # AFTER committing and returned failure. The established audit
+        # helper is app.utils.audit.)
+        from app.utils.audit import audit_log
         audit_log(
             action='setting_updated',
             entity_type='transport_setting',
@@ -1996,8 +2051,11 @@ def update_setting(key: str, value: Any, modified_by: Optional[int] = None) -> b
         return True
     except Exception as e:
         db.session.rollback()
-        from app.core.logging import error_log
-        error_log(f"Failed to update setting {key}: {e}")
+        try:
+            from flask import current_app as _current_app
+            _current_app.logger.exception(f"Failed to update setting {key}: {e}")
+        except Exception:
+            pass
         return False
 
 
@@ -2448,10 +2506,6 @@ def assign_driver_to_vehicle(driver, vehicle, reason='shift_start', authorized_b
 
     db.session.add(new_assignment)
 
-    # Update the current relationships
-    driver.current_vehicle_id = vehicle.id
-    vehicle.current_driver_id = driver.id
-
     db.session.commit()
 
     return new_assignment
@@ -2496,8 +2550,6 @@ def handle_vehicle_breakdown(driver, broken_vehicle, replacement_vehicle,
         # Remove the previous driver from this vehicle
         replacement_assignment.ended_at = datetime.now(timezone.utc)
         replacement_assignment.notes = f"Vehicle reassigned due to breakdown of vehicle {broken_vehicle.id}"
-        previous_driver = replacement_assignment.driver
-        previous_driver.current_vehicle_id = None
 
     # Assign driver to replacement vehicle
     new_assignment = DriverVehicleHistory(
@@ -2514,11 +2566,6 @@ def handle_vehicle_breakdown(driver, broken_vehicle, replacement_vehicle,
     )
 
     db.session.add(new_assignment)
-
-    # Update current relationships
-    driver.current_vehicle_id = replacement_vehicle.id
-    broken_vehicle.current_driver_id = None
-    replacement_vehicle.current_driver_id = driver.id
 
     db.session.commit()
 
@@ -2732,6 +2779,265 @@ class ProviderOfferingSupply(TransportBase):
 
     # Relationships
     vehicle = relationship("Vehicle", foreign_keys=[vehicle_id])
+
+
+# ===========================================================================
+# VEHICLE MARKETPLACE MODELS
+# ===========================================================================
+
+class MarketplaceListingStatus(str, Enum):
+    """Marketplace listing lifecycle"""
+    DRAFT = 'draft'
+    ACTIVE = 'active'
+    PAUSED = 'paused'
+    FILLED = 'filled'
+    EXPIRED = 'expired'
+    CLOSED = 'closed'
+
+
+class ApplicationStatus(str, Enum):
+    """Driver vehicle application status workflow"""
+    PENDING = 'pending'
+    UNDER_REVIEW = 'under_review'
+    APPROVED = 'approved'
+    REJECTED = 'rejected'
+    WITHDRAWN = 'withdrawn'
+    EXPIRED = 'expired'
+
+
+class ContractStatus(str, Enum):
+    """Active driver-vehicle contract status"""
+    ACTIVE = 'active'
+    SUSPENDED = 'suspended'
+    TERMINATED = 'terminated'
+    EXPIRED = 'expired'
+    PENDING_SIGNATURE = 'pending_signature'
+
+
+class CompensationModel(str, Enum):
+    """How driver earnings are calculated"""
+    REVENUE_SPLIT = 'revenue_split'
+    FIXED_RENTAL = 'fixed_rental'
+    HYBRID = 'hybrid'
+
+
+class VehicleMarketplaceListing(TransportBase):
+    """Vehicle listed on marketplace seeking drivers"""
+    __tablename__ = "vehicle_marketplace_listings"
+    __table_args__ = (
+        Index("ix_marketplace_vehicle", "vehicle_id", unique=True),
+        Index("ix_marketplace_owner", "owner_id"),
+        Index("ix_marketplace_status", "listing_status"),
+        Index("ix_marketplace_active", "listing_status", "is_deleted"),
+        Index("ix_marketplace_visibility", "visibility"),
+        CheckConstraint(
+            "driver_revenue_share_pct >= 0 AND driver_revenue_share_pct <= 100",
+            name="chk_marketplace_revenue_pct"
+        ),
+    )
+
+    # Core references
+    vehicle_id = db.Column(db.BigInteger, db.ForeignKey("transport_vehicles.id"), unique=True, nullable=False)
+    owner_id = db.Column(db.BigInteger, db.ForeignKey("users.id"), nullable=False)
+
+    # Marketplace metadata
+    listing_status = db.Column(
+        SQLEnum(MarketplaceListingStatus),
+        default=MarketplaceListingStatus.DRAFT,
+        nullable=False,
+        index=True
+    )
+    visibility = db.Column(db.String(20), default='public', nullable=False)
+
+    # Driver requirements
+    required_verification_tier = db.Column(
+        SQLEnum(VerificationTier),
+        default=VerificationTier.BASIC_VERIFIED,
+        nullable=False
+    )
+    required_service_types = db.Column(JSONB, default=lambda: [])
+    required_vehicle_classes = db.Column(JSONB, default=lambda: [])
+    min_experience_years = db.Column(db.Integer, default=0)
+    min_rating = db.Column(db.Numeric(3, 2), default=0.00)
+
+    # Compensation terms
+    compensation_model = db.Column(
+        SQLEnum(CompensationModel),
+        default=CompensationModel.REVENUE_SPLIT,
+        nullable=False
+    )
+    driver_revenue_share_pct = db.Column(db.Numeric(5, 2), default=70.00, nullable=False)
+    fixed_rental_amount = db.Column(db.Numeric(10, 2), nullable=True)
+    rental_frequency = db.Column(db.String(20), nullable=True)
+
+    # Operational preferences
+    shift_preferences = db.Column(JSONB, default=lambda: {})
+    max_hours_per_day = db.Column(db.Integer, default=12)
+    allowed_zones = db.Column(JSONB, default=lambda: [])
+
+    # Vehicle condition requirements
+    min_vehicle_rating = db.Column(db.Numeric(3, 2), default=4.00)
+    require_insurance_verified = db.Column(db.Boolean, default=True, nullable=False)
+    require_roadworthiness = db.Column(db.Boolean, default=True, nullable=False)
+
+    # Application settings
+    auto_approve = db.Column(db.Boolean, default=False, nullable=False)
+    max_applications = db.Column(db.Integer, default=10)
+    application_deadline = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    # Display
+    title = db.Column(db.String(100))
+    description = db.Column(db.Text)
+    highlights = db.Column(JSONB, default=lambda: [])
+    cover_photo_url = db.Column(db.String(500))
+
+    # Timestamps
+    listed_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    filled_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    vehicle = relationship("Vehicle", foreign_keys=[vehicle_id], back_populates="marketplace_listing")
+    owner = relationship("User", foreign_keys=[owner_id])
+    applications = relationship("DriverVehicleApplication", back_populates="listing", cascade="all, delete-orphan")
+
+
+class DriverVehicleApplication(TransportBase):
+    """Driver applies to drive a marketplace vehicle"""
+    __tablename__ = "driver_vehicle_applications"
+    __table_args__ = (
+        Index("ix_application_listing", "listing_id"),
+        Index("ix_application_driver", "driver_id"),
+        Index("ix_application_status", "status"),
+        Index("ix_application_driver_listing", "driver_id", "listing_id", unique=True),
+        CheckConstraint(
+            "proposed_hours_per_week >= 0 AND proposed_hours_per_week <= 168",
+            name="chk_application_hours"
+        ),
+    )
+
+    # Core references
+    listing_id = db.Column(db.BigInteger, db.ForeignKey("vehicle_marketplace_listings.id"), nullable=False)
+    driver_id = db.Column(db.BigInteger, db.ForeignKey("driver_profiles.id"), nullable=False)
+    driver_user_id = db.Column(db.BigInteger, db.ForeignKey("users.id"), nullable=False)
+
+    # Application content
+    cover_letter = db.Column(db.Text)
+    proposed_schedule = db.Column(JSONB, default=lambda: {})
+    proposed_hours_per_week = db.Column(db.Integer)
+    expected_earnings = db.Column(db.Numeric(10, 2))
+
+    # Documents
+    license_copy_url = db.Column(db.String(500))
+    cv_url = db.Column(db.String(500))
+    references = db.Column(JSONB, default=lambda: [])
+
+    # Status workflow
+    status = db.Column(
+        SQLEnum(ApplicationStatus),
+        default=ApplicationStatus.PENDING,
+        nullable=False,
+        index=True
+    )
+    status_reason = db.Column(db.Text)
+
+    # Review
+    reviewed_by = db.Column(db.BigInteger, db.ForeignKey("users.id"), nullable=True)
+    reviewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    owner_notes = db.Column(db.Text)
+
+    # Outcome
+    approved_driver_id = db.Column(db.BigInteger, db.ForeignKey("driver_profiles.id"), nullable=True)
+    contract_start_date = db.Column(db.DateTime(timezone=True), nullable=True)
+    contract_end_date = db.Column(db.DateTime(timezone=True), nullable=True)
+    contract_terms_accepted = db.Column(db.Boolean, default=False, nullable=False)
+    terms_accepted_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    # Timestamps
+    applied_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    listing = relationship("VehicleMarketplaceListing", back_populates="applications")
+    driver = relationship("DriverProfile", foreign_keys=[driver_id])
+    driver_user = relationship("User", foreign_keys=[driver_user_id])
+    reviewer = relationship("User", foreign_keys=[reviewed_by])
+    approved_driver = relationship("DriverProfile", foreign_keys=[approved_driver_id])
+
+
+class VehicleContract(TransportBase):
+    """Active contract between driver and vehicle owner"""
+    __tablename__ = "vehicle_contracts"
+    __table_args__ = (
+        Index("ix_contract_vehicle", "vehicle_id"),
+        Index("ix_contract_driver", "driver_id"),
+        Index("ix_contract_owner", "owner_id"),
+        Index("ix_contract_status", "status"),
+        Index("ix_contract_active", "status", "is_deleted"),
+        CheckConstraint(
+            "driver_revenue_share_pct >= 0 AND driver_revenue_share_pct <= 100",
+            name="chk_contract_revenue_pct"
+        ),
+    )
+
+    # Core references
+    vehicle_id = db.Column(db.BigInteger, db.ForeignKey("transport_vehicles.id"), nullable=False)
+    driver_id = db.Column(db.BigInteger, db.ForeignKey("driver_profiles.id"), nullable=False)
+    owner_id = db.Column(db.BigInteger, db.ForeignKey("users.id"), nullable=False)
+    application_id = db.Column(db.BigInteger, db.ForeignKey("driver_vehicle_applications.id"), nullable=True)
+
+    # Contract terms
+    contract_type = db.Column(
+        SQLEnum(CompensationModel),
+        default=CompensationModel.REVENUE_SPLIT,
+        nullable=False
+    )
+    driver_revenue_share_pct = db.Column(db.Numeric(5, 2), default=70.00, nullable=False)
+    fixed_rental_amount = db.Column(db.Numeric(10, 2), nullable=True)
+    rental_frequency = db.Column(db.String(20), nullable=True)
+
+    # Operational terms
+    min_hours_per_week = db.Column(db.Integer, default=20)
+    max_hours_per_week = db.Column(db.Integer, default=60)
+    allowed_zones = db.Column(JSONB, default=lambda: [])
+    shift_requirements = db.Column(JSONB, default=lambda: {})
+
+    # Vehicle condition
+    vehicle_condition_at_start = db.Column(JSONB)
+    vehicle_condition_at_end = db.Column(JSONB, nullable=True)
+
+    # Insurance & liability
+    insurance_covered_by = db.Column(db.String(20), default='owner')
+    liability_limit = db.Column(db.Numeric(12, 2))
+
+    # Status
+    status = db.Column(
+        SQLEnum(ContractStatus),
+        default=ContractStatus.PENDING_SIGNATURE,
+        nullable=False,
+        index=True
+    )
+    termination_reason = db.Column(db.String(100), nullable=True)
+
+    # Dates
+    start_date = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    end_date = db.Column(db.DateTime(timezone=True), nullable=True)
+    actual_end_date = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    # Notice period
+    notice_period_days = db.Column(db.Integer, default=7)
+    notice_given_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    vehicle = relationship("Vehicle", foreign_keys=[vehicle_id])
+    driver = relationship("DriverProfile", foreign_keys=[driver_id])
+    owner = relationship("User", foreign_keys=[owner_id])
+    application = relationship("DriverVehicleApplication", foreign_keys=[application_id])
+
+    # Earnings tracking
+    total_driver_earnings = db.Column(db.Numeric(12, 2), default=0.00)
+    total_owner_revenue = db.Column(db.Numeric(12, 2), default=0.00)
+    last_settlement_date = db.Column(db.DateTime(timezone=True), nullable=True)
 
 
 # ===========================================================================

@@ -180,10 +180,10 @@
 
 {% if not is_pane %}
 <!-- Utility functions first -->
-<script src="{{ url_for('static', filename='transport/js/utils.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/modules/transport/utils.js') }}"></script>
 
-<!-- Base functionality that uses utils -->
-<script src="{{ url_for('static', filename='js/modules/transport/base.js') }}"></script>
+  <!-- Base functionality that uses utils -->
+  <script src="{{ url_for('static', filename='js/modules/transport/base.js') }}"></script>
 
 <!-- Theme Manager -->
 <script src="{{ url_for('static', filename='js/global/theme-manager.js') }}"></script>

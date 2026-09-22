@@ -13,10 +13,12 @@ Design principles:
 """
 from datetime import datetime, timezone
 import logging
+from sqlalchemy.orm import joinedload
 
 from flask import render_template, jsonify, request, url_for, flash, redirect, session, abort
 from flask_login import login_required, current_user
 
+from app.extensions import csrf
 from app.transport.decorator import module_enabled_required, role_required, rate_limit
 from app.auth.kyc_compliance import require_kyc_tier
 from app.auth.decorators import (
@@ -34,12 +36,20 @@ from app.transport import transport_bp, transport_admin_bp
 from app.utils.module_guard import module_enabled as check_module_enabled
 from app.utils.exceptions import NotFoundError, ServiceUnavailableError, ValidationError
 from app.utils.audit import audit_log
+from app.transport.services.payment_methods import get_available_payment_methods
 from app.transport.services import get_booking_service, get_provider_service, get_dashboard_service
 from app.transport.services.go_live_service import can_go_live
 from app.transport.services.passenger_service import get_passenger_service
 from app.transport.models import Booking, DriverProfile, Vehicle, TransportPassenger, ServiceType
-from app.transport.models import ComplianceStatus
+from app.transport.models import (
+    ComplianceStatus, VehicleMarketplaceListing, DriverVehicleApplication,
+    MarketplaceListingStatus, CompensationModel,
+)
 from app.extensions import db
+from app.transport.services.marketplace_service import get_marketplace_service
+from app.identity.services.organization_permissions import OrganizationPermissionService
+from app.identity.models.user import User
+from app.identity.models.organisation import Organisation
 
 logger = logging.getLogger(__name__)   # noqa: E402
 
@@ -149,6 +159,49 @@ def _uid():
 
 
 # =========================================================================
+# Transport Admin Access Restriction
+# All routes rendering transport/base.html require admin roles
+# =========================================================================
+
+_PUBLIC_ENDPOINTS = {
+    # Public / landing
+    "transport.home",
+    "transport.new_home",
+    "transport.service_detail",
+    "transport.api_status",
+    "transport.api_estimate_fare",
+    "transport.api_availability",
+    "transport.api_nearby_drivers",
+
+    # Rider-facing (must be reachable by any authenticated rider)
+    "transport.book_transport",
+    "transport.bookings_index",
+    "transport.bookings_show",
+    "transport.bookings_cancel",
+    "transport.bookings_edit",
+    "transport.bookings_timeline",
+    "transport.bookings_payments",
+    "transport.become_driver",
+    "transport.register_vehicle",
+    "transport.vehicle_dashboard",
+    "transport.driver_dashboard",
+    "transport.driver_dashboard_slash",
+    "transport.vehicle_marketplace",
+}
+
+@transport_bp.before_request
+def _restrict_transport_admin():
+    if request.endpoint in _PUBLIC_ENDPOINTS:
+        return
+    if not current_user.is_authenticated:
+        return redirect(url_for("auth.login"))
+    from app.auth.helpers import has_global_role
+    if not has_global_role(current_user, "owner", "super_admin", "admin", "transport_admin"):
+        flash("You do not have permission to access this page.", "danger")
+        return redirect(url_for("transport.home"))
+
+
+# =========================================================================
 # Health & Status  (no auth - intentional)
 # =========================================================================
 
@@ -176,13 +229,70 @@ def health():
 
 
 # =========================================================================
+# New Home Page API Endpoints  (no auth - intentional for public page)
+# =========================================================================
+
+@csrf.exempt
+@transport_bp.route("/api/fare/estimate", methods=["POST"])
+def api_estimate_fare():
+    """Estimate fare for a given trip"""
+    from app.transport.services.fare_service import calculate_estimate
+    data = request.get_json(force=True) if request.is_json else {}
+    service_type = data.get("service_type", "on_demand")
+    vehicle_class = data.get("vehicle_class", "economy")
+    distance_km = float(data.get("distance_km", 5))
+
+    try:
+        breakdown = calculate_estimate(
+            service_type=service_type,
+            vehicle_class=vehicle_class,
+            distance_km=distance_km,
+        )
+        return jsonify({"success": True, "fare": breakdown})
+    except Exception as e:
+        logger.error(f"Fare estimation error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@csrf.exempt
+@transport_bp.route("/api/availability", methods=["GET"])
+def api_availability():
+    """Get real-time vehicle availability"""
+    from app.transport.services.availability_service import available_by_class
+    try:
+        vehicles = available_by_class()
+        return jsonify({"success": True, "vehicles": vehicles})
+    except Exception as e:
+        logger.error(f"Availability error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@csrf.exempt
+@transport_bp.route("/api/drivers/nearby", methods=["GET"])
+def api_nearby_drivers():
+    """Get nearby active drivers"""
+    provider_service = get_provider_service()
+    try:
+        zone = request.args.get("zone", type=str)
+        vehicle_class = request.args.get("vehicle_class", type=str)
+        limit = request.args.get("limit", 5, type=int)
+        drivers = provider_service.get_available_drivers(
+            zone=zone, vehicle_class=vehicle_class, limit=limit
+        )
+        return jsonify({"success": True, "drivers": drivers})
+    except Exception as e:
+        logger.error(f"Nearby drivers error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# =========================================================================
 # Public / Fan-facing
 # =========================================================================
 
 @transport_bp.route("/", methods=["GET"])
 @module_enabled_required("transport")
 def home():
-    """Transport module homepage"""
+    """Transport module homepage with integrated booking form."""
     is_pane = request.args.get('_pane') == '1'
 
     # Canonical, backend-sourced ride/service types for the front page cards.
@@ -205,6 +315,11 @@ def home():
         for st in ServiceType
     ]
 
+    # Booking form context (prefill from query params so the form works inline)
+    pickup_value = request.args.get("pickup_location", "").strip()
+    dropoff_value = request.args.get("dropoff_location", "").strip()
+    selected_service = request.args.get("service_type", "").strip()
+
     # User-scoped recent rides. Only surfaced for an authenticated user; never
     # leaks another user's bookings. Anonymous visitors get an honest login CTA.
     recent_rides = []
@@ -221,20 +336,104 @@ def home():
 
     logger.info(f"Transport home accessed by user_id={_uid()}, pane={is_pane}")
 
+    # Active drivers count for map display
+    active_drivers = 0
+    try:
+        from app.transport.services.provider_service import get_provider_service
+        active_drivers = get_provider_service().count_active_drivers()
+    except Exception:
+        active_drivers = 0
+
     ctx = dict(
         title="AFCON Transport & Travel",
+        services=services,                    # already there: ServiceType enum
+        transport_enabled=check_module_enabled("transport"),
+        recent_rides=recent_rides,
+        ride_count=ride_count,
+        is_authenticated=is_authenticated,
+        pickup_value=pickup_value,
+        dropoff_value=dropoff_value,
+        selected_service=selected_service,
+        payment_methods=get_available_payment_methods(
+            current_user.id if is_authenticated else None
+        ),
+        default_service=(
+            selected_service
+            if selected_service in {s["key"] for s in services}
+            else "on_demand"
+        ),
+        active_drivers=active_drivers,
+    )
+
+    return render_template("transport/home.html", **ctx)
+
+
+@transport_bp.route("/new-home", methods=["GET"])
+@module_enabled_required("transport")
+def new_home():
+    """Temporary new home page for testing - will replace home() when approved."""
+    is_pane = request.args.get('_pane') == '1'
+
+    service_labels = {
+        "airport_arrival": "Airport Arrival",
+        "airport_departure": "Airport Departure",
+        "stadium_shuttle": "Stadium Shuttle",
+        "hotel_transfer": "Hotel Transfer",
+        "city_tour": "City Tour",
+        "on_demand": "On-Demand Ride",
+        "scheduled_route": "Scheduled Route",
+        "custom_tour": "Custom Tour",
+    }
+    services = [
+        {"key": st.value, "name": service_labels.get(st.value, st.value.replace("_", " ").title())}
+        for st in ServiceType
+    ]
+
+    pickup_value = request.args.get("pickup_location", "").strip()
+    dropoff_value = request.args.get("dropoff_location", "").strip()
+    selected_service = request.args.get("service_type", "").strip()
+
+    recent_rides = []
+    ride_count = 0
+    is_authenticated = bool(current_user.is_authenticated) if not current_user.is_anonymous else False
+    if is_authenticated:
+        try:
+            booking_service = get_booking_service()
+            recent_rides = booking_service.get_user_bookings(current_user.id, limit=5)
+            ride_count = booking_service.count_user_bookings(current_user.id)
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error loading user bookings for user_id={_uid()}: {e}")
+
+    active_drivers = 0
+    try:
+        from app.transport.services.provider_service import get_provider_service
+        active_drivers = get_provider_service().count_active_drivers()
+    except Exception:
+        active_drivers = 0
+
+    ctx = dict(
+        title="AFCON360 - Your Ride, Your Game!",
         services=services,
         transport_enabled=check_module_enabled("transport"),
         recent_rides=recent_rides,
         ride_count=ride_count,
         is_authenticated=is_authenticated,
+        pickup_value=pickup_value,
+        dropoff_value=dropoff_value,
+        selected_service=selected_service,
+        payment_methods=get_available_payment_methods(
+            current_user.id if is_authenticated else None
+        ),
+        default_service=(
+            selected_service
+            if selected_service in {s["key"] for s in services}
+            else "on_demand"
+        ),
+        active_drivers=active_drivers,
     )
 
-    if is_pane:
-        # Return only the content for pane loading
-        return render_template("transport/home_pane.html", **ctx)
-    else:
-        return render_template("transport/home.html", **ctx)
+    return render_template("transport/new_home.html", **ctx)
 
 
 @transport_bp.route("/service/<uuid:service_id>", methods=["GET"])
@@ -265,6 +464,7 @@ def service_detail(service_id):
 
 @transport_bp.route("/dashboard")
 @transport_bp.route("/dashboard/overview")
+@transport_bp.route("/dashboard", endpoint="transport_dashboard")
 @module_enabled_required("transport")
 @login_required
 def dashboard_overview():
@@ -301,6 +501,229 @@ def dashboard_performance():
 
 
 # =========================================================================
+# Marketplace — Owner Application Review (Part A)
+# =========================================================================
+
+@transport_bp.route("/listings/<int:listing_id>/applications", methods=["GET"])
+@module_enabled_required("transport")
+@login_required
+def owner_application_review(listing_id):
+    """Owner reviews applications for a listing."""
+    marketplace_service = get_marketplace_service()
+    listing = marketplace_service.get_listing(listing_id)
+    if not listing:
+        abort(404)
+
+    listing = VehicleMarketplaceListing.query.options(
+        joinedload(VehicleMarketplaceListing.vehicle)
+    ).filter_by(id=listing_id, is_deleted=False).first()
+    if not listing:
+        abort(404)
+
+    if not _is_listing_owner(listing):
+        abort(403)
+
+    applications = DriverVehicleApplication.query.options(
+        joinedload(DriverVehicleApplication.driver)
+        .joinedload(DriverProfile.user)
+    ).filter(
+        DriverVehicleApplication.listing_id == listing_id,
+        DriverVehicleApplication.is_deleted == False,
+    ).order_by(
+        DriverVehicleApplication.applied_at.desc()
+    ).all()
+
+    return _json_or_template(
+        "transport/owner_application_review.html",
+        listing=listing,
+        applications=applications,
+        vehicle=listing.vehicle,
+    )
+
+
+@transport_bp.route("/listings/<int:listing_id>/applications/<int:application_id>/approve", methods=["POST"])
+@module_enabled_required("transport")
+@login_required
+def owner_application_approve(listing_id, application_id):
+    """Owner approves an application."""
+    marketplace_service = get_marketplace_service()
+    listing = marketplace_service.get_listing(listing_id)
+    if not listing:
+        abort(404)
+
+    if not _is_listing_owner(listing):
+        abort(403)
+
+    application = DriverVehicleApplication.query.filter_by(
+        id=application_id, is_deleted=False,
+    ).first()
+    if not application or application.listing_id != listing_id:
+        abort(404)
+
+    try:
+        contract = marketplace_service.approve_application(
+            application_id=application_id,
+            owner_id=listing.owner_id,
+        )
+        if not contract:
+            flash("Failed to approve application", "danger")
+        else:
+            flash("Application approved", "success")
+    except ValueError as ve:
+        flash(str(ve), "danger")
+    except Exception as e:
+        logger.error(f"Approve error: {e}")
+        flash("An error occurred", "danger")
+
+    return redirect(url_for("transport.owner_application_review", listing_id=listing_id))
+
+
+@transport_bp.route("/listings/<int:listing_id>/applications/<int:application_id>/reject", methods=["POST"])
+@module_enabled_required("transport")
+@login_required
+def owner_application_reject(listing_id, application_id):
+    """Owner rejects an application."""
+    marketplace_service = get_marketplace_service()
+    listing = marketplace_service.get_listing(listing_id)
+    if not listing:
+        abort(404)
+
+    if not _is_listing_owner(listing):
+        abort(403)
+
+    application = DriverVehicleApplication.query.filter_by(
+        id=application_id, is_deleted=False,
+    ).first()
+    if not application or application.listing_id != listing_id:
+        abort(404)
+
+    try:
+        success = marketplace_service.reject_application(
+            application_id=application_id,
+            owner_id=listing.owner_id,
+            reason="Rejected by owner",
+        )
+        if not success:
+            flash("Failed to reject application", "danger")
+        else:
+            flash("Application rejected", "success")
+    except Exception as e:
+        logger.error(f"Reject error: {e}")
+        flash("An error occurred", "danger")
+
+    return redirect(url_for("transport.owner_application_review", listing_id=listing_id))
+
+
+def _is_listing_owner(listing):
+    """Check if current_user owns the listing (user or organisation member with permission)."""
+    # Get the actual user object to access internal ID
+    user_obj = current_user._get_current_object()
+    # Direct ownership: listing.owner_id references users.id
+    if listing.owner_id == user_obj.id:
+        return True
+    # Organisation ownership: check if listing owner belongs to an org
+    # and current user has org.transport.manage permission
+    owner_user = db.session.get(User, listing.owner_id)
+    if owner_user:
+        # Check if owner user has an organisation membership
+        from app.identity.models.organisation_member import OrganisationMember
+        owner_membership = OrganisationMember.query.filter_by(
+            user_id=owner_user.id, is_deleted=False
+        ).first()
+        if owner_membership:
+            organisation = db.session.get(Organisation, owner_membership.organisation_id)
+            if organisation:
+                return OrganizationPermissionService.has_permission(
+                    user_obj, organisation, 'org.transport.manage',
+                )
+    return False
+
+
+def _marketplace_listing_views(limit=None):
+    """Build the public view objects for the driver marketplace browse surface.
+
+    Listing-backed (Part A): only active + public listings are surfaced, and a
+    user's own listings are excluded. Only public display fields are exposed —
+    no internal ids, no licence numbers (§12.1). request_url is built
+    server-side, so the internal vehicle id never reaches the template.
+    """
+    query = (
+        VehicleMarketplaceListing.query.options(
+            joinedload(VehicleMarketplaceListing.vehicle),
+        )
+        .filter(
+            VehicleMarketplaceListing.is_deleted == False,  # noqa: E712
+            VehicleMarketplaceListing.listing_status == MarketplaceListingStatus.ACTIVE.value,
+            VehicleMarketplaceListing.visibility == "public",
+            VehicleMarketplaceListing.owner_id != current_user.id,
+        )
+        .order_by(VehicleMarketplaceListing.listed_at.desc())
+    )
+    if limit is not None:
+        query = query.limit(limit)
+    results = query.all()
+
+    views = []
+    for listing in results:
+        vehicle = listing.vehicle
+        if not vehicle or vehicle.is_deleted:
+            continue
+        views.append(
+            {
+                "title": listing.title or (f"{vehicle.make} {vehicle.model}"),
+                "make": vehicle.make,
+                "model": vehicle.model,
+                "year": vehicle.year,
+                "status": listing.listing_status.value,
+                "description": listing.description,
+                "vehicle_class": (
+                    vehicle.vehicle_class.value
+                    if hasattr(vehicle.vehicle_class, "value")
+                    else vehicle.vehicle_class
+                ),
+                "passenger_capacity": vehicle.passenger_capacity,
+                "owner_type_label": _owner_type_label(vehicle.owner_type),
+                "compensation_label": _compensation_label(listing),
+                "request_url": url_for(
+                    "transport_api.vehicle_contract_request",
+                    vehicle_id=vehicle.id,
+                ),
+            }
+        )
+    return views
+
+
+def _owner_type_label(owner_type):
+    """Human-readable owner label for a listing view object."""
+    if owner_type == "organisation":
+        return "Organisation"
+    if owner_type == "driver":
+        return "Driver owner"
+    return "Private owner"
+
+
+def _compensation_label(listing):
+    """Human-readable compensation line for a listing view object."""
+    value = (
+        listing.compensation_model.value
+        if hasattr(listing.compensation_model, "value")
+        else listing.compensation_model
+    )
+    if value == CompensationModel.REVENUE_SPLIT.value:
+        return f"{float(listing.driver_revenue_share_pct):g}% revenue share"
+    if value == CompensationModel.FIXED_RENTAL.value:
+        amount = float(listing.fixed_rental_amount or 0)
+        frequency = listing.rental_frequency or ""
+        return f"Fixed rental UGX {amount:,.0f}{' / ' + frequency if frequency else ''}"
+    if value == CompensationModel.HYBRID.value:
+        return (
+            f"{float(listing.driver_revenue_share_pct):g}% revenue share"
+            + (f" + UGX {float(listing.fixed_rental_amount or 0):,.0f}" if listing.fixed_rental_amount else "")
+        )
+    return "Compensation per agreement"
+
+
+# =========================================================================
 # Bookings
 # =========================================================================
 
@@ -315,19 +738,9 @@ def bookings_index():
 
 @transport_bp.route("/bookings/new", methods=["GET"])
 @module_enabled_required("transport")
-@login_required
 def bookings_new():
-    """New booking form"""
-    # Prefill from the front page's "Where to?" inputs when present.
-    pickup = request.args.get("pickup_location", "").strip()
-    dropoff = request.args.get("dropoff_location", "").strip()
-    service_type = request.args.get("service_type", "").strip()
-    return render_template(
-        "transport/bookings/new.html",
-        pickup_value=pickup,
-        dropoff_value=dropoff,
-        selected_service=service_type,
-    )
+    """Retired: /transport/ is now the only rider booking entry."""
+    return redirect(url_for("transport.home"), code=301)
 
 
 @transport_bp.route("/book", methods=["GET", "POST"])
@@ -411,6 +824,26 @@ def bookings_show(id):
         # Get service representation
         booking = get_booking_service().get_booking(id)
 
+        # Rider live-tracking approval (GEO rider node): the same
+        # Transport-owned subject decision as the booking stream, so
+        # the page never offers tracking the stream would deny.
+        tracking_allowed = False
+        tracking_booking_ref = None
+        try:
+            from flask_login import current_user as _cu
+            from app.auth.helpers import has_global_role as _hgr
+            from app.transport.services.tracking_service import (
+                TrackingService as _TS)
+            _subject = _TS.get_rider_tracking_subject(
+                booking_model.booking_reference, int(_cu.id),
+                bool(_hgr(_cu, "admin", "super_admin", "owner")))
+            tracking_allowed = bool(_subject.get("allowed"))
+            if tracking_allowed:
+                tracking_booking_ref = booking_model.booking_reference
+        except Exception:
+            tracking_allowed = False
+            tracking_booking_ref = None
+
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error loading booking {id} for user_id={_uid()}: {e}")
@@ -422,7 +855,9 @@ def bookings_show(id):
         flash("Booking not found", "warning")
         return redirect(url_for("transport.bookings_index"))
 
-    return _json_or_template("transport/bookings/show.html", booking=booking, id=id)
+    return _json_or_template("transport/bookings/show.html", booking=booking, id=id,
+                             tracking_allowed=tracking_allowed,
+                             tracking_booking_ref=tracking_booking_ref)
 
 
 @transport_bp.route("/bookings/<int:id>/cancel", methods=["POST"])
@@ -1078,7 +1513,29 @@ def drivers_edit(id):
 def drivers_location(id):
     """Driver live location"""
     logger.info(f"Driver location {id} accessed by user_id={_uid()}")
-    return _json_or_template("transport/drivers/location.html", id=id)
+    try:
+        # GEO-14 CASE C repair: the template dereferences `driver`
+        # (code, status, last location); the route previously passed only
+        # `id`, so every visit raised UndefinedError ('driver' undefined).
+        # Load the model the same way drivers_show does.
+        driver_model = db.session.get(DriverProfile, id)
+
+        if not driver_model:
+            if request.is_json:
+                return jsonify({"status": "error", "message": "Driver not found"}), 404
+            flash("Driver not found", "warning")
+            return redirect(url_for("transport.drivers_index"))
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error loading driver location {id} for user_id={_uid()}: {e}")
+
+        if request.is_json:
+            return jsonify({"status": "error", "message": "Driver not found"}), 404
+        flash("Driver not found", "warning")
+        return redirect(url_for("transport.drivers_index"))
+
+    return _json_or_template("transport/drivers/location.html", driver=driver_model, id=id)
 
 
 @transport_bp.route("/drivers/<int:id>/verification")
@@ -1150,8 +1607,12 @@ def driver_dashboard():
     # checklist panel is shown until every required gate passes.
     go_live = can_go_live(profile) if profile is not None else None
 
+    # Marketplace "Find Vehicle" section (Part A): listing-backed, in sync with
+    # the browse page's source. Never fed from a raw Vehicle query.
+    available_marketplace_vehicles = _marketplace_listing_views(limit=5)
+
     return _json_or_template(
-        "transport/driver_dashboard.html",
+        "transport/driver/driver_dashboard.html",
         driver_profile=profile,
         bookings=bookings,
         upcoming=upcoming,
@@ -1160,6 +1621,7 @@ def driver_dashboard():
         owned_vehicles=owned_vehicles,
         assigned_vehicle=assigned_vehicle,
         go_live=go_live,
+        available_marketplace_vehicles=available_marketplace_vehicles,
     )
 
 
@@ -1176,6 +1638,26 @@ def driver_dashboard_slash():
     raised ImportError (500). Redirect to the canonical route instead.
     """
     return redirect(url_for("transport.driver_dashboard"))
+
+
+@transport_bp.route("/vehicle-marketplace")
+@module_enabled_required("transport")
+@login_required
+@active_context_required(ContextType.DRIVER)
+def vehicle_marketplace():
+    """Driver marketplace browse: active + public listings seeking drivers.
+
+    Listing-backed (Part A): queries VehicleMarketplaceListing (not raw
+    Vehicle). Only ACTIVE + public listings are shown; a user's own listings
+    are excluded by the view builder's filter. Display-only — the request
+    action is handled by the delegated JS calling the existing request-contract
+    API (server-built data-url; no internal ids rendered, §12.1).
+    """
+    marketplace_vehicles = _marketplace_listing_views()
+    return render_template(
+        "transport/vehicle_marketplace.html",
+        marketplace_vehicles=marketplace_vehicles,
+    )
 
 
 # =========================================================================

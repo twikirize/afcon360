@@ -6,30 +6,55 @@
 <div class="page-header">
   <div class="page-header-left">
     <h1 class="page-title">Dashboard</h1>
-    <p class="page-subtitle">Transport system overview</p>
+    <p class="page-subtitle">
+      <span class="live-dot">LIVE</span> &nbsp; Last updated {{ now|default('just now') }}
+    </p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ safe_url('transport.bookings_new') }}" class="btn btn-primary btn-sm">
+      <i class="fa-solid fa-plus"></i> New Booking
+    </a>
   </div>
 </div>
+
+{% set status_badge = {
+  'completed': 'badge-green',
+  'confirmed': 'badge-blue',
+  'assigned': 'badge-blue',
+  'driver_en_route': 'badge-blue',
+  'pickup_arrived': 'badge-blue',
+  'in_progress': 'badge-blue',
+  'pending_payment': 'badge-amber',
+  'draft': 'badge-amber',
+  'cancelled': 'badge-red',
+  'no_show': 'badge-red',
+  'disputed': 'badge-red',
+} %}
 
 <div class="grid-4" style="margin-bottom:16px;">
   <div class="stat-card amber">
     <div class="stat-icon amber"><i class="fa-solid fa-calendar-check"></i></div>
     <div class="stat-value">{{ total_bookings|default(0) }}</div>
     <div class="stat-label">Total Bookings</div>
+    <div class="stat-trend up"><i class="fa-solid fa-arrow-up"></i> {{ today_bookings|default(0) }} today</div>
   </div>
   <div class="stat-card green">
     <div class="stat-icon green"><i class="fa-solid fa-id-card"></i></div>
     <div class="stat-value">{{ active_drivers|default(0) }}</div>
     <div class="stat-label">Active Drivers</div>
+    <div class="stat-trend up"><i class="fa-solid fa-check"></i> {{ pending_drivers|default(0) }} pending</div>
   </div>
   <div class="stat-card blue">
     <div class="stat-icon blue"><i class="fa-solid fa-van-shuttle"></i></div>
     <div class="stat-value">{{ available_vehicles|default(0) }}</div>
     <div class="stat-label">Available Vehicles</div>
+    <div class="stat-trend up"><i class="fa-solid fa-clock"></i> {{ pending_vehicles|default(0) }} pending</div>
   </div>
   <div class="stat-card red">
     <div class="stat-icon red"><i class="fa-solid fa-triangle-exclamation"></i></div>
     <div class="stat-value">{{ open_incidents|default(0) }}</div>
     <div class="stat-label">Open Incidents</div>
+    <div class="stat-trend up"><i class="fa-solid fa-circle-exclamation"></i> {{ open_incidents_count|default(0) }} open</div>
   </div>
 </div>
 
@@ -47,7 +72,7 @@
           <tr>
             <td><span class="td-mono" style="color:var(--amber);">{{ b.booking_reference }}</span></td>
             <td>{{ (b.service_type or '')|replace('_',' ')|title }}</td>
-            <td><span class="badge badge-gray">{{ (b.status or '')|replace('_',' ')|title }}</span></td>
+            <td><span class="badge {{ status_badge.get((b.status or ''), 'badge-gray') }}">{{ (b.status or '')|replace('_',' ')|title }}</span></td>
             <td class="td-mono">{{ b.created_at[:16]|replace('T',' ') if b.created_at else '—' }}</td>
           </tr>
           {% endfor %}

@@ -1152,13 +1152,34 @@ def toggle_super_admin_module_access():
     return redirect(url_for('admin.owner.settings'))
 
 
+def _geo_role_access():
+    """Return per-role GEO permission state for the owner module-settings UI.
+
+    GEO view/manage permissions are seeded to the owner ONLY. The owner can
+    grant/revoke them to super_admin/admin via the access control toggle.
+    """
+    state = {}
+    for role_name in ('super_admin', 'admin'):
+        role = Role.query.filter_by(name=role_name, scope='global').first()
+        state[role_name] = {
+            'granted': bool(role and role.has_permission('geo.view')),
+            'display': role_name.replace('_', ' ').title(),
+        }
+    return state
+
+
 @owner_bp.route('/module-settings')
 @owner_login_required
 @audit_owner_action('viewed_module_settings', 'modules')
 def module_settings():
     """Module management control panel."""
     modules = ModuleToggleService.get_flags()
-    return render_template('owner/module_settings.html', modules=modules)
+    geo_permissions = _geo_role_access()
+    return render_template(
+        'owner/module_settings.html',
+        modules=modules,
+        geo_permissions=geo_permissions,
+    )
 
 @owner_bp.route('/modules/<string:module>/toggle', methods=['POST'])
 @owner_login_required
@@ -1181,6 +1202,65 @@ def owner_toggle_module(module):
         flash("Failed to toggle module.", "danger")
         
     return redirect(request.referrer or url_for('admin.owner.module_settings'))
+
+
+@owner_bp.route('/geo-permission/<string:role>/toggle', methods=['POST'])
+@owner_login_required
+@audit_owner_action('toggled_geo_permission', 'permissions')
+def owner_toggle_geo_permission(role):
+    """Owner-only toggle: grant/revoke GEO view+manage for a privileged role.
+
+    GEO access is seeded to the owner ONLY. Super admins and admins may only
+    view/manage the GEO health and overview pages once the owner grants them
+    access here; revocation takes effect immediately (permissions are read
+    from the DB on every request).
+    """
+    allowed = ('super_admin', 'admin')
+    role_key = (role or '').strip().lower()
+    if role_key not in allowed:
+        flash(f"GEO toggle not available for role '{role_key}'.", "warning")
+        return redirect(url_for('admin.owner.module_settings'))
+
+    target_role = Role.query.filter_by(name=role_key, scope='global').first()
+    if not target_role:
+        flash("Role not found.", "warning")
+        return redirect(url_for('admin.owner.module_settings'))
+
+    from app.identity.models.roles_permission import (
+        assign_permission_to_role,
+        get_or_create_permission,
+        remove_permission_from_role,
+    )
+
+    granted = target_role.has_permission('geo.view')
+    try:
+        for perm_name in ('geo.view', 'geo.manage'):
+            perm = get_or_create_permission(perm_name, commit=False)
+            if granted:
+                remove_permission_from_role(target_role, perm, commit=False)
+            else:
+                assign_permission_to_role(target_role, perm, commit=False)
+        db.session.commit()
+        flash(
+            f"GEO access {'revoked for' if granted else 'granted to'} "
+            f"{role_key.replace('_', ' ').title()}.",
+            "info" if granted else "success",
+        )
+        log_owner_action(
+            action='toggled_geo_permission',
+            category='permissions',
+            details={
+                'role': role_key,
+                'granted': not granted,
+                'permissions': ['geo.view', 'geo.manage'],
+            },
+        )
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"GEO permission toggle error: {e}")
+        flash("Failed to update GEO permissions.", "danger")
+
+    return redirect(url_for('admin.owner.module_settings'))
 
 
 @owner_bp.route('/users')

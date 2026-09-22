@@ -255,7 +255,7 @@ _SCHEMA.append({
     "label": "Accepted ID Types",
     "description": "Individual identity document types users may submit (JSON list).",
     "type": "json", "group": "Verification",
-    "default": ["national_id", "passport", "driver_license", "voter_card"],
+    "default": ["national_id", "passport", "driver_license"],
 })
 _SCHEMA.append({
     "key": "kyc_document_expiry_warning_days",

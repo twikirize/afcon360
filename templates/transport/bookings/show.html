@@ -8,7 +8,12 @@
 {% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
 <style>
+#riderMap { height: 380px; border-radius: 8px; }
+#riderMap .geo-map-fallback { padding: 32px 24px; text-align: center; }
+#riderMap .geo-map-fallback p { margin: 4px 0; }
+#riderMap .geo-map-tile-notice { padding: 8px 12px; font-size: 0.8rem; }
 .booking-layout { display:grid; grid-template-columns:1fr 340px; gap:16px; }
 @media(max-width:900px) { .booking-layout { grid-template-columns:1fr; } }
 
@@ -170,6 +175,18 @@
       <div style="padding:16px 20px;color:var(--text-muted);font-size:0.82rem;">No vehicle assigned</div>
       {% endif %}
     </div>
+
+    {% if tracking_allowed and tracking_booking_ref %}
+    <!-- Live Tracking (GEO rider node): booking-scoped assigned-driver map -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Live Tracking</span>
+        <span id="riderLiveState" class="badge" role="status">Connecting…</span>
+      </div>
+      <div id="riderMap" data-geo-map-status="pending" style="margin:12px;"></div>
+      <div style="padding:0 16px 12px;font-size:0.75rem;color:var(--text-muted);" id="riderLiveUpdated"></div>
+    </div>
+    {% endif %}
 
     <!-- Payments -->
     <div class="card">
@@ -349,4 +366,74 @@ function confirmDelete() {
   document.getElementById('deleteModal').classList.add('open');
 }
 </script>
+{% if tracking_allowed and tracking_booking_ref %}
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{{ url_for('static', filename='js/geo/geo-map.js') }}"></script>
+<script src="{{ url_for('static', filename='js/geo/geo-realtime.js') }}"></script>
+<script nonce="{{ csp_nonce }}">
+(function() {
+  // Rider live tracking: shared GEO renderer + shared realtime client.
+  // Server authorized this card (tracking_allowed); the booking-scoped
+  // stream carries only the assigned driver's events.
+  var bookingRef = {{ tracking_booking_ref|tojson }};
+  var driverLabel = {{ (booking.driver.display_name if booking.driver and booking.driver.display_name else 'Assigned driver')|tojson }};
+  var TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  var handle = null;
+  var marker = null;
+  function setLiveState(text) {
+    var badge = document.getElementById('riderLiveState');
+    if (badge) badge.textContent = text;
+  }
+  function ensureMap(lat, lng) {
+    if (handle && handle.status === 'rendered') return handle;
+    if (!window.GeoMap) {
+      setLiveState('Map unavailable');
+      return null;
+    }
+    handle = window.GeoMap.init('riderMap', {
+      tileUrl: TILE_URL,
+      attribution: '\u00a9 OpenStreetMap',
+      center: { latitude: lat, longitude: lng },
+      zoom: 14
+    });
+    if (!handle || handle.status !== 'rendered') {
+      setLiveState('Map unavailable');
+      return null;
+    }
+    return handle;
+  }
+  function applyEvent(e) {
+    var h = ensureMap(e.latitude, e.longitude);
+    if (!h || typeof L === 'undefined') return;
+    if (marker) {
+      marker.setLatLng([e.latitude, e.longitude]);
+    } else {
+      marker = L.marker([e.latitude, e.longitude]).addTo(h.map);
+      marker.bindPopup(driverLabel);
+    }
+    h.map.setView([e.latitude, e.longitude], Math.max(h.map.getZoom(), 14));
+    var upd = document.getElementById('riderLiveUpdated');
+    if (upd) upd.textContent = 'Updated ' + (e.observedAt || '');
+    setLiveState(e.fresh ? 'Live' : 'Stale location');
+  }
+  if (!window.GeoRealtime) {
+    setLiveState('Live updates unavailable');
+    return;
+  }
+  window.GeoRealtime.connect(
+    '/geo/stream/booking/' + encodeURIComponent(bookingRef),
+    {
+      onSnapshot: applyEvent,
+      onLocation: applyEvent,
+      onState: function (state) {
+        if (state === 'missing') setLiveState('No live data');
+        else if (state === 'degraded') setLiveState('Snapshot only');
+        else if (state === 'closed') setLiveState('Trip ended');
+        else if (state === 'disconnected' || state === 'reconnecting') setLiveState('Disconnected');
+      }
+    }
+  );
+})();
+</script>
+{% endif %}
 {% endblock %}

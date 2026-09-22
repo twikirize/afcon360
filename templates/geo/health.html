@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}GEO Health — AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <div>
+            <h1 class="h3 font-weight-bold mb-1">GEO — Platform Health</h1>
+            <p class="text-muted mb-0">Operational status of the geospatial / location platform for privileged staff.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('geo.overview') }}">Module overview</a>
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('geo.health_json') }}">View JSON (tooling)</a>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white font-weight-bold d-flex justify-content-between align-items-center">
+            <span>Platform status</span>
+            <span class="badge"
+                  style="padding:0.35rem 0.8rem;border-radius:20px;font-size:0.7rem;font-weight:600;text-transform:uppercase;{{ 'background:#e6fffa;color:#234e52;border:1px solid #81e6d9;' if status == 'ok' else 'background:#fed7d7;color:#742a2a;border:1px solid #fc8181;' }}">
+                {{ status }}
+            </span>
+        </div>
+        <div class="card-body">
+            <ul class="list-unstyled mb-2">
+                <li class="mb-2">
+                    <strong>Module toggle:</strong>
+                    <span class="badge"
+                          style="padding:0.25rem 0.6rem;border-radius:20px;font-size:0.7rem;font-weight:600;{{ 'background:#c6f6d5;color:#22543d;' if geo_enabled else 'background:#fed7d7;color:#742a2a;' }}">
+                        {{ 'Enabled' if geo_enabled else 'Disabled' }}
+                    </span>
+                </li>
+                <li class="mb-2"><strong>Location freshness boundary:</strong> {{ location_ttl_seconds }} seconds</li>
+                <li class="mb-0"><strong>Source of truth for GEO toggle:</strong> database (<code>SystemConfig MODULE_FLAGS</code>)</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white font-weight-bold">Provider adapters</div>
+        <div class="card-body">
+            <div class="row g-3">
+                {% for key, label in [('valhalla', 'Routing (Valhalla)'), ('photon', 'Geocoding (Photon)'), ('tiles', 'Tiles (' ~ adapters['tiles'].kind ~ ')')] %}
+                {% set adapter = adapters[key] %}
+                <div class="col-12 col-md-4">
+                    <div class="border rounded p-3 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <strong>{{ label }}</strong>
+                            <span class="badge"
+                                  style="padding:0.25rem 0.6rem;border-radius:20px;font-size:0.7rem;font-weight:600;{{ 'background:#c6f6d5;color:#22543d;' if adapter.enabled else 'background:#edf2f7;color:#2d3748;' }}">
+                                {{ 'enabled' if adapter.enabled else 'disabled' }}
+                            </span>
+                        </div>
+                        <p class="mb-0 small">
+                            {{ 'endpoint configured' if adapter.configured else 'endpoint not configured — unavailable' }}
+                        </p>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <p class="text-muted mt-3 mb-0">Road routing, live geocoding, PostGIS spatial queries and realtime delivery arrive in later GEO nodes. This page reports only implemented capability.</p>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white font-weight-bold">Tooling / API payload</div>
+        <div class="card-body">
+            <p class="text-muted mb-2">
+                Monitoring and CI should poll the open JSON endpoint
+                <a href="{{ url_for('geo.health_json') }}" class="text-decoration-none text-monospace">{{ url_for('geo.health_json') }}</a>
+                — no authentication required, immune to the module flag.
+            </p>
+            <details>
+                <summary class="small text-muted">Inspect payload rendered on this page</summary>
+                <pre class="bg-light border rounded p-3 mb-0 small" style="max-height:260px;overflow:auto;"><code>{
+  "module": "geo",
+  "status": "{{ status }}",
+  "adapters": {{ adapters|tojson }}
+}</code></pre>
+            </details>
+        </div>
+    </div>
+</div>
+{% endblock %}

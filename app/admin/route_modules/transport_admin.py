@@ -6,7 +6,7 @@ All decorators imported from app.auth.decorators.
 from datetime import datetime, timezone
 import logging
 from flask import (
-    render_template, redirect, url_for,
+    render_template, redirect, url_for, abort,
     current_app, request, flash, jsonify
 )
 from flask_login import login_required, current_user
@@ -16,7 +16,6 @@ from app.extensions import db
 from app.auth.decorators import (
     admin_required,
     require_permission,
-    require_role,
     require_fresh_user
 )
 from app.auth.context import ContextType, active_context_or_platform_required
@@ -30,85 +29,32 @@ logger = logging.getLogger(__name__)
 # -----------------------------
 @admin_bp.route("/transport-admin", endpoint="transport_admin_dashboard")
 @login_required
-@require_role("transport_admin")
+@require_permission("transport.view")
 @active_context_or_platform_required(ContextType.PLATFORM)
 def transport_admin_dashboard():
-    """Transport Admin Dashboard with comprehensive transport management."""
+    """Canonical Platform Transport Admin entry point and Overview.
+
+    Authorization is ``transport.view`` (Phase D0/D2). All Overview data comes
+    from the existing
+    :class:`app.transport.services.dashboard_service.DashboardService`; no
+    business calculations live in the route (Phase D3-A).
+
+    Failure behaviour is deterministic: if the dashboard service cannot build a
+    context the request fails with a 500 instead of hiding the fault behind a
+    redirect to the same endpoint (the legacy ``/transport/admin/dashboard``
+    self-redirect defect).
+    """
     try:
-        from app.core.transport_permissions import TransportPermission
-        from app.auth.helpers import is_owner, is_system_admin
-        
-        # Get transport permissions for current user
-        if is_owner(current_user) or current_user.is_super_admin:
-            user_permissions = TransportPermission.get_active_by_user(current_user.id)
-            can_manage_drivers = True
-            can_manage_vehicles = True
-            can_view_dashboard = True
-            permissions_info = {
-                "granted_by_owner": True,
-                "can_manage_drivers": True,
-                "can_manage_vehicles": True,
-                "can_view_dashboard": True,
-                "permissions": [
-                    {"name": "manage_drivers", "granted": True},
-                    {"name": "manage_vehicles", "granted": True},
-                    {"name": "view_dashboard", "granted": True},
-                ]
-            }
-        else:
-            user_permissions = TransportPermission.get_active_by_user(current_user.id)
-            can_manage_drivers = any(p.can_manage_drivers for p in user_permissions) if user_permissions else False
-            can_manage_vehicles = any(p.can_manage_vehicles for p in user_permissions) if user_permissions else False
-            can_view_dashboard = any(p.can_view_dashboard for p in user_permissions) if user_permissions else False
-            permissions_info = {
-                "granted_by_owner": False,
-                "can_manage_drivers": can_manage_drivers,
-                "can_manage_vehicles": can_manage_vehicles,
-                "can_view_dashboard": can_view_dashboard,
-                "permissions": [
-                    {"name": "manage_drivers", "granted": can_manage_drivers},
-                    {"name": "manage_vehicles", "granted": can_manage_vehicles},
-                    {"name": "view_dashboard", "granted": can_view_dashboard},
-                ]
-            }
-        
-        # Get transport statistics
         from app.transport.services.dashboard_service import get_dashboard_service
-        dashboard_service = get_dashboard_service()
-        transport_stats = dashboard_service.get_admin_dashboard_context()
-        total_vehicles = transport_stats.get('total_vehicles', 0)
-        total_drivers = transport_stats.get('total_drivers', 0)
-        total_bookings = transport_stats.get('total_bookings', 0)
-        total_revenue = transport_stats.get('total_revenue', 0)
-        
-        # Get recent vehicles
-        from app.transport.models import Vehicle
-        recent_vehicles = Vehicle.query.filter_by(
-            is_deleted=False
-        ).order_by(Vehicle.created_at.desc()).limit(10).all()
-        
-        # Get pending driver verifications
-        from app.transport.models import DriverProfile, ComplianceStatus
-        pending_drivers = DriverProfile.query.filter_by(
-            compliance_status=ComplianceStatus.PENDING_REVIEW,
-            is_deleted=False
-        ).order_by(DriverProfile.created_at.desc()).limit(5).all()
-        
-        return render_template(
-            "admin/transport_admin_dashboard.html",
-            total_vehicles=total_vehicles,
-            total_drivers=total_drivers,
-            total_bookings=total_bookings,
-            total_revenue=total_revenue,
-            recent_vehicles=recent_vehicles,
-            pending_drivers=pending_drivers,
-            **permissions_info,
-            user_permissions=user_permissions if not (is_owner(current_user) or current_user.is_super_admin) else None,
-        )
-    except Exception as e:
-        logger.error(f"Error loading transport admin dashboard: {e}")
-        flash("Error loading dashboard.", "danger")
-        return redirect(url_for('admin.dashboard'))
+
+        context = get_dashboard_service().get_admin_dashboard_context()
+        context.pop("module_enabled", None)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Transport Admin overview failed to build its context")
+        abort(500)
+
+    return render_template("admin/transport_admin_dashboard.html", **context)
 
 
 # -----------------------------
@@ -116,7 +62,7 @@ def transport_admin_dashboard():
 # -----------------------------
 @admin_bp.route("/transport-admin/vehicles", endpoint="transport_admin_vehicles")
 @login_required
-@require_role("transport_admin")
+@require_permission("transport.view")
 @active_context_or_platform_required(ContextType.PLATFORM)
 def transport_admin_vehicles():
     """List and manage all vehicles."""
@@ -148,7 +94,7 @@ def transport_admin_vehicles():
 
 @admin_bp.route("/transport-admin/vehicles/create", endpoint="transport_admin_create_vehicle", methods=['GET', 'POST'])
 @login_required
-@require_role("transport_admin")
+@require_permission("transport.manage")
 def transport_admin_create_vehicle():
     """Create new vehicle."""
     try:
@@ -185,7 +131,7 @@ def transport_admin_create_vehicle():
 
 @admin_bp.route("/transport-admin/vehicles/<int:vehicle_id>/edit", endpoint="transport_admin_edit_vehicle", methods=['GET', 'POST'])
 @login_required
-@require_role("transport_admin")
+@require_permission("transport.manage")
 def transport_admin_edit_vehicle(vehicle_id):
     """Edit existing vehicle."""
     try:
@@ -222,7 +168,7 @@ def transport_admin_edit_vehicle(vehicle_id):
 
 @admin_bp.route("/transport-admin/vehicles/<int:vehicle_id>/delete", endpoint="transport_admin_delete_vehicle", methods=['POST'])
 @login_required
-@require_role("transport_admin")
+@require_permission("transport.manage")
 @require_fresh_user
 def transport_admin_delete_vehicle(vehicle_id):
     """Delete vehicle."""
@@ -250,7 +196,7 @@ def transport_admin_delete_vehicle(vehicle_id):
 # -----------------------------
 @admin_bp.route("/transport-admin/drivers", endpoint="transport_admin_drivers")
 @login_required
-@require_role("transport_admin")
+@require_permission("transport.view")
 def transport_admin_drivers():
     """List and manage all drivers."""
     try:
@@ -281,7 +227,7 @@ def transport_admin_drivers():
 
 @admin_bp.route("/transport-admin/drivers/<int:driver_id>/verify", endpoint="transport_admin_verify_driver", methods=['POST'])
 @login_required
-@require_role("transport_admin")
+@require_permission("transport.manage")
 def transport_admin_verify_driver(driver_id):
     """Verify driver."""
     try:
@@ -305,7 +251,7 @@ def transport_admin_verify_driver(driver_id):
 
 @admin_bp.route("/transport-admin/drivers/<int:driver_id>/reject", endpoint="transport_admin_reject_driver", methods=['POST'])
 @login_required
-@require_role("transport_admin")
+@require_permission("transport.manage")
 def transport_admin_reject_driver(driver_id):
     """Reject driver verification."""
     try:
@@ -333,7 +279,7 @@ def transport_admin_reject_driver(driver_id):
 # -----------------------------
 @admin_bp.route("/transport-admin/bookings", endpoint="transport_admin_bookings")
 @login_required
-@require_role("transport_admin")
+@require_permission("transport.view")
 def transport_admin_bookings():
     """Manage transport bookings."""
     try:
@@ -364,7 +310,7 @@ def transport_admin_bookings():
 
 @admin_bp.route("/transport-admin/bookings/<int:booking_id>/approve", endpoint="transport_admin_approve_booking", methods=['POST'])
 @login_required
-@require_role("transport_admin")
+@require_permission("transport.manage")
 def transport_admin_approve_booking(booking_id):
     """Approve transport booking."""
     try:
@@ -388,7 +334,7 @@ def transport_admin_approve_booking(booking_id):
 
 @admin_bp.route("/transport-admin/bookings/<int:booking_id>/reject", endpoint="transport_admin_reject_booking", methods=['POST'])
 @login_required
-@require_role("transport_admin")
+@require_permission("transport.manage")
 def transport_admin_reject_booking(booking_id):
     """Reject transport booking."""
     try:
@@ -416,7 +362,7 @@ def transport_admin_reject_booking(booking_id):
 # -----------------------------
 @admin_bp.route("/transport-admin/organizations", endpoint="transport_admin_organizations")
 @login_required
-@require_role("transport_admin")
+@require_permission("transport.view")
 def transport_admin_organizations():
     """Manage transport organizations."""
     try:
@@ -441,7 +387,7 @@ def transport_admin_organizations():
 # -----------------------------
 @admin_bp.route("/transport-admin/analytics", endpoint="transport_admin_analytics")
 @login_required
-@require_role("transport_admin")
+@require_permission("transport.view")
 def transport_admin_analytics():
     """Transport analytics and reports."""
     try:
@@ -463,7 +409,7 @@ def transport_admin_analytics():
 
 @admin_bp.route("/transport-admin/settings", endpoint="transport_admin_settings")
 @login_required
-@require_role("transport_admin")
+@require_permission("transport.settings")
 def transport_admin_settings():
     """Transport admin settings."""
     try:

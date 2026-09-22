@@ -1,7 +1,9 @@
 {# Driver Workspace shell — dedicated to the authenticated driver persona.
-   Structurally separate from transport/base.html (Transport Admin/Operations).
-   Shares the same transport theme/CSS, pane-mode, topbar, flash handling, and
-   JS loading as the operations shell, but renders no admin/operations nav. #}
+   Left pane layout: a contained, sticky navigation pane beside the content.
+   Six workspaces: HOME, STATUS, TRIPS, EARNINGS, ASSIGNMENTS, ACCOUNT.
+   Pane nav buttons carry data-ck-nav and dispatch to window.__ckSwitchView
+   (defined in driver_dashboard.html extra_js).
+   Mobile: pane becomes an off-canvas drawer; a bottom dock mirrors the pane. #}
 {% if request.args.get('_pane') == '1' %}
     {% set is_pane = true %}
 {% else %}
@@ -10,94 +12,95 @@
 
 {% if not is_pane %}
 <!DOCTYPE html>
-<html lang="en" data-theme="transport">
+<html lang="en" data-theme="default" class="afcon-root">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}Driver{% endblock %} — AFCON360</title>
 
-  <!-- Fonts & Icons (external resources stay) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 
-  <!-- Theme System CSS -->
-  <meta name="user-authenticated" content="true">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/global/dark-mode.css') }}">
+   <meta name="user-authenticated" content="true">
+   <meta name="csrf-token" content="{{ raw_csrf_token }}">
+   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
+   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/dark-mode.css') }}">
+   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/base.css') }}">
+   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/style.css') }}">
+   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-components.css') }}">
+   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/driver-dashboard.css') }}">
 
-  <!-- Core CSS -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/base.css') }}">
+
 
   {% block extra_css %}{% endblock %}
 </head>
-<body>
-{% endif %}
-
-{% if is_pane %}
-    <style>
-        /* Inline styles for pane mode */
-        .t-content { padding: 20px; }
-        .alert { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
-        .alert-red { background: #fee2e2; color: #742a2a; border: 1px solid #fca5a5; }
-        .alert-green { background: #c6f6d5; color: #22543d; border: 1px solid #86efac; }
-        .alert-amber { background: #fefcbf; color: #744210; border: 1px solid #fcd34d; }
-        .alert-close { background: none; border: none; cursor: pointer; color: inherit; margin-left: auto; }
-    </style>
+<body class="afcon-root">
 {% endif %}
 
 {% if not is_pane %}
-<div class="t-shell">
+<div class="t-shell ck-shell">
 
-  <!-- Sidebar -->
-  <aside class="t-sidebar" id="sidebar">
-    <div class="sidebar-logo">
-      <div class="logo-icon">🚌</div>
-      <div class="logo-text">AFCON<span>360</span></div>
+  <!-- ==================== LEFT PANE — Driver Workspace nav ==================== -->
+  <aside class="ck-pane" id="ckPane" aria-label="Driver workspace">
+
+    <div class="ck-pane-brand">
+      <div class="ck-brand-mark" aria-hidden="true">🚌</div>
+      <div class="ck-brand-text">AFCON<span>360</span><small>Driver</small></div>
+      <button type="button" class="ck-pane-close" id="ckPaneClose" aria-label="Close menu">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
     </div>
 
-    <nav class="sidebar-nav">
-      <div class="nav-section-label">Today</div>
-      <a href="{{ safe_url('transport.driver_dashboard') }}" class="nav-item {% if request.endpoint in ['transport.driver_dashboard', 'transport.driver_dashboard_slash'] %}active{% endif %}">
-        <i class="fa-solid fa-gauge-high"></i> Overview
-      </a>
+    <nav class="ck-pane-nav">
+      <div class="nav-section-label">Workspace</div>
 
-      <div class="nav-section-label">My Transport</div>
-      <a href="{{ safe_url('transport.vehicle_dashboard') }}" class="nav-item {% if request.endpoint == 'transport.vehicle_dashboard' %}active{% endif %}">
-        <i class="fa-solid fa-van-shuttle"></i> My Vehicles
-      </a>
-      <a href="{{ safe_url('transport.register_vehicle') }}" class="nav-item {% if request.endpoint == 'transport.register_vehicle' %}active{% endif %}">
-        <i class="fa-solid fa-plus"></i> Register Vehicle
-      </a>
+      <button type="button" class="ck-pane-item" data-ck-nav="home">
+        <i class="fa-solid fa-house"></i> Home
+      </button>
+      <button type="button" class="ck-pane-item" data-ck-nav="status">
+        <i class="fa-solid fa-signal"></i> Status
+      </button>
+      <button type="button" class="ck-pane-item" data-ck-nav="trips">
+        <i class="fa-solid fa-route"></i> Trips
+      </button>
+      <button type="button" class="ck-pane-item" data-ck-nav="earnings">
+        <i class="fa-solid fa-sack-dollar"></i> Earnings
+      </button>
+      <button type="button" class="ck-pane-item" data-ck-nav="assignments">
+        <i class="fa-solid fa-calendar-check"></i> Assignments
+      </button>
+      <button type="button" class="ck-pane-item" data-ck-nav="vehicles">
+        <i class="fa-solid fa-van-shuttle"></i> Vehicles
+      </button>
+      <button type="button" class="ck-pane-item" data-ck-nav="account">
+        <i class="fa-solid fa-user"></i> Account
+      </button>
     </nav>
 
-    <div class="sidebar-bottom">
-      <div class="sidebar-user">
-        <div class="user-avatar">
-          {{ current_user.username[:2].upper() if current_user.username else 'A' }}
-        </div>
-        <div class="user-info">
-          <div class="user-name">{{ current_user.username|default('Driver') }}</div>
-          <div class="user-role">Driver</div>
-        </div>
-        <a href="{{ url_for('auth.logout') }}" title="Sign out" class="logout-link">
-
-          <i class="fa-solid fa-arrow-right-from-bracket"></i>
-        </a>
+    <div class="ck-pane-foot">
+      <div class="ck-user-avatar">
+        {{ current_user.username[:2].upper() if current_user.username else 'A' }}
       </div>
+      <div class="ck-user-meta">
+        <div class="ck-user-name">{{ current_user.username|default('Driver') }}</div>
+        <div class="ck-user-role">Driver</div>
+      </div>
+      <a href="{{ url_for('auth.logout') }}" title="Sign out" class="ck-user-logout">
+        <i class="fa-solid fa-arrow-right-from-bracket"></i>
+      </a>
     </div>
   </aside>
 
-  <!-- Sidebar overlay for mobile -->
-  <div id="sidebarOverlay" onclick="toggleSidebar()" class="sidebar-overlay"></div>
+  <!-- Backdrop for mobile drawer -->
+  <div id="sidebarOverlay" class="ck-overlay" aria-hidden="true"></div>
 
-  <!-- Main Content Area -->
-  <div class="t-main">
+  <!-- ==================== MAIN COLUMN ==================== -->
+  <div class="ck-main">
 
-    <!-- Topbar -->
     <header class="t-topbar">
-      <button class="topbar-toggle" id="sidebarToggle">
+      <button class="topbar-toggle" id="sidebarToggle" aria-label="Open workspace menu">
         <i class="fa-solid fa-bars"></i>
       </button>
 
@@ -114,6 +117,23 @@
         <div id="searchResults" class="search-results-dropdown"></div>
       </div>
 
+      {% if driver_profile is defined and driver_profile %}
+      <div class="topbar-profile" title="{{ driver_profile.driver_code }}">
+        <div class="tp-avatar">
+          {{ (driver_profile.user.name or driver_profile.driver_code)[:2].upper()
+             if driver_profile.user else driver_profile.driver_code[:2].upper() }}
+        </div>
+        <div class="tp-meta">
+          <span class="tp-name">{{ driver_profile.user.name if driver_profile.user else 'Driver' }}</span>
+          {% if earnings is defined and earnings %}
+          <span class="tp-earn">UGX {{ '%.0f'|format(earnings|float) }}</span>
+          {% else %}
+          <span class="tp-earn">{{ driver_profile.driver_code }}</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
       <div class="topbar-actions">
         {% include 'components/notification_bell.html' %}
         <a href="{{ url_for('index') }}" class="topbar-btn" title="Back to main site">
@@ -124,11 +144,10 @@
         </button>
       </div>
     </header>
+{% endif %}
 
-    <!-- Page Content -->
     <main class="t-content">
 
-      <!-- Flash messages -->
       {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
       <div class="flash-messages">
@@ -147,8 +166,20 @@
 
       {% block content %}{% endblock %}
     </main>
+{% if not is_pane %}
   </div>
 </div>
+
+<!-- ==================== MOBILE DOCK — mirrors the pane ==================== -->
+<nav class="ck-dock" aria-label="Driver workspace">
+  <button type="button" class="ck-tab" data-ck-nav="home"><i class="fa-solid fa-house"></i>Home</button>
+  <button type="button" class="ck-tab" data-ck-nav="status"><i class="fa-solid fa-signal"></i>Status</button>
+  <button type="button" class="ck-tab" data-ck-nav="trips"><i class="fa-solid fa-route"></i>Trips</button>
+  <button type="button" class="ck-tab" data-ck-nav="earnings"><i class="fa-solid fa-sack-dollar"></i>Earn</button>
+  <button type="button" class="ck-tab" data-ck-nav="assignments"><i class="fa-solid fa-calendar-check"></i>Assign</button>
+  <button type="button" class="ck-tab" data-ck-nav="vehicles"><i class="fa-solid fa-van-shuttle"></i>Vehicles</button>
+  <button type="button" class="ck-tab" data-ck-nav="account"><i class="fa-solid fa-user"></i>Account</button>
+</nav>
 {% endif %}
 
 {% if not is_pane %}
@@ -161,10 +192,60 @@
 <!-- Theme Manager -->
 <script src="{{ url_for('static', filename='js/global/theme-manager.js') }}"></script>
 <script>
-  document.addEventListener('DOMContentLoaded', function() {
+  document.addEventListener('DOMContentLoaded', function () {
     if (typeof ThemeManager !== 'undefined') {
       window.themeManager = new ThemeManager();
     }
+
+    /* ==================================================
+       Left-pane drawer (mobile only)
+       ================================================== */
+    var pane    = document.getElementById('ckPane');
+    var overlay = document.getElementById('sidebarOverlay');
+    var toggle  = document.getElementById('sidebarToggle');
+    var closeBtn = document.getElementById('ckPaneClose');
+    var isMobile = function () {
+      return window.matchMedia('(max-width: 900px)').matches;
+    };
+
+    function openPane() {
+      if (!pane || !isMobile()) return;
+      pane.classList.add('is-open');
+      overlay.classList.add('is-open');
+      overlay.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+    }
+    function closePane() {
+      if (!pane) return;
+      pane.classList.remove('is-open');
+      overlay.classList.remove('is-open');
+      overlay.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+    // Expose so other scripts (e.g. the workspace switch handler) can drive it
+    window.ckOpenPane  = openPane;
+    window.ckClosePane = closePane;
+
+    if (toggle)   toggle.addEventListener('click', openPane);
+    if (closeBtn) closeBtn.addEventListener('click', closePane);
+    if (overlay)  overlay.addEventListener('click', closePane);
+
+    // Escape closes
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closePane();
+    });
+
+    // Selecting a workspace on mobile closes the drawer automatically
+    document.querySelectorAll('.ck-pane [data-ck-nav]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (isMobile()) closePane();
+      });
+    });
+
+    // If viewport grows past the drawer breakpoint, reset drawer state
+    window.addEventListener('resize', function () {
+      if (!isMobile()) closePane();
+    });
   });
 </script>
 

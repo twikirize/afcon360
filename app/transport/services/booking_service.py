@@ -59,6 +59,81 @@ def _validate_booking_location_coordinates(location: Any, field_name: str) -> An
     return location
 
 
+def _resolve_canonical_location(raw_location: Any, data: Dict[str, Any],
+                                prefix: str, field_name: str) -> Any:
+    """Resolve a booking endpoint to its truthful representation.
+
+    Empty-string lat/lng (which the form posts when no map pin was placed)
+    are treated as ABSENT, not as coordinates. This is what the form
+    actually sends — treating "" as a coordinate is the bug that produced
+    'pickup_location coordinates must be numeric'.
+    """
+    if isinstance(raw_location, dict) and (
+            raw_location.get("latitude") is not None
+            or raw_location.get("longitude") is not None):
+        return _validate_booking_location_coordinates(raw_location, field_name)
+
+    def _blank(v):
+        return v is None or (isinstance(v, str) and not v.strip())
+
+    lat_raw = data.get(f"{prefix}_latitude") if isinstance(data, dict) else None
+    lng_raw = data.get(f"{prefix}_longitude") if isinstance(data, dict) else None
+
+    # No pins placed → falls back to typed address (unchanged behaviour)
+    if _blank(lat_raw) and _blank(lng_raw):
+        return _validate_booking_location_coordinates(raw_location, field_name)
+
+    # One pin placed, the other missing → refuse rather than silently degrade
+    if _blank(lat_raw) or _blank(lng_raw):
+        raise ValidationError(
+            message=f"{field_name} must include both 'latitude' and 'longitude'",
+        )
+
+    try:
+        lat = float(lat_raw)
+        lng = float(lng_raw)
+    except (TypeError, ValueError):
+        raise ValidationError(
+            message=f"{field_name} coordinates must be numeric",
+        )
+
+    validate_coordinates(lat, lng)
+    resolved = {"latitude": lat, "longitude": lng}
+    if isinstance(raw_location, str) and raw_location.strip():
+        resolved["address"] = raw_location.strip()
+    elif isinstance(raw_location, dict) and raw_location.get("address"):
+        resolved["address"] = raw_location.get("address")
+    return resolved
+
+
+def _measured_distance_km(pickup_location: Any,
+                          dropoff_location: Any) -> Optional[float]:
+    """GEO straight-line kilometres between two canonical endpoints,
+    or None unless BOTH carry valid coordinates. Planning input only:
+    explicitly not road distance, ETA, or fare distance."""
+    def _coords(location: Any):
+        if not isinstance(location, dict):
+            return None
+        try:
+            lat = float(location.get("latitude"))
+            lng = float(location.get("longitude"))
+        except (TypeError, ValueError):
+            return None
+        if not (-90.0 <= lat <= 90.0 and -180.0 <= lng <= 180.0):
+            return None
+        return lat, lng
+
+    origin = _coords(pickup_location)
+    destination = _coords(dropoff_location)
+    if origin is None or destination is None:
+        return None
+    from app.geo.interfaces import GeoPoint
+    from app.geo.services import straight_line_distance_m
+    return straight_line_distance_m(
+        GeoPoint(origin[0], origin[1]),
+        GeoPoint(destination[0], destination[1])) / 1000.0
+
+
 class BookingService:
     """Instance-based service for managing transport bookings"""
 
@@ -79,13 +154,75 @@ class BookingService:
                        request_id: Optional[str] = None) -> Dict[str, Any]:
         try:
             sanitized_data = booking_data or {}
+
+            # Idempotency dedupe — before any fare calc or DB write
+            key = (sanitized_data.get("idempotency_key") or "").strip() or None
+            if key:
+                existing = Booking.query.filter_by(
+                    idempotency_key=key,
+                    user_id=customer_id,
+                    is_deleted=False,
+                ).first()
+                if existing:
+                    existing.booking_metadata = existing.booking_metadata or {}
+                    existing.booking_metadata["idempotent_replay"] = True
+                    existing.booking_metadata["replayed_at"] = datetime.now(timezone.utc).isoformat()
+                    return {
+                        "success": True,
+                        "data": {
+                            "booking_id": existing.id,
+                            "booking_reference": existing.booking_reference,
+                            "idempotent_replay": True,
+                        },
+                    }
+
             is_valid, validation_errors = validate_booking_request(sanitized_data)
             if not is_valid:
                 raise ValidationError(
                     message="; ".join(validation_errors) or "Booking validation failed"
                 )
 
-            estimated_price = self._calculate_estimated_price(sanitized_data)
+            pickup_location = _resolve_canonical_location(
+                sanitized_data.get("pickup_location"), sanitized_data,
+                "pickup", "pickup_location")
+            dropoff_location = _resolve_canonical_location(
+                sanitized_data.get("dropoff_location"), sanitized_data,
+                "dropoff", "dropoff_location")
+
+            # Measured GEO straight-line distance wins when both ends
+            # resolved to coordinates; otherwise the caller-supplied
+            # estimate (default 5 km planning fallback) is preserved
+            # verbatim. The USED value is stored so the priced distance
+            # is always explainable.
+            measured_km = _measured_distance_km(pickup_location,
+                                                dropoff_location)
+            if measured_km is not None:
+                distance_for_fare = measured_km
+                distance_basis = "straight_line_planner"
+            else:
+                distance_for_fare = sanitized_data.get("estimated_distance", 5)
+                distance_basis = "planning_default"
+
+            # Canonical fare engine (fare node): one computation feeds the
+            # stored price, the recorded surge, and the stored distance
+            # basis, so they can never diverge (e.g. across an hour
+            # boundary between two calls).
+            # Chosen class (hailing node): the ride picker submits the
+            # selected class; it is persisted in service_subtype and
+            # booking_metadata for class-aware matching.
+            chosen_class = sanitized_data.get("vehicle_class", "comfort")
+            from app.transport.services.fare_service import calculate_estimate
+            _estimate = calculate_estimate(
+                service_type=sanitized_data.get("service_type", "on_demand"),
+                vehicle_class=chosen_class,
+                distance_km=distance_for_fare,
+            )
+            estimated_price = _estimate["total"]
+            # Record the applied surge alongside the price (fare node):
+            # the surge_multiplier column previously stayed at its 1.00
+            # default even when rush pricing applied, making estimates
+            # unexplainable. Same engine, same inputs — no price change.
+            _applied_surge = _estimate["surge_multiplier"]
 
             try:
                 pickup_time = datetime.fromisoformat(str(sanitized_data["pickup_time"]))
@@ -96,8 +233,26 @@ class BookingService:
             if isinstance(special_req, str):
                 special_req = {"note": special_req}
 
-            pickup_location = _validate_booking_location_coordinates(sanitized_data.get("pickup_location"), "pickup_location")
-            dropoff_location = _validate_booking_location_coordinates(sanitized_data.get("dropoff_location"), "dropoff_location")
+            pickup_location = _resolve_canonical_location(
+                sanitized_data.get("pickup_location"), sanitized_data,
+                "pickup", "pickup_location")
+            dropoff_location = _resolve_canonical_location(
+                sanitized_data.get("dropoff_location"), sanitized_data,
+                "dropoff", "dropoff_location")
+
+            # Measured GEO straight-line distance wins when both ends
+            # resolved to coordinates; otherwise the caller-supplied
+            # estimate (default 5 km planning fallback) is preserved
+            # verbatim. The USED value is stored so the priced distance
+            # is always explainable.
+            measured_km = _measured_distance_km(pickup_location,
+                                                dropoff_location)
+            if measured_km is not None:
+                distance_for_fare = measured_km
+                distance_basis = "straight_line_planner"
+            else:
+                distance_for_fare = sanitized_data.get("estimated_distance", 5)
+                distance_basis = "planning_default"
 
             booking = Booking(
                 user_id=customer_id,
@@ -113,16 +268,25 @@ class BookingService:
                 special_requirements=special_req,
                 accessibility_requirements=sanitized_data.get("accessibility_requirements") or [],
                 base_price=estimated_price,
-                estimated_distance_km=sanitized_data.get("estimated_distance"),
+                surge_multiplier=_applied_surge,
+                estimated_distance_km=distance_for_fare,
                 estimated_duration_minutes=sanitized_data.get("estimated_duration"),
                 payment_method=sanitized_data.get("payment_method", "cash"),
                 payment_status=PaymentStatus.PENDING,
                 status=BookingStatus.PENDING_PAYMENT,
                 currency=Currency(sanitized_data.get("currency") or "USD"),
+                service_subtype=chosen_class,
+                idempotency_key=key,
                 booking_metadata={
                     "customer_id": customer_id,
                     "request_id": request_id,
-                    "created_at": datetime.now(timezone.utc).isoformat()
+                    "vehicle_class": chosen_class,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "fare_version": _estimate.get("version"),
+                    "fare_effective_from": _estimate.get("effective_from"),
+                    "distance_km": float(distance_for_fare)
+                    if distance_for_fare is not None else None,
+                    "distance_basis": distance_basis,
                 }
             )
 
@@ -727,22 +891,6 @@ class BookingService:
     # Private Helper Methods
     # =========================================================
 
-    def _calculate_estimated_price(self, booking_data: Dict[str, Any]) -> Decimal:
-        base_prices = {"on_demand": 10, "airport_transfer": 25, "stadium_shuttle": 15,
-                       "hotel_transfer": 20, "city_tour": 30}
-        distance_rate = Decimal("2.5")
-        class_multipliers = {"economy": 1.0, "comfort": 1.2, "premium": 1.5, "van": 1.8, "luxury": 2.0}
-
-        base = Decimal(str(base_prices.get(booking_data.get("service_type", "on_demand"), 10)))
-        distance = Decimal(str(booking_data.get("estimated_distance", 5)))
-        multiplier = Decimal(str(class_multipliers.get(booking_data.get("vehicle_class", "comfort"), 1.0)))
-        total = (base + distance * distance_rate) * multiplier
-
-        # surge pricing
-        hour = datetime.now().hour
-        surge = Decimal("1.3") if 7 <= hour <= 9 or 17 <= hour <= 19 else Decimal("1.0")
-        return total * surge
-
     def _calculate_cancellation_fee(self, booking: Booking) -> Decimal:
         hours = (booking.pickup_time - datetime.now(timezone.utc)).total_seconds() / 3600
         if hours > 24:
@@ -772,6 +920,72 @@ class BookingService:
             pass
         cache.delete(f"{self.cache_prefix}:list:recent")
         cache.delete(f"{self.cache_prefix}:list:all")
+
+
+# =========================================================
+# Demand signal for GEO aggregation (roadmap GEO-17)
+# =========================================================
+
+# Demand counts submitted requests EXCEPT drafts (never submitted) and
+# cancellations (withdrawn). no_show/disputed stay: a request
+# demonstrably existed. Transport-owned rule: GEO aggregates the
+# points but never decides which bookings count.
+DEMAND_EXCLUDED_STATUSES = (BookingStatus.DRAFT, BookingStatus.CANCELLED)
+
+
+def booking_request_points(since, until):
+    """Read-only authoritative demand points for GEO aggregation.
+
+    Returns (points, skipped_invalid) where points are
+    (latitude, longitude, None) tuples from booking pickup locations
+    created in [since, until]. Only canonical latitude/longitude
+    floats count; anything else is skipped and counted (never raise,
+    never fabricate). No identifiers are returned.
+
+    Raises ValueError on missing/invalid window.
+    """
+    from datetime import timezone as _tz
+
+    if since is None or until is None:
+        raise ValueError("since and until are required (ISO-8601)")
+    try:
+        start = (since if isinstance(since, datetime)
+                 else datetime.fromisoformat(str(since).strip()))
+        end = (until if isinstance(until, datetime)
+               else datetime.fromisoformat(str(until).strip()))
+    except (ValueError, AttributeError):
+        raise ValueError("since/until must be ISO-8601 datetimes") from None
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=_tz.utc)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=_tz.utc)
+    if start > end:
+        raise ValueError("since must not be after until")
+
+    rows = (Booking.query
+            .filter(Booking.is_deleted == False)  # noqa: E712
+            .filter(~Booking.status.in_(DEMAND_EXCLUDED_STATUSES))
+            .filter(Booking.created_at >= start,
+                    Booking.created_at <= end)
+            .all())
+    points: List[Any] = []
+    skipped = 0
+    for booking in rows:
+        loc = booking.pickup_location
+        if not isinstance(loc, dict):
+            skipped += 1
+            continue
+        try:
+            lat = float(loc.get("latitude"))
+            lng = float(loc.get("longitude"))
+        except (TypeError, ValueError):
+            skipped += 1
+            continue
+        if not (-90.0 <= lat <= 90.0 and -180.0 <= lng <= 180.0):
+            skipped += 1
+            continue
+        points.append((lat, lng, None))
+    return points, skipped
 
 
 # =========================================================

@@ -12,6 +12,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.validators import validate_coordinates
 from app.extensions import db, redis_client
+from app.geo.interfaces import GeoPoint
+from app.geo.services import straight_line_distance_m
 from app.transport.models import Booking, DriverProfile, Vehicle, BookingStatus
 from app.utils.exceptions import ValidationError, NotFoundError
 from app.utils.monitoring import monitor_endpoint, record_metric
@@ -82,10 +84,51 @@ class TrackingService:
                         driver.current_vehicle.current_location = location_update
                         driver.current_vehicle.last_location_update = datetime.now(timezone.utc)
 
-                    db.session.commit()
+            # GEO-15 durable history: same-transaction observation append.
+            # Every authoritative observation is persisted (no sampling:
+            # no product requirement justifies a sampling rule, and each
+            # update_location call is already one DB commit, so one extra
+            # INSERT is proportional). observed_at is the server-receive
+            # timestamp carried by location_update (the producer forwards
+            # no trusted device timestamp); recorded_at marks the row
+            # write so reads can never refresh history.
+            public_ref = TrackingService._public_ref_for(
+                entity_type, entity_id)
+            if public_ref is not None:
+                from app.geo.models import LocationObservation
+                db.session.add(LocationObservation(
+                    entity_type=entity_type,
+                    public_ref=public_ref,
+                    latitude=location_update['latitude'],
+                    longitude=location_update['longitude'],
+                    accuracy=location_update.get('accuracy'),
+                    observed_at=datetime.fromisoformat(
+                        location_update['timestamp']),
+                    source='transport-tracking',
+                ))
+
+            db.session.commit()
 
             # Record metrics
             record_metric('location_updated', tags={'entity_type': entity_type}, value=1)
+
+            # GEO-14 realtime publication (best-effort, scoped channel).
+            # Must never break the location write path: every failure
+            # mode below degrades to "no live push" while the persisted
+            # state above stays authoritative.
+            try:
+                from app.geo.realtime import (build_location_event,
+                                              publish_location_event)
+                # public_ref resolved above for the history append; reuse it.
+                if public_ref is not None:
+                    publish_location_event(
+                        redis_client, entity_type, public_ref,
+                        build_location_event(entity_type, public_ref,
+                                             location_update))
+            except Exception as publish_error:
+                current_app.logger.debug(
+                    "Realtime publication skipped for %s %s: %s",
+                    entity_type, entity_id, publish_error)
 
             return {
                 'success': True,
@@ -121,9 +164,15 @@ class TrackingService:
     def get_location(entity_type: str, entity_id: int) -> Dict[str, Any]:
         """Get current location of an entity"""
         try:
-            # Try Redis first
+            # Try Redis first (resilient: fall through to the database
+            # fallback when Redis is unavailable, mirroring update_location)
             redis_key = f"{TrackingService.REDIS_PREFIX}:{entity_type}:{entity_id}"
-            location_json = redis_client.get(redis_key)
+            try:
+                location_json = redis_client.get(redis_key)
+            except Exception as redis_error:
+                current_app.logger.warning(
+                    f"Redis unavailable during location read: {redis_error}")
+                location_json = None
 
             if location_json:
                 location_data = json.loads(location_json)
@@ -244,6 +293,81 @@ class TrackingService:
             }
 
     @staticmethod
+    def get_rider_tracking_subject(booking_reference: str,
+                                   viewer_user_id: int,
+                                   viewer_is_admin: bool) -> Dict[str, Any]:
+        """Transport-owned rider-tracking authorization decision (GEO rider node).
+
+        Answers ONLY whether this viewer may observe the assigned
+        driver's live location for this booking, and if so which
+        driver public reference to stream. GEO delivers; Transport
+        decides. Rules (lifecycle §2):
+        - unknown/deleted booking -> allowed False, reason unknown_booking
+        - non-owner non-admin -> allowed False, reason not_authorized
+        - pre-assignment states -> allowed False, reason not_trackable
+          (rider sees waiting state, never a candidate driver)
+        - active assignment states (canonical ACTIVE_ASSIGNMENT_STATUSES,
+          disputed stays latched) + live assignment -> allowed True
+        - terminal states, released assignment, missing driver record ->
+          allowed False, reason not_trackable / no_driver
+        Never raises for bad input; viewer_user_id None is simply
+        not the owner.
+        """
+        from app.transport.services.assignment_service import (
+            ACTIVE_ASSIGNMENT_STATUSES)
+
+        if not isinstance(booking_reference, str) or not booking_reference.strip():
+            return {"allowed": False, "reason": "unknown_booking",
+                    "booking_status": None, "driver_public_ref": None}
+        booking = Booking.query.filter_by(
+            booking_reference=booking_reference.strip(),
+            is_deleted=False).first()
+        if booking is None:
+            return {"allowed": False, "reason": "unknown_booking",
+                    "booking_status": None, "driver_public_ref": None}
+        status_value = booking.status.value if hasattr(
+            booking.status, "value") else str(booking.status)
+        if viewer_user_id != booking.user_id and not viewer_is_admin:
+            return {"allowed": False, "reason": "not_authorized",
+                    "booking_status": status_value, "driver_public_ref": None}
+        if (status_value not in ACTIVE_ASSIGNMENT_STATUSES
+                or not booking.assigned_driver_id):
+            return {"allowed": False, "reason": "not_trackable",
+                    "booking_status": status_value, "driver_public_ref": None}
+        driver = db.session.get(DriverProfile, booking.assigned_driver_id)
+        if driver is None or getattr(driver, "is_deleted", False):
+            return {"allowed": False, "reason": "no_driver",
+                    "booking_status": status_value, "driver_public_ref": None}
+        public_ref = getattr(driver, "driver_code", None)
+        if not public_ref:
+            return {"allowed": False, "reason": "no_driver",
+                    "booking_status": status_value, "driver_public_ref": None}
+        return {"allowed": True, "reason": "trackable",
+                "booking_status": status_value,
+                "driver_public_ref": str(public_ref)}
+
+    @staticmethod
+    def _public_ref_for(entity_type: str, entity_id: int) -> Optional[str]:
+        """Public reference for realtime channels (never internal IDs).
+
+        Drivers resolve to `driver_code`, vehicles to `license_plate` —
+        the established external references. None when the record does
+        not exist (nothing to publish for).
+        """
+        try:
+            if entity_type == 'driver':
+                record = db.session.get(DriverProfile, entity_id)
+                ref = getattr(record, 'driver_code', None) if record else None
+            elif entity_type == 'vehicle':
+                record = db.session.get(Vehicle, entity_id)
+                ref = getattr(record, 'license_plate', None) if record else None
+            else:
+                return None
+            return str(ref) if ref else None
+        except Exception:
+            return None
+
+    @staticmethod
     def _coordinates_or_none(location: Dict) -> Tuple[Optional[float], Optional[float]]:
         """Return (lat, lon) floats only when BOTH canonical values are valid, else (None, None)."""
         try:
@@ -261,30 +385,22 @@ class TrackingService:
 
     @staticmethod
     def _calculate_distance(location1: Dict, location2: Dict) -> Optional[float]:
-        """Calculate distance between two locations. Returns None if either location lacks valid canonical coordinates."""
-        import math
+        """Distance between two locations in kilometres.
 
+        Generic math is owned by canonical GEO (radians-correct haversine,
+        metres); this boundary converts metres → km to preserve
+        Transport's kilometre contract (nearby filter/sort, ETA heuristic).
+        Returns None if either location lacks valid canonical coordinates.
+        """
         lat1, lon1 = TrackingService._coordinates_or_none(location1)
         lat2, lon2 = TrackingService._coordinates_or_none(location2)
 
         if None in (lat1, lon1, lat2, lon2):
             return None
 
-        # Haversine formula
-        lat1_rad = math.radians(lat1)
-        lon1_rad = math.radians(lon1)
-        lat2_rad = math.radians(lat2)
-        lon2_rad = math.radians(lon2)
-
-        dlon = lon2_rad - lon1_rad
-        dlat = lat2_rad - lat1_rad
-
-        a = math.sin(dlat / 2) ** 2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
-        c = 2 * math.asin(math.sqrt(a))
-
-        r = 6371
-
-        return c * r
+        dist_m = straight_line_distance_m(
+            GeoPoint(lat1, lon1), GeoPoint(lat2, lon2))
+        return dist_m / 1000.0  # km
 
     @staticmethod
     def _generate_route_polyline(*locations: Dict) -> str:

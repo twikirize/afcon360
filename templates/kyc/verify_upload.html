@@ -118,11 +118,22 @@
             {% if show_individual %}
             <div class="kyc-pane active" id="pane-individual">
               <p class="kyc-desc">
-                Upload a valid government ID to verify your identity.
+                {% if identity_verified %}Manage your verification documents.{% else %}Upload a valid government ID to verify your identity.{% endif %}
                 <span class="kyc-tier-pill">Tier 2 Required</span>
               </p>
 
-              {% if canonical_id_type %}
+              {% if individual_immutable %}
+              <div class="kyc-alert-info" style="align-items: flex-start;">
+                <i class="bi bi-patch-check-fill me-2" style="color: #166534;"></i>
+                <div>
+                  <strong>All your verification documents are complete.</strong>
+                  <p class="mb-2">Items already reviewed and approved are immutable — they will not be re-asked for, and the upload form is no longer offered for them.</p>
+                  <a href="{{ url_for('kyc.status') }}" class="btn btn-outline-success btn-sm">View verification status</a>
+                </div>
+              </div>
+              {% else %}
+
+              {% if canonical_id_type and not identity_verified %}
               <div class="kyc-alert-info">
                 <i class="bi bi-person-check me-2"></i>
                 Your identity details come from your profile
@@ -139,13 +150,9 @@
                   <label for="id_type" class="kyc-label">Document Type <span class="kyc-req">*</span></label>
                   <select class="kyc-select" id="id_type" name="id_type" required data-canonical-type="{{ canonical_id_type or '' }}">
                     <option value="" {% if not preselect_id_type %}selected{% endif %} disabled>Select document type…</option>
-                    <option value="national_id" {% if preselect_id_type == 'national_id' %}selected{% endif %}{% if 'national_id' in verified_id_types %}disabled{% endif %}{% if accepted_id_types is defined and 'national_id' not in accepted_id_types %}disabled{% endif %}>National ID (NIRA){% if 'national_id' in verified_id_types %} — verified{% elif accepted_id_types is defined and 'national_id' not in accepted_id_types %} — not accepted{% endif %}</option>
-                    <option value="passport" {% if preselect_id_type == 'passport' %}selected{% endif %}{% if 'passport' in verified_id_types %}disabled{% endif %}{% if accepted_id_types is defined and 'passport' not in accepted_id_types %}disabled{% endif %}>Passport{% if 'passport' in verified_id_types %} — verified{% elif accepted_id_types is defined and 'passport' not in accepted_id_types %} — not accepted{% endif %}</option>
-                    <option value="driver_license" {% if preselect_id_type == 'driver_license' %}selected{% endif %}{% if 'driver_license' in verified_id_types %}disabled{% endif %}{% if accepted_id_types is defined and 'driver_license' not in accepted_id_types %}disabled{% endif %}>Driver's License{% if 'driver_license' in verified_id_types %} — verified{% elif accepted_id_types is defined and 'driver_license' not in accepted_id_types %} — not accepted{% endif %}</option>
-                    <option value="proof_of_address" {% if preselect_id_type == 'proof_of_address' %}selected{% endif %}{% if 'proof_of_address' in verified_id_types %}disabled{% endif %}>Proof of Address{% if 'proof_of_address' in verified_id_types %} — verified{% endif %}</option>
-                    <option value="tin" {% if preselect_id_type == 'tin' %}selected{% endif %}{% if 'tin' in verified_id_types %}disabled{% endif %}>Tax ID (TIN){% if 'tin' in verified_id_types %} — verified{% endif %}</option>
-                    <option value="income_source" {% if preselect_id_type == 'income_source' %}selected{% endif %}{% if 'income_source' in verified_id_types %}disabled{% endif %}>Income Source Proof{% if 'income_source' in verified_id_types %} — verified{% endif %}</option>
-                    <option value="bank_reference" {% if preselect_id_type == 'bank_reference' %}selected{% endif %}{% if 'bank_reference' in verified_id_types %}disabled{% endif %}>Bank Reference Letter{% if 'bank_reference' in verified_id_types %} — verified{% endif %}</option>
+                    {% for _opt_value, _opt_label in id_type_options|default([]) %}
+                    <option value="{{ _opt_value }}"{% if preselect_id_type == _opt_value %} selected{% endif %}>{{ _opt_label }}</option>
+                    {% endfor %}
                   </select>
                   <span class="kyc-help">{% if canonical_id_number %}Your document type and number are taken from your profile identity.{% else %}Select the document you are uploading.{% endif %}</span>
                 </div>
@@ -176,8 +183,8 @@
                 </div>
 
                 <div class="kyc-field-group">
-                  <label class="kyc-label">Selfie Capture (Required for identity verification)</label>
-                  <span class="kyc-help">Use the live camera to take your selfie. Your face, shoulders, and upper chest must be clearly visible. This links your identity to your verification.</span>
+                  <label class="kyc-label">Selfie Capture <span class="kyc-req" id="selfieRequiredStar">*</span> <span id="selfieRequiredNote">(Required for identity verification)</span></label>
+                  <span class="kyc-help" id="selfieHint">Use the live camera to take your selfie. Your face, shoulders, and upper chest must be clearly visible. This links your identity to your verification.</span>
 
                   <div class="sc-wrap">
                     <div id="selfie-capture" class="sc-anchor"></div>
@@ -285,6 +292,7 @@
                   <small class="kyc-draft-status text-muted" id="kycDraftStatus"></small>
                 </div>
               </form>
+              {% endif %}
             </div>
             {% endif %}
 
@@ -296,7 +304,16 @@
                 <span class="kyc-tier-pill">Tier 5 Required</span>
               </p>
 
-              {% if user_orgs %}
+              {% if all_orgs_verified %}
+              <div class="kyc-alert-info" style="align-items: flex-start;">
+                <i class="bi bi-patch-check-fill me-2" style="color: #166534;"></i>
+                <div>
+                  <strong>Your organization verification is complete.</strong>
+                  <p class="mb-2">Approved organization (KYB) documents are immutable — the upload form is no longer offered for them.</p>
+                  <a href="{{ url_for('kyc.status') }}" class="btn btn-outline-success btn-sm">View verification status</a>
+                </div>
+              </div>
+              {% elif user_orgs %}
               <form method="POST" action="{{ url_for('kyc.upload') }}" id="organizationForm" class="kyc-form-pure" enctype="multipart/form-data">
                 <input type="hidden" name="kyc_type" value="organization">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -306,7 +323,8 @@
                   <select class="kyc-select" id="org_id" name="org_id" required>
                     <option value="" selected disabled>Select your organization…</option>
                     {% for org in user_orgs %}
-                      <option value="{{ org.slug or org.org_id }}" {% if org.slug and org.slug|string == active_org_slug|string %}selected{% endif %}>{{ org.legal_name }} ({{ org.slug or org.org_id }})</option>
+                      {% set _org_verified = (org.verification_status is defined and org.verification_status == 'verified') %}
+                      <option value="{{ org.slug or org.org_id }}" {% if org.slug and org.slug|string == active_org_slug|string %}selected{% endif %}{% if _org_verified %} disabled{% endif %}>{{ org.legal_name }} ({{ org.slug or org.org_id }}){% if _org_verified %} — verified{% endif %}</option>
                     {% endfor %}
                   </select>
                   <span class="kyc-help">Only active organizations where you are a member are shown.</span>
@@ -1211,6 +1229,22 @@
           idNum.readOnly = false;
         }
       });
+    }
+
+    // Selfie is mandatory only for identity-bearing document types. Toggle the
+    // required emphasis as the user picks a document type (server enforces the
+    // same rule on submit).
+    var selfieNote = document.getElementById('selfieRequiredNote');
+    var selfieStar = document.getElementById('selfieRequiredStar');
+    var identityIdTypes = {{ identity_id_types|default([])|tojson }};
+    if (idTypeSel && selfieNote) {
+      function syncSelfieRequirement() {
+        var isIdentity = identityIdTypes.indexOf((idTypeSel.value || '').toLowerCase()) !== -1;
+        selfieNote.style.display = isIdentity ? '' : 'none';
+        if (selfieStar) selfieStar.style.display = isIdentity ? '' : 'none';
+      }
+      idTypeSel.addEventListener('change', syncSelfieRequirement);
+      syncSelfieRequirement();
     }
   })();
 })();

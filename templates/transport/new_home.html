@@ -1,0 +1,1752 @@
+﻿{% extends "base.html" %}
+{% block title %}Transport — AFCON360{% endblock %}
+
+{% block styles %}
+{{ super() }}
+<style>
+/* ============================================================
+   AFCON360 Transport — Rider Booking Flow
+   Design decisions applied:
+     - Hero height: clamp(200px, 32vw, 320px)
+     - Desktop layout: two columns (card left, map right)
+     - Progress strip: 4 steps, always visible
+     - Sticky CTA on mobile
+   ============================================================ */
+
+:root{
+  --brand:#0E6B4F; --brand-dark:#0A4E3A; --brand-soft:#E6F2ED;
+  --yellow:#F6C744; --yellow-dark:#F2A007;
+  --ink:#0C1512; --muted:#77857F; --line:#E2E8E4;
+  --r-md:14px; --r-lg:22px;
+  --shadow-card:0 18px 40px rgba(12,21,18,.14);
+}
+.bolt{
+  position:relative;
+  width:100%;
+  color:var(--ink);
+  background:#F5F5F5;
+  -webkit-font-smoothing:antialiased;
+}
+.bolt *,.bolt *::before,.bolt *::after{box-sizing:border-box}
+
+/* ---------- Hero (shorter now) ---------- */
+.bolt-hero{
+  position:relative;
+  width:100%;
+  height:clamp(200px,32vw,320px);
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:24px clamp(20px,6vw,80px);
+  text-align:center;
+  background:#BFE0F0;
+  padding-top:calc(24px + env(safe-area-inset-top,0px));
+}
+.bolt-hero-art{position:absolute;inset:0;width:100%;height:100%;display:block}
+.bolt-hero-scrim{position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(180deg,rgba(10,40,60,.15) 0%,rgba(10,40,60,0) 50%,rgba(10,40,60,.35) 100%)}
+.bolt-hero-title{
+  position:relative;z-index:1;margin:0;
+  font-size:clamp(1.6rem,3.8vw,3rem);
+  font-weight:900;
+  letter-spacing:-1.2px;
+  line-height:1.05;
+  color:#fff;
+  text-shadow:0 4px 18px rgba(10,40,60,.5);
+}
+.bolt-hero-title span{color:var(--yellow)}
+.bolt-hero-sub{
+  position:relative;z-index:1;margin:8px 0 0;
+  font-size:clamp(.9rem,1.4vw,1.15rem);
+  font-weight:600;color:#fff;
+  text-shadow:0 2px 10px rgba(10,40,60,.5);
+}
+
+/* ---------- Progress strip ---------- */
+.bolt-progress{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  padding:18px clamp(16px,4vw,40px) 12px;
+  max-width:800px;
+  margin:0 auto;
+}
+.bolt-progress-step{
+  display:flex;align-items:center;gap:8px;
+  font-size:.78rem;font-weight:600;color:var(--muted);
+  white-space:nowrap;
+}
+.bolt-progress-num{
+  flex:none;width:22px;height:22px;border-radius:50%;
+  display:grid;place-items:center;
+  background:#E2E8E4;color:var(--muted);
+  font-size:.7rem;font-weight:800;
+}
+.bolt-progress-step.is-active .bolt-progress-num{
+  background:var(--brand);color:#fff;
+}
+.bolt-progress-step.is-done .bolt-progress-num{
+  background:var(--brand-soft);color:var(--brand);
+}
+.bolt-progress-step.is-active{color:var(--ink)}
+.bolt-progress-step.is-done{color:var(--brand-dark)}
+.bolt-progress-line{
+  flex:1;height:2px;background:#E2E8E4;
+  min-width:20px;max-width:60px;
+  border-radius:2px;
+}
+.bolt-progress-step.is-done + .bolt-progress-line,
+.bolt-progress-line.is-done{background:var(--brand)}
+
+@media (max-width:560px){
+  .bolt-progress-step span:not(.bolt-progress-num){display:none}
+  .bolt-progress-step{font-size:0;gap:0}
+}
+
+/* ---------- Two-column grid ---------- */
+.bolt-grid{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:20px;
+  max-width:1440px;
+  margin:0 auto;
+  padding:0 clamp(16px,4vw,40px);
+  padding-bottom:40px;
+}
+@media (min-width:1200px){
+  .bolt-grid{
+    grid-template-columns:minmax(440px,1fr) minmax(0,1.1fr);
+    align-items:start;
+    gap:32px;
+    padding-top:24px;
+  }
+}
+
+/* ---------- Booking card ---------- */
+.bolt-card{
+  background:#fff;
+  border-radius:var(--r-lg);
+  box-shadow:var(--shadow-card);
+  padding:22px 22px 20px;
+  position:relative;
+  z-index:3;
+  margin-top:-32px;
+}
+@media (min-width:1200px){
+  .bolt-card{margin-top:-40px}
+}
+@media (max-width:560px){
+  .bolt-card{border-radius:16px;padding:18px 16px 16px;margin-top:-24px}
+}
+
+/* ---------- Inputs ---------- */
+.bolt-field{
+  display:flex;align-items:center;gap:12px;
+  padding:14px 14px;
+  background:#fff;
+  border:1.5px solid #E2E8F0;
+  border-radius:14px;
+  margin-bottom:10px;
+  transition:border-color .15s ease,box-shadow .15s ease;
+  min-height:52px;
+}
+.bolt-field:focus-within{
+  border-color:var(--brand);
+  box-shadow:0 0 0 3px var(--brand-soft);
+}
+.bolt-field .dot{
+  flex:none;width:26px;height:26px;border-radius:50%;
+  display:grid;place-items:center;
+}
+.bolt-field .dot-pickup{background:#FEF0C7;color:#F0A020}
+.bolt-field .dot-dest{background:#FDE3E3;color:#DC2626}
+.bolt-field input{
+  flex:1;border:0;outline:none;background:transparent;
+  font-size:14px;font-weight:700;color:#1E293B;
+  padding:0;min-width:0;
+}
+.bolt-field input::placeholder{color:#94A3B8;font-weight:500}
+.bolt-field-hint{flex:none;font-size:12px;color:#64748B}
+.bolt-field .field-icon{
+  flex:none;color:var(--brand);cursor:pointer;padding:6px;
+  min-width:32px;min-height:32px;
+  display:grid;place-items:center;border-radius:8px;
+}
+.bolt-field .field-icon:active{background:var(--brand-soft)}
+
+/* ---------- Route box (pickup + swap + dest) ---------- */
+.bolt-route-box{
+  position:relative;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:0 10px;
+  align-items:center;
+  margin:0 0 14px;
+}
+.bolt-route-fields{display:grid;min-width:0}
+.bolt-route-fields .bolt-field{
+  margin:0 0 8px;
+  box-shadow:0 3px 10px rgba(56,26,8,.06);
+}
+.bolt-route-fields .bolt-field:last-child{margin-bottom:0}
+.bolt-swap{
+  align-self:center;
+  width:40px;height:40px;
+  display:grid;place-items:center;
+  background:#fff;
+  border:1.5px solid var(--line);
+  border-radius:50%;
+  color:var(--brand);cursor:pointer;
+  box-shadow:0 3px 10px rgba(56,26,8,.1);
+}
+.bolt-swap:active{transform:scale(.94)}
+
+/* ---------- Destination chips ---------- */
+.bolt-chips{
+  display:flex;gap:8px;
+  margin:0 0 14px;
+  overflow-x:auto;
+  padding-bottom:2px;
+  scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;
+}
+.bolt-chips::-webkit-scrollbar{display:none}
+.bolt-chip{
+  flex:none;
+  display:inline-flex;align-items:center;gap:6px;
+  padding:10px 14px;
+  border:1.5px solid var(--line);
+  background:#fff;
+  border-radius:999px;
+  font-size:.8rem;font-weight:600;color:var(--ink);
+  cursor:pointer;
+  min-height:40px;
+}
+.bolt-chip .bi{color:var(--brand)}
+.bolt-chip:active{transform:scale(.97)}
+
+/* ---------- Service type (radio-like) ---------- */
+.bolt-svcbar{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:10px;
+  margin:0 0 12px;
+}
+.bolt-svc{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  min-height:52px;
+  padding:10px 8px;
+  background:#fff;
+  border:1.5px solid #E2E8F0;
+  border-radius:14px;
+  font:inherit;color:#334155;
+  cursor:pointer;
+  transition:border-color .15s ease,background .15s ease;
+}
+.bolt-svc .bi{
+  flex:none;width:24px;height:24px;
+  display:grid;place-items:center;
+  border-radius:8px;font-size:13px;
+  background:#F1F5F9;color:#475569;
+  transition:background .15s ease,color .15s ease;
+}
+.bolt-svc .svc-label{
+  font-size:12px;font-weight:700;
+  color:#334155;white-space:nowrap;
+}
+.bolt-svc[data-service="on_demand"].is-active{
+  border-color:#15803D;background:#F0FDF4;
+}
+.bolt-svc[data-service="on_demand"].is-active .bi{background:#DCFCE7;color:#15803D}
+.bolt-svc[data-service="on_demand"].is-active .svc-label{color:#0B522B}
+.bolt-svc[data-service="airport_departure"].is-active{
+  border-color:#2563EB;background:#EFF6FF;
+}
+.bolt-svc[data-service="airport_departure"].is-active .bi{background:#DBEAFE;color:#2563EB}
+.bolt-svc[data-service="airport_departure"].is-active .svc-label{color:#1E40AF}
+.bolt-svc[data-vip="1"].is-active{border-color:#CA8A04;background:#FEFCE8}
+.bolt-svc[data-vip="1"].is-active .bi{background:#FEF9C3;color:#CA8A04}
+.bolt-svc[data-vip="1"].is-active .svc-label{color:#A16207}
+
+/* ---------- Schedule toggle ---------- */
+.bolt-sched{
+  display:flex;align-items:center;gap:8px;
+  margin:0 0 18px;
+}
+.bolt-sched-toggle{
+  display:inline-flex;
+  background:#F0F3F1;
+  border-radius:999px;
+  padding:3px;gap:2px;
+  flex:none;
+}
+.bolt-sched-opt{
+  border:0;background:transparent;
+  padding:9px 16px;
+  border-radius:999px;
+  font-size:.82rem;font-weight:600;
+  color:var(--muted);cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px;
+  min-height:36px;
+}
+.bolt-sched-opt.is-active{
+  background:#fff;color:var(--ink);
+  box-shadow:0 2px 6px rgba(12,21,18,.1);
+}
+.bolt-sched-at{
+  flex:1;min-width:0;
+  border:1.5px solid var(--line);
+  border-radius:var(--r-md);
+  padding:9px 12px;
+  font-size:.82rem;font-family:inherit;
+  color:var(--ink);background:#fff;
+  display:none;
+}
+.bolt-sched-at.is-visible{display:block}
+
+/* ---------- Primary CTA ---------- */
+.bolt-cta{
+  width:100%;
+  display:flex;align-items:center;justify-content:center;
+  gap:10px;
+  padding:16px 20px;
+  border:0;
+  border-radius:16px;
+  background:linear-gradient(180deg,#23A64C 0%,#0F7C37 100%);
+  color:#fff;
+  font-size:1rem;font-weight:800;
+  letter-spacing:.2px;
+  cursor:pointer;
+  box-shadow:0 6px 18px rgba(15,124,55,.38);
+  min-height:56px;
+  transition:transform .08s ease,filter .15s ease;
+}
+.bolt-cta:active:not([disabled]){transform:translateY(1px)}
+.bolt-cta:hover:not([disabled]){filter:brightness(.97)}
+.bolt-cta[disabled]{
+  background:#DCE3DE;color:#8F9C96;
+  box-shadow:none;cursor:not-allowed;
+}
+.bolt-cta-hint{opacity:.85;display:inline-flex}
+
+/* ---------- Sticky CTA wrap (mobile only) ---------- */
+.bolt-cta-wrap{
+  position:sticky;
+  bottom:0;
+  padding-top:14px;
+  margin-top:4px;
+  background:linear-gradient(180deg,rgba(255,255,255,0) 0%,#fff 30%);
+  z-index:2;
+}
+@media (min-width:768px){
+  .bolt-cta-wrap{
+    position:static;
+    background:none;
+    padding:0;
+    margin:0;
+  }
+}
+
+/* ---------- Map panel ---------- */
+.bolt-map-panel{
+  position:relative;
+  border-radius:var(--r-lg);
+  overflow:hidden;
+  background:#E9F0EB;
+  box-shadow:0 4px 14px rgba(0,0,0,.08);
+  height:280px;
+  margin-top:18px;
+}
+@media (min-width:1200px){
+  .bolt-map-panel{
+    height:min(60vh,540px);
+    margin-top:-40px;
+    box-shadow:0 18px 40px rgba(12,21,18,.12);
+  }
+}
+@media (min-width:768px) and (max-width:1199px){
+  .bolt-map-panel{height:360px}
+}
+.bolt-map-panel #pickMap{
+  position:relative;width:100%;height:100%;
+}
+.bolt-map-hint{
+  margin:10px 4px 0;
+  font-size:.74rem;color:var(--muted);
+  text-align:center;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+}
+.bolt-map-hint .bi{color:var(--brand)}
+
+/* ---------- Below card: recents ---------- */
+.bolt-recents{
+  margin-top:22px;
+  border-top:1px solid var(--line);
+  padding-top:14px;
+}
+.bolt-recents-label{
+  font-size:.68rem;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--muted);
+  font-weight:700;margin-bottom:8px;
+}
+.bolt-recent{
+  display:flex;align-items:center;gap:12px;
+  padding:10px 4px;border-radius:10px;
+  text-decoration:none;color:inherit;
+}
+.bolt-recent:hover{background:#F5F7F5}
+.bolt-recent-icon{
+  flex:none;width:36px;height:36px;
+  display:grid;place-items:center;
+  background:#F0F3F1;border-radius:50%;
+  color:var(--muted);font-size:.85rem;
+}
+.bolt-recent-body{flex:1;min-width:0}
+.bolt-recent-name{font-size:.88rem;font-weight:600;display:block}
+.bolt-recent-sub{font-size:.72rem;color:var(--muted);display:block}
+
+/* ---------- Panel (State B/C/D) ---------- */
+.bolt-state{display:none}
+.bolt-state.is-active{display:block;animation:boltFade .22s ease}
+@keyframes boltFade{
+  from{opacity:0;transform:translateY(8px)}
+  to{opacity:1;transform:translateY(0)}
+}
+.bolt-panel{
+  max-width:1100px;
+  margin:0 auto;
+  padding:0 clamp(16px,4vw,40px) 48px;
+}
+.bolt-title{
+  margin:0 0 4px;
+  font-size:1.35rem;font-weight:800;
+  letter-spacing:-.02em;line-height:1.2;
+}
+.bolt-sub{
+  margin:0 0 18px;
+  font-size:.85rem;color:var(--muted);
+}
+
+/* ---------- Vehicle cards ---------- */
+.bolt-vehgrid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:12px;
+  margin-bottom:14px;
+}
+@media (max-width:900px){
+  .bolt-vehgrid{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:400px){
+  .bolt-vehgrid{grid-template-columns:1fr}
+}
+.bolt-veh{
+  display:flex;flex-direction:column;align-items:center;
+  gap:4px;
+  padding:16px 10px 14px;
+  background:#fff;
+  border:2px solid #E2E8F0;
+  border-radius:16px;
+  box-shadow:0 4px 12px rgba(12,21,18,.06);
+  cursor:pointer;
+  text-align:center;
+  font:inherit;color:inherit;
+  transition:border-color .15s ease,box-shadow .15s ease,transform .08s ease;
+  min-height:170px;
+}
+.bolt-veh:hover{border-color:#0B522B;box-shadow:0 8px 20px rgba(12,21,18,.1)}
+.bolt-veh:active{transform:scale(.98)}
+.bolt-veh.is-selected{
+  background:#F0FBF2;
+  border-color:#0B522B;
+  box-shadow:0 8px 22px rgba(11,82,43,.2);
+}
+.bolt-veh-ico{
+  width:52px;height:52px;
+  display:grid;place-items:center;
+  border-radius:14px;
+  background:var(--brand-soft);
+  color:var(--brand);
+  font-size:1.4rem;
+  margin-bottom:4px;
+}
+.bolt-veh-name{
+  font-size:.9rem;font-weight:800;color:#1E293B;
+  line-height:1.2;
+}
+.bolt-veh-price{
+  font-size:1.15rem;font-weight:900;color:#178A3E;
+  font-variant-numeric:tabular-nums;
+  line-height:1.1;
+  margin-top:2px;
+}
+.bolt-veh-eta{
+  font-size:.8rem;font-weight:700;color:#0A4E1F;
+  line-height:1.2;
+}
+.bolt-veh-sub{
+  font-size:.68rem;color:#94A3B8;
+  margin-top:2px;
+}
+
+/* ---------- Fare breakdown ---------- */
+.bolt-fare{
+  margin:14px 0;
+  border:1px dashed #C8D5CE;
+  border-radius:var(--r-md);
+  padding:12px 16px;
+  background:#FBFCFB;
+  display:none;
+}
+.bolt-fare.is-visible{display:block;animation:boltFade .18s ease}
+.bolt-fare-row{
+  display:flex;justify-content:space-between;gap:12px;
+  font-size:.82rem;color:var(--muted);
+  padding:3px 0;
+  font-variant-numeric:tabular-nums;
+}
+.bolt-fare-row.total{
+  margin-top:8px;padding-top:10px;
+  border-top:1px solid var(--line);
+  color:var(--ink);font-weight:800;font-size:1rem;
+}
+.bolt-fare-row .k{
+  display:inline-flex;align-items:center;gap:6px;
+}
+.bolt-fare-row .k .bi{font-size:.7rem;color:var(--brand)}
+
+/* ---------- Book Now (State B primary CTA) ---------- */
+.bolt-book{
+  width:100%;
+  display:flex;align-items:center;justify-content:space-between;
+  gap:12px;
+  padding:16px 22px;
+  border:0;border-radius:16px;
+  background:linear-gradient(180deg,#FBC02D 0%,#F2A007 100%);
+  color:#3B2A05;
+  font-size:1.05rem;font-weight:800;
+  cursor:pointer;
+  box-shadow:0 6px 18px rgba(242,160,7,.4);
+  min-height:56px;
+  margin:6px 0 0;
+}
+.bolt-book:active:not([disabled]){transform:translateY(1px)}
+.bolt-book[disabled]{
+  background:#DCE3DE;color:#8F9C96;
+  box-shadow:none;cursor:not-allowed;
+}
+.bolt-book-amt{font-variant-numeric:tabular-nums}
+
+/* ---------- Features (trust row) ---------- */
+.bolt-features{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:12px;
+  margin:22px 0 0;
+}
+@media (max-width:700px){
+  .bolt-features{grid-template-columns:1fr}
+}
+.bolt-feature{
+  display:flex;align-items:center;gap:12px;
+  padding:14px 16px;
+  background:#fff;
+  border:1.5px solid #E2E8F0;
+  border-radius:16px;
+}
+.bolt-feature > i{
+  flex:none;width:40px;height:40px;
+  display:grid;place-items:center;
+  border-radius:12px;
+  background:var(--brand-soft);
+  color:var(--brand);
+  font-size:1.1rem;
+}
+.bolt-feature b{display:block;font-size:.9rem}
+.bolt-feature small{display:block;font-size:.74rem;color:var(--muted)}
+
+/* ---------- Confirmation summary ---------- */
+.bolt-summary{
+  background:#F5F7F5;
+  border-radius:var(--r-md);
+  padding:16px;
+  margin-bottom:14px;
+  display:grid;gap:12px;
+}
+.bolt-summary-row{display:flex;align-items:flex-start;gap:10px}
+.bolt-summary-icon{
+  flex:none;width:16px;
+  color:var(--muted);font-size:.8rem;padding-top:3px;
+}
+.bolt-summary-body{flex:1;min-width:0}
+.bolt-summary-label{
+  font-size:.64rem;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--muted);
+  font-weight:700;margin-bottom:2px;
+}
+.bolt-summary-value{
+  font-size:.9rem;font-weight:600;word-break:break-word;
+}
+.bolt-confirm-fare{
+  border-top:1px solid var(--line);
+  margin-top:4px;padding-top:10px;
+  display:grid;gap:5px;
+}
+.bolt-cta-pay{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:4px 10px;
+  border-radius:999px;
+  background:rgba(255,255,255,.2);
+  font-size:.72rem;font-weight:600;
+}
+
+/* ---------- Matching (State D) ---------- */
+.bolt-matching{text-align:center;padding:24px 6px 12px}
+.bolt-matching h3{
+  margin:16px 0 4px;font-size:1.15rem;font-weight:800;
+}
+.bolt-matching p{margin:0 0 20px;font-size:.85rem;color:var(--muted)}
+.bolt-spinner{
+  display:inline-block;
+  width:38px;height:38px;
+  border:3px solid var(--line);
+  border-top-color:var(--brand);
+  border-radius:50%;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.bolt-match-progress{
+  display:grid;gap:10px;
+  text-align:left;
+  margin:6px 0 20px;
+  max-width:360px;
+  margin-left:auto;margin-right:auto;
+}
+.bolt-step{
+  display:flex;align-items:center;gap:12px;
+  font-size:.88rem;color:var(--muted);opacity:.4;
+  transition:opacity .25s ease;
+}
+.bolt-step .dot{
+  flex:none;width:36px;height:36px;
+  display:grid;place-items:center;
+  border-radius:50%;
+  background:#F0F3F1;color:var(--muted);
+}
+.bolt-step.is-active{opacity:1;color:var(--ink);font-weight:600}
+.bolt-step.is-active .dot{background:var(--brand);color:#fff}
+.bolt-step.is-done{opacity:.9;color:var(--ink)}
+.bolt-step.is-done .dot{background:var(--brand-soft);color:var(--brand)}
+.bolt-match-trip{
+  display:grid;gap:6px;
+  text-align:left;
+  background:#F5F7F5;
+  border-radius:var(--r-md);
+  padding:14px 16px;
+  max-width:420px;
+  margin:0 auto;
+}
+.bolt-match-trip-row{
+  display:flex;align-items:flex-start;gap:8px;
+  font-size:.82rem;color:var(--muted);
+}
+.bolt-match-trip-row .bi{
+  color:var(--brand);font-size:.7rem;margin-top:3px;
+}
+.bolt-match-trip-row b{
+  color:var(--ink);font-weight:600;display:block;font-size:.86rem;
+}
+
+/* ---------- Skeleton / empty ---------- */
+.bolt-empty{
+  padding:32px 16px;text-align:center;
+  font-size:.88rem;color:var(--muted);
+}
+.bolt-empty .bi{
+  font-size:1.8rem;display:block;
+  margin-bottom:8px;color:#C8D5CE;
+}
+.bolt-retry{
+  display:inline-block;cursor:pointer;
+  color:var(--brand);background:none;border:0;
+  font-weight:700;padding:0 2px;font-size:inherit;
+  text-decoration:underline;
+}
+.bolt-skeleton{display:grid;gap:10px;margin-bottom:12px}
+.bolt-skeleton-card{
+  display:flex;align-items:center;gap:12px;
+  padding:14px;
+  border:1.5px solid var(--line);
+  border-radius:var(--r-md);
+}
+.sk{
+  border-radius:8px;
+  background:linear-gradient(90deg,#EFF2EF 25%,#E2E8E4 37%,#EFF2EF 63%);
+  background-size:400% 100%;
+  animation:shimmer 1.3s ease infinite;
+}
+@keyframes shimmer{
+  0%{background-position:100% 0}
+  100%{background-position:-100% 0}
+}
+.sk-ico{flex:none;width:48px;height:48px;border-radius:12px}
+.sk-line{height:12px}
+.sk-main{flex:1;display:grid;gap:8px}
+.sk-price{flex:none;width:56px;height:18px;align-self:center}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce){
+  .bolt-state.is-active,
+  .bolt-fare.is-visible,
+  .bolt-spinner,
+  .sk{animation:none}
+}
+
+/* ---------- Dark mode ---------- */
+@media (prefers-color-scheme: dark){
+  .bolt{background:#0E1412;color:#E8EDE9}
+  .bolt-card,
+  .bolt-feature,
+  .bolt-veh,
+  .bolt-summary,
+  .bolt-fare{background:#1A221E;border-color:#2A3531;color:#E8EDE9}
+  .bolt-field{background:#1A221E;border-color:#2A3531;color:#E8EDE9}
+  .bolt-field input{color:#E8EDE9}
+  .bolt-field input::placeholder{color:#6B7671}
+  .bolt-veh-name,
+  .bolt-title{color:#E8EDE9}
+  .bolt-sub,
+  .bolt-veh-sub{color:#94A3A0}
+  .bolt-progress-num{background:#2A3531;color:#94A3A0}
+  .bolt-progress-line{background:#2A3531}
+  .bolt-sched-toggle{background:#2A3531}
+  .bolt-sched-opt.is-active{background:#1A221E;color:#E8EDE9}
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bolt">
+
+<form method="POST"
+      action="{{ safe_url('transport.book_transport') }}"
+      id="boltForm"
+      novalidate>
+
+  {# ---------- Backend contract hidden fields ---------- #}
+  <input type="hidden" name="csrf_token"        value="{{ raw_csrf_token }}">
+  <input type="hidden" name="provider_type"     value="individual_driver">
+  <input type="hidden" name="currency"          value="USD">
+  <input type="hidden" name="passenger_count"   id="hPassengerCount" value="1">
+  <input type="hidden" name="luggage_count"     id="hLuggageCount"   value="0">
+  <input type="hidden" name="pickup_time"       id="hPickupTime"     value="">
+  <input type="hidden" name="vehicle_class"     id="hVehicleClass"   value="">
+  <input type="hidden" name="payment_method"    id="hPayment"        value="cash">
+  <input type="hidden" name="dropoff_location"  id="hDropoff"        value="{{ dropoff_value }}">
+  <input type="hidden" name="pickup_location"   id="hPickup"         value="{{ pickup_value }}">
+  <input type="hidden" id="pickup_latitude"     name="pickup_latitude"  value="">
+  <input type="hidden" id="pickup_longitude"    name="pickup_longitude" value="">
+  <input type="hidden" id="dropoff_latitude"    name="dropoff_latitude" value="">
+  <input type="hidden" id="dropoff_longitude"   name="dropoff_longitude" value="">
+  <input type="hidden" name="service_type"      id="hServiceType"    value="{{ default_service }}">
+
+  {# ========================================================
+     STATE A — Where to?
+     ======================================================== #}
+  <section class="bolt-state is-active" data-state="a">
+
+    <header class="bolt-hero" aria-label="AFCON360 transport hero">
+      <svg class="bolt-hero-art" viewBox="0 0 1440 320"
+           preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <linearGradient id="hSky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#3E92C7"/>
+            <stop offset=".55" stop-color="#8AC7E7"/>
+            <stop offset="1" stop-color="#D9EDF7"/>
+          </linearGradient>
+          <linearGradient id="hGrass" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#A8D569"/>
+            <stop offset="1" stop-color="#74AE3C"/>
+          </linearGradient>
+          <linearGradient id="hRoad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#D4D4CC"/>
+            <stop offset="1" stop-color="#B4B4AC"/>
+          </linearGradient>
+          <symbol id="bolt-car" viewBox="0 0 228 96">
+            <ellipse cx="114" cy="87" rx="96" ry="7" fill="#000" opacity=".1"/>
+            <path d="M22,72 L22,56 C22,49 26,45 33,44 L74,37 C86,23 102,18 120,18
+                     L146,18 C162,18 176,25 186,37 L196,41 C203,43 206,48 206,55
+                     L206,72 Z" fill="currentColor" stroke="rgba(0,0,0,.12)" stroke-width="2"/>
+            <path d="M86,38 C94,28 105,25 118,25 L134,25 L134,38 Z" fill="#C3DCEA"/>
+            <circle cx="64" cy="72" r="15" fill="#23292D"/><circle cx="64" cy="72" r="6" fill="#9AA5AC"/>
+            <circle cx="164" cy="72" r="15" fill="#23292D"/><circle cx="164" cy="72" r="6" fill="#9AA5AC"/>
+          </symbol>
+        </defs>
+        <rect width="1440" height="320" fill="url(#hSky)"/>
+        <g fill="#9FC4DA">
+          <rect x="10" y="120" width="26" height="70"/><rect x="42" y="100" width="20" height="90"/>
+          <rect x="68" y="130" width="30" height="60"/><rect x="104" y="90" width="22" height="100"/>
+          <rect x="132" y="115" width="34" height="75"/><rect x="172" y="135" width="18" height="55"/>
+          <rect x="196" y="100" width="26" height="90"/><rect x="228" y="120" width="40" height="70"/>
+          <rect x="274" y="105" width="20" height="85"/><rect x="300" y="130" width="30" height="60"/>
+          <rect x="336" y="115" width="24" height="75"/><rect x="406" y="100" width="18" height="90"/>
+          <rect x="430" y="125" width="28" height="65"/><rect x="464" y="110" width="22" height="80"/>
+          <rect x="534" y="115" width="20" height="75"/><rect x="560" y="95" width="30" height="95"/>
+          <rect x="596" y="130" width="24" height="60"/><rect x="626" y="105" width="18" height="85"/>
+          <rect x="690" y="100" width="22" height="90"/><rect x="718" y="125" width="28" height="65"/>
+          <rect x="752" y="110" width="20" height="80"/><rect x="820" y="95" width="24" height="95"/>
+          <rect x="850" y="125" width="30" height="65"/><rect x="886" y="110" width="18" height="80"/>
+        </g>
+        <g>
+          <ellipse cx="1180" cy="160" rx="220" ry="44" fill="#C6B394"/>
+          <ellipse cx="1180" cy="152" rx="184" ry="34" fill="#E2D6BB"/>
+          <ellipse cx="1180" cy="150" rx="148" ry="26" fill="#CDBE9E"/>
+          <ellipse cx="1180" cy="148" rx="108" ry="18" fill="#B9A985"/>
+        </g>
+        <rect x="0" y="190" width="1440" height="130" fill="url(#hGrass)"/>
+        <path d="M-20,260 C300,240 720,236 1460,260 L1460,320 L-20,320 Z" fill="url(#hRoad)"/>
+        <path d="M-20,290 C300,270 720,266 1460,290"
+              stroke="#FFFFFF" stroke-width="4" stroke-dasharray="30 24"
+              fill="none" opacity=".85"/>
+        <g>
+          <g transform="translate(140,240)">
+            <circle r="16" fill="#4E8F2C"/><circle cx="12" cy="-6" r="11" fill="#5DA336"/>
+            <circle cx="-12" cy="-2" r="10" fill="#3F7B23"/>
+          </g>
+          <g transform="translate(1320,244)">
+            <circle r="16" fill="#3F7B23"/><circle cx="12" cy="-4" r="11" fill="#4E8F2C"/>
+          </g>
+        </g>
+        <use href="#bolt-car" x="200" y="250" width="150" height="62" style="color:#242A2E"/>
+        <use href="#bolt-car" x="620" y="240" width="180" height="76" style="color:#FFFFFF"/>
+        <use href="#bolt-car" x="1080" y="248" width="160" height="66" style="color:#2C3136"/>
+      </svg>
+      <div class="bolt-hero-scrim" aria-hidden="true"></div>
+      <h1 class="bolt-hero-title">Your Ride, <span>Your Game!</span></h1>
+      <p class="bolt-hero-sub">Book a ride in under 30 seconds.</p>
+    </header>
+
+    {# ---------- Progress strip ---------- #}
+    <div class="bolt-progress" id="progressBar" aria-hidden="true">
+      <div class="bolt-progress-step is-active" data-step="a">
+        <span class="bolt-progress-num">1</span><span>Where</span>
+      </div>
+      <div class="bolt-progress-line"></div>
+      <div class="bolt-progress-step" data-step="b">
+        <span class="bolt-progress-num">2</span><span>Choose</span>
+      </div>
+      <div class="bolt-progress-line"></div>
+      <div class="bolt-progress-step" data-step="c">
+        <span class="bolt-progress-num">3</span><span>Confirm</span>
+      </div>
+      <div class="bolt-progress-line"></div>
+      <div class="bolt-progress-step" data-step="d">
+        <span class="bolt-progress-num">4</span><span>Match</span>
+      </div>
+    </div>
+
+    {# ---------- Two-column grid: card + map ---------- #}
+    <div class="bolt-grid">
+
+      {# ---------- LEFT: booking card ---------- #}
+      <div class="bolt-card">
+        <div class="bolt-route-box">
+          <div class="bolt-route-fields">
+            <label class="bolt-field bolt-field-pickup">
+              <span class="dot dot-pickup"><i class="bi bi-geo-alt"></i></span>
+              <input id="inputPickup" type="text"
+                     placeholder="Current Location"
+                     autocomplete="off" enterkeyhint="go">
+              <span class="bolt-field-hint" id="pickupHint">Use my location</span>
+              <span class="field-icon" id="btnLocate"
+                    title="Use my current location" role="button"
+                    aria-label="Use my current location">
+                <i class="bi bi-crosshair"></i>
+              </span>
+            </label>
+            <label class="bolt-field bolt-field-dest">
+              <span class="dot dot-dest"><i class="bi bi-flag"></i></span>
+              <input id="inputDest" type="text"
+                     placeholder="Enter Destination"
+                     autocomplete="off" enterkeyhint="next">
+            </label>
+          </div>
+          <button type="button" class="bolt-swap" id="btnSwap"
+                  aria-label="Swap pickup and destination">
+            <i class="bi bi-arrow-down-up"></i>
+          </button>
+        </div>
+
+        <div class="bolt-chips" id="destChips" aria-label="Popular destinations">
+          <button type="button" class="bolt-chip"
+                  data-dest="Mandela National Stadium, Namboole">
+            <i class="bi bi-geo-fill"></i> Namboole Stadium
+          </button>
+          <button type="button" class="bolt-chip"
+                  data-dest="Lugogo Cricket Oval, Kampala">
+            <i class="bi bi-geo-fill"></i> Lugogo Oval
+          </button>
+          <button type="button" class="bolt-chip"
+                  data-dest="Nile Independence Stadium">
+            <i class="bi bi-geo-fill"></i> Nile Independence
+          </button>
+        </div>
+
+        <div class="bolt-svcbar" role="group" aria-label="Service type">
+          <button type="button" class="bolt-svc is-active"
+                  data-service="on_demand">
+            <i class="bi bi-stopwatch"></i>
+            <span class="svc-label">Quick Ride</span>
+          </button>
+          <button type="button" class="bolt-svc"
+                  data-service="airport_departure">
+            <i class="bi bi-airplane"></i>
+            <span class="svc-label">Airport</span>
+          </button>
+          <button type="button" class="bolt-svc"
+                  data-service="on_demand" data-vip="1">
+            <i class="bi bi-star-fill"></i>
+            <span class="svc-label">VIP</span>
+          </button>
+        </div>
+
+        <div class="bolt-sched" role="group" aria-label="When">
+          <div class="bolt-sched-toggle">
+            <button type="button" class="bolt-sched-opt is-active"
+                    id="schedNowBtn" aria-pressed="true">
+              <i class="bi bi-lightning-charge"></i> Now
+            </button>
+            <button type="button" class="bolt-sched-opt"
+                    id="schedLaterBtn" aria-pressed="false">
+              <i class="bi bi-calendar-event"></i> Later
+            </button>
+          </div>
+          <input type="datetime-local" id="schedAt"
+                 class="bolt-sched-at" step="60"
+                 aria-label="Schedule pickup time">
+        </div>
+
+        <div class="bolt-cta-wrap">
+          <button type="button" class="bolt-cta"
+                  id="btnContinue" disabled>
+            <span>Find a Ride</span>
+            <span class="bolt-cta-hint"><i class="bi bi-arrow-right"></i></span>
+          </button>
+        </div>
+
+        {% if is_authenticated and recent_rides %}
+        <div class="bolt-recents">
+          <div class="bolt-recents-label">Recent rides</div>
+          {% for r in recent_rides[:3] %}
+          <a class="bolt-recent"
+             href="{{ safe_url('transport.bookings_index') }}"
+             data-ride-ref="{{ r.booking_reference }}">
+            <span class="bolt-recent-icon"><i class="bi bi-clock-history"></i></span>
+            <span class="bolt-recent-body">
+              <span class="bolt-recent-name">{{ r.dropoff_location }}</span>
+              <span class="bolt-recent-sub">
+                <i class="bi bi-arrow-return-right"></i>
+                from {{ r.pickup_location }} ·
+                {{ r.status|replace('_',' ')|title }}
+              </span>
+            </span>
+          </a>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+
+      {# ---------- RIGHT: map panel ---------- #}
+      <div class="bolt-map-panel" aria-label="Live map">
+        <div id="pickMap"></div>
+      </div>
+
+    </div>
+
+    <p class="bolt-map-hint">
+      <i class="bi bi-info-circle"></i>
+      Tap the map to place your pickup and destination pins.
+      Distance is a straight-line estimate.
+    </p>
+
+  </section>
+
+  {# ========================================================
+     STATE B — Select Your Ride
+     ======================================================== #}
+  <section class="bolt-state" data-state="b">
+    <div class="bolt-progress">
+      <div class="bolt-progress-step is-done" data-step="a">
+        <span class="bolt-progress-num">1</span><span>Where</span>
+      </div>
+      <div class="bolt-progress-line is-done"></div>
+      <div class="bolt-progress-step is-active" data-step="b">
+        <span class="bolt-progress-num">2</span><span>Choose</span>
+      </div>
+      <div class="bolt-progress-line"></div>
+      <div class="bolt-progress-step" data-step="c">
+        <span class="bolt-progress-num">3</span><span>Confirm</span>
+      </div>
+      <div class="bolt-progress-line"></div>
+      <div class="bolt-progress-step" data-step="d">
+        <span class="bolt-progress-num">4</span><span>Match</span>
+      </div>
+    </div>
+
+    <div class="bolt-panel">
+      <h2 class="bolt-title">Select Your Ride</h2>
+      <p class="bolt-sub" id="tripMeta">Live pricing from real available vehicles.</p>
+
+      <div class="bolt-options" id="optionsBox" aria-live="polite"></div>
+
+      <div class="bolt-fare" id="farePanel" aria-live="polite">
+        <div class="bolt-fare-row">
+          <span class="k"><i class="bi bi-play-circle"></i> Base fare</span>
+          <span id="fbBase">—</span>
+        </div>
+        <div class="bolt-fare-row">
+          <span class="k">
+            <i class="bi bi-rulers"></i>
+            Distance (<span id="fbKm">—</span> km)
+          </span>
+          <span id="fbDistance">—</span>
+        </div>
+        <div class="bolt-fare-row">
+          <span class="k"><i class="bi bi-diagram-3"></i> Class multiplier</span>
+          <span id="fbMult">—</span>
+        </div>
+        <div class="bolt-fare-row">
+          <span class="k"><i class="bi bi-graph-up-arrow"></i> Surge</span>
+          <span id="fbSurge">—</span>
+        </div>
+        <div class="bolt-fare-row total">
+          <span class="k">Total</span>
+          <span id="fbTotal">—</span>
+        </div>
+      </div>
+
+      <button type="button" class="bolt-book" id="btnReview" disabled>
+        <span>Book Now</span>
+        <span class="bolt-book-amt" id="reviewAmount"></span>
+      </button>
+
+      <div class="bolt-features" aria-label="Trust and reliability">
+        <div class="bolt-feature">
+          <i class="bi bi-shield-check"></i>
+          <span><b>Safe &amp; Reliable</b><small>Secure ride details</small></span>
+        </div>
+        <div class="bolt-feature">
+          <i class="bi bi-headset"></i>
+          <span><b>24/7 Support</b><small>Help when you need it</small></span>
+        </div>
+        <div class="bolt-feature">
+          <i class="bi bi-credit-card"></i>
+          <span><b>Easy Payment</b><small>Pay your way</small></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ========================================================
+     STATE C — Confirm
+     ======================================================== #}
+  <section class="bolt-state" data-state="c">
+    <div class="bolt-progress">
+      <div class="bolt-progress-step is-done" data-step="a">
+        <span class="bolt-progress-num">1</span><span>Where</span>
+      </div>
+      <div class="bolt-progress-line is-done"></div>
+      <div class="bolt-progress-step is-done" data-step="b">
+        <span class="bolt-progress-num">2</span><span>Choose</span>
+      </div>
+      <div class="bolt-progress-line is-done"></div>
+      <div class="bolt-progress-step is-active" data-step="c">
+        <span class="bolt-progress-num">3</span><span>Confirm</span>
+      </div>
+      <div class="bolt-progress-line"></div>
+      <div class="bolt-progress-step" data-step="d">
+        <span class="bolt-progress-num">4</span><span>Match</span>
+      </div>
+    </div>
+
+    <div class="bolt-panel">
+      <h2 class="bolt-title">Confirm your ride</h2>
+      <p class="bolt-sub" id="confirmTimeSub">Leaving now.</p>
+
+      <div class="bolt-summary">
+        <div class="bolt-summary-row">
+          <div class="bolt-summary-icon">
+            <i class="bi bi-circle-fill"
+               style="color:var(--brand);font-size:.65rem"></i>
+          </div>
+          <div class="bolt-summary-body">
+            <div class="bolt-summary-label">Pickup</div>
+            <div class="bolt-summary-value" id="sumPickup">—</div>
+          </div>
+        </div>
+        <div class="bolt-summary-row">
+          <div class="bolt-summary-icon">
+            <i class="bi bi-square-fill" style="font-size:.65rem"></i>
+          </div>
+          <div class="bolt-summary-body">
+            <div class="bolt-summary-label">Destination</div>
+            <div class="bolt-summary-value" id="sumDest">—</div>
+          </div>
+        </div>
+        <div class="bolt-summary-row">
+          <div class="bolt-summary-icon">
+            <i class="bi bi-car-front" style="font-size:.7rem"></i>
+          </div>
+          <div class="bolt-summary-body">
+            <div class="bolt-summary-label">Ride</div>
+            <div class="bolt-summary-value" id="sumRide">—</div>
+          </div>
+        </div>
+        <div class="bolt-summary-row">
+          <div class="bolt-summary-icon">
+            <i class="bi bi-wallet2" style="font-size:.7rem"></i>
+          </div>
+          <div class="bolt-summary-body">
+            <div class="bolt-summary-label">Fare breakdown</div>
+            <div class="bolt-confirm-fare" id="fareRows"></div>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" class="bolt-cta" id="btnConfirm">
+        <span>Confirm</span>
+        <span class="bolt-cta-pay">
+          <i class="bi bi-cash-coin"></i><span>Cash</span>
+        </span>
+      </button>
+    </div>
+  </section>
+
+  {# ========================================================
+     STATE D — Matching
+     ======================================================== #}
+  <section class="bolt-state" data-state="d">
+    <div class="bolt-progress">
+      <div class="bolt-progress-step is-done" data-step="a">
+        <span class="bolt-progress-num">1</span><span>Where</span>
+      </div>
+      <div class="bolt-progress-line is-done"></div>
+      <div class="bolt-progress-step is-done" data-step="b">
+        <span class="bolt-progress-num">2</span><span>Choose</span>
+      </div>
+      <div class="bolt-progress-line is-done"></div>
+      <div class="bolt-progress-step is-done" data-step="c">
+        <span class="bolt-progress-num">3</span><span>Confirm</span>
+      </div>
+      <div class="bolt-progress-line is-done"></div>
+      <div class="bolt-progress-step is-active" data-step="d">
+        <span class="bolt-progress-num">4</span><span>Match</span>
+      </div>
+    </div>
+
+    <div class="bolt-panel">
+      <div class="bolt-matching">
+        <div class="bolt-spinner"></div>
+        <h3>Finding your driver</h3>
+        <p>Connecting you with the nearest available driver.</p>
+
+        <div class="bolt-match-progress" id="matchSteps">
+          <div class="bolt-step is-active" data-step="0">
+            <span class="dot"><i class="bi bi-search"></i></span>
+            <span>Finding your driver</span>
+          </div>
+          <div class="bolt-step" data-step="1">
+            <span class="dot"><i class="bi bi-person-badge"></i></span>
+            <span>Driver assigned</span>
+          </div>
+          <div class="bolt-step" data-step="2">
+            <span class="dot"><i class="bi bi-car-front"></i></span>
+            <span>On the way</span>
+          </div>
+        </div>
+
+        <div class="bolt-match-trip" id="matchTrip">
+          <div class="bolt-match-trip-row">
+            <i class="bi bi-circle-fill"></i>
+            <span><b id="mPickup">—</b>Pickup</span>
+          </div>
+          <div class="bolt-match-trip-row">
+            <i class="bi bi-square-fill"></i>
+            <span><b id="mDest">—</b>Destination</span>
+          </div>
+          <div class="bolt-match-trip-row">
+            <i class="bi bi-car-front"></i>
+            <span><b id="mRide">—</b>Ride</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</form>
+</div>
+
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{{ url_for('static', filename='js/geo/geo-map.js') }}"></script>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script nonce="{{ csp_nonce }}">
+(function () {
+  'use strict';
+
+  var state = {
+    stage: 'a', dest: '', pickup: '',
+    svcType: '{{ default_service }}', vip: false,
+    selectedClass: null, selectedFare: null, selectedName: null,
+    fareBreakdown: null, distanceKm: null,
+    schedule: 'now'
+  };
+
+  var form         = document.getElementById('boltForm');
+  var stages       = document.querySelectorAll('.bolt-state');
+  var inputDest    = document.getElementById('inputDest');
+  var inputPickup  = document.getElementById('inputPickup');
+  var btnContinue  = document.getElementById('btnContinue');
+  var btnReview    = document.getElementById('btnReview');
+  var btnLocate    = document.getElementById('btnLocate');
+  var btnSwap      = document.getElementById('btnSwap');
+  var optionsBox   = document.getElementById('optionsBox');
+  var reviewAmt    = document.getElementById('reviewAmount');
+  var sumPickup    = document.getElementById('sumPickup');
+  var sumDest      = document.getElementById('sumDest');
+  var sumRide      = document.getElementById('sumRide');
+  var hDropoff     = document.getElementById('hDropoff');
+  var hPickup      = document.getElementById('hPickup');
+  var hPickupTime  = document.getElementById('hPickupTime');
+  var hVehicleCls  = document.getElementById('hVehicleClass');
+  var hServiceType = document.getElementById('hServiceType');
+  var tripMeta     = document.getElementById('tripMeta');
+  var farePanel    = document.getElementById('farePanel');
+  var fbBase       = document.getElementById('fbBase');
+  var fbKm         = document.getElementById('fbKm');
+  var fbDistance   = document.getElementById('fbDistance');
+  var fbMult       = document.getElementById('fbMult');
+  var fbSurge      = document.getElementById('fbSurge');
+  var fbTotal      = document.getElementById('fbTotal');
+  var fareRows     = document.getElementById('fareRows');
+  var confirmTimeSub = document.getElementById('confirmTimeSub');
+  var schedNowBtn  = document.getElementById('schedNowBtn');
+  var schedLaterBtn= document.getElementById('schedLaterBtn');
+  var schedAt      = document.getElementById('schedAt');
+  var mPickup      = document.getElementById('mPickup');
+  var mDest        = document.getElementById('mDest');
+  var mRide        = document.getElementById('mRide');
+  var svcBtns      = document.querySelectorAll('.bolt-svc');
+  var pickupHint   = document.getElementById('pickupHint');
+  var token        = '{{ raw_csrf_token }}';
+
+  var RIDE_OPTIONS_URL = '{{ url_for("transport_api.ride_options") }}';
+
+  function esc(t){
+    var d = document.createElement('div');
+    d.textContent = (t == null) ? '' : String(t);
+    return d.innerHTML;
+  }
+  function numOrNull(id){
+    var el = document.getElementById(id);
+    if (!el || el.value === '') return null;
+    var n = Number(el.value);
+    return isFinite(n) ? n : null;
+  }
+  function fmtCur(n, cur){
+    return (cur || 'USD') + ' ' + Number(n || 0).toFixed(2);
+  }
+  function vehicleIcon(vc){
+    var m = {
+      economy:'fa-car-side', comfort:'fa-car', premium:'fa-car-on',
+      luxury:'fa-gem', van:'fa-bus-simple', bus:'fa-bus'
+    };
+    return m[vc] || 'fa-car';
+  }
+  function setPickupTimeNow(){
+    var d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    hPickupTime.value = d.toISOString().slice(0, 16);
+  }
+
+  // ---------- Schedule toggle ----------
+  function setSchedule(mode){
+    state.schedule = mode;
+    schedNowBtn.classList.toggle('is-active', mode === 'now');
+    schedLaterBtn.classList.toggle('is-active', mode === 'later');
+    schedNowBtn.setAttribute('aria-pressed', mode === 'now');
+    schedLaterBtn.setAttribute('aria-pressed', mode === 'later');
+    schedAt.classList.toggle('is-visible', mode === 'later');
+    if (mode === 'later') schedAt.focus();
+  }
+  schedNowBtn.addEventListener('click', function(){ setSchedule('now'); });
+  schedLaterBtn.addEventListener('click', function(){ setSchedule('later'); });
+
+  // ---------- Navigation ----------
+  function goTo(stage){
+    state.stage = stage;
+    stages.forEach(function(s){
+      s.classList.toggle('is-active', s.dataset.state === stage);
+    });
+    if (stage === 'a' && window.__boltMapInvalidate) {
+      window.__boltMapInvalidate();
+    }
+    if (stage === 'b') loadOptions();
+    if (stage === 'c') renderConfirm();
+    if (stage === 'd') { finalizePickupTime(); renderMatch(); runMatchSteps(); }
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  }
+
+  // ---------- State A ----------
+  function validateA(){
+    state.dest   = inputDest.value.trim();
+    state.pickup = inputPickup.value.trim();
+    btnContinue.disabled = !state.dest || !state.pickup;
+    if (pickupHint) pickupHint.style.display = state.pickup ? 'none' : '';
+  }
+  inputDest.addEventListener('input', function(){
+    if (window.__mapClearSide) window.__mapClearSide('dest');
+    validateA();
+  });
+  inputPickup.addEventListener('input', function(){
+    if (window.__mapClearSide) window.__mapClearSide('pickup');
+    validateA();
+  });
+  inputDest.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' && !btnContinue.disabled) {
+      e.preventDefault(); goTo('b');
+    }
+  });
+  inputPickup.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' && !btnContinue.disabled) {
+      e.preventDefault(); goTo('b');
+    }
+  });
+
+  btnContinue.addEventListener('click', function(){
+    if (!btnContinue.disabled) goTo('b');
+  });
+
+  if (btnSwap) btnSwap.addEventListener('click', function(){
+    var d = inputDest.value, p = inputPickup.value;
+    inputDest.value = p; inputPickup.value = d;
+    state.dest = p.trim(); state.pickup = d.trim();
+    if (window.__mapSwapSides) window.__mapSwapSides();
+    validateA();
+  });
+
+  btnLocate.addEventListener('click', function(){
+    if (!navigator.geolocation) {
+      inputPickup.value = 'Current location';
+      validateA();
+      return;
+    }
+    inputPickup.value = 'Locating…';
+    btnLocate.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
+    navigator.geolocation.getCurrentPosition(
+      function(pos){
+        inputPickup.value = 'Current location';
+        document.getElementById('pickup_latitude').value  = pos.coords.latitude;
+        document.getElementById('pickup_longitude').value = pos.coords.longitude;
+        validateA();
+        btnLocate.innerHTML = '<i class="bi bi-crosshair"></i>';
+        if (window.__mapPinPickup) {
+          window.__mapPinPickup(pos.coords.latitude, pos.coords.longitude, 'Current location');
+        }
+      },
+      function(){
+        inputPickup.value = '';
+        if (window.__mapClearSide) window.__mapClearSide('pickup');
+        validateA();
+        btnLocate.innerHTML = '<i class="bi bi-crosshair"></i>';
+      },
+      {enableHighAccuracy: true, timeout: 8000}
+    );
+  });
+
+  document.querySelectorAll('.bolt-chip').forEach(function(chip){
+    chip.addEventListener('click', function(){
+      inputDest.value = (chip.getAttribute('data-dest') || '').trim();
+      if (window.__mapClearSide) window.__mapClearSide('dest');
+      validateA();
+      inputDest.focus();
+    });
+  });
+
+  function setService(btn){
+    var svc = btn.getAttribute('data-service') || 'on_demand';
+    var vip = btn.getAttribute('data-vip') === '1';
+    svcBtns.forEach(function(b){ b.classList.toggle('is-active', b === btn); });
+    state.svcType = svc;
+    state.vip = vip;
+    if (hServiceType) hServiceType.value = svc;
+  }
+  svcBtns.forEach(function(btn){
+    btn.addEventListener('click', function(){ setService(btn); });
+  });
+
+  // ---------- State B ----------
+  function skeletonBox(){
+    return '<div class="bolt-skeleton" aria-hidden="true">' +
+      '<div class="bolt-skeleton-card"><span class="sk sk-ico"></span>' +
+      '<span class="sk-main"><span class="sk sk-line" style="width:45%"></span>' +
+      '<span class="sk sk-line" style="width:30%"></span></span>' +
+      '<span class="sk sk-price"></span></div>' +
+      '<div class="bolt-skeleton-card"><span class="sk sk-ico"></span>' +
+      '<span class="sk-main"><span class="sk sk-line" style="width:45%"></span>' +
+      '<span class="sk sk-line" style="width:30%"></span></span>' +
+      '<span class="sk sk-price"></span></div></div>';
+  }
+
+  function loadOptions(){
+    optionsBox.innerHTML = skeletonBox();
+    btnReview.disabled = true;
+    reviewAmt.textContent = '';
+    hideFarePanel();
+    state.selectedClass = null;
+    state.selectedFare = null;
+    state.selectedName = null;
+    state.fareBreakdown = null;
+    hVehicleCls.value = '';
+
+    var body = {
+      service_type: state.svcType || 'on_demand',
+      currency: 'USD',
+      pickup_latitude:  numOrNull('pickup_latitude'),
+      pickup_longitude: numOrNull('pickup_longitude'),
+      dropoff_latitude: numOrNull('dropoff_latitude'),
+      dropoff_longitude: numOrNull('dropoff_longitude')
+    };
+
+    fetch(RIDE_OPTIONS_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': token},
+      body: JSON.stringify(body)
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d || !d.success) return optionsError();
+      var data = d.data || {};
+      var opts = data.options || [];
+      state.distanceKm = data.distance_km != null ? data.distance_km : null;
+      renderTripNote(data);
+      if (state.vip) {
+        opts = opts.filter(function(o){
+          return o.vehicle_class === 'premium' || o.vehicle_class === 'luxury';
+        });
+      }
+      if (!opts.length) return optionsEmpty();
+      renderOptions(opts, data.currency || 'USD');
+    })
+    .catch(optionsError);
+  }
+
+  function renderTripNote(data){
+    var note = 'Live pricing from real available vehicles.';
+    if (data && data.distance_km != null) {
+      note = '~' + Number(data.distance_km).toFixed(1) + ' km trip · straight-line estimate.';
+    }
+    tripMeta.textContent = note;
+  }
+
+  function optionsError(){
+    optionsBox.innerHTML =
+      '<div class="bolt-empty">We couldn\'t reach the ride service. ' +
+      '<button type="button" class="bolt-retry" id="retryBtn">Retry</button></div>';
+    var rb = document.getElementById('retryBtn');
+    if (rb) rb.addEventListener('click', function(){ loadOptions(); });
+    btnReview.disabled = true;
+    hideFarePanel();
+  }
+  function optionsEmpty(){
+    optionsBox.innerHTML =
+      '<div class="bolt-empty">' +
+      '<i class="bi bi-car-front"></i>' +
+      'No vehicles available right now. Try a different destination or schedule for later.</div>';
+    btnReview.disabled = true;
+    hideFarePanel();
+  }
+
+  function renderOptions(opts, currency){
+    optionsBox.innerHTML = '<div class="bolt-vehgrid">' + opts.map(function(o){
+      var seats = o.capacity && o.capacity.max ? String(o.capacity.max) : null;
+      var luggage = o.luggage ? String(o.luggage.max != null ? o.luggage.max : o.luggage) : null;
+      if (luggage === 'null' || luggage === 'undefined') luggage = null;
+      var detail = (seats ? seats + ' seats' : '') +
+                   (seats && luggage ? ' · ' : '') +
+                   (luggage ? luggage + ' bags' : '');
+      var eta = (o.eta_minutes != null) ? (o.eta_minutes + ' min away') : 'Nearby';
+      return '<button type="button" class="bolt-veh" ' +
+        'data-class="' + esc(o.vehicle_class) + '" ' +
+        'data-fare="' + esc(o.fare_total) + '" ' +
+        'data-name="' + esc(o.display_name) + '" ' +
+        'data-breakdown="' + esc(JSON.stringify(o.fare_breakdown || {})) + '" ' +
+        'data-distance="' + esc(state.distanceKm != null ? state.distanceKm : '') + '" ' +
+        'data-currency="' + esc(currency) + '">' +
+        '<span class="bolt-veh-ico"><i class="fas ' + vehicleIcon(o.vehicle_class) + '"></i></span>' +
+        '<span class="bolt-veh-name">' + esc(o.display_name) + '</span>' +
+        '<span class="bolt-veh-price">' + esc(currency) + ' ' + Number(o.fare_total).toFixed(0) + '</span>' +
+        '<span class="bolt-veh-eta">' + esc(eta) + '</span>' +
+        '<span class="bolt-veh-sub">' + esc(detail) + '</span>' +
+        '</button>';
+    }).join('') + '</div>';
+
+    optionsBox.querySelectorAll('.bolt-veh').forEach(function(el){
+      el.addEventListener('click', function(){ selectOption(el, currency); });
+    });
+    var first = optionsBox.querySelector('.bolt-veh');
+    if (first) first.click();
+  }
+
+  function selectOption(el, currency){
+    optionsBox.querySelectorAll('.bolt-veh').forEach(function(x){
+      x.classList.remove('is-selected');
+    });
+    el.classList.add('is-selected');
+    state.selectedClass = el.dataset.class;
+    state.selectedFare = Number(el.dataset.fare);
+    state.selectedName = el.dataset.name;
+    try { state.fareBreakdown = JSON.parse(el.dataset.breakdown || '{}'); }
+    catch (e) { state.fareBreakdown = null; }
+    if (el.dataset.distance) state.distanceKm = Number(el.dataset.distance);
+    hVehicleCls.value = state.selectedClass;
+    btnReview.disabled = false;
+    reviewAmt.textContent = currency + ' ' + state.selectedFare.toFixed(0);
+    showFarePanel(currency);
+  }
+
+  function showFarePanel(currency){
+    if (!state.fareBreakdown) { hideFarePanel(); return; }
+    var b = state.fareBreakdown;
+    var km = state.distanceKm;
+    fbBase.textContent = fmtCur(b.base_fare, currency);
+    fbKm.textContent = km != null ? Number(km).toFixed(1) : '—';
+    fbDistance.textContent = fmtCur(b.distance_charge, currency);
+    fbMult.textContent = '× ' + Number(b.class_multiplier || 1).toFixed(2);
+    fbSurge.textContent = '× ' + Number(b.surge_multiplier || 1).toFixed(2);
+    fbTotal.textContent = fmtCur(state.selectedFare, currency);
+    farePanel.classList.add('is-visible');
+  }
+  function hideFarePanel(){ farePanel.classList.remove('is-visible'); }
+
+  btnReview.addEventListener('click', function(){
+    if (!btnReview.disabled) goTo('c');
+  });
+
+  // ---------- State C ----------
+  function renderConfirm(){
+    sumPickup.textContent = state.pickup || '—';
+    sumDest.textContent = state.dest || '—';
+    sumRide.textContent = state.selectedName
+      ? state.selectedName + ' · USD ' + state.selectedFare.toFixed(0)
+      : '—';
+
+    var b = state.fareBreakdown, km = state.distanceKm;
+    if (b) {
+      fareRows.innerHTML =
+        fareRow('Base fare', fmtCur(b.base_fare, 'USD')) +
+        fareRow('Distance (' + (km != null ? Number(km).toFixed(1) + ' km' : '—') + ')',
+                fmtCur(b.distance_charge, 'USD')) +
+        fareRow('Class multiplier', '× ' + Number(b.class_multiplier || 1).toFixed(2)) +
+        fareRow('Surge', '× ' + Number(b.surge_multiplier || 1).toFixed(2)) +
+        fareRow('Total', 'USD ' + state.selectedFare.toFixed(0), true);
+    } else {
+      fareRows.innerHTML = fareRow('Total', 'USD ' + state.selectedFare.toFixed(0), true);
+    }
+    confirmTimeSub.textContent = state.schedule === 'later'
+      ? 'Scheduled for ' + (schedAt.value || 'later today').replace('T', ' at ')
+      : 'Leaving now.';
+  }
+  function fareRow(label, value, strong){
+    return '<div class="bolt-fare-row' + (strong ? ' total' : '') + '">' +
+      '<span class="k"><i class="bi bi-' + (strong ? 'check-circle' : 'dot') + '"></i> ' +
+      label + '</span>' +
+      '<span>' + value + '</span></div>';
+  }
+
+  function finalizePickupTime(){
+    if (state.schedule === 'later' && schedAt.value) {
+      var d = new Date(schedAt.value);
+      if (!isNaN(d.getTime())) {
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+        hPickupTime.value = d.toISOString().slice(0, 16);
+        return;
+      }
+    }
+    setPickupTimeNow();
+  }
+
+  // ---------- State D ----------
+  function renderMatch(){
+    mPickup.textContent = state.pickup || '—';
+    mDest.textContent = state.dest || '—';
+    mRide.textContent = state.selectedName || '—';
+  }
+  function runMatchSteps(){
+    var steps = document.querySelectorAll('#matchSteps .bolt-step');
+    var i = 0;
+    var timer = setInterval(function(){
+      i += 1;
+      steps.forEach(function(st, idx){
+        st.classList.toggle('is-active', idx === i);
+        st.classList.toggle('is-done', idx < i);
+      });
+      if (i >= steps.length - 1) clearInterval(timer);
+    }, 1400);
+  }
+
+  // ---------- Submit ----------
+  form.addEventListener('submit', function(e){
+    if (!state.dest || !state.pickup || !state.selectedClass) {
+      e.preventDefault();
+      if (!state.dest || !state.pickup) return goTo('a');
+      return goTo('b');
+    }
+    hDropoff.value = state.dest;
+    hPickup.value = state.pickup;
+    finalizePickupTime();
+    hVehicleCls.value = state.selectedClass;
+    goTo('d');
+    // Do NOT preventDefault — browser POSTs to transport.book_transport.
+  });
+
+  // ---------- Leaflet map (tap-to-place) ----------
+  (function initMap(){
+    var mapEl = document.getElementById('pickMap');
+    if (!mapEl) return;
+    if (!window.GeoMap) {
+      mapEl.setAttribute('data-geo-map-status', 'unavailable');
+      return;
+    }
+    var handle = window.GeoMap.init('pickMap', {
+      tileUrl: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attribution: '\u00a9 OpenStreetMap',
+      center: {latitude: 0.3136, longitude: 32.5811},
+      zoom: 12
+    });
+    if (!handle || handle.status !== 'rendered') return;
+    setTimeout(function(){ if (handle.map) handle.map.invalidateSize(); }, 250);
+
+    var pins = {pickup: null, dropoff: null};
+    var routeLine = null;
+
+    function syncCoords(){
+      document.getElementById('pickup_latitude').value   = pins.pickup  ? pins.pickup.lat : '';
+      document.getElementById('pickup_longitude').value  = pins.pickup  ? pins.pickup.lng : '';
+      document.getElementById('dropoff_latitude').value  = pins.dropoff ? pins.dropoff.lat : '';
+      document.getElementById('dropoff_longitude').value = pins.dropoff ? pins.dropoff.lng : '';
+    }
+    function refreshRoute(){
+      if (!handle || !handle.map) return;
+      var p = pins.pickup, d = pins.dropoff;
+      if (routeLine) { handle.map.removeLayer(routeLine); routeLine = null; }
+      if (p && d) {
+        routeLine = L.polyline([[p.lat, p.lng], [d.lat, d.lng]], {
+          color: '#0E6B4F', weight: 4, dashArray: '8 8', opacity: .85
+        }).addTo(handle.map);
+        handle.map.fitBounds(
+          [L.latLng(p.lat, p.lng), L.latLng(d.lat, d.lng)],
+          {padding: [60, 60]}
+        );
+      }
+    }
+    function writeFields(){ syncCoords(); refreshRoute(); }
+    function pinnedLabel(ll){
+      return 'Pinned · ' + Number(ll.lat).toFixed(5) + ', ' + Number(ll.lng).toFixed(5);
+    }
+    function setFieldSync(el, value){
+      window.__mapSyncing = true;
+      el.value = value;
+      window.__mapSyncing = false;
+    }
+    function placePin(kind, latlng, labelOverride){
+      if (!handle || !handle.map) return;
+      if (pins[kind]) { pins[kind].marker.setLatLng(latlng); }
+      else {
+        pins[kind] = { marker: L.marker(latlng, {draggable: true}).addTo(handle.map) };
+        pins[kind].marker.on('dragend', function(){
+          var ll = pins[kind].marker.getLatLng();
+          pins[kind].lat = ll.lat; pins[kind].lng = ll.lng;
+          setFieldSync(kind === 'pickup' ? inputPickup : inputDest, pinnedLabel(ll));
+          writeFields(); validateA();
+        });
+      }
+      pins[kind].lat = latlng.lat; pins[kind].lng = latlng.lng;
+      setFieldSync(kind === 'pickup' ? inputPickup : inputDest,
+                   labelOverride || pinnedLabel(latlng));
+      writeFields(); validateA();
+    }
+    function clearSide(kind){
+      if (pins[kind]) {
+        if (handle.map) handle.map.removeLayer(pins[kind].marker);
+        pins[kind] = null; writeFields();
+      }
+    }
+
+    // Tap-to-place: smart selection based on current state.
+    handle.map.on('click', function(e){
+      var hasPickup   = !!pins.pickup   || !!inputPickup.value.trim();
+      var hasDropoff  = !!pins.dropoff  || !!inputDest.value.trim();
+      if (!hasPickup)      placePin('pickup',  e.latlng);
+      else if (!hasDropoff) placePin('dropoff', e.latlng);
+      else {
+        // Both exist. Replace the nearest pin.
+        var dP = pins.pickup  ? handle.map.distance(e.latlng, L.latLng(pins.pickup.lat,  pins.pickup.lng))  : Infinity;
+        var dD = pins.dropoff ? handle.map.distance(e.latlng, L.latLng(pins.dropoff.lat, pins.dropoff.lng)) : Infinity;
+        if (dP < dD) placePin('pickup',  e.latlng);
+        else         placePin('dropoff', e.latlng);
+      }
+    });
+
+    window.__mapPinPickup = function(lat, lng, label){
+      placePin('pickup', L.latLng(lat, lng),
+               label || pinnedLabel(L.latLng(lat, lng)));
+    };
+    window.__boltMapInvalidate = function(){
+      if (handle && handle.map) {
+        setTimeout(function(){ handle.map.invalidateSize(); }, 80);
+      }
+    };
+    window.__mapClearSide = function(side){
+      if (window.__mapSyncing) return;
+      clearSide(side === 'dest' ? 'dropoff' : 'pickup');
+    };
+    window.__mapSwapSides = function(){
+      var pk = pins.pickup, df = pins.dropoff;
+      var pkLat = pk ? pk.lat : null, pkLng = pk ? pk.lng : null;
+      var dfLat = df ? df.lat : null, dfLng = df ? df.lng : null;
+      Object.keys(pins).forEach(function(k){
+        if (pins[k]) { handle.map.removeLayer(pins[k].marker); pins[k] = null; }
+      });
+      if (dfLat != null) placePin('pickup',  L.latLng(dfLat, dfLng), inputPickup.value);
+      if (pkLat != null) placePin('dropoff', L.latLng(pkLat, pkLng), inputDest.value);
+      writeFields(); validateA();
+    };
+  })();
+
+  // ---------- Prefill from context ----------
+  var prefillDest   = '{{ dropoff_value }}'.trim();
+  var prefillPickup = '{{ pickup_value }}'.trim();
+  if (prefillDest)   inputDest.value   = prefillDest;
+  if (prefillPickup) inputPickup.value = prefillPickup;
+  validateA();
+
+  {% if selected_service %}
+  (function(){
+    var s = '{{ selected_service }}';
+    svcBtns.forEach(function(b){
+      if (b.getAttribute('data-service') === s) setService(b);
+    });
+  })();
+  {% endif %}
+
+})();
+</script>
+{% endblock %}

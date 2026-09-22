@@ -17,7 +17,7 @@ media_bp = Blueprint(
     "media",
     __name__,
     url_prefix="/api/media",
-    template_folder="../templates",
+    template_folder="../../templates",
 )
 
 # Admin blueprint for media settings management

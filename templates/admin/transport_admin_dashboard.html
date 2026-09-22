@@ -1,305 +1,327 @@
 {% extends "base.html" %}
 
-{% block title %}Transport Admin Dashboard - AFCON360{% endblock %}
+{% block title %}Transport Admin - AFCON360{% endblock %}
 
 {% block styles %}
 <style>
-.transport-admin-container {
-    max-width: 1400px;
+.ta-admin {
+    max-width: clamp(320px, 94vw, 1400px);
     margin: 0 auto;
-    padding: 2rem 1rem;
+    padding: clamp(1rem, 3vw, 2rem) clamp(0.75rem, 2vw, 1rem);
 }
 
-.dashboard-header {
+.ta-header {
     background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-    color: white;
-    padding: 2rem;
+    color: #fff;
+    padding: clamp(1.25rem, 3vw, 2rem);
     border-radius: 12px;
-    margin-bottom: 2rem;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    margin-bottom: 1.5rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
 }
 
-.header-content {
+.ta-header h1 {
+    font-size: clamp(1.5rem, 4vw, 2rem);
+    font-weight: 700;
+    margin: 0 0 0.25rem 0;
+}
+
+.ta-header p {
+    font-size: clamp(0.9rem, 2.5vw, 1.1rem);
+    margin: 0;
+    opacity: 0.92;
+}
+
+.ta-header-meta {
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+}
+
+.ta-header-meta .meta-item {
+    background: rgba(255, 255, 255, 0.18);
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+}
+
+.ta-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.ta-nav .nav-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.55rem 0.9rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-decoration: none;
+    min-height: 44px;
+    color: #374151;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    transition: all 0.2s ease;
+}
+
+.ta-nav .nav-link:hover {
+    border-color: #f59e0b;
+    color: #b45309;
+}
+
+.ta-nav .nav-link.active {
+    background: #f59e0b;
+    border-color: #f59e0b;
+    color: #fff;
+}
+
+.ta-nav .nav-link.disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    background: #f9fafb;
+}
+
+.ta-nav .nav-link .badge-soon {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: #e5e7eb;
+    color: #6b7280;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+}
+
+.ta-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.ta-stat-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+}
+
+.ta-stat-card .stat-icon {
+    font-size: 1.6rem;
+    margin-bottom: 0.6rem;
+    color: #f59e0b;
+}
+
+.ta-stat-card .stat-value {
+    font-size: clamp(1.5rem, 4vw, 2rem);
+    font-weight: 700;
+    color: #1a1a1a;
+    line-height: 1.15;
+}
+
+.ta-stat-card .stat-label {
+    color: #6b7280;
+    font-size: 0.85rem;
+    margin-top: 0.35rem;
+}
+
+.ta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.ta-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+}
+
+.ta-card h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin: 0 0 0.75rem 0;
+}
+
+.ta-status-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr));
+    gap: 0.5rem;
+}
+
+.ta-status-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-}
-
-.header-content h1 {
-    font-size: 2rem;
-    font-weight: 700;
-    margin: 0;
-}
-
-.header-content p {
-    font-size: 1.1rem;
-    margin: 0.5rem 0 0 0;
-    opacity: 0.9;
-}
-
-.header-actions {
-    display: flex;
-    gap: 1rem;
-}
-
-.btn-header {
-    background: rgba(255,255,255,0.2);
-    color: white;
-    padding: 0.75rem 1.5rem;
+    padding: 0.55rem 0.75rem;
+    background: #f9fafb;
     border-radius: 8px;
-    text-decoration: none;
-    font-weight: 600;
-    transition: all 0.3s ease;
+    font-size: 0.85rem;
 }
 
-.btn-header:hover {
-    background: rgba(255,255,255,0.3);
-    transform: translateY(-2px);
+.ta-status-item .status-name {
+    color: #6b7280;
 }
 
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 1.5rem;
-    margin-bottom: 2rem;
-}
-
-.stat-card {
-    background: white;
-    border-radius: 12px;
-    padding: 1.5rem;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-    border: 1px solid #e5e7eb;
-    transition: all 0.3s ease;
-}
-
-.stat-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 24px rgba(0,0,0,0.15);
-}
-
-.stat-icon {
-    font-size: 2.5rem;
-    margin-bottom: 1rem;
-    color: #f59e0b;
-}
-
-.stat-value {
-    font-size: 2rem;
+.ta-status-item .status-value {
     font-weight: 700;
     color: #1a1a1a;
-    margin-bottom: 0.5rem;
 }
 
-.stat-label {
+.ta-table-wrap {
+    overflow-x: auto;
+}
+
+.ta-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.ta-table th,
+.ta-table td {
+    text-align: left;
+    padding: 0.6rem 0.6rem;
+    border-bottom: 1px solid #f3f4f6;
+    white-space: nowrap;
+}
+
+.ta-table th {
     color: #6b7280;
-    font-size: 0.875rem;
-    margin-bottom: 0.5rem;
-}
-
-.stat-change {
-    font-size: 0.8125rem;
     font-weight: 600;
 }
 
-.stat-change.positive {
-    color: #10b981;
+.ta-table .td-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #b45309;
 }
 
-.stat-change.negative {
-    color: #ef4444;
-}
-
-.quick-actions {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1.5rem;
-    margin-bottom: 2rem;
-}
-
-.action-card {
-    background: white;
-    border-radius: 12px;
+.ta-empty {
     padding: 1.5rem;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-    border: 1px solid #e5e7eb;
-    transition: all 0.3s ease;
-    text-decoration: none;
-    color: inherit;
+    text-align: center;
+    color: #9ca3af;
+    font-size: 0.9rem;
 }
 
-.action-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 24px rgba(0,0,0,0.15);
-    border-color: #f59e0b;
+.ta-footer-note {
+    color: #9ca3af;
+    font-size: 0.8rem;
+    text-align: right;
 }
 
-.action-icon {
-    font-size: 2rem;
-    margin-bottom: 1rem;
-    color: #f59e0b;
-}
-
-.action-title {
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: #1a1a1a;
-    margin-bottom: 0.5rem;
-}
-
-.action-description {
-    color: #6b7280;
-    font-size: 0.875rem;
-    line-height: 1.5;
-}
-
-@media (max-width: 768px) {
-    .header-content {
-        flex-direction: column;
-        gap: 1rem;
-        text-align: center;
-    }
-    
-    .stats-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .quick-actions {
-        grid-template-columns: 1fr;
+@media (max-width: 640px) {
+    .ta-nav .nav-link {
+        flex: 1 1 100%;
+        justify-content: center;
     }
 }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="transport-admin-container">
-    <!-- Header -->
-    <div class="dashboard-header">
-        <div class="header-content">
-            <div>
-                <h1><i class="fas fa-truck"></i> Transport Admin Dashboard</h1>
-                <p>Manage transport operations, vehicles, and logistics</p>
-            </div>
-            <div class="header-actions">
-                <a href="/transport/admin/settings" class="btn-header">
-                    <i class="fas fa-cogs"></i> Settings
-                </a>
-                <a href="/transport/analytics" class="btn-header">
-                    <i class="fas fa-chart-line"></i> Analytics
-                </a>
-            </div>
-        </div>
+<div class="ta-admin">
+  <div class="ta-header">
+    <h1><i class="fas fa-truck"></i> Transport Admin</h1>
+    <p>Platform Transport operations, fleet, and logistics overview</p>
+    <div class="ta-header-meta">
+      <span class="meta-item">
+        <i class="fa-solid fa-power-off"></i>
+        Module {% if module_enabled %}enabled{% else %}disabled{% endif %}
+      </span>
+      <span class="meta-item"><i class="fa-solid fa-clock"></i> As of {{ now }}</span>
     </div>
+  </div>
 
-    <!-- Your Transport Permissions -->
-    {% if permissions_info %}
-    <div class="stats-grid">
-        <div class="stat-card" style="background: #e0f7fa; border-color: #0288d1;">
-            <div class="stat-icon"><i class="fas fa-shield-alt"></i></div>
-            <div class="stat-value" style="color: #0288d1;">
-                {% if granted_by_owner %}
-                    Owner-granted
-                {% else %}
-                    Dynamic perm(s)
-                {% endif %}
-            </div>
-            <div class="stat-label">Your Transport Permissions</div>
-            <div style="margin-top: 0.5rem;">
-                <span style="color: #0288d1; font-weight: 500;">
-                    {% if can_manage_drivers %}Drivers ✅{% else %}Drivers ❌{% endif %}
-                </span>
-                {% if can_manage_vehicles %} | {% endif %}
-                {% if can_view_dashboard %} | Dashboard ✅{% else %}Dashboard ❌{% endif %}
-            </div>
-        </div>
+  <nav class="ta-nav" aria-label="Transport Admin navigation">
+    <a class="nav-link active" href="{{ url_for('admin.transport_admin_dashboard') }}">
+      <i class="fa-solid fa-gauge"></i> Overview
+    </a>
+    <span class="nav-link disabled" aria-disabled="true"><i class="fa-solid fa-route"></i> Operations <span class="badge-soon">Soon</span></span>
+    <span class="nav-link disabled" aria-disabled="true"><i class="fa-solid fa-truck-ramp-box"></i> Fleet <span class="badge-soon">Soon</span></span>
+    <span class="nav-link disabled" aria-disabled="true"><i class="fa-solid fa-building"></i> Network <span class="badge-soon">Soon</span></span>
+    <span class="nav-link disabled" aria-disabled="true"><i class="fa-solid fa-triangle-exclamation"></i> Safety <span class="badge-soon">Soon</span></span>
+    <span class="nav-link disabled" aria-disabled="true"><i class="fa-solid fa-chart-line"></i> Insights <span class="badge-soon">Soon</span></span>
+    <span class="nav-link disabled" aria-disabled="true"><i class="fa-solid fa-cogs"></i> Configuration <span class="badge-soon">Soon</span></span>
+    <span class="nav-link disabled" aria-disabled="true"><i class="fa-solid fa-shield-halved"></i> Oversight <span class="badge-soon">Soon</span></span>
+  </nav>
+
+  <div class="ta-stats">
+    <div class="ta-stat-card">
+      <div class="stat-icon"><i class="fa-solid fa-calendar-check"></i></div>
+      <div class="stat-value">{{ total_bookings|default(0)|format_number }}</div>
+      <div class="stat-label">Total Bookings</div>
     </div>
-    {% endif %}
-
-    <!-- Statistics Overview -->
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-icon"><i class="fas fa-truck"></i></div>
-            <div class="stat-value">{{ total_vehicles or 0 }}</div>
-            <div class="stat-label">Total Vehicles</div>
-            <div class="stat-change positive">
-                <i class="fas fa-arrow-up"></i> {{ vehicle_growth or '+0%' }}
-            </div>
-        </div>
-
-        <div class="stat-card">
-            <div class="stat-icon"><i class="fas fa-id-card"></i></div>
-            <div class="stat-value">{{ total_drivers or 0 }}</div>
-            <div class="stat-label">Total Drivers</div>
-            <div class="stat-change positive">
-                <i class="fas fa-arrow-up"></i> {{ driver_growth or '+0%' }}
-            </div>
-        </div>
-
-        <div class="stat-card">
-            <div class="stat-icon"><i class="fas fa-route"></i></div>
-            <div class="stat-value">{{ total_bookings or 0 }}</div>
-            <div class="stat-label">Total Bookings</div>
-            <div class="stat-change positive">
-                <i class="fas fa-arrow-up"></i> {{ bookings_growth or '+0%' }}
-            </div>
-        </div>
-
-        <div class="stat-card">
-            <div class="stat-icon"><i class="fas fa-dollar-sign"></i></div>
-            <div class="stat-value">${{ "%.2f"|format(total_revenue or 0) }}</div>
-            <div class="stat-label">Total Revenue</div>
-            <div class="stat-change positive">
-                <i class="fas fa-arrow-up"></i> {{ revenue_growth or '+0%' }}
-            </div>
-        </div>
+    <div class="ta-stat-card">
+      <div class="stat-icon"><i class="fa-solid fa-id-card"></i></div>
+      <div class="stat-value">{{ active_drivers|default(0)|format_number }}</div>
+      <div class="stat-label">Active Drivers</div>
     </div>
-
-    <!-- Quick Actions -->
-    <div class="quick-actions">
-        <a href="/transport/admin/vehicles" class="action-card">
-            <div class="action-icon"><i class="fas fa-truck"></i></div>
-            <div class="action-title">Vehicle Management</div>
-            <div class="action-description">Manage vehicle fleet, maintenance, and compliance</div>
-        </a>
-
-        <a href="/transport/admin/drivers" class="action-card">
-            <div class="action-icon"><i class="fas fa-id-card"></i></div>
-            <div class="action-title">Driver Management</div>
-            <div class="action-description">Manage driver profiles, verification, and assignments</div>
-        </a>
-
-        <a href="/transport/admin/bookings" class="action-card">
-            <div class="action-icon"><i class="fas fa-route"></i></div>
-            <div class="action-title">Booking Management</div>
-            <div class="action-description">View and manage transport bookings</div>
-        </a>
-
-        <a href="/transport/admin/organisations" class="action-card">
-            <div class="action-icon"><i class="fas fa-building"></i></div>
-            <div class="action-title">Organizations</div>
-            <div class="action-description">Manage transport organizations and partners</div>
-        </a>
+    <div class="ta-stat-card">
+      <div class="stat-icon"><i class="fa-solid fa-van-shuttle"></i></div>
+      <div class="stat-value">{{ available_vehicles|default(0)|format_number }}</div>
+      <div class="stat-label">Available Vehicles</div>
     </div>
-
-    <!-- Module Settings -->
-    <div class="quick-actions">
-        <a href="/transport/admin/settings" class="action-card">
-            <div class="action-icon"><i class="fas fa-cogs"></i></div>
-            <div class="action-title">Transport Settings</div>
-            <div class="action-description">Configure transport rules, pricing, and policies</div>
-        </a>
-
-        <a href="/transport/admin/analytics" class="action-card">
-            <div class="action-icon"><i class="fas fa-chart-line"></i></div>
-            <div class="action-title">Analytics</div>
-            <div class="action-description">View transport metrics and performance data</div>
-        </a>
-
-        <a href="/transport/admin/drivers" class="action-card">
-            <div class="action-icon"><i class="fas fa-id-card"></i></div>
-            <div class="action-title">Driver Verification</div>
-            <div class="action-description">Manage driver verification and compliance</div>
-        </a>
+    <div class="ta-stat-card">
+      <div class="stat-icon"><i class="fa-solid fa-dollar-sign"></i></div>
+      <div class="stat-value">{{ today_revenue|default(0)|format_number }}</div>
+      <div class="stat-label">Today's Completed Revenue</div>
     </div>
+  </div>
+
+  <div class="ta-grid">
+    <div class="ta-card">
+      <h3>Bookings — Status Breakdown</h3>
+      <div class="ta-status-list">
+        <div class="ta-status-item"><span class="status-name">Active</span><span class="status-value">{{ active_bookings|default(0)|format_number }}</span></div>
+        <div class="ta-status-item"><span class="status-name">Pending Payment</span><span class="status-value">{{ pending_bookings|default(0)|format_number }}</span></div>
+        <div class="ta-status-item"><span class="status-name">Confirmed</span><span class="status-value">{{ confirmed_bookings|default(0)|format_number }}</span></div>
+        <div class="ta-status-item"><span class="status-name">Completed</span><span class="status-value">{{ completed_bookings|default(0)|format_number }}</span></div>
+        <div class="ta-status-item"><span class="status-name">Cancelled</span><span class="status-value">{{ cancelled_bookings|default(0)|format_number }}</span></div>
+      </div>
+    </div>
+    <div class="ta-card">
+      <h3>Compliance Queues</h3>
+      <div class="ta-status-list">
+        <div class="ta-status-item"><span class="status-name">Pending Drivers</span><span class="status-value">{{ pending_drivers|default(0)|format_number }}</span></div>
+        <div class="ta-status-item"><span class="status-name">Pending Vehicles</span><span class="status-value">{{ pending_vehicles|default(0)|format_number }}</span></div>
+        <div class="ta-status-item"><span class="status-name">Today's Bookings</span><span class="status-value">{{ today_bookings|default(0)|format_number }}</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ta-card">
+    <h3>Recent Activity</h3>
+    <div class="ta-table-wrap">
+      <table class="ta-table">
+        <thead>
+          <tr><th>Reference</th><th>Service</th><th>Status</th><th>Created</th></tr>
+        </thead>
+        <tbody>
+          {% if recent_bookings %}
+            {% for b in recent_bookings %}
+            <tr>
+              <td><span class="td-mono">{{ b.booking_reference }}</span></td>
+              <td>{{ (b.service_type or '')|replace('_', ' ')|title }}</td>
+              <td>{{ (b.status or '')|replace('_', ' ')|title }}</td>
+              <td class="td-mono">{{ b.created_at[:16]|replace('T', ' ') if b.created_at else '—' }}</td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="4"><div class="ta-empty"><i class="fa-solid fa-calendar"></i> No recent bookings</div></td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="ta-footer-note">Canonical Transport Admin Overview · data via DashboardService</p>
 </div>
 {% endblock %}

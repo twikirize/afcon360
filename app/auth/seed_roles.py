@@ -136,9 +136,9 @@ GLOBAL_PERMISSION_DEFS: List[PermDef] = [
 
     # Transport
     PermDef("transport.view", "View bookings, drivers, routes",
-            ["owner", "super_admin", "admin"]),
+            ["owner", "super_admin", "admin", "transport_admin"]),
     PermDef("transport.manage", "Manage drivers, vehicles, routes",
-            ["owner", "super_admin", "admin"]),
+            ["owner", "super_admin", "admin", "transport_admin"]),
     PermDef("transport.settings", "Configure transport module settings",
             ["owner", "super_admin"]),
 
@@ -149,6 +149,16 @@ GLOBAL_PERMISSION_DEFS: List[PermDef] = [
             ["owner"]),
     PermDef("system.health", "View system health and service status",
             ["owner", "super_admin"]),
+
+    # GEO
+    # Seeded to owner ONLY. The owner grants/revokes these to super_admin and
+    # admin at runtime via the owner-dashboard "GEO Access Control" toggle
+    # (admin.owner.owner_toggle_geo_permission). Do NOT add super_admin/admin
+    # here - that would bypass the owner-controlled grant.
+    PermDef("geo.view", "View GEO health and overview pages",
+            ["owner"]),
+    PermDef("geo.manage", "Manage GEO module configuration",
+            ["owner"]),
 
     # Audit & AML
     PermDef("audit.view", "View audit logs",

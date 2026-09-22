@@ -719,12 +719,22 @@ def org_action(org_id):
         org.compliance_reviewed_at = datetime.now(timezone.utc)
         org.compliance_reviewed_by = current_user.id
         org.compliance_notes = notes
+        org.verification_status = 'verified'
+        # Derive the document-backed KYB registry rows (verification/checks/UBO)
+        # so the KYB dashboard and Tier-5 evaluation reflect the approved docs.
+        try:
+            from app.identity.services.organisation_kyb_service import OrganisationKYBService
+            OrganisationKYBService.approve_organisation(org, current_user.id, notes=notes)
+        except Exception:
+            current_app.logger.exception(
+                f'Could not reconcile KYB registry rows for organisation {org.slug}'
+            )
         flash(f'Organisation {org.slug} approved from compliance.', 'success')
     elif action == 'reject':
-        org.compliance_status = 'rejected'
-        org.compliance_reviewed_at = datetime.now(timezone.utc)
-        org.compliance_reviewed_by = current_user.id
-        org.rejection_reason = request.form.get('rejection_reason', notes)
+        from app.identity.services.organisation_kyb_service import OrganisationKYBService
+        OrganisationKYBService.reject_organisation(
+            org, current_user.id, reason=request.form.get('rejection_reason', notes)
+        )
         flash(f'Organisation {org.slug} rejected from compliance.', 'warning')
     elif action == 'request_reupload':
         document_id = request.form.get('document_id', '').strip()

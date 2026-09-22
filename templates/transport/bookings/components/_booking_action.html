@@ -1,0 +1,10 @@
+{#
+  Booking action component: submit and cancel buttons.
+  Submits to transport.book_transport via POST.
+#}
+<div class="page-actions">
+  <button type="submit" class="btn btn-primary btn-sm">
+    <i class="fa-solid fa-ticket"></i> Confirm Booking
+  </button>
+  <a href="{{ safe_url('transport.bookings_index') }}" class="btn btn-secondary btn-sm">Cancel</a>
+</div>

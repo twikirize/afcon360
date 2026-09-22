@@ -35,12 +35,19 @@ def register_api_resources(api):
         DriverOfferDeclineResource,
         DriverTripResource,
         DriverStatusResource,
+        DriverVehicleSwitchResource,
     )
     from .vehicle_routes import (
         VehicleListResource,
         VehicleDetailResource,
         VehicleMaintenanceResource,
         VehicleAssignmentResource,
+        VehicleContractRequestResource,
+        ContractAcceptanceResource,
+        MarketplaceApplicationListResource,
+        MarketplaceApplicationApproveResource,
+        MarketplaceApplicationRejectResource,
+        MarketplaceApplicationWithdrawResource,
     )
     from .organisation_routes import (
         OrganisationListResource,
@@ -78,8 +85,12 @@ def register_api_resources(api):
     )
     from .dashboard_routes import DashboardOverviewResource
     from .reservation_routes import (
-        ReservationListResource, ReservationDetailResource, ReservationCancelResource,
+        ReservationListResource,
+        ReservationDetailResource,
+        ReservationCancelResource,
     )
+    from .fare_routes import FareConfigResource, FareEstimateResource
+    from .ride_options_routes import RideOptionsResource
 
     # -------------------------------------------------------------------
     # Resource registration with EXPLICIT endpoint names
@@ -106,12 +117,22 @@ def register_api_resources(api):
     safe_add_resource(DriverStatusResource, "/drivers/<int:driver_id>/status",
                      endpoint="driver_go_live_status")
 
+    # Driver self-service vehicle switch (Phase C2 Driver Workspace)
+    safe_add_resource(DriverVehicleSwitchResource, "/drivers/<int:driver_id>/vehicles/switch",
+                     endpoint="driver_me_vehicle_switch")
+
     # Vehicles
     safe_add_resource(VehicleListResource, "/vehicles", endpoint="vehicle_list")
     safe_add_resource(VehicleDetailResource, "/vehicles/<int:vehicle_id>", endpoint="vehicle_detail")
     safe_add_resource(VehicleMaintenanceResource, "/vehicles/<int:vehicle_id>/maintenance",
                      endpoint="vehicle_maintenance")
     safe_add_resource(VehicleAssignmentResource, "/vehicles/<int:vehicle_id>/assign", endpoint="vehicle_assignment")
+    safe_add_resource(VehicleContractRequestResource, "/vehicles/<int:vehicle_id>/request-contract", endpoint="vehicle_contract_request")
+    safe_add_resource(ContractAcceptanceResource, "/contracts/<int:contract_id>/accept", endpoint="contract_acceptance")
+    safe_add_resource(MarketplaceApplicationListResource, "/listings/<int:listing_id>/applications", endpoint="marketplace_application_list")
+    safe_add_resource(MarketplaceApplicationApproveResource, "/applications/<int:application_id>/approve", endpoint="marketplace_application_approve")
+    safe_add_resource(MarketplaceApplicationRejectResource, "/applications/<int:application_id>/reject", endpoint="marketplace_application_reject")
+    safe_add_resource(MarketplaceApplicationWithdrawResource, "/applications/<int:application_id>/withdraw", endpoint="marketplace_application_withdraw")
 
     # Organisations
     safe_add_resource(OrganisationListResource, "/organisations", endpoint="organisation_list")
@@ -126,6 +147,16 @@ def register_api_resources(api):
     safe_add_resource(BookingAssignmentResource, "/bookings/<int:booking_id>/assign", endpoint="booking_assignment")
     safe_add_resource(BookingPaymentResource, "/bookings/<int:booking_id>/payments", endpoint="booking_payments")
     safe_add_resource(BookingRouteResource, "/bookings/<int:booking_id>/route", endpoint="booking_route")
+
+    # Fare estimation (fare node: canonical engine, pre-submit preview)
+    safe_add_resource(FareEstimateResource, "/fare/estimate", endpoint="fare_estimate")
+
+    # Ride options (hailing node: per-class availability priced by the
+    # canonical engine; anonymous-allowed, booking stays gated)
+    safe_add_resource(RideOptionsResource, "/ride-options", endpoint="ride_options")
+
+    # Fare configuration governance (fare node: owner/delegated writes only)
+    safe_add_resource(FareConfigResource, "/fare/config", endpoint="fare_config")
 
     # TH-3-D3 reservations intentionally remain separate from Booking.
     safe_add_resource(ReservationListResource, "/reservations", endpoint="reservation_list")
@@ -157,4 +188,3 @@ def register_api_resources(api):
     safe_add_resource(DashboardOverviewResource, "/dashboard/overview", endpoint="dashboard_overview")
 
     logger.info(f"✅ Transport API resources registered ({len(registered_endpoints)} endpoints)")
-

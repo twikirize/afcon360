@@ -1,55 +1,62 @@
-# AFCON360 Wallet/Tourism/Accommodation Fixes
+# Transport Marketplace Organisation Ownership Fix - Implementation Summary
 
-## Summary
-This update completes the final implementation steps for wallet, tourism, and accommodation endpoint stabilization.
+## What Was Implemented
 
-## Key Changes
-- Fixed accommodation routing in both templates and backend code by replacing legacy Flask endpoint names like `accommodation.guest.search` with actual blueprint endpoints such as `accommodation.guest_search`.
-- Added a new Alembic migration `migrations/versions/afcon360_analytics_001.py` for analytics page view aggregation.
-- Ensured wallet activation and dashboard routing use the correct public and authenticated flow.
-- Confirmed wallet activation page uses CSRF token `{{ csrf_token() }}` and preserves verification/state handling.
-- Preserved analytics/audit separation for tourism and wallet page tracking.
+**Organisation vehicle ownership authorization** - The only change authorized for implementation at this time.
 
-## Files Updated
-- `templates/accommodation/guest/search.html`
-- `templates/accommodation/guest/detail.html`
-- `templates/accommodation/guest/my_bookings.html`
-- `templates/accommodation/guest/checkout.html`
-- `templates/accommodation/guest/confirmation.html`
-- `templates/accommodation_home.html`
-- `templates/public_home.html`
-- `templates/events/public/landing.html`
-- `templates/events/attendee/attendee_dashboard.html`
-- `templates/dashboard/user_dashboard.html`
-- `templates/fan/components/middle_pane.html`
-- `templates/fan/components/left_pane.html`
-- `templates/super_admin_dashboard.html`
-- `migrations/versions/afcon360_analytics_001.py`
-- `app/services/analytics.py`
-- `app/wallet/middleware/wallet_check.py`
-- `app/config.py`
-- `templates/wallet/wallet_dashboard.html`
-- `templates/wallet/base_wallet.html`
+### Changes Made
 
-## Notes
-- No remaining `accommodation.guest.*` template references were found after the fix.
-- The new migration is wired to the current Alembic head `5d751ad7bf6f`.
+1. **Fixed `_verify_vehicle_ownership` method** in `app/transport/services/marketplace_service.py`:
+   - Added import for `OrganizationPermissionService` from `app.identity.services.organization_permissions`
+   - Added import for `User` from `app.identity.models.user` 
+   - Added import for `Organisation` from `app.identity.models.organisation`
+   - Replaced the organisation ownership check (which always returned `False`) with proper authorization check:
+     ```python
+     organisation_user = db.session.get(User, owner_id)
+     if organisation_user:
+         organisation = db.session.get(Organisation, vehicle.owner_id)
+         if organisation:
+             return OrganizationPermissionService.has_permission(
+                 organisation_user, organisation, 'org.transport.manage'
+             )
+     return False
+     ```
 
-## Verification Checklist
-- [x] `app/wallet/routes.py` `home()` has no `@login_required` and now returns `wallet_home.html` for unauthenticated users.
-- [x] `app/wallet/routes.py` contains no `entity_id=None` references.
-- [x] `app/tourism/routes.py` `home()` no longer calls `ForensicAuditService.log_attempt(entity_id=None)` and only tracks analytics.
-- [x] `app/services/analytics.py` exists and provides the lightweight analytics service.
-- [x] `app/wallet/middleware/wallet_check.py` supports `redirect_to` correctly.
-- [x] `templates/wallet/wallet_dashboard.html` includes distinct branches for no-wallet, inactive-wallet, and active-wallet states.
-- [x] `templates/wallet/base_wallet.html` includes a wallet terms acceptance banner.
-- [x] `app/config.py` contains analytics configuration keys: `ANALYTICS_ENABLED`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_ANALYTICS_DB`.
-- [x] `templates/wallet/wallet_activate.html` uses `{{ csrf_token() }}`.
+2. **Created comprehensive test suite** in `tests/transport/test_marketplace_service_organisation_ownership.py`:
+   - Test organisation owner with transport permission can list vehicle
+   - Test organisation owner without transport permission cannot list vehicle
+   - Test non-member organisation user cannot list vehicle
+   - Test individual owner behavior is preserved
+   - Test user owner behavior is preserved
+   - Test non-owner cannot list vehicle
 
-## Runtime Verification
-- `GET /wallet/` returned `200` with the public wallet marketing page accessible without login.
-- `GET /wallet/dashboard` returned `302`, which is expected for an unauthenticated request because the dashboard route is still protected by `@login_required`.
-- `GET /tourism/` returned `302`, which matches the current `@login_required` on `tourism.home`.
+### Verification
 
-## Important Observation
-- The file-level fix for tourism home is present, but `tourism.home` remains login-protected. If the goal is a public tourism landing page, that route will still need `@login_required` removed.
+The fix:
+- Preserves existing individual/user ownership behavior
+- Preserves driver-profile ownership behavior  
+- Requires organisation users to have the existing `org.transport.manage` permission
+- Does not create new permissions, identity services, or broaden authorisation
+- Does not mutate ownership records
+- Follows the exact same pattern used in accommodation domain for organisation authorization
+
+### What Remains To Be Done (Trace Only)
+
+Per the feedback, the following areas require tracing and analysis before implementation decisions can be made:
+
+1. **ProviderParticipation enforcement boundary** - Determine if and where `is_capability_operational()` checks should be applied
+2. **Persistent DriverVehicleHistory assignment mechanism** - Trace all production creation/update paths for DriverVehicleHistory to identify canonical assignment mechanism
+3. **Existing application/request abstraction evaluation** - Evaluate if current application object can support bidirectional requests without creating ambiguous semantics
+4. **VehicleContract two-party lifecycle** - Define correct contract state machine before implementing acceptance flows
+5. **Marketplace vs operational availability semantics** - Determine if `is_online`/`is_available` can safely represent marketplace availability
+6. **Authoritative driver experience definition** - Trace authoritative source for driver experience metrics
+
+### Migration Governance
+
+All schema changes remain blocked pending explicit approval, including:
+- `application_direction` enum column addition
+- Contract acceptance timestamps
+- Any new marketplace state fields
+- Experience tracking fields
+
+The already-created migration `4dc568c00f86_add_vehicle_marketplace_models.py` remains untouched as required.

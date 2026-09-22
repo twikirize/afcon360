@@ -44,6 +44,48 @@ class MonitorContext:
 
         return False  # Don't suppress exceptions
 
+    # ------------------------------------------------------------------
+    # Span-compatible API.
+    #
+    # ``start_span()`` returns a ``MonitorContext`` but callers (notably the
+    # transport services) also use it like an OpenTelemetry span:
+    # ``span.set_status(...)``, ``span.set_attribute(...)`` and
+    # ``span.end()``.  These methods keep that contract working instead of
+    # raising ``AttributeError`` when a service method runs.
+    # ------------------------------------------------------------------
+
+    def set_status(self, status: str, description: Optional[str] = None):
+        """Record a status; mirrors the span API. Returns self for chaining."""
+        self.status = status
+        normalized = (status or "").upper()
+        if normalized in ("ERROR", "FAILED"):
+            self.success = False
+            if description:
+                duration = (time.time() - self.start_time) if self.start_time else 0.0
+                logger.error(
+                    f"Operation failed: {self.operation_name} - {description}",
+                    extra={"duration": duration, "tags": self.tags,
+                           "error": description}
+                )
+        elif normalized:
+            self.success = True
+        return self
+
+    def set_attribute(self, key: str, value: Any):
+        """Attach an attribute/tag to the span. Returns self for chaining."""
+        self.tags[key] = value
+        return self
+
+    def end(self):
+        """Finish the span. Safe to call multiple times. Returns self."""
+        if self.start_time is not None:
+            duration = time.time() - self.start_time
+            logger.info(
+                f"Operation completed: {self.operation_name}",
+                extra={"duration": duration, "tags": self.tags, "success": self.success}
+            )
+        return self
+
 
 def monitor_endpoint(endpoint_name: Optional[str] = None):
     """

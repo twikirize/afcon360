@@ -11,6 +11,7 @@ from .roles_permission import Role, Permission, RolePermission
 from .kyb import OrganisationVerification, OrganisationKYBCheck, OrganisationUBO, OrganisationKYBDocument
 from .compliance_audit_log import ComplianceAuditLog
 from .compliance_settings import ComplianceSettings
+from .org_payment_gateway import OrganisationPaymentGateway, PaymentGatewayProvider, PaymentGatewayEnvironment
 # Import UserProfile to resolve SQLAlchemy Mapper error
 from app.profile.models import UserProfile
 # Import Individual Verification to resolve SQLAlchemy Mapper error
@@ -30,5 +31,6 @@ __all__ = [
     "Role", "Permission", "RolePermission",
     "OrganisationVerification", "OrganisationKYBCheck", "OrganisationUBO", "OrganisationKYBDocument",
     "ComplianceAuditLog", "ComplianceSettings",
+    "OrganisationPaymentGateway", "PaymentGatewayProvider", "PaymentGatewayEnvironment",
     "UserProfile", "IndividualVerification",
 ]

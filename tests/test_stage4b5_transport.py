@@ -6,8 +6,10 @@ Covers the approved Stage 4B-5 decisions:
     intention ONLY — no Vehicle / Booking / Wallet resource is created
     (a Vehicle is a separate, later operation owned by the driver profile).
   * ``get_user_vehicles`` resolves ownership through the user's
-    DriverProfile(s) (owner_type='driver'), ignoring stale legacy
-    owner_type='user' rows.
+    DriverProfile(s) (owner_type='driver') AND through personal ownership
+    (owner_type='user', owner_id=user.id).  (Phase C-1 supersedes the
+    original Stage 4B-5 single-vocabulary rule: personal owners are valid,
+    and assignment never creates ownership.)
   * Organisation identity fails CLOSED when the central organisation
     registry is unavailable — never fabricates active/verified data.
   * ``validate_organisation_eligibility`` requires the organisation to be
@@ -326,26 +328,30 @@ def test_driver_commit_accepts_string_dob_without_type_error(db_session):
 # Uniform vehicle ownership: owner_type='driver'
 # ---------------------------------------------------------------------------
 
-def test_get_user_vehicles_resolves_through_driver_profiles(db_session):
-    """Vehicles owned by the user's DriverProfile are returned; legacy
-    owner_type='user' rows are ignored (uniform ownership)."""
+def test_get_user_vehicles_resolves_driver_and_personal_ownership(db_session):
+    """Vehicles owned by the user's DriverProfile (owner_type='driver') and
+    vehicles owned personally by the user (owner_type='user') are both
+    returned (Phase C-1 ownership multiplicity)."""
     from app.transport.services.provider_service import ProviderService
 
     user = _make_user(db_session)
     driver = _make_driver_profile(db_session, user)
     driver_vehicle = _make_vehicle(db_session, "driver", driver.id)
-    _make_vehicle(db_session, "user", user.id)  # stale legacy row
+    personal_vehicle = _make_vehicle(db_session, "user", user.id)
 
     result = ProviderService().get_user_vehicles(user.id)
 
-    assert len(result) == 1
-    assert result[0].id == driver_vehicle.id
-    assert result[0].owner_type == "driver"
-    assert result[0].owner_id == driver.id
+    by_id = {v.id: v for v in result}
+    assert set(by_id) == {driver_vehicle.id, personal_vehicle.id}
+    assert by_id[driver_vehicle.id].owner_type == "driver"
+    assert by_id[driver_vehicle.id].owner_id == driver.id
+    assert by_id[personal_vehicle.id].owner_type == "user"
+    assert by_id[personal_vehicle.id].owner_id == user.id
 
 
 def test_get_user_vehicles_empty_for_non_driver(db_session):
-    """A user without a DriverProfile owns no transport vehicles."""
+    """A user without a DriverProfile and without personal vehicles owns
+    no transport vehicles."""
     from app.transport.services.provider_service import ProviderService
 
     user = _make_user(db_session)

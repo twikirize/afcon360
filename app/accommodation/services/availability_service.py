@@ -10,6 +10,8 @@ from app.extensions import db
 from app.accommodation.models.availability import BlockedDate, RoomHold, AccommodationBlockedReason
 from app.accommodation.models.booking import AccommodationBooking, AccommodationBookingStatus
 from app.accommodation.models.room import RoomType, InventoryBlock
+from app.geo.interfaces import GeoPoint
+from app.geo.services import straight_line_distance_m
 import logging
 
 logger = logging.getLogger(__name__)
@@ -278,6 +280,20 @@ class AvailabilityService:
         }
 
     @staticmethod
+    def _nearby_distance_km(lat1: float, lng1: float,
+                              lat2: float, lng2: float) -> float:
+        """Generic straight-line distance in kilometres, 1-decimal.
+
+        Pure spatial mathematics owned by canonical GEO (radians-correct
+        haversine, metres); this boundary converts metres → km and keeps
+        the 1-decimal display rounding of the Tier-2 result contract
+        ("{distance}km away"). No availability policy lives here.
+        """
+        dist_m = straight_line_distance_m(
+            GeoPoint(lat1, lng1), GeoPoint(lat2, lng2))
+        return round(dist_m / 1000.0, 1)
+
+    @staticmethod
     def find_nearby_alternatives(
         property_id: int,
         check_in: date,
@@ -326,12 +342,9 @@ class AvailabilityService:
             if available_rts:
                 distance = None
                 if prop.latitude and p.latitude:
-                    from math import radians, cos, sin, asin, sqrt
-                    lon1, lat1, lon2, lat2 = map(radians, [prop.longitude, prop.latitude, p.longitude, p.latitude])
-                    dlon = lon2 - lon1
-                    dlat = lat2 - lat1
-                    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-                    distance = round(2 * asin(sqrt(a)) * 6371, 1)
+                    distance = AvailabilityService._nearby_distance_km(
+                        prop.latitude, prop.longitude,
+                        p.latitude, p.longitude)
 
                 nearby.append({
                     'id': p.id,

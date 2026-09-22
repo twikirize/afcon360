@@ -24,6 +24,8 @@ from app.identity.models.kyb import OrganisationKYBDocument
 import hashlib
 from app.auth.kyc_compliance import (
     TIER_0_UNREGISTERED, TIER_1_BASIC, TIER_2_STANDARD,
+    TIER_5_CORPORATE, REQUIREMENT_LABELS,
+    TIER_REQUIREMENTS, can_upgrade_to_tier,
     calculate_kyc_tier
 )
 from app.auth.decorators import require_moderator, require_fresh_user
@@ -46,6 +48,27 @@ from app.utils.flash_helpers import flash_form_error, flash_notice
 kyc_bp = Blueprint("kyc", __name__, url_prefix="/kyc")
 
 
+# ── Document-type dropdown options (evidence upload) ─────────────────────────
+# Ordered list of (value, label) for the id-type selector. The rendered option
+# is enabled only when its value is present in the config-driven
+# ``kyc_accepted_id_types`` set (server merges enabled + known types so the
+# dropdown always reflects what the system actually accepts).
+_KYC_ID_TYPE_OPTIONS = [
+    ("national_id", "National ID (NIRA)"),
+    ("passport", "Passport"),
+    ("driver_license", "Driver's License"),
+    ("voter_card", "Voter Card"),
+    ("proof_of_address", "Proof of Address"),
+    ("tin", "Tax ID (TIN)"),
+    ("income_source", "Income Source Proof"),
+    ("bank_reference", "Bank Reference Letter"),
+]
+
+# Identity-bearing document types. A selfie is mandatory only when one of
+# these is being submitted (per §48-grade verification semantics).
+_IDENTITY_ID_TYPES = frozenset({"national_id", "passport", "driver_license", "voter_card"})
+
+
 # ── Tier metadata (used by upgrade + limits pages) ────────────────────────────
 TIER_INFO = {
     TIER_0_UNREGISTERED: {
@@ -59,8 +82,8 @@ TIER_INFO = {
         "name": "Tier 1 - Basic",
         "daily_limit":    1_000_000,   # UGX
         "monthly_limit":  5_000_000,
-        "description":    "Phone-verified account. Limited transactions permitted.",
-        "requirements":   ["Phone number verified"],
+        "description":    "Phone-verified account with full name. Limited transactions permitted.",
+        "requirements":   ["Phone number verified", "Full name (as on ID document)"],
     },
     TIER_2_STANDARD: {
         "name": "Tier 2 - Standard",
@@ -70,6 +93,33 @@ TIER_INFO = {
         "requirements":   ["Phone number verified", "National ID (NIRA) verified"],
     },
 }
+
+# ── Requirement → fill-form mapping (used by the upgrade page) ─────────────
+# Every missing KYC requirement is rendered as a direct link to the existing
+# form where the user fills that detail in (mirrors the clickable cards on the
+# KYC dashboard). Requirements without a dedicated form fall back to the
+# generic document-upload page.
+_UPLOAD_PRESELECT = {
+    "selfie", "income_source", "bank_reference",
+    "tin", "passport", "driver_license",
+}
+
+
+def _requirement_fill_url(req: str):
+    """Return the URL of the form where a missing requirement is filled in."""
+    dedicated = {
+        "phone_verified": lambda: url_for("auth.verify_phone"),
+        "full_name": lambda: url_for("auth.verify_phone"),
+        "national_id": lambda: url_for("kyc.verify_national_id_page"),
+        "selfie": lambda: url_for("kyc.upload", preselect="selfie"),
+        "proof_of_address": lambda: url_for("kyc.verify_address"),
+        "kyc_verification": lambda: url_for("kyc.upload"),
+    }
+    if req in dedicated:
+        return dedicated[req]()
+    if req in _UPLOAD_PRESELECT:
+        return url_for("kyc.upload", preselect=req)
+    return url_for("kyc.upload")
 
 
 # ── Shared verification-state helper ───────────────────────────────────────
@@ -219,16 +269,48 @@ def api_verification_state():
 @kyc_bp.route("/upgrade", methods=["GET"])
 @login_required
 def upgrade():
+    """Show current KYC tier and the upgrade path.
+
+    Each missing requirement is rendered as a direct link to the form where
+    the user fills that detail in, so the page is an action hub rather than a
+    read-only list of tier names.
+    """
     effective = RequestContext.get_effective_user()
-    from app.auth.kyc_compliance import calculate_kyc_tier
-    current_tier = calculate_kyc_tier(effective.id)["tier"] if effective else TIER_0_UNREGISTERED
-    available_upgrades = {
-        k: v for k, v in TIER_INFO.items() if k > current_tier
-    }
+    if not effective:
+        flash_form_error("Please log in to view your KYC upgrade options.")
+        return redirect(url_for("auth.login"))
+
+    current = calculate_kyc_tier(effective.id)
+    current_tier = current["tier"]
+
+    available_upgrades = []
+    for tier in range(current_tier + 1, TIER_5_CORPORATE + 1):
+        can_upgrade, missing = can_upgrade_to_tier(effective.id, tier)
+        info = TIER_REQUIREMENTS[tier]
+        available_upgrades.append({
+            "tier": tier,
+            "name": info["name"],
+            "description": info["description"],
+            "limits": info.get("daily_limit"),
+            "required_documents": info["required_documents"],
+            "can_upgrade": can_upgrade,
+            "missing_requirements": missing,
+            "missing_actions": [
+                {
+                    "key": req,
+                    "label": REQUIREMENT_LABELS.get(
+                        req, req.replace("_", " ").title()
+                    ),
+                    "url": _requirement_fill_url(req),
+                }
+                for req in missing
+            ],
+        })
+
     return render_template(
         "kyc/upgrade.html",
         current_tier=current_tier,
-        current_tier_info=TIER_INFO.get(current_tier, {}),
+        current_tier_name=TIER_REQUIREMENTS[current_tier]["name"],
         available_upgrades=available_upgrades,
         TIER_INFO=TIER_INFO,
     )
@@ -714,10 +796,27 @@ def status():
     verification_status = KycService.get_user_verification_status(user_id)
     user_orgs = _get_user_organisations()
 
+    missing_keys = list(kyc_info.get("missing_requirements", []) or [])
+    missing_labels = list(kyc_info.get("missing_requirements_labels", []) or [])
+    from app.auth.kyc_compliance import REQUIREMENT_LABELS as _REQ_LABELS
+    outstanding_requirements = [
+        {
+            "key": key,
+            "label": (
+                missing_labels[i]
+                if i < len(missing_labels)
+                else _REQ_LABELS.get(key, key.replace("_", " ").title())
+            ),
+            "url": _requirement_fill_url(key),
+        }
+        for i, key in enumerate(missing_keys)
+    ]
+
     return render_template('kyc/status.html',
                            records=records,
                            kyc_info=kyc_info,
                            verification_status=verification_status,
+                           outstanding_requirements=outstanding_requirements,
                            reupload_requests=_get_individual_reupload_requests(records),
                            organisation_reupload_requests=(
                                _get_organisation_reupload_requests(user_orgs)
@@ -1111,7 +1210,7 @@ def verify_upload():
             accepted_id_types = [
                 t.lower() for t in get_kyc_settings().get(
                     "kyc_accepted_id_types",
-                    ["national_id", "passport", "driver_license", "voter_card"],
+                    ["national_id", "passport", "driver_license"],
                 )
             ]
             if id_type and id_type.lower() not in accepted_id_types:
@@ -1181,6 +1280,16 @@ def verify_upload():
 
             if not all([id_type, id_number, document_url]):
                 flash_form_error('ID type, ID number, and a document (uploaded file or URL) are required')
+                return redirect(url_for('kyc.upload'))
+
+            # Selfie is mandatory for identity-bearing document types only.
+            # Evidence-only types (address, TIN, income source, bank reference)
+            # do not require it; a selfie stays optional for those.
+            if id_type.lower() in _IDENTITY_ID_TYPES and not selfie_url:
+                flash_form_error(
+                    'A selfie is required to verify an identity document. '
+                    'Please capture a live selfie (camera, photo upload, or phone pairing).'
+                )
                 return redirect(url_for('kyc.upload'))
 
             try:
@@ -1268,7 +1377,7 @@ def verify_upload():
     from app.kyc_config_schema import get_kyc_settings
     accepted_id_types = get_kyc_settings().get(
         "kyc_accepted_id_types",
-        ["national_id", "passport", "driver_license", "voter_card"],
+        ["national_id", "passport", "driver_license"],
     )
 
     # Canonical identity (single entry): personal identity lives in
@@ -1306,6 +1415,28 @@ def verify_upload():
     # full name / DOB. The canonical id_number/type are prefilled and locked
     # when available. Missing profile identity is not this form's concern.
 
+    # ── Fillable options for the individual dropdown ─────────────────────────
+    # Already-approved document types are immutable: they are removed entirely
+    # rather than shown disabled, so the form can never re-present fields the
+    # user has already provided. Identity-bearing types are also removed once
+    # identity is verified (a second identity doc is not a fillable gap). The
+    # dropdown therefore lists only what the user genuinely still needs.
+    _option_label = dict(_KYC_ID_TYPE_OPTIONS)
+
+    def _offered_options():
+        _label = lambda _t: _option_label.get(_t, _t.replace("_", " ").title())
+        remaining = [t for t in accepted_id_types if t not in verified_id_types]
+        if _IDENTITY_ID_TYPES & verified_id_types:
+            return [(_t, _label(_t)) for _t in remaining if _t not in _IDENTITY_ID_TYPES]
+        return [(_t, _label(_t)) for _t in remaining]
+
+    id_type_options = _offered_options()
+    identity_verified = bool(_IDENTITY_ID_TYPES & verified_id_types)
+    individual_immutable = not id_type_options
+    all_orgs_verified = bool(user_orgs) and all(
+        getattr(org, "verification_status", None) == "verified" for org in user_orgs
+    )
+
     return render_template('kyc/verify_upload.html',
                             user_orgs=user_orgs,
                             in_org_context=in_org_context,
@@ -1315,6 +1446,11 @@ def verify_upload():
                             show_organization=show_organization,
                             verified_id_types=verified_id_types,
                             accepted_id_types=accepted_id_types,
+                            id_type_options=id_type_options,
+                            identity_verified=identity_verified,
+                            individual_immutable=individual_immutable,
+                            all_orgs_verified=all_orgs_verified,
+                            identity_id_types=sorted(_IDENTITY_ID_TYPES),
                             reupload_requests=individual_reupload_requests,
                             organisation_reupload_requests=organisation_reupload_requests,
                             requested_reupload=requested_reupload,

@@ -51,7 +51,7 @@ def safe_url(endpoint: str, **kwargs) -> str:
 # --- REGISTRY ---
 MODULE_REGISTRY: Set[str] = {
     "wallet", "transport", "accommodation",
-    "tourism", "tournament", "events"
+    "tourism", "tournament", "events", "geo"
 }
 
 def module_enabled(module_name: str) -> bool:

@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload, joinedload
 from app.accommodation.models.property import Property, AccommodationPropertyStatus, PropertyAmenity
 from app.accommodation.models.room import RoomType
 from app import db
+from app.geo.sql import straight_line_distance_km_expr
 import logging
 
 logger = logging.getLogger(__name__)
@@ -118,20 +119,14 @@ def search_properties(params: dict = None) -> dict:
             q = q.filter(func.lower(Property.country) == params['country'].lower().strip())
 
         # GEO RADIUS (latitude/longitude columns exist)
+        # Generic spatial math owned by canonical GEO (app/geo/sql.py);
+        # Accommodation owns params, radius default, filter, and everything
+        # downstream. Units: kilometres on both sides of the comparison.
         if params.get('lat') and params.get('lng') and hasattr(Property, 'latitude'):
             lat, lng = float(params['lat']), float(params['lng'])
             radius_km = float(params.get('radius_km', 25))
-            distance_expr = (
-                6371 * func.acos(
-                    func.least(1.0,
-                        func.cos(func.radians(lat)) *
-                        func.cos(func.radians(Property.latitude)) *
-                        func.cos(func.radians(Property.longitude) - func.radians(lng)) +
-                        func.sin(func.radians(lat)) *
-                        func.sin(func.radians(Property.latitude))
-                    )
-                )
-            )
+            distance_expr = straight_line_distance_km_expr(
+                Property.latitude, Property.longitude, lat, lng)
             q = q.filter(distance_expr <= radius_km)
 
         # PRICE RANGE

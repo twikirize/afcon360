@@ -35,6 +35,7 @@
     <div class="card-header">
       <span class="card-title">Map</span>
       {% if driver.is_online %}<span class="badge badge-green">Live</span>{% endif %}
+      <span id="driverLiveState" class="badge" role="status">Connecting…</span>
     </div>
     <div id="driverMap" style="margin:12px;"></div>
   </div>
@@ -46,11 +47,11 @@
       <div class="loc-info-grid">
         <div class="loc-info-item">
           <div class="loc-info-k">Latitude</div>
-          <div class="loc-info-v">{{ driver.last_location.get('latitude', '—') }}</div>
+          <div class="loc-info-v" id="driverLiveLat">{{ driver.last_location.get('latitude', '—') }}</div>
         </div>
         <div class="loc-info-item">
           <div class="loc-info-k">Longitude</div>
-          <div class="loc-info-v">{{ driver.last_location.get('longitude', '—') }}</div>
+          <div class="loc-info-v" id="driverLiveLng">{{ driver.last_location.get('longitude', '—') }}</div>
         </div>
         <div class="loc-info-item">
           <div class="loc-info-k">Accuracy</div>
@@ -58,7 +59,7 @@
         </div>
         <div class="loc-info-item">
           <div class="loc-info-k">Updated</div>
-          <div class="loc-info-v">{{ driver.location_updated_at.strftime('%H:%M %d %b') if driver.location_updated_at else '—' }}</div>
+          <div class="loc-info-v" id="driverLiveUpdated">{{ driver.location_updated_at.strftime('%H:%M %d %b') if driver.location_updated_at else '—' }}</div>
         </div>
       </div>
       {% else %}
@@ -90,18 +91,62 @@
 
 {% block extra_js %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{{ url_for('static', filename='js/geo/geo-realtime.js') }}"></script>
 <script>
 (function() {
   const el = document.getElementById('driverMap');
-  if (!el) return;
+  if (!el || typeof L === 'undefined') return;
+  const driverCode = {{ driver.driver_code|tojson }};
   const map = L.map('driverMap').setView([-1.2921, 36.8219], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+  let marker = null;
+  function placeMarker(lat, lng) {
+    if (marker) {
+      marker.setLatLng([lat, lng]);
+    } else {
+      marker = L.marker([lat, lng]).addTo(map);
+    }
+    marker.bindPopup(driverCode);
+    map.setView([lat, lng], Math.max(map.getZoom(), 14));
+  }
   {% if driver.last_location %}
-  const lat = {{ driver.last_location.get('latitude', -1.2921) }};
-  const lng = {{ driver.last_location.get('longitude', 36.8219) }};
-  L.marker([lat, lng]).addTo(map).bindPopup('{{ driver.driver_code }}');
-  map.setView([lat, lng], 14);
+  placeMarker({{ driver.last_location.get('latitude', -1.2921) }}, {{ driver.last_location.get('longitude', 36.8219) }});
   {% endif %}
+  // GEO-14 live updates: shared GEO realtime client delivers geographic
+  // events; the marker and labels below stay domain-owned presentation.
+  function setLiveState(text) {
+    const badge = document.getElementById('driverLiveState');
+    if (badge) badge.textContent = text;
+  }
+  function updateInfo(e) {
+    const latEl = document.getElementById('driverLiveLat');
+    const lngEl = document.getElementById('driverLiveLng');
+    const updEl = document.getElementById('driverLiveUpdated');
+    if (latEl) latEl.textContent = e.latitude;
+    if (lngEl) lngEl.textContent = e.longitude;
+    if (updEl && e.observedAt) updEl.textContent = e.observedAt;
+  }
+  function applyEvent(e) {
+    placeMarker(e.latitude, e.longitude);
+    updateInfo(e);
+    setLiveState(e.fresh ? 'Live update' : 'Stale update');
+  }
+  if (window.GeoRealtime) {
+    window.GeoRealtime.connect(
+      '/geo/stream/location/driver/' + encodeURIComponent(driverCode),
+      {
+        onSnapshot: applyEvent,
+        onLocation: applyEvent,
+        onState: function (state) {
+          if (state === 'missing') setLiveState('No live data');
+          else if (state === 'degraded') setLiveState('Snapshot only');
+          else if (state === 'disconnected' || state === 'reconnecting') setLiveState('Disconnected');
+        }
+      }
+    );
+  } else {
+    setLiveState('Live updates unavailable');
+  }
 })();
 </script>
 {% endblock %}

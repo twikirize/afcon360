@@ -73,6 +73,19 @@ _KYC_SCOPE_MAP = {
     "beneficial_owners": "ubo",
 }
 
+# Maps a Tier 5 (Corporate) requirement to the organisation KYB step that
+# satisfies it. Steps are the application-level registry keys used by
+# OrganisationKYBService._step_statuses (app/identity/services/
+# organisation_kyb_service.py) — business_registration, identity, tax,
+# license, ubo, sanctions, source_of_funds.
+_TIER5_REQUIREMENT_TO_KYB_STEP = {
+    "organisation_registration": "business_registration",
+    "tin_certificate": "tax",
+    "trading_license": "license",
+    "directors_list": "ubo",
+    "beneficial_owners": "ubo",
+}
+
 # ─────────────────────────────────────────────────────────────────
 # IDENTITY RULE - internal vs external IDs
 # ─────────────────────────────────────────────────────────────────
@@ -108,17 +121,21 @@ TIER_5_CORPORATE = 5     # + KYB + License (Custom limits)
 
 REQUIREMENT_LABELS = {
     "phone_verified": "Phone verification",
+    "full_name": "Full name (as on ID document)",
     "national_id": "National ID",
     "selfie": "Selfie / Biometric",
     "proof_of_address": "Proof of address",
     "tin": "TIN certificate",
     "income_source": "Income source",
     "bank_reference": "Bank reference",
-    "organisation_registration": "Organisation registration",
-    "tin_certificate": "TIN certificate",
-    "trading_license": "Trading license",
-    "directors_list": "Directors list",
-    "beneficial_owners": "Beneficial owners",
+    # Tier 5 (Corporate) labels mirror the organisation KYB dashboard steps so
+    # /account, /kyc/status and the kyc-ribbon narratives don't disagree with
+    # the KYB dashboard (organisation_kyb_service.py STEP_REGISTRY).
+    "organisation_registration": "Business registration",
+    "tin_certificate": "Tax / TIN verification",
+    "trading_license": "Operating licence",
+    "directors_list": "Ultimate Beneficial Owner (UBO)",
+    "beneficial_owners": "Ultimate Beneficial Owner (UBO)",
 }
 
 # Activity -> minimum tier is provided live via the ACTIVITY_TIER_REQUIREMENTS
@@ -183,6 +200,33 @@ def _build_tier_response(
             if achieved_tier < tier
         },
     }
+
+
+def _active_organisation_kyb_statuses(user_id: int) -> List[Dict[str, Any]]:
+    """KYB step status for every active, non-deleted organisation the user belongs to.
+
+    Tier 5 (Corporate) is granted per user through the KYB of an organisation
+    they are an active member of, so a user can reach Tier 5 only when at least
+    one of their organisations satisfies the enabled KYB requirements.
+    """
+    from app.identity.services.organisation_kyb_service import OrganisationKYBService
+
+    memberships = OrganisationMember.query.filter_by(
+        user_id=user_id, is_active=True
+    ).all()
+    statuses: List[Dict[str, Any]] = []
+    for membership in memberships:
+        org = db.session.get(Organisation, membership.organisation_id)
+        if org is None or getattr(org, "is_deleted", False):
+            continue
+        try:
+            statuses.append(OrganisationKYBService.compute_status(org))
+        except Exception:
+            current_app.logger.warning(
+                f"Could not compute KYB status for organisation {membership.organisation_id}",
+                exc_info=True,
+            )
+    return statuses
 
 
 def calculate_kyc_tier(user_identifier) -> Dict[str, Any]:
@@ -292,7 +336,24 @@ def calculate_kyc_tier(user_identifier) -> Dict[str, Any]:
                 missing_requirements.extend(tier_missing)
                 break
 
-    # Tier 5 (Corporate) is reached via separate KYB verification.
+    # Tier 5 (Corporate) is reached via separate KYB verification of an active
+    # organisation the user belongs to. Previously this tier was never actually
+    # evaluated, so the "Reach Tier 5: Corporate" prompt never cleared even for
+    # fully KYB-verified organisations.
+    if achieved_tier >= TIER_4_PREMIUM:
+        tier5_reqs = TIER_REQUIREMENTS[TIER_5_CORPORATE]["required_documents"]
+        enabled_reqs = [req for req in tier5_reqs if is_requirement_enabled(req)]
+        met_reqs = set()
+        for org_status in _active_organisation_kyb_statuses(user.id):
+            steps = org_status.get("steps") or {}
+            for req in enabled_reqs:
+                step_key = _TIER5_REQUIREMENT_TO_KYB_STEP.get(req, req)
+                if (steps.get(step_key) or {}).get("done"):
+                    met_reqs.add(req)
+        if met_reqs == set(enabled_reqs):
+            achieved_tier = TIER_5_CORPORATE
+        else:
+            missing_requirements.extend(req for req in enabled_reqs if req not in met_reqs)
 
     # Calculate fulfillment percentage
     # Tiers: 0=0%, 1=25%, 2=50%, 3=75%, 4=100%

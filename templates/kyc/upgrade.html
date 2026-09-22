@@ -52,12 +52,25 @@
           </form>
         {% else %}
           <div class="alert alert--error">
-            <strong>Missing requirements:</strong>
+            <strong>Complete these to unlock {{ upgrade.name }}:</strong>
             <ul>
-              {% for missing in upgrade.missing_requirements %}
-              <li>{{ missing.replace('_', ' ').title() }}</li>
-              {% endfor %}
+              {% if upgrade.missing_actions %}
+                {% for action in upgrade.missing_actions %}
+                <li>
+                  <a href="{{ action.url }}" class="resolve-link">
+                    Fill in: {{ action.label }} →
+                  </a>
+                </li>
+                {% endfor %}
+              {% else %}
+                {% for missing in upgrade.missing_requirements %}
+                <li>{{ missing.replace('_', ' ').title() }}</li>
+                {% endfor %}
+              {% endif %}
             </ul>
+          </div>
+          <div class="upgrade-forms-cta">
+            <a href="{{ url_for('kyc.upload') }}" class="btn btn--ghost">Upload all documents</a>
           </div>
         {% endif %}
       </div>
@@ -96,6 +109,11 @@
   .req-list li { padding: 0.2rem 0; }
   .btn--primary { display: inline-block; background: #1a3a2a; color: #fff; text-decoration: none; padding: 0.7rem 1.25rem; font-size: 0.9rem; font-weight: 600; border-radius: 5px; border: none; cursor: pointer; transition: background 0.15s; }
   .btn--primary:hover { background: #2d7a4f; }
+  .btn--ghost { display: inline-block; background: transparent; color: #1a3a2a; text-decoration: none; padding: 0.6rem 1.1rem; font-size: 0.88rem; font-weight: 600; border-radius: 5px; border: 1.5px solid #1a3a2a; transition: background 0.15s; }
+  .btn--ghost:hover { background: #f0fff4; }
+  .resolve-link { color: #1a3a2a; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+  .resolve-link:hover { color: #2d7a4f; }
+  .upgrade-forms-cta { margin-top: 0.9rem; }
   .kyc-status-card { display: flex; gap: 1rem; align-items: flex-start; padding: 1.25rem 1.5rem; border-radius: 6px; border: 1px solid transparent; }
   .kyc-status--verified { background: #f0fff4; border-color: #68d391; color: #1a4731; }
   .kyc-status-icon { font-size: 1.5rem; flex-shrink: 0; }

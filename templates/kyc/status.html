@@ -26,6 +26,25 @@
       {% endif %}
     </div>
 
+    {% if outstanding_requirements %}
+    <div class="kyc-outstanding">
+      <div class="kyc-outstanding-title">
+        <i class="bi bi-list-check me-1"></i> Requirements still outstanding
+      </div>
+      <p class="small text-muted mb-2">Complete these to reach the next tier. Each entry opens the form you need.</p>
+      <ul class="list-unstyled kyc-outstanding-list mb-0">
+        {% for _item in outstanding_requirements %}
+          <li>
+            <a href="{{ _item.url }}" class="kyc-outstanding-link">
+              {{ _item.label }}
+              <i class="bi bi-arrow-right-short"></i>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
     {% if reupload_requests or organisation_reupload_requests %}
       <div class="alert alert-warning" role="alert" style="border-left: 4px solid #f59e0b;">
         <strong><i class="fas fa-file-circle-exclamation"></i> Replacement requested</strong>
@@ -177,6 +196,34 @@
     margin-bottom: 1.5rem;
     border: 1px solid #cbd5e1;
     background: #f8fafc;
+  }
+  .kyc-outstanding {
+    border: 1px solid #bfdbfe;
+    border-radius: 10px;
+    background: #eff6ff;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  .kyc-outstanding-title {
+    font-weight: 700;
+    color: #1e3a8a;
+    margin-bottom: 0.25rem;
+  }
+  .kyc-outstanding-list li {
+    padding: 0.4rem 0;
+    border-top: 1px solid rgba(30, 64, 175, 0.12);
+  }
+  .kyc-outstanding-link {
+    color: #1d4ed8;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .kyc-outstanding-link:hover {
+    color: #1e3a8a;
+    text-decoration: underline;
   }
   .kyc-current-status.is-success { color: #166534; border-color: #bbf7d0; background: #f0fdf4; }
   .kyc-current-status.is-danger { color: #991b1b; border-color: #fecaca; background: #fef2f2; }

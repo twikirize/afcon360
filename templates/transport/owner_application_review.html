@@ -1,0 +1,58 @@
+{% extends "transport/base.html" %}
+{% block title %}Review Applications for {{ vehicle.make }} {{ vehicle.model }}{% endblock %}
+{% block content %}
+<div class="container">
+    <h1>Applications for {{ vehicle.year }} {{ vehicle.make }} {{ vehicle.model }}</h1>
+    <p><strong>Listing Reference:</strong> {{ listing.public_id }}</p>
+    {% if applications %}
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Applicant</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for app in applications %}
+            <tr>
+                <td>
+                    <strong>{{ app.driver.user.display_name if app.driver.user else 'Unknown' }}</strong><br>
+                    <small class="text-muted">Driver code: {{ app.driver.driver_code }}</small><br>
+                    <small class="text-muted">Email: {{ app.driver.user.email if app.driver.user else 'N/A' }}</small>
+                </td>
+                <td>
+                    {% if app.status == 'pending' %}
+                        <span class="badge badge-warning">Pending</span>
+                    {% elif app.status == 'approved' %}
+                        <span class="badge badge-success">Approved</span>
+                    {% elif app.status == 'rejected' %}
+                        <span class="badge badge-danger">Rejected</span>
+                    {% else %}
+                        {{ app.status }}
+                    {% endif %}
+                </td>
+                <td>
+                    {% if app.status == 'pending' %}
+                        <form method="post" action="{{ url_for('transport.owner_application_approve', listing_id=listing.id, application_id=app.id) }}" style="display:inline;">
+                            {{ csrf_token() }}
+                            <button type="submit" class="btn btn-sm btn-success">Approve</button>
+                        </form>
+                        <form method="post" action="{{ url_for('transport.owner_application_reject', listing_id=listing.id, application_id=app.id) }}" style="display:inline;">
+                            {{ csrf_token() }}
+                            <button type="submit" class="btn btn-sm btn-danger">Reject</button>
+                        </form>
+                    {% else %}
+                        <span class="text-muted">Action not available</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+        <p>No applications for this listing.</p>
+    {% endif %}
+    <a href="{{ url_for('transport.transport_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+</div>
+{% endblock %}

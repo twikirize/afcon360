@@ -8,12 +8,18 @@ from flask import request
 from flask_restful import Resource
 from app.extensions import db
 from app.transport.models import (
-    Vehicle, VehicleClass, DriverProfile, DriverVehicleHistory
+    Vehicle, VehicleClass, DriverProfile, DriverVehicleHistory,
+    VehicleMarketplaceListing, DriverVehicleApplication,
+    ApplicationStatus, ContractStatus
 )
 from app.auth.decorators import admin_required
+from flask_login import login_required, current_user
 from app.transport.utils.helpers import paginate, filter_query, sort_query
 from datetime import datetime, timezone
 import logging
+from app.identity.services.organization_permissions import OrganizationPermissionService
+from app.identity.models.user import User
+from app.identity.models.organisation import Organisation
 
 logger = logging.getLogger(__name__)
 
@@ -446,7 +452,7 @@ class VehicleAssignmentResource(Resource):
                         "driver_id": driver_id,
                         "vehicle_id": vehicle_id,
                         "started_at": assignment.started_at.isoformat(),
-                    },
+                    }
                 }
             except Exception as e:
                 db.session.rollback()
@@ -472,3 +478,396 @@ class VehicleAssignmentResource(Resource):
 
         else:
             return {"success": False, "error": f"Unknown action: {action}. Use assign or unassign"}, 400
+
+
+# ===========================================================================
+# Vehicle Contract Request (Marketplace)
+# ===========================================================================
+
+class VehicleContractRequestResource(Resource):
+    """POST /api/transport/vehicles/<vehicle_id>/request-contract"""
+
+    @login_required
+    def post(self, vehicle_id):
+        """Request a contract to drive a vehicle from the marketplace.
+
+        The acting driver is ALWAYS the authenticated ``current_user``. The
+        optional ``driver_id`` request field is accepted for backward
+        compatibility only and is NEVER trusted to impersonate another
+        driver — the marketplace service is called with ``current_user.id``.
+        The vehicle must be listed and the listing must be active + public.
+        """
+        from app.transport.models import VehicleMarketplaceListing
+        from app.transport.services.marketplace_service import get_marketplace_service
+
+        vehicle = _vehicle_or_404(vehicle_id)
+        data = request.get_json(silent=True) or {}
+
+        # Actor = authenticated user (client-supplied driver_id is ignored).
+        driver = DriverProfile.query.filter_by(
+            user_id=current_user.id, is_deleted=False
+        ).first()
+        if not driver:
+            return {"success": False, "error": "Driver profile not found"}, 404
+
+        # Check if driver already owns this vehicle
+        if vehicle.owner_type == 'driver' and vehicle.owner_id == driver.id:
+            return {"success": False, "error": "You already own this vehicle"}, 400
+
+        # Check if vehicle is available
+        if not vehicle.is_available or vehicle.is_reserved or vehicle.status != 'active':
+            return {"success": False, "error": "Vehicle is not available for contract"}, 400
+
+        # The vehicle must be listed on the marketplace (active + public).
+        listing = get_marketplace_service().listing_for_vehicle(vehicle.id)
+        if not listing:
+            return {"success": False, "error": "Vehicle is not listed on the marketplace"}, 400
+
+        try:
+            application = get_marketplace_service().submit_application(
+                current_user.id, listing.id, data
+            )
+        except ValueError as ve:
+            db.session.rollback()
+            return {"success": False, "error": str(ve)}, 400
+
+        status_value = (
+            application.status.value
+            if hasattr(application.status, "value")
+            else application.status
+        )
+        return {
+            "success": True,
+            "message": "Contract request sent to vehicle owner",
+            "data": {
+                "application_id": application.id,
+                "status": status_value,
+                "listing_id": application.listing_id,
+            },
+        }
+
+
+# ===========================================================================
+# Contract Acceptance (Marketplace)
+# ===========================================================================
+
+class ContractAcceptanceResource(Resource):
+    """POST /api/transport/contracts/<contract_id>/accept"""
+
+    @login_required
+    def post(self, contract_id):
+        """Driver accepts contract terms and activates the contract.
+        
+        This endpoint is called by the driver to accept a contract that
+        was created after the owner approved their application.
+        
+        On acceptance, the contract is activated and a DriverVehicleHistory
+        entry is created to establish the authoritative driver-vehicle
+        relationship for Go-Live."""
+        from app.transport.models import (VehicleContract, DriverProfile)
+        from app.transport.services.marketplace_service import get_marketplace_service
+         
+        contract = VehicleContract.query.filter_by(
+            id=contract_id, is_deleted=False
+        ).first()
+         
+        if not contract:
+            return {"success": False, "error": "Contract not found"}, 404
+         
+        # Verify the current user is the driver for this contract
+        driver = DriverProfile.query.filter_by(
+            user_id=current_user.id, is_deleted=False
+        ).first()
+        if not driver or contract.driver_id != driver.id:
+            return {"success": False, "error": "You are not authorized to accept this contract"}, 403
+         
+        if contract.status != 'pending_signature':
+            return {"success": False, "error": "Contract cannot be accepted in current state"}, 400
+         
+        marketplace_service = get_marketplace_service()
+        success = marketplace_service.accept_contract_terms(contract_id, current_user.id)
+         
+        if not success:
+            return {"success": False, "error": "Failed to accept contract"}, 400
+         
+        # Reload contract to get updated status
+        contract = VehicleContract.query.filter_by(id=contract_id).first()
+         
+        return {
+            "success": True,
+            "message": "Contract accepted and activated",
+            "data": {
+                "contract_id": contract.id,
+                "status": contract.status.value if hasattr(contract.status, 'value') else contract.status,
+                "vehicle_id": contract.vehicle_id,
+                "driver_id": contract.driver_id,
+                "activated_at": contract.start_date.isoformat() if contract.start_date else None,
+            }
+        }
+
+# ===========================================================================
+# Marketplace Application Management (NEW)
+# ===========================================================================
+
+class MarketplaceApplicationListResource(Resource):
+    """GET /api/transport/listings/<int:listing_id>/applications"""
+
+    @login_required
+    def get(self, listing_id):
+        """Get all applications for a listing (owner only)"""
+        from app.transport.services.marketplace_service import get_marketplace_service
+        from app.identity.services.organization_permissions import OrganizationPermissionService
+        
+        # Verify ownership
+        marketplace_service = get_marketplace_service()
+        listing = marketplace_service.get_listing(listing_id)
+        if not listing:
+            return {"success": False, "error": "Listing not found"}, 404
+        
+        # Check ownership - canonical vehicle owner (driver/user/organisation)
+        vehicle = listing.vehicle
+        if vehicle.owner_type == 'driver':
+            from app.transport.models import DriverProfile
+            driver = DriverProfile.query.filter_by(
+                user_id=current_user.id, is_deleted=False
+            ).first()
+            if not driver or vehicle.owner_id != driver.id:
+                return {"success": False, "error": "Not authorized"}, 403
+        elif vehicle.owner_type == 'user':
+            if vehicle.owner_id != current_user.id:
+                return {"success": False, "error": "Not authorized"}, 403
+        elif vehicle.owner_type == 'organisation':
+            organisation_user = db.session.get(User, current_user.id)
+            if organisation_user:
+                organisation = db.session.get(Organisation, vehicle.owner_id)
+                if organisation:
+                    if not OrganizationPermissionService.has_permission(
+                        organisation_user, organisation, 'org.transport.manage'
+                    ):
+                        return {"success": False, "error": "Not authorized"}, 403
+                else:
+                    return {"success": False, "error": "Not authorized"}, 403
+            else:
+                return {"success": False, "error": "Not authorized"}, 403
+        else:
+            return {"success": False, "error": "Not authorized"}, 403
+        
+        # Get applications
+        status = request.args.get('status')
+        applications = marketplace_service.get_listing_applications(
+            listing_id=listing_id,
+            owner_id=listing.owner_id,
+            status=status
+        )
+        
+        return {
+            "success": True,
+            "data": {
+                "applications": [app.to_dict() for app in applications],
+                "count": len(applications)
+            }
+        }
+
+
+class MarketplaceApplicationApproveResource(Resource):
+    """POST /api/transport/applications/<int:application_id>/approve"""
+
+    @login_required
+    def post(self, application_id):
+        """Approve an application and create a contract"""
+        from app.transport.services.marketplace_service import get_marketplace_service
+        from app.identity.services.organization_permissions import OrganizationPermissionService
+        from app.transport.models import (DriverVehicleApplication, VehicleMarketplaceListing)
+        from app.identity.models.user import User
+        from app.identity.models.organisation import Organisation
+        
+        # Get application with listing for ownership check
+        application = DriverVehicleApplication.query.join(VehicleMarketplaceListing).filter(
+            DriverVehicleApplication.id == application_id,
+            DriverVehicleApplication.is_deleted == False
+        ).first()
+        
+        if not application:
+            return {"success": False, "error": "Application not found"}, 404
+        
+        # Verify ownership of the listing (canonical vehicle owner)
+        listing = application.listing
+        vehicle = listing.vehicle
+        if vehicle.owner_type == 'driver':
+            from app.transport.models import DriverProfile
+            driver = DriverProfile.query.filter_by(
+                user_id=current_user.id, is_deleted=False
+            ).first()
+            if not driver or vehicle.owner_id != driver.id:
+                return {"success": False, "error": "Not authorized"}, 403
+        elif vehicle.owner_type == 'user':
+            if vehicle.owner_id != current_user.id:
+                return {"success": False, "error": "Not authorized"}, 403
+        elif vehicle.owner_type == 'organisation':
+            organisation_user = db.session.get(User, current_user.id)
+            if organisation_user:
+                organisation = db.session.get(Organisation, vehicle.owner_id)
+                if organisation:
+                    if not OrganizationPermissionService.has_permission(
+                        organisation_user, organisation, 'org.transport.manage'
+                    ):
+                        return {"success": False, "error": "Not authorized"}, 403
+                else:
+                    return {"success": False, "error": "Not authorized"}, 403
+            else:
+                return {"success": False, "error": "Not authorized"}, 403
+        else:
+            return {"success": False, "error": "Not authorized"}, 403
+        
+        # Parse contract terms (optional)
+        data = request.get_json(silent=True) or {}
+        contract_terms = data.get('contract_terms')
+        
+        try:
+            marketplace_service = get_marketplace_service()
+            contract = marketplace_service.approve_application(
+                application_id=application_id,
+                owner_id=listing.owner_id,
+                contract_terms=contract_terms
+            )
+            
+            if not contract:
+                return {"success": False, "error": "Failed to approve application"}, 400
+            
+            return {
+                "success": True,
+                "message": "Application approved and contract created",
+                "data": {
+                    "contract_id": contract.id,
+                    "status": contract.status.value if hasattr(contract.status, 'value') else contract.status,
+                    "application_id": application.id,
+                    "listing_id": listing.id
+                }
+            }
+        except ValueError as ve:
+            return {"success": False, "error": str(ve)}, 400
+        except Exception as e:
+            return {"success": False, "error": str(e)}, 500
+
+
+class MarketplaceApplicationRejectResource(Resource):
+    """POST /api/transport/applications/<int:application_id>/reject"""
+
+    @login_required
+    def post(self, application_id):
+        """Reject an application"""
+        from app.transport.services.marketplace_service import get_marketplace_service
+        from app.identity.services.organization_permissions import OrganizationPermissionService
+        from app.transport.models import DriverVehicleApplication, VehicleMarketplaceListing
+        from app.identity.models.user import User
+        from app.identity.models.organisation import Organisation
+        
+        # Get application with listing for ownership check
+        application = DriverVehicleApplication.query.join(VehicleMarketplaceListing).filter(
+            DriverVehicleApplication.id == application_id,
+            DriverVehicleApplication.is_deleted == False
+        ).first()
+        
+        if not application:
+            return {"success": False, "error": "Application not found"}, 404
+        
+        # Verify ownership of the listing (canonical vehicle owner)
+        listing = application.listing
+        vehicle = listing.vehicle
+        if vehicle.owner_type == 'driver':
+            from app.transport.models import DriverProfile
+            driver = DriverProfile.query.filter_by(
+                user_id=current_user.id, is_deleted=False
+            ).first()
+            if not driver or vehicle.owner_id != driver.id:
+                return {"success": False, "error": "Not authorized"}, 403
+        elif vehicle.owner_type == 'user':
+            if vehicle.owner_id != current_user.id:
+                return {"success": False, "error": "Not authorized"}, 403
+        elif vehicle.owner_type == 'organisation':
+            organisation_user = db.session.get(User, current_user.id)
+            if organisation_user:
+                organisation = db.session.get(Organisation, vehicle.owner_id)
+                if organisation:
+                    if not OrganizationPermissionService.has_permission(
+                        organisation_user, organisation, 'org.transport.manage'
+                    ):
+                        return {"success": False, "error": "Not authorized"}, 403
+                else:
+                    return {"success": False, "error": "Not authorized"}, 403
+            else:
+                return {"success": False, "error": "Not authorized"}, 403
+        else:
+            return {"success": False, "error": "Not authorized"}, 403
+        
+        # Get reason
+        data = request.get_json(silent=True) or {}
+        reason = data.get('reason', 'No reason provided')
+        
+        try:
+            marketplace_service = get_marketplace_service()
+            success = marketplace_service.reject_application(
+                application_id=application_id,
+                owner_id=listing.owner_id,
+                reason=reason
+            )
+            
+            if not success:
+                return {"success": False, "error": "Failed to reject application"}, 400
+            
+            return {
+                "success": True,
+                "message": "Application rejected",
+                "data": {
+                    "application_id": application.id,
+                    "status": ApplicationStatus.REJECTED.value,
+                    "reason": reason
+                }
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}, 500
+
+
+class MarketplaceApplicationWithdrawResource(Resource):
+    """POST /api/transport/applications/<int:application_id>/withdraw"""
+
+    @login_required
+    def post(self, application_id):
+        """Withdraw an application (driver only)"""
+        from app.transport.services.marketplace_service import get_marketplace_service
+        from app.transport.models import DriverVehicleApplication, DriverProfile
+        
+        # Verify the current user is the driver for this application
+        application = DriverVehicleApplication.query.join(DriverProfile).filter(
+            DriverVehicleApplication.id == application_id,
+            DriverProfile.user_id == current_user.id,
+            DriverVehicleApplication.is_deleted == False
+        ).first()
+        
+        if not application:
+            return {"success": False, "error": "Application not found or not authorized"}, 404
+        
+        # Check if withdrawal is allowed
+        if application.status not in [ApplicationStatus.PENDING, ApplicationStatus.UNDER_REVIEW]:
+            return {"success": False, "error": "Cannot withdraw application in current status"}, 400
+        
+        try:
+            marketplace_service = get_marketplace_service()
+            success = marketplace_service.withdraw_application(
+                application_id=application_id,
+                driver_user_id=current_user.id
+            )
+            
+            if not success:
+                return {"success": False, "error": "Failed to withdraw application"}, 400
+            
+            return {
+                "success": True,
+                "message": "Application withdrawn",
+                "data": {
+                    "application_id": application.id,
+                    "status": ApplicationStatus.WITHDRAWN.value
+                }
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}, 500

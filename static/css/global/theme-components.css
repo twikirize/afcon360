@@ -216,7 +216,7 @@
 }
 .alert-warning {
   background-color: rgba(var(--warning-rgb), 0.1);
-  color: var(--warning);
+  color: #b88605;
 }
 
 /* ===== NAVIGATION ===== */
@@ -308,7 +308,7 @@
   color: var(--danger) !important;
 }
 .text-warning {
-  color: var(--warning) !important;
+  color: #b88605 !important;
 }
 .text-muted {
   color: var(--text-muted) !important;

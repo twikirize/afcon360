@@ -27,7 +27,7 @@ def module_health():
     if not (current_user.is_app_owner() or current_user.has_global_role('super_admin')):
         return jsonify({'error': 'Unauthorized'}), 403
     
-    modules = ['tourism', 'transport', 'accommodation', 'events', 'wallet']
+    modules = ['tourism', 'transport', 'accommodation', 'events', 'wallet', 'geo']
     status = {}
     
     for module in modules:
