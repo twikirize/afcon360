@@ -140,6 +140,18 @@ def is_system_admin(user: "User") -> bool:
     return has_global_role(user, "owner", "super_admin", "admin")
 
 
+def _clear_stale_active_role():
+    """Clear the active role when it is no longer held by the user.
+
+    Called from authorization reads when the stored active role is
+    stale — the write is security-motivated (a revoked role must not
+    remain selected), but centralizing it here keeps the side effect
+    visible and testable.
+    """
+    from flask import session
+    session.pop("active_global_role", None)
+
+
 def has_global_role(user: "User", *role_names: str) -> bool:
     """
     Return ``True`` if the user holds **any** of the named global roles.
@@ -175,7 +187,7 @@ def has_global_role(user: "User", *role_names: str) -> bool:
             return active_role in role_names
         else:
             # Role was likely revoked; clear stale session state
-            session.pop("active_global_role", None)
+            _clear_stale_active_role()
 
     # Default behavior: check all assigned roles
     role_set = frozenset(role_names)
@@ -227,7 +239,7 @@ def _get_user_global_role_ids(user: "User") -> list:
                 return [ur.role.id]
         
         # Fallback if session role is missing from user object
-        session.pop("active_global_role", None)
+        _clear_stale_active_role()
         
     ids = []
     for ur in (user.roles or []):
