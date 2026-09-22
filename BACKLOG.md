@@ -2754,11 +2754,24 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 
 ---
 
+## BL-14 - Fresh installs start with rate limiting enabled (opt-out instead of opt-in)
+
+- Status: Not started
+- Raised: 2026-09-22 (U-session, U-07 investigate-first; no code changed)
+- Context: RateLimitService.is_enabled() returns get_setting('enabled', True) (app/admin/owner/rate_limit_service.py:88), but the default-arg is a red herring — it is NEVER consulted for 'enabled'. get_setting (rate_limit_service.py:27-35) calls RateLimitSettings.get_settings(), which auto-creates the singleton row with enabled=True on first read (app/admin/owner/models.py:149-154,168-169); getattr(settings, 'enabled', default) then always finds the mapped column. So a fresh install writes enabled=True before any default can apply. Changing the default-arg True→False would have zero effect (U-07 Q1: NO).
+- What needs to happen (pending decision): one-line code fix — models.py:154 auto-create enabled=True → enabled=False. Optionally align the column default (models.py:117 default=True → False) via a future migration so fresh-schema DDL agrees; not required for the behavior fix since auto-create passes the value explicitly. Blast radius: fresh installs only (existing DBs already have a row; update_settings touches supplied keys only). Dev/local/testing already force the limiter off (app/__init__.py:703-706), so only fresh prod-like deploys change behavior — which is the intent (opt-in). No docstring, comment, or migration justifies the current default-on (U-07 Q3: none found; migrations/versions has zero hits for rate_limit_settings).
+- Owner/area: Rate limiting (app/admin/owner/)
+- Authorization: Not authorized (record only)
+- Evidence/source: U-07 trace (T1-T4, Q1-Q3); rate_limit_service.py:27-35,86-88; models.py:117,149-170
+- Links: app/__init__.py:700-710 (per-request limiter toggle)
+
+---
+
 ## BL-13 — Transport driver-assigned notification payload defects (DEFERRED / NOTIFICATIONS)
 
 - Status: Not started
 - Raised: 2026-09-22 (transport S-session, S-14 report-only)
-- Context: NotificationService.send_transport_notification (app/notifications/services.py:562-596) works and addresses the rider, but its payload for transport bookings has four defects, all reproduced 2026-09-22 against the real function with a stubbed Booking (id=12345, dict pickup_location, reference TR260922JLR0K0): (1) line 586 data['booking_id'] = booking.id exposes the internal BigInteger ID (§12.1); (2) line 593 link = f"/transport/bookings/{booking.id}" puts the same internal ID in a rider-visible URL — the public convention is booking_reference (e.g. TR260922JLR0K0); information exposure, not cosmetic; (3) lines 583-584 interpolate booking.pickup_location raw, rendering as "{'address': 'Nakawa, Kampala'}" instead of readable text; (4) line 587 booking.booking_code and line 590 booking.scheduled_time do not exist on transport Booking (verified: no such columns/attrs) and silently yield '' via hasattr guards — dead fields. Rider IS addressed (user_id plumbed to cls.send, which persists a Notification row; delivery still gated by PreferenceService opt-out).
+- Context: NotificationService.send_transport_notification (app/notifications/services.py:562-596) works and addresses the rider, but its payload for transport bookings has four defects, all reproduced 2026-09-22 against the real function with a stubbed Booking (id=12345, dict pickup_location, reference TR260922JLR0K0): (1) line 586 data['booking_id'] = booking.id exposes the internal BigInteger ID (§12.1); (2) line 593 link = f"/transport/bookings/{booking.id}" puts the same internal ID in a rider-visible URL — the public convention is booking_reference (e.g. TR260922JLR0K0); information exposure, not cosmetic; (3) lines 583-584 interpolate booking.pickup_location raw, rendering as "{'address': 'Nakawa, Kampala'}" instead of readable text; (4) line 587 booking.booking_code and line 590 booking.scheduled_time do not exist on transport Booking (verified: no such columns/attrs) and silently yield '' via hasattr guards — dead fields. Rider IS addressed (user_id plumbed to cls.send, which persists a Notification row; delivery still gated by PreferenceService opt-out). Cosmetic: message renders the raw type string ("has been driver_assigned").
 - What needs to happen: replace booking.id with booking.booking_reference in both data and link; extract readable text from pickup_location via the pickup_location_text property; remove dead booking_code / scheduled_time references. Owner is the notifications module — no transport-side change (assignment_service._notify_assigned call stays as-is).
 - Owner/area: Notifications
 - Authorization: Not authorized (record only)
