@@ -740,6 +740,7 @@
   <input type="hidden" name="csrf_token"        value="{{ raw_csrf_token }}">
   <input type="hidden" name="provider_type"     value="individual_driver">
   <input type="hidden" name="currency"          value="USD">
+  <input type="hidden" name="idempotency_key" id="hIdempotencyKey" value="">
   <input type="hidden" name="passenger_count"   id="hPassengerCount" value="1">
   <input type="hidden" name="luggage_count"     id="hLuggageCount"   value="0">
   <input type="hidden" name="pickup_time"       id="hPickupTime"     value="">
@@ -1294,6 +1295,13 @@
     state.stage = stage;
     stages.forEach(function(s){
       s.classList.toggle('is-active', s.dataset.state === stage);
+      if (stage === 'c') {
+        var idem = document.getElementById('hIdempotencyKey');
+        if (idem && !idem.value) {
+          idem.value = (crypto.randomUUID ? crypto.randomUUID()
+            : 'idem-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+        }
+      }
     });
     if (stage === 'a' && window.__boltMapInvalidate) {
       window.__boltMapInvalidate();
