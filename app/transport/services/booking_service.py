@@ -984,13 +984,35 @@ class BookingService:
     # =========================================================
 
     def _calculate_cancellation_fee(self, booking: Booking) -> Decimal:
-        hours = (booking.pickup_time - datetime.now(timezone.utc)).total_seconds() / 3600
-        if hours > 24:
-            return Decimal("0.0")
-        elif hours > 2:
-            return booking.final_price * Decimal("0.1")
-        else:
-            return booking.final_price * Decimal("0.5")
+        """Cancellation fee tiers with a 5-minute immediate-cancel grace.
+
+        A booking whose pickup_time is within 5 minutes of now (including
+        pickups already at or before now) is "just booked, cancelled
+        immediately" and assessed no fee. Beyond that window, the tiers
+        apply against the time remaining until pickup.
+        """
+        now = datetime.now(timezone.utc)
+        pickup = booking.pickup_time
+        if pickup is None:
+            return Decimal("0.00")
+        if pickup.tzinfo is None:
+            pickup = pickup.replace(tzinfo=timezone.utc)
+
+        hours_before = (pickup - now).total_seconds() / 3600.0
+        final_price = booking.final_price or Decimal("0.00")
+
+        # 5-minute immediate-cancel grace window (matches the
+        # pickup_time > created_at - INTERVAL '5 minutes' sanity bound).
+        if hours_before <= (5.0 / 60.0):
+            return Decimal("0.00")
+
+        if hours_before > 24:
+            return Decimal("0.00")
+        if hours_before > 4:
+            return final_price * Decimal("0.10")
+        if hours_before > 2:
+            return final_price * Decimal("0.25")
+        return final_price * Decimal("0.50")
 
     def _generate_booking_code(self) -> str:
         letters = ''.join(random.choices(string.ascii_uppercase, k=3))
