@@ -25,7 +25,7 @@ TERMINOLOGY (CRITICAL):
     NEVER use wallet balance for booking eligibility
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional, List, Dict, Any
 from decimal import Decimal
@@ -1168,10 +1168,9 @@ class Booking(TransportBase):
     @property
     def is_upcoming(self):
         """Check if booking is upcoming"""
-        from datetime import datetime, timezone
         return (
-                self.status in [BookingStatus.CONFIRMED, BookingStatus.ASSIGNED, BookingStatus.DRIVER_EN_ROUTE] and
-                self.pickup_time > datetime.now(timezone.utc)
+                self.status in [BookingStatus.CONFIRMED, BookingStatus.ASSIGNED, BookingStatus.DRIVER_EN_ROUTE, BookingStatus.PICKUP_ARRIVED, BookingStatus.IN_PROGRESS] and
+                self.pickup_time > datetime.now(timezone.utc) - timedelta(minutes=2)
         )
 
     @property
