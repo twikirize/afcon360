@@ -38,3 +38,22 @@ That is the entire answer.
 **Ready when you are.** Write the Fix 1.1 contract next and I'll review it before you hand it to the agent. That is the next real step, and it is the same step it has been for the last several messages. The book, the playbook, the operating system — all three are now complete enough to run the first fix.
 
 Run it.
+
+---
+
+## Agent-Behaviour Rule (learned during Fix 1.1)
+
+When a fix test fails and the failure is NOT caused by a Scope-In file,
+do NOT edit shared scaffolding (`tests/conftest.py`, fixtures, DB state)
+to make it pass. The cause is almost always test-state leakage that must
+be handled inside the fix's own test file.
+
+Concrete Fix-1.1 example: `_isolate_db` deliberately skips auto-cleanup
+for `@pytest.mark.threaded` tests (conftest.py:584). The established
+convention is that threaded tests self-clean every row they create
+(`tests/test_transport_concurrent_claim.py _delete`). A threaded test
+using a FIXED `idempotency_key` leaked its Booking row between runs; the
+global unique index `ix_booking_idem` then collided with the next run's
+fresh `test_user`, producing an `IntegrityError` in the service and what
+looks like a service failure. The fix was in the test file only: unique
+per-run keys + `_cleanup_key` in a `finally` block.
