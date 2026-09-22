@@ -960,8 +960,8 @@ class Booking(TransportBase):
 
         # Business rules
         CheckConstraint(
-            "pickup_time > created_at",
-            name="chk_pickup_time_future"
+            "pickup_time > created_at - INTERVAL '5 minutes'",
+            name="ck_pickup_time_sane"
         ),
         CheckConstraint(
             "passenger_count > 0 AND passenger_count <= 100",
@@ -1086,7 +1086,7 @@ class Booking(TransportBase):
 
     # Assignment
 
-    assigned_driver_id = db.Column(db.BigInteger, db.ForeignKey("driver_profiles.id"))
+    assigned_driver_id = db.Column(db.BigInteger)
     assigned_vehicle_id = db.Column(db.BigInteger, db.ForeignKey("transport_vehicles.id"))
     assigned_route_id = db.Column(db.BigInteger,db.ForeignKey("transport_scheduled_routes.id", ondelete='SET NULL'))
 
