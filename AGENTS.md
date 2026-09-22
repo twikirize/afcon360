@@ -891,11 +891,18 @@ Authoritative wording stays in the cited section.
 | Create a revision | `python scripts/create_migration.py "<desc>"` (keeps IDs short) |
 | Migration fails / stuck state | `flask db current` / `flask db heads`; `flask db stamp <head_id>` only after fixing the root cause |
 | CHECK-constraint drift (Alembic blind spot — see §20.2) | `python scripts/sync_check_constraints.py --dry-run` → `--accept-model-truth --message "<desc>"` → `flask db upgrade` |
+| FK/column type changes | `python scripts/generate_migration.py "<desc>"` (wrapper for `flask db migrate`) |
 
-`flask db migrate` does NOT detect CHECK-constraint changes. Any work that
-adds, removes, or edits a `CheckConstraint` (named `ck_*`), including
-enum-driven ones like `app/notifications/models.py`, MUST go through
-`scripts/sync_check_constraints.py`. See §20.2.
+**Migration detection rules:**
+
+- `flask db migrate` (via `compare_type=True` in `env.py`) detects column type changes, FK constraint additions/removals, and index changes.
+- `flask db migrate` does NOT detect `CheckConstraint` changes (Alembic autogenerate blind spot).
+- CheckConstraint changes MUST go through `scripts/sync_check_constraints.py`.
+- **Constraint names must start with `ck_`** to be managed by `sync_check_constraints.py`. Names starting with `chk_` are invisible to the sync tool. Always use `ck_` prefix for model CheckConstraints.
+- **Do NOT add `compare_server_default=True` to `env.py`.** It causes `psycopg2.errors.UndefinedFunction: operator does not exist: json = unknown` on JSONB columns.
+- `flask db migrate` may report "No changes in schema detected" even when model FK definitions change, if the DB already has the equivalent constraint via `ForeignKeyConstraint` in `__table_args__`. Always verify with `inspect(db.engine).get_foreign_keys()` against the model metadata.
+
+`scripts/generate_migration.py` is a thin wrapper around `flask db migrate`. It runs the command with the project's working directory. Use it or `flask db migrate` directly — both produce the same result.
 
 Never patch a migration file as a workaround — fix the model/source first.
 

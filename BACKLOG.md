@@ -2725,3 +2725,29 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 - **Authorization:** NOT AUTHORIZED (record only)
 - **Evidence/source:** S-session triage
 - **Links:** `app/transport/services/payment_methods.py`, `app/transport/services/payment_service.py`
+
+---
+
+## BL-11: Normalize Booking.created_at to TIMESTAMPTZ
+
+- Status: Not started
+- Raised: 2026-09-22
+- Context: Booking.created_at is TIMESTAMP WITHOUT TIME ZONE while Booking.pickup_time is TIMESTAMP WITH TIME ZONE. The constraint ck_pickup_time_sane compares the two across a type boundary, so Postgres coerces created_at using the DB session TZ. In dev that's benign; in prod with a different session TZ the 5-minute grace window silently shifts by the offset.
+- What needs to happen: ALTER COLUMN transport_bookings.created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE '<app write TZ>', plus verification that the constraint still behaves as intended. Audit other naive/aware column pairs across the schema for the same class of bug (BaseModel.created_at is shared).
+- Owner/area: Transport / Data model
+- Authorization: Not authorized (record only)
+- Evidence/source: app/transport/models.py (BaseModel + Booking column defs), ck_pickup_time_sane constraint
+- Links: ck_pickup_time_sane constraint, BaseModel.created_at
+
+---
+
+## BL-12 — Non-cash payment methods return HTTP 500 (DEFERRED / TRANSPORT)
+
+- Status: Not started
+- Raised: 2026-09-22 (transport S-session, S-09)
+- Context: PaymentService._process_online_payment raises RuntimeError (if PAYMENT_PROCESSING_ENABLED=false) or NotImplementedError (if true). Any booking with payment_method = card, mobile_money, or bank_transfer fails with a 500. payment_methods.py only advertises cash and wallet, so the UI never offers the broken methods — but the DB column accepts any string, and the API does not defend against it. Overlaps BL-02 (gateway integration) and BL-10 (method adapters): all three describe the same missing-integration gap from different angles — merge on the production pass.
+- What needs to happen: Integrate a real payment gateway (Flutterwave, Paystack, or Stripe depending on market). Route by payment_method to the correct adapter. Support initiate → authorize → capture flow with webhook confirmation. Feature-gate each method via TransportSetting.
+- Owner/area: Transport / Payments
+- Authorization: Not authorized (record only)
+- Evidence/source: app/transport/services/payment_service.py, app/transport/services/payment_methods.py
+- Links: PAYMENT_PROCESSING_ENABLED config, TransportSetting feature gate
