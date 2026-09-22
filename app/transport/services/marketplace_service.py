@@ -298,32 +298,84 @@ class VehicleMarketplaceService:
         logger.info(f"Application submitted: application_id={application.id}, listing_id={listing_id}")
         return application
     
+    @staticmethod
+    def _normalize_tier(tier) -> Optional[str]:
+        """Return the canonical lowercase value of a VerificationTier.
+
+        Accepts:
+            - None                               -> None
+            - VerificationTier.BASIC_VERIFIED    -> 'basic_verified'
+            - 'basic_verified'                   -> 'basic_verified'
+            - 'BASIC_VERIFIED'                   -> 'basic_verified'
+            - 'VerificationTier.BASIC_VERIFIED'  -> 'basic_verified'
+        Returns None if the value cannot be mapped.
+        """
+        if tier is None:
+            return None
+        if hasattr(tier, "value"):
+            return str(tier.value).lower()
+        s = str(tier).strip().lower()
+        if "." in s:
+            s = s.rsplit(".", 1)[-1]
+        return s or None
+
     def _check_driver_eligibility(self, driver: DriverProfile, listing: VehicleMarketplaceListing) -> bool:
-        """Check if driver meets listing requirements"""
-        # Verification tier check
-        tier_order = ['pending', 'basic_verified', 'platform_verified', 'event_certified']
-        if tier_order.index(driver.verification_tier.value) < tier_order.index(listing.required_verification_tier):
+        """Return True if the driver meets every requirement on the listing.
+
+        Never raises. Missing or malformed data on either side is treated as
+        "requirement not met" — the caller (submit_application) already
+        surfaces a generic ineligibility error to the applicant.
+        """
+        tier_order = ("pending", "basic_verified", "platform_verified", "event_certified")
+
+        # ── 1. Verification tier ──────────────────────────────────────────
+        driver_tier = self._normalize_tier(driver.verification_tier)
+        required_tier = self._normalize_tier(listing.required_verification_tier)
+
+        if driver_tier is None or required_tier is None:
+            logger.warning(
+                "Marketplace eligibility: missing tier "
+                "driver_id=%s driver_tier=%r listing_id=%s required_tier=%r",
+                getattr(driver, "id", None),
+                driver.verification_tier,
+                getattr(listing, "id", None),
+                listing.required_verification_tier,
+            )
             return False
-        
-        # Rating check
-        if driver.average_rating and driver.average_rating < listing.min_rating:
+
+        try:
+            driver_rank = tier_order.index(driver_tier)
+            required_rank = tier_order.index(required_tier)
+        except ValueError:
+            logger.warning(
+                "Marketplace eligibility: unknown tier value "
+                "driver_tier=%r required_tier=%r",
+                driver_tier, required_tier,
+            )
             return False
-        
-        # Experience check (would need experience_years field on driver)
-        # For now, skip if not implemented
-        
-        # Service type check
-        if listing.required_service_types:
-            driver_services = driver.service_types or []
-            if not any(s in driver_services for s in listing.required_service_types):
+
+        if driver_rank < required_rank:
+            return False
+
+        # ── 2. Rating ────────────────────────────────────────────────────
+        if driver.average_rating is not None and listing.min_rating is not None:
+            if driver.average_rating < listing.min_rating:
                 return False
-        
-        # Vehicle class check
-        if listing.required_vehicle_classes:
-            driver_classes = driver.vehicle_classes or []
-            if not any(vc in driver_classes for vc in listing.required_vehicle_classes):
+
+        # ── 3. Service types (JSONB list of strings) ─────────────────────
+        required_services = listing.required_service_types or []
+        if required_services:
+            driver_services = {str(s).lower() for s in (driver.service_types or [])}
+            if not any(str(s).lower() in driver_services for s in required_services):
                 return False
-        
+
+        # ── 4. Vehicle classes (JSONB list of strings) ───────────────────
+        required_classes = listing.required_vehicle_classes or []
+        if required_classes:
+            driver_classes = {str(c).lower() for c in (driver.vehicle_classes or [])}
+            if not any(str(c).lower() in driver_classes for c in required_classes):
+                return False
+
         return True
     
     def _auto_approve_application(self, application: DriverVehicleApplication) -> bool:
@@ -535,16 +587,30 @@ class VehicleMarketplaceService:
         user_id: int,
         reason: str
     ) -> bool:
-        """Terminate a contract with notice period"""
+        """Terminate an ACTIVE contract.
+
+        Both the contracted DRIVER (identified by their User.id) and the
+        vehicle OWNER (identified by User.id) may terminate. The two
+        identities live in different tables -- ``contract.driver_id`` is a
+        ``DriverProfile.id`` and ``contract.owner_id`` is a ``User.id`` --
+        so the driver's User.id must be resolved before comparison.
+        """
         contract = VehicleContract.query.filter_by(
             id=contract_id, is_deleted=False
         ).first()
-        
+
         if not contract:
             return False
-        
-        # Verify user is either driver or owner
-        if contract.driver_id != user_id and contract.owner_id != user_id:
+
+        # Resolve the driver's User.id. contract.driver_id points at
+        # DriverProfile, not User.
+        driver_profile = db.session.get(DriverProfile, contract.driver_id)
+        driver_user_id = driver_profile.user_id if driver_profile else None
+
+        is_owner = (contract.owner_id == user_id)
+        is_driver = (driver_user_id is not None and driver_user_id == user_id)
+
+        if not (is_owner or is_driver):
             return False
         
         if contract.status != ContractStatus.ACTIVE:
@@ -725,24 +791,47 @@ class VehicleMarketplaceService:
         driver_id: int,
         limit: int = 10
     ) -> List[VehicleMarketplaceListing]:
-        """Get recommended listings for a driver"""
+        """Get recommended listings for a driver.
+
+        Tier eligibility is evaluated in Python using the canonical
+        tier_order (same as _check_driver_eligibility) because a SQL
+        string comparison on the enum does not match tier rank.
+        """
         driver = DriverProfile.query.filter_by(user_id=driver_id, is_deleted=False).first()
         if not driver:
             return []
-        
-        # Simple recommendation: active listings matching driver's capabilities
+
+        tier_order = ("pending", "basic_verified", "platform_verified", "event_certified")
+        driver_tier = self._normalize_tier(driver.verification_tier)
+        if driver_tier not in tier_order:
+            return []
+        driver_rank = tier_order.index(driver_tier)
+
+        # Candidate listings from SQL (no tier filter here — rank
+        # comparison happens in Python below).
         query = VehicleMarketplaceListing.query.filter(
             VehicleMarketplaceListing.is_deleted == False,
             VehicleMarketplaceListing.listing_status == 'active',
-            VehicleMarketplaceListing.required_verification_tier <= driver.verification_tier.value
         )
-        
+
         # Exclude owned vehicles
         owned_ids = [v.id for v in driver.owned_vehicles or []]
         if owned_ids:
             query = query.filter(~VehicleMarketplaceListing.vehicle_id.in_(owned_ids))
-        
-        return query.order_by(desc(VehicleMarketplaceListing.listed_at)).limit(limit).all()
+
+        candidates = query.order_by(desc(VehicleMarketplaceListing.listed_at)).all()
+
+        recommended = []
+        for listing in candidates:
+            required_tier = self._normalize_tier(listing.required_verification_tier)
+            if required_tier not in tier_order:
+                continue
+            if tier_order.index(required_tier) <= driver_rank:
+                recommended.append(listing)
+                if len(recommended) >= limit:
+                    break
+
+        return recommended
     
     def get_listing_details(
         self,
