@@ -266,11 +266,10 @@ class PromotionService:
             metadata.setdefault('promo_codes', []).append(promo_code)
             booking.booking_metadata = metadata
 
-            # Recalculate final price if already set
-            if booking.final_price:
-                booking.final_price = booking.final_price - discount_amount
-            elif booking.base_price:
-                booking.final_price = booking.base_price - discount_amount
+            # NOTE: final_price is NOT adjusted here. It is derived from
+            # components (including promotion_discount) by the fare engine
+            # on the next recompute; decrementing it here as well would
+            # apply the discount twice.
 
             db.session.commit()
 
