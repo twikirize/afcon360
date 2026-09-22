@@ -12,7 +12,7 @@ from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
-from app.transport.models import Booking
+from app.transport.models import Booking, BookingStatus
 from app.utils.exceptions import ValidationError, NotFoundError
 from app.utils.monitoring import monitor_endpoint, record_metric
 from app.utils.security import sanitize_input
@@ -99,9 +99,14 @@ class PromotionService:
             # Check if user-specific and first ride
             if promo_details.get('first_ride_only') and customer_id:
                 # Check if user has taken a ride before
-                has_previous_rides = Booking.query.filter_by(
-                    customer_id=customer_id,
-                    status__in=['completed', 'paid']
+                has_previous_rides = Booking.query.filter(
+                    Booking.user_id == customer_id,
+                    Booking.status.in_([
+                        BookingStatus.COMPLETED,
+                        BookingStatus.CONFIRMED,
+                        BookingStatus.IN_PROGRESS,
+                    ]),
+                    Booking.is_deleted == False,  # noqa: E712
                 ).count() > 0
 
                 if has_previous_rides:
