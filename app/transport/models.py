@@ -35,6 +35,7 @@ import hashlib
 import secrets
 import uuid as uuid_lib
 
+import sqlalchemy as sa
 from sqlalchemy import (
     Index, UniqueConstraint, CheckConstraint, Enum as SQLEnum,
     ForeignKeyConstraint, event, and_,
@@ -1563,8 +1564,17 @@ class ScheduledRoute(TransportBase):
 
     def can_accommodate(self, passenger_count: int) -> bool:
         """Check if route can accommodate additional passengers"""
-        self.update_availability()
-        return self.available_seats >= passenger_count
+        locked = db.session.execute(
+            sa.select(ScheduledRoute)
+            .where(ScheduledRoute.id == self.id)
+            .with_for_update()
+        ).scalar_one()
+        confirmed = db.session.query(func.sum(Booking.passenger_count)).filter(
+            Booking.assigned_route_id == self.id,
+            Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.ASSIGNED]),
+            Booking.is_deleted == False,
+        ).scalar() or 0
+        return (locked.vehicle_capacity - confirmed) >= passenger_count
 
 
 # ===========================================================================
