@@ -10,7 +10,7 @@ import logging
 import sqlalchemy as sa
 from flask import current_app
 from sqlalchemy import func
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
 from app.extensions import db, cache
 from app.transport.models import (
@@ -338,6 +338,36 @@ class BookingService:
             record_metric("booking_creation", tags={"status": "failed", "error_type": "validation"}, value=1)
             raise
 
+        except IntegrityError:
+            # Concurrent same-key race: two threads passed the dedupe check,
+            # one INSERT won, this one hit the partial unique index. The
+            # winner's booking exists — return it as a replay.
+            db.session.rollback()
+            if key:
+                winner = Booking.query.filter_by(
+                    idempotency_key=key,
+                    user_id=customer_id,
+                    is_deleted=False,
+                ).first()
+                if winner is not None:
+                    winner.booking_metadata = winner.booking_metadata or {}
+                    winner.booking_metadata["idempotent_replay"] = True
+                    winner.booking_metadata["replayed_at"] = (
+                        datetime.now(timezone.utc).isoformat()
+                    )
+                    db.session.commit()
+                    return {
+                        "success": True,
+                        "message": "Booking already exists (concurrent replay)",
+                        "data": {
+                            "booking_id": winner.id,
+                            "booking_reference": winner.booking_reference,
+                            "idempotent_replay": True,
+                        },
+                    }
+            logger.error("IntegrityError with no key — cannot recover", exc_info=True)
+            raise ServiceUnavailableError("Booking service temporarily unavailable")
+
         except SQLAlchemyError as e:
             db.session.rollback()
             logger.error(f"Database error in booking creation: {e}", exc_info=True)
@@ -488,19 +518,46 @@ class BookingService:
             return []
 
     @monitor_endpoint("get_user_bookings")
-    def get_user_bookings(self, user_id: int, limit: int = 5) -> List[Dict[str, Any]]:
-        """Get the most recent bookings scoped to a single authenticated user.
+    def get_user_bookings(
+        self,
+        user_id: int,
+        limit: int = 5,
+        *,
+        include_cancelled: bool = False,
+        include_draft: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Recent bookings for one authenticated user.
+
+        Default excludes bookings that never became rides:
+          * CANCELLED — user withdrew, no trip happened
+          * DRAFT     — never submitted, only a skeleton
+
+        Callers that need the full history (e.g. My Trips list) can opt in
+        via ``include_cancelled=True`` / ``include_draft=True``.
 
         Used by the Transport front page to render a truthful, user-scoped
         Recent Rides list. Never returns another user's bookings.
         """
         try:
-            bookings = Booking.query.filter(
+            query = Booking.query.filter(
                 Booking.user_id == user_id,
                 Booking.is_deleted == False  # noqa: E712
-            ).order_by(
-                Booking.created_at.desc()
-            ).limit(limit).all()
+            )
+
+            excluded: List[BookingStatus] = []
+            if not include_cancelled:
+                excluded.append(BookingStatus.CANCELLED)
+            if not include_draft:
+                excluded.append(BookingStatus.DRAFT)
+            if excluded:
+                query = query.filter(~Booking.status.in_(excluded))
+
+            bookings = (
+                query
+                .order_by(
+                    Booking.created_at.desc()
+                ).limit(limit).all()
+            )
             # Build the light-weight dict explicitly (Booking.to_dict depends on
             # app.core.serializers.ModelSerializer which is not present).
             routes = []
@@ -774,7 +831,17 @@ class BookingService:
 
     @monitor_endpoint("get_driver_earnings")
     def get_driver_earnings(self, driver_user_id: int) -> float:
-        """Get total earnings for a driver from completed bookings."""
+        """Total driver earnings across completed + captured bookings.
+
+        Applies the driver's commission_rate (percentage the PLATFORM keeps)
+        so the returned number is the driver's payout, not the gross fare the
+        rider paid.
+
+        Note: commission_rate lives on DriverProfile, not per-booking. If the
+        rate changes over time, historical completed bookings are recomputed
+        at the current rate. Snapshotting the rate per booking is deferred
+        (see S-18).
+        """
         try:
             from app.transport.models import DriverProfile
             profile = DriverProfile.query.filter_by(
@@ -782,13 +849,38 @@ class BookingService:
             ).first()
             if not profile:
                 return 0.0
-            earnings = db.session.query(func.sum(Booking.final_price)).filter(
-                Booking.assigned_driver_id == profile.id,
-                Booking.status == BookingStatus.COMPLETED,
-                Booking.payment_status == PaymentStatus.CAPTURED,
-                Booking.is_deleted == False,  # noqa: E712
-            ).scalar() or 0
-            return float(earnings)
+
+            gross = (
+                db.session.query(func.sum(Booking.final_price))
+                .filter(
+                    Booking.assigned_driver_id == profile.id,
+                    Booking.status == BookingStatus.COMPLETED,
+                    Booking.payment_status == PaymentStatus.CAPTURED,
+                    Booking.is_deleted == False,  # noqa: E712
+                )
+                .scalar()
+                or 0
+            )
+            gross = float(gross)
+            if gross <= 0:
+                return 0.0
+
+            rate = profile.commission_rate
+            if rate is None:
+                rate_pct = 15.0
+            else:
+                try:
+                    rate_pct = float(rate)
+                except (TypeError, ValueError):
+                    rate_pct = 15.0
+
+            if rate_pct < 0:
+                rate_pct = 0.0
+            elif rate_pct > 100:
+                rate_pct = 100.0
+
+            return round(gross * (1.0 - rate_pct / 100.0), 2)
+
         except Exception as e:
             logger.error(f"Error getting driver earnings: {e}", exc_info=True)
             return 0.0
