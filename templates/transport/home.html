@@ -1209,6 +1209,7 @@ body { overflow-x: hidden; background: #F5F5F5; }
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="service_type"    value="{{ selected_service or 'on_demand' }}">
       <input type="hidden" name="provider_type"   value="individual_driver">
+      <input type="hidden" name="idempotency_key" id="hIdempotencyKey" value="">
       <input type="hidden" name="passenger_count" value="1">
       <input type="hidden" name="luggage_count"   value="0">
       <input type="hidden" name="currency"        value="USD">
@@ -1774,6 +1775,13 @@ body { overflow-x: hidden; background: #F5F5F5; }
     state.stage = stage;
     stages.forEach(function (s) {
       s.classList.toggle('is-active', s.dataset.state === stage);
+      if (stage === 'c') {
+        var idem = document.getElementById('hIdempotencyKey');
+        if (idem && !idem.value) {
+          idem.value = (crypto.randomUUID ? crypto.randomUUID()
+            : 'idem-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+        }
+      }
     });
     backBtn.classList.toggle('is-visible', stage !== 'a');
     var mapSection = document.querySelector('.bolt-map-section');
