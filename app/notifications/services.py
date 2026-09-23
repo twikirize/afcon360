@@ -575,22 +575,27 @@ class NotificationService:
             'cancelled': NotificationType.BOOKING_CANCELLED,
         }
         nt = type_map.get(notification_type, NotificationType.BOOKING_UPDATE)
+        human_type = notification_type.replace('_', ' ')
+        ref = getattr(booking, 'booking_reference', None)
+        pickup_text = getattr(booking, 'pickup_location_text', None)
+        if not pickup_text:
+            raw_pickup = getattr(booking, 'pickup_location', None)
+            pickup_text = raw_pickup if isinstance(raw_pickup, str) else str(raw_pickup or '')
 
         return cls.send(
             user_id=user_id,
             notification_type=nt,
             title=f"Transport {notification_type.replace('_', ' ').title()}",
-            message=f"Your transport booking has been {notification_type}. "
-                    f"Pickup: {booking.pickup_location or 'TBD'}",
+            message=f"Your transport booking has been {human_type}. "
+                    f"Pickup: {pickup_text or 'TBD'}",
             data={
-                'booking_id': booking.id,
-                'booking_code': booking.booking_code if hasattr(booking, 'booking_code') else '',
-                'pickup_location': booking.pickup_location or '',
-                'dropoff_location': booking.dropoff_location or '',
-                'scheduled_time': booking.scheduled_time.isoformat() if hasattr(booking, 'scheduled_time') and booking.scheduled_time else '',
+                'booking_id': ref,
+                'pickup_location': pickup_text,
+                'dropoff_location': getattr(booking, 'dropoff_location_text', None)
+                or getattr(booking, 'dropoff_location', ''),
             },
             channels=[channel],
-            link=f"/transport/bookings/{booking.id}",
+            link=f"/transport/bookings/{ref or ''}",
             priority='normal',
             module=NotificationModule.TRANSPORT,
         )
@@ -1498,8 +1503,13 @@ class NotificationService:
         """
         module = cls.module_for_booking(booking)
         ref = getattr(booking, 'booking_reference', getattr(booking, 'booking_code', 'N/A'))
+        is_transport = (module == NotificationModule.TRANSPORT.value)
 
-        guest_id = getattr(booking, 'guest_user_id', None) or getattr(booking, 'customer_id', None)
+        if is_transport:
+            # Transport Booking carries user_id (no guest_user_id).
+            guest_id = getattr(booking, 'user_id', None)
+        else:
+            guest_id = getattr(booking, 'guest_user_id', None) or getattr(booking, 'customer_id', None)
         if guest_id:
             if module == NotificationModule.TRANSPORT.value:
                 cls.send_transport_notification(guest_id, booking, 'confirmed', channel='email')
@@ -1508,13 +1518,15 @@ class NotificationService:
 
         # Supply-side owner: property host (accommodation) or driver (transport).
         host_id = getattr(booking, 'host_user_id', None)
+        # Transport payloads must not expose the internal id (§12.1).
+        public_ref = ref if is_transport else getattr(booking, 'public_id', booking.id)
         if host_id:
             cls.send(
                 user_id=host_id,
                 notification_type=NotificationType.BOOKING_CONFIRMED,
                 title="New Booking Received",
                 message=f"You have a new booking (ref: {ref}).",
-                data={'booking_id': getattr(booking, 'public_id', booking.id)},
+                data={'booking_id': public_ref},
                 channels=['email', 'in_app', 'push'],
                 link="/accommodation/host/bookings",
                 priority='high',
@@ -1525,7 +1537,7 @@ class NotificationService:
             notification_type=NotificationType.BOOKING_CONFIRMED,
             title=f"{MODULE_LABELS.get(module, 'Booking')} Booking Confirmed",
             message=f"Booking {ref} was confirmed.",
-            data={'booking_id': getattr(booking, 'public_id', booking.id)},
+            data={'booking_id': public_ref},
             link=cls.MODULE_ADMIN_LINKS.get(module, '/admin'),
             channels=['in_app'],
             domain=module,
@@ -1955,7 +1967,13 @@ class NotificationService:
 
     @classmethod
     def notify_driver_assigned(cls, booking, driver_name: str = None):
-        guest_id = getattr(booking, 'customer_id', None)
+        module = cls.module_for_booking(booking)
+        is_transport = (module == NotificationModule.TRANSPORT.value)
+        # Transport Booking carries user_id (no customer_id on any module).
+        if is_transport:
+            guest_id = getattr(booking, 'user_id', None)
+        else:
+            guest_id = getattr(booking, 'customer_id', None)
         if guest_id:
             cls.send_transport_notification(guest_id, booking, 'driver_assigned', channel='sms')
         driver_id = getattr(booking, 'driver_id', None)
@@ -1965,16 +1983,17 @@ class NotificationService:
                 notification_type=NotificationType.DRIVER_ASSIGNED,
                 title="New Trip Assigned",
                 message=f"You have been assigned a new trip.",
-                data={'booking_id': booking.id},
+                data={'booking_id': getattr(booking, 'booking_reference', None) if is_transport else booking.id},
                 channels=['in_app', 'push'],
                 link="/transport/driver/dashboard",
                 priority='high',
             )
+        public_ref = getattr(booking, 'booking_reference', None) if is_transport else getattr(booking, 'public_id', booking.id)
         cls._notify_admins(
             notification_type=NotificationType.DRIVER_ASSIGNED,
             title="Driver Assigned",
-            message=f"A driver was assigned to booking #{getattr(booking, 'public_id', booking.id)}.",
-            data={'booking_id': getattr(booking, 'public_id', booking.id), 'driver_name': driver_name},
+            message=f"A driver was assigned to booking #{public_ref}.",
+            data={'booking_id': public_ref, 'driver_name': driver_name},
             link="/transport/admin/dashboard",
             channels=['in_app'],
             domain='transport',

@@ -10,8 +10,10 @@ invents availability, price, or distance.
 import logging
 
 from flask import request
+from flask_login import current_user
 from flask_restful import Resource
 
+from app.extensions import limiter
 from app.transport.models import Currency, VehicleClass
 from app.transport.services import fare_service
 from app.transport.services.availability_service import (
@@ -31,6 +33,17 @@ _DISPLAY_NAMES = {
 }
 
 
+def _rate_limit_key():
+    """Per-caller rate-limit key shared by the public estimate endpoints.
+
+    Authenticated callers are keyed by user id; anonymous callers by IP.
+    Server-side limiter key only — never rendered or exposed.
+    """
+    if current_user.is_authenticated:
+        return f"user:{current_user.id}"
+    return f"ip:{request.remote_addr}"
+
+
 class RideOptionsResource(Resource):
     """POST /api/transport/ride-options
 
@@ -38,6 +51,10 @@ class RideOptionsResource(Resource):
     booking action still goes through transport.book_transport (auth +
     KYC + rate limit unchanged).
     """
+
+    method_decorators = [
+        limiter.limit("30 per minute", key_func=_rate_limit_key),
+    ]
 
     def post(self):
         data = request.get_json(silent=True) or {}

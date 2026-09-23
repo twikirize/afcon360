@@ -22,11 +22,18 @@ import logging
 from flask import request
 from flask_restful import Resource
 
+from app.extensions import limiter
+from app.transport.api.ride_options_routes import _rate_limit_key
+
 logger = logging.getLogger(__name__)
 
 
 class FareEstimateResource(Resource):
     """POST /api/transport/fare/estimate"""
+
+    method_decorators = [
+        limiter.limit("30 per minute", key_func=_rate_limit_key),
+    ]
 
     # NOTE: no @login_required decorator here on purpose (see below).
     def post(self):

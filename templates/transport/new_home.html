@@ -1634,8 +1634,8 @@
       return;
     }
     var handle = window.GeoMap.init('pickMap', {
-      tileUrl: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      attribution: '\u00a9 OpenStreetMap',
+      tileUrl: '{{ tile_url }}',
+      attribution: "{{ tile_attribution|safe }}",
       center: {latitude: 0.3136, longitude: 32.5811},
       zoom: 12
     });

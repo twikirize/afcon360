@@ -119,10 +119,6 @@ body { background: var(--ink); color: var(--text); font-family: 'DM Sans', sans-
     </div>
     <div class="panel-body">
       <form method="POST" action="{{ safe_url('transport.moderate_action', entity_type='driver', id=driver.id, action='reject') }}">
-        <div class="form-group">
-          <label class="form-label">Rejection Reason *</label>
-          <textarea name="reason" class="form-textarea" required placeholder="Explain why this driver is being rejected..."></textarea>
-        </div>
         <div style="display: flex; gap: 12px;">
           <button type="submit" class="btn btn-reject">Confirm Rejection</button>
           <button type="button" onclick="document.getElementById('reject-form').style.display='none'" class="btn btn-ghost">Cancel</button>

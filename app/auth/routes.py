@@ -1754,14 +1754,14 @@ def grant_transport_permission():
 
     # Check if granter is owner or super_admin
     from app.auth.helpers import is_owner
-    if not (is_owner(current_user) or current_user.is_super_admin):
+    if not (is_owner(current_user) or current_user.is_super_admin()):
         flash("Only platform owner or super_admin can grant transport permissions.", "danger")
-        return redirect(url_for("auth.index"))
+        return redirect(url_for("user.dashboard"))
 
     data = request.get_json()
     if not data:
         flash("Invalid request data.", "danger")
-        return redirect(url_for("auth.index"))
+        return redirect(url_for("admin.transport_admin_dashboard"))
 
     grantee_user_id = data.get("grantee_user_id")
     grantee_role = data.get("grantee_role", "")
@@ -1775,7 +1775,7 @@ def grant_transport_permission():
     grantee_user = db.session.get(UserModel, grantee_user_id)
     if not grantee_user:
         flash("Target user not found.", "danger")
-        return redirect(url_for("auth.index"))
+        return redirect(url_for("admin.transport_admin_dashboard"))
 
     # Parse optional expiry
     expires_at = None
@@ -1802,11 +1802,12 @@ def grant_transport_permission():
     )
 
     # Log the permission grant
-    from app.audit.forensic_audit import log_attempt
-    log_attempt(
-        user_id=current_user.id,
+    from app.audit.forensic_audit import ForensicAuditService
+    ForensicAuditService.log_attempt(
+        entity_type="transport_permission",
+        entity_id=str(getattr(perm, "id", grantee_user_id)),
         action="transport_permission_grant",
-        status="success",
+        user_id=current_user.id,
         details={
             "grantee_user_id": grantee_user_id,
             "grantee_role": grantee_role,
@@ -1817,13 +1818,15 @@ def grant_transport_permission():
             },
             "granted_by_user_id": current_user.id,
         },
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string if request.user_agent else None,
     )
 
     flash(
         f"Transport permission granted to user {grantee_user_id} as role '{grantee_role}'.",
         "success",
     )
-    return redirect(url_for("auth.index"))
+    return redirect(url_for("admin.transport_admin_dashboard"))
 
 
 @auth_bp.route("/revoke-transport-permission", methods=["POST"])
@@ -1843,14 +1846,14 @@ def revoke_transport_permission():
 
     # Check if granter is owner or super_admin
     from app.auth.helpers import is_owner
-    if not (is_owner(current_user) or current_user.is_super_admin):
+    if not (is_owner(current_user) or current_user.is_super_admin()):
         flash("Only platform owner or super_admin can revoke transport permissions.", "danger")
-        return redirect(url_for("auth.index"))
+        return redirect(url_for("user.dashboard"))
 
     data = request.get_json()
     if not data or "permission_id" not in data:
         flash("Invalid request data. permission_id required.", "danger")
-        return redirect(url_for("auth.index"))
+        return redirect(url_for("admin.transport_admin_dashboard"))
 
     permission_id = data["permission_id"]
 
@@ -1859,20 +1862,23 @@ def revoke_transport_permission():
 
     if not success:
         flash("Permission not found.", "danger")
-        return redirect(url_for("auth.index"))
+        return redirect(url_for("admin.transport_admin_dashboard"))
 
     # Log the permission revocation
-    from app.audit.forensic_audit import log_attempt
-    log_attempt(
-        user_id=current_user.id,
+    from app.audit.forensic_audit import ForensicAuditService
+    ForensicAuditService.log_attempt(
+        entity_type="transport_permission",
+        entity_id=str(permission_id),
         action="transport_permission_revoke",
-        status="success",
+        user_id=current_user.id,
         details={
             "permission_id": permission_id,
             "revoked_by_user_id": current_user.id,
         },
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string if request.user_agent else None,
     )
 
     flash("Transport permission revoked successfully.", "success")
-    return redirect(url_for("auth.index"))
+    return redirect(url_for("admin.transport_admin_dashboard"))
 

@@ -17,7 +17,10 @@ Org helpers     →  operate on ``user.organisations``  (OrganisationMember
 Owner bypass
 ------------
 The ``owner`` role satisfies every role and permission check
-unconditionally. This is the single place that rule is enforced - every
+unconditionally, except when an active role context is selected
+(``session["active_global_role"]``) — in that case only that
+role is checked, matching the behavior of ``has_global_role``.
+This is the single place that rule is enforced - every
 other check delegates here so the bypass is never duplicated.
 """
 

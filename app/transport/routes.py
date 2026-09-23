@@ -16,6 +16,7 @@ import logging
 from sqlalchemy.orm import joinedload
 
 from flask import render_template, jsonify, request, url_for, flash, redirect, session, abort
+from flask import current_app
 from flask_login import login_required, current_user
 
 from app.extensions import csrf
@@ -187,6 +188,14 @@ _PUBLIC_ENDPOINTS = {
     "transport.driver_dashboard",
     "transport.driver_dashboard_slash",
     "transport.vehicle_marketplace",
+    # Moderator queue — @require_moderator (moderator/admin/super_admin/
+    # owner via has_global_role) is the precise gate, so these pass the
+    # coarse before_request check the same way rider endpoints do.
+    "transport.moderate",
+    "transport.moderate_booking",
+    "transport.moderate_vehicle",
+    "transport.moderate_driver",
+    "transport.moderate_action",
     # Booking passenger/accommodation pane — ownership is enforced
     # inside each handler via _require_ownership.
     "transport.booking_accommodation_pane",
@@ -369,6 +378,8 @@ def home():
             else "on_demand"
         ),
         active_drivers=active_drivers,
+        tile_url=current_app.config["TILE_PROVIDER_URL_TEMPLATE"],
+        tile_attribution=current_app.config["TILE_PROVIDER_ATTRIBUTION"],
     )
 
     return render_template("transport/home.html", **ctx)
@@ -437,6 +448,8 @@ def new_home():
             else "on_demand"
         ),
         active_drivers=active_drivers,
+        tile_url=current_app.config["TILE_PROVIDER_URL_TEMPLATE"],
+        tile_attribution=current_app.config["TILE_PROVIDER_ATTRIBUTION"],
     )
 
     return render_template("transport/new_home.html", **ctx)
@@ -737,9 +750,69 @@ def _compensation_label(listing):
 @module_enabled_required("transport")
 @login_required
 def bookings_index():
-    """Bookings index"""
+    """Rider My Trips list — upcoming and past rides for one user."""
     logger.info(f"Bookings index accessed by user_id={_uid()}")
-    return _json_or_template("transport/bookings/index.html")
+    rides = []
+    try:
+        rides = get_booking_service().get_user_bookings(
+            current_user.id,
+            limit=100,
+            include_cancelled=True,
+            include_draft=True,
+        )
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error loading bookings for user_id={_uid()}: {e}")
+    upcoming, past = _split_rides(rides)
+    return _json_or_template(
+        "transport/bookings/index.html",
+        rides=rides,
+        upcoming=upcoming,
+        past=past,
+    )
+
+
+def _split_rides(rides):
+    """Split light booking dicts into (upcoming, past), newest first.
+
+    Upcoming: live statuses with a pickup_time newer than now - 2 min.
+    Everything else (completed/cancelled/no_show/disputed, missing or
+    past pickup_time) is past. pickup_time arrives as an ISO string
+    (or None) from get_user_bookings.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    live = {
+        "confirmed",
+        "assigned",
+        "driver_en_route",
+        "pickup_arrived",
+        "in_progress",
+    }
+    now = datetime.now(timezone.utc)
+    upcoming, past = [], []
+    for ride in sorted(rides, key=lambda r: r.get("created_at") or "", reverse=True):
+        when = _parse_ride_time(ride.get("pickup_time"))
+        if ride.get("status") in live and when is not None and when > now - timedelta(minutes=2):
+            upcoming.append(ride)
+        else:
+            past.append(ride)
+    return upcoming, past
+
+
+def _parse_ride_time(value):
+    """Parse an ISO datetime string to aware datetime, or None."""
+    if not value:
+        return None
+    from datetime import datetime, timezone
+
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except (ValueError, TypeError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 @transport_bp.route("/bookings/new", methods=["GET"])
@@ -2581,34 +2654,40 @@ def moderate_action(entity_type, id, action):
     
     if action == 'approve':
         if entity_type == 'vehicle':
-            item.verification_status = 'verified'
-            item.verified_at = datetime.now(timezone.utc)
+            item.status = 'active'
+            if hasattr(item, 'verified_at'):
+                item.verified_at = datetime.now(timezone.utc)
+            db.session.commit()
         elif entity_type == 'driver':
-            item.verification_status = 'verified'
-            item.verified_at = datetime.now(timezone.utc)
+            get_provider_service().update_driver_status(id, 'approved')
         elif entity_type == 'booking':
             item.status = 'confirmed'
-        
-        db.session.commit()
+            db.session.commit()
+
         flash(f'{entity_type.capitalize()} approved successfully.', 'success')
     
     elif action == 'reject':
         reason = request.form.get('reason', '').strip()
-        if not reason:
+        # BL-19: only booking persists the reason (cancellation_reason).
+        # Vehicle has no rejection_reason column and update_driver_status
+        # takes no reason, so requiring it for those types was
+        # mandatory-but-discarded input.
+        if entity_type == 'booking' and not reason:
             flash('Rejection reason is required.', 'warning')
             return redirect(redirect_url)
         
         if entity_type == 'vehicle':
-            item.verification_status = 'rejected'
-            item.rejection_reason = reason
+            item.status = 'rejected'
+            if hasattr(item, 'rejection_reason'):
+                item.rejection_reason = reason
+            db.session.commit()
         elif entity_type == 'driver':
-            item.verification_status = 'rejected'
-            item.rejection_reason = reason
+            get_provider_service().update_driver_status(id, 'rejected')
         elif entity_type == 'booking':
             item.status = 'cancelled'
             item.cancellation_reason = reason
-        
-        db.session.commit()
+            db.session.commit()
+
         flash(f'{entity_type.capitalize()} rejected successfully.', 'success')
     
     elif action == 'flag':
@@ -2633,5 +2712,5 @@ def moderate_action(entity_type, id, action):
         else:
             flash(f'Failed to flag: {flag}', 'danger')
     
-    return redirect(url_for('transport.moderate'))
+    return redirect(redirect_url)
 

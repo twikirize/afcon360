@@ -2395,7 +2395,8 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 ---
 
 ## AUTH-REQUIRE-ROLE-FALLBACK — `require_role()` admin bypass via truthy bound method (SECURITY)
-- **Status:** Not started
+- **Status:** Done
+- **Resolved:** 2026-09-23 (SEC-FALLBACK + EGGE critical node; one-line fix decorators.py:280 verified by 7-test matrix + live re-probe; change uncommitted - user to record commit hash on commit)
 - **Raised:** 2026-09-19
 - **Context:** The dynamic-permission fallback inside `require_role()` (`app/auth/decorators.py`) checks `if is_owner(user) or user.is_super_admin: pass`. `User.is_super_admin` is a **method**, so the bound method is always truthy; any authenticated user who fails the named-role check falls through to this branch and is **allowed** (e.g. a plain user passed `@require_role("admin", "super_admin", "owner")` on a GEO health route). Every route gated by `@require_role(...)` with admin roles is therefore effectively open to any logged-in user whenever the primary role check fails. Verified empirically (plain user → 200). The GEO health page was hardened by switching to `@admin_required` (which has no fallback and correctly aborts 403), so GEO is not affected; the shared decorator and all other consumers remain vulnerable.
 - **What needs to happen:** Fix `app/auth/decorators.py` `require_role` fallback to call the method (`user.is_super_admin()`) or use `has_global_role(user, "super_admin", "owner")`; add a regression test asserting a plain authenticated user gets 403 on a `require_role`-gated route. Requires authorization — this is shared auth/security code (HIGH_RISK, §18.2, §23, §34).
@@ -2645,7 +2646,8 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 ---
 
 ## BL-04 — Fix driver-assigned notification payload (DEFERRED / NOTIFICATIONS)
-- **Status:** Not started
+- **Status:** Done
+- **Resolved:** 2026-09-22 (NOTIF-TRANSPORT pass; change uncommitted - user to record commit hash on commit)
 - **Raised:** 2026-09-22 (transport S-session, S-14 report-only)
 - **Context:** `send_transport_notification` exists and sends, but for transport bookings: `data['booking_id'] = booking.id` + `link=/transport/bookings/<id>` expose the internal ID (§12.1); message interpolates raw JSONB `pickup_location` dict; `booking_code`/`scheduled_time` are dead fields (absent on transport Booking, silent `''` via hasattr guards).
 - **What needs to happen:** Use `booking_reference` in data + link; render readable text via the `pickup_location_text` property (M-01); remove dead fields; confirm reference field per module. Cross-module — needs the notifications owner.
@@ -2657,7 +2659,8 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 ---
 
 ## BL-05 — Fix transport booking-created notification routing (DEFERRED / NOTIFICATIONS)
-- **Status:** Not started
+- **Status:** Done
+- **Resolved:** 2026-09-22 (NOTIF-TRANSPORT pass; change uncommitted - user to record commit hash on commit)
 - **Raised:** 2026-09-22 (transport S-session, S-15 investigate-first)
 - **Context:** `notify_booking_confirmed` resolves the rider via `guest_user_id`/`customer_id`, neither of which exists on transport Booking (`user_id`) → the rider is never notified. `_notify_admins` then broadcasts to every admin (12 recipients in dev data) → "12 notifications for one booking" spam.
 - **What needs to happen:** (1) Branch on `module == 'transport'` and resolve the recipient as `booking.user_id` (accommodation/tourism paths untouched). (2) Product decision: is the admin broadcast intended for transport bookings? If not, scope to `domain='transport'` roles or disable for transport.
@@ -2770,7 +2773,8 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 
 ## BL-13 — Transport driver-assigned notification payload defects (DEFERRED / NOTIFICATIONS)
 
-- Status: Not started
+- Status: Done
+- Resolved: 2026-09-22 (NOTIF-TRANSPORT pass; change uncommitted - user to record commit hash on commit)
 - Raised: 2026-09-22 (transport S-session, S-14 report-only)
 - Context: NotificationService.send_transport_notification (app/notifications/services.py:562-596) works and addresses the rider, but its payload for transport bookings has four defects, all reproduced 2026-09-22 against the real function with a stubbed Booking (id=12345, dict pickup_location, reference TR260922JLR0K0): (1) line 586 data['booking_id'] = booking.id exposes the internal BigInteger ID (§12.1); (2) line 593 link = f"/transport/bookings/{booking.id}" puts the same internal ID in a rider-visible URL — the public convention is booking_reference (e.g. TR260922JLR0K0); information exposure, not cosmetic; (3) lines 583-584 interpolate booking.pickup_location raw, rendering as "{'address': 'Nakawa, Kampala'}" instead of readable text; (4) line 587 booking.booking_code and line 590 booking.scheduled_time do not exist on transport Booking (verified: no such columns/attrs) and silently yield '' via hasattr guards — dead fields. Rider IS addressed (user_id plumbed to cls.send, which persists a Notification row; delivery still gated by PreferenceService opt-out). Cosmetic: message renders the raw type string ("has been driver_assigned").
 - What needs to happen: replace booking.id with booking.booking_reference in both data and link; extract readable text from pickup_location via the pickup_location_text property; remove dead booking_code / scheduled_time references. Owner is the notifications module — no transport-side change (assignment_service._notify_assigned call stays as-is).
@@ -2796,7 +2800,8 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 
 ## BL-15 — Transport booking-created notification misroutes to admins only (DEFERRED / NOTIFICATIONS)
 
-- Status: Not started
+- Status: Done
+- Resolved: 2026-09-22 (NOTIF-TRANSPORT pass; change uncommitted - user to record commit hash on commit)
 - Raised: 2026-09-22 (transport S-session, S-15 investigate-first)
 - Context: F1 — replaying _on_transport_booking → notify_booking_confirmed with a stubbed transport Booking (user_id set, no guest/customer/host ids) produces ZERO direct sends and exactly one _notify_admins call (domain='transport', link='/transport/admin/dashboard'). The rider gets nothing; admins get everything. F2 — rider skipped because line 1502 resolves guest_id from guest_user_id/customer_id: transport Booking has neither (verified columns: user_id only), while AccommodationBooking has guest_user_id/host_user_id (customer_id exists on neither module — that fallback is dead everywhere). F3 — _notify_admins resolves CORE_ADMIN_ROLES (owner, super_admin, admin) plus DOMAIN_ROLE_MAP['transport'] (transport_admin) via notify_roles against the dev DB: 12 distinct users, exactly matching the "12 notifications per booking" log evidence. Note: line 1517/1528 data uses getattr(booking, 'public_id', booking.id) — transport Booking has no public_id (verified), so the admin payload also carries the internal id; same §12.1 class as BL-13.
 - What needs to happen: in notify_booking_confirmed, when module == 'transport', resolve the rider as booking.user_id (accommodation/tourism paths untouched). Product decision required on the admin broadcast: keep (intended ops visibility), scope to domain='transport' roles only, or disable for transport. Owner is the notifications module.
@@ -2805,3 +2810,115 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 - Evidence/source: app/notifications/services.py:1502-1533, :2172-2189, :2192-2267; app/notifications/listeners.py:256-260; S-15 probe output (0 sends, 1 admin broadcast, 12 recipients)
 - Links: app/notifications/services.py::notify_booking_confirmed, app/notifications/listeners.py::_on_transport_booking
 - Proposed fix shape (for the notifications pass): (1) In notify_booking_confirmed, when module == 'transport', resolve recipient as booking.user_id. (2) Admin broadcast: pending product decision — keep / scope to domain='transport' roles / disable for transport. (3) Fix getattr(booking, 'public_id', booking.id) → use booking.booking_reference when public_id is absent.
+
+---
+
+## BL-16 — vehicle:update_status permission gate is dead; admin approve route 500s (DEFERRED / TRANSPORT)
+- Status: Not started
+- Raised: 2026-09-22 (transport T-session, T-10 diagnosis)
+- Context: @require_permission('vehicle:update_status') on ProviderService.update_vehicle_status is granted to no role, so every non-owner caller gets AuthorizationError → 500. transport_admin.approve_vehicle/reject_vehicle (routes.py:2305/2334) 500s the same way for non-owner admins via the identical chain. The decorator was NOT removed in T-10: the ratified Option B writes vehicle real columns directly in transport.moderate_action instead of delegating, so moderate_action no longer triggers this gate. The admin approve routes still do.
+- What needs to happen: if granular permission is wanted, seed it in role seeds (then admin approve routes persist for non-owners). Otherwise remove the decorator to match update_driver_status precedent (DRIVER_GATE-3) and fix the admin approve/reject routes.
+- Owner/area: Transport / Permissions
+- Authorization: Not authorized (record only)
+- Evidence/source: provider_service.py:1502 (decorator present), routes.py:2305/2334, security.py:150-151 (owner bypass)
+- Links: app/transport/services/provider_service.py::update_vehicle_status
+
+---
+
+## BL-17 — Two moderator surfaces for the same workflow (DEFERRED / TRANSPORT)
+- Status: Not started
+- Raised: 2026-09-22 (transport T-session, T-10 investigation)
+- Context: transport.moderate_action (routes.py:2596+) and admin.moderator.transport_moderate_action (admin/moderator/routes.py:3439, 15+ forms) do the same approve/reject/flag job with different implementations. After T-10 both persist correctly, but the duplication is drift risk.
+- What needs to happen: choose one as canonical; make the other delegate or delete it.
+- Owner/area: Transport moderation
+- Authorization: Not authorized (record only)
+- Evidence/source: admin/moderator/routes.py:3439 vs transport/routes.py moderate_action
+- Links: app/admin/moderator/routes.py::transport_moderate_action
+
+---
+
+## BL-18 — Transport moderation surface has no nav entry (DEFERRED / TRANSPORT)
+- Status: Not started
+- Raised: 2026-09-22 (transport T-session, T-10 investigation)
+- Context: 9 POST forms across templates/transport/moderate_*.html target transport.moderate_action, but no link in the moderator sidebar (base_moderator.html:786-807) reaches transport.moderate — direct-URL only. T-10 made the endpoints reachable past the before_request gate (public allowlist + require_moderator), but discoverability is still zero.
+- What needs to happen: add a moderator sidebar entry, or retire the transport moderator surface in favor of the admin twin.
+- Owner/area: Transport / Moderation UI
+- Authorization: Not authorized (record only)
+- Evidence/source: templates/admin/moderator/base_moderator.html:786-807, templates/transport/moderate*.html
+- Links: templates/transport/moderate.html
+
+---
+
+## BL-19 — Moderator rejection reason accepted but not persisted (DEFERRED / TRANSPORT)
+- Status: Done
+- Resolved: 2026-09-23 (BL-19 EGGE cleanup node PASS; backlog option b; 7 focused + 49 regression tests green; change uncommitted - user to record commit hash on commit)
+- Raised: 2026-09-22 (T-10 side finding)
+- Context: transport.moderate_action accepts a `reason` field from the form for vehicle/driver rejection, but ProviderService.update_vehicle_status / update_driver_status have no reason parameter, so the text is discarded. Booking rejection reason persists (its model has cancellation_reason).
+- What needs to happen: either add an optional reason parameter that writes to a real column (requires schema change — batch with the migration pass), or remove the reason field from the vehicle/driver forms so moderators aren't misled.
+- Owner/area: Transport / Moderation
+- Authorization: Not authorized (record only)
+- Evidence/source: app/transport/routes.py moderate_action reject branch; provider_service.py update_vehicle_status / update_driver_status
+- Links: app/transport/routes.py::moderate_action
+
+---
+
+## BL-20 — safe_url logs missing-endpoint for argument errors (DEFERRED / UTILS)
+- Status: Not started
+- Raised: 2026-09-22 (T-11 side finding)
+- Context: safe_url catches BuildError (raised on bad argument, e.g. id=None) and logs "'endpoint_name' not found" — misleading, implies the endpoint is missing when it exists. The exception object is already caught but not included in the log line.
+- What needs to happen: include the actual exception in the debug log (module_guard.py:47-48).
+- Owner/area: Utils
+- Authorization: Not authorized (record only)
+- Evidence/source: app/utils/module_guard.py:47-48
+- Links: app/utils/module_guard.py::safe_url
+
+---
+
+## BL-21 — Confirm historical show.html Edit link removal is intentional (DEFERRED / TRANSPORT)
+- Status: Done (verified, no-op)
+- Resolved: 2026-09-23 (cleanup batch item 3: show.html has zero Edit/bookings_edit hits; only safe_url callers are edit.html with persisted booking.id; no caller passes id=None; admin details.html uses loud url_for)
+- Raised: 2026-09-22 (T-11 side finding)
+- Context: templates/transport/bookings/show.html no longer contains an Edit link to transport.bookings_edit. Edit links exist in index.html and edit.html. If some render path still passes id=None (unsaved booking), the link degrades to '#' silently via safe_url.
+- What needs to happen: verify removal was intentional; if a render path can pass id=None, add a guard.
+- Owner/area: Transport / Templates
+- Authorization: Not authorized (record only)
+- Evidence/source: templates/transport/bookings/show.html
+- Links: templates/transport/bookings/show.html
+
+---
+
+## BL-22 - Transport driver never notified on assignment (DEFERRED / NOTIFICATIONS)
+
+- Status: Not started
+- Raised: 2026-09-23 (NOTIF-TRANSPORT Part 3 side finding)
+- Context: notify_driver_assigned driver branch reads booking.driver_id, which does not exist on transport Booking (it has assigned_driver_id). Same class as BL-15 (rider miss), different recipient - the driver receives nothing.
+- What needs to happen: in notify_driver_assigned, resolve the driver recipient as booking.assigned_driver_id for transport bookings; leave other modules unchanged.
+- Owner/area: Notifications
+- Authorization: Not authorized (record only)
+- Evidence/source: app/notifications/services.py notify_driver_assigned; app/transport/models.py Booking.assigned_driver_id
+- Links: app/notifications/services.py::notify_driver_assigned
+
+---
+
+## BL-23 - Uncalled is_super_admin in transport_permission_required + grant/revoke guards (SECURITY)
+- Status: Done
+- Resolved: 2026-09-23 (BL-23 EGGE node PASS; three parens fixes verified by 9-test matrix + live re-probes; change uncommitted - user to record commit hash on commit)
+- Raised: 2026-09-23 (EGGE critical-node sibling sweep; NOT fixed in SEC-FALLBACK per minimal-change scope)
+- Context: Same defect class as AUTH-REQUIRE-ROLE-FALLBACK (bound method referenced as truthy) in three more spots: (1) app/auth/decorators.py:841 inside transport_permission_required - any authenticated user bypasses it; (2)/(3) app/auth/routes.py:1757 grant_transport_permission + :1846 revoke_transport_permission - any authenticated user passes the owner-or-super_admin guard and can grant/revoke dynamic transport permissions (worse: self-grant feeds require_role TransportPermission fallback). Verified by reading only; no live probe run.
+- What needs to happen: append () in all three spots; add behavioral tests mirroring tests/test_auth_require_role.py (deny matrix + live re-probe that a plain user cannot grant). Separate authorized security node.
+- Owner/area: Auth / Security
+- Authorization: Not authorized (record only)
+- Evidence/source: app/auth/decorators.py:841; app/auth/routes.py:1757,1846; app/identity/models/user.py:423-424
+- Links: app/auth/decorators.py::transport_permission_required; app/auth/routes.py::grant_transport_permission
+
+---
+
+## AUTH-REDIRECT-INDEX - Dangling url_for("auth.index") on grant/revoke + broken audit call (AUTH)
+- Status: Done
+- Resolved: 2026-09-23 (EGGE node PASS; 13 + 7 + 49 tests green; change uncommitted - user to record commit hash on commit)
+- Raised: 2026-09-23 (BL-23 sibling; BL-23 itself untouched, remains PASS)
+- Context: HEAD app/auth/routes.py had 8x url_for("auth.index") across grant_transport_permission / revoke_transport_permission; auth.index was never registered (33 auth endpoints, no index) so every redirect path 500'd. Redirect targets repaired by concurrent work (deny -> user.dashboard, data-error/success -> admin.transport_admin_dashboard; both proven registered). During VERIFY a second 500 surfaced on both authorized paths: `from app.audit.forensic_audit import log_attempt` raises ImportError (API is ForensicAuditService.log_attempt; old call also passed invalid status= and omitted entity_type/entity_id) AFTER the mutation commits. Repaired to the established in-file pattern (routes.py:1317). Added revoke-allow redirect test to complete the 4-path matrix.
+- Owner/area: Auth / Transport permissions
+- Authorization: Task-authorized (this EGGE node)
+- Evidence/source: app/auth/routes.py::grant_transport_permission, ::revoke_transport_permission; docs/transport/fixes/AUTH-REDIRECT-INDEX-evidence.md, -record.md
+- Links: app/auth/routes.py::grant_transport_permission

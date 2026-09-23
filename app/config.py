@@ -426,6 +426,19 @@ class Config:
     # Expose ENCRYPTION_KEY as attribute for validation
     ENCRYPTION_KEY_VALUE = os.getenv("ENCRYPTION_KEY", "")
 
+    # ---- Map tiles ----------------------------------------------------------
+    # Rider map tile source. Defaults preserve current dev behavior (OSM).
+    # A production operator sets these two env vars to switch providers with
+    # no code change (e.g. MapTiler/Mapbox permitted for commercial traffic).
+    TILE_PROVIDER_URL_TEMPLATE = os.getenv(
+        "TILE_PROVIDER_URL_TEMPLATE",
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+    )
+
+    TILE_PROVIDER_ATTRIBUTION = os.getenv(
+        "TILE_PROVIDER_ATTRIBUTION",
+        "\u00a9 OpenStreetMap"
+    )
 
 
 # ============================================================================

@@ -277,7 +277,7 @@ def require_role(*roles: str) -> Callable:
                 # Traditional role check failed - fall back to dynamic transport permissions
                 # Owner and super_admin bypass all checks
                 from app.auth.helpers import is_owner
-                if is_owner(user) or user.is_super_admin:
+                if is_owner(user) or user.is_super_admin():
                     # Owner/super_admin has access regardless
                     pass  # Continue to run the route
                 else:
@@ -838,7 +838,7 @@ def transport_permission_required(*permissions: str, role_filter: Optional[str] 
 
             # Owner and super_admin have unconditional access
             from app.auth.helpers import is_owner
-            if is_owner(user) or user.is_super_admin:
+            if is_owner(user) or user.is_super_admin():
                 return f(*args, **kwargs)
 
             # Check dynamic transport permissions

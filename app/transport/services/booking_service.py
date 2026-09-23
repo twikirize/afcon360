@@ -1065,22 +1065,29 @@ def booking_request_points(since, until):
     if start > end:
         raise ValueError("since must not be after until")
 
-    rows = (Booking.query
-            .filter(Booking.is_deleted == False)  # noqa: E712
-            .filter(~Booking.status.in_(DEMAND_EXCLUDED_STATUSES))
-            .filter(Booking.created_at >= start,
-                    Booking.created_at <= end)
-            .all())
+    stmt = (
+        sa.select(
+            Booking.pickup_location.op("->")("latitude"),
+            Booking.pickup_location.op("->")("longitude"),
+        )
+        .where(
+            Booking.is_deleted.is_(False),
+            ~Booking.status.in_(DEMAND_EXCLUDED_STATUSES),
+            Booking.created_at >= start,
+            Booking.created_at <= end,
+        )
+        .execution_options(yield_per=1000)
+    )
+    result = db.session.execute(stmt)
     points: List[Any] = []
     skipped = 0
-    for booking in rows:
-        loc = booking.pickup_location
-        if not isinstance(loc, dict):
-            skipped += 1
-            continue
+    # Row values are native JSON scalars (-> preserves type: numbers,
+    # strings, booleans, nulls), so the float()/range/skip logic below
+    # is exactly the legacy Python semantics.
+    for lat_val, lng_val in result:
         try:
-            lat = float(loc.get("latitude"))
-            lng = float(loc.get("longitude"))
+            lat = float(lat_val)
+            lng = float(lng_val)
         except (TypeError, ValueError):
             skipped += 1
             continue

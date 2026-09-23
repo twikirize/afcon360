@@ -45,7 +45,10 @@ def safe_url(endpoint: str, **kwargs) -> str:
     except Exception as e:
         # Only log in debug mode to avoid spam
         if current_app and current_app.debug:
-            logger.debug(f"safe_url: '{endpoint}' not found - {e}")
+            logger.debug(
+                f"safe_url: could not build url for endpoint '{endpoint}' "
+                f"({type(e).__name__}: {e}); returning '#'"
+            )
         return '#'
 
 # --- REGISTRY ---
