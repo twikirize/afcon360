@@ -123,6 +123,11 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
 .ws-empty { padding: 22px 16px; text-align: center; color: var(--text-muted); font-size: 0.82rem; }
 .ws-empty i { font-size: 1.4rem; opacity: 0.35; margin-bottom: 8px; display: block; }
 
+/* Live status line (location publishing) ----------------------------- */
+.dc-toast { min-height: 1.4em; font-size: 0.8rem; margin-top: 6px; }
+.dc-toast.err { color: var(--red, #b91c1c); }
+.dc-toast.ok { color: var(--green, #15803d); }
+
 /* Responsive --------------------------------------------------------- */
 @media (max-width: 1200px) { .ck-panel { grid-template-columns: 1fr; } }
 @media (max-width: 900px)  { .ck-panel { grid-template-columns: 1fr; } }
@@ -130,6 +135,11 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
 {% endblock %}
 
 {% block content %}
+<div id="driverDashboard"
+     data-driver-id="{{ driver_profile.id if driver_profile else '' }}"
+     data-csrf="{{ raw_csrf_token }}"
+     data-ping-interval="{{ ping_interval_seconds|default(120) }}"
+     data-is-online="{{ '1' if driver_profile and driver_profile.is_online else '0' }}">
 {% if driver_profile %}
 {% set compliance = driver_profile.compliance_status.value %}
 {% set compliance_badge = 'green' if compliance == 'approved'
@@ -237,23 +247,36 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
   </div>
   {% elif offers %}
     {% set o0 = offers[0] %}
+    {% set o0_pickup = (o0.get('pickup') or {}) %}
+    {% set o0_dest = (o0.get('destination') or {}) %}
+    {% set o0_fare = (o0.get('fare_estimate') or {}) %}
+    {% set o0_veh = (o0.get('vehicle') or {}) %}
   <div class="ck-focus ck-focus--offer">
     <div class="ck-focus-top">
-      <span class="ck-pill ck-pill--amber"><i class="fa-solid fa-bell"></i> Ride Offers</span>
-      <span class="ck-focus-phase"><span class="ck-live-dot"></span>Live</span>
+      <span class="ck-pill ck-pill--amber"><i class="fa-solid fa-bell"></i> New ride request</span>
+      <span class="ck-focus-phase"><span class="ck-live-dot"></span>Live{% if o0.get('ttl_remaining') %} · expires in ~{{ ((o0.get('ttl_remaining') or 0) // 60) + 1 }} min{% endif %}</span>
     </div>
     <h2 class="ck-focus-title">
-      {% if o0.booking %}
-        {{ o0.booking.pickup_address or (o0.booking.pickup_location.get('address') if o0.booking.pickup_location is mapping else None) or 'Pickup' }}
-        <i class="fa-solid fa-arrow-right"></i>
-        {{ o0.booking.dropoff_address or (o0.booking.dropoff_location.get('address') if o0.booking.dropoff_location is mapping else None) or 'Dropoff' }}
-      {% else %}
-        Trip {{ o0.booking_reference }}
-      {% endif %}
+      {{ o0_pickup.get('text') or 'Location to be confirmed' }}
+      <i class="fa-solid fa-arrow-right"></i>
+      {{ o0_dest.get('text') or 'Location to be confirmed' }}
     </h2>
     <div class="ck-focus-sub">
       <span>{{ o0.booking_reference }}</span>
-      {% if o0.booking %}<span>·</span><span>{{ o0.booking.passenger_count|default(1) }} pax</span>{% endif %}
+      <span>·</span>
+      <span>{{ o0.get('passenger_count')|default(1) }} pax</span>
+      {% if o0.get('ride_class') %}<span>·</span><span>{{ o0.get('ride_class')|replace('_',' ')|title }}</span>{% endif %}
+      {% if o0.get('service_type') %}<span>·</span><span>{{ o0.get('service_type')|replace('_',' ')|title }}</span>{% endif %}
+      {% if o0_fare.get('amount') is not none %}
+      <span>·</span>
+      <span style="color:var(--green);font-weight:600;">{% if o0.get('distance_basis') == 'straight_line_planner' %}Fare estimate{% else %}Approx. fare estimate{% endif %}: {{ o0_fare.get('currency') or 'USD' }} {{ ('%.2f'|format(o0_fare.get('amount')|float)).rstrip('0').rstrip('.') }}</span>
+      {% endif %}
+      {% if o0.get('distance_km') is not none %}
+      <span>·</span><span>Est. {{ ('%.1f'|format(o0.get('distance_km')|float)) }} km</span>
+      {% endif %}
+      {% if o0_veh.get('license_plate') %}
+      <span>·</span><span>{{ o0_veh.get('license_plate') }}{% if o0_veh.get('make') %} · {{ o0_veh.get('make') }} {{ o0_veh.get('model') or '' }}{% endif %}</span>
+      {% endif %}
     </div>
     <div class="ck-focus-actions">
       <button type="button" class="btn btn-primary btn-sm offer-accept"
@@ -311,8 +334,8 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
       {% endfor %}
     </ul>
     <div class="ck-focus-actions" style="margin-top:14px;">
-      <button type="button" class="btn btn-secondary btn-sm" data-ck-nav="status">
-        <i class="fa-solid fa-signal"></i> Open Status
+      <button type="button" class="btn btn-secondary btn-sm" data-ck-nav="account">
+        <i class="fa-solid fa-list-check"></i> Open checklist
       </button>
     </div>
   </div>
@@ -326,6 +349,38 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
     <div class="ck-focus-sub"><span>Complete your registration details to unlock the go-live checklist.</span></div>
   </div>
   {% endif %}
+
+  <div class="card ws-card ck-full">
+    <div class="card-header">
+      <span class="card-title"><i class="fa-solid fa-location-dot"></i> Location</span>
+      <span class="badge badge-{{ 'green' if driver_profile.is_online else 'gray' }}">
+        {{ 'Publishing' if driver_profile.is_online else 'Idle' }}
+      </span>
+    </div>
+    <div style="padding:16px;">
+      <div class="ws-row" style="border-bottom:none;padding-top:0;">
+        <span class="ws-k">Last published</span>
+        {% if driver_profile.last_location and driver_profile.location_updated_at %}
+        <span class="ws-v" style="font-family:var(--font-mono);">
+          {{ driver_profile.last_location.get('latitude') }}, {{ driver_profile.last_location.get('longitude') }}
+        </span>
+        {% else %}
+        <span class="ws-v">No location published yet.</span>
+        {% endif %}
+      </div>
+      {% if driver_profile.location_updated_at %}
+      <div class="ws-row" style="border-bottom:none;padding-top:0;">
+        <span class="ws-k">At</span>
+        <span class="ws-v">{{ driver_profile.location_updated_at }}</span>
+      </div>
+      {% endif %}
+      <div class="ws-row" style="border-bottom:none;">
+        <span class="ws-k">Publishing cadence</span>
+        <span class="ws-v">Every {{ ping_interval_seconds|default(120) }}s while online</span>
+      </div>
+      <div id="dcLocBadge" class="dc-toast" role="status" aria-live="polite"></div>
+    </div>
+  </div>
 
   {# Metrics strip #}
   <div class="ck-metrics ck-full">
@@ -358,28 +413,33 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
 
   {# Offers + upcoming (left) / next-up summary + opportunities (right) #}
   <div class="ck-col">
-    <div class="card ws-card">
+    <div class="card ws-card" data-offer-refs="{{ (offers or [])|map(attribute='booking_reference')|list|sort|join(',') }}">
       <div class="card-header">
         <span class="card-title"><i class="fa-solid fa-bell"></i> Ride Offers</span>
         <span class="badge badge-{{ 'green' if offer_count else 'gray' }}">{{ offer_count }}</span>
       </div>
       {% if offers %}
         {% for o in offers %}
+        {% set o_pickup = (o.get('pickup') or {}) %}
+        {% set o_dest = (o.get('destination') or {}) %}
+        {% set o_fare = (o.get('fare_estimate') or {}) %}
+        {% set o_veh = (o.get('vehicle') or {}) %}
         <div class="offer-row">
           <div class="offer-icon"><i class="fa-solid fa-car-side"></i></div>
           <div class="offer-body">
             <div class="offer-title">
-              {% if o.booking %}
-                {{ o.booking.pickup_address or (o.booking.pickup_location.get('address') if o.booking.pickup_location is mapping else None) or 'Pickup' }}
-                <i class="fa-solid fa-arrow-right" style="opacity:0.4;font-size:0.7rem;"></i>
-                {{ o.booking.dropoff_address or (o.booking.dropoff_location.get('address') if o.booking.dropoff_location is mapping else None) or 'Dropoff' }}
-              {% else %}
-                Trip {{ o.booking_reference }}
-              {% endif %}
+              {{ o_pickup.get('text') or 'Location to be confirmed' }}
+              <i class="fa-solid fa-arrow-right" style="opacity:0.4;font-size:0.7rem;"></i>
+              {{ o_dest.get('text') or 'Location to be confirmed' }}
             </div>
             <div class="offer-meta">
               {{ o.booking_reference }}
-              {% if o.booking %} · {{ o.booking.passenger_count|default(1) }} pax{% endif %}
+              · {{ o.get('passenger_count')|default(1) }} pax
+              {% if o.get('ride_class') %} · {{ o.get('ride_class')|replace('_',' ')|title }}{% endif %}
+              {% if o_fare.get('amount') is not none %} · <span style="color:var(--green);">{% if o.get('distance_basis') == 'straight_line_planner' %}Fare estimate{% else %}Approx. fare estimate{% endif %}: {{ o_fare.get('currency') or 'USD' }} {{ ('%.2f'|format(o_fare.get('amount')|float)).rstrip('0').rstrip('.') }}</span>{% endif %}
+              {% if o.get('distance_km') is not none %} · Est. {{ ('%.1f'|format(o.get('distance_km')|float)) }} km{% endif %}
+              {% if o_veh.get('license_plate') %} · {{ o_veh.get('license_plate') }}{% endif %}
+              {% if o.get('ttl_remaining') %} · expires in ~{{ ((o.get('ttl_remaining') or 0) // 60) + 1 }} min{% endif %}
               · <span style="color:var(--green);">Live</span>
             </div>
             <div class="offer-actions">
@@ -507,7 +567,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
           {% elif go_live and go_live.ready %}
             Go online to start receiving offers.
           {% else %}
-            Complete the go-live checklist below to enable online status.
+            Complete the go-live checklist in your Account area to enable online status.
           {% endif %}
         </div>
       </div>
@@ -527,30 +587,6 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
     </div>
   </div>
 
-  {% if go_live %}
-  <div class="card ws-card">
-    <div class="card-header">
-      <span class="card-title"><i class="fa-solid fa-list-check"></i> Go-live readiness</span>
-      <span class="badge badge-{{ readiness_badge }}">
-        {{ go_live.checks|selectattr('ok')|list|length }}/{{ go_live.checks|length }}
-      </span>
-    </div>
-    <ul class="ck-focus-checks" style="padding:18px; margin:0;">
-      {% for check in go_live.checks %}
-      <li class="ck-check {{ 'ck-check--ok' if check.ok else 'ck-check--bad' }}">
-        <i class="fa-solid {{ 'fa-circle-check' if check.ok else 'fa-circle-xmark' }}"></i>
-        <div>
-          <div class="ck-check-label">
-            {{ check.label }}{% if not check.required %} <span style="font-size:0.7rem; color:var(--text-muted); font-weight:400;">(optional)</span>{% endif %}
-          </div>
-          {% if not check.ok and check.hint %}<div class="ck-check-hint">{{ check.hint }}</div>{% endif %}
-        </div>
-      </li>
-      {% endfor %}
-    </ul>
-  </div>
-  {% endif %}
-
   <div class="card ws-card">
     <div class="card-header"><span class="card-title"><i class="fa-solid fa-sliders"></i> Operational preferences</span></div>
     <div class="ws-row"><span class="ws-k">Driving mode</span><span class="ws-v">{{ (driver_profile.service_types or ['on_demand'])|join(', ')|replace('_',' ')|title }}</span></div>
@@ -560,6 +596,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
     <div class="ws-row"><span class="ws-k">Auto-accept bookings</span><span class="ws-v">{{ 'On' if driver_profile.auto_accept_bookings else 'Off' }}</span></div>
     <div class="ws-row" style="border-bottom:none;"><span class="ws-k">Concurrent trips</span><span class="ws-v">{{ driver_profile.max_concurrent_bookings|default(1) }}</span></div>
   </div>
+
 </section>
 
 {# ============================ TRIPS ============================ #}
@@ -983,6 +1020,30 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
       {% endif %}
     </div>
 
+    {% if go_live %}
+    <div class="card ws-card">
+      <div class="card-header">
+        <span class="card-title"><i class="fa-solid fa-list-check"></i> Go-live readiness</span>
+        <span class="badge badge-{{ readiness_badge }}">
+          {{ go_live.checks|selectattr('ok')|list|length }}/{{ go_live.checks|length }}
+        </span>
+      </div>
+      <ul class="ck-focus-checks" style="padding:18px; margin:0;">
+        {% for check in go_live.checks %}
+        <li class="ck-check {{ 'ck-check--ok' if check.ok else 'ck-check--bad' }}">
+          <i class="fa-solid {{ 'fa-circle-check' if check.ok else 'fa-circle-xmark' }}"></i>
+          <div>
+            <div class="ck-check-label">
+              {{ check.label }}{% if not check.required %} <span style="font-size:0.7rem; color:var(--text-muted); font-weight:400;">(optional)</span>{% endif %}
+            </div>
+            {% if not check.ok and check.hint %}<div class="ck-check-hint">{{ check.hint }}</div>{% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
     <div class="card ws-card">
       <div class="card-header">
         <span class="card-title"><i class="fa-solid fa-car-side"></i> Owned vehicles</span>
@@ -1113,9 +1174,12 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
   </div>
 </div>
 {% endif %}
+</div>
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/modules/transport/driver-dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/transport/driver_offer_poll.js') }}"></script>
 <script>
 (function () {
   function csrfHeaders() {

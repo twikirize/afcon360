@@ -497,7 +497,7 @@ def create_app(config_object=None) -> Flask:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=()"
+        response.headers["Permissions-Policy"] = "geolocation=(self), microphone=(), camera=(), payment=()"
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
         response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
@@ -1278,6 +1278,12 @@ def create_app(config_object=None) -> Flask:
     # ------------------------------------------------------------------
     from app.cli.owner import register_owner_commands
     register_owner_commands(app)
+
+    try:
+        from app.transport.cli_driver import driver_group
+        app.cli.add_command(driver_group)
+    except ImportError:
+        logger.debug("Driver simulator CLI not found – skipping")
 
     try:
         from app.cli import register_all_cli_commands

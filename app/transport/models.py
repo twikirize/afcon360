@@ -2234,6 +2234,20 @@ def init_transport_settings():
             'validation_rules': {'min': 1, 'max': 200},
             'default_value': 50
         },
+        {
+            'key': 'driver.location_ping_interval_seconds',
+            'value': 120,
+            'name': 'Driver location ping interval',
+            'description': (
+                'Seconds between driver location publishes. Must remain '
+                'below the freshness TTL (300s) so drivers stay matchable.'
+            ),
+            'category': 'booking',
+            'subcategory': 'driver_presence',
+            'data_type': 'integer',
+            'validation_rules': {'min': 30, 'max': 300},
+            'default_value': 120,
+        },
 
         # ========== PAYMENT PROCESSING ==========
         {

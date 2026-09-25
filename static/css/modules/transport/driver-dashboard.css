@@ -382,6 +382,8 @@ html {
   color: var(--brand-primary, #2d5a2d);
   border-color: var(--brand-primary, #2d5a2d);
 }
+/* Refresh stays brand green at every breakpoint, never half-clipped */
+#refreshBtn { color: #2E7D32; }
 
 /* ── Main Content ──────────────────────────────── */
 .t-content {
@@ -587,12 +589,12 @@ html {
   .t-shell.ck-shell .ck-main { width: 100% !important; flex: 0 0 auto !important; }
 
   .t-shell.ck-shell .ck-pane {
-    position: fixed;
+    position: fixed !important;
     top: 0; left: 0; bottom: 0;
-    width: min(300px, 82vw);
-    max-height: none;
+    width: min(300px, 82vw) !important;
+    max-height: none !important;
     height: 100vh;
-    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom)) !important;
     border-radius: 0 16px 16px 0;
     border: none;
     border-right: 1px solid var(--border-light);
@@ -622,22 +624,24 @@ html {
     gap: 2px;
   }
   .ck-dock .ck-tab {
-    flex: 1; flex-direction: column;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
     align-items: center; justify-content: center;
-    gap: 3px; padding: 8px 2px;
+    gap: 4px; padding: 8px 2px;
     min-height: 44px !important;
     border: none; background: none; border-radius: 8px;
     font-family: var(--font-body);
-    font-size: 0.62rem; font-weight: 600;
+    font-size: 0.68rem; font-weight: 600;
+    line-height: 1.15;
+    white-space: nowrap;
     color: var(--text-muted);
-    transition: background 0.15s, color 0.15s, transform 0.2s ease;
+    transition: background 0.15s, color 0.15s;
     cursor: pointer;
   }
-  .ck-dock .ck-tab i { font-size: 1.05rem; }
+  .ck-dock .ck-tab i { font-size: 1.4rem; line-height: 1; }
   .ck-dock .ck-tab.ck-active {
     color: var(--green); background: var(--green-dim);
-    border-top: 2px solid var(--green);
-    transform: scale(1.05);
   }
 }
 
@@ -652,6 +656,136 @@ html {
   .t-shell.ck-shell .ck-pane { width: min(300px, 85vw) !important; }
   .t-shell.ck-shell .topbar-profile .tp-meta { display: none; }
   .t-shell.ck-shell .topbar-search { display: none; }
+
+  /* ── Mobile App Bar (5.9" — single row, never clipped) ─
+     No overflow:hidden here on purpose: the bell's dropdown escapes this
+     bar, and clipping would cut it off. Overflow is prevented instead by
+     min-width:0 on .breadcrumb and flex-shrink:0 on the icon groups. */
+  .t-shell.ck-shell .t-topbar {
+    height: calc(56px + env(safe-area-inset-top, 0px));
+    padding: env(safe-area-inset-top, 0px) 16px 0;
+    gap: 8px;
+    flex-wrap: nowrap;
+    background: #ffffff;
+    border-bottom: 1px solid #E5E7EB;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .t-shell.ck-shell .topbar-toggle {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; border: none; background: none; border-radius: 10px;
+    font-size: 1.5rem; color: var(--text-primary, #1a1a1a);
+    flex-shrink: 0;
+  }
+  .t-shell.ck-shell .breadcrumb {
+    flex: 1 1 auto; min-width: 0;
+    gap: 6px; font-size: 15px;
+    white-space: nowrap; overflow: hidden;
+    color: var(--text-muted, #6b7280);
+  }
+  /* At 360px the icons win every pixel, so the crumb keeps only its title:
+     Home is already the first dock tab and the drawer, and the separator
+     would otherwise consume the little room that is left. */
+  .t-shell.ck-shell .breadcrumb > a,
+  .t-shell.ck-shell .breadcrumb .sep { display: none; }
+  .t-shell.ck-shell .breadcrumb .current {
+    /* the crumb is a flex row that keeps the whole leftover width; the title
+       must claim it instead of sitting at its intrinsic width */
+    flex: 1 1 auto;
+    min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    color: var(--text-primary, #1a1a1a);
+  }
+  .t-shell.ck-shell .topbar-profile {
+    flex-shrink: 0; gap: 0; padding: 0;
+    background: none; border: none;
+  }
+  .t-shell.ck-shell .tp-avatar { width: 36px; height: 36px; font-size: 0.85rem; }
+  .t-shell.ck-shell .topbar-actions { flex-shrink: 0; gap: 8px; margin-left: auto; }
+  .t-shell.ck-shell .topbar-btn {
+    position: relative;
+    width: 40px; height: 40px; flex-shrink: 0;
+    background: #F3F4F6;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    color: var(--text-secondary, #374151);
+    font-size: 20px;
+  }
+  /* keeps the 40px visual box but a 44x44 touch target (§22) */
+  .t-shell.ck-shell .topbar-btn::after { content: ''; position: absolute; inset: -2px; }
+  .t-shell.ck-shell .topbar-btn:hover {
+    background: #E5E7EB; border-color: transparent; color: var(--text-primary, #1a1a1a);
+  }
+
+  /* Notification bell — same 40x40 button family as its neighbours.
+     Selector beats the component's own inline <style> (0,5,0 vs 0,1,0),
+     so no !important and no order dependency. */
+  .t-shell.ck-shell .topbar-actions .afc-notif { flex-shrink: 0; }
+  .t-shell.ck-shell .topbar-actions .afc-notif .afc-notif__trigger {
+    position: relative;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; padding: 0;
+    background: #F3F4F6;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    color: var(--text-secondary, #374151);
+    font-size: 20px;
+    line-height: 1;
+  }
+  /* keeps the 40px visual box but a 44x44 touch target (§22) */
+  .t-shell.ck-shell .topbar-actions .afc-notif .afc-notif__trigger::after {
+    content: ''; position: absolute; inset: -2px;
+  }
+  .t-shell.ck-shell .topbar-actions .afc-notif .afc-notif__trigger:hover {
+    background: #E5E7EB; border-color: transparent; color: var(--text-primary, #1a1a1a);
+  }
+  /* Anchored to the viewport, not to the bell: the bell sits ~104px from the
+     right edge, so a bell-anchored 370px panel would overflow off-screen. */
+  .t-shell.ck-shell .topbar-actions .afc-notif .afc-notif__panel {
+    position: fixed;
+    top: calc(56px + env(safe-area-inset-top, 0px) + 8px);
+    right: 12px;
+    left: auto;
+    /* % resolves against the layout viewport; 100vw would count the
+       scrollbar and push the sheet a few pixels off-centre */
+    width: calc(100% - 24px);
+    max-width: 400px;
+    /* clears the 56px bar on top and the bottom dock (z-index 930, which
+       paints above the bar's stacking context) underneath */
+    max-height: calc(100vh - 160px);
+    max-height: calc(100dvh - 160px);
+    display: flex;
+    flex-direction: column;
+  }
+  .t-shell.ck-shell .topbar-actions .afc-notif .afc-notif__list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .t-shell.ck-shell .topbar-actions .afc-notif .afc-notif__head,
+  .t-shell.ck-shell .topbar-actions .afc-notif .afc-notif__foot {
+    flex-shrink: 0;
+  }
+}
+
+/* ── Phone widths: the title needs the room the icons were holding ──
+   Full row at 360 (hamburger 44 + avatar 36 + five 40px icons + gaps)
+   left the breadcrumb 30px, so "Workspace" rendered as "W…", and at 390/412
+   it was still ellipsized (61px/77px). The main-site and PWA-install buttons
+   give up their slot on every phone width (<=430px covers 360/375/390/412/
+   414/428); decision 2026-09-25. Main site stays reachable from the drawer
+   foot (#mainSiteLink) and the install prompt from the browser menu.
+   Bell + refresh always stay. */
+@media (max-width: 430px) {
+  #backToSiteBtn,
+  #installAppBtn { display: none; }
+}
+
+/* §22 — the drawer-foot main-site link I added as that fallback gets the
+   same invisible 44x44 hit area as the topbar buttons (its visible box stays
+   the established 34x34 foot-icon size; the pre-existing sign-out is untouched). */
+.t-shell.ck-shell .ck-pane-foot #mainSiteLink { position: relative; }
+.t-shell.ck-shell .ck-pane-foot #mainSiteLink::after {
+  content: ''; position: absolute; inset: -5px;
 }
 
 /* ── Tablet/Laptop (900px–1199px) ────────────── */
@@ -708,6 +842,10 @@ html {
   .t-shell.ck-shell .stat-card { background: var(--bg-surface, #1e1e1e); }
   .t-shell.ck-shell .ck-hero { background: linear-gradient(135deg, #1a3a1a, #2d5a2d); }
   .t-shell.ck-shell .form-control { background: var(--bg-surface, #1e1e1e); border-color: var(--border-light, #2d2d2d); color: var(--text-primary, #e0e0e0); }
+  .t-shell.ck-shell .t-topbar { background: var(--bg-surface, #1e1e1e); border-bottom-color: var(--border-light, #2d2d2d); }
+  .t-shell.ck-shell .topbar-btn { background: var(--bg-surface-alt, #2d2d2d); border-color: transparent; }
+  .t-shell.ck-shell .topbar-btn:hover { background: #3a3a3a; border-color: transparent; }
+  :root:not(.light-mode) #refreshBtn { color: #66bb6a; }
 }
 body.dark-mode {
   --text-primary: #e0e0e0;
@@ -722,3 +860,25 @@ body.dark-mode {
 body.dark-mode .t-shell.ck-shell .ck-pane { background: var(--bg-body, #121212); }
 body.dark-mode .t-shell.ck-shell .card { background: var(--bg-surface, #1e1e1e); }
 body.dark-mode .t-shell.ck-shell .t-sidebar { background: linear-gradient(180deg, #0d0f14, #1a1a1a); }
+body.dark-mode .t-shell.ck-shell .t-topbar { background: var(--bg-surface, #1e1e1e); border-bottom-color: var(--border-light, #2d2d2d); }
+body.dark-mode .t-shell.ck-shell .topbar-btn { background: var(--bg-surface-alt, #2d2d2d); border-color: transparent; }
+body.dark-mode .t-shell.ck-shell .topbar-btn:hover { background: #3a3a3a; border-color: transparent; }
+body.dark-mode #refreshBtn { color: #66bb6a; }
+
+/* ── Mobile bell in dark mode (the mobile bar paints it solid, desktop does not) ─ */
+@media (max-width: 767px) and (prefers-color-scheme: dark) {
+  :root:not(.light-mode) .t-shell.ck-shell .topbar-actions .afc-notif .afc-notif__trigger {
+    background: var(--bg-surface-alt, #2d2d2d); border-color: transparent;
+  }
+  :root:not(.light-mode) .t-shell.ck-shell .topbar-actions .afc-notif .afc-notif__trigger:hover {
+    background: #3a3a3a; border-color: transparent;
+  }
+}
+@media (max-width: 767px) {
+  body.dark-mode .t-shell.ck-shell .topbar-actions .afc-notif .afc-notif__trigger {
+    background: var(--bg-surface-alt, #2d2d2d); border-color: transparent;
+  }
+  body.dark-mode .t-shell.ck-shell .topbar-actions .afc-notif .afc-notif__trigger:hover {
+    background: #3a3a3a; border-color: transparent;
+  }
+}

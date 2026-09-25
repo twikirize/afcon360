@@ -77,6 +77,61 @@ def _to_str(value: Any) -> str:
     return str(value)
 
 
+def _enum_value(value: Any) -> Optional[str]:
+    """Unwrap a SQLAlchemy Enum member to its plain string value."""
+    if value is None:
+        return None
+    return getattr(value, "value", value)
+
+
+def format_endpoint_display(
+    address: Optional[str], location: Any
+) -> Dict[str, Any]:
+    """Canonical safe display for one trip endpoint (pickup OR dropoff).
+
+    Authority chain (no invention, no PII):
+      1. explicit address text (``pickup_address`` / ``dropoff_address``);
+      2. ``pickup_location`` / ``dropoff_location`` JSONB text keys
+         (``address`` -> ``name`` -> ``label``) — same chain as
+         ``Booking.pickup_location_text`` and the rider ``loc_text`` macro;
+      3. canonical coordinates ``"lat, lng"`` when the JSONB carries
+         valid numbers (truthful, map-usable, never fabricated);
+      4. None when nothing authoritative exists (callers render an
+         honest "to be confirmed" line — never a literal
+         "Pickup"/"Dropoff" masquerading as data).
+    """
+    text: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    if isinstance(address, str) and address.strip():
+        text = address.strip()
+    if text is None and isinstance(location, dict):
+        for key in ("address", "name", "label"):
+            candidate = location.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                text = candidate.strip()
+                break
+        try:
+            raw_lat = location.get("latitude")
+            raw_lng = location.get("longitude")
+            latitude = float(raw_lat) if raw_lat is not None else None
+            longitude = float(raw_lng) if raw_lng is not None else None
+        except (TypeError, ValueError):
+            latitude, longitude = None, None
+        if not (
+            isinstance(latitude, float)
+            and isinstance(longitude, float)
+            and -90.0 <= latitude <= 90.0
+            and -180.0 <= longitude <= 180.0
+        ):
+            latitude, longitude = None, None
+    elif text is None and isinstance(location, str) and location.strip():
+        text = location.strip()
+    if text is None and latitude is not None and longitude is not None:
+        text = f"{latitude:.4f}, {longitude:.4f}"
+    return {"text": text, "latitude": latitude, "longitude": longitude}
+
+
 class OfferService:
     """Transient offer store. Never authoritative for assignment state."""
 
@@ -187,7 +242,15 @@ class OfferService:
 
     @classmethod
     def list_driver_offers(cls, driver_id: int) -> List[Dict[str, Any]]:
-        """All live (status=offered) offers for a driver."""
+        """All live (status=offered) offers for a driver.
+
+        Presentation enrichment (DRIVER-OFFER-UX-REPAIR-1): each offer
+        is enriched at READ time from the authoritative ``Booking`` row
+        (plus the driver's own proposed ``Vehicle``). Redis stays thin
+        — lifecycle/state only — so enriched fields can never go stale
+        in the transient store. Enrichment never raises: a missing or
+        unreadable booking degrades to the thin lifecycle dict.
+        """
         try:
             refs = redis_client.smembers(cls._driver_key(driver_id))
         except Exception:
@@ -196,8 +259,236 @@ class OfferService:
         for ref in refs or []:
             offer = cls.get_offer(_to_str(ref), driver_id=driver_id)
             if offer and offer.get("status") == OFFER_STATUS_OFFERED:
-                offers.append(offer)
+                offers.append(cls.enrich_offer(offer))
         return offers
+
+    @classmethod
+    def get_offer_detail(
+        cls, booking_ref: str, driver_id: Optional[int] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Single live offer with the driver-visible enrichment applied."""
+        offer = cls.get_offer(booking_ref, driver_id=driver_id)
+        if not offer:
+            return None
+        return cls.enrich_offer(offer)
+
+    @classmethod
+    def enrich_offer(cls, offer: Dict[str, Any]) -> Dict[str, Any]:
+        """Attach the approved driver-visible contract to a thin offer.
+
+        Explicit shaped contract (no ORM serialization, no user/org
+        internals, no passenger PII, no extra booking columns, and —
+        per the operating-system identity rule — no internal database
+        IDs: the booking reference is the public identifier, so the
+        thin ``driver_id`` / ``vehicle_id`` lifecycle keys are stripped
+        here and never reach the browser):
+
+          booking_reference, status,
+          expires_at, ttl_remaining,
+          pickup {text, latitude, longitude},
+          destination {text, latitude, longitude},
+          fare_estimate {amount (base_price estimate, NEVER the final
+            fare, NEVER driver earnings), currency} | None,
+          ride_class | None, service_type | None,
+          passenger_count (int),
+          distance_km + distance_basis (only when the stored basis is
+            the measured straight-line planner value; the planning
+            default is withheld, never mislabelled),
+          vehicle {license_plate, make, model, vehicle_class} | None,
+            and only when a valid driver↔vehicle relationship is
+            proven at read time (see _offer_vehicle_or_none).
+
+        ETA is deliberately absent: ``estimated_duration_minutes`` is
+        raw caller input, not an authoritative ETA. Passenger identity
+        is deliberately absent: no driver surface (pre- or
+        post-accept) exposes it today, so the offer must not invent
+        that disclosure.
+
+        Failure handling (1C-6), each class distinct:
+          * missing Booking row (stale index) → thin offer + info log;
+          * booking lookup failure → thin offer + warning log;
+          * unexpected mapping error → thin offer + exception log
+            (traceback preserved for operators).
+        The dashboard/API therefore survive any enrichment failure,
+        and no failure mode is silent.
+        """
+        ref = offer.get("booking_reference")
+        enriched: Dict[str, Any] = {
+            "booking_reference": ref,
+            "status": offer.get("status"),
+            "expires_at": offer.get("expires_at"),
+        }
+        try:
+            now = int(time.time())
+            expires_at = int(offer.get("expires_at") or 0)
+        except (TypeError, ValueError):
+            now, expires_at = 0, 0
+        enriched["ttl_remaining"] = max(0, expires_at - now) if expires_at else 0
+
+        try:
+            from app.transport.models import Booking
+
+            booking = (
+                Booking.query.filter(
+                    Booking.booking_reference == ref,
+                    Booking.is_deleted == False,  # noqa: E712
+                ).first()
+                if ref
+                else None
+            )
+        except Exception as exc:
+            logger.warning(
+                "offer enrichment booking lookup failed for %s: %s",
+                ref,
+                exc,
+            )
+            return enriched
+        if booking is None:
+            logger.info(
+                "offer enrichment: no booking row for %s (stale index); "
+                "serving thin offer",
+                ref,
+            )
+            return enriched
+
+        detail: Dict[str, Any] = {}
+        try:
+            detail["pickup"] = format_endpoint_display(
+                getattr(booking, "pickup_address", None),
+                getattr(booking, "pickup_location", None),
+            )
+            detail["destination"] = format_endpoint_display(
+                getattr(booking, "dropoff_address", None),
+                getattr(booking, "dropoff_location", None),
+            )
+
+            base_price = getattr(booking, "base_price", None)
+            detail["fare_estimate"] = {
+                "amount": float(base_price) if base_price is not None else None,
+                "currency": _enum_value(getattr(booking, "currency", None))
+                or "USD",
+            }
+
+            metadata = getattr(booking, "booking_metadata", None) or {}
+            ride_class = getattr(booking, "service_subtype", None) or (
+                metadata.get("vehicle_class") if isinstance(metadata, dict) else None
+            )
+            detail["ride_class"] = ride_class
+            detail["service_type"] = _enum_value(
+                getattr(booking, "service_type", None)
+            )
+            try:
+                detail["passenger_count"] = int(
+                    getattr(booking, "passenger_count", 1) or 1
+                )
+            except (TypeError, ValueError):
+                detail["passenger_count"] = 1
+
+            distance = getattr(booking, "estimated_distance_km", None)
+            basis = (
+                metadata.get("distance_basis")
+                if isinstance(metadata, dict)
+                else None
+            )
+            if basis == "straight_line_planner" and distance is not None:
+                try:
+                    detail["distance_km"] = float(distance)
+                    detail["distance_basis"] = basis
+                except (TypeError, ValueError):
+                    detail["distance_km"] = None
+                    detail["distance_basis"] = None
+            else:
+                detail["distance_km"] = None
+                detail["distance_basis"] = basis
+
+            detail["vehicle"] = cls._offer_vehicle_or_none(
+                offer, booking, ref
+            )
+        except Exception:
+            logger.exception(
+                "offer enrichment mapping failed for %s; serving thin offer",
+                ref,
+            )
+            return enriched
+        enriched.update(detail)
+        return enriched
+
+    @classmethod
+    def _offer_vehicle_or_none(
+        cls, offer: Dict[str, Any], booking: Any, ref: Any
+    ) -> Optional[Dict[str, Any]]:
+        """Proposed vehicle details, only with a proven association.
+
+        The offer carries the candidate ``vehicle_id`` chosen at
+        dispatch time. At read time the requesting driver must still be
+        associated with that vehicle, proven by EITHER:
+          * an active ``DriverVehicleHistory`` row
+            (driver_id + vehicle_id + ``ended_at`` NULL) — the same
+            relation behind ``DriverProfile.current_vehicle``; or
+          * direct ownership (``Vehicle.owner_type == 'driver'`` and
+            ``owner_id`` == requesting profile id) — covers
+            owned-but-not-yet-driven vehicles.
+        Anything else (cross-driver id, reassigned vehicle, deleted
+        row) yields None: another driver's or a stale vehicle's details
+        must never render on this driver's card. Read-only; no
+        ownership mutation, no history redesign.
+        """
+        from app.transport.models import DriverVehicleHistory, Vehicle
+
+        try:
+            driver_key = offer.get("driver_id")
+            driver_id = int(driver_key) if driver_key is not None else None
+            candidate = offer.get("vehicle_id") or getattr(
+                booking, "assigned_vehicle_id", None
+            )
+            vehicle_id = int(candidate) if candidate is not None else None
+        except (TypeError, ValueError):
+            return None
+        if not driver_id or not vehicle_id:
+            return None
+        try:
+            associated = (
+                DriverVehicleHistory.query.filter(
+                    DriverVehicleHistory.driver_id == driver_id,
+                    DriverVehicleHistory.vehicle_id == vehicle_id,
+                    DriverVehicleHistory.ended_at == None,  # noqa: E711,E712
+                    DriverVehicleHistory.is_deleted == False,  # noqa: E712
+                ).first()
+            )
+            vehicle = Vehicle.query.filter(
+                Vehicle.id == vehicle_id,
+                Vehicle.is_deleted == False,  # noqa: E712
+            ).first()
+        except Exception as exc:
+            logger.warning(
+                "offer vehicle lookup failed for %s: %s",
+                ref,
+                exc,
+            )
+            return None
+        if vehicle is None:
+            return None
+        owned = (
+            getattr(vehicle, "owner_type", None) == "driver"
+            and getattr(vehicle, "owner_id", None) == driver_id
+        )
+        if associated is None and not owned:
+            logger.info(
+                "offer vehicle %s not associated with driver %s for %s; "
+                "withholding vehicle details",
+                vehicle_id,
+                driver_id,
+                ref,
+            )
+            return None
+        return {
+            "license_plate": vehicle.license_plate,
+            "make": vehicle.make,
+            "model": vehicle.model,
+            "vehicle_class": _enum_value(
+                getattr(vehicle, "vehicle_class", None)
+            ),
+        }
 
     @classmethod
     def count_driver_offers(cls, driver_id: int) -> int:

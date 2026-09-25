@@ -13,14 +13,20 @@ Design principles:
 """
 from datetime import datetime, timezone
 import logging
+import os
 from sqlalchemy.orm import joinedload
 
-from flask import render_template, jsonify, request, url_for, flash, redirect, session, abort
+from flask import render_template, jsonify, request, url_for, flash, redirect, session, abort, send_file
 from flask import current_app
 from flask_login import login_required, current_user
 
 from app.extensions import csrf
-from app.transport.decorator import module_enabled_required, role_required, rate_limit
+from app.transport.decorator import (
+    module_enabled_required,
+    role_required,
+    transport_admin_required,
+    rate_limit,
+)
 from app.auth.kyc_compliance import require_kyc_tier
 from app.auth.decorators import (
     require_profile_completion,
@@ -44,7 +50,7 @@ from app.transport.services.passenger_service import get_passenger_service
 from app.transport.models import Booking, DriverProfile, Vehicle, TransportPassenger, ServiceType, BookingStatus
 from app.transport.models import (
     ComplianceStatus, VehicleMarketplaceListing, DriverVehicleApplication,
-    MarketplaceListingStatus, CompensationModel,
+    MarketplaceListingStatus, CompensationModel, get_setting,
 )
 from app.extensions import db
 from app.transport.services.marketplace_service import get_marketplace_service
@@ -187,6 +193,7 @@ _PUBLIC_ENDPOINTS = {
     "transport.vehicle_dashboard",
     "transport.driver_dashboard",
     "transport.driver_dashboard_slash",
+    "transport.transport_service_worker",
     "transport.vehicle_marketplace",
     # Moderator queue — @require_moderator (moderator/admin/super_admin/
     # owner via has_global_role) is the precise gate, so these pass the
@@ -214,6 +221,20 @@ def _restrict_transport_admin():
     if not has_global_role(current_user, "owner", "super_admin", "admin", "transport_admin"):
         flash("You do not have permission to access this page.", "danger")
         return redirect(url_for("transport.home"))
+
+
+# =========================================================================
+# Service worker (public — browsers fetch it without session cookies)
+# =========================================================================
+
+@transport_bp.route("/sw.js")
+def transport_service_worker():
+    """Serve the driver PWA service worker from /transport/ for /transport/ scope."""
+    path = os.path.join(current_app.static_folder or "", "transport", "sw.js")
+    response = send_file(path, mimetype="application/javascript")
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Service-Worker-Allowed"] = "/transport/"
+    return response
 
 
 # =========================================================================
@@ -855,6 +876,36 @@ def book_transport():
         ref = booking["data"]["booking_reference"]
         booking_id = booking["data"]["booking_id"]
         logger.info(f"Booking created: user_id={_uid()}, ref={ref}")
+
+        # Cash rides are pay-later: run the canonical transition
+        # PENDING_PAYMENT -> CONFIRMED (guarded map, confirmed_at + audit)
+        # so the booking becomes claimable, then dispatch immediately so
+        # the rider lands on a live matching screen. The
+        # transport.dispatch_recovery beat stays as the safety net.
+        # Soft-fail: a dispatch problem must never block the redirect.
+        if str(data.get("payment_method") or "cash").lower() == "cash":
+            try:
+                get_booking_service().transition_status(
+                    booking_id, BookingStatus.CONFIRMED,
+                    reason="cash_confirm",
+                    initiated_by="rider",
+                    actor=current_user,
+                )
+                from app.transport.services.matching_service import (
+                    MatchingService,
+                )
+                outcome = MatchingService.discover_and_offer(booking_id)
+                logger.info(
+                    f"Cash booking confirmed + dispatched: id={booking_id} "
+                    f"offers_created={outcome.get('offers_created', 0)}"
+                )
+            except Exception as e:
+                db.session.rollback()
+                logger.warning(
+                    f"Post-create confirm/dispatch failed for booking "
+                    f"{booking_id}: {e}", exc_info=True,
+                )
+
         flash(f"Booking confirmed! Reference: {ref}", "success")
         return_to = session.pop("transport_book_return_to", None)
         if return_to:
@@ -1680,6 +1731,26 @@ def driver_dashboard():
         owned_vehicles = []
         assigned_vehicle = None
 
+    # Live ride offers (D2 + DRIVER-OFFER-UX-REPAIR-1): the same
+    # transient Redis offers the dispatch loop creates, enriched at READ
+    # time from the authoritative Booking row by
+    # ``OfferService.list_driver_offers`` (Redis stays thin).
+    # Non-authoritative + TTL'd; any failure degrades to an empty panel,
+    # never an error page.
+    offers = []
+    if profile is not None:
+        try:
+            from app.transport.services.offer_service import OfferService
+
+            offers = OfferService.list_driver_offers(profile.id) or []
+        except Exception as e:
+            db.session.rollback()
+            logger.warning(
+                f"Error loading live offers for profile {_uid()}: {e}"
+            )
+            offers = []
+    offer_count = len(offers)
+
     # GO-LIVE capability: entering the Driver Workspace is participation;
     # going online composes the authoritative readiness gates. The result is
     # rendered to the template so the online toggle is disabled and the
@@ -1689,6 +1760,15 @@ def driver_dashboard():
     # Marketplace "Find Vehicle" section (Part A): listing-backed, in sync with
     # the browse page's source. Never fed from a raw Vehicle query.
     available_marketplace_vehicles = _marketplace_listing_views(limit=5)
+
+    # Location publishing cadence: drives the workspace's
+    # live geolocation pings and the Location card's stated cadence.
+    try:
+        ping_interval = int(get_setting(
+            "driver.location_ping_interval_seconds", 120
+        ))
+    except (TypeError, ValueError):
+        ping_interval = 120
 
     return _json_or_template(
         "transport/driver/driver_dashboard.html",
@@ -1701,6 +1781,9 @@ def driver_dashboard():
         assigned_vehicle=assigned_vehicle,
         go_live=go_live,
         available_marketplace_vehicles=available_marketplace_vehicles,
+        ping_interval_seconds=ping_interval,
+        offers=offers,
+        offer_count=offer_count,
     )
 
 
@@ -2125,7 +2208,7 @@ def organisation_dashboard():
 @transport_admin_bp.route("/bookings", methods=["GET"])
 @module_enabled_required("transport")
 @login_required
-@role_required("admin")
+@transport_admin_required
 def list_bookings():
     """View all bookings with pagination"""
     page, per_page = _paginate_args()
@@ -2146,7 +2229,7 @@ def list_bookings():
 @transport_admin_bp.route("/bookings/<int:booking_id>", methods=["GET"])
 @module_enabled_required("transport")
 @login_required
-@role_required("admin")
+@transport_admin_required
 def booking_detail(booking_id):
     """Admin-facing booking detail. Full data, admin actions, audit trail."""
     from app.transport.models import Booking, BookingPayment
@@ -2194,7 +2277,7 @@ def booking_detail(booking_id):
 @transport_admin_bp.route("/bookings/<int:booking_id>/cancel", methods=["POST"])
 @module_enabled_required("transport")
 @login_required
-@role_required("admin")
+@transport_admin_required
 def cancel_booking(booking_id):
     """Cancel a booking as admin"""
     try:
@@ -2583,134 +2666,55 @@ def dashboard():
 @login_required
 @require_moderator
 def moderate():
-    """Show all transport items for moderators (same data as admin view)"""
-    # Show all items, not just pending
-    all_bookings = Booking.query.filter_by(is_deleted=False).order_by(Booking.created_at.desc()).all()
-    all_vehicles = Vehicle.query.filter_by(is_deleted=False).order_by(Vehicle.created_at.desc()).all()
-    all_drivers = DriverProfile.query.order_by(DriverProfile.created_at.desc()).all()
-
-    # Audit log for moderator viewing
-    from app.audit.comprehensive_audit import AuditService
-    AuditService.security(
-        event_type="moderator_view_transport",
-        severity="info",
-        description=f"Moderator {current_user.id} viewed all transport items",
-        user_id=current_user.id,
-        ip_address=request.remote_addr,
-    )
-
-    return render_template('transport/moderate.html',
-                          bookings=all_bookings,
-                          vehicles=all_vehicles,
-                          drivers=all_drivers,
-                          is_moderator=True)
+    """Legacy transport moderator queue — retired onto the canonical
+    admin moderator surface (BL-17/18). Preserved as a guarded redirect
+    so saved links keep working."""
+    return redirect(url_for('admin.moderator.transport_moderation'))
 
 
 @transport_bp.route("/moderate/booking/<int:id>")
 @login_required
 @require_moderator
 def moderate_booking(id):
-    """Show single booking for moderation review"""
-    booking = Booking.query.get_or_404(id)
-    return render_template('transport/moderate_booking.html', booking=booking)
+    """Legacy booking review page — redirects to the canonical view."""
+    Booking.query.get_or_404(id)
+    return redirect(
+        url_for('admin.moderator.view_transport_booking', booking_id=id)
+    )
 
 
 @transport_bp.route("/moderate/vehicle/<int:id>")
 @login_required
 @require_moderator
 def moderate_vehicle(id):
-    """Show single vehicle for moderation review"""
-    vehicle = Vehicle.query.get_or_404(id)
-    return render_template('transport/moderate_vehicle.html', vehicle=vehicle)
+    """Legacy vehicle review page — redirects to the canonical view."""
+    Vehicle.query.get_or_404(id)
+    return redirect(
+        url_for('admin.moderator.view_transport_vehicle', vehicle_id=id)
+    )
 
 
 @transport_bp.route("/moderate/driver/<int:id>")
 @login_required
 @require_moderator
 def moderate_driver(id):
-    """Show single driver for moderation review"""
-    driver = DriverProfile.query.get_or_404(id)
-    return render_template('transport/moderate_driver.html', driver=driver)
+    """Legacy driver review page — redirects to the canonical view."""
+    DriverProfile.query.get_or_404(id)
+    return redirect(
+        url_for('admin.moderator.view_transport_driver', driver_id=id)
+    )
 
 
 @transport_bp.route("/moderate/<entity_type>/<int:id>/<action>", methods=['POST'])
 @login_required
 @require_moderator
 def moderate_action(entity_type, id, action):
-    """Approve, reject, or flag transport items"""
-    
-    if entity_type == 'booking':
-        item = Booking.query.get_or_404(id)
-        redirect_url = url_for('transport.moderate_booking', id=id)
-    elif entity_type == 'vehicle':
-        item = Vehicle.query.get_or_404(id)
-        redirect_url = url_for('transport.moderate_vehicle', id=id)
-    elif entity_type == 'driver':
-        item = DriverProfile.query.get_or_404(id)
-        redirect_url = url_for('transport.moderate_driver', id=id)
-    else:
-        flash('Invalid entity type.', 'danger')
-        return redirect(url_for('transport.moderate'))
-    
-    if action == 'approve':
-        if entity_type == 'vehicle':
-            item.status = 'active'
-            if hasattr(item, 'verified_at'):
-                item.verified_at = datetime.now(timezone.utc)
-            db.session.commit()
-        elif entity_type == 'driver':
-            get_provider_service().update_driver_status(id, 'approved')
-        elif entity_type == 'booking':
-            item.status = 'confirmed'
-            db.session.commit()
+    """Legacy moderation action endpoint — delegates to the single
+    canonical implementation (BL-17/18). Guards preserved; behavior and
+    redirects are the canonical surface's."""
+    from app.admin.moderator.routes import (
+        transport_moderate_action as canonical_moderate_action,
+    )
 
-        flash(f'{entity_type.capitalize()} approved successfully.', 'success')
-    
-    elif action == 'reject':
-        reason = request.form.get('reason', '').strip()
-        # BL-19: only booking persists the reason (cancellation_reason).
-        # Vehicle has no rejection_reason column and update_driver_status
-        # takes no reason, so requiring it for those types was
-        # mandatory-but-discarded input.
-        if entity_type == 'booking' and not reason:
-            flash('Rejection reason is required.', 'warning')
-            return redirect(redirect_url)
-        
-        if entity_type == 'vehicle':
-            item.status = 'rejected'
-            if hasattr(item, 'rejection_reason'):
-                item.rejection_reason = reason
-            db.session.commit()
-        elif entity_type == 'driver':
-            get_provider_service().update_driver_status(id, 'rejected')
-        elif entity_type == 'booking':
-            item.status = 'cancelled'
-            item.cancellation_reason = reason
-            db.session.commit()
-
-        flash(f'{entity_type.capitalize()} rejected successfully.', 'success')
-    
-    elif action == 'flag':
-        from app.admin.services import create_flag
-        reason = request.form.get('reason', '').strip()
-        priority = request.form.get('priority', 'medium')
-        
-        if not reason:
-            flash('Reason required for flagging.', 'warning')
-            return redirect(redirect_url)
-        
-        ok, flag = create_flag(
-            user=current_user,
-            entity_type=f'transport_{entity_type}',
-            entity_id=id,
-            reason=reason,
-            priority=priority
-        )
-        
-        if ok:
-            flash(f'{entity_type.capitalize()} flagged for review (Priority: {priority})', 'warning')
-        else:
-            flash(f'Failed to flag: {flag}', 'danger')
-    
-    return redirect(redirect_url)
+    return canonical_moderate_action(entity_type, entity_id=id, action=action)
 

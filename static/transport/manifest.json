@@ -1,0 +1,17 @@
+{
+  "name": "AFCON360 Driver",
+  "short_name": "Driver",
+  "description": "Driver workspace for AFCON360 transport",
+  "start_url": "/transport/driver-dashboard",
+  "scope": "/transport/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFFFFF",
+  "lang": "en",
+  "icons": [
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

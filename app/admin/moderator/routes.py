@@ -3239,12 +3239,7 @@ def transport_drivers():
     
     if search:
         query = query.filter(
-            db.or_(
-                DriverProfile.first_name.ilike(f'%{search}%'),
-                DriverProfile.last_name.ilike(f'%{search}%'),
-                DriverProfile.email.ilike(f'%{search}%'),
-                DriverProfile.phone.ilike(f'%{search}%')
-            )
+            DriverProfile.driver_code.ilike(f'%{search}%')
         )
     
     drivers = query.order_by(DriverProfile.created_at.desc()).paginate(
@@ -3364,7 +3359,7 @@ def view_transport_driver(driver_id):
     # Get driver bookings
     from app.transport.models import Booking
     driver_bookings = Booking.query.filter_by(
-        driver_id=driver_id,
+        assigned_driver_id=driver_id,
         is_deleted=False
     ).order_by(Booking.created_at.desc()).limit(10).all()
     
@@ -3374,7 +3369,7 @@ def view_transport_driver(driver_id):
         driver_flags=driver_flags,
         driver_vehicles=driver_vehicles,
         driver_bookings=driver_bookings,
-        title=f"Driver: {driver.first_name} {driver.last_name}"
+        title=f"Driver: {driver.driver_code}"
     )
 
 
@@ -3433,13 +3428,35 @@ def view_transport_booking(booking_id):
     )
 
 
+def _audit_moderation_reason(entity_type, entity_id, reason, action="rejected"):
+    """Capture a moderator's reason/comment in the audit trail.
+
+    Vehicle/driver suspension_reason / rejection_reason / suspended_at
+    exist on NEITHER model (migration-batch finding); the audit trail
+    is the durable home so operator input is never silently discarded.
+    Best-effort: audit failure must not break the moderation action.
+    """
+    try:
+        from app.audit.forensic_audit import ForensicAuditService
+
+        ForensicAuditService.log_attempt(
+            entity_type=f"transport_{entity_type}",
+            entity_id=str(entity_id),
+            action=f"transport_{entity_type}_{action}",
+            user_id=getattr(current_user, "id", None),
+            details={"reason": reason},
+        )
+    except Exception:
+        pass
+
+
 @moderator_bp.route('/transport/action/<entity_type>/<int:entity_id>/<action>', methods=['POST'])
 @login_required
 @require_role(*_MOD)
 def transport_moderate_action(entity_type, entity_id, action):
     """Perform moderation actions on transport entities"""
     from app.transport.models import DriverProfile, Vehicle, Booking
-    
+
     # Get the appropriate entity
     if entity_type == 'driver':
         entity = DriverProfile.query.get_or_404(entity_id)
@@ -3453,11 +3470,15 @@ def transport_moderate_action(entity_type, entity_id, action):
     else:
         flash('Invalid entity type.', 'danger')
         return redirect(url_for('admin.moderator.transport_moderation'))
-    
+
     # Perform the action
     if action == 'approve':
         if entity_type == 'driver':
             entity.verification_tier = 'platform_verified'
+            # Merged transport-surface semantics: approval must also
+            # set compliance APPROVED (dispatch claims require it).
+            from app.transport import get_provider_service
+            get_provider_service().update_driver_status(entity_id, 'approved')
             # Add verified_at field if it exists
             if hasattr(entity, 'verified_at'):
                 entity.verified_at = datetime.now(timezone.utc)
@@ -3467,44 +3488,95 @@ def transport_moderate_action(entity_type, entity_id, action):
             if hasattr(entity, 'verified_at'):
                 entity.verified_at = datetime.now(timezone.utc)
         elif entity_type == 'booking':
-            entity.status = 'confirmed'
-        
+            # BL-26: booking approval goes through the canonical guarded
+            # transition (sets confirmed_at; refuses non-awaiting states).
+            from app.transport.models import BookingStatus
+            from app.transport.services.assignment_service import DispatchClaimError
+            from app.transport.services.booking_service import BookingService
+            from app.utils.exceptions import NotFoundError, ValidationError
+
+            if entity.status == BookingStatus.CONFIRMED:
+                pass  # idempotent re-approve: guarded no-op
+            elif entity.status == BookingStatus.DISPUTED:
+                # Dispute-resolution path (preserved behavior).
+                entity.status = BookingStatus.CONFIRMED
+            else:
+                try:
+                    BookingService.transition_status(
+                        entity_id,
+                        BookingStatus.CONFIRMED,
+                        initiated_by="moderator",
+                        actor=current_user,
+                    )
+                except (ValidationError, DispatchClaimError, NotFoundError):
+                    db.session.rollback()
+                    flash(
+                        'Booking cannot be approved from its current state.',
+                        'warning',
+                    )
+                    return redirect(redirect_url)
+
         db.session.commit()
         flash(f'{entity_type.capitalize()} approved successfully.', 'success')
-    
+
     elif action == 'reject':
         reason = request.form.get('reason', '').strip()
         if not reason:
             flash('Rejection reason is required.', 'warning')
             return redirect(redirect_url)
-        
+
         if entity_type == 'driver':
             entity.verification_tier = 'pending'
+            # Merged transport-surface semantics: rejection sets
+            # compliance REVOKED via the service.
+            from app.transport import get_provider_service
+            get_provider_service().update_driver_status(entity_id, 'rejected')
             # Add rejection_reason field if it exists
             if hasattr(entity, 'rejection_reason'):
                 entity.rejection_reason = reason
+            _audit_moderation_reason('driver', entity_id, reason)
         elif entity_type == 'vehicle':
             entity.status = 'rejected'
             # Add rejection_reason field if it exists
             if hasattr(entity, 'rejection_reason'):
                 entity.rejection_reason = reason
+            _audit_moderation_reason('vehicle', entity_id, reason)
         elif entity_type == 'booking':
-            entity.status = 'cancelled'
-            # Add cancellation_reason field if it exists
-            if hasattr(entity, 'cancellation_reason'):
-                entity.cancellation_reason = reason
-        
+            # BL-26: booking rejection goes through the canonical guarded
+            # transition (STATUS_TRANSITIONS gate + AssignmentService
+            # release + timestamps). Refuses terminal/operational states.
+            from app.transport.models import BookingStatus
+            from app.transport.services.assignment_service import DispatchClaimError
+            from app.transport.services.booking_service import BookingService
+            from app.utils.exceptions import NotFoundError, ValidationError
+
+            try:
+                BookingService.transition_status(
+                    entity_id,
+                    BookingStatus.CANCELLED,
+                    reason=reason,
+                    initiated_by="moderator",
+                    actor=current_user,
+                )
+            except (ValidationError, DispatchClaimError, NotFoundError):
+                db.session.rollback()
+                flash(
+                    'Booking cannot be rejected from its current state.',
+                    'warning',
+                )
+                return redirect(redirect_url)
+
         db.session.commit()
         flash(f'{entity_type.capitalize()} rejected successfully.', 'success')
-    
+
     elif action == 'flag':
         reason = request.form.get('reason', '').strip()
         priority = request.form.get('priority', 'medium')
-        
+
         if not reason:
             flash('Reason required for flagging.', 'warning')
             return redirect(redirect_url)
-        
+
         from app.admin.services import create_flag
         ok, flag = create_flag(
             user=current_user,
@@ -3513,24 +3585,29 @@ def transport_moderate_action(entity_type, entity_id, action):
             reason=reason,
             priority=priority
         )
-        
+
         if ok:
             flash(f'{entity_type.capitalize()} flagged for review (Priority: {priority})', 'warning')
         else:
             flash(f'Failed to flag: {flag}', 'danger')
-    
+
     elif action == 'suspend':
+        # Suspend verb preserved. Only real columns persist here:
+        # DriverProfile/Vehicle have is_available; suspension_reason /
+        # suspended_at exist on NEITHER model (migration-batch finding),
+        # so the operator reason is audit-captured instead of written
+        # to phantom attributes.
+        reason = request.form.get('reason', 'Suspended by moderator')
         if entity_type == 'driver':
-            entity.is_active = False
-            entity.suspension_reason = request.form.get('reason', 'Suspended by moderator')
-            entity.suspended_at = datetime.now(timezone.utc)
+            entity.is_available = False
+            _audit_moderation_reason('driver', entity_id, reason, action='suspended')
         elif entity_type == 'vehicle':
             entity.is_available = False
-            entity.suspension_reason = request.form.get('reason', 'Suspended by moderator')
-        
+            _audit_moderation_reason('vehicle', entity_id, reason, action='suspended')
+
         db.session.commit()
         flash(f'{entity_type.capitalize()} suspended successfully.', 'warning')
-    
+
     return redirect(redirect_url)
 
 

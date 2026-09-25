@@ -45,6 +45,19 @@
 .sf-step.active .sf-label  { background:var(--amber-dim);  color:var(--amber); border-color:rgba(245,158,11,0.3); }
 .sf-step.skip .sf-label    { opacity:0.4; }
 .sf-arrow { color:var(--text-muted); margin:0 4px; font-size:0.65rem; opacity:0.4; }
+.rm-steps { display:flex; flex-direction:column; gap:14px; padding:16px 16px 4px; }
+.rm-step { display:flex; gap:12px; align-items:flex-start; opacity:0.55; }
+.rm-step.done, .rm-step.active { opacity:1; }
+.rm-dot { width:14px; height:14px; border-radius:50%; border:2px solid var(--border); background:var(--bg-elevated); margin-top:3px; flex-shrink:0; }
+.rm-step.done .rm-dot { background:var(--green); border-color:var(--green); }
+.rm-step.active .rm-dot { background:var(--amber); border-color:var(--amber); box-shadow:0 0 0 4px var(--amber-dim); animation:rmPulse 1.4s ease-in-out infinite; }
+@keyframes rmPulse { 50% { box-shadow:0 0 0 8px var(--amber-dim); } }
+.rm-t { font-weight:600; font-size:clamp(0.88rem, 2.5vw, 0.95rem); }
+.rm-s { font-size:0.78rem; color:var(--text-muted); margin-top:2px; }
+.rm-options { display:flex; flex-direction:column; border-top:1px solid var(--border); margin-top:8px; }
+.rm-opt { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:11px 16px; border-bottom:1px solid var(--border); font-size:0.82rem; min-height:44px; }
+.rm-note { padding:10px 16px 14px; font-size:0.72rem; color:var(--text-muted); }
+@media (prefers-reduced-motion: reduce) { .rm-step.active .rm-dot { animation:none; } }
 </style>
 {% endblock %}
 
@@ -77,6 +90,31 @@
   </div>
   {% endfor %}
 </div>
+
+{% if current_status in ['pending_payment','confirmed'] %}
+{% set pu = booking.pickup_location if booking.pickup_location is mapping else {} %}
+{% set do = booking.dropoff_location if booking.dropoff_location is mapping else {} %}
+<div class="card" id="riderMatching"
+     data-status-url="/api/transport/bookings/{{ booking.booking_reference }}"
+     data-options-url="/api/transport/ride-options"
+     data-csrf="{{ raw_csrf_token }}"
+     data-service-type="{{ booking.service_type.value if booking.service_type else 'on_demand' }}"
+     data-currency="{{ booking.currency.value if booking.currency else 'USD' }}"
+     {% if pu.get('latitude') is not none and pu.get('longitude') is not none %}data-pickup-lat="{{ pu.get('latitude') }}" data-pickup-lng="{{ pu.get('longitude') }}"{% endif %}
+     {% if do.get('latitude') is not none and do.get('longitude') is not none %}data-dropoff-lat="{{ do.get('latitude') }}" data-dropoff-lng="{{ do.get('longitude') }}"{% endif %}>
+  <div class="card-header">
+    <span class="card-title">Finding your driver</span>
+    <span class="badge badge-amber" role="status" aria-live="polite">Pinging drivers…</span>
+  </div>
+  <div class="rm-steps">
+    <div class="rm-step done"><span class="rm-dot" aria-hidden="true"></span><div><div class="rm-t">Request received</div><div class="rm-s">We have your ride details</div></div></div>
+    <div class="rm-step active" id="rmPing"><span class="rm-dot" aria-hidden="true"></span><div><div class="rm-t">Pinging nearby drivers</div><div class="rm-s" id="rmAvail">Checking available vehicles…</div></div></div>
+    <div class="rm-step" id="rmAssigned"><span class="rm-dot" aria-hidden="true"></span><div><div class="rm-t">Driver assigned</div><div class="rm-s" id="rmAssignedSub">Waiting for a driver to accept your ride</div></div></div>
+  </div>
+  <div id="rmOptions" class="rm-options"></div>
+  <div class="rm-note">Availability and fares are live from the fare engine — they refresh while we search.</div>
+</div>
+{% endif %}
 
 <div class="booking-layout">
   <div style="display:flex; flex-direction:column; gap:16px;">
@@ -264,6 +302,7 @@
 
 {% block extra_js %}
 {% if passengers %}<script src="{{ url_for('static', filename='js/modules/transport/accommodation_pane.js') }}"></script>{% endif %}
+{% if current_status in ['pending_payment','confirmed'] %}<script src="{{ url_for('static', filename='js/modules/transport/rider_matching.js') }}"></script>{% endif %}
 <script nonce="{{ csp_nonce }}">
 function cancelBooking() {
   if (!confirm('Cancel this booking? This cannot be undone.')) return;

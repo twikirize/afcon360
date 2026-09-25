@@ -15,13 +15,15 @@
 <html lang="en" data-theme="default" class="afcon-root">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>{% block title %}Driver{% endblock %} — AFCON360</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  {# notification_bell.html renders its glyph with .bi-bell — same icon set base.html loads #}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" />
 
    <meta name="user-authenticated" content="true">
    <meta name="csrf-token" content="{{ raw_csrf_token }}">
@@ -32,7 +34,14 @@
    <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-components.css') }}">
    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/driver-dashboard.css') }}">
 
-
+  <!-- PWA -->
+  <link rel="manifest" href="{{ url_for('static', filename='transport/manifest.json') }}">
+  <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#1E1E1E" media="(prefers-color-scheme: dark)" />
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="AFCON360 Driver">
 
   {% block extra_css %}{% endblock %}
 </head>
@@ -81,12 +90,18 @@
 
     <div class="ck-pane-foot">
       <div class="ck-user-avatar">
-        {{ current_user.username[:2].upper() if current_user.username else 'A' }}
+        {{ current_user.display_name[:2].upper() if current_user.display_name else 'A' }}
       </div>
       <div class="ck-user-meta">
-        <div class="ck-user-name">{{ current_user.username|default('Driver') }}</div>
+        <div class="ck-user-name">{{ current_user.display_name|default('Driver') }}</div>
         <div class="ck-user-role">Driver</div>
       </div>
+      {# keeps "back to main site" reachable when the topbar globe is dropped
+         on <=375px phones (#backToSiteBtn is display:none there) #}
+      <a href="{{ url_for('index') }}" title="Back to main site" aria-label="Back to main site"
+         id="mainSiteLink" class="ck-user-logout">
+        <i class="fa-solid fa-globe"></i>
+      </a>
       <a href="{{ url_for('auth.logout') }}" title="Sign out" class="ck-user-logout">
         <i class="fa-solid fa-arrow-right-from-bracket"></i>
       </a>
@@ -136,9 +151,12 @@
 
       <div class="topbar-actions">
         {% include 'components/notification_bell.html' %}
-        <a href="{{ url_for('index') }}" class="topbar-btn" title="Back to main site">
+        <a href="{{ url_for('index') }}" class="topbar-btn" id="backToSiteBtn" title="Back to main site">
           <i class="fa-solid fa-globe"></i>
         </a>
+        <button class="topbar-btn" id="installAppBtn" title="Install Driver App" hidden>
+          <i class="fa-solid fa-download"></i>
+        </button>
         <button class="topbar-btn" title="Refresh" id="refreshBtn">
           <i class="fa-solid fa-rotate"></i>
         </button>
@@ -191,6 +209,10 @@
 
 <!-- Theme Manager -->
 <script src="{{ url_for('static', filename='js/global/theme-manager.js') }}"></script>
+
+<!-- Alert layer: rings for a new ride offer and for unread transport
+     notifications (the bell above stays the durable inbox for both) -->
+<script src="{{ url_for('static', filename='js/modules/transport/driver_alerts.js') }}"></script>
 <script>
   document.addEventListener('DOMContentLoaded', function () {
     if (typeof ThemeManager !== 'undefined') {

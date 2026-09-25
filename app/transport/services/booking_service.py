@@ -134,12 +134,33 @@ def _measured_distance_km(pickup_location: Any,
         GeoPoint(destination[0], destination[1])) / 1000.0
 
 
+# Valid status transitions - enforced server-side.
+# Single source of truth (moved here from api/booking_routes.py so the
+# admin status endpoint and moderation flows share one contract).
+STATUS_TRANSITIONS = {
+    BookingStatus.DRAFT:           [BookingStatus.PENDING_PAYMENT, BookingStatus.CANCELLED],
+    BookingStatus.PENDING_PAYMENT: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
+    BookingStatus.CONFIRMED:       [BookingStatus.ASSIGNED, BookingStatus.CANCELLED],
+    BookingStatus.ASSIGNED:        [BookingStatus.DRIVER_EN_ROUTE, BookingStatus.CANCELLED],
+    BookingStatus.DRIVER_EN_ROUTE: [BookingStatus.PICKUP_ARRIVED, BookingStatus.CANCELLED],
+    BookingStatus.PICKUP_ARRIVED:  [BookingStatus.IN_PROGRESS, BookingStatus.NO_SHOW],
+    BookingStatus.IN_PROGRESS:     [BookingStatus.COMPLETED, BookingStatus.DISPUTED],
+    BookingStatus.COMPLETED:       [],
+    BookingStatus.CANCELLED:       [],
+    BookingStatus.NO_SHOW:         [],
+    BookingStatus.DISPUTED:        [BookingStatus.COMPLETED, BookingStatus.CANCELLED],
+}
+
+
+def _can_transition(current: BookingStatus, target: BookingStatus) -> bool:
+    return target in STATUS_TRANSITIONS.get(current, [])
+
+
 class BookingService:
     """Instance-based service for managing transport bookings"""
 
     CACHE_PREFIX = "transport:booking"
     BOOKING_CACHE_TTL = 300  # 5 minutes
-
     def __init__(self):
         self.cache_prefix = self.CACHE_PREFIX
         self.cache_ttl = self.BOOKING_CACHE_TTL
@@ -452,8 +473,119 @@ class BookingService:
         except SQLAlchemyError as e:
             db.session.rollback()
             logger.error(f"Database error cancelling booking {booking_id}: {e}", exc_info=True)
-            record_metric("booking_cancelled", tags={"status": "failed", "error_type": "database"}, value=1)
             raise ServiceUnavailableError("Could not cancel booking")
+
+    @staticmethod
+    def transition_status(booking_id: int, new_status: "BookingStatus",
+                          *, reason: Optional[str] = None,
+                          initiated_by: str = "admin",
+                          actor=None) -> Dict[str, Any]:
+        """Canonical guarded booking status transition (STATUS_TRANSITIONS).
+
+        Single authority shared by the admin status endpoint and the
+        moderator action. Enforces the transition map; terminal
+        transitions on assigned bookings go through
+        AssignmentService.release (status + assignment clearing + resource
+        freeing in one transaction); lifecycle timestamps, cancellation
+        fields and audit_log entries mirror the established semantics.
+
+        Returns {"booking": refreshed Booking, "release": release result
+        or None}. Raises NotFoundError / ValidationError (illegal edge) /
+        DispatchClaimError (release refusal) / ServiceUnavailableError.
+        """
+        from app.transport.services.assignment_service import (
+            AssignmentService,
+            DispatchClaimError,
+            TERMINAL_RELEASE_STATUSES,
+        )
+
+        if not isinstance(new_status, BookingStatus):
+            raise ValidationError(
+                message=f"Invalid status: {new_status}",
+                field="status",
+            )
+
+        booking = db.session.get(Booking, booking_id)
+        if not booking or booking.is_deleted:
+            raise NotFoundError("Booking not found",
+                                resource_type="booking",
+                                resource_id=booking_id)
+
+        if not _can_transition(booking.status, new_status):
+            raise ValidationError(
+                message=f"Cannot transition from {booking.status.value} "
+                        f"to {new_status.value}",
+                field="status",
+            )
+
+        old_status = booking.status
+        now = datetime.now(timezone.utc)
+
+        if new_status in TERMINAL_RELEASE_STATUSES and (
+            booking.assigned_driver_id is not None
+            or booking.assigned_vehicle_id is not None
+        ):
+            if new_status == BookingStatus.COMPLETED:
+                booking.completed_at = now
+            elif new_status == BookingStatus.CANCELLED:
+                booking.cancelled_at = now
+                booking.cancellation_reason = (
+                    reason if reason is not None else "admin_action"
+                )
+                booking.cancellation_initiated_by = initiated_by
+            try:
+                release_result = AssignmentService.release(
+                    booking_id,
+                    new_status,
+                    actor=actor,
+                    reason=reason,
+                    audit_extra={"from": old_status.value},
+                )
+            except DispatchClaimError:
+                db.session.rollback()
+                raise
+            refreshed = db.session.get(Booking, booking_id)
+            logger.info(
+                f"Booking {booking_id} released via canonical dispatch "
+                f"-> {new_status.value}"
+            )
+            return {"booking": refreshed, "release": release_result}
+
+        booking.status = new_status
+
+        # Set lifecycle timestamps automatically
+        if new_status == BookingStatus.CONFIRMED:
+            booking.confirmed_at = now
+        elif new_status == BookingStatus.COMPLETED:
+            booking.completed_at = now
+        elif new_status == BookingStatus.CANCELLED:
+            booking.cancelled_at = now
+            booking.cancellation_reason = (
+                reason if reason is not None else "admin_action"
+            )
+            booking.cancellation_initiated_by = initiated_by
+
+        # Append to audit log
+        booking.audit_log = (booking.audit_log or []) + [{
+            "action": "status_changed",
+            "from": old_status.value,
+            "to": new_status.value,
+            "at": now.isoformat(),
+            "reason": reason,
+        }]
+
+        try:
+            db.session.commit()
+            logger.info(
+                f"Booking {booking_id} status: {old_status.value} → "
+                f"{new_status.value}"
+            )
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            logger.error(f"Error transitioning booking {booking_id}: {e}",
+                         exc_info=True)
+            raise ServiceUnavailableError("Could not transition booking")
+        return {"booking": booking, "release": None}
 
     # =========================================================
     # List & Analytics (Enhanced for Admin Dashboard)

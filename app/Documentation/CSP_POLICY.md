@@ -40,7 +40,9 @@ The app also returns modern hardening headers:
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 - `Referrer-Policy: strict-origin-when-cross-origin`
-- `Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()`
+- `Permissions-Policy: geolocation=(self), microphone=(), camera=(), payment=()`
+  - `geolocation=(self)`: same-origin pages may use the browser Geolocation API. Required by the Driver Workspace (`/transport/driver-dashboard`) so location pings can read device position.
+  - `microphone=()`, `camera=()`, `payment=()`: explicitly denied for all origins (including same-origin). The Driver Workspace does not need them; enable individually only with an approved need.
 - `Cross-Origin-Opener-Policy: same-origin`
 - `Cross-Origin-Resource-Policy: same-origin`
 - `X-Permitted-Cross-Domain-Policies: none`
@@ -129,6 +131,7 @@ Validation steps:
 
 ### Change control
 - Enforced CSP and Report-Only policies managed in `app/__init__.py::apply_security_headers`.
+- Hardening headers (incl. `Permissions-Policy`) set in `app/__init__.py::after_request_pipeline`.
 - CSP nonce generation in `set_csp_nonce` and injected via `inject_csp_nonce`.
 - CSP reporting handled by `POST /csp-report`.
 

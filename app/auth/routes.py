@@ -1062,7 +1062,35 @@ def login():
                             session["current_org_id"] = user.default_org_id
 
             next_page = request.args.get("next") or session.pop("next_url", None)
-            if not next_page or not is_safe_url(next_page):
+            if next_page and not is_safe_url(next_page):
+                next_page = None
+
+            # Uniform post-login context resolution: select the highest-priority
+            # eligible context even when ?next= overrides the landing URL, so
+            # guarded destinations (e.g. driver workspace) stay reachable.
+            # Any failure keeps login working via the legacy role resolver.
+            landing_url = None
+            try:
+                from app.auth.context import (
+                    resolve_default_context,
+                    switch_context,
+                )
+                descriptor, landing_url = resolve_default_context(user)
+                if descriptor is not None and not session.get("active_context_type"):
+                    switch_context(user, {
+                        "type": descriptor.type.value,
+                        "public_id": descriptor.public_id,
+                        "role": descriptor.role,
+                    })
+            except Exception:
+                landing_url = None
+                current_app.logger.exception(
+                    "default_context_resolution_failed user_id=%s", user.id
+                )
+
+            if not next_page:
+                next_page = landing_url
+            if not next_page:
                 next_page = _dashboard_for_user(user)
 
             _rotate_session_id()

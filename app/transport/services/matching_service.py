@@ -182,8 +182,19 @@ class MatchingService:
                 if not driver_id or not vehicle_id:
                     continue
                 try:
+                    # Freshness gate: notify only when this driver had no
+                    # live offer before this create, so the recovery beat
+                    # re-offering the same trip never spams the inbox.
+                    fresh = (
+                        OfferService.get_offer(
+                            booking.booking_reference, driver_id=driver_id
+                        )
+                        is None
+                    )
                     OfferService.create_offer(booking.booking_reference, driver_id, vehicle_id)
                     created.append(driver_id)
+                    if fresh:
+                        _notify_driver_new_offer(booking, driver_id)
                 except OfferUnavailableError:
                     current_app.logger.warning(
                         "dispatch offer creation unavailable for booking %s; "
@@ -394,6 +405,44 @@ class MatchingService:
 # Singleton getter
 # ------------------------
 from threading import Lock
+
+def _notify_driver_new_offer(booking: Booking, driver_id: int) -> None:
+    """Best-effort durable inbox notification for a FRESH offer.
+
+    Called by ``discover_and_offer`` only after a successful Redis write and
+    only when no offer existed for this driver beforehand. Never raises:
+    a broken notification transport must not undo the dispatch work already
+    committed.
+    """
+    from app.transport.services.notification_service import (
+        NotificationService,
+    )
+    from app.transport.services.offer_service import format_endpoint_display
+
+    try:
+        pickup = format_endpoint_display(
+            booking.pickup_address,
+            getattr(booking, "pickup_location", None),
+        )
+        dropoff = format_endpoint_display(
+            booking.dropoff_address,
+            getattr(booking, "dropoff_location", None),
+        )
+        NotificationService.send_driver_notification(
+            driver_id,
+            "new_booking",
+            {
+                "booking_reference": booking.booking_reference,
+                "pickup_location": pickup.get("text") or "a nearby pickup",
+                "dropoff_location": dropoff.get("text") or "the drop-off",
+            },
+        )
+    except Exception as exc:
+        current_app.logger.warning(
+            "offer notification failed for driver %s / booking %s: %s",
+            driver_id, booking.booking_reference, exc,
+        )
+
 
 _matching_service_instance = None
 _matching_service_lock = Lock()

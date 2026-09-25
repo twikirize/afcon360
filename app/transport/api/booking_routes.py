@@ -15,9 +15,9 @@ from app.transport.models import (
 from app.auth.decorators import admin_required
 from app.transport.services.assignment_service import (
     ACTIVE_ASSIGNMENT_STATUSES,
-    TERMINAL_RELEASE_STATUSES,
 )
 from app.transport.services.booking_service import _validate_booking_location_coordinates
+from app.transport.services.booking_service import STATUS_TRANSITIONS
 from app.transport.utils.helpers import paginate, filter_query, sort_query
 from datetime import datetime, timezone
 from sqlalchemy import func, or_
@@ -30,20 +30,8 @@ BOOKING_SORT_FIELDS = [
     "status", "payment_status", "final_price", "passenger_count"
 ]
 
-# Valid status transitions - enforced server-side
-STATUS_TRANSITIONS = {
-    BookingStatus.DRAFT:           [BookingStatus.PENDING_PAYMENT, BookingStatus.CANCELLED],
-    BookingStatus.PENDING_PAYMENT: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
-    BookingStatus.CONFIRMED:       [BookingStatus.ASSIGNED, BookingStatus.CANCELLED],
-    BookingStatus.ASSIGNED:        [BookingStatus.DRIVER_EN_ROUTE, BookingStatus.CANCELLED],
-    BookingStatus.DRIVER_EN_ROUTE: [BookingStatus.PICKUP_ARRIVED, BookingStatus.CANCELLED],
-    BookingStatus.PICKUP_ARRIVED:  [BookingStatus.IN_PROGRESS, BookingStatus.NO_SHOW],
-    BookingStatus.IN_PROGRESS:     [BookingStatus.COMPLETED, BookingStatus.DISPUTED],
-    BookingStatus.COMPLETED:       [],
-    BookingStatus.CANCELLED:       [],
-    BookingStatus.NO_SHOW:         [],
-    BookingStatus.DISPUTED:        [BookingStatus.COMPLETED, BookingStatus.CANCELLED],
-}
+# Valid status transitions live in booking_service.STATUS_TRANSITIONS
+# (single source of truth shared with moderation flows).
 
 
 # ---------------------------------------------------------------------------
@@ -66,10 +54,6 @@ def _current_user_is_admin():
         and hasattr(current_user, "has_global_role")
         and current_user.has_global_role("admin", "super_admin", "owner")
     )
-
-
-def _can_transition(current: BookingStatus, target: BookingStatus) -> bool:
-    return target in STATUS_TRANSITIONS.get(current, [])
 
 
 # ===========================================================================
@@ -295,89 +279,40 @@ class BookingStatusResource(Resource):
         except (ValueError, KeyError):
             return {"success": False, "error": f"Invalid status: {data.get('status')}"}, 400
 
-        if not _can_transition(booking.status, new_status):
+        from app.transport.services.assignment_service import DispatchClaimError
+        from app.transport.services.booking_service import BookingService
+        from app.utils.exceptions import ValidationError
+
+        try:
+            result = BookingService.transition_status(
+                booking_id,
+                new_status,
+                reason=data.get("reason"),
+                actor=current_user,
+            )
+        except ValidationError as e:
+            db.session.rollback()
             return {
                 "success": False,
-                "error": f"Cannot transition from {booking.status.value} to {new_status.value}",
+                "error": e.message,
                 "allowed_transitions": [s.value for s in STATUS_TRANSITIONS.get(booking.status, [])],
             }, 422
+        except DispatchClaimError as e:
+            db.session.rollback()
+            return {
+                "success": False,
+                "error": e.message,
+                "code": e.kind,
+                "allowed_transitions": [s.value for s in STATUS_TRANSITIONS.get(booking.status, [])],
+            }, 409
 
-        old_status = booking.status
-        now = datetime.now(timezone.utc)
-
-        # TH-3-D2: terminal transitions on an assigned booking go through the
-        # canonical release (status -> terminal, clear assignment FKs, free
-        # resources with late-release protection) in one transaction. DISPUTED
-        # is an ACTIVE ownership state (§9): entering DISPUTED keeps the
-        # resources latched; only a later terminal closure (COMPLETED /
-        # CANCELLED / NO_SHOW) releases them.
-        TERMINAL_TARGETS = TERMINAL_RELEASE_STATUSES
-        if new_status in TERMINAL_TARGETS and (
-            booking.assigned_driver_id is not None or booking.assigned_vehicle_id is not None
-        ):
-            from app.transport.services.assignment_service import (
-                AssignmentService,
-                DispatchClaimError,
-            )
-            if new_status == BookingStatus.COMPLETED:
-                booking.completed_at = now
-            elif new_status == BookingStatus.CANCELLED:
-                booking.cancelled_at = now
-                booking.cancellation_reason = data.get("reason", "admin_action")
-                booking.cancellation_initiated_by = "admin"
-            try:
-                release_result = AssignmentService.release(
-                    booking_id,
-                    new_status,
-                    actor=current_user,
-                    reason=data.get("reason"),
-                    audit_extra={"from": old_status.value},
-                )
-            except DispatchClaimError as e:
-                db.session.rollback()
-                return {
-                    "success": False,
-                    "error": e.message,
-                    "code": e.kind,
-                    "allowed_transitions": [
-                        s.value for s in STATUS_TRANSITIONS.get(booking.status, [])
-                    ],
-                }, 409
-            refreshed = _booking_or_404(booking_id)
+        refreshed = result["booking"]
+        if result["release"] is not None:
             logger.info(
                 f"Booking {booking_id} released via canonical dispatch -> {new_status.value}"
             )
-            return {"success": True, "data": refreshed.to_dict(), "release": release_result}
-
-        booking.status = new_status
-
-        # Set lifecycle timestamps automatically
-        if new_status == BookingStatus.CONFIRMED:
-            booking.confirmed_at = now
-        elif new_status == BookingStatus.COMPLETED:
-            booking.completed_at = now
-        elif new_status == BookingStatus.CANCELLED:
-            booking.cancelled_at = now
-            booking.cancellation_reason = data.get("reason", "admin_action")
-            booking.cancellation_initiated_by = "admin"
-
-        # Append to audit log
-        booking.audit_log = (booking.audit_log or []) + [{
-            "action": "status_changed",
-            "from": old_status.value,
-            "to": new_status.value,
-            "at": now.isoformat(),
-            "reason": data.get("reason"),
-        }]
-
-        try:
-            db.session.commit()
-            logger.info(f"Booking {booking_id} status: {old_status.value} → {new_status.value}")
-            return {"success": True, "data": booking.to_dict()}
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Error transitioning booking {booking_id}: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}, 500
+            return {"success": True, "data": refreshed.to_dict(), "release": result["release"]}
+        return {"success": True, "data": refreshed.to_dict()}
 
 
 # ===========================================================================

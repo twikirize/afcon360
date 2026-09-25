@@ -1976,7 +1976,14 @@ class NotificationService:
             guest_id = getattr(booking, 'customer_id', None)
         if guest_id:
             cls.send_transport_notification(guest_id, booking, 'driver_assigned', channel='sms')
-        driver_id = getattr(booking, 'driver_id', None)
+        if is_transport:
+            # BL-22: assigned_driver_id is a DriverProfile id (see
+            # Booking.driver); send() addresses Users, so resolve the
+            # profile to its user. Booking has no driver_id.
+            driver_profile = getattr(booking, 'driver', None)
+            driver_id = getattr(driver_profile, 'user_id', None)
+        else:
+            driver_id = getattr(booking, 'driver_id', None)
         if driver_id:
             cls.send(
                 user_id=driver_id,

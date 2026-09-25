@@ -358,14 +358,16 @@ class TestRealRideTransactionPath:
                 "coordinate pair should yield a measured straight-line distance"
             )
             assert booking.currency == Currency.USD, booking.currency
-            assert booking.status == BookingStatus.PENDING_PAYMENT.value, (
+            # Cash (pay-later) rides are confirmed by the route itself:
+            # PENDING_PAYMENT -> CONFIRMED runs at POST time so the booking
+            # is claimable immediately (no separate payment handoff).
+            assert booking.status == BookingStatus.CONFIRMED.value, (
                 booking.status
             )
+            assert booking.confirmed_at is not None, (
+                "cash confirm must stamp confirmed_at"
+            )
             ref = booking.booking_reference
-
-            # --- Payment-confirm handoff -> CONFIRMED before dispatch ---
-            booking.status = BookingStatus.CONFIRMED.value
-            db.session.commit()
 
         # --- Dispatch: discover -> offer (FakeRedis) ---
         from app.transport.services.matching_service import MatchingService

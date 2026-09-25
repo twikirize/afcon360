@@ -143,7 +143,15 @@ class NotificationService:
             notification_data = data or {}
 
             if notification_type == 'new_booking':
-                message_template = "New booking available! Pickup at {pickup_location}."
+                # Driver offer ping (DRIVER-OFFER-UX-REPAIR-1): pickup AND
+                # drop-off plus the booking reference, so the driver can
+                # understand the request before accepting. Fare stays on
+                # the offer card (the estimate surface); the inbox ping
+                # must not become a parallel fare record.
+                message_template = (
+                    "New ride request {booking_reference}: "
+                    "{pickup_location} → {dropoff_location}."
+                )
 
             elif notification_type == 'booking_accepted':
                 message_template = "You have accepted booking #{booking_code}."
@@ -160,12 +168,24 @@ class NotificationService:
             # Format message
             message = message_template.format(**notification_data)
 
-            # Send to driver
+            # Driver offer pings carry the booking reference as the
+            # durable pointer (transport convention: data.booking_id
+            # holds the public ref, as in send_transport_notification)
+            # and link to the Driver Workspace — the rider booking page
+            # is booker-ownership guarded and would 403 the driver.
+            booking_ref = notification_data.get("booking_reference")
             result = NotificationService._send_to_recipient(
                 recipient_id=driver_id,
                 message=message,
                 notification_type=notification_type,
-                is_driver=True
+                booking_id=booking_ref,
+                is_driver=True,
+                link="/transport/driver-dashboard",
+                extra_data={
+                    "booking_reference": booking_ref,
+                    "pickup_location": notification_data.get("pickup_location"),
+                    "dropoff_location": notification_data.get("dropoff_location"),
+                } if booking_ref else None,
             )
 
             return {
@@ -269,8 +289,10 @@ class NotificationService:
     @staticmethod
     def _send_to_recipient(recipient_id: int, message: str,
                            notification_type: str,
-                           booking_id: Optional[int] = None,
-                           is_driver: bool = False) -> Dict[str, Any]:
+                           booking_id: Optional[Any] = None,
+                           is_driver: bool = False,
+                           link: Optional[str] = None,
+                           extra_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Send a notification to a recipient via the DURABLE notification
         path (TH-3-D2): the canonical app.notifications service persists an
         inbox record (module=transport) instead of only logging.
@@ -279,6 +301,21 @@ class NotificationService:
         notification degrades to a log line and never raises, so a broken
         notification transport can never roll back the business operation
         that triggered it.
+
+        ID semantics (1C-5) — read carefully, the two are NOT
+        interchangeable:
+          * ``Booking.id`` (internal BigInteger) is NEVER placed here;
+            the ``Notification`` model has no ``booking_id`` column at
+            all — there is no internal-ID slot to fill.
+          * ``booking_id`` below carries the value the caller supplies
+            into the durable ``context`` payload: booking-event callers
+            pass the internal ``Booking.id`` (int); transport offer
+            callers pass the PUBLIC ``booking_reference`` (str),
+            following the established transport precedent
+            (``send_transport_notification`` stores the ref string in
+            ``data['booking_id']``). The explicit ``booking_reference``
+            key in ``extra_data`` is the unambiguous public pointer;
+            ``context['booking_id']`` preserves the transport convention.
         """
         try:
             from app.notifications.services import NotificationService as DurableService
@@ -293,6 +330,12 @@ class NotificationService:
                 'booking_confirmed': NotificationType.BOOKING_CONFIRMED,
                 'booking_cancelled': NotificationType.BOOKING_CANCELLED,
                 'cancelled': NotificationType.BOOKING_CANCELLED,
+                # Driver offer ping: an offer is not an assignment, so
+                # the explicit existing BOOKING_UPDATE (not the
+                # fallthrough, not DRIVER_ASSIGNED). No new enum value:
+                # ck_notifications_type enumerates allowed values, so a
+                # new type would require a migration.
+                'new_booking': NotificationType.BOOKING_UPDATE,
             }
             notification_type_enum = type_map.get(
                 notification_type, NotificationType.BOOKING_UPDATE
@@ -310,20 +353,27 @@ class NotificationService:
                     'error': 'no resolvable user for recipient',
                 }
 
-            record = DurableService.send(
-                user_id=user_id,
-                notification_type=notification_type_enum,
-                title=f"Transport {notification_type.replace('_', ' ').title()}",
-                message=message,
-                data={
-                    'booking_id': booking_id,
-                    'recipient_id': recipient_id,
-                    'is_driver': is_driver,
-                    'transport_type': notification_type,
-                },
-                channels=['in_app'],
-                module=NotificationModule.TRANSPORT,
-            )
+            payload = {
+                'booking_id': booking_id,
+                'recipient_id': recipient_id,
+                'is_driver': is_driver,
+                'transport_type': notification_type,
+            }
+            if extra_data:
+                for key, value in extra_data.items():
+                    payload.setdefault(key, value)
+            send_kwargs: Dict[str, Any] = {
+                "user_id": user_id,
+                "notification_type": notification_type_enum,
+                "title": f"Transport {notification_type.replace('_', ' ').title()}",
+                "message": message,
+                "data": payload,
+                "channels": ['in_app'],
+                "module": NotificationModule.TRANSPORT,
+            }
+            if link:
+                send_kwargs["link"] = link
+            record = DurableService.send(**send_kwargs)
 
             if record is None:
                 current_app.logger.warning(

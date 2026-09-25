@@ -72,20 +72,74 @@ if __name__ == "__main__":
         debug_mode = False
         logger.warning("FLASK_DEBUG=true but FLASK_ENV=production - Disabling debug mode for safety")
 
+    # --- Local-development TLS: FLASK_SSL = none | selfsigned | cert | devca ---
+    # See dev_tls.py. Production TLS termination is out of scope (BACKLOG.md).
+    from dev_tls import resolve_ssl_mode
+
+    try:
+        ssl_mode = resolve_ssl_mode(os.getenv('FLASK_SSL', 'none'))
+    except ValueError as exc:
+        logger.error(str(exc))
+        raise SystemExit(2)
+    ssl_enabled = ssl_mode != ''
+    ssl_run_kwargs = {}
+
+    if ssl_enabled:
+        from dev_tls import build_ssl_context, detect_lan_ipv4s, ensure_devca, ensure_selfsigned
+
+        if ssl_mode == 'selfsigned':
+            ssl_cert, ssl_key = ensure_selfsigned()
+        elif ssl_mode == 'devca':
+            ssl_cert, ssl_key = ensure_devca()
+        else:  # ssl_mode == 'cert' — externally supplied pair, never overwritten
+            ssl_cert = os.getenv('FLASK_SSL_CERT', '').strip()
+            ssl_key = os.getenv('FLASK_SSL_KEY', '').strip()
+            if not ssl_cert or not ssl_key:
+                logger.error("FLASK_SSL=cert requires FLASK_SSL_CERT and FLASK_SSL_KEY to be set.")
+                raise SystemExit(2)
+        # Only passed when TLS is on: gevent 26.x crashes on ssl_context=None.
+        ssl_run_kwargs['ssl_context'] = build_ssl_context(ssl_cert, ssl_key)
+
+    # With TLS enabled and FLASK_HOST unset, bind all interfaces so a phone on
+    # the LAN/hotspot can reach this machine (requirement: reachable, not 127.0.0.1).
+    host = os.getenv('FLASK_HOST', '').strip()
+    if not host:
+        host = '0.0.0.0' if ssl_enabled else '127.0.0.1'
+    port = int(os.getenv('FLASK_PORT', '5000'))
+
+    if ssl_enabled and host in ('127.0.0.1', 'localhost', '::1'):
+        logger.warning(
+            f"FLASK_SSL enabled but FLASK_HOST={host} — a phone on the LAN CANNOT connect. "
+            f"Set FLASK_HOST=0.0.0.0 (or unset it)."
+        )
+
     # Log environment info
     logger.info(f"Environment: {os.getenv('FLASK_ENV', 'production')}")
     logger.info(f"Debug mode: {debug_mode}")
-    logger.info(f"Host: {os.getenv('FLASK_HOST', '127.0.0.1')}")
-    logger.info(f"Port: {os.getenv('FLASK_PORT', '5000')}")
-    logger.info(f"→ Open your browser at http://127.0.0.1:5000/")
+    logger.info(f"Host: {host}")
+    logger.info(f"Port: {port}")
+    if ssl_enabled:
+        logger.info(f"TLS mode: {ssl_mode}")
+        urls = [f"https://localhost:{port}/"]
+        urls += [f"https://{ip}:{port}/" for ip in detect_lan_ipv4s()]
+        if ssl_mode == 'devca':
+            logger.info(
+                "→ Open on your phone (install certs/dev-ca-cert.pem as a trusted CA once): "
+                + "  ".join(urls)
+            )
+        else:
+            logger.info("→ Open on your phone (accept the self-signed warning): " + "  ".join(urls))
+    else:
+        logger.info(f"→ Open your browser at http://{host}:{port}/")
 
     try:
         socketio.run(
             app,
             debug=debug_mode,
             use_reloader=False,
-            host=os.getenv('FLASK_HOST', '127.0.0.1'),
-            port=int(os.getenv('FLASK_PORT', '5000'))
+            host=host,
+            port=port,
+            **ssl_run_kwargs
         )
     except Exception as e:
         logger.error(f"Failed to start server: {e}", exc_info=True)

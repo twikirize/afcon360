@@ -28,6 +28,7 @@
       </button>
     </form>
     <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='vehicle', entity_id=vehicle.id, action='reject') }}" style="display:inline;">
+      <label class="form-label">Rejection Reason *</label><input type="text" name="reason" required placeholder="Rejection reason (required)" style="margin-right:6px;">
       <button type="submit" class="btn btn-danger" onclick="return confirm('Reject this vehicle?')">
         <i class="fas fa-times"></i> Reject Vehicle
       </button>
@@ -381,6 +382,7 @@
             </button>
           </form>
           <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='vehicle', entity_id=vehicle.id, action='reject') }}">
+            <label class="form-label">Rejection Reason *</label><input type="text" name="reason" required placeholder="Rejection reason (required)" style="width:100%;margin-bottom:8px;">
             <button type="submit" class="btn btn-danger btn-block" onclick="return confirm('Reject this vehicle?')">
               <i class="fas fa-times"></i> Reject Vehicle
             </button>

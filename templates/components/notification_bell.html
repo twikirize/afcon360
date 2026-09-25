@@ -176,6 +176,8 @@
 .afc-notif__time{font-size:.68rem;opacity:.5}
 .afc-notif__empty,.afc-notif__nomatch{display:flex;flex-direction:column;align-items:center;gap:7px;
   padding:26px 14px;opacity:.55;font-size:.8rem}
+/* the rule above outranks the UA sheet, so [hidden] needs to be restated */
+.afc-notif__empty[hidden],.afc-notif__nomatch[hidden]{display:none}
 .afc-notif__empty i,.afc-notif__nomatch i{font-size:1.5rem}
 .afc-notif__foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 14px;
   border-top:1px solid rgba(255,255,255,.08)}

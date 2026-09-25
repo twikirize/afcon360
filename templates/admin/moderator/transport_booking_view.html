@@ -384,6 +384,7 @@
             </button>
           </form>
           <form method="POST" action="{{ url_for('admin.moderator.transport_moderate_action', entity_type='booking', entity_id=booking.id, action='reject') }}">
+            <label class="form-label">Rejection Reason *</label><input type="text" name="reason" required placeholder="Rejection reason (required)" style="width:100%;margin-bottom:8px;">
             <button type="submit" class="btn btn-danger btn-block" onclick="return confirm('Reject this dispute?')">
               <i class="fas fa-times"></i> Reject Dispute
             </button>

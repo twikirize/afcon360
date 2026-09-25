@@ -121,13 +121,13 @@ try:
     from app.admin.moderator.registry import register_module
     from flask import url_for
     register_module('transport_booking', 'Transport Booking',
-                   review_url_fn=lambda id: url_for('transport.moderate_booking', id=id),
+                   review_url_fn=lambda id: url_for('admin.moderator.view_transport_booking', booking_id=id),
                    module_name='Transport', icon='fa-bus')
     register_module('vehicle', 'Vehicle',
-                   review_url_fn=lambda id: url_for('transport.moderate_vehicle', id=id),
+                   review_url_fn=lambda id: url_for('admin.moderator.view_transport_vehicle', vehicle_id=id),
                    module_name='Transport', icon='fa-truck')
     register_module('driver', 'Driver',
-                   review_url_fn=lambda id: url_for('transport.moderate_driver', id=id),
+                   review_url_fn=lambda id: url_for('admin.moderator.view_transport_driver', driver_id=id),
                    module_name='Transport', icon='fa-id-card')
 except Exception:
     pass

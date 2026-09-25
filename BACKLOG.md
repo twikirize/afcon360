@@ -2826,7 +2826,8 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 ---
 
 ## BL-17 — Two moderator surfaces for the same workflow (DEFERRED / TRANSPORT)
-- Status: Not started
+- Status: Done
+- Resolved: 2026-09-23 (BL-17/18 consolidation node; canonical admin twin owns all verbs incl. suspend; transport.moderate_action delegates; transport detail/list pages redirect; registry repointed; dead templates removed; change uncommitted - user to record commit hash on commit)
 - Raised: 2026-09-22 (transport T-session, T-10 investigation)
 - Context: transport.moderate_action (routes.py:2596+) and admin.moderator.transport_moderate_action (admin/moderator/routes.py:3439, 15+ forms) do the same approve/reject/flag job with different implementations. After T-10 both persist correctly, but the duplication is drift risk.
 - What needs to happen: choose one as canonical; make the other delegate or delete it.
@@ -2838,7 +2839,7 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 ---
 
 ## BL-18 — Transport moderation surface has no nav entry (DEFERRED / TRANSPORT)
-- Status: Not started
+- Status: Done (retired instead of linked: transport.moderate* redirects to the nav-linked canonical admin surface, which already has a sidebar entry at base_moderator.html:811-813; change uncommitted - user to record commit hash on commit)
 - Raised: 2026-09-22 (transport T-session, T-10 investigation)
 - Context: 9 POST forms across templates/transport/moderate_*.html target transport.moderate_action, but no link in the moderator sidebar (base_moderator.html:786-807) reaches transport.moderate — direct-URL only. T-10 made the endpoints reachable past the before_request gate (public allowlist + require_moderator), but discoverability is still zero.
 - What needs to happen: add a moderator sidebar entry, or retire the transport moderator surface in favor of the admin twin.
@@ -2850,8 +2851,9 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 ---
 
 ## BL-19 — Moderator rejection reason accepted but not persisted (DEFERRED / TRANSPORT)
-- Status: Done
-- Resolved: 2026-09-23 (BL-19 EGGE cleanup node PASS; backlog option b; 7 focused + 49 regression tests green; change uncommitted - user to record commit hash on commit)
+- Status: Deferred (reconciled 2026-09-23: reason-required workflow restored; authoritative model-field persistence deferred to authorized schema work)
+- Reconciliation 2026-09-23 (consolidated review): the reviewer-driven option-b removal is NOT accepted as product behavior — moderators must retain a required reason/comment on vehicle/driver rejection. Restored: reason required for vehicle + driver (+ booking, unchanged); reason captured in the audit trail via ForensicAuditService so it is never silently discarded; no model field invented, no migration. Authoritative persisted field remains deferred schema/model/migration work. Prior option-b implementation preserved in history below; behavior now truthful (required, audit-captured, not model-persisted).
+- Resolved (option-b pass): 2026-09-23 (BL-19 EGGE cleanup node PASS; backlog option b; 7 focused + 49 regression tests green; change uncommitted - user to record commit hash on commit)
 - Raised: 2026-09-22 (T-10 side finding)
 - Context: transport.moderate_action accepts a `reason` field from the form for vehicle/driver rejection, but ProviderService.update_vehicle_status / update_driver_status have no reason parameter, so the text is discarded. Booking rejection reason persists (its model has cancellation_reason).
 - What needs to happen: either add an optional reason parameter that writes to a real column (requires schema change — batch with the migration pass), or remove the reason field from the vehicle/driver forms so moderators aren't misled.
@@ -2889,7 +2891,8 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 
 ## BL-22 - Transport driver never notified on assignment (DEFERRED / NOTIFICATIONS)
 
-- Status: Not started
+- Status: Done
+- Resolved: 2026-09-23 (BL-22 EGGE cleanup node PASS; isolated hunk @@ -1976,7 +1976,14; 1 + 4 + 49 tests green; change uncommitted - user to record commit hash on commit)
 - Raised: 2026-09-23 (NOTIF-TRANSPORT Part 3 side finding)
 - Context: notify_driver_assigned driver branch reads booking.driver_id, which does not exist on transport Booking (it has assigned_driver_id). Same class as BL-15 (rider miss), different recipient - the driver receives nothing.
 - What needs to happen: in notify_driver_assigned, resolve the driver recipient as booking.assigned_driver_id for transport bookings; leave other modules unchanged.
@@ -2922,3 +2925,178 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 - Authorization: Task-authorized (this EGGE node)
 - Evidence/source: app/auth/routes.py::grant_transport_permission, ::revoke_transport_permission; docs/transport/fixes/AUTH-REDIRECT-INDEX-evidence.md, -record.md
 - Links: app/auth/routes.py::grant_transport_permission
+
+---
+
+## BL-24 - transport_driver_assigned has a listener but no production producer (DEFERRED / NOTIFICATIONS)
+
+- Status: Deferred (recorded 2026-09-23, consolidated review; needs product/dispatch decision before any wiring)
+- Raised: 2026-09-23 (consolidated review reconciliation of BL-22)
+- Context: the transport_driver_assigned blinker signal (app/notifications/signals.py:41) has a wired listener (app/notifications/listeners.py:264-273) and notify_driver_assigned is now recipient-correct (BL-22), but no code in app/ emits the signal from the live assignment path — AssignmentService.dispatch_claim notifies the PASSENGER directly via _notify_assigned. Drivers therefore still receive nothing in production despite the corrected function. Wiring emission is new dispatch behavior and is explicitly out of scope until authorized.
+- What needs to happen: product/dispatch decision on where assignment should emit transport_driver_assigned (or call notify_driver_assigned); then wire + behavioral test. Do NOT redesign dispatch meanwhile.
+- Owner/area: Notifications / Transport dispatch
+- Authorization: Not authorized (record only)
+- Evidence/source: app/notifications/signals.py:41; app/notifications/listeners.py:264-273; app/transport/services/assignment_service.py:270-289; docs/transport/fixes/BL-22-evidence.md §6
+- Links: app/notifications/listeners.py::_on_driver_assigned
+
+---
+
+## BL-27 - Stale front-page test vs transport gate on retired /bookings/new (NOT STARTED / TRANSPORT)
+
+- Status: Not started
+- Raised: 2026-09-23 (REAL RIDE transaction node regression)
+- Context: tests/test_transport_front_page.py::test_transport_bookings_new_redirects_to_home expects 301, but the coarse before_request gate (_restrict_transport_admin, app/transport/routes.py:207-216; bookings_new is not in _PUBLIC_ENDPOINTS) redirects first: anonymous → 302 login, authenticated riders → 302 home. The view's 301 is reachable only by owner/super_admin/admin/transport_admin. Pre-existing (gate + test both predate this node; untouched here). Needs a gate-owner call: either allowlist the redirect-only endpoint or update the test to the gated reality. Do NOT silently change gate coverage.
+- Owner/area: Transport / Routing
+- Authorization: Not authorized (record only)
+- Evidence/source: app/transport/routes.py:207-216, :818-822; tests/test_transport_front_page.py:131-134
+- Links: app/transport/routes.py::bookings_new
+
+---
+
+## BL-25 - Phantom suspend persistence fields on DriverProfile/Vehicle (DEFERRED / MIGRATION BATCH)
+
+- Status: Deferred (recorded 2026-09-23, BL-17/18 consolidation; needs authorized schema work)
+- Raised: 2026-09-23 (BL-17/18 suspend/phantom-field verification)
+- Context: the canonical suspend verb wrote suspension_reason + suspended_at on DriverProfile and Vehicle, which exist on NEITHER model (verified repo-wide; the assignments were transient and never persisted), and driver is_active=False was equally transient (SoftDeleteMixin hybrid without setter; DriverProfile does not use the mixin). The suspend verb/UI is preserved: suspend now persists the real is_available=False flag on both models and audit-captures the operator reason. Authoritative reason/timestamp columns (names NOT invented here) belong in the migration batch.
+- What needs to happen: in the migration batch, decide and add authoritative suspend columns; backfill from audit trail if wanted. Do NOT invent column names in this node.
+- Owner/area: Transport / Schema
+- Authorization: Not authorized (record only)
+- Evidence/source: app/admin/moderator/routes.py::transport_moderate_action (suspend branch); app/transport/models.py (no such columns); docs/transport/fixes/BL-17-18-CONSOLIDATION-record.md
+- Links: app/admin/moderator/routes.py::transport_moderate_action
+
+---
+
+## DRIVER-OPERATIONAL-CLIENT — grouping (DECISION PENDING / TRANSPORT)
+
+- Status: Open grouping (recorded 2026-09-23, DRIVER-OPERATIONAL-CLIENT-DECISION node; no implementation authorized)
+- Raised: 2026-09-23 (DIAGNOSE-FRESH-LOCATION-GAP + REAL-RIDE reconciliation)
+- Context: the live rider path is blocked because no operational driver client publishes presence/location. Root cause (not symptom): POST /api/transport/drivers/<driver_id>/location → TrackingService.update_location() exists, but no driver client, browser publisher, or background task in the repository calls it; the 300s freshness rule therefore correctly excludes all supply (3 with vehicles: stale 22h–3.5d; 3 without vehicles: never initialized). Open decision questions: presence origin (mobile/browser/SDK), publish cadence within the 300s contract, client responsibilities (presence, location, offers, accept/decline, trip updates, notifications), dev-mode stand-in (question only), pilot path for the first matchable driver.
+- Sub-items:
+  - Location/presence publication → no operational caller for update_location() (this grouping; decision first).
+  - Driver assignment notification → BL-24 / transport_driver_assigned producer gap (NOT solved; history preserved in BL-24).
+- Owner/area: Transport / Dispatch
+- Authorization: Not authorized (record only; DECISION NODE — NO IMPLEMENTATION AUTHORIZED)
+- Evidence/source: docs/transport/fixes/DIAGNOSE-FRESH-LOCATION-GAP-record.md (ROOT CAUSE + complete 6-row pool table); app/transport/api/driver_routes.py:255-328; app/transport/services/tracking_service.py:30-115
+- Links: app/transport/api/driver_routes.py::DriverLocationResource
+
+---
+
+## BL-26 - Moderate booking reject lacks release and state guards (DEFERRED / TRANSPORT)
+
+- Status: Done
+- Resolved: 2026-09-23 (BL-26 EGGE node PASS; canonical BookingService.transition_status shared by status endpoint + moderation; 4 d5 failures green; change uncommitted - user to record commit hash on commit)
+- Raised: 2026-09-23 (BL-17/18 regression: tests/test_transport_d5_execution_lifecycle.py::TestModeratorBookingActions, 4 failed / 22 passed)
+- Context: rejecting an ASSIGNED booking does not release driver/vehicle (assigned_* stay set, availability unchanged) and does not set cancelled_at/cancellation_initiated_by; rejecting IN_PROGRESS/COMPLETED bookings is not refused; approving does not set confirmed_at and is not state-guarded. Both moderation implementations (retired transport surface and canonical twin) write status directly, so this predates consolidation and is unchanged by it. The 4 failures are pre-existing (identical writes on both paths) and are NOT hidden: they are recorded here.
+- What needs to happen: product decision on the moderate-booking lifecycle contract (release on reject? guard matrix? timestamp/initiator fields?), then implement + turn the 4 tests green. No schema invented here.
+- Owner/area: Transport / Moderation
+- Authorization: Not authorized (record only)
+- Evidence/source: tests/test_transport_d5_execution_lifecycle.py::TestModeratorBookingActions; app/admin/moderator/routes.py::transport_moderate_action (booking branch)
+- Links: app/admin/moderator/routes.py::transport_moderate_action
+
+---
+
+## Permissions-Policy — full go-live header configuration (PRE-LAUNCH, NOT APPLIED)
+- Status: Not started (record only; current runtime header intentionally remains the minimal 4-feature version until this is configured)
+- Raised: 2026-09-24
+- Context: `app/__init__.py::after_request_pipeline` currently sends a minimal header — `Permissions-Policy: geolocation=(self), microphone=(), camera=(), payment=()` — with `geolocation=(self)` enabled for the driver PWA console (`/transport/driver-console`) location pings. Before go-live we want the FULL explicit directive list recorded here so that, as each capability comes online, enablement is a deliberate configuration decision made in one place instead of improvised at launch. This entry is the target spec, NOT the live header — do not apply it wholesale without reviewing each directive against the features actually shipping.
+- Target header (for the go-live configuration pass, subject to per-directive review):
+  ```
+  Permissions-Policy: accelerometer=(), autoplay=(self), camera=(self), clipboard-write=(self), display-capture=(), encrypted-media=(self), fullscreen=(self), geolocation=(self), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(self), publickey-credentials-get=(self), screen-wake-lock=(self), sync-xhr=(), usb=(), xr-spatial-tracking=()
+  ```
+- Delta vs current runtime (decide each before applying):
+  - Unchanged: `geolocation=(self)` (driver console requirement), `microphone=()` (stays off), `payment=()` (stays off — hosted Flutterwave/Paystack flows do not need the browser Payment Request API; revisit only if browser payments are ever adopted).
+  - CHANGED — needs decision: `camera=()` → `camera=(self)` in the target. The in-browser KYC selfie capture flow (`app/kyc/routes.py` selfie upload/pairing) is the likely reason to enable it; confirm before flipping, otherwise keep `camera=()`.
+  - Newly EXPLICITLY disabled (hardening; no known consumer): `accelerometer`, `display-capture`, `gyroscope`, `magnetometer`, `midi`, `sync-xhr`, `usb`, `xr-spatial-tracking`.
+  - Newly explicitly enabled for self (enable only if a shipping feature needs it, else prefer `()`): `autoplay`, `clipboard-write`, `encrypted-media`, `fullscreen`, `picture-in-picture`, `publickey-credentials-get` (WebAuthn/passkeys), `screen-wake-lock` (candidate for driver console screen-on during trips — verify need).
+- What needs to happen: (1) pre-go-live configuration review — walk the target list directive-by-directive against the features actually shipping (driver console, KYC selfie, wallet/payments, WebAuthn if any); (2) update the `Permissions-Policy` line in `app/__init__.py::after_request_pipeline`; (3) sync the header line + per-directive rationale in `app/Documentation/CSP_POLICY.md`; (4) verify after change: driver console still receives geolocation (location pings work), KYC selfie capture works if `camera=(self)` was enabled, and DevTools shows no feature unexpectedly blocked; (5) re-run this checklist for every NEW feature that needs a powerful feature before its own go-live, so the header grows deliberately.
+- Owner/area: Platform / security headers (consumers: Transport driver console, KYC, Wallet/payments)
+- Authorization: NOT AUTHORIZED (record only — applying the target header is a separate, explicit pre-go-live task)
+- Evidence/source: this session's geolocation change (`app/__init__.py:500`); `app/Documentation/CSP_POLICY.md`
+- Links: `app/__init__.py::after_request_pipeline`, `app/Documentation/CSP_POLICY.md`, `app/transport/routes.py::driver_console`, `app/kyc/routes.py` (selfie capture)
+
+---
+
+## Post-login context auto-selection — 3 tests still assert the old "always personal" landing (DEFERRED / AUTH)
+- Status: Needs review (human decision recorded: leave failing, report only — 2026-09-24)
+- Raised: 2026-09-24
+- Context: Uniform post-login context resolution landed in `app/auth/context.py` (`CONTEXT_PRIORITY`, `resolve_default_context`) + `app/auth/routes.py` (login redirect). Priority `platform > driver > organisation > event > accommodation_host > personal` (driver moved above organisation/event on owner decision 2026-09-24: a driver always lands on the Driver Workspace) intentionally replaces the old behavior where every login defaulted to Personal unless a legacy recovery path kicked in. Three existing tests encode the OLD contract and now fail by design:
+  1. `tests/test_driver_context_recovery.py::test_unverified_driver_not_routed_to_workspace` — asserts a PENDING-tier driver is NOT auto-routed to `/transport/driver-dashboard`. New uniform behavior routes them: driver-context eligibility is participation-gated, not tier-gated (`app/auth/context.py::_driver_contexts` comment: PENDING drivers must enter the workspace to complete their profile).
+  2. `tests/test_stage4b8_context_switch_e2e_proof.py::TestContextSwitchE2EProof::test_real_login_personal_org_back_never_leaks` — asserts login lands on `/user/dashboard` for an org member; now lands on the org dashboard (ORGANISATION > PERSONAL).
+  3. `tests/test_stage4b9_context_switch_nav_e2e.py::TestContextSwitchNavE2E::test_rendered_nav_follows_org_personal_driver` — asserts `active_context_type in (None, "personal")` right after login; that fixture user is BOTH org_owner and a driver, so after the 2026-09-24 priority change (driver > organisation) it is now `"driver"` (previously `"organisation"`).
+- What needs to happen: separate test-update node (needs test-file edit authorization) to re-assert the NEW approved contract: (1) unverified-driver test → assert PENDING driver IS routed to the workspace and that go-live/claim remain gated elsewhere; (2) stage4b8 → assert org-member login lands on the org dashboard, then keep the personal↔org leak checks as-is (they still pass from step 2 onward once the initial landing assertion is updated); (3) stage4b9 → assert `active_context_type == "organisation"` after login and adjust the first nav baseline step accordingly. Do NOT change implementation to satisfy the old assertions — the priority order is the approved spec.
+- Owner/area: Auth / identity
+- Authorization: Test edits NOT authorized in the 2026-09-24 session (human chose "leave failing, report only")
+- Evidence/source: verification run — 98 passed / 6 failed across 11 targeted files; stash-baseline proved the other 3 failures (`onlineToggle`, `test_driver_workspace_renders`, `test_driver_workspace_has_driver_shell`) are PRE-EXISTING (fail without this change; caused by uncommitted transport template refactoring in `templates/transport/driver/driver_dashboard.html`). New behavior covered by `tests/test_zz_tmp_login_context_verify.py` (7/7 pass incl. driver-who-is-also-org-member lands on driver dashboard; temp file — delete or keep per human).
+- Links: `app/auth/context.py` (`CONTEXT_PRIORITY`, `resolve_default_context`, `_platform_rank`), `app/auth/routes.py::login` (redirect block), `tests/test_driver_context_recovery.py`, `tests/test_stage4b8_context_switch_e2e_proof.py`, `tests/test_stage4b9_context_switch_nav_e2e.py`, `tests/test_zz_tmp_login_context_verify.py`
+
+---
+
+## Production HTTPS / TLS — real-device deployment verification (PRE-LAUNCH, NOT IMPLEMENTED)
+- Status: Not started (record only)
+- Raised: 2026-09-24
+- Context: local-development HTTPS was added on 2026-09-24 (`FLASK_SSL=none|selfsigned|cert|devca`, `dev_tls.py`, auto-generated SAN self-signed cert, bind `0.0.0.0`) so the driver PWA geolocation can be tested on a physical phone over the developer's LAN/hotspot. That path is deliberately DEV-ONLY: self-signed CA:TRUE certificate, no HSTS, no renewal, no reverse-proxy termination, `SESSION_COOKIE_SECURE=false`, no firewall automation. Production TLS termination is explicitly out of scope of that node and must be a separate, authorized node.
+- What needs to happen: pre-launch node to (1) provision a real CA certificate (e.g. Let's Encrypt / ACME) for the production hostname; (2) terminate TLS at nginx/gunicorn or the cloud load balancer with modern configuration (TLS 1.2+, strong ciphers, HSTS only after verification); (3) set `SESSION_COOKIE_SECURE=true` and review CSRF/cookie security flags in `.env.prod`; (4) keep the self-signed path disabled in production (`FLASK_SSL=none` behind the TLS terminator); (5) REAL-DEVICE verification on production: Android Chrome + iOS Safari load the driver PWA over `https://`, the geolocation prompt appears (secure context), permission grant persists across reloads, service worker registers, SocketIO connects over `wss://`, DevTools shows no mixed content; (6) verify certificate renewal automation and expired-cert alerting; (7) document the operational runbook.
+- Owner/area: Platform / security (consumers: Transport driver PWA, Wallet/payments)
+- Authorization: NOT AUTHORIZED (record only — item requested by human 2026-09-24; implementation is a separate node)
+- Evidence/source: local-dev TLS work 2026-09-24 (`dev_tls.py`, `app.py` `__main__` FLASK_SSL wiring, `.env.local` `FLASK_SSL=selfsigned`, `static/js/modules/transport/driver-dashboard.js` secure-context recovery)
+- Links: `dev_tls.py`, `app.py` (`__main__`), `.env.local`, `.env.prod`, `app/__init__.py::after_request_pipeline`, `static/js/modules/transport/driver-dashboard.js`
+
+---
+
+## Driver workspace shell loads a missing script: `static/transport/js/utils.js` 404 (DEFERRED / TRANSPORT)
+- Status: Not started (record only)
+- Raised: 2026-09-25
+- Context: Browser console on `/transport/driver-dashboard` shows `Failed to load resource: 404` for `/static/transport/js/utils.js`, then `Refused to execute script ... MIME type ('text/html') is not executable`. `static/transport/` contains only `manifest.json` and `sw.js` — there is no `js/utils.js`. Discovered while verifying the bottom-dock CSS fix; unrelated to it and deliberately NOT fixed (out of scope).
+- What needs to happen: decide whether the driver shell should point at an existing utility script (e.g. under `static/js/...`) or whether the include should be removed, then confirm no `window.*` helper on the driver workspace silently depends on it.
+- Owner/area: Transport / driver workspace shell
+- Links: `templates/transport/driver/base.html` (utils.js script tag), `static/transport/`, `templates/transport/driver/driver_dashboard.html`
+
+---
+
+## Platform-wide Location/Positioning Adapter Architecture (FUTURE, NOT AUTHORIZED)
+- Status: Not started (record only � future architecture, NOT current implementation authorization)
+- Raised: 2026-09-25
+- Context: The driver PWA location publisher (`static/js/modules/transport/driver-dashboard.js`) now does fast-first browser acquisition plus continuous `watchPosition` refinement with best-position replacement rules (freshness + accuracy, Rules A�D) and unchanged 120s `POST /api/transport/drivers/<id>/location` publishing. Proven on a real Android phone over the dev-CA HTTPS server. The next step is a platform-wide positioning architecture so future clients (native Android/iOS, rugged devices) feed the same canonical pipeline instead of each inventing their own.
+- Intended future direction (design only, do not implement in this node):
+```text
+DEVICE POSITIONING ADAPTERS
+|-- PWA / Browser Geolocation (current: driver-dashboard.js publisher)
+|-- Android native / fused location (future)
+|-- iOS native / Core Location (future)
+|-- future small/rugged devices (future)
+`-- other trusted device sources (future)
+                v
+AFCON360 canonical LocationObservation
+  { latitude, longitude, accuracy_m, observed_at, source,
+    optional speed, optional bearing, freshness }
+                v
+GEO / current-state tracking
+                v
+matching / realtime / maps / routing
+```
+- Future work may include: device-specific positioning adapters; accuracy-quality policy; outlier rejection; position smoothing; adaptive tracking cadence; battery/network-aware acquisition; map matching; road routing; ETA; durable history; native Android/iOS location services. Planned adaptive operational cadence direction (policy only, do NOT hard-code now): `offline -> no tracking; online idle -> low frequency; searching -> moderate frequency; offer/pickup -> faster; active trip -> fresher`.
+- Explicit non-authorization: no migrations, no PostGIS, no native app code, no third-party positioning API, no matching/offer/assignment redesign as part of this entry. Each future step needs its own authorized node.
+- Owner/area: Transport / GEO (consumers: matching, realtime, maps)
+- Links: `static/js/modules/transport/driver-dashboard.js` (`afconShouldReplaceBest`, Rules A�D), `tests/test_location_best.cjs`, `app/transport/api/driver_routes.py`, `app/geo/routes.py`
+
+---
+
+## Driver workspace contract tests still assert the retired sidebar layout (DEFERRED / TRANSPORT TESTS)
+- Status: Not started (record only)
+- Raised: 2026-09-25
+- Context: `tests/test_driver_workspace_sections.py` (10 failures) and `tests/test_driver_workspace_consolidation.py` (2 failures) assert markup the driver workspace no longer ships: `t-sidebar`, the literal `Driver Dashboard`, `id="onlineToggle"`, and headings such as `Vehicle Switching`, `Earnings`, `Compliance`, `Settings`, `Acceptance Rate`, `Open incidents`. The driver shell is the standalone `.ck-pane` workspace (`templates/transport/driver/base.html` has no `{% extends %}`; `t-sidebar` exists only in `templates/transport/base.html`), card titles were renamed (`Active trip`, `Recent trips`, `Scheduled work`, `Switch vehicle`), and availability is the AVAILABILITY card control rather than `#onlineToggle`. PROOF these pre-date the current session: `git stash push -u` -> run both files at HEAD = 13 failed / 22 passed; `git stash pop` -> same files with session changes = 12 failed / 23 passed (the same 12, plus `TestOffersSection::test_offers_render_with_accept_decline`, which the session's offer-card edits FIX). No session change regressed them; this is test-vs-implementation drift left by the workspace consolidation.
+- What needs to happen: authorized node to re-contract both files against the current `.ck-pane` workspace (canonical pane/card titles, keep the `/api/transport/drivers/me/status` dead-URL guard and the `driver_status` endpoint assertion), then `pytest tests/test_driver_workspace_sections.py tests/test_driver_workspace_consolidation.py` must be green.
+- Owner/area: Transport / driver workspace tests
+- Evidence/source: stash/pop run 2026-09-25 (13/22 at HEAD vs 12/23 with session changes); `git grep` at HEAD for `onlineToggle` returns only test files
+- Links: `tests/test_driver_workspace_sections.py`, `tests/test_driver_workspace_consolidation.py`, `templates/transport/driver/base.html`, `templates/transport/driver/driver_dashboard.html`, `templates/transport/base.html`
+
+---
+
+## Bell dropdown rows fall back to a dead `#` link when a notification has no link (DEFERRED / NOTIFICATIONS)
+- Status: Not started (record only)
+- Raised: 2026-09-25
+- Context: `templates/components/notification_bell.html:82` renders `href="{{ n.link or '#' }}"`, so a durable notification created without a deep link is clickable but navigates nowhere. Proven live on the driver workspace: the durable `Transport New Booking` row (created by `MatchingService._notify_driver_new_offer` -> `transport notification_service.send_driver_notification`) renders `href="#"`. The durable inbox itself deep-links correctly (`/notifications` -> `communication_pages.notification_detail`), and the row click still marks the notification read (`POST /api/notifications/<id>/read`), so the loss is navigation only. The component is shared, so every dashboard panel is affected.
+- What needs to happen: either (a) give transport driver notifications a real `link` at creation, or (b) render link-less rows as non-links that open the inbox entry. Shared-component change -> needs its own authorized node (not a while-we-are-here edit).
+- Owner/area: Notifications (consumer: transport driver workspace)
+- Evidence/source: browser DOM read of `.afc-notif__item` on `/transport/driver-dashboard` 2026-09-25
+- Links: `templates/components/notification_bell.html:82,261-274`, `app/transport/services/matching_service.py::_notify_driver_new_offer`, `app/transport/services/notification_service.py`, `templates/notifications/inbox.html`

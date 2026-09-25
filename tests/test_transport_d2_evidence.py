@@ -306,7 +306,9 @@ class TestFareEvidence:
         import pathlib
         template = pathlib.Path(__file__).resolve().parents[1] / 'templates' / 'transport' / 'bookings' / 'show.html'
         text = template.read_text(encoding='utf-8')
-        assert 'Estimated Fare' in text
+        # Fix 2.3 restructured the payment block (Base fare + discount +
+        # Total); the fare value is still surfaced from base_price.
+        assert 'Base fare' in text
         assert 'booking.base_price' in text
 
 

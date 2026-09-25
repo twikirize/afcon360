@@ -646,6 +646,67 @@ def switch_context(user: Any, requested: Any) -> ContextDescriptor:
     return descriptor
 
 
+# Canonical post-login context priority — first eligible match wins.
+# DRIVER outranks ORGANISATION and EVENT (owner decision: a driver always
+# lands on the Driver Workspace, even when they also hold an org membership
+# or an event role). PLATFORM is checked first; multiple platform personas
+# are ranked by Role.level (owner=1 highest … user last).
+CONTEXT_PRIORITY: tuple[ContextType, ...] = (
+    ContextType.PLATFORM,
+    ContextType.DRIVER,
+    ContextType.ORGANISATION,
+    ContextType.EVENT,
+    ContextType.ACCOMMODATION_HOST,
+    ContextType.PERSONAL,
+)
+
+
+def _platform_rank(descriptor: ContextDescriptor) -> tuple[int, str]:
+    """Sort key for platform contexts: ascending Role.level, owner first."""
+    try:
+        from app.identity.models.roles_permission import Role
+
+        row = Role.query.filter_by(name=descriptor.role, scope="global").first()
+        level = int(row.level) if row is not None and row.level is not None else 10**6
+    except Exception:
+        level = 10**6
+    return (level, descriptor.role or "")
+
+
+def resolve_default_context(
+    user: Any,
+) -> tuple[Optional[ContextDescriptor], Optional[str]]:
+    """Return ``(descriptor, landing_url)`` for the highest-priority context.
+
+    Scans ``CONTEXT_PRIORITY`` in order and returns the first eligible
+    context from ``get_available_contexts``. Never raises — callers fall
+    back to their own dashboard resolver on ``(None, None)``.
+    """
+    if user is None:
+        return None, None
+    try:
+        available = get_available_contexts(user)
+    except Exception:
+        return None, None
+    if not available:
+        return None, None
+
+    for context_type in CONTEXT_PRIORITY:
+        matches = [d for d in available if d.type is context_type]
+        if not matches:
+            continue
+        if context_type is ContextType.PLATFORM and len(matches) > 1:
+            matches.sort(key=_platform_rank)
+        descriptor = matches[0]
+        landing = descriptor.workspace_url or _workspace_url(
+            context_type, descriptor.public_id, descriptor.role
+        )
+        if landing:
+            return descriptor, landing
+        # No resolvable landing for this type — scan lower priorities.
+    return None, None
+
+
 def get_active_context(user: Any = None) -> ContextDescriptor:
     """Return the selected context after fresh database-backed validation."""
     if user is None:

@@ -830,17 +830,38 @@ Return to this book and identify the next permitted item.
   1.4   Spatial candidate indexing          PENDING   ---
   1.5   Location observation lifecycle      PENDING   ---
   2.1   Geographic demand-aware surge       PENDING   ---
-  2.2   External-service circuit breakers   PENDING   ---
-  2.3   Reservation callback idempotency    PENDING   ---
-  2.4   Public endpoint rate limiting       PENDING   ---
-  2.5   Map/tile resilience                 PENDING   ---
-  2.6   Analytics optimization              PENDING   ---
+  2.2   External-service circuit breakers   PASS      Fix-2.2-record.md (Gate: PASS)
+  2.3   Reservation callback idempotency    PASS      f1a3a82; Fix-2.3-record.md
+  2.4   Public endpoint rate limiting       PASS      Fix-2.4-record.md
+  2.5   Map/tile resilience                 PASS      Fix-2.5-record.md
+  2.6   Analytics optimization              PASS      Fix-2.6-record.md
   3.1   Driver mobile app                   PENDING   ---
   3.2   Rider PWA resilience                PENDING   ---
   3.3   Slow-network optimization           PENDING   ---
   3.4   Responsive/mobile hardening         PENDING   ---
   3.5   Accessibility                       PENDING   ---
   3.6   Admin desktop experience            PENDING   ---
+
+> **Numbering reconciliation (2026-09-24):** The implemented Fix IDs
+> 2.4, 2.5, and 2.6 do not match their original Part VII listing.
+> Implementation order was:
+> - 2.4 = tile provider migration
+> - 2.5 = booking request points extraction
+> - 2.6 = public endpoint rate limiting
+>
+> Part VII retains its original listing for historical reference.
+> This note reconciles the two. Future Fix IDs will follow
+> implementation order.
+
+> **Reviewer's note (2026-09-24):** The book's Tier 2 register
+> originally listed six items. Five are now closed on disk:
+> 2.2, 2.3, 2.4, 2.5, 2.6. Only 2.1 (geographic demand-aware
+> surge) remains open, with no contract on disk. An earlier
+> reconciliation attempt marked 2.3 as "not closed in this fix
+> programme"; this was incorrect — Fix-2.3-record.md on disk records
+> Status: PASS, commit f1a3a82, dated 2026-09-22, with evidence from
+> test_reservation_callback_idempotency.py showing 3 passed. The
+> register update below reflects the correct state.
 
 **Important:** "PENDING" does not mean defective implementation has been
 proven. It means the roadmap item has not yet passed its implementation

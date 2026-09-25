@@ -275,4 +275,26 @@ The register is updated by the HUMAN, never by the agent.
 
 ---
 
+### 18.1 Reconciliation Contract — delegated register transcription
+
+The register is normally written by the human. One exception exists:
+when the human has already decided PASS/FAIL/BLOCKED/DEFERRED for a
+node, that decision is recorded in the node's -record.md, and the
+register has simply not been updated yet, the transcription of that
+decision into the register MAY be delegated to an agent under a
+Reconciliation Contract.
+
+A Reconciliation Contract is written by the human before any agent
+edits a file. It names every register row to be changed with its
+target state, names the -record.md that is the source of truth for
+each row, requires the agent to produce a diff and STOP without
+committing, and forbids any state not named in the contract.
+
+An agent acting under a Reconciliation Contract MAY NOT decide any
+state on its own judgment, reopen a closed node, edit any
+-contract.md, -evidence.md, or -record.md file, or commit. Human
+review of the diff and the commit remain human steps. The contract
+may be authored by the human using any tool; the human is the
+author, the agent is the scribe.
+
 *End of Operating System, Version 1.0*

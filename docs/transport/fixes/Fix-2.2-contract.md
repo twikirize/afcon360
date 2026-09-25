@@ -1,305 +1,355 @@
-# Fix Contract — Fix 2.2 — External-Service Circuit Breakers (CONTRACT-ONLY)
+# Fix Contract — Fix 2.2 — External-Service Circuit Breakers (REVISED, DECISIONS RESOLVED)
 
 **Owner:** [human]
 **Date:** 2026-09-23
-**Status:** CONTRACT PHASE — READY FOR HUMAN REVIEW (no implementation authorized yet)
-**Roadmap reference:** Edition 2.0, Part VII Fix 2.2 (`docs/transport/00-MANIFESTO-EDITION-2.0.md:463-475`), Part XXX "done" spec (`:3732-3750`), architecture findings #12 (`:2387-2389`) and §7 (`:2681-2695`)
-**Report format:** Compact (contract gate)
+**Status:** CONTRACT PHASE PASS — IMPLEMENTATION AUTHORIZED (all six decisions RESOLVED — 2026-09-23)
+**Roadmap reference:** Edition 2.0, Part VII Fix 2.2 (`docs/transport/00-MANIFESTO-EDITION-2.0.md:463-475`), Part XXX "done" spec (`:3732-3750`), findings #12 (`:2387-2389`), §7 (`:2681-2695`)
+**Revision note:** v1 assumed Google as canonical provider and treated the mock response's `success: True` too loosely. The revision made the architecture provider-neutral, added an explicit internal outcome classification, and added a Reachability section. Human decisions are now resolved (§ Open Human Decisions).
 
-Evidence tags used throughout: **FOUND** = read directly from repository/roadmap; **INFERRED** = reasoned from evidence but not stated; **UNKNOWN** = no repository or specification evidence.
+Evidence tags: **FOUND** = read from repository/roadmap; **INFERRED** = reasoned, not stated; **UNKNOWN** = no evidence. All formerly parked decisions are **RESOLVED — 2026-09-23**.
 
 ---
 
 ## 1. Problem
 
-`ExternalPlatformsService.get_directions()` (`app/transport/services/external_platforms.py:53-83`) makes outbound `requests.get(..., timeout=10)` calls to Google Maps (`:108`) and Mapbox (`:162`) with:
+`ExternalPlatformsService.get_directions()` (`app/transport/services/external_platforms.py:53-83`) performs outbound `requests.get(..., timeout=10)` calls to a resolved external provider (currently Google `:108`, Mapbox `:162`) with:
 
-- no retry (FOUND — roadmap finding #12, confirmed by reading the code);
-- no circuit breaker (FOUND — `@with_circuit_breaker` exists in `app/utils/monitoring.py:139-190` but is applied to **zero** call sites anywhere in the repository, and it is process-local closure state, not Redis-backed);
-- silent degradation to `_mock_directions()` on every provider exception (FOUND — `:136-139`, `:180-182`);
-- outer `except Exception` at `:78-83` converting **every** exception — including `ValidationError("UNSUPPORTED_PROVIDER")` raised at `:73-76` and any programmer defect — into `ServiceUnavailableError("DIRECTIONS_UNAVAILABLE")` (FOUND).
+- no retry and no circuit breaker (FOUND — `@with_circuit_breaker` exists at `app/utils/monitoring.py:139-190` but is applied to zero call sites and is process-local, not Redis-backed);
+- no explicit outcome classification: every provider-leg `except Exception` (`:136-139`, `:180-182`) silently returns `_mock_directions(...)`, and the outer handler (`:78-83`) converts everything — including local `ValidationError` — into `ServiceUnavailableError("DIRECTIONS_UNAVAILABLE")`;
+- failure memory of zero: every call re-attempts a failing provider from scratch.
 
-Consequence (roadmap, `:3736-3738`): if the provider is slow, every directions call blocks a worker thread up to 10 s; if it is down, every call pays the full timeout before degrading; failures are indistinguishable from programmer defects; the same failure repeats on every call because nothing is remembered between calls.
-
-Roadmap "done" (`:3740-3747`, FOUND): a Redis-backed circuit breaker decorator `@circuit_breaker("google_maps", failure_threshold=5, recovery_timeout=30)`; while open, `_get_google_directions()` returns mock data immediately without calling Google; circuit-state metrics exposed for the dashboard.
+Roadmap "done" (`:3740-3747`, FOUND): a Redis-backed circuit breaker; while open, the directions leg returns the existing mock immediately without calling the provider; circuit-state observability. The roadmap's decorator example names `google_maps` — retained here as **historical/spec evidence only**, not as the generic contract.
 
 ---
 
 ## 2. Existing behavior
 
-### 2.1 Call path (single-file claim)
+### 2.1 Call path (single-file seam)
 
 | Step | Location | Behavior | Tag |
 |---|---|---|---|
-| Entry | `external_platforms.py:53` `get_directions(origin, destination, provider='google')` | `@monitor_endpoint("get_directions")` wraps with `MonitorContext` (log-only, does not suppress exceptions — `monitoring.py:45`) | FOUND |
-| Dispatch | `:67-76` | `provider=='google'` → `_get_google_directions`; `'mapbox'` → `_get_mapbox_directions`; else `ValidationError` | FOUND |
-| Outer catch | `:78-83` | any `Exception` logged, re-raised as `ServiceUnavailableError(code="DIRECTIONS_UNAVAILABLE")` | FOUND |
-| Google leg | `:86-139` | no `GOOGLE_MAPS_API_KEY` in config → `_mock_directions` immediately (`:89-92`); else `requests.get(timeout=10)`; non-`OK` status raises; any exception → `_mock_directions` (`:136-139`) | FOUND |
-| Mapbox leg | `:142-182` | same shape with `MAPBOX_ACCESS_TOKEN` (`:145-147`, `:180-182`) | FOUND |
-| Fallback | `:185-207` `_mock_directions` | deterministic haversine-less approximation, returns `success: True, provider: 'mock', polyline: None` | FOUND |
-| Singleton | `:390-397` `get_external_platforms()` | re-exported via `app/transport/services/__init__.py:21` and `app/transport/__init__.py:65-66` | FOUND |
+| Entry | `:53` `get_directions(origin, destination, provider='google')` | `@monitor_endpoint` log wrapper (does not suppress, `monitoring.py:45`) | FOUND |
+| Dispatch | `:67-76` | string `provider` selects `'google'` or `'mapbox'` leg; else `ValidationError` | FOUND |
+| Outer catch | `:78-83` | blanket `except Exception` → `ServiceUnavailableError` | FOUND |
+| Google leg | `:86-139` | no key → immediate `_mock_directions`; else HTTP; any exception → `_mock_directions` | FOUND |
+| Mapbox leg | `:142-182` | identical shape with token | FOUND |
+| Fallback | `:185-207` `_mock_directions` | returns `success: True, provider: 'mock'` | FOUND |
+| Exports | `services/__init__.py:21`, `transport/__init__.py:65-66` | singleton accessor | FOUND |
 
-### 2.2 Duplicate/dead paths (do not touch)
+There is **no provider-resolution layer today**: dispatch is a hard-coded if/elif on a string (`:68-71`, FOUND). The provider-neutral flow describes the contract's *logical* stages over the existing dispatch — it does not authorize building a provider registry or discovery integration in this node (§ Non-goals).
 
-- `app/transport/services/future_adds.py:165-223` defines a second `MapsService.get_directions` and second `ExternalPlatformsService`. It is **not imported anywhere** (FOUND — repository-wide import grep empty) and its file tail is a dangling string literal; `import random` is commented out (`:5`) while `MapsService.get_directions` calls `random.randint`. **INFERRED:** dead code; out of scope; must not become the canonical fallback.
+### 2.2 Dead duplicate path
 
-### 2.3 Existing circuit-breaker primitive
+`future_adds.py:165-223` defines a second directions implementation, is imported nowhere (FOUND), has a dangling string tail and a commented-out `random` import it depends on. Out of scope; must never become the fallback.
 
-`with_circuit_breaker` (`monitoring.py:139-190`, FOUND):
+### 2.3 Existing circuit primitive
 
-- process-local `nonlocal` counters — not shared across workers, not Redis-backed;
-- `expected_exceptions=(Exception,)` — counts programmer defects;
-- after `reset_timeout` it unconditionally resets to closed (`:159-164`) — no trial call, no distinct HALF-OPEN state (log line says "half-open" but state variable is already `False`);
-- raised `ServiceUnavailableError` when open (`:166-170`) — it does **not** invoke a fallback;
-- imported by `settings_service.py:34` and `provider_service.py:50` but **never applied** (`@with_circuit_breaker` — zero matches repo-wide).
-
-**INFERRED:** it cannot satisfy the roadmap spec as-is (not Redis-backed, hides bugs, no fallback path). Whether to extend it or write a new decorator is an open decision (§12).
+`with_circuit_breaker` (`monitoring.py:139-190`, FOUND): process-local counters; `expected_exceptions=(Exception,)` (would classify local defects as dependency failures); unconditional close after timeout while logging "half-open"; raises `ServiceUnavailableError` instead of invoking a fallback; applied nowhere. Cannot satisfy this contract unchanged. **Untouched by this node (D-Mechanism).**
 
 ### 2.4 Configuration
 
-- `GOOGLE_MAPS_API_KEY` / `MAPBOX_ACCESS_TOKEN` are read only via `current_app.config.get(...)` (`:89`, `:145`, `:215`); **no definition exists** in `app/config.py` and **no entry exists** in `.env`, `.env.local`, `.env.prod`, `.env.docker`, `.env.testing` (FOUND — direct grep). In every currently-evidenced environment the key is `None`, so the Google/Mapbox legs short-circuit to mock **before any network call** (FOUND).
-- **UNKNOWN:** whether production injects these keys by other means (platform env, secrets manager). The contract must not assume either way.
+`GOOGLE_MAPS_API_KEY` / `MAPBOX_ACCESS_TOKEN` are read only via `current_app.config.get(...)` (`:89`, `:145`) and defined in no `app/config.py` entry and no `.env*` file (FOUND by direct grep). In every evidenced environment both are `None`, so legs short-circuit to mock before any network I/O. Production injection: UNKNOWN — **RESOLVED — 2026-09-23 (D-ProdKeys): document the assumption in evidence/record; add no config keys.**
 
-### 2.5 Redis client
+### 2.5 Redis precedents
 
 - `app/extensions.py:102` `redis_client = LazyRedis()` (FOUND).
-- Established Redis failure pattern precedent: `app/events/routes.py:86-102` `rate_limit()` — `None` client → warning + **fail open**; exception → warning + **fail open** (FOUND).
-- Analytics precedent: never raise on Redis failure, return empty/zeroed results (`app/utils/analytics.py:241`, FOUND).
+- Fail-open precedent: `app/events/routes.py:86-102` (`None` client or exception → warn + allow) (FOUND).
+- Never-raise precedent: `app/utils/analytics.py` (FOUND).
 
-### 2.6 Callers, tests, observability
+### 2.6 Response-shape divergence (preserve)
 
-- Callers of `get_directions(`: **none** in production code (FOUND — repo-wide grep matches only the three definitions). `get_external_platforms()` likewise has no call sites outside module exports. Fare estimation goes through `fare_service.calculate_estimate` (`app/transport/routes.py:251-252`), not this path.
-- Tests referencing `external_platforms` / `get_directions` / `_mock_directions` / circuit: **none** (FOUND — tests/ grep empty).
-- Observability today: `monitor_endpoint` log lines and `record_metric` (`monitoring.py:107-111`) which is `logger.info` only (FOUND). No dashboard endpoint exposes circuit state (UNKNOWN — none found).
+Google payload has `steps`/`*_text` but no `provider`; Mapbox has `provider` but no `*_text`; mock has `*_text`, `provider: 'mock'`, `note`. All three currently carry `success: True` (FOUND). Normalization is out of scope.
 
-### 2.7 Response-shape divergence (preserve as-is)
+### 2.7 State table — current behavior
 
-| Source | Keys |
+| # | Condition | Result | Tag |
+|---|---|---|---|
+| S1 | key configured + provider healthy | provider-shaped payload | FOUND |
+| S2 | key configured + provider error/timeout | full timeout → `_mock_directions` (indistinguishable from success to caller) | FOUND |
+| S3 | key absent (evidenced state) | immediate `_mock_directions`, no network | FOUND |
+| S4 | unsupported `provider` argument | `ValidationError` → converted to `ServiceUnavailableError` | FOUND |
+| S5 | local `KeyError`/`TypeError` inside leg parse | masked → `_mock_directions` | FOUND |
+| S6 | past-failure memory | none | FOUND |
+| S7-S9 | circuit state / HALF-OPEN / Redis in this path | none exist | FOUND (absence) |
+
+---
+
+## 3. Intended behavior (provider-neutral)
+
+1. Every directions call passes through: external directions operation → existing provider dispatch → provider-specific HTTP operation → provider outcome → circuit decision → caller-visible response. The outcome is classified before any caller-visible response is constructed.
+2. Circuit identity = **provider identity + operation identity**; no global "external services" circuit exists.
+3. Circuit parameters, from roadmap only: `failure_threshold=5`, `recovery_timeout=30s`, OPEN → immediate existing fallback, Redis-backed shared state, observability (`:3742-3747`, FOUND).
+4. Only `PROVIDER_FAILURE` outcomes touch the circuit. `CONFIGURATION_UNAVAILABLE` never counts and never resets an existing sequence. `LOCAL_DEFECT` never counts and never becomes mock output.
+5. `_mock_directions()` remains the single fallback **result generator**; its `success: True` is a caller-compatibility marker of the fallback shape, **not** evidence that any external provider succeeded. The circuit must never infer provider success from `success == True`.
+6. Timeout stays 10 s per attempt.
+
+---
+
+## Reachability
+
+**What repository evidence proves (FOUND):**
+
+- Zero call sites of `get_directions(` exist outside its own definitions; `get_external_platforms()` has no callers outside module exports (repo-wide grep).
+- Zero tests referenced this path before this node.
+- Fare estimation flows through `fare_service.calculate_estimate` (`app/transport/routes.py:251-252`) — a different path.
+- The roadmap lists Fix 2.2 as a Tier-2 production item (`:2433`) and documents the defect as live architecture risk (`:2681-2695`, `:3732-3750`) (FOUND).
+
+**Assessment:**
+
+- The path is **dormant** as of today's repository state: reachable only through manual/internal invocation of the exported service.
+- **RESOLVED — 2026-09-23 (D-Dormancy): proceed.** Do not add a caller. Record dormancy as an evidence note.
+- The roadmap authorizes protecting this seam independently of caller count — the fix targets the file/operation, not a route (`:3734`, FOUND).
+
+**Blocking?** No.
+
+---
+
+## Provider Outcome Model
+
+```text
+external directions operation
+        ↓
+existing provider dispatch          (if/elif on provider string; NO registry)
+        ↓
+provider-specific HTTP operation     (_get_<provider>_directions leg)
+        ↓
+provider outcome                     (internal classification, pre-normalization)
+        ↓
+circuit decision                     (only PROVIDER_FAILURE counts / reads state)
+        ↓
+caller-visible response              (provider payload OR _mock_directions OR escape)
+```
+
+Outcome classification — defined **inside the deliberate failure boundary of each leg** (typed except-clauses; never a bare `except Exception` feeding the circuit):
+
+| Outcome | Determined by | Circuit effect | Response path |
+|---|---|---|---|
+| `PROVIDER_SUCCESS` | leg completes HTTP + parse of the provider payload per its declared success status | reset consecutive-failure counter (`DEL failures`) | provider-shaped payload returned as-is |
+| `PROVIDER_FAILURE` | HTTP/network failure (`requests` `Timeout`/`ConnectionError`, `raise_for_status` HTTP error) **OR** provider-declared error/status (`data['status'] != 'OK'` `:112-113`, `data['code'] != 'Ok'` `:166-167`) — **RESOLVED — 2026-09-23 (D-InvalidPayload)** | INCR failures; at 5 → `SET state open EX 30` | `CircuitOpenError`/provider-failure propagation reaches the fallback boundary → `_mock_directions(...)` |
+| `CONFIGURATION_UNAVAILABLE` | key/token is `None` (`:89-92`, `:145-147`) — no HTTP attempt | **no effect**: not counted, does not open, **does not reset an existing failure sequence** | `_mock_directions(...)` — unchanged S3 behavior |
+| `LOCAL_DEFECT` | HTTP succeeded but our parser's expected shape is wrong (`KeyError`/`TypeError`/`IndexError`); `ValidationError` for unsupported provider; unrelated programming errors — **RESOLVED — 2026-09-23 (D-InvalidPayload)** | **no effect**; must escape | exception propagates to caller as-is; never `DIRECTIONS_UNAVAILABLE`; never mock |
+
+**Mandatory failure-observation order (critical requirement):**
+
+```text
+provider failure → PROVIDER_FAILURE → circuit records failure (INCR/EXPIRE)
+    → CircuitOpenError / provider-failure propagation reaches fallback boundary
+    → _mock_directions(...)
+```
+
+NOT: provider failure → `_mock_directions(...)` swallowed inside the leg → decorator thinks the provider succeeded. Tests must demonstrate five provider failures actually increment the circuit.
+
+Why the final mock response's `success=True` means nothing about the provider:
+
+- Three distinct non-success outcomes funnel into the same caller-visible `_mock_directions` shape; the `success` key is a property of the fallback result generator, produced *after* the circuit decision.
+- The circuit reads only the internal outcome at the failure boundary — it never inspects a response dict, never reads `success == True`, never treats `_mock_directions` output as `PROVIDER_SUCCESS`.
+- Invariant O1: `PROVIDER_SUCCESS` is reachable only by returning the provider's own parsed payload; any path that constructed `_mock_directions` output is by definition not `PROVIDER_SUCCESS`.
+
+**Classification boundary rule (F1):** typed except-clauses producing `PROVIDER_FAILURE` catch only the external-dependency exception surface (`requests.RequestException` family and explicit provider-status raises already present at the call sites — **no new exception hierarchy**). Everything else falling out of the leg is `LOCAL_DEFECT` by default. An explicit `except Exception` may exist only as the outermost `LOCAL_DEFECT` catcher that logs and re-raises — it must not feed the counter, must not feed the fallback, and must not convert to `ServiceUnavailableError`.
+
+---
+
+## Circuit Identity
+
+```text
+circuit namespace = provider identity + operation identity
+transport:circuit:google:directions:failures
+transport:circuit:google:directions:state
+transport:circuit:mapbox:directions:failures
+transport:circuit:mapbox:directions:state
+```
+
+- `<provider>` = actual dispatch strings `google` / `mapbox` (`:68-71`, FOUND); `<operation>` = `directions`.
+- The roadmap's `@circuit_breaker("google_maps", ...)` example (`:3743`) is historical evidence of threshold/timeout values only.
+- **Isolation proof (must hold and be tested):** advancing `google:directions` writes only `transport:circuit:google:directions:*`; `mapbox:directions` keys are untouched. Opening Google must not affect Mapbox. No wildcard/global key. Shared state across workers for the same pair is required; shared state across different pairs is prohibited.
+
+---
+
+## Failure classification
+
+```text
+PROVIDER_FAILURE        HTTP/network failure OR provider-declared error/status
+        → counted (INCR failures; EXPIRE 60) → at 5: SET state open EX 30
+        → fallback boundary produces _mock_directions(...)
+
+CONFIGURATION_UNAVAILABLE   missing API key/token (no HTTP attempt)
+        → not counted → does not open → does not reset an existing sequence
+        → _mock_directions(...)
+
+LOCAL_DEFECT            HTTP OK but our parser's expected shape wrong
+                        (KeyError/TypeError/IndexError);
+                        ValidationError (unsupported provider);
+                        unrelated programming errors
+        → not counted → no fallback → escapes to caller
+```
+
+**Prohibitions:**
+
+- P1: `except Exception:` must not become the circuit's failure classifier. The counter is incremented only inside the typed `PROVIDER_FAILURE` handler.
+- P2: No arbitrary/new exception classes; use types already raised at the observed call sites plus default-to-LOCAL_DEFECT.
+- P3: The outer blanket handler must stop reclassifying `LOCAL_DEFECT` and validation paths as `ServiceUnavailableError`.
+- P4: `LOCAL_DEFECT` must never be converted into mock output.
+
+---
+
+## State machine
+
+| State | Meaning | Evidence |
+|---|---|---|
+| CLOSED | `state` key absent; calls reach the provider leg; counted failures accumulate | FOUND |
+| OPEN | `state` key exists; failures ≥ 5 for this `(provider, directions)`; calls short-circuit to `_mock_directions` before any HTTP | FOUND (`:3742-3746`) |
+| HALF-OPEN | **not adopted** | FOUND (absence) |
+
+Transitions:
+
+```text
+CLOSED --(5 PROVIDER_FAILURE: INCR reaches 5)--> OPEN   [SET state open EX 30]
+CLOSED --(PROVIDER_SUCCESS)--> CLOSED                    [DEL failures]
+OPEN   --(state TTL expires)--> CLOSED                   [unconditional resume;
+                                                          next request observes
+                                                          key absent ⇒ CLOSED]
+```
+
+Invariants:
+
+- I1: OPEN ⇒ zero HTTP attempts to that provider for that operation (`CircuitOpenError` at entry, before any leg call).
+- I2: `CONFIGURATION_UNAVAILABLE` and `LOCAL_DEFECT` never change state or counters.
+- I3: Namespace isolation per Circuit Identity.
+- I4: State is Redis-shared across workers and survives restarts.
+- I5: Recovery = unconditional resume on `state` TTL expiry — **RESOLVED — 2026-09-23 (D-Probe).** No HALF-OPEN, no probe, no lock, no single recovery worker.
+
+---
+
+## Concurrency
+
+**Exact Redis contract — RESOLVED — 2026-09-23 (D-RedisKeys):**
+
+```text
+transport:circuit:<provider>:directions:failures    INCR; EXPIRE 60
+transport:circuit:<provider>:directions:state       SET open EX 30
+```
+
+- Failure key: on each `PROVIDER_FAILURE`, `INCR` then `EXPIRE 60`. TTL 60 covers `failure_threshold=5` accrual around `recovery_timeout=30`.
+- State key: when the INCR result reaches `5`, `SET ... state open EX 30`.
+- State interpretation: **key exists ⇒ OPEN; key absent ⇒ CLOSED.** The TTL on `state` is the recovery clock.
+- **Do not create `open_until`, `opened_at`, or any third circuit key.**
+- Reset: `DEL failures` only on genuine `PROVIDER_SUCCESS`.
+- Counter increment: `INCR` only — never application-layer read-modify-write.
+- OPEN establishment: single decider = the worker whose `INCR` result equals 5 (plus the atomic `SET ... EX 30`).
+- Transition bound: workers that read key-absent before the `SET` lands may complete in-flight calls; **no new attempt starts once the key is observed present**.
+- **Recovery — RESOLVED — 2026-09-23 (D-Probe):** on TTL expiry every worker observes key absence and resumes normally (unconditional). No probe, no lock, no HALF-OPEN. Thundering-herd concern deferred to a future node if ever evidenced.
+- Redis unavailable / falsy client / command error: **warn → fail open → permit the provider call**; perform no state read/write; Redis failure itself never increments the provider circuit. Precedent: `events/routes.py:88-102` (FOUND).
+
+---
+
+## Roadmap boundary
+
+```text
+failure_threshold = 5            (FOUND :3743)
+recovery_timeout  = 30 seconds   (FOUND :3743)
+OPEN → immediate existing fallback (_mock_directions)   (FOUND :3744-3746)
+Redis-backed shared state        (FOUND :3742)
+circuit observability            (FOUND :3747)
+```
+
+**Not invented:** retry counts, retry backoff, HALF-OPEN, dashboard endpoints, new provider integrations, provider registry, response normalization, geocode guarding, new callers.
+
+**Observability — RESOLVED — 2026-09-23:** transition logging only at actual transitions:
+
+- CLOSED→OPEN: log `provider`, `operation`, `failure_count`, `reason=threshold_reached` + `record_metric(...)`.
+- OPEN→CLOSED: when the next request first observes the expired `state` key absent, log `provider`, `operation`, `reason=recovery_expired` (+ available failure-count information).
+- No transition message on normal requests. No dashboard endpoint.
+
+---
+
+## Fallback semantics (`_mock_directions`)
+
+- `_mock_directions()` is a **fallback result generator**, not an external-provider success signal:
+  ```
+  _mock_directions() output  ⊨  "a degraded response was constructed"
+  _mock_directions() output  ⊭  "the external provider succeeded"
+  ```
+- Its current output (keys, values, `success: True`, `provider: 'mock'`, `note`) is **preserved unchanged** (body untouched).
+- The circuit must never inspect `success == True` (or any response field) to conclude provider success.
+- Single fallback: reached on `PROVIDER_FAILURE` (after counting) and `CONFIGURATION_UNAVAILABLE` (S3, unchanged), including via `CircuitOpenError` at entry. Never for `LOCAL_DEFECT`.
+- No `reason` key added to fallback responses. No second fallback. `future_adds.py` mock prohibited.
+
+---
+
+## Preservation rules
+
+1. `_mock_directions` body and output shape.
+2. Google/Mapbox success payload shapes and their divergence.
+3. `timeout=10` per attempt.
+4. `@monitor_endpoint` remains on the entry function.
+5. Singleton/exports unchanged.
+6. `geocode_address`, `send_sms`, `process_payment_external` untouched.
+7. `future_adds.py` untouched.
+8. `app/utils/monitoring.py` untouched (**D-Mechanism — RESOLVED — 2026-09-23**).
+9. No migration; models untouched.
+10. No wallet/KYC/`tests/conftest.py`/`app/models/base.py` changes.
+11. No commits; no master-register update.
+12. S3 (no key → immediate mock, no HTTP, no count, no reset) preserved.
+13. No new caller, no config keys, no retries, no HALF-OPEN, no locks, no response normalization, no `reason` in responses.
+
+---
+
+## Architectural dependencies (reported, NOT implemented)
+
+None required: the existing if/elif dispatch suffices as the "resolved provider" stage. A provider-registry, if ever wanted, is a separate node. Dormancy is an evidence note only (D-Dormancy resolved: proceed without a caller).
+
+---
+
+## Test obligations (IMPLEMENTATION phase — authorized)
+
+New file only: `tests/transport/test_directions_circuit_breaker.py`; file-local fixtures only; no `tests/conftest.py` changes.
+
+| # | Obligation |
 |---|---|
-| Google (`:119-134`) | `success, distance_meters, distance_text, duration_seconds, duration_text, polyline, steps` — **no** `provider` |
-| Mapbox (`:172-178`) | `success, distance_meters, duration_seconds, polyline, provider='mapbox'` — no `*_text`, no `steps` |
-| Mock (`:198-207`) | `success, distance_meters, distance_text, duration_seconds, duration_text, polyline=None, provider='mock', note` |
-
-All three carry `success: True` (FOUND). No consumer exists in-repo (§2.6), but shapes must not be silently normalized in this node.
-
-### 2.8 State table — current behavior
-
-| # | State / condition | On entry | Observable result | Tag |
-|---|---|---|---|---|
-| S1 | CONFIGURED (key present) + provider healthy | outbound call, ≤10 s | provider-shaped dict | FOUND |
-| S2 | CONFIGURED + provider error/timeout/non-OK | full timeout then except | `_mock_directions` dict (success:True, provider:'mock') | FOUND |
-| S3 | NOT CONFIGURED (key `None`, the evidenced state) | no network call | `_mock_directions` dict | FOUND |
-| S4 | Unsupported `provider` arg | `ValidationError` raised | converted by `:78` to `ServiceUnavailableError` | FOUND |
-| S5 | Programmer defect inside leg (e.g. `KeyError` on payload) | caught by broad `except` | falls to `_mock_directions` (Google/Mapbox legs) — **bug masked as success** | FOUND |
-| S6 | Memory of past failures | none | every call retries the provider from scratch | FOUND |
-| S7 | Circuit state (any) | no circuit exists | n/a | FOUND |
-| S8 | HALF-OPEN | state does not exist; roadmap does not name it | n/a | FOUND (absence) |
-| S9 | Redis involvement in this path | none | n/a | FOUND |
-| S10 | Behavior when provider configured-and-slow in production | UNKNOWN — no evidenced environment has keys | UNKNOWN | UNKNOWN |
+| T1 | Five provider failures open provider A only; demonstrates failures actually increment the circuit |
+| T2 | OPEN ⇒ zero provider HTTP attempts; output shape == `_mock_directions` |
+| T3 | `state` TTL expiry resumes CLOSED (unconditional) |
+| T4 | `LOCAL_DEFECT` (`KeyError`/`TypeError`/`IndexError`/`ValidationError`) escapes; counter unchanged; no mock |
+| T5 | Missing key → mock; no HTTP; not counted; does not falsely reset an existing failure sequence |
+| T6 | Genuine provider success resets the failure sequence (4 fail → success → 5 more fail to open) |
+| T7 | Redis unavailable → warn → fail open → call proceeds; Redis failure never increments the circuit |
+| T8 | Provider A circuit does not affect provider B (`google` vs `mapbox` keys) |
+| T9 | `_mock_directions` output shape unchanged |
+| T10 | Transition logging only at CLOSED→OPEN and OPEN→CLOSED |
+| T11 | **Semantic proof:** mock `success=True` is never used as the provider-success signal |
 
 ---
 
-## 3. Intended behavior
+## Non-goals
 
-After implementation (not authorized in this phase):
-
-1. Outbound directions calls are guarded per provider (`google_maps`, `mapbox`) by a **Redis-backed circuit breaker** (roadmap `:3742`, FOUND).
-2. Defaults taken from the roadmap spec, not invented: `failure_threshold=5`, `recovery_timeout=30` (`:3743`, FOUND).
-3. While a provider's circuit is open, the directions leg returns `_mock_directions(origin, destination)` **immediately, without issuing the HTTP request** (`:3744-3746`, `:2692-2693`, FOUND).
-4. Only **provider/dependency failures** advance the failure counter (§5).
-5. Circuit state transitions and current state are observable (logged + metric), per `:3747` (FOUND); dashboard exposure is an open decision (§12).
-6. Timeout remains 10 s per attempt (FOUND — current code; no roadmap change).
-7. Behavior in states S3 (no key) is unchanged: immediate mock, no network, no circuit counting required (it is not a provider failure). **INFERRED:** no counter increment when no outbound call is attempted.
-8. The outer `except Exception → ServiceUnavailableError` conversion is narrowed so local defects are not disguised as provider outages (§5).
+No retries, no HALF-OPEN, no locks, no new callers, no config keys, no geocoding/fare/GEO changes, no provider discovery, no response normalization, no dashboard endpoint, no migration/model changes, no `tests/conftest.py` changes, no commit, no master-register update, no touch to `monitoring.py`, `_mock_directions` body, `future_adds.py`, exports/singleton, `timeout=10`, `@monitor_endpoint`, configuration loading.
 
 ---
 
-## 4. State machine
+## Open Human Decisions
 
-States (only those justified by evidence; no invented states):
+**All six decisions: RESOLVED — 2026-09-23. No open decisions remain.**
 
-| State | Definition | Evidence |
-|---|---|---|
-| CLOSED | calls pass through to provider leg; failures counted | FOUND (roadmap implies baseline) |
-| OPEN | failures ≥ `failure_threshold`; calls short-circuit to `_mock_directions` | FOUND (`:3742-3746`) |
-| HALF-OPEN | **NOT ADOPTED in v1** — roadmap never names it; existing primitive only logs the phrase while already closed (`monitoring.py:163`) | FOUND (absence) |
-
-Transitions (proposal grounded in roadmap vocabulary "circuit open → recovery", `:472-473`):
-
-```
-CLOSED --(N = failure_threshold counted failures)--> OPEN
-OPEN   --(recovery_timeout elapsed)--> CLOSED      (unconditional reset,
-                                                     matching the existing
-                                                     primitive's semantics at
-                                                     monitoring.py:159-164)
-CLOSED --(any success)--> CLOSED                   (counter reset)
-```
-
-**NEEDS PRODUCT/ARCHITECTURE DECISION:** whether a trial/half-open call is required after `recovery_timeout` instead of unconditional close (§12, D3). Until decided, the contract specifies CLOSED↔OPEN only; implementing a HALF-OPEN state without that decision is prohibited.
-
-Invariants (contractual):
-
-- I1: In OPEN, zero HTTP requests are issued to that provider (roadmap `:3745`, FOUND).
-- I2: Failure counting is **per provider name** (`google_maps` vs `mapbox` isolation) — INFERRED from the decorator signature `@circuit_breaker("google_maps", ...)` (`:3743`, FOUND as evidence of naming, isolation as inference).
-- I3: A circuit for provider A never short-circuits provider B.
-- I4: Circuit state survives process restart and is shared across workers (Redis-backed, `:3742`, FOUND).
-- I5: Programmer defects never increment the failure counter and never transition state (§5).
-
----
-
-## 5. Failure semantics
-
-Classification (mandatory — the circuit must not hide bugs):
-
-| Class | Examples in this path | Counts toward threshold? | Current behavior | Contract behavior |
-|---|---|---|---|---|
-| **Provider/dependency failure** | `requests` `Timeout`/`ConnectionError`; HTTP 4xx/5xx via `raise_for_status`; Google `status != 'OK'` (`:112-113`); Mapbox `code != 'Ok'` (`:166-167`); JSON decode failure of a **provider** response | **Yes** | logged → `_mock_directions` | logged + counted; fallback to `_mock_directions` preserved |
-| **Configuration absence** | key/token is `None` (`:89-92`, `:145-147`) | **No** (no outbound call attempted) | immediate `_mock_directions` | unchanged; optionally logged once — INFERRED |
-| **Local validation defect** | `ValidationError` unsupported provider (`:73-76`); missing `origin['latitude']` `KeyError` in `_mock_directions` (`:191-193`) | **No** | converted to `ServiceUnavailableError` (`:78-83`) or masked by leg-level `except` | must propagate as-is (or as 4xx for validation); never counted; never converted into a provider-outage signal |
-| **Programmer defect / contract violation of provider payload** | `KeyError`/`IndexError`/`TypeError` parsing a provider payload (`:116-133`, `:170-178`) when the payload shape itself is unexpected | **No** | masked → mock | must **not** be swallowed into mock success: raise/log as defect so tests and monitoring see it. **NEEDS PRODUCT/ARCHITECTURE DECISION** whether the parse-defect path raises or degrades-with-error-log (§12, D4) — rationale: distinguishing "provider sent garbage" (dependency) from "our parser is wrong" (defect) requires per-exception typing; blanket `except Exception` is prohibited |
-| **Redis unavailability** | circuit state read/write fails | **No** | n/a (Redis unused) | §6 fail-open; no state transition attempted |
-
-Explicit rules:
-
-- F1: The circuit decorator observes only exceptions in the classified **provider** set (or an explicit success/failed return from the leg). `expected_exceptions` must not be `(Exception,)`.
-- F2: `get_directions`' outer blanket handler (`:78-83`) must not convert `ValidationError` or local defects to `ServiceUnavailableError`.
-- F3: A degraded mock response remains `success: True, provider: 'mock'` (FOUND current shape) so existing consumers cannot tell the difference **unless** §12-D5 decides otherwise — the `note` key is the existing disclosure channel (`:206`, FOUND).
-- F4: Failures **while the circuit is OPEN** do not accrue (no call is made).
-
----
-
-## 6. Redis state
-
-All values below are proposals unless tagged; no numeric value appears in this contract unless it comes from the roadmap or current code.
-
-| Key (proposal) | Type | Purpose | Evidence |
-|---|---|---|---|
-| `transport:circuit:<name>:failures` | counter (INCR) | consecutive counted failures | pattern: `rate_limit:{key}` INCR+EXPIRE (`events/routes.py:94-98`, FOUND) |
-| `transport:circuit:<name>:state` | string `closed`/`open` | current state | NEEDS PRODUCT/ARCHITECTURE DECISION on exact key/namespace (D2) |
-| `transport:circuit:<name>:opened_at` | epoch seconds | when OPEN began; drives `recovery_timeout` expiry | proposal |
-
-- Thresholds: `failure_threshold=5`, `recovery_timeout=30` — **FOUND** (roadmap `:3743`). Any other value requires roadmap amendment.
-- Atomicity/concurrency (proposal, needs confirmation — D2):
-  - failure increment: `INCR` + `EXPIRE` (window ≥ `recovery_timeout`) in a pipeline — matches `events/routes.py:94-98` (FOUND precedent);
-  - open transition: `INCR` result compared to threshold; state set with `SET ... EX recovery_timeout` so expiry itself drives recovery (proposal);
-  - check-then-call is **not** transactional: N workers already past the check may still issue a provider call at the moment of transition. Contract accepts this bounded race (**at-least-once during transition**) rather than introducing a distributed lock — INFERRED acceptable; flag if architecture disagrees (D2).
-  - Key TTL ensures orphan keys self-clean; no manual cleanup path (proposal).
-- Redis unavailable / `redis_client` falsy / command exception: **fail open** — allow the provider call, log a warning, perform no state read/write. Grounded in two in-repo precedents: `events/routes.py:88-102` and `analytics.py` never-raise policy (FOUND). Fail-**safe** (serve mock whenever Redis is down) was considered and rejected for v1: it would silently disable a working provider whenever Redis blips, which no roadmap line calls for.
-- Key naming/namespace and the exact open-with-TTL scheme are **NEEDS PRODUCT/ARCHITECTURE DECISION (D2)** — the table is a proposal, not a discovered fact.
-- No migration, no new dependency for storage: reuse `app.extensions.redis_client` (FOUND pattern).
-
----
-
-## 7. Fallback semantics
-
-- The **one and only** fallback for an open circuit or a counted provider failure is `ExternalPlatformsService._mock_directions(origin, destination)` (`external_platforms.py:185`, FOUND; roadmap `:3744-3746` explicitly names it).
-- `_mock_directions` is **not modified** by this node (its math, keys, and `provider: 'mock'` marker are preservation surface).
-- No second fallback path may be introduced (no cached-last-success, no provider swap google↔mapbox, no synthetic error payload). Roadmap shows exactly one fallback line (`:2692-2693`, FOUND).
-- `future_adds.py` mock must not be used (§2.2).
-- The open-circuit fallback must be invoked **at the provider-leg layer** (`_get_google_directions` / `_get_mapbox_directions`) or immediately inside the decorator around those legs — either wiring satisfies `:3744` ("`_get_google_directions()` immediately returns mock data"); the precise seam (decorator-return-value vs leg-guard) is an implementation detail decided at IMPLEMENTATION planning (D6), because the decorator must remain generic.
-- S3 (no API key) keeps its existing immediate-mock path untouched.
-
----
-
-## 8. Recovery semantics
-
-- `recovery_timeout=30` seconds from the roadmap (FOUND) is the sole recovery trigger for v1; after it elapses the circuit returns to CLOSED and the failure counter resets (proposal matching `monitoring.py:159-164`, FOUND as precedent).
-- On return to CLOSED, the next call is a **normal call** (no trial-call machinery in v1, §4). If it fails, it counts normally and re-opens after `failure_threshold` further failures.
-- Any counted-failure sequence in CLOSED resets on the first success (FOUND precedent `monitoring.py:175-176`; standard breaker semantics).
-- Redis expiry of `state`/`opened_at` is a **second, self-cleaning recovery path**: if TTL writes fail silently, key expiry lands in CLOSED-equivalent absence — acceptable and consistent with fail-open (proposal).
-- No manual/admin reset endpoint in v1 (none exists; creating one is scope expansion — §12 D7).
-- Geocoding (`geocode_address`, `:211-249`) shares the file and identical defect pattern but is **not** guarded by this node unless §12-D1 expands scope.
-
----
-
-## 9. Preservation rules
-
-Must remain byte-identical or behavior-identical after implementation:
-
-1. `_mock_directions` body and return shape (`:185-207`).
-2. Google/Mapbox success payload shapes and the three-way divergence (§2.7).
-3. `timeout=10` per outbound attempt (`:108`, `:162`).
-4. `@monitor_endpoint("get_directions")` remains on the entry function; decorator **ordering** (monitor outside breaker vs breaker outside monitor) decided at implementation planning — either preserves monitoring logs (D6).
-5. Singleton `get_external_platforms()` and all module exports (`services/__init__.py`, `transport/__init__.py`).
-6. `geocode_address`, `send_sms`, `process_payment_external` — untouched (their defects are follow-ups, §11).
-7. `future_adds.py` — untouched.
-8. `app/utils/monitoring.py::with_circuit_breaker` — either reused-with-fix or left untouched; must not be half-modified (D5).
-9. No migration (§20 red line — none needed: Redis only).
-10. No wallet/KYC/conftest/model changes.
-11. Existing test suite green: baseline 74 passed + 2 pre-existing failures (`test_marketplace_ux_harmonisation`).
-12. No commits; human executes any future implementation gate.
-13. S3 short-circuit (no key → immediate mock, no HTTP) preserved.
-14. Response `success: True` on mock fallback preserved (F3).
-
----
-
-## 10. Test obligations
-
-New file (proposed): `tests/transport/test_directions_circuit_breaker.py`. Shared fixtures untouched (`tests/conftest.py` red line). Required cases:
-
-| # | Obligation | Asserts |
-|---|---|---|
-| T1 | threshold trip | 5 counted provider failures → state OPEN |
-| T2 | open short-circuit | while OPEN, provider `requests.get` is **not** invoked (monkeypatch/spy) and result equals `_mock_directions` output shape |
-| T3 | recovery | after `recovery_timeout`, circuit CLOSED, provider called again (clock injected or TTL window simulated) |
-| T4 | isolation | `google_maps` OPEN does not short-circuit `mapbox` (I3) |
-| T5 | failure classification | `ValidationError`, `KeyError` from local defect: counter unchanged, state unchanged, exception surfaces per §5 |
-| T6 | success resets | 4 failures → success → 5 more failures needed (not 1) to open |
-| T7 | Redis down | `redis_client=None` or raising → call proceeds (fail-open), warning logged, no state written |
-| T8 | no-key path | S3 immediate mock, no counter increment, no HTTP |
-| T9 | regression | full `tests/transport/` remains at baseline (74 pass / 2 known failures) |
-| T10 | preservation | `_mock_directions` output keys unchanged; `app/utils/monitoring.py` diff examined per D5 |
-
-Test doubles: inject/monkeypatch Redis and `requests.get` inside the new test file only — no conftest edits (pattern precedent: Fix 2.6 file-local autouse fixture).
-
-Observability obligation: circuit state transitions emit a structured log line (state, provider, failure count); `record_metric`-style emission is acceptable v1 (it is log-only, `monitoring.py:107-111`, FOUND); a dashboard endpoint is **not** required for this node's gate (§12 D7).
-
----
-
-## 11. Non-goals
-
-- No implementation in this phase (contract gate only).
-- No Fix 2.1 (surge) or Fix 2.3 (idempotency) work.
-- No GEO architecture work; no fare-engine changes; fare estimation path (`fare_service`) untouched.
-- No guard on `geocode_address` (unless D1 expands).
-- No retries/backoff beyond the roadmap's unparameterized "bounded retries" goal — see D8; inventing retry counts here is prohibited.
-- No HALF-OPEN trial state (D3).
-- No admin circuit-reset endpoint, no dashboard UI (D7).
-- No `pybreaker`/new dependency without explicit approval (D5).
-- No changes to `with_circuit_breaker`'s other would-be users (`settings_service`, `provider_service` merely import it).
-- No provider-response caching, no provider failover google↔mapbox.
-- No config keys added (`GOOGLE_MAPS_API_KEY` loading stays as-is).
-- No migration, no commit, no register/BACKLOG update in this phase.
-- `future_adds.py` cleanup, `geocode_address` defect masking, response-shape normalization — recorded follow-ups, not this node.
-
----
-
-## 12. Open decisions
-
-| ID | Decision | Why open | Options |
-|---|---|---|---|
-| D1 | Scope of the decorator: directions only, or also `geocode_address` (identical pattern, same file)? | Roadmap "done" names only `_get_google_directions` (`:3744`); Part VII says "and similar calls" (`:465`) | directions-only (literal done-spec) / directions+geocode (Part VII reading) |
-| D2 | Exact Redis key namespace, value encoding, TTLs, and acceptance of the check-then-call race | No key naming exists anywhere for circuits; proposal only | adopt proposal / specify different scheme |
-| D3 | HALF-OPEN trial call vs unconditional close after `recovery_timeout` | Roadmap never names HALF-OPEN; instruction forbids inventing it | v1 unconditional close (proposal) / add trial state (requires roadmap amendment) |
-| D4 | Payload-parse defects (`KeyError` on provider JSON): raise as defect vs degrade-with-error-log | "Provider sent garbage" vs "our parser is wrong" cannot be told apart without per-exception policy; blanket swallowing is what we are fixing | raise / degrade with ERROR-level log + metric (not counted) |
-| D5 | Mechanism: new Redis-backed decorator (in `external_platforms.py` or a transport util) vs extend `monitoring.py::with_circuit_breaker` vs add `pybreaker` dependency | Existing primitive is in-process and blind (`(Exception,)`); pybreaker is suggested in roadmap prose (`:2687`) but a dependency | new Redis decorator (proposal, matches Fix 2.6 no-new-dependency precedent) / extend existing / pybreaker |
-| D6 | Decorator seam: generic decorator returning fallback vs leg-level guard; monitor/breaker decorator ordering | Roadmap shows both `@circuit_breaker(...)` and "leg returns mock" (`:3742-3746`) | decorator-with-fallback-callback / decorator-throws-open-error caught by leg |
-| D7 | "Metrics exposed for the dashboard" (`:3747`) — v1 = structured logs + `record_metric`, or an actual endpoint? | No circuit dashboard surface exists (UNKNOWN) | logs+metric only (proposal) / owner API endpoint (scope addition) |
-| D8 | "Bounded retries" (`:471`) — count/backoff unspecified anywhere | No number in roadmap or code; instruction prohibits inventing numbers | defer retries to a follow-up node (proposal) / human specifies N + backoff |
-| D9 | Whether an evidenced production environment actually sets the maps keys (§2.4 UNKNOWN) — affects whether S1/S2 are reachable today | Not discoverable from repo | human confirmation |
-| D10 | Whether "no in-repo callers" (§2.6) means this path is dormant; if so, priority of the node vs wiring callers first | Roadmap still lists 2.2 as a Tier-2 production item (`:2433`) | proceed as specified (proposal) / re-prioritize |
+| ID | Resolution |
+|---|---|
+| D-Dormancy | **RESOLVED — 2026-09-23:** Proceed. Zero discovered production callers; do not add a caller; record dormancy as an evidence note. |
+| D-Probe | **RESOLVED — 2026-09-23:** Unconditional resume. `state` expiry ⇒ `OPEN → CLOSED`. No HALF-OPEN, no probe, no lock, no single recovery worker. Thundering-herd = future node if ever evidenced. |
+| D-RedisKeys | **RESOLVED — 2026-09-23:** Exactly `transport:circuit:<provider>:directions:failures` (INCR; EXPIRE 60) and `transport:circuit:<provider>:directions:state` (SET open EX 30). State = key-exists. No `open_until`/`opened_at`/third key. |
+| D-Mechanism | **RESOLVED — 2026-09-23:** New decorator `circuit_breaker(provider_name)` inside `app/transport/services/external_platforms.py`. Do not touch `monitoring.py::with_circuit_breaker`. No `pybreaker`. |
+| D-ProdKeys | **RESOLVED — 2026-09-23:** Production map-key injection remains UNKNOWN; document the assumption in evidence/record. No config keys added. |
+| D-InvalidPayload | **RESOLVED — 2026-09-23:** HTTP/network failure OR provider-declared error/status → `PROVIDER_FAILURE` (counted). HTTP succeeds but our parser's expected shape is wrong → `LOCAL_DEFECT` (raises, not counted, no fallback). No new exception hierarchy. |
 
 ---
 
 ## Contract quality gate (six challenges)
 
-1. **Semantic:** Does the contract state what "directions unavailable" means, and separate it from local defects? — Yes: §5 classification table, F1-F4; provider outage → counted + mock fallback; local defect → surfaces, never counted, never renamed `DIRECTIONS_UNAVAILABLE`.
-2. **State:** Is every state and transition evidence-tagged? Is HALF-OPEN handled honestly? — §4 table: CLOSED/OPEN adopted from roadmap; HALF-OPEN explicitly not adopted, gated on D3; invariants I1-I5.
-3. **Failure:** Could a circuit hide a bug? — No: F1 forbids `except Exception` counting; T5 enforces it; D4 parks the one ambiguous case with an explicit default (not counted).
-4. **Redis:** Are values invented? Are atomicity, concurrency, and Redis-down behavior defined? — Only roadmap numbers (5/30) are treated as requirements; key schema flagged D2/NEEDS DECISION; INCR+EXPIRE pipeline precedent cited; bounded transition race stated; fail-open defined with two in-repo precedents.
-5. **Fallback:** Is there exactly one fallback, and is it the existing one? — §7: `_mock_directions` only; no competing path; `future_adds` excluded; S3 preserved.
-6. **Preservation:** What must not change? — §9 lists 14 surfaces including shapes, timeout, exports, baseline suite, red lines (migration/wallet/conftest), and no-commit rule.
+1. **Semantic:** provider outcome precedes response construction; `success=True` decoupled from provider success (O1, T11); local defects no longer renamed `DIRECTIONS_UNAVAILABLE` (P3).
+2. **State:** CLOSED/OPEN only; unconditional-resume recovery resolved (D-Probe); no HALF-OPEN.
+3. **Failure:** three-class model; `except Exception` prohibited as classifier (P1); no invented exception hierarchy (P2); LOCAL_DEFECT escapes (P4); T4/T11 enforce.
+4. **Redis:** exact two-key contract (D-RedisKeys); atomic `INCR`/`SET EX`/`GET`/`DEL`; transition bound stated; fail-open with two FOUND precedents; only roadmap numbers required.
+5. **Fallback:** single existing generator; circuit never inspects response fields; S3 unchanged; `future_adds` excluded.
+6. **Preservation:** 13 surfaces listed; scope exclusions explicit; dormancy declared and resolved.
 
 **GATE: PASS**
 
-The contract is complete for review; the ten D-items are declared open decisions by design of this phase — none of them blocks human review of the contract, and none may be silently resolved during IMPLEMENTATION without human approval.
+All six human decisions are **RESOLVED — 2026-09-23**. The contract is provider-neutral and implementable without guessing: exact Redis keys, unconditional-resume recovery, file-local decorator, payload boundary, dormancy note, and production-key assumption are fixed. No silent choices remain (no lock, no HALF-OPEN, no Google-centric namespace, no trust of `success=True`, no third key, no `opened_at`).
