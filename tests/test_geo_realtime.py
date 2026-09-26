@@ -216,11 +216,17 @@ def test_publish_never_raises_when_redis_down():
                                   event) is False
 
 
-# --- SSE iteration -----------------------------------------------------------
+# --- SSE iteration (cooperative: never blocks on the channel) ------------------
 
-def test_stream_snapshot_then_live_then_heartbeat():
-    # Raw channel payloads (the view unwraps pub/sub frames first;
-    # subscribe-confirmations never reach this layer - parse rejects them).
+import app.geo.realtime as realtime_mod
+
+
+def test_stream_snapshot_then_live_then_heartbeat(monkeypatch):
+    # Deterministic clock: sleeps advance nothing real; heartbeats fire
+    # after heartbeat_s of accumulated idle polls. Queue [live, None,
+    # live]: the trailing live arrives before the idle budget fills, so
+    # the heartbeat only appears once the queue drains.
+    monkeypatch.setattr(realtime_mod, "_sleep", lambda s: None)
     live = json.dumps(build_location_event("driver", "D1", _location()))
     frames = list(itertools.islice(
         iter_location_events(
@@ -231,8 +237,53 @@ def test_stream_snapshot_then_live_then_heartbeat():
     assert frames[0].startswith("retry: ")
     assert frames[1].startswith("event: snapshot\n")
     assert frames[2].startswith("event: location\n")
-    assert frames[3] == ": heartbeat\n\n"
-    assert frames[4].startswith("event: location\n")
+    assert frames[3].startswith("event: location\n")
+    assert frames[4] == ": heartbeat\n\n"
+
+
+def test_stream_never_blocks_on_empty_channel(monkeypatch):
+    """The proven gevent-loop stall: next_message must be polled with
+    timeout=0 (non-blocking readiness check), never with a blocking wait."""
+    seen = []
+
+    def recording(timeout=0.0):
+        seen.append(timeout)
+        return None
+
+    monkeypatch.setattr(realtime_mod, "_sleep", lambda s: None)
+    frames = list(itertools.islice(
+        iter_location_events(recording, heartbeat_s=1.0, poll_s=0.25), 3))
+    assert frames[0].startswith("retry: ")
+    assert frames[1] == ": heartbeat\n\n"
+    assert frames[2] == ": heartbeat\n\n"
+    assert seen and all(t == 0 for t in seen)
+
+
+def test_stream_heartbeat_cadence_without_messages():
+    """Idle heartbeat arrives after ~heartbeat_s without real blocking:
+    short sleeps only, bounded wall time."""
+    import time
+    live = None
+    start = time.monotonic()
+    frames = list(itertools.islice(
+        iter_location_events(lambda timeout: None,
+                             heartbeat_s=0.3, poll_s=0.05), 2))
+    elapsed = time.monotonic() - start
+    assert frames[0].startswith("retry: ")
+    assert frames[1] == ": heartbeat\n\n"
+    assert elapsed < 5.0
+
+
+def test_stream_message_resets_heartbeat_budget(monkeypatch):
+    """A live message resets the idle budget: continuous messages emit
+    locations with no interleaved heartbeat."""
+    monkeypatch.setattr(realtime_mod, "_sleep", lambda s: None)
+    live = json.dumps(build_location_event("driver", "D1", _location()))
+    frames = list(itertools.islice(
+        iter_location_events(FakePubSub([live] * 4).get_message,
+                             heartbeat_s=3600.0, poll_s=0.25), 5))
+    assert frames[0].startswith("retry: ")
+    assert all(f.startswith("event: location\n") for f in frames[1:])
 
 
 def test_format_sse_frame_shape():
@@ -240,6 +291,42 @@ def test_format_sse_frame_shape():
     assert frame.startswith("event: snapshot\ndata: ")
     assert frame.endswith("\n\n")
     assert frame.count("\n") == 3
+
+
+# --- R-02: dead channel fails fast, closes honestly ---------------------------
+
+def test_channel_dead_closes_stream_without_retry():
+    calls = {"n": 0}
+
+    def get_message(timeout):
+        calls["n"] += 1
+        raise ConnectionError("socket dead")
+
+    frames = list(iter_location_events(get_message, snapshot_event=None))
+    # retry frame + degraded frame
+    assert any('"status": "degraded"' in f for f in frames)
+    # exactly one call — no retry on the dead socket
+    assert calls["n"] == 1
+
+
+def test_next_channel_payload_raises_channel_dead_on_redis_error():
+    """The production error family: redis-py raises its OWN
+    ConnectionError (RedisError subclass, not a builtin), so the
+    fail-fast must match it explicitly — a builtin-only catch would
+    swallow it and retry on the dead socket."""
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    from app.geo.routes import _ChannelDead, _next_channel_payload
+
+    calls = {"n": 0}
+
+    def get_message(timeout):
+        calls["n"] += 1
+        raise RedisConnectionError("socket dead")
+
+    with pytest.raises(_ChannelDead):
+        _next_channel_payload(get_message, 0)
+    assert calls["n"] == 1
 
 
 # --- producer hook ------------------------------------------------------------

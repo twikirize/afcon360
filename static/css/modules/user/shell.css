@@ -78,7 +78,10 @@ body {
     align-items: center;
     gap: 0.5rem;
     padding: 0 0.375rem 1rem;
-    color: var(--color-text-primary);
+    /* --color-text-primary is forced to a light value by the ThemeManager
+       inline preset while the panel background stays light, which made this
+       label unreadable. The secondary token tracks the theme both ways. */
+    color: var(--color-text-secondary);
     font-size: clamp(0.8rem, 1.5vw, 0.875rem);
     font-weight: 600;
 }
@@ -133,7 +136,8 @@ body {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 10px 14px;
+    /* 11px vertical keeps the hit box >= 44px tall (mobile touch target). */
+    padding: 11px 14px;
     border-radius: 10px;
     cursor: pointer;
     color: var(--color-text-secondary);
@@ -173,7 +177,8 @@ body {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 10px 14px;
+    /* 11px vertical keeps the hit box >= 44px tall (mobile touch target). */
+    padding: 11px 14px;
     border-radius: 10px;
     cursor: pointer;
     color: var(--color-text-secondary);
@@ -618,6 +623,9 @@ body {
         height: 100vh;
         transform: translateX(-100%);
         box-shadow: var(--shadow-lg);
+        /* Must stack above .mobile-overlay (z-index 1000) or the open drawer
+           is dimmed/blurred by the scrim and every tap is swallowed by it. */
+        z-index: 1003;
     }
 
     .left-panel.open {

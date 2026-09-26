@@ -744,3 +744,54 @@ class TestDispatchDiscoveryAndOffer:
 
         _delete(app, (DriverVehicleHistory, hist), (Booking, bk_id),
                 (DriverProfile, drv), (Vehicle, veh))
+
+
+# =====================================================================
+# FS-1: claim/release invalidate the booking read cache
+# =====================================================================
+
+class TestClaimInvalidatesBookingReadCache:
+    """A claim must drop the cached get_booking dict so the next
+    rides_show render reflects the ASSIGNED status, not CONFIRMED."""
+
+    def test_claim_clears_booking_cache(self, app):
+        pax_id = _create_user(app, "paxCache")
+        _, drv, veh, hist = _make_matchable_driver(app, "c1")
+        bk_id, bk_ref = _create_booking(app, pax_id, "cache")
+        try:
+            with app.app_context():
+                from app.extensions import cache
+                from app.transport.services import get_booking_service
+                svc = get_booking_service()
+                primed = svc.get_booking(bk_id)
+                assert primed["status"] == BookingStatus.CONFIRMED.value
+                assert cache.get(f"transport:booking:{bk_id}") is not None
+                AssignmentService.claim(bk_ref, drv, veh, actor=None)
+                assert cache.get(f"transport:booking:{bk_id}") is None
+                fresh = svc.get_booking(bk_id)
+                assert fresh["status"] == BookingStatus.ASSIGNED.value
+                assert fresh["assigned_driver_id"] == drv
+        finally:
+            _delete(app, (DriverVehicleHistory, hist), (Booking, bk_id),
+                    (DriverProfile, drv), (Vehicle, veh))
+
+    def test_release_clears_booking_cache(self, app):
+        pax_id = _create_user(app, "paxCacheRel")
+        _, drv, veh, hist = _make_matchable_driver(app, "c2")
+        bk_id, bk_ref = _create_booking(app, pax_id, "cacheRel")
+        try:
+            with app.app_context():
+                from app.extensions import cache
+                from app.transport.services import get_booking_service
+                svc = get_booking_service()
+                AssignmentService.claim(bk_ref, drv, veh, actor=None)
+                assert svc.get_booking(bk_id)["status"] == (
+                    BookingStatus.ASSIGNED.value)
+                AssignmentService.release(bk_id, BookingStatus.COMPLETED,
+                                          actor=None)
+                assert cache.get(f"transport:booking:{bk_id}") is None
+                assert svc.get_booking(bk_id)["status"] == (
+                    BookingStatus.COMPLETED.value)
+        finally:
+            _delete(app, (DriverVehicleHistory, hist), (Booking, bk_id),
+                    (DriverProfile, drv), (Vehicle, veh))

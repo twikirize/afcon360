@@ -33,6 +33,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterator, Optional
 
+import gevent
+
 from app.geo.services import LOCATION_TTL_SECONDS
 from app.geo.validation import is_fresh, normalize_location_payload
 
@@ -44,6 +46,14 @@ ENTITY_TYPES = frozenset({"driver", "vehicle"})
 CHANNEL_PREFIX = "geo:location"
 SSE_RETRY_MS = 5000
 SSE_HEARTBEAT_S = 15
+SSE_POLL_S = 0.5
+
+
+def _sleep(seconds: float) -> None:
+    """Cooperative yield point for the SSE poll loop (gevent-native; no
+    monkey-patching involved). Module-level indirection so tests can
+    substitute a deterministic clock without real sleeping."""
+    gevent.sleep(seconds)
 
 
 def location_channel(entity_type: str, public_ref: str) -> str:
@@ -182,11 +192,12 @@ def format_sse(event_name: str, data: Dict[str, Any]) -> str:
 
 
 def iter_location_events(next_message: Callable[[float], Any],
-                         snapshot_event: Optional[Dict[str, Any]] = None,
-                         *,
-                         retry_ms: int = SSE_RETRY_MS,
-                         heartbeat_s: float = SSE_HEARTBEAT_S,
-                         ) -> Iterator[str]:
+                          snapshot_event: Optional[Dict[str, Any]] = None,
+                          *,
+                          retry_ms: int = SSE_RETRY_MS,
+                          heartbeat_s: float = SSE_HEARTBEAT_S,
+                          poll_s: float = SSE_POLL_S,
+                          ) -> Iterator[str]:
     """Snapshot-then-stream SSE body for one entity channel.
 
     `next_message(timeout)` returns the next raw channel payload or None
@@ -195,15 +206,43 @@ def iter_location_events(next_message: Callable[[float], Any],
     state frame when there is none), so connect AND reconnect always
     recover latest state without replay. Malformed payloads are skipped.
     Heartbeat comments keep intermediaries from closing idle streams.
+
+    Cooperative scheduling contract (PROVEN blocking boundary): this
+    generator runs on the process's sole gevent event-loop thread and the
+    runtime is deliberately NOT monkey-patched, so `next_message` is
+    ALWAYS invoked with ``timeout=0`` — a non-blocking readiness check
+    that never waits on the Redis socket (redis-py resolves it to a
+    zero-timeout select). Idle iterations yield cooperatively via
+    ``gevent.sleep(poll_s)``; heartbeats are emitted after `heartbeat_s`
+    of accumulated idleness, preserving the historical heartbeat cadence
+    without any blocking wait.
     """
     yield f"retry: {retry_ms}\n\n"
     if snapshot_event is not None:
         yield format_sse("snapshot", snapshot_event)
+    idle_s = 0.0
     while True:
-        raw = next_message(heartbeat_s)
+        try:
+            raw = next_message(0)
+        except Exception as exc:
+            # R-02: the pubsub connection is dead. Yielding a degraded
+            # frame and returning is the only safe action on the sole
+            # gevent loop — asking redis-py for another message would
+            # trigger a blocking reconnect attempt (up to 2 ×
+            # socket_connect_timeout) on this thread.
+            yield format_sse("state", {
+                "status": "degraded",
+                "reason": f"realtime channel lost: {exc}",
+            })
+            return
         if raw is None:
-            yield ": heartbeat\n\n"
+            _sleep(poll_s)
+            idle_s += poll_s
+            if idle_s >= heartbeat_s:
+                idle_s = 0.0
+                yield ": heartbeat\n\n"
             continue
+        idle_s = 0.0
         event = parse_location_event(raw)
         if event is None:
             continue

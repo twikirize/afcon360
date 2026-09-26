@@ -87,7 +87,8 @@ class NotificationService:
                     recipient_id=recipient_id,
                     message=message,
                     notification_type=notification_type,
-                    booking_id=booking_id
+                    booking_id=booking_id,
+                    booking_reference=booking.booking_reference,
                 )
                 results.append(result)
 
@@ -168,17 +169,17 @@ class NotificationService:
             # Format message
             message = message_template.format(**notification_data)
 
-            # Driver offer pings carry the booking reference as the
-            # durable pointer (transport convention: data.booking_id
-            # holds the public ref, as in send_transport_notification)
-            # and link to the Driver Workspace — the rider booking page
+            # Driver offer pings carry the PUBLIC booking reference ONLY
+            # (1D contract): no internal Booking.id exists on this path,
+            # so context holds booking_reference and NO booking_id key.
+            # Link targets the Driver Workspace — the rider booking page
             # is booker-ownership guarded and would 403 the driver.
             booking_ref = notification_data.get("booking_reference")
             result = NotificationService._send_to_recipient(
                 recipient_id=driver_id,
                 message=message,
                 notification_type=notification_type,
-                booking_id=booking_ref,
+                booking_reference=booking_ref,
                 is_driver=True,
                 link="/transport/driver-dashboard",
                 extra_data={
@@ -289,7 +290,8 @@ class NotificationService:
     @staticmethod
     def _send_to_recipient(recipient_id: int, message: str,
                            notification_type: str,
-                           booking_id: Optional[Any] = None,
+                           booking_id: Optional[int] = None,
+                           booking_reference: Optional[str] = None,
                            is_driver: bool = False,
                            link: Optional[str] = None,
                            extra_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -302,20 +304,26 @@ class NotificationService:
         notification transport can never roll back the business operation
         that triggered it.
 
-        ID semantics (1C-5) — read carefully, the two are NOT
-        interchangeable:
-          * ``Booking.id`` (internal BigInteger) is NEVER placed here;
-            the ``Notification`` model has no ``booking_id`` column at
-            all — there is no internal-ID slot to fill.
-          * ``booking_id`` below carries the value the caller supplies
-            into the durable ``context`` payload: booking-event callers
-            pass the internal ``Booking.id`` (int); transport offer
-            callers pass the PUBLIC ``booking_reference`` (str),
-            following the established transport precedent
-            (``send_transport_notification`` stores the ref string in
-            ``data['booking_id']``). The explicit ``booking_reference``
-            key in ``extra_data`` is the unambiguous public pointer;
-            ``context['booking_id']`` preserves the transport convention.
+        ID semantics (1D) — precise, no Any, the two are NOT interchangeable:
+          * ``booking_id`` (Optional[int]) is the internal ``Booking.id``
+            (BigInteger). Only booking-event callers pass it; the
+            ``Notification`` model has no ``booking_id`` column — it lands
+            in the durable ``context`` payload as ``context['booking_id']``.
+          * ``booking_reference`` (Optional[str]) is the PUBLIC
+            ``Booking.booking_reference``. It lands in ``context`` as
+            ``context['booking_reference']`` (via ``extra_data`` or this
+            explicit parameter) and is the only identifier a driver ever
+            sees.
+          * Driver offer pings (``send_driver_notification`` /
+            ``new_booking``) carry the PUBLIC reference ONLY: no internal
+            ``Booking.id`` is passed, so ``context`` holds
+            ``booking_reference`` and NO ``booking_id`` key at all. This
+            matches the repository transport convention
+            (``send_transport_notification`` stores the ref string; the
+            ``*_transport_payloads`` tests forbid internal ids in
+            transport payloads).
+          * Booking-event callers (``send_booking_notification``) pass
+            BOTH: internal id + public reference, each under its own key.
         """
         try:
             from app.notifications.services import NotificationService as DurableService
@@ -354,11 +362,17 @@ class NotificationService:
                 }
 
             payload = {
-                'booking_id': booking_id,
                 'recipient_id': recipient_id,
                 'is_driver': is_driver,
                 'transport_type': notification_type,
             }
+            # Internal id ONLY when a real one was supplied (booking-event
+            # path). Driver offer pings pass none, so context carries NO
+            # booking_id key — never a ref string masquerading as an id.
+            if booking_id is not None:
+                payload['booking_id'] = booking_id
+            if booking_reference is not None:
+                payload['booking_reference'] = booking_reference
             if extra_data:
                 for key, value in extra_data.items():
                     payload.setdefault(key, value)

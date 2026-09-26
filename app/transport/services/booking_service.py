@@ -580,6 +580,9 @@ class BookingService:
                 f"Booking {booking_id} status: {old_status.value} → "
                 f"{new_status.value}"
             )
+            # transition_status is a @staticmethod: invalidate via an
+            # instance (cheap; prefix is a class constant).
+            BookingService()._invalidate_booking_caches(booking_id)
         except SQLAlchemyError as e:
             db.session.rollback()
             logger.error(f"Error transitioning booking {booking_id}: {e}",

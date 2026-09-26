@@ -1,6 +1,6 @@
 {% extends "transport/driver/base.html" %}
-{% block title %}Driver Workspace{% endblock %}
-{% block breadcrumb %}<span class="sep">/</span><span class="current">Workspace</span>{% endblock %}
+{% block title %}Driver{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="current">Driver</span>{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -217,9 +217,9 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
       <span class="ck-focus-phase">{{ pt[11:16] if pt else '—' }} · {{ pt[:10] if pt else '—' }}</span>
     </div>
     <h2 class="ck-focus-title">
-      {{ active_trip.pickup_address or (active_trip.pickup_location.get('address') if active_trip.pickup_location is mapping else None) or 'Pickup' }}
+      {{ active_trip.pickup_address or (active_trip.pickup_location.get('address') if active_trip.pickup_location is mapping else None) or (active_trip.pickup_location if active_trip.pickup_location is string else None) or 'Pickup' }}
       <i class="fa-solid fa-arrow-right"></i>
-      {{ active_trip.dropoff_address or (active_trip.dropoff_location.get('address') if active_trip.dropoff_location is mapping else None) or 'Dropoff' }}
+      {{ active_trip.dropoff_address or (active_trip.dropoff_location.get('address') if active_trip.dropoff_location is mapping else None) or (active_trip.dropoff_location if active_trip.dropoff_location is string else None) or 'Dropoff' }}
     </h2>
     <div class="ck-focus-sub">
       <span>{{ active_trip.booking_reference }}</span>
@@ -232,13 +232,13 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
       {% endif %}
       {% if active_trip.final_price is not none %}
       <span>·</span>
-      <span style="color:var(--green);font-weight:600;">UGX {{ '%.0f'|format(active_trip.final_price|float) }}</span>
+      <span style="color:var(--green);font-weight:600;">{{ (active_trip.currency.value if active_trip.currency.value is defined else active_trip.currency)|default('UGX', true) }} {{ '%.0f'|format(active_trip.final_price|float) }}</span>
       {% endif %}
     </div>
     {% if active_trip.next_action %}
     <div class="ck-focus-actions">
       <button type="button" class="btn btn-primary btn-sm trip-action"
-              data-url="/api/transport/drivers/me/trips/{{ active_trip.id }}/status"
+              data-url="/api/transport/drivers/me/trips/{{ active_trip.booking_reference }}/status"
               data-action="{{ active_trip.next_action }}">
         <i class="fa-solid fa-{{ trip_icon }}"></i> {{ trip_label }}
       </button>
@@ -251,6 +251,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
     {% set o0_dest = (o0.get('destination') or {}) %}
     {% set o0_fare = (o0.get('fare_estimate') or {}) %}
     {% set o0_veh = (o0.get('vehicle') or {}) %}
+    {% set o0_pax = (o0.get('passenger') or {}) %}
   <div class="ck-focus ck-focus--offer">
     <div class="ck-focus-top">
       <span class="ck-pill ck-pill--amber"><i class="fa-solid fa-bell"></i> New ride request</span>
@@ -262,6 +263,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
       {{ o0_dest.get('text') or 'Location to be confirmed' }}
     </h2>
     <div class="ck-focus-sub">
+      {% if o0_pax.get('first_name') %}<span>Passenger: {{ o0_pax.get('first_name') }}</span><span>·</span>{% endif %}
       <span>{{ o0.booking_reference }}</span>
       <span>·</span>
       <span>{{ o0.get('passenger_count')|default(1) }} pax</span>
@@ -269,7 +271,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
       {% if o0.get('service_type') %}<span>·</span><span>{{ o0.get('service_type')|replace('_',' ')|title }}</span>{% endif %}
       {% if o0_fare.get('amount') is not none %}
       <span>·</span>
-      <span style="color:var(--green);font-weight:600;">{% if o0.get('distance_basis') == 'straight_line_planner' %}Fare estimate{% else %}Approx. fare estimate{% endif %}: {{ o0_fare.get('currency') or 'USD' }} {{ ('%.2f'|format(o0_fare.get('amount')|float)).rstrip('0').rstrip('.') }}</span>
+      <span style="color:var(--green);font-weight:600;">{% if o0.get('distance_basis') == 'straight_line_planner' %}Fare estimate{% else %}Fare estimate — approx. distance{% endif %}: {{ o0_fare.get('currency') or 'USD' }} {{ ('%.2f'|format(o0_fare.get('amount')|float)).rstrip('0').rstrip('.') }}</span>
       {% endif %}
       {% if o0.get('distance_km') is not none %}
       <span>·</span><span>Est. {{ ('%.1f'|format(o0.get('distance_km')|float)) }} km</span>
@@ -424,6 +426,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
         {% set o_dest = (o.get('destination') or {}) %}
         {% set o_fare = (o.get('fare_estimate') or {}) %}
         {% set o_veh = (o.get('vehicle') or {}) %}
+        {% set o_pax = (o.get('passenger') or {}) %}
         <div class="offer-row">
           <div class="offer-icon"><i class="fa-solid fa-car-side"></i></div>
           <div class="offer-body">
@@ -433,10 +436,11 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
               {{ o_dest.get('text') or 'Location to be confirmed' }}
             </div>
             <div class="offer-meta">
+              {% if o_pax.get('first_name') %}Passenger: {{ o_pax.get('first_name') }} · {% endif %}
               {{ o.booking_reference }}
               · {{ o.get('passenger_count')|default(1) }} pax
               {% if o.get('ride_class') %} · {{ o.get('ride_class')|replace('_',' ')|title }}{% endif %}
-              {% if o_fare.get('amount') is not none %} · <span style="color:var(--green);">{% if o.get('distance_basis') == 'straight_line_planner' %}Fare estimate{% else %}Approx. fare estimate{% endif %}: {{ o_fare.get('currency') or 'USD' }} {{ ('%.2f'|format(o_fare.get('amount')|float)).rstrip('0').rstrip('.') }}</span>{% endif %}
+              {% if o_fare.get('amount') is not none %} · <span style="color:var(--green);">{% if o.get('distance_basis') == 'straight_line_planner' %}Fare estimate{% else %}Fare estimate — approx. distance{% endif %}: {{ o_fare.get('currency') or 'USD' }} {{ ('%.2f'|format(o_fare.get('amount')|float)).rstrip('0').rstrip('.') }}</span>{% endif %}
               {% if o.get('distance_km') is not none %} · Est. {{ ('%.1f'|format(o.get('distance_km')|float)) }} km{% endif %}
               {% if o_veh.get('license_plate') %} · {{ o_veh.get('license_plate') }}{% endif %}
               {% if o.get('ttl_remaining') %} · expires in ~{{ ((o.get('ttl_remaining') or 0) // 60) + 1 }} min{% endif %}
@@ -602,12 +606,16 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
 {# ============================ TRIPS ============================ #}
 <section class="ck-panel ck-panel--full" data-panel="trips">
 
-  {% if active_trip %}
   <div class="card ws-card">
     <div class="card-header">
       <span class="card-title"><i class="fa-solid fa-circle-play"></i> Active trip</span>
+      {% if active_trip %}
       <span class="badge badge-blue">{{ (active_trip.status or '')|replace('_',' ')|title }}</span>
+      {% else %}
+      <span class="badge badge-gray">None</span>
+      {% endif %}
     </div>
+    {% if active_trip %}
     {% set pt = active_trip.pickup_time if active_trip.pickup_time is string else (active_trip.pickup_time.strftime('%Y-%m-%dT%H:%M') if active_trip.pickup_time else '') %}
     <div class="trip-card">
       <div class="trip-time">
@@ -616,25 +624,27 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
       </div>
       <div class="trip-info">
         <div class="trip-route">
-          {{ active_trip.pickup_address or (active_trip.pickup_location.get('address') if active_trip.pickup_location is mapping else None) or 'Pickup' }}
+          {{ active_trip.pickup_address or (active_trip.pickup_location.get('address') if active_trip.pickup_location is mapping else None) or (active_trip.pickup_location if active_trip.pickup_location is string else None) or 'Pickup' }}
           <i class="fa-solid fa-arrow-right" style="opacity:0.4;font-size:0.7rem;"></i>
-          {{ active_trip.dropoff_address or (active_trip.dropoff_location.get('address') if active_trip.dropoff_location is mapping else None) or 'Dropoff' }}
+          {{ active_trip.dropoff_address or (active_trip.dropoff_location.get('address') if active_trip.dropoff_location is mapping else None) or (active_trip.dropoff_location if active_trip.dropoff_location is string else None) or 'Dropoff' }}
         </div>
         <div class="trip-meta">
           {{ active_trip.booking_reference }} · {{ active_trip.passenger_count|default(1) }} pax
-          {% if active_trip.final_price is not none %} · <span style="color:var(--green);font-weight:600;">UGX {{ '%.0f'|format(active_trip.final_price|float) }}</span>{% endif %}
+          {% if active_trip.final_price is not none %} · <span style="color:var(--green);font-weight:600;">{{ (active_trip.currency.value if active_trip.currency.value is defined else active_trip.currency)|default('UGX', true) }} {{ '%.0f'|format(active_trip.final_price|float) }}</span>{% endif %}
         </div>
       </div>
       {% if active_trip.next_action %}
       <button type="button" class="btn btn-primary btn-sm trip-action"
-              data-url="/api/transport/drivers/me/trips/{{ active_trip.id }}/status"
+              data-url="/api/transport/drivers/me/trips/{{ active_trip.booking_reference }}/status"
               data-action="{{ active_trip.next_action }}">
         Advance
       </button>
       {% endif %}
     </div>
+    {% else %}
+    <div class="ws-empty"><i class="fa-solid fa-circle-play"></i> No active trip right now.</div>
+    {% endif %}
   </div>
-  {% endif %}
 
   <div class="card ws-card">
     <div class="card-header">
@@ -697,6 +707,37 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
       {% endfor %}
     {% else %}
       <div class="ws-empty"><i class="fa-solid fa-clock-rotate-left"></i> No recent trips yet.</div>
+    {% endif %}
+  </div>
+
+  <div class="card ws-card">
+    <div class="card-header">
+      <span class="card-title"><i class="fa-solid fa-list"></i> All trips</span>
+      <span class="badge badge-gray">{{ bookings|length if bookings else 0 }}</span>
+    </div>
+    {% if bookings %}
+      {% for b in bookings %}
+      {% set pt = b.pickup_time if b.pickup_time is string else (b.pickup_time.strftime('%Y-%m-%dT%H:%M') if b.pickup_time else '') %}
+      <div class="trip-card">
+        <div class="trip-time">
+          <div class="th">{{ pt[11:16] if pt else '—' }}</div>
+          <div class="td">{{ pt[:10] if pt else '—' }}</div>
+        </div>
+        <div class="trip-info">
+          <div class="trip-route">
+            {{ b.pickup_address or (b.pickup_location.get('address') if b.pickup_location is mapping else None) or (b.pickup_location if b.pickup_location is string else None) or 'Pickup' }}
+            <i class="fa-solid fa-arrow-right" style="opacity:0.4;font-size:0.7rem;"></i>
+            {{ b.dropoff_address or (b.dropoff_location.get('address') if b.dropoff_location is mapping else None) or (b.dropoff_location if b.dropoff_location is string else None) or 'Dropoff' }}
+          </div>
+          <div class="trip-meta">{{ b.booking_reference }} · {{ (b.service_type or 'trip')|replace('_',' ')|title }}</div>
+        </div>
+        <span class="badge badge-{{ 'green' if b.status == 'completed' else 'red' if b.status in ['cancelled','disputed','no_show'] else 'blue' if b.status in ['assigned','confirmed','driver_en_route','pickup_arrived','in_progress'] else 'gray' }}">
+          {{ (b.status or 'unknown')|replace('_',' ')|title }}
+        </span>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="ws-empty"><i class="fa-solid fa-list"></i> No trips on this profile yet.</div>
     {% endif %}
   </div>
 </section>

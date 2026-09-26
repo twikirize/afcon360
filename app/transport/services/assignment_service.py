@@ -67,6 +67,21 @@ class DispatchClaimError(Exception):
         self.context = context or {}
 
 
+def _invalidate_booking_read_cache(booking_id: int) -> None:
+    """Drop the cached ``BookingService.get_booking`` dict after an
+    assignment write (claim/release). The read cache lives 300s and no
+    assignment path may leave it serving a pre-transition status.
+    Best-effort and never fatal: a failed invalidation must not roll
+    back an already-committed assignment. Lazy import avoids a
+    booking_service <-> assignment_service import cycle."""
+    try:
+        from app.transport.services import get_booking_service
+        get_booking_service()._invalidate_booking_caches(booking_id)
+    except Exception:
+        logger.warning("booking read-cache invalidation failed for %s",
+                       booking_id, exc_info=True)
+
+
 def _actor_is_admin(actor) -> bool:
     """Admin/owner/super_admin detection that does not depend on a request.
 
@@ -251,6 +266,8 @@ class AssignmentService:
         db.session.commit()
         db.session.expire_all()
 
+        _invalidate_booking_read_cache(booking_id)
+
         if passenger_user_id:
             AssignmentService._notify_assigned(passenger_user_id, booking_id, booking_ref)
 
@@ -431,8 +448,22 @@ class AssignmentService:
         db.session.commit()
         db.session.expire_all()
 
+        _invalidate_booking_read_cache(booking_id)
+
         logger.info("Dispatch release committed for booking %s -> %s",
                     row.booking_reference, terminal)
+
+        # D-15: clean transient offer state. Offer state is non-authoritative
+        # and must never roll back a committed release.
+        try:
+            from app.transport.services.offer_service import OfferService
+            OfferService.cleanup_offer(row.booking_reference)
+        except Exception:
+            logger.warning(
+                "offer cleanup failed after release for %s",
+                row.booking_reference,
+                exc_info=True,
+            )
 
         return {
             "booking_id": booking_id,

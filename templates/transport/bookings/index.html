@@ -43,9 +43,9 @@
     {% endif %}
   </div>
   <div class="trip-actions">
-    <a href="{{ url_for('transport.bookings_show', id=ride.booking_id) }}" class="btn btn-secondary btn-sm">View</a>
+    <a href="{{ url_for('transport.rides_show', booking_reference=ride.booking_reference) }}" class="btn btn-secondary btn-sm">View</a>
     {% if ride.status in live %}
-    <a href="{{ url_for('transport.bookings_show', id=ride.booking_id) }}" class="btn btn-secondary btn-sm">Track</a>
+    <a href="{{ url_for('transport.rides_show', booking_reference=ride.booking_reference) }}" class="btn btn-secondary btn-sm">Track</a>
     {% endif %}
   </div>
 </div>

@@ -40,6 +40,9 @@ def test_1_driver_assigned_payload_uses_booking_reference():
     kwargs = mock_send.call_args.kwargs
     assert kwargs["data"]["booking_id"] == "TR260922JLR0K0"
     assert kwargs["link"].endswith("/TR260922JLR0K0")
+    # FS-2: rider deep link must resolve to the ref-keyed rider page,
+    # never the admin internal-id route (which 404s on a reference).
+    assert kwargs["link"] == "/transport/rides/TR260922JLR0K0"
     assert "Nakawa" in kwargs["message"]
     assert "{" not in kwargs["message"], kwargs["message"]
     assert "booking_code" not in kwargs["data"]

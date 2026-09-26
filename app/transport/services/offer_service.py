@@ -244,22 +244,35 @@ class OfferService:
     def list_driver_offers(cls, driver_id: int) -> List[Dict[str, Any]]:
         """All live (status=offered) offers for a driver.
 
-        Presentation enrichment (DRIVER-OFFER-UX-REPAIR-1): each offer
-        is enriched at READ time from the authoritative ``Booking`` row
-        (plus the driver's own proposed ``Vehicle``). Redis stays thin
-        — lifecycle/state only — so enriched fields can never go stale
-        in the transient store. Enrichment never raises: a missing or
-        unreadable booking degrades to the thin lifecycle dict.
+        Presentation enrichment is performed at read time from the
+        authoritative Booking row. Redis remains transient lifecycle state.
+
+        Expired offer hashes disappear from Redis automatically, but the
+        shared driver SET can retain stale references. Prune those
+        references lazily when they are observed.
         """
         try:
             refs = redis_client.smembers(cls._driver_key(driver_id))
         except Exception:
             return []
+
         offers: List[Dict[str, Any]] = []
+        stale_refs: List[Any] = []
+
         for ref in refs or []:
             offer = cls.get_offer(_to_str(ref), driver_id=driver_id)
+
             if offer and offer.get("status") == OFFER_STATUS_OFFERED:
                 offers.append(cls.enrich_offer(offer))
+            elif offer is None:
+                stale_refs.append(ref)
+
+        if stale_refs:
+            try:
+                redis_client.srem(cls._driver_key(driver_id), *stale_refs)
+            except Exception:
+                pass
+
         return offers
 
     @classmethod
@@ -291,6 +304,10 @@ class OfferService:
             fare, NEVER driver earnings), currency} | None,
           ride_class | None, service_type | None,
           passenger_count (int),
+          passenger {first_name} — FIRST NAME ONLY of the actual
+            passenger for this trip (DRIVER-OFFER-UX-REPAIR-1E; see
+            _passenger_first_name_or_none); the key is omitted
+            entirely when no safe name exists,
           distance_km + distance_basis (only when the stored basis is
             the measured straight-line planner value; the planning
             default is withheld, never mislabelled),
@@ -300,15 +317,18 @@ class OfferService:
 
         ETA is deliberately absent: ``estimated_duration_minutes`` is
         raw caller input, not an authoritative ETA. Passenger identity
-        is deliberately absent: no driver surface (pre- or
-        post-accept) exposes it today, so the offer must not invent
-        that disclosure.
+        is narrowed to exactly one safe field — ``passenger
+        {first_name}`` (1E) — the first name of the actual passenger
+        only: no surname guarantee beyond the first token, no contact
+        details, no passenger/user identifiers.
 
         Failure handling (1C-6), each class distinct:
           * missing Booking row (stale index) → thin offer + info log;
           * booking lookup failure → thin offer + warning log;
           * unexpected mapping error → thin offer + exception log
-            (traceback preserved for operators).
+            (traceback preserved for operators);
+          * passenger identity derivation failure → ``passenger`` key
+            omitted + warning log (the offer itself never fails).
         The dashboard/API therefore survive any enrichment failure,
         and no failure mode is silent.
         """
@@ -384,6 +404,12 @@ class OfferService:
             except (TypeError, ValueError):
                 detail["passenger_count"] = 1
 
+            passenger_first_name = cls._passenger_first_name_or_none(
+                booking, ref
+            )
+            if passenger_first_name:
+                detail["passenger"] = {"first_name": passenger_first_name}
+
             distance = getattr(booking, "estimated_distance_km", None)
             basis = (
                 metadata.get("distance_basis")
@@ -412,6 +438,82 @@ class OfferService:
             return enriched
         enriched.update(detail)
         return enriched
+
+    @classmethod
+    def _passenger_first_name_or_none(
+        cls, booking: Any, ref: Any
+    ) -> Optional[str]:
+        """FIRST NAME ONLY of the actual passenger for this trip (1E).
+
+        Canonical identity path reuses existing transport domain
+        sources — no second passenger mechanism is invented:
+
+          1. first active ``TransportPassenger`` row (the existing
+             canonical order: ``created_at`` asc, soft-deleted and
+             cancelled excluded — ``passengers_for_booking``): first
+             whitespace token of its free-text ``name``; when such a
+             row has no usable name but is account-linked, the linked
+             ``User.display_name`` first token;
+          2. no passenger row at all — the common row-less
+             self-booking case (``create_booking`` never writes a
+             passenger row) → the booking creator's
+             ``display_name`` first token.
+
+        When a passenger row EXISTS but yields no safe name, the
+        creator is never substituted (the row's subject is not the
+        creator). Never returns a surname, contact field, internal
+        id, or an email-shaped token. ``None`` means the caller must
+        OMIT the ``passenger`` key entirely — safe degradation: this
+        path can never fail the offer (1C-6).
+        """
+        try:
+            from app.transport.services.passenger_service import (
+                get_passenger_service,
+            )
+
+            rows = get_passenger_service().passengers_for_booking(
+                booking.id
+            )
+            if rows:
+                passenger = rows[0]
+                token = cls._first_name_token(passenger.name)
+                if token:
+                    return token
+                if passenger.user_id is None:
+                    return None
+                subject_user = passenger.user
+            else:
+                subject_user = getattr(booking, "user", None)
+            if subject_user is None:
+                return None
+            return cls._first_name_token(
+                getattr(subject_user, "display_name", None)
+            )
+        except Exception:
+            logger.warning(
+                "offer enrichment: passenger identity derivation failed "
+                "for %s; omitting passenger field",
+                ref,
+                exc_info=True,
+            )
+            return None
+
+    @staticmethod
+    def _first_name_token(value: Any) -> Optional[str]:
+        """First whitespace token of a canonical name; None if unsafe.
+
+        Email-shaped values are rejected outright so a fallback
+        identity can never leak an address as the "first name".
+        """
+        if not value:
+            return None
+        tokens = str(value).strip().split()
+        if not tokens:
+            return None
+        first = tokens[0]
+        if "@" in first:
+            return None
+        return first
 
     @classmethod
     def _offer_vehicle_or_none(
@@ -601,21 +703,55 @@ class OfferService:
     # ------------------------------------------------------------------ #
     @classmethod
     def sweep_expired(cls) -> int:
-        """Best-effort scan that prunes stale drivers from booking offer
-        indices. Returns the number of indices inspected. Exists for cron
-        hygiene; a Redis TTL already expires the offer hash itself."""
+        """Best-effort scan that prunes stale booking refs from driver
+        SETs and booking offer-index SETs.
+
+        Redis TTL expires the offer HASH itself; this sweep cleans the
+        SET references that cannot have independent TTLs.
+        """
         cleared = 0
+
         try:
+            driver_keys = redis_client.keys(f"{cls.PREFIX_DRIVER}:*:offers")
+
+            for dkey in driver_keys or []:
+                try:
+                    members = redis_client.smembers(dkey)
+                except Exception:
+                    continue
+
+                stale = [
+                    m for m in (members or [])
+                    if cls.get_offer(_to_str(m)) is None
+                ]
+
+                if stale:
+                    try:
+                        redis_client.srem(dkey, *stale)
+                        cleared += 1
+                    except Exception:
+                        pass
+
             refs = redis_client.keys(f"{cls.PREFIX_INDEX}:*")
+
             for ref_key in refs or []:
-                booking_ref = _to_str(ref_key).replace(f"{cls.PREFIX_INDEX}:booking:", "")
+                booking_ref = _to_str(ref_key).replace(
+                    f"{cls.PREFIX_INDEX}:booking:", ""
+                )
+
                 if not booking_ref:
                     continue
+
                 if cls.get_offer(booking_ref) is None:
-                    redis_client.delete(ref_key)
-                    cleared += 1
+                    try:
+                        redis_client.delete(ref_key)
+                        cleared += 1
+                    except Exception:
+                        pass
+
         except Exception as exc:
             logger.warning("offer sweep failed (Redis): %s", exc)
+
         return cleared
 
 

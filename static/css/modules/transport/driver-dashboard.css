@@ -769,23 +769,13 @@ html {
 
 /* ── Phone widths: the title needs the room the icons were holding ──
    Full row at 360 (hamburger 44 + avatar 36 + five 40px icons + gaps)
-   left the breadcrumb 30px, so "Workspace" rendered as "W…", and at 390/412
-   it was still ellipsized (61px/77px). The main-site and PWA-install buttons
-   give up their slot on every phone width (<=430px covers 360/375/390/412/
-   414/428); decision 2026-09-25. Main site stays reachable from the drawer
-   foot (#mainSiteLink) and the install prompt from the browser menu.
-   Bell + refresh always stay. */
+   left the breadcrumb 30px, so the label rendered as one letter. The PWA
+   install button gives up its slot on every phone width (<=430px covers
+   360/375/390/412/414/428); install stays available from the browser menu.
+   The main-site globe is NEVER hidden (human decision 2026-09-25: it is the
+   only route to the home page), and bell + refresh always stay. */
 @media (max-width: 430px) {
-  #backToSiteBtn,
   #installAppBtn { display: none; }
-}
-
-/* §22 — the drawer-foot main-site link I added as that fallback gets the
-   same invisible 44x44 hit area as the topbar buttons (its visible box stays
-   the established 34x34 foot-icon size; the pre-existing sign-out is untouched). */
-.t-shell.ck-shell .ck-pane-foot #mainSiteLink { position: relative; }
-.t-shell.ck-shell .ck-pane-foot #mainSiteLink::after {
-  content: ''; position: absolute; inset: -5px;
 }
 
 /* ── Tablet/Laptop (900px–1199px) ────────────── */

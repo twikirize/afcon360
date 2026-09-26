@@ -265,58 +265,27 @@
     </div>
     {% endif %}
 
-    {# Rider actions #}
+    {# Actions (admin surface — rider actions live on transport/rides/show.html) #}
     <div class="card">
       <div class="card-header"><span class="card-title">Actions</span></div>
       <div style="padding:12px;display:flex;flex-direction:column;gap:8px;">
         {% if tracking_allowed and tracking_booking_ref %}
         <a href="#riderMap" class="btn btn-primary"><i class="fa-solid fa-location-crosshairs"></i> Track Driver</a>
         {% endif %}
-        {% if current_status in ['pending_payment','confirmed'] %}
-        <button class="btn btn-danger" onclick="cancelBooking()"><i class="fa-solid fa-ban"></i> Cancel Booking</button>
-        {% endif %}
-        {% if current_status == 'completed' and not booking.rating %}
-        <a href="{{ url_for('transport.bookings_index') }}#rate-{{ booking.id }}" class="btn btn-secondary"><i class="fa-solid fa-star"></i> Rate this trip</a>
-        {% endif %}
         {% if booking.payment_status and booking.payment_status.value == 'captured' %}
-        <a href="{{ url_for('transport.bookings_payments', id=booking.id) }}" class="btn btn-secondary"><i class="fa-solid fa-receipt"></i> View receipt</a>
+        <a href="{{ url_for('transport.bookings_payments', id=id) }}" class="btn btn-secondary"><i class="fa-solid fa-receipt"></i> View receipt</a>
         {% endif %}
         <a href="{{ url_for('transport.home') }}" class="btn btn-secondary"><i class="fa-solid fa-plus"></i> Book another ride</a>
-        <a href="{{ url_for('transport.incidents_new') }}?booking_id={{ booking.id }}" class="btn btn-secondary"><i class="fa-solid fa-triangle-exclamation"></i> Report an incident</a>
       </div>
     </div>
-
-    {% if booking.rating %}
-    <div class="card">
-      <div class="card-header"><span class="card-title">Your Rating</span></div>
-      <div class="card-body">
-        <div style="font-size:1.5rem;margin-bottom:6px;color:var(--amber);">{% for i in range(5) %}{{ '★' if i < booking.rating.overall_rating else '☆' }}{% endfor %}</div>
-        {% if booking.rating.review_text %}<p style="font-size:0.82rem;color:var(--text-secondary);font-style:italic;">"{{ booking.rating.review_text }}"</p>{% endif %}
-      </div>
-    </div>
-    {% endif %}
 
   </div>
 </div>
 {% endblock %}
 
-{% block extra_js %}
+{% block module_scripts %}
 {% if passengers %}<script src="{{ url_for('static', filename='js/modules/transport/accommodation_pane.js') }}"></script>{% endif %}
 {% if current_status in ['pending_payment','confirmed'] %}<script src="{{ url_for('static', filename='js/modules/transport/rider_matching.js') }}"></script>{% endif %}
-<script nonce="{{ csp_nonce }}">
-function cancelBooking() {
-  if (!confirm('Cancel this booking? This cannot be undone.')) return;
-  fetch('{{ url_for("transport.bookings_cancel", id=booking.id) }}', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json', 'X-CSRFToken': {{ raw_csrf_token|tojson }}},
-    credentials: 'same-origin'
-  }).then(r => r.json().then(d => ({ok: r.ok, body: d})))
-    .then(function(res) {
-      if (res.ok) location.reload();
-      else alert('Could not cancel: ' + ((res.body && (res.body.message || res.body.error)) || 'Unknown error'));
-    }).catch(function() { alert('Could not cancel — please try again.'); });
-}
-</script>
 {% if tracking_allowed and tracking_booking_ref %}
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="{{ url_for('static', filename='js/geo/geo-map.js') }}"></script>

@@ -286,6 +286,14 @@ def _trips(client, booking_id, action):
     return client.post(_TRIPS.format(booking_id=booking_id), json={"action": action})
 
 
+_TRIPS_REF = "/api/transport/drivers/me/trips/{booking_reference}/status"
+
+
+def _trips_ref(client, booking_reference, action):
+    return client.post(_TRIPS_REF.format(booking_reference=booking_reference),
+                       json={"action": action})
+
+
 def _admin_status(client, booking_id, status_value, reason="admin_action"):
     return client.post(_STATUS.format(booking_id=booking_id),
                        json={"status": status_value, "reason": reason})
@@ -336,6 +344,53 @@ class TestDriverTripEndpoint:
         assert _bk_field(app, bk_id, "completed_at") is not None
         assert _drv_field(app, drv, "is_available") is True
         assert _veh_field(app, veh, "is_available") is True
+
+    def test_reference_keyed_full_lifecycle(self, app, client):
+        """The reference-keyed variant (driver workspace Active Trip
+        contract) runs the identical guarded lifecycle, no internal id."""
+        pax_id = _create_user(app, "paxRF")
+        drv_user, drv = _create_driver(app, "dRF")
+        veh = _create_vehicle(app, drv, "vRF")
+        bk_id, bk_ref = _create_booking(app, pax_id, "tRF")
+        _claim(app, bk_ref, drv, veh)
+
+        drv_client = app.test_client()
+        _login_client(drv_client, drv_user)
+
+        for action, expected in (
+            ("en_route", BookingStatus.DRIVER_EN_ROUTE),
+            ("arrive", BookingStatus.PICKUP_ARRIVED),
+            ("start", BookingStatus.IN_PROGRESS),
+            ("complete", BookingStatus.COMPLETED),
+        ):
+            r = _trips_ref(drv_client, bk_ref, action)
+            assert r.status_code == 200, r.get_json()
+            assert r.get_json()["data"]["status"] == expected.value
+            assert _bk_field(app, bk_id, "status") == expected.value
+
+        assert _bk_field(app, bk_id, "assigned_driver_id") is None
+        assert _bk_field(app, bk_id, "completed_at") is not None
+        assert _drv_field(app, drv, "is_available") is True
+
+    def test_reference_keyed_unknown_and_foreign_driver(self, app, client):
+        pax_id = _create_user(app, "paxRN")
+        drv_user, drv = _create_driver(app, "dRN")
+        veh = _create_vehicle(app, drv, "vRN")
+        bk_id, bk_ref = _create_booking(app, pax_id, "tRN")
+        _claim(app, bk_ref, drv, veh)
+
+        drv_client = app.test_client()
+        _login_client(drv_client, drv_user)
+
+        r = _trips_ref(drv_client, "REF-DOES-NOT-EXIST", "en_route")
+        assert r.status_code == 404
+
+        other_user, _ = _create_driver(app, "dRN2")
+        other_client = app.test_client()
+        _login_client(other_client, other_user)
+        r = _trips_ref(other_client, bk_ref, "en_route")
+        assert r.status_code == 403
+        assert _bk_field(app, bk_id, "status") == BookingStatus.ASSIGNED.value
 
     def test_wrong_driver_forbidden(self, app, client):
         pax_id = _create_user(app, "paxW")

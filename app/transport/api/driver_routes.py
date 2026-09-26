@@ -474,35 +474,105 @@ class DriverOfferDeclineResource(Resource):
         }
 
 
+# Driver trip lifecycle actions -- single canonical transition table shared by
+# BOTH resource variants (internal-id legacy + reference-keyed canonical).
+_DRIVER_TRIP_ACTIONS = {
+    "en_route": (BookingStatus.ASSIGNED, BookingStatus.DRIVER_EN_ROUTE, "driver_en_route_at"),
+    "arrive": (BookingStatus.DRIVER_EN_ROUTE, BookingStatus.PICKUP_ARRIVED, "driver_arrived_at"),
+    "start": (BookingStatus.PICKUP_ARRIVED, BookingStatus.IN_PROGRESS, None),
+    "complete": (BookingStatus.IN_PROGRESS, BookingStatus.COMPLETED, "completed_at"),
+}
+
+
+def _execute_driver_trip_action(booking, profile, action, actor):
+    """Canonical driver-side lifecycle execution (shared by the internal-id
+    and reference-keyed trip resources).
+
+    Contract: only the assigned driver may advance; mid-trip transitions use
+    guarded UPDATEs (rowcount == 1); completion routes through
+    ``AssignmentService.release`` so resources are freed atomically with
+    late-release protection. Returns ``(body, http_status_or_None)``.
+    """
+    from app.transport.services.assignment_service import (
+        AssignmentService,
+        DispatchClaimError,
+    )
+
+    if action not in _DRIVER_TRIP_ACTIONS:
+        return {
+            "success": False,
+            "error": "action must be one of: en_route|arrive|start|complete",
+        }, 400
+
+    expected, target, ts_col = _DRIVER_TRIP_ACTIONS[action]
+    now = datetime.now(timezone.utc)
+    booking_id = booking.id
+
+    try:
+        if target == BookingStatus.COMPLETED:
+            booking.completed_at = now
+            result = AssignmentService.release(
+                booking_id,
+                BookingStatus.COMPLETED,
+                actor=actor,
+                audit_extra={"initiator": "driver", "action": action},
+            )
+        else:
+            values = {"status": target.value}
+            if ts_col:
+                values[ts_col] = now
+            res = db.session.execute(
+                sa.update(Booking.__table__)
+                .where(
+                    Booking.__table__.c.id == booking_id,
+                    Booking.__table__.c.assigned_driver_id == profile.id,
+                    Booking.__table__.c.status == expected.value,
+                    Booking.__table__.c.is_deleted.is_(False),
+                )
+                .values(**values)
+                .execution_options(synchronize_session=False)
+            )
+            if res.rowcount != 1:
+                db.session.rollback()
+                return {
+                    "success": False,
+                    "error": "trip is not in the expected state",
+                    "code": "invalid_state",
+                }, 409
+            db.session.commit()
+            db.session.expire_all()
+            result = {
+                "booking_id": booking_id,
+                "status": target.value,
+                "action": action,
+            }
+
+        return {"success": True, "data": result}, 200
+    except DispatchClaimError as e:
+        db.session.rollback()
+        return {"success": False, "error": e.message, "code": e.kind}, 409
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error on driver trip action '{action}' for booking {booking_id}: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}, 500
+
+
 class DriverTripResource(Resource):
     """POST /api/transport/drivers/me/trips/<booking_id>/status
 
+    LEGACY internal-id variant of the driver trip lifecycle endpoint
+    (kept for backward compatibility; see BACKLOG active-trip entry).
     Driver-side lifecycle actions for the assigned trip:
       en_route  ASSIGNED            -> DRIVER_EN_ROUTE
       arrive    DRIVER_EN_ROUTE     -> PICKUP_ARRIVED
       start     PICKUP_ARRIVED      -> IN_PROGRESS
       complete  IN_PROGRESS         -> COMPLETED  (canonical release)
-
-    Only the assigned driver may advance the trip. Mid-trip transitions use
-    guarded UPDATEs (rowcount == 1); completion routes through
-    ``AssignmentService.release`` so resources are freed atomically with
-    late-release protection.
     """
 
-    _DRIVER_ACTIONS = {
-        "en_route": (BookingStatus.ASSIGNED, BookingStatus.DRIVER_EN_ROUTE, "driver_en_route_at"),
-        "arrive": (BookingStatus.DRIVER_EN_ROUTE, BookingStatus.PICKUP_ARRIVED, "driver_arrived_at"),
-        "start": (BookingStatus.PICKUP_ARRIVED, BookingStatus.IN_PROGRESS, None),
-        "complete": (BookingStatus.IN_PROGRESS, BookingStatus.COMPLETED, "completed_at"),
-    }
+    _DRIVER_ACTIONS = _DRIVER_TRIP_ACTIONS
 
     @login_required
     def post(self, booking_id):
-        from app.transport.services.assignment_service import (
-            AssignmentService,
-            DispatchClaimError,
-        )
-
         profile, error, status = _current_driver_profile()
         if error:
             return error, status
@@ -518,63 +588,45 @@ class DriverTripResource(Resource):
             }, 403
 
         data = request.get_json() or {}
-        action = data.get("action")
-        if action not in self._DRIVER_ACTIONS:
+        return _execute_driver_trip_action(
+            booking, profile, data.get("action"), current_user
+        )
+
+
+class DriverTripReferenceResource(Resource):
+    """POST /api/transport/drivers/me/trips/<booking_reference>/status
+
+    CANONICAL reference-keyed variant (BACKLOG active-trip entry /
+    AGENTS.md dual-ID law): the workspace's Active Trip quick-action posts
+    the public ``booking_reference`` so no internal id crosses into the
+    page or the driver-facing API. Same ownership check, same guarded
+    transition table, same responses as ``DriverTripResource``.
+    """
+
+    _DRIVER_ACTIONS = _DRIVER_TRIP_ACTIONS
+
+    @login_required
+    def post(self, booking_reference):
+        profile, error, status = _current_driver_profile()
+        if error:
+            return error, status
+
+        booking = Booking.query.filter_by(
+            booking_reference=booking_reference, is_deleted=False
+        ).first()
+        if not booking:
+            return {"success": False, "error": "booking not found"}, 404
+
+        if booking.assigned_driver_id != profile.id:
             return {
                 "success": False,
-                "error": "action must be one of: en_route|arrive|start|complete",
-            }, 400
+                "error": "only the assigned driver may advance this trip",
+            }, 403
 
-        expected, target, ts_col = self._DRIVER_ACTIONS[action]
-        now = datetime.now(timezone.utc)
-
-        try:
-            if target == BookingStatus.COMPLETED:
-                booking.completed_at = now
-                result = AssignmentService.release(
-                    booking_id,
-                    BookingStatus.COMPLETED,
-                    actor=current_user,
-                    audit_extra={"initiator": "driver", "action": action},
-                )
-            else:
-                values = {"status": target.value}
-                if ts_col:
-                    values[ts_col] = now
-                res = db.session.execute(
-                    sa.update(Booking.__table__)
-                    .where(
-                        Booking.__table__.c.id == booking_id,
-                        Booking.__table__.c.assigned_driver_id == profile.id,
-                        Booking.__table__.c.status == expected.value,
-                        Booking.__table__.c.is_deleted.is_(False),
-                    )
-                    .values(**values)
-                    .execution_options(synchronize_session=False)
-                )
-                if res.rowcount != 1:
-                    db.session.rollback()
-                    return {
-                        "success": False,
-                        "error": "trip is not in the expected state",
-                        "code": "invalid_state",
-                    }, 409
-                db.session.commit()
-                db.session.expire_all()
-                result = {
-                    "booking_id": booking_id,
-                    "status": target.value,
-                    "action": action,
-                }
-
-            return {"success": True, "data": result}
-        except DispatchClaimError as e:
-            db.session.rollback()
-            return {"success": False, "error": e.message, "code": e.kind}, 409
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Error on driver trip action '{action}' for booking {booking_id}: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}, 500
+        data = request.get_json() or {}
+        return _execute_driver_trip_action(
+            booking, profile, data.get("action"), current_user
+        )
 
 
 class DriverStatusResource(Resource):

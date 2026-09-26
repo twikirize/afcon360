@@ -3100,3 +3100,36 @@ matching / realtime / maps / routing
 - Owner/area: Notifications (consumer: transport driver workspace)
 - Evidence/source: browser DOM read of `.afc-notif__item` on `/transport/driver-dashboard` 2026-09-25
 - Links: `templates/components/notification_bell.html:82,261-274`, `app/transport/services/matching_service.py::_notify_driver_new_offer`, `app/transport/services/notification_service.py`, `templates/notifications/inbox.html`
+
+---
+
+## Context-recovery test contradicts the participation-context contract (DEFERRED / TRANSPORT TESTS)
+- Status: Not started (record only)
+- Raised: 2026-09-26
+- Context: `tests/test_driver_context_recovery.py::test_unverified_driver_not_routed_to_workspace` fails (`assert not resp.headers["Location"].endswith("/transport/driver-dashboard")`): a PENDING-tier driver's login now redirects into the Driver Workspace. PROOF it pre-dates the current session: `git stash push -u` -> run the file at HEAD -> 1 failed / 4 passed; `git stash pop` -> identical result. It looks like contract drift rather than a routing defect: `tests/test_driver_workspace_activation.py` (14 green) documents the opposite rule - the Driver Workspace is a PARTICIPATION surface and step 3 enters it regardless of KYC state, while `test_driver_context_recovery.py` still asserts the old PENDING gate.
+- What needs to happen: one authoritative decision on whether a PENDING-tier login may land on the workspace; then either update the recovery test to the participation contract or restore the gate in the login/context routing. Do NOT change routing without that decision.
+- Owner/area: Transport / identity context
+- Evidence/source: stash/pop run 2026-09-26 (1 failed / 4 passed at HEAD and with session changes)
+- Links: `tests/test_driver_context_recovery.py:54-58`, `tests/test_driver_workspace_activation.py:281-296`, `app/auth/context.py`
+
+---
+
+## Driver trip history is unrecoverable after release - all history queries key on `assigned_driver_id` (NEEDS_DECISION / TRANSPORT SCHEMA)
+- Status: NEEDS DECISION (schema/migration authorization required - AGENTS.md 20/20.10)
+- Raised: 2026-09-25 (live proof during driver trip-management node)
+- Context: `AssignmentService.release` (app/transport/services/assignment_service.py:346) sets `assigned_driver_id=None` on every terminal transition - this is REQUIRED by the claim precondition (`Booking.__table__.c.assigned_driver_id.is_(None)`, assignment_service.py:144). But EVERY driver history query keys on that same column: `get_driver_bookings` (booking_service.py:855), `get_driver_recent_bookings` (:1007), `count_driver_bookings`, and the driver dashboard `bookings`/`recent` context + Total Trips/Completed stats all filter `Booking.assigned_driver_id == profile.id`. `transport_bookings` carries no persistent driver link (only nullable `assigned_driver_id` plus `driver_assigned_at`/`driver_en_route_at`/`driver_arrived_at` timestamps - the timestamps do not say WHICH driver), and no assignment-history table exists (only unrelated `event_assignments`). LIVE PROOF 2026-09-25: booking 14 (TR26092592SR8G) completed 20:04:21 via the new ref-keyed buttons -> driver 179's workspace immediately showed Total Trips 0 / Completed 0 and empty Recent/All trips. This is the structural root of the rider-report finding "driver has no records beyond 1 recent trip".
+- What needs to happen: human decision among: (a) persistent `driver_id` history column on `transport_bookings`, backfilled once from `driver_assigned_at IS NOT NULL` evidence where possible (migration - explicit 20 approval required), (b) append-only assignment-history table written inside claim/release transactions (migration), (c) accept current semantics (history is rider-only) and adjust the workspace copy/stats so they do not imply records exist. Option (c) is presentation-only and could be done without migration; (a)/(b) change ownership/financial-adjacent audit surfaces and need review.
+- Owner/area: transport / dispatch assignment + driver workspace
+- Evidence/source: psql 2026-09-25 (`transport_bookings` driver columns = assigned_driver_id/driver_assigned_at/driver_en_route_at/driver_arrived_at; booking 14 post-completion assigned_driver_id NULL; driver 179 booking_count 0); assignment_service.py:144,346; booking_service.py:855,1007
+- Links: `app/transport/services/assignment_service.py:144,295-346`, `app/transport/services/booking_service.py:855,1007`, `app/transport/models.py:1089`, `templates/transport/driver/driver_dashboard.html` (All trips/Recent/stats)
+
+---
+
+## Rider booking-show page is frozen and state-blind after creation - stale "Finding your driver" panel, missing timeline timestamp, no driver identity, zero polling (DEFERRED / TRANSPORT RIDER)
+- Status: Not started (trace evidence collected 2026-09-25 - closes the report's D-5/D-6/D-9 NEEDS-TRACE items)
+- Raised: 2026-09-25
+- Context: Live end-to-end booking TR260925V8YVPW (id 15) traced on `GET /transport/bookings/15`: (1) **stale search panel** - fresh server render while `status=ASSIGNED` still shows `Finding your driver / Pinging drivers... / Waiting for a driver to accept your ride`; (2) **timeline gap** - the `Driver Assigned` timeline row renders NO timestamp although `driver_assigned_at=2026-09-25 20:16:54+03` is set in the DB (Confirmed row does render its timestamp); (3) **no driver identity (D-6)** - even post-assignment and even on full reload, no driver name/vehicle/plate/rating appears anywhere in rider-visible markup (the only post-assignment delta is the `Track Driver` action appearing); (4) **no polling (D-9)** - the page issues zero booking-status XHRs after load (network log: static only), so live state never updates without manual reload, and reload does not fix items 1-3 because they are template-context issues, not just staleness. Driver-side equivalent (workspace Active Trip card) was fixed in the same period; rider side untouched.
+- What needs to happen: authorized rider booking-show node: branch the search panel on booking status, render `driver_assigned_at` in the timeline, add a post-assignment driver identity block (name, vehicle, plate, rating - respecting the dual-ID law), and wire status polling or a websocket channel for live state.
+- Owner/area: transport / rider booking show (`templates/transport/bookings/show.html`)
+- Evidence/source: Playwright session 2026-09-25 20:13-20:18 (page navigations, network log, DOM text extraction pre/post reload); psql `transport_bookings` id 15
+- Links: `templates/transport/bookings/show.html`, `app/transport/routes.py::bookings_show`, `app/transport/services/booking_service.py` (timeline/status context), report items D-5/D-6/D-9

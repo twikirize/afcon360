@@ -96,12 +96,6 @@
         <div class="ck-user-name">{{ current_user.display_name|default('Driver') }}</div>
         <div class="ck-user-role">Driver</div>
       </div>
-      {# keeps "back to main site" reachable when the topbar globe is dropped
-         on <=375px phones (#backToSiteBtn is display:none there) #}
-      <a href="{{ url_for('index') }}" title="Back to main site" aria-label="Back to main site"
-         id="mainSiteLink" class="ck-user-logout">
-        <i class="fa-solid fa-globe"></i>
-      </a>
       <a href="{{ url_for('auth.logout') }}" title="Sign out" class="ck-user-logout">
         <i class="fa-solid fa-arrow-right-from-bracket"></i>
       </a>

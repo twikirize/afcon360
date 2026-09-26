@@ -88,6 +88,7 @@ def _available_vehicle_ids() -> List[int]:
             and_(
                 DriverVehicleHistory.vehicle_id == Vehicle.id,
                 DriverVehicleHistory.ended_at.is_(None),
+                DriverVehicleHistory.is_deleted.is_(False),
             ),
         )
         .join(DriverProfile, DriverProfile.id == DriverVehicleHistory.driver_id)
@@ -133,6 +134,7 @@ def available_by_class() -> List[Dict[str, Any]]:
             and_(
                 DriverVehicleHistory.vehicle_id == Vehicle.id,
                 DriverVehicleHistory.ended_at.is_(None),
+                DriverVehicleHistory.is_deleted.is_(False),
             ),
         )
         .join(DriverProfile, DriverProfile.id == DriverVehicleHistory.driver_id)
@@ -202,6 +204,7 @@ def nearest_eta_minutes_for_class(
             and_(
                 DriverVehicleHistory.driver_id == DriverProfile.id,
                 DriverVehicleHistory.ended_at.is_(None),
+                DriverVehicleHistory.is_deleted.is_(False),
             ),
         )
         .join(Vehicle, Vehicle.id == DriverVehicleHistory.vehicle_id)

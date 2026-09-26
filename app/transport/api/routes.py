@@ -34,6 +34,7 @@ def register_api_resources(api):
         DriverOfferAcceptResource,
         DriverOfferDeclineResource,
         DriverTripResource,
+        DriverTripReferenceResource,
         DriverStatusResource,
         DriverVehicleSwitchResource,
     )
@@ -112,6 +113,9 @@ def register_api_resources(api):
                      endpoint="driver_me_offer_decline")
     safe_add_resource(DriverTripResource, "/drivers/me/trips/<int:booking_id>/status",
                      endpoint="driver_me_trip_status")
+    safe_add_resource(DriverTripReferenceResource,
+                     "/drivers/me/trips/<string:booking_reference>/status",
+                     endpoint="driver_me_trip_status_ref")
 
     # Driver self-service go-live toggle (can_go_live gate)
     safe_add_resource(DriverStatusResource, "/drivers/<int:driver_id>/status",

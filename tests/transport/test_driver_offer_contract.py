@@ -217,6 +217,47 @@ class TestOfferApiContract:
             }
             assert OfferService.enrich_offer(thin)["vehicle"] is None
 
+    def test_reassigned_vehicle_withheld(self, app, client, monkeypatch):
+        """The vehicle check keys on the OFFER's driver_id — never the
+        session. The same candidate vehicle resolves for the associated
+        driver and is withheld for any other driver id; a stale
+        (nonexistent) vehicle id yields None. Read-only; no ownership
+        mutation, no history redesign."""
+        from app.transport.services.offer_service import OfferService
+
+        driver = _seed_driver(app)
+        vehicle_id = _make_ready(app, driver)
+        other = _seed_driver(app)
+        rider = _seed_driver(app)
+        _, ref = _make_rich_booking(app, rider.id)
+        _offer(app, monkeypatch, ref, driver.driver_profile_id, vehicle_id)
+
+        with app.app_context():
+            mine = {
+                "booking_reference": ref,
+                "driver_id": driver.driver_profile_id,
+                "vehicle_id": vehicle_id,
+                "status": "offered",
+                "expires_at": int(time.time()) + 300,
+            }
+            assert (
+                OfferService.enrich_offer(mine)["vehicle"] is not None
+            )
+            # Same vehicle, different offer-driver identity → withheld.
+            # No session is involved: the proof is the offer's driver_id.
+            theirs = dict(
+                mine, driver_id=other.driver_profile_id)
+            assert OfferService.enrich_offer(theirs)["vehicle"] is None
+            # Stale candidate that resolves to no vehicle row → None.
+            stale = dict(mine, vehicle_id=999999999)
+            assert OfferService.enrich_offer(stale)["vehicle"] is None
+
+        # The browser surface agrees: own vehicle visible for the owner.
+        _login(client, driver)
+        resp = client.get("/api/transport/drivers/me/offers")
+        assert resp.status_code == 200, resp.get_data(as_text=True)
+        assert resp.get_json()["data"]["offers"][0]["vehicle"] is not None
+
     def test_coords_fallback_when_no_address(self, app, client, monkeypatch):
         driver = _seed_driver(app)
         vehicle_id = _make_ready(app, driver)
@@ -278,6 +319,9 @@ class TestOfferCardRenders:
         assert "guaranteed" not in segment
         assert "your earning" not in segment
         assert "driver earning" not in segment
+        # Measured basis uses the plain label — the approximate/
+        # default-distance wording belongs ONLY to planning_default.
+        assert "approx. distance" not in body.lower()
         assert "/api/transport/drivers/me/offers/" + ref + "/accept" in body
         assert "/api/transport/drivers/me/offers/" + ref + "/decline" in body
 
@@ -292,9 +336,11 @@ class TestOfferCardRenders:
 
         body = client.get(
             "/transport/driver-dashboard").data.decode("utf-8")
-        # Fare stays, but is flagged approximate; no km figure is shown
-        # and nothing claims actual/route/travelled distance.
-        assert "Approx. fare estimate" in body
+        # Fare stays, but the DISTANCE BASIS is flagged approximate/
+        # default (1D); no km figure is shown and nothing claims
+        # actual/route/travelled distance.
+        assert "Fare estimate — approx. distance" in body
+        assert "Approx. fare estimate" not in body
         assert "Est. 7.5 km" not in body
         lowered = body.lower()
         assert "actual distance" not in lowered
@@ -356,8 +402,10 @@ class TestOfferNotificationContract:
             assert "Kampala Road, Kampala" in row.body
             assert "Entebbe Airport" in row.body
             # DurableService.send stores the data payload in context.
+            # 1D contract: driver pings carry the PUBLIC reference only —
+            # no internal Booking.id, no booking_id key at all.
             assert (row.context or {}).get("booking_reference") == "OCREF123"
-            assert (row.context or {}).get("booking_id") == "OCREF123"
+            assert "booking_id" not in (row.context or {})
             assert row.link == "/transport/driver-dashboard"
 
     def test_internal_id_and_reference_stay_distinct(self, app):
@@ -396,13 +444,14 @@ class TestOfferNotificationContract:
                 .first()
             )
             assert row is not None
-            # The internal integer id lives nowhere in the driver row;
-            # both pointer fields carry the PUBLIC reference string,
-            # per the transport notification convention.
+            # The internal integer id lives nowhere in the driver row:
+            # context carries the PUBLIC reference under its own key and
+            # NO booking_id key (1D contract — no ref string masquerading
+            # as an internal id, no Optional[Any]).
             assert isinstance(internal_id, int)
             assert (row.context or {}).get("booking_reference") == ref
-            assert (row.context or {}).get("booking_id") == ref
-            assert (row.context or {}).get("booking_id") != internal_id
+            assert "booking_id" not in (row.context or {})
+            assert str(internal_id) not in str(row.context or {})
             assert "booking_id" not in (row.context or {}).get(
                 "booking_reference", "")
             # Still resolves to a driver-facing destination.
@@ -515,6 +564,7 @@ class TestLocationEndToEnd:
         assert offer["pickup"]["latitude"] is None
         assert offer["pickup"]["longitude"] is None
         assert offer["destination"]["latitude"] is None
+        assert offer["destination"]["longitude"] is None
 
     def test_text_plus_coordinates_both_preserved(
             self, app, client, monkeypatch):
@@ -558,6 +608,7 @@ class TestLocationEndToEnd:
         assert offer["pickup"]["longitude"] == pytest.approx(32.5825)
         assert offer["destination"]["text"] == "Entebbe Airport"
         assert offer["destination"]["latitude"] == pytest.approx(0.3136)
+        assert offer["destination"]["longitude"] == pytest.approx(32.5811)
 
 
 class TestEndpointDisplay:

@@ -429,12 +429,16 @@ class DriverProfile(TransportBase, AuditMixin):
     # Get current active assignment (if any)
     @property
     def current_assignment(self):
-        """Get the current active driving assignment"""
+        """Get the current active driving assignment.
+
+        Excludes ended relationships and soft-deleted history rows.
+        """
         from sqlalchemy import and_
         return DriverVehicleHistory.query.filter(
             and_(
                 DriverVehicleHistory.driver_id == self.id,
-                DriverVehicleHistory.ended_at == None
+                DriverVehicleHistory.ended_at == None,  # noqa: E711
+                DriverVehicleHistory.is_deleted == False,  # noqa: E712
             )
         ).first()
 
@@ -493,9 +497,20 @@ class DriverProfile(TransportBase, AuditMixin):
 
     @property
     def current_vehicle(self):
+        """The driver's current authorized vehicle, or None.
+
+        Excludes ended relationships and soft-deleted history/vehicle rows.
+        """
         return next(
-            (h.vehicle for h in self.driving_history if h.ended_at is None),
-            None
+            (
+                h.vehicle
+                for h in self.driving_history
+                if h.ended_at is None
+                and not h.is_deleted
+                and h.vehicle is not None
+                and not h.vehicle.is_deleted
+            ),
+            None,
         )
 
 
@@ -804,19 +819,34 @@ class Vehicle(TransportBase):
     # Get current active driver assignment (if any)
     @property
     def current_assignment(self):
-        """Get the current active driver assignment"""
+        """Get the current active driver assignment.
+
+        Excludes ended relationships and soft-deleted history rows.
+        """
         from sqlalchemy import and_
         return DriverVehicleHistory.query.filter(
             and_(
                 DriverVehicleHistory.vehicle_id == self.id,
-                DriverVehicleHistory.ended_at == None
+                DriverVehicleHistory.ended_at == None,  # noqa: E711
+                DriverVehicleHistory.is_deleted == False,  # noqa: E712
             )
         ).first()
     @property
     def current_driver(self):
+        """The vehicle's current driver, or None.
+
+        Excludes ended relationships and soft-deleted history/driver rows.
+        """
         return next(
-            (h.driver for h in self.driving_history if h.ended_at is None),
-            None
+            (
+                h.driver
+                for h in self.driving_history
+                if h.ended_at is None
+                and not h.is_deleted
+                and h.driver is not None
+                and not h.driver.is_deleted
+            ),
+            None,
         )
 
     @property

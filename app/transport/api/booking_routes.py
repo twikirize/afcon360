@@ -243,6 +243,19 @@ class BookingDetailResource(Resource):
                 "code": "active_assignment",
             }, 409
 
+        # D-11: a soft-deleted booking must not retain assignment
+        # references that recovery queries (which filter on
+        # is_deleted == False) can no longer see. The canonical release
+        # path clears these on every terminal transition, so any row
+        # still carrying them here is a data-integrity anomaly; clear
+        # them rather than preserve invisible references.
+        if (
+            booking.assigned_driver_id is not None
+            or booking.assigned_vehicle_id is not None
+        ):
+            booking.assigned_driver_id = None
+            booking.assigned_vehicle_id = None
+
         booking.is_deleted = True
         booking.deleted_at = datetime.now(timezone.utc)
 

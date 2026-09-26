@@ -370,7 +370,10 @@ class TestActiveTripSection:
         body = _fresh_get(client, "/transport/driver-dashboard").data.decode("utf-8")
 
         assert 'class="btn btn-primary btn-sm trip-action"' in body
-        assert f"/api/transport/drivers/me/trips/{booking.id}/status" in body
+        # Reference-keyed action contract (BACKLOG active-trip entry):
+        # no internal booking id crosses into the page (AGENTS.md 12.1).
+        assert f"/api/transport/drivers/me/trips/{booking.booking_reference}/status" in body
+        assert f"/api/transport/drivers/me/trips/{booking.id}/status" not in body
         assert 'data-action="en_route"' in body
 
     def test_no_active_trip_shows_empty_state(self, app, client):
@@ -381,7 +384,9 @@ class TestActiveTripSection:
 
         body = _fresh_get(client, "/transport/driver-dashboard").data.decode("utf-8")
 
-        assert "Active Trip" in body
+        # Shipped card title (workspace-consolidation rename, BACKLOG drift
+        # note) + honest empty state for the Active Trip section.
+        assert "Active trip" in body
         assert "No active trip" in body
 
 

@@ -595,7 +595,7 @@ class NotificationService:
                 or getattr(booking, 'dropoff_location', ''),
             },
             channels=[channel],
-            link=f"/transport/bookings/{ref or ''}",
+            link=f"/transport/rides/{ref or ''}",
             priority='normal',
             module=NotificationModule.TRANSPORT,
         )
@@ -837,6 +837,11 @@ class NotificationService:
         Resend failed notifications with exponential backoff.
         """
         failed = Notification.query.filter_by(status=NotificationStatus.FAILED).all()
+        # Runtime import: `User` is declared only under TYPE_CHECKING at
+        # the top of this module, but db.session.get(User, ...) below
+        # needs the real class at runtime. Same local-import pattern as
+        # NotificationService.send earlier in this file.
+        from app.identity.models.user import User
         resent = 0
         for notification in failed:
             if notification.attempts and notification.attempts >= max_retries:

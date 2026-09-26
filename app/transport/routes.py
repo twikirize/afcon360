@@ -46,6 +46,7 @@ from app.utils.audit import audit_log
 from app.transport.services.payment_methods import get_available_payment_methods
 from app.transport.services import get_booking_service, get_provider_service, get_dashboard_service
 from app.transport.services.go_live_service import can_go_live
+from app.transport.services.assignment_service import ACTIVE_ASSIGNMENT_STATUSES
 from app.transport.services.passenger_service import get_passenger_service
 from app.transport.models import Booking, DriverProfile, Vehicle, TransportPassenger, ServiceType, BookingStatus
 from app.transport.models import (
@@ -179,15 +180,18 @@ _PUBLIC_ENDPOINTS = {
     "transport.api_estimate_fare",
     "transport.api_availability",
     "transport.api_nearby_drivers",
+    # Retired tombstone: /transport/bookings/new 301-redirects to home
+    # (routes.bookings_new). Without this entry, the before_request hook
+    # preempts the redirect and sends anonymous callers to login instead
+    # of home, defeating the retirement.
+    "transport.bookings_new",
 
     # Rider-facing (must be reachable by any authenticated rider)
     "transport.book_transport",
     "transport.bookings_index",
-    "transport.bookings_show",
     "transport.bookings_cancel",
-    "transport.bookings_edit",
-    "transport.bookings_timeline",
-    "transport.bookings_payments",
+    "transport.rides_show",
+    "transport.rides_cancel",
     "transport.become_driver",
     "transport.register_vehicle",
     "transport.vehicle_dashboard",
@@ -195,6 +199,12 @@ _PUBLIC_ENDPOINTS = {
     "transport.driver_dashboard_slash",
     "transport.transport_service_worker",
     "transport.vehicle_marketplace",
+    # Rider incident reporting — linked from the rider ride page
+    # (templates/transport/rides/show.html). The view's own decorators
+    # are @module_enabled_required + @login_required only; without this
+    # entry the before_request hook would gate it to admin roles and
+    # any rider click would flash "You do not have permission".
+    "transport.incidents_new",
     # Moderator queue — @require_moderator (moderator/admin/super_admin/
     # owner via has_global_role) is the precise gate, so these pass the
     # coarse before_request check the same way rider endpoints do.
@@ -910,7 +920,7 @@ def book_transport():
         return_to = session.pop("transport_book_return_to", None)
         if return_to:
             return redirect(return_to)
-        return redirect(url_for("transport.bookings_show", id=booking_id))
+        return redirect(url_for("transport.rides_show", booking_reference=ref))
 
     except ServiceUnavailableError:
         logger.error(f"Booking service unavailable for user_id={_uid()}")
@@ -935,10 +945,17 @@ def _capture_return_to(session_key: str):
 @transport_bp.route("/bookings/<int:id>")
 @module_enabled_required("transport")
 @login_required
+@transport_admin_required
 def bookings_show(id):
-    """View booking details"""
+    """Admin booking detail page (owner/super_admin/admin/transport_admin).
+
+    Admin-only since the rider/admin page split: riders never open this
+    page. Their surface is /transport/rides/<booking_reference> (ref-keyed
+    matching + management view); this page keeps the internal-id detail
+    view for admins.
+    """
     try:
-        # Get booking model with ownership check
+        # Get booking model (admin gate is the decorator above)
         from app.transport.models import Booking
         booking_model = db.session.get(Booking, id)
 
@@ -947,9 +964,6 @@ def bookings_show(id):
                 return jsonify({"status": "error", "message": "Booking not found"}), 404
             flash("Booking not found", "warning")
             return redirect(url_for("transport.bookings_index"))
-
-        # Check ownership
-        _require_ownership(booking_model, "user_id")
 
         # Get service representation
         booking = get_booking_service().get_booking(id)
@@ -1038,7 +1052,172 @@ def bookings_cancel(id):
             return jsonify({"status": "error", "message": "Unable to cancel booking"}), 500
         flash("Unable to cancel booking", "danger")
 
-    return redirect(url_for("transport.bookings_show", id=id))
+    return redirect(url_for("transport.rides_show",
+                            booking_reference=booking_model.booking_reference))
+
+
+# ---------------------------------------------------------------------------
+# Rider ride page — post-split rider surface (public id keyed, never internal id)
+#
+# /transport/bookings/<id> is the admin detail page (transport_admin_required).
+# Riders own /transport/rides/<booking_reference>: live matching before a
+# driver accepts, management (driver, tracking, cancel, chat) afterwards.
+# ---------------------------------------------------------------------------
+
+def _load_owned_ride(booking_reference):
+    """Resolve a booking by its public reference and enforce rider ownership.
+
+    Returns the Booking model; aborts 404 when unknown, 403 when the current
+    user is neither the booker nor a global admin (established
+    _require_ownership semantics).
+    """
+    booking_model = Booking.query.filter_by(
+        booking_reference=booking_reference,
+        is_deleted=False,
+    ).first()
+    if not booking_model:
+        abort(404)
+    _require_ownership(booking_model, "user_id")
+    return booking_model
+
+
+def _status_value(booking):
+    """Booking status as a plain lowercase string from the service dict."""
+    status = booking.get("status") if isinstance(booking, dict) else None
+    if isinstance(status, dict):
+        status = status.get("value")
+    if hasattr(status, "value"):  # str-Enum members serialize as themselves
+        status = status.value
+    return str(status or "").lower()
+
+
+_MATCHING_STATUSES = ("pending_payment", "confirmed")
+_ASSIGNED_STATUSES = ("assigned", "driver_en_route", "pickup_arrived",
+                      "in_progress", "completed")
+
+
+@transport_bp.route("/rides/<string:booking_reference>")
+@module_enabled_required("transport")
+@login_required
+def rides_show(booking_reference):
+    """Rider ride page — matching view before assignment, management after."""
+    booking_model = _load_owned_ride(booking_reference)
+
+    try:
+        booking = get_booking_service().get_booking(booking_model.id)
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error loading ride {booking_reference} for "
+                     f"user_id={_uid()}: {e}")
+        flash("Booking not found", "warning")
+        return redirect(url_for("transport.bookings_index"))
+
+    status_value = _status_value(booking)
+    is_matching = status_value in _MATCHING_STATUSES
+
+    # Driver identity is relationship data and therefore NOT part of the
+    # serialized booking dict — load it explicitly for the assigned-and-after
+    # management view (rider must see who is coming).
+    driver = vehicle = None
+    if status_value in _ASSIGNED_STATUSES:
+        try:
+            from app.transport.models import DriverProfile, Vehicle
+            if booking_model.assigned_driver_id:
+                driver = db.session.get(DriverProfile,
+                                        booking_model.assigned_driver_id)
+            if booking_model.assigned_vehicle_id:
+                vehicle = db.session.get(Vehicle,
+                                         booking_model.assigned_vehicle_id)
+            elif driver is not None:
+                vehicle = getattr(driver, "current_vehicle", None)
+        except Exception as e:
+            logger.warning(f"Ride {booking_reference}: driver/vehicle "
+                           f"lookup failed: {e}")
+    driver_user = driver.user if driver is not None else None
+
+    # Rider live-tracking approval (GEO rider node): the same Transport-owned
+    # subject decision as the booking stream, so the page never offers
+    # tracking the stream would deny.
+    tracking_allowed = False
+    tracking_booking_ref = None
+    try:
+        from flask_login import current_user as _cu
+        from app.auth.helpers import has_global_role as _hgr
+        from app.transport.services.tracking_service import (
+            TrackingService as _TS)
+        _subject = _TS.get_rider_tracking_subject(
+            booking_model.booking_reference, int(_cu.id),
+            bool(_hgr(_cu, "admin", "super_admin", "owner")))
+        tracking_allowed = bool(_subject.get("allowed"))
+        if tracking_allowed:
+            tracking_booking_ref = booking_model.booking_reference
+    except Exception:
+        tracking_allowed = False
+        tracking_booking_ref = None
+
+    return render_template(
+        "transport/rides/show.html",
+        booking=booking,
+        booking_reference=booking_model.booking_reference,
+        status_value=status_value,
+        is_matching=is_matching,
+        driver=driver,
+        driver_user=driver_user,
+        vehicle=vehicle,
+        tracking_allowed=tracking_allowed,
+        tracking_booking_ref=tracking_booking_ref,
+    )
+
+
+@transport_bp.route("/rides/<string:booking_reference>/cancel", methods=["POST"])
+@module_enabled_required("transport")
+@login_required
+def rides_cancel(booking_reference):
+    """Passenger cancel for their own ride, keyed by public reference.
+
+    Same Policy A pre-assignment gate as /bookings/<id>/cancel (the service
+    applies the atomic Race-E status gate); the rider page never handles
+    internal booking ids.
+    """
+    booking_model = _load_owned_ride(booking_reference)
+    try:
+        get_booking_service().cancel_booking(
+            booking_model.id, user_id=current_user.id,
+            reason="passenger_request",
+        )
+        audit_log(action="booking_cancelled_passenger", resource_type="booking",
+                  resource_id=booking_model.id, user_id=current_user.id,
+                  details={"status": "cancelled", "source": "passenger"})
+        logger.info(f"Ride {booking_reference} cancelled by passenger "
+                    f"user_id={_uid()}")
+        if request.is_json:
+            return jsonify({"status": "success"}), 200
+        flash("Booking cancelled successfully", "success")
+    except ValidationError as e:
+        logger.warning(f"Passenger cancel ride {booking_reference} rejected: {e}")
+        if request.is_json:
+            return jsonify({"status": "error", "message": str(e)}), 409
+        flash(str(e), "danger")
+    except PermissionError as e:
+        logger.warning(f"Passenger cancel ride {booking_reference} forbidden: {e}")
+        if request.is_json:
+            return jsonify({"status": "error", "message": str(e)}), 403
+        flash(str(e), "danger")
+    except NotFoundError as e:
+        if request.is_json:
+            return jsonify({"status": "error", "message": str(e)}), 404
+        flash(str(e), "warning")
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Unexpected error while cancelling ride "
+                     f"{booking_reference}: {e}", exc_info=True)
+        if request.is_json:
+            return jsonify({"status": "error",
+                            "message": "Unable to cancel booking"}), 500
+        flash("Unable to cancel booking", "danger")
+
+    return redirect(url_for("transport.rides_show",
+                            booking_reference=booking_reference))
 
 
 # ---------------------------------------------------------------------------
@@ -1273,46 +1452,48 @@ def unassign_accommodation_for_passenger(booking_id, passenger_id):
 @transport_bp.route("/bookings/<int:id>/edit")
 @module_enabled_required("transport")
 @login_required
+@transport_admin_required
 def bookings_edit(id):
-    """Edit a booking"""
-    # Check ownership first
+    """Edit a booking (admin surface — companion page of bookings_show)."""
     booking_model = db.session.get(Booking, id)
     if not booking_model:
         abort(404)
-    _require_ownership(booking_model, "user_id")
 
     logger.info(f"Booking edit {id} accessed by user_id={_uid()}")
-    return _json_or_template("transport/bookings/edit.html", id=id)
+    return _json_or_template("transport/bookings/edit.html", id=id,
+                             booking=booking_model)
 
 
 @transport_bp.route("/bookings/<int:id>/timeline")
 @module_enabled_required("transport")
 @login_required
+@transport_admin_required
 def bookings_timeline(id):
-    """Booking event timeline"""
-    # Check ownership first
+    """Booking event timeline (admin surface — companion of bookings_show)."""
     booking_model = db.session.get(Booking, id)
     if not booking_model:
         abort(404)
-    _require_ownership(booking_model, "user_id")
 
     logger.info(f"Booking timeline {id} accessed by user_id={_uid()}")
-    return _json_or_template("transport/bookings/timeline.html", id=id)
+    return _json_or_template("transport/bookings/timeline.html", id=id,
+                             booking=booking_model)
 
 
 @transport_bp.route("/bookings/<int:id>/payments")
 @module_enabled_required("transport")
 @login_required
+@transport_admin_required
 def bookings_payments(id):
-    """Booking payment details"""
-    # Check ownership first
+    """Booking payment details (admin surface — receipt lives on the
+    rider page for riders)."""
     booking_model = db.session.get(Booking, id)
     if not booking_model:
         abort(404)
-    _require_ownership(booking_model, "user_id")
 
     logger.info(f"Booking payments {id} accessed by user_id={_uid()}")
-    return _json_or_template("transport/bookings/payments.html", id=id)
+    return _json_or_template("transport/bookings/payments.html", id=id,
+                             booking=booking_model)
+
 
 
 # =========================================================================
@@ -1469,7 +1650,11 @@ def passenger_claim(passenger_public_id, token):
         flash(str(getattr(err, "message", err)), "danger")
         return redirect(url_for("transport.home"))
     flash("Passenger linked to your account", "success")
-    return redirect(url_for("transport.bookings_show", id=passenger.booking_id))
+    claimed_booking = db.session.get(Booking, passenger.booking_id)
+    if not claimed_booking:
+        return redirect(url_for("transport.bookings_index"))
+    return redirect(url_for("transport.rides_show",
+                            booking_reference=claimed_booking.booking_reference))
 
 
 @transport_bp.route("/passengers/<int:passenger_id>/assign", methods=["POST"])
@@ -1678,6 +1863,43 @@ def drivers_verification(id):
     return _json_or_template("transport/drivers/verification.html", id=id)
 
 
+# Driver Workspace -- Active Trip derivation (presentation-only).
+# `next_action` mirrors the canonical driver transition table
+# (DriverTripResource / _DRIVER_TRIP_ACTIONS); statuses come from
+# ACTIVE_ASSIGNMENT_STATUSES (single source of truth for engagement).
+_DRIVER_TRIP_ACTION_BY_STATUS = {
+    "in_progress": "complete",
+    "pickup_arrived": "start",
+    "driver_en_route": "arrive",
+    "assigned": "en_route",
+}
+_DRIVER_TRIP_PRIORITY = (
+    "in_progress", "pickup_arrived", "driver_en_route", "assigned",
+)
+
+
+def _driver_active_trip(bookings):
+    """Highest-priority in-flight booking assigned to this driver, in the
+    dict form the Active Trip card renders (with derived ``next_action``).
+
+    Presentation-only: no state changes. DISPUTED bookings render without
+    an action (no driver self-transition out of a dispute).
+    """
+    active = [b for b in bookings if b.get("status") in ACTIVE_ASSIGNMENT_STATUSES]
+    if not active:
+        return None
+    active.sort(
+        key=lambda b: (
+            _DRIVER_TRIP_PRIORITY.index(b["status"])
+            if b["status"] in _DRIVER_TRIP_PRIORITY
+            else len(_DRIVER_TRIP_PRIORITY)
+        )
+    )
+    trip = dict(active[0])
+    trip["next_action"] = _DRIVER_TRIP_ACTION_BY_STATUS.get(trip["status"])
+    return trip
+
+
 @transport_bp.route("/driver-dashboard")
 @module_enabled_required("transport")
 @login_required
@@ -1757,6 +1979,11 @@ def driver_dashboard():
     # checklist panel is shown until every required gate passes.
     go_live = can_go_live(profile) if profile is not None else None
 
+    # Active Trip (BACKLOG active-trip entry): the driver's in-flight
+    # booking, derived presentation-only from the already-loaded bookings
+    # so the focus card and Trips panel can render the lifecycle control.
+    active_trip = _driver_active_trip(bookings)
+
     # Marketplace "Find Vehicle" section (Part A): listing-backed, in sync with
     # the browse page's source. Never fed from a raw Vehicle query.
     available_marketplace_vehicles = _marketplace_listing_views(limit=5)
@@ -1784,6 +2011,7 @@ def driver_dashboard():
         ping_interval_seconds=ping_interval,
         offers=offers,
         offer_count=offer_count,
+        active_trip=active_trip,
     )
 
 

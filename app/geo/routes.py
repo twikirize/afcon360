@@ -19,6 +19,8 @@ Full location/routing/geocoding endpoints arrive with their service nodes.
 
 from flask import abort, jsonify, render_template
 from flask_login import login_required
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.auth.decorators import admin_required, require_permission
 from app.geo import geo_bp
@@ -106,14 +108,34 @@ def _resolve_location_subject(entity_type: str, public_ref: str):
     return record.id
 
 
+class _ChannelDead(Exception):
+    """Raised when the underlying Redis pubsub connection is broken."""
+
+
 def _next_channel_payload(get_message, timeout):
     """Extract one channel payload for the SSE iterator.
 
     Subscribe-confirmations and timeouts surface as None (heartbeat /
-    skip); only `message` frames carry data. Never raises.
+    skip); only `message` frames carry data.
+
+    R-02 remediation: a ConnectionError / TimeoutError from the pubsub
+    socket means the connection is dead. redis-py will attempt a
+    blocking reconnect if we ask it for another message — on the sole
+    gevent loop that stalls the whole process for up to 2x
+    socket_connect_timeout. We therefore raise _ChannelDead here, so
+    iter_location_events can yield a degraded frame and close instead
+    of retrying on the hub.
+
+    Both error families are caught: redis-py raises its OWN
+    ConnectionError / TimeoutError classes (subclasses of RedisError,
+    NOT of the builtins) on every socket failure, and the builtins
+    cover any raw OSError path that escapes unwrapped.
     """
     try:
         msg = get_message(timeout=timeout)
+    except (RedisConnectionError, RedisTimeoutError,
+            ConnectionError, TimeoutError, OSError) as exc:
+        raise _ChannelDead(str(exc)) from exc
     except Exception:
         return None
     if not isinstance(msg, dict) or msg.get("type") != "message":

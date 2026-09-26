@@ -666,13 +666,28 @@ def create_app(config_object=None) -> Flask:
 
     @login_manager.unauthorized_handler
     def unauthorized():
-        """Return JSON for API requests instead of redirecting to login page."""
+        """Return JSON for API requests instead of redirecting to login page.
+
+        Must return a BARE Response (not a (Response, status) tuple):
+        Flask-RESTful's dispatch_request passes Response instances straight
+        through, but unpacks a tuple and hands the inner Response object to
+        its JSON representation, which raises "not JSON serializable" and
+        turns the 401 into a 500. Setting .status_code on the Response is
+        the only form that survives Flask-RESTful intact.
+
+        Payload uses "success": False to match the transport REST error
+        contract asserted by tests/test_transport_restful_auth.py.
+        """
         # Check if this is an API request (Flask-RESTful or /api/ prefix)
         if request.path.startswith('/api/'):
-            return jsonify({"ok": False, "error": "Not authenticated"}), 401
+            resp = jsonify({"success": False, "error": "Not authenticated"})
+            resp.status_code = 401
+            return resp
         # Check if this is an AJAX request (fetch sends Content-Type: application/json)
         if request.is_json or request.headers.get('Content-Type') == 'application/json':
-            return jsonify({"ok": False, "error": "Not authenticated"}), 401
+            resp = jsonify({"success": False, "error": "Not authenticated"})
+            resp.status_code = 401
+            return resp
         flash('Your session has expired. Please log in again.', 'warning')
         return redirect(url_for('auth.login', next=request.url))
 

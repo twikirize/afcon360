@@ -410,7 +410,7 @@ def test_booking_show_offers_tracking_card_to_owner(app, client):
                                     driver_id)
     _locate(app, driver_id)
     _rider_client(app, client, owner)
-    resp = client.get(f"/transport/bookings/{booking_id}")
+    resp = client.get(f"/transport/rides/{ref}")
     assert resp.status_code == 200
     html = resp.data.decode("utf-8")
     assert 'id="riderMap"' in html
@@ -422,9 +422,9 @@ def test_booking_show_offers_tracking_card_to_owner(app, client):
 def test_booking_show_hides_tracking_when_untrackable(app, client):
     from app.transport.models import BookingStatus
     owner = _seed_owner(app)
-    booking_id, _ = _seed_booking(app, owner, BookingStatus.CONFIRMED)
+    booking_id, ref = _seed_booking(app, owner, BookingStatus.CONFIRMED)
     _rider_client(app, client, owner)
-    resp = client.get(f"/transport/bookings/{booking_id}")
+    resp = client.get(f"/transport/rides/{ref}")
     assert resp.status_code == 200
     html = resp.data.decode("utf-8")
     assert 'id="riderMap"' not in html
@@ -434,7 +434,7 @@ def test_booking_show_hides_tracking_when_untrackable(app, client):
 def test_booking_show_denies_unrelated_rider(app, authenticated_client):
     from app.transport.models import BookingStatus
     owner = _seed_owner(app)
-    booking_id, _ = _seed_booking(app, owner, BookingStatus.ASSIGNED)
-    resp = authenticated_client.get(f"/transport/bookings/{booking_id}",
+    booking_id, ref = _seed_booking(app, owner, BookingStatus.ASSIGNED)
+    resp = authenticated_client.get(f"/transport/rides/{ref}",
                                     follow_redirects=False)
     assert resp.status_code in (302, 403, 404)

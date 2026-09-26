@@ -199,9 +199,94 @@
     return i ? i.value : '';
   }
 
+  // ---- System notifications (phone notification centre: banner + sound) ----
+  // The sound is the OS notification sound — no media file to ship, nothing
+  // for CSP media-src, and it rings through the phone's own notification
+  // system on Android / iOS / desktop. Permission is only ever requested
+  // from a real user gesture (clicking the bell), never on page load.
+  var NOTIF_TAG = 'afc360-unread';
+  var NOTIF_ICON = '/static/icons/icon-192.png';
+  var lastTotal = null;
+
+  function canSystemNotify() {
+    return ('Notification' in window) && Notification.permission === 'granted';
+  }
+
+  function swNotify(title, body) {
+    // Fallback where the constructor is blocked (e.g. iOS home-screen PWA).
+    if (!('serviceWorker' in navigator)) return;
+    try {
+      navigator.serviceWorker.getRegistration().then(function (reg) {
+        if (reg && reg.showNotification) {
+          reg.showNotification(title, { body: body, icon: NOTIF_ICON, tag: NOTIF_TAG, renotify: true });
+        }
+      }).catch(function () {});
+    } catch (e) { /* no registration — nothing to fall back to */ }
+  }
+
+  function sysNotify(title, body) {
+    if (!canSystemNotify()) return;
+    try {
+      new Notification(title, { body: body, icon: NOTIF_ICON, tag: NOTIF_TAG, renotify: true });
+    } catch (e) {
+      swNotify(title, body);
+    }
+  }
+
+  // One banner per count change, reusing the existing inbox API for content.
+  // Exactly one arrival → the newest unread carries subject + body; several
+  // collapse into a summary line. Same tag renotify:true = the OS re-alerts
+  // on every update instead of silently replacing a previous banner.
+  function noticeFor(count, kind) {
+    var fallbackTitle = kind === 'unread'
+      ? (count > 1 ? count + ' unread notifications' : 'Unread notification')
+      : (count > 1 ? count + ' new notifications' : 'New notification');
+    fetch('/api/notifications?limit=1&unread_only=true', {
+      credentials: 'same-origin', headers: { 'Accept': 'application/json' }
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        var newest = d && d.items && d.items[0];
+        if (newest && count === 1) {
+          sysNotify(newest.subject || 'New notification', newest.body || '');
+        } else if (newest) {
+          sysNotify(fallbackTitle, newest.subject || newest.body || '');
+        } else {
+          sysNotify(fallbackTitle, 'Open the bell to review.');
+        }
+      })
+      .catch(function () {
+        sysNotify(fallbackTitle, 'Open the bell to review.');
+      });
+  }
+
+  function askPermission(then) {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') { if (then) then(); return; }
+    if (Notification.permission !== 'default') return; // denied — respected
+    try {
+      var p = Notification.requestPermission();
+      if (p && typeof p.then === 'function') {
+        p.then(function (perm) { if (perm === 'granted' && then) then(); },
+               function () {});
+      }
+    } catch (e) { /* prompt unavailable here — the next click retries */ }
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     var roots = Array.prototype.slice.call(document.querySelectorAll('.afc-notif'));
     if (!roots.length) return;
+
+    // The badge painted by the server at load is the arrival watermark: a
+    // fresh page must never re-announce what was already unread before it
+    // loaded. Scoped badges carry per-module counts, so only the global
+    // badge seeds it.
+    roots.forEach(function (r) {
+      if (r.hasAttribute('data-module')) return;
+      if (lastTotal !== null) return;
+      var b = r.querySelector('.afc-notif__badge');
+      if (b) lastTotal = parseInt(b.getAttribute('data-count'), 10) || 0;
+    });
 
     function paintAll(count, scopedModule) {
       roots.forEach(function (r) {
@@ -214,6 +299,9 @@
         b.textContent = count < 100 ? count : '99+';
         b.classList.toggle('is-hidden', !count);
       });
+      // Mark-read/read-all responses carry the fresh global count — keep the
+      // arrival watermark in step so a read never masks the next arrival.
+      lastTotal = count;
     }
 
     roots.forEach(function (root) {
@@ -231,7 +319,18 @@
 
       trigger.addEventListener('click', function (e) {
         e.preventDefault(); e.stopPropagation();
-        setOpen(!panel.classList.contains('is-open'));
+        var opening = !panel.classList.contains('is-open');
+        setOpen(opening);
+        if (opening) {
+          // First-ever click is the user gesture that unlocks the OS
+          // permission prompt; with unread items the notification centre
+          // also rings once through sysNotify.
+          var b = root.querySelector('.afc-notif__badge');
+          var unread = b ? (parseInt(b.getAttribute('data-count'), 10) || 0) : 0;
+          askPermission(function () {
+            if (unread > 0) noticeFor(unread, 'unread');
+          });
+        }
       });
       document.addEventListener('click', function (e) {
         if (!root.contains(e.target)) setOpen(false);
@@ -291,9 +390,12 @@
       }
     });
 
-    // ---- Poll: refresh the global badge and each module-scoped badge ----
+    // ---- Poll: refresh the badge and announce arrivals ----
+    // Deliberately NOT skipped while the tab is hidden: a backgrounded page
+    // must still push new arrivals to the phone's notification centre.
+    // Browsers throttle hidden-tab timers to roughly one beat a minute,
+    // which matches this interval.
     setInterval(function () {
-      if (document.hidden) return;
       fetch('/api/notifications/unread-count?by_module=true', { credentials: 'same-origin' })
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (d) {
@@ -308,6 +410,10 @@
             b.textContent = count < 100 ? count : '99+';
             b.classList.toggle('is-hidden', !count);
           });
+          var total = d.unread_count || 0;
+          if (lastTotal === null) { lastTotal = total; return; }
+          if (total > lastTotal) noticeFor(total - lastTotal, 'new');
+          lastTotal = total;
         })
         .catch(function () {});
     }, 60000);

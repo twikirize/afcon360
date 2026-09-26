@@ -340,10 +340,17 @@ class TestRealRideTransactionPath:
             f"expected booking redirect, got {resp.status_code}"
         )
         location = resp.headers.get("Location", "")
-        assert "/transport/bookings/" in location, (
-            f"must redirect to bookings_show, got {location}"
+        assert "/transport/rides/" in location, (
+            f"must redirect to the rider ride page, got {location}"
         )
-        booking_id = int(location.rsplit("/", 1)[1])
+        booking_ref = location.rstrip("/").rsplit("/", 1)[1]
+        with app.app_context():
+            redirected = Booking.query.filter_by(
+                booking_reference=booking_ref).first()
+            assert redirected is not None, (
+                f"redirect reference {booking_ref} did not resolve"
+            )
+            booking_id = redirected.id
 
         # --- Booking created via the route, class persisted ---
         with app.app_context():
