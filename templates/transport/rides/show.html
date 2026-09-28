@@ -13,9 +13,9 @@
 {%- endmacro %}
 
 {% block extra_css %}
-{% if tracking_allowed and tracking_booking_ref %}
+{# Leaflet CSS loads unconditionally: the tracking map may be mounted
+   client-side after assignment (F-NEW-E) on a page rendered earlier. #}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
-{% endif %}
 <style>
 /* === RIDER-FACING SYSTEM STANDARD (styling only, no logic change) ===
    Tokens from css/global/theme-variables.css (loaded via user dashboard shell).
@@ -147,12 +147,16 @@
   </div>
 </div>
 
+<div id="riderStatusSync" hidden
+     data-status-url="/api/transport/bookings/{{ booking_reference }}"
+     data-initial-status="{{ status_value }}"></div>
+
 {% set steps = ['draft','pending_payment','confirmed','assigned','driver_en_route','pickup_arrived','in_progress','completed'] %}
 {% set step_labels = {'draft':'Draft','pending_payment':'Awaiting Payment','confirmed':'Confirmed','assigned':'Driver Assigned','driver_en_route':'Driver En Route','pickup_arrived':'Driver Arrived','in_progress':'In Progress','completed':'Completed'} %}
 {% set current_status = status_value %}
 {% set current_idx = steps.index(current_status) if current_status in steps else 0 %}
 {% set rp_stage = 0 if current_status in ['draft','pending_payment'] else 1 if current_status in ['confirmed','assigned'] else 2 if current_status in ['driver_en_route','pickup_arrived'] else 3 if current_status in ['in_progress','completed'] else 0 %}
-<div class="rider-progress" role="list" aria-label="Trip progress">
+<div id="riderProgress" class="rider-progress" role="list" aria-label="Trip progress">
   <div class="rp-step {{ 'done' if rp_stage > 0 else 'active' if rp_stage == 0 else '' }}" role="listitem"><div class="rp-node"><span class="rp-dot">{% if rp_stage > 0 %}✓{% else %}1{% endif %}</span><span class="rp-label">Booked</span></div><div class="rp-line {{ 'done' if rp_stage > 0 else '' }}"></div></div>
   <div class="rp-step {{ 'done' if rp_stage > 1 else 'active' if rp_stage == 1 else '' }}" role="listitem"><div class="rp-node"><span class="rp-dot">{% if rp_stage > 1 %}✓{% else %}2{% endif %}</span><span class="rp-label">Driver En Route</span></div><div class="rp-line {{ 'done' if rp_stage > 1 else '' }}"></div></div>
   <div class="rp-step {{ 'done' if rp_stage > 2 else 'active' if rp_stage == 2 else '' }}" role="listitem"><div class="rp-node"><span class="rp-dot">{% if rp_stage > 2 %}✓{% else %}3{% endif %}</span><span class="rp-label">Trip Started</span></div><div class="rp-line {{ 'done' if rp_stage > 2 else '' }}"></div></div>
@@ -160,7 +164,7 @@
 </div>
 <details style="margin-bottom:16px;">
 <summary style="font-size:0.75rem;color:#64748B;cursor:pointer;padding:4px 2px;">Full status trail</summary>
-<div class="status-flow" style="margin-top:8px;margin-bottom:0;">
+<div id="riderStatusTrail" class="status-flow" style="margin-top:8px;margin-bottom:0;">
   {% for step in steps %}
   {% set idx = loop.index0 %}
   <div class="sf-step {{ 'done' if idx < current_idx else 'active' if idx == current_idx else 'skip' if current_status == 'cancelled' else '' }}">
@@ -204,7 +208,7 @@
       <div class="card-header">
         <span class="card-title">Trip Details</span>
         {% set sc = {'completed':'pay-pill-paid','in_progress':'pay-pill-pending','assigned':'pay-pill-pending','driver_en_route':'pay-pill-pending','pickup_arrived':'pay-pill-pending','confirmed':'pay-pill-pending','cancelled':'pay-pill-fail','pending_payment':'pay-pill-pending','no_show':'pay-pill-fail','disputed':'pay-pill-fail'} %}
-        <span class="badge {{ sc.get(current_status,'pay-pill-pending') }}">{{ current_status|replace('_',' ')|title }}</span>
+        <span id="riderStatusBadge" class="badge {{ sc.get(current_status,'pay-pill-pending') }}" data-status="{{ current_status }}">{{ current_status|replace('_',' ')|title }}</span>
       </div>
       <div class="info-grid">
         <div class="info-row"><div class="info-k">Service</div><div class="info-v">{{ booking.service_type.value|replace('_',' ')|title if booking.service_type and booking.service_type.value is defined else '—' }}</div></div>
@@ -251,6 +255,16 @@
     </div>
     {% endif %}
 
+    {# F-NEW-D mount: filled client-side from the rider-safe driver_display
+       payload when assignment lands after page load (no reload). Stays
+       empty when the server already rendered the card above. #}
+    <div id="riderDriverMount"></div>
+
+    {# Live tracking: driver location serves the pickup only. Once the
+       trip starts the driver is with the rider, so tracking ends here
+       (card, Track Driver button and live scripts below all follow). #}
+    {% set tracking_allowed = tracking_allowed and status_value in
+       ['assigned', 'driver_en_route', 'pickup_arrived'] %}
     {# Live tracking #}
     {% if tracking_allowed and tracking_booking_ref %}
     <div class="card ride-card">
@@ -263,12 +277,17 @@
     </div>
     {% endif %}
 
+    {# F-NEW-E mount: the tracking card is injected here client-side
+       when assignment lands after page load. Empty when the server
+       rendered the card above or when tracking is not allowed. #}
+    <div id="riderTrackingMount" data-tile-url="{{ tile_url }}" data-tile-attr="{{ tile_attribution }}"></div>
+
     {# Payment / receipt #}
     <div class="card ride-card">
       <div class="card-header">
         <span class="card-title">Payment</span>
         {% set pstatus = booking.payment_status.value if booking.payment_status and booking.payment_status.value is defined else (booking.payment_status if booking.payment_status else 'pending') %}
-        <span class="badge {{ 'pay-pill-paid' if pstatus == 'captured' else 'pay-pill-pending' }}">{{ pstatus|replace('_',' ')|title }}</span>
+        <span id="riderPaymentBadge" class="badge {{ 'pay-pill-paid' if pstatus == 'captured' else 'pay-pill-pending' }}" data-payment-status="{{ pstatus }}">{{ pstatus|replace('_',' ')|title }}</span>
       </div>
       {% if booking.payments %}
       {% for p in booking.payments %}
@@ -298,17 +317,15 @@
     <div class="card ride-card">
       <div class="card-header"><span class="card-title">Trip Timeline</span></div>
       <div class="card-body">
-        <div class="timeline">
-          <div class="tl-step {{ 'done' if booking.created_at }}"><div class="tl-label">Booking Created</div><div class="tl-time">{{ booking.created_at|datetimeformat|default('—') }}</div></div>
-          <div class="tl-step {{ 'done' if booking.confirmed_at else 'skip' }}"><div class="tl-label">Confirmed</div><div class="tl-time">{{ booking.confirmed_at|datetimeformat|default('—') }}</div></div>
-          <div class="tl-step {{ 'done' if booking.driver_assigned_at else 'skip' }}"><div class="tl-label">Driver Assigned</div><div class="tl-time">{{ booking.driver_assigned_at|datetimeformat|default('—') }}</div></div>
-          <div class="tl-step {{ 'done' if booking.driver_en_route_at else 'skip' }}"><div class="tl-label">Driver En Route</div><div class="tl-time">{{ booking.driver_en_route_at|datetimeformat|default('—') }}</div></div>
-          <div class="tl-step {{ 'done' if booking.driver_arrived_at else 'skip' }}"><div class="tl-label">Driver Arrived</div><div class="tl-time">{{ booking.driver_arrived_at|datetimeformat|default('—') }}</div></div>
-          <div class="tl-step {{ 'active' if current_status == 'in_progress' else 'done' if booking.completed_at else 'skip' }}"><div class="tl-label">Trip Started</div><div class="tl-time">{{ booking.pickup_actual_time|datetimeformat|default('—') }}</div></div>
-          <div class="tl-step {{ 'done' if booking.completed_at else 'skip' }}"><div class="tl-label">Completed</div><div class="tl-time">{{ booking.completed_at|datetimeformat|default('—') }}</div></div>
-          {% if booking.cancelled_at %}
-          <div class="tl-step done" style="--success:#dc3545;"><div class="tl-label" style="color:#dc3545">Cancelled</div><div class="tl-time">{{ booking.cancelled_at|datetimeformat }}</div></div>
-          {% endif %}
+        <div id="riderTimeline" class="timeline">
+          <div class="tl-step {{ 'done' if booking.created_at }}" data-tl="created"><div class="tl-label">Booking Created</div><div class="tl-time">{{ booking.created_at|datetimeformat|default('—') }}</div></div>
+          <div class="tl-step {{ 'done' if booking.confirmed_at else 'skip' }}" data-tl="confirmed"><div class="tl-label">Confirmed</div><div class="tl-time">{{ booking.confirmed_at|datetimeformat|default('—') }}</div></div>
+          <div class="tl-step {{ 'done' if booking.driver_assigned_at else 'skip' }}" data-tl="assigned"><div class="tl-label">Driver Assigned</div><div class="tl-time">{{ booking.driver_assigned_at|datetimeformat|default('—') }}</div></div>
+          <div class="tl-step {{ 'done' if booking.driver_en_route_at else 'skip' }}" data-tl="en_route"><div class="tl-label">Driver En Route</div><div class="tl-time">{{ booking.driver_en_route_at|datetimeformat|default('—') }}</div></div>
+          <div class="tl-step {{ 'done' if booking.driver_arrived_at else 'skip' }}" data-tl="arrived"><div class="tl-label">Driver Arrived</div><div class="tl-time">{{ booking.driver_arrived_at|datetimeformat|default('—') }}</div></div>
+          <div class="tl-step {{ 'active' if current_status == 'in_progress' else 'done' if booking.completed_at else 'skip' }}" data-tl="started"><div class="tl-label">Trip Started</div><div class="tl-time">{{ booking.pickup_actual_time|datetimeformat|default('—') }}</div></div>
+          <div class="tl-step {{ 'done' if booking.completed_at else 'skip' }}" data-tl="completed"><div class="tl-label">Completed</div><div class="tl-time">{{ booking.completed_at|datetimeformat|default('—') }}</div></div>
+          <div class="tl-step done" data-tl="cancelled" style="--success:#dc3545;"{% if not booking.cancelled_at %} hidden{% endif %}><div class="tl-label" style="color:#dc3545">Cancelled</div><div class="tl-time">{{ booking.cancelled_at|datetimeformat }}</div></div>
         </div>
       </div>
     </div>
@@ -337,6 +354,7 @@
 {% endblock %}
 
 {% block module_scripts %}
+<script src="{{ url_for('static', filename='js/modules/transport/rider_status_sync.js') }}"></script>
 {% if is_matching %}<script src="{{ url_for('static', filename='js/modules/transport/rider_matching.js') }}"></script>{% endif %}
 <script nonce="{{ csp_nonce }}">
 async function cancelRide() {
@@ -385,23 +403,32 @@ async function cancelRide() {
   }
 }
 </script>
-{% if tracking_allowed and tracking_booking_ref %}
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="{{ url_for('static', filename='js/geo/geo-map.js') }}"></script>
 <script src="{{ url_for('static', filename='js/geo/geo-realtime.js') }}"></script>
 <script nonce="{{ csp_nonce }}">
-(function() {
-  var bookingRef = {{ tracking_booking_ref|tojson }};
-  var driverLabel = {{ (driver_user.display_name if driver_user and driver_user.display_name else 'Assigned driver')|tojson }};
-  var TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+/* Shared live-tracking bootstrap (F-NEW-E): also invoked post-handoff by
+   rider_status_sync.js with the same arguments. No internal ids. */
+window.AFCONTrackDriver = function (bookingRef, driverLabel, tileUrl, tileAttr) {
   var handle = null, marker = null;
   function setLiveState(t) { var b = document.getElementById('riderLiveState'); if (b) { b.textContent = t; if (b.classList) b.classList.toggle('live', t === 'Live'); } }
   function ensureMap(lat, lng) {
     if (handle && handle.status === 'rendered') return handle;
     if (!window.GeoMap) { setLiveState('Map unavailable'); return null; }
-    handle = window.GeoMap.init('riderMap', { tileUrl: TILE_URL, attribution: '\u00a9 OpenStreetMap', center: { latitude: lat, longitude: lng }, zoom: 14 });
+    handle = window.GeoMap.init('riderMap', { tileUrl: tileUrl, attribution: tileAttr, center: { latitude: lat, longitude: lng }, zoom: 14 });
     if (!handle || handle.status !== 'rendered') { setLiveState('Map unavailable'); return null; }
     return handle;
+  }
+  function ageSuffix(iso) {
+    /* Truthful relative age next to the absolute timestamp. Never
+       invents a time; empty when the source timestamp is missing. */
+    if (!iso) return '';
+    var s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (!isFinite(s) || s < 0) return '';
+    if (s < 60) return ' (' + s + 's ago)';
+    var m = Math.floor(s / 60);
+    if (m < 60) return ' (' + m + 'm ago)';
+    return ' (' + Math.floor(m / 60) + 'h ago)';
   }
   function applyEvent(e) {
     var h = ensureMap(e.latitude, e.longitude);
@@ -409,7 +436,7 @@ async function cancelRide() {
     if (marker) marker.setLatLng([e.latitude, e.longitude]);
     else { marker = L.marker([e.latitude, e.longitude]).addTo(h.map); marker.bindPopup(driverLabel); }
     h.map.setView([e.latitude, e.longitude], Math.max(h.map.getZoom(), 14));
-    var u = document.getElementById('riderLiveUpdated'); if (u) u.textContent = 'Updated ' + (e.observedAt || '');
+    var u = document.getElementById('riderLiveUpdated'); if (u) u.textContent = 'Updated ' + (e.observedAt || '') + ageSuffix(e.observedAt);
     setLiveState(e.fresh ? 'Live' : 'Stale location');
   }
   if (!window.GeoRealtime) { setLiveState('Live updates unavailable'); return; }
@@ -422,7 +449,16 @@ async function cancelRide() {
       else if (s === 'disconnected' || s === 'reconnecting') setLiveState('Disconnected');
     }
   });
-})();
+};
+</script>
+{% if tracking_allowed and tracking_booking_ref %}
+<script nonce="{{ csp_nonce }}">
+window.AFCONTrackDriver(
+  {{ tracking_booking_ref|tojson }},
+  {{ (driver_user.display_name if driver_user and driver_user.display_name else 'Assigned driver')|tojson }},
+  {{ tile_url|tojson }},
+  {{ tile_attribution|tojson }}
+);
 </script>
 {% endif %}
 {% endblock %}

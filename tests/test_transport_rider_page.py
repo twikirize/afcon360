@@ -167,3 +167,49 @@ def test_admin_detail_subpages_render_with_booking(app, admin_client):
         html = _html(resp)
         assert ref in html, path
         assert marker in html, path
+
+
+def test_booking_detail_driver_display_public_safe(app, client):
+    """F-NEW-D: assigned booking exposes a public-safe driver_display
+    block (name/vehicle, no internal ids); unassigned yields None."""
+    import json
+
+    from app.transport.api.booking_routes import _rider_driver_display
+
+    owner = _seed_owner(app, "dd")
+    driver_id, code = _seed_driver(app, "DD")
+    _, ref = _seed_booking(app, owner, BookingStatus.ASSIGNED, driver_id)
+    _rider_client(app, client, owner)
+    resp = client.get(f"/api/transport/bookings/{ref}")
+    assert resp.status_code == 200, resp.status_code
+    disp = resp.get_json()["data"]["driver_display"]
+    with app.app_context():
+        from app.extensions import db
+        from app.transport.models import DriverProfile
+        profile = db.session.get(DriverProfile, driver_id)
+        expected_name = profile.user.display_name or code
+    assert disp["name"] == expected_name
+    assert disp["vehicle"] is None
+    blob = json.dumps(disp)
+    assert "user_id" not in blob and "license_number" not in blob
+
+    _, ref2 = _seed_booking(app, owner, BookingStatus.CONFIRMED)
+    resp2 = client.get(f"/api/transport/bookings/{ref2}")
+    assert resp2.status_code == 200, resp2.status_code
+    assert resp2.get_json()["data"]["driver_display"] is None
+
+    # Helper unit shape: vehicle block carries only public fields.
+    from types import SimpleNamespace
+    from app.transport.api.booking_routes import _rider_driver_display as disp_fn
+    assert disp_fn(SimpleNamespace(driver=None)) is None
+    full = disp_fn(SimpleNamespace(
+        driver=SimpleNamespace(
+            driver_code="DRV-X", average_rating=4.5,
+            user=SimpleNamespace(display_name="Ama Serwaa",
+                                 phone="+233200000001")),
+        vehicle=SimpleNamespace(make="Toyota", model="Corolla",
+                                license_plate="GR-1",
+                                vehicle_class="comfort")))
+    assert full["name"] == "Ama Serwaa"
+    assert full["vehicle"]["license_plate"] == "GR-1"
+    assert "user_id" not in json.dumps(full)

@@ -1500,7 +1500,7 @@
         'data-currency="' + esc(currency) + '">' +
         '<span class="bolt-veh-ico"><i class="fas ' + vehicleIcon(o.vehicle_class) + '"></i></span>' +
         '<span class="bolt-veh-name">' + esc(o.display_name) + '</span>' +
-        '<span class="bolt-veh-price">' + esc(currency) + ' ' + Number(o.fare_total).toFixed(0) + '</span>' +
+        '<span class="bolt-veh-price">' + esc(currency) + ' ' + Number(o.fare_total).toFixed(2) + '</span>' +
         '<span class="bolt-veh-eta">' + esc(eta) + '</span>' +
         '<span class="bolt-veh-sub">' + esc(detail) + '</span>' +
         '</button>';
@@ -1526,7 +1526,7 @@
     if (el.dataset.distance) state.distanceKm = Number(el.dataset.distance);
     hVehicleCls.value = state.selectedClass;
     btnReview.disabled = false;
-    reviewAmt.textContent = currency + ' ' + state.selectedFare.toFixed(0);
+    reviewAmt.textContent = currency + ' ' + state.selectedFare.toFixed(2);
     showFarePanel(currency);
   }
 

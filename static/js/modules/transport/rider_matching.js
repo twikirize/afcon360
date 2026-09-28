@@ -22,8 +22,57 @@
 
     /* While status is one of these, the rider is still being matched. */
     var MATCHING = { pending_payment: true, confirmed: true };
+    /* Bounded search budget (FS-6b): max MATCHING status polls before the
+       panel truthfully admits no driver is coming. At the 3.5s cadence
+       below, 60 polls ≈ 3.5 minutes. Named and adjustable; never tied to
+       fake availability and never a backend state change. */
+    var SEARCH_BUDGET_POLLS = 60;
     var polls = 0;
     var finished = false;
+    var noSupply = false;
+    var optTimer = null;
+    /* Bounded requests (FS-4): AbortController timeout so a stalled
+       network retries on cadence instead of hanging a poll forever. */
+    var REQ_TIMEOUT_MS = 15000;
+    var failures = 0;
+
+    function fetchWithTimeout(url, options) {
+        options = options || {};
+        var controller;
+        try {
+            controller = new AbortController();
+        } catch (e) {
+            return fetch(url, options);
+        }
+        var timer = setTimeout(function () {
+            try { controller.abort(); } catch (e) {}
+        }, REQ_TIMEOUT_MS);
+        options.signal = controller.signal;
+        return fetch(url, options).then(function (r) {
+            clearTimeout(timer);
+            return r;
+        }, function (err) {
+            clearTimeout(timer);
+            throw err;
+        });
+    }
+
+    function noteFailure() {
+        /* Truthful connectivity note after repeated failures — never a
+           no-supply verdict (failures don't spend the search budget). */
+        failures += 1;
+        if (failures >= 3 && availEl && !finished && !noSupply) {
+            availEl.textContent = 'Connection issue — still trying.';
+        }
+    }
+
+    function isMatchingStatus(st) {
+        return !!MATCHING[st];
+    }
+
+    function budgetExhausted(p) {
+        return p >= SEARCH_BUDGET_POLLS;
+    }
 
     function readStatus(payload) {
         var b = payload && payload.data && payload.data.booking;
@@ -92,7 +141,7 @@
 
     function fetchOptions() {
         if (finished || !optionsUrl) return;
-        fetch(optionsUrl, {
+        fetchWithTimeout(optionsUrl, {
             method: 'POST',
             credentials: 'same-origin',
             headers: {
@@ -108,44 +157,114 @@
             .catch(function () { /* availability is supplementary — poll continues */ });
     }
 
-    function enterAssigned() {
+    function enterAssigned(st) {
         finished = true;
         if (pingEl) pingEl.className = 'rm-step done';
         if (assignedEl) assignedEl.className = 'rm-step done';
         if (availEl) availEl.textContent = 'A driver accepted your ride.';
-        if (assignedSub) assignedSub.textContent = 'Loading driver details…';
-        setTimeout(function () { window.location.reload(); }, 1500);
+        if (assignedSub) assignedSub.textContent = 'Driver assigned';
+        /* FS-1c: hand off to rider_status_sync.js instead of reloading.
+           finished=true has already ended this module's status loop, so
+           exactly one canonical status poller remains on the page. */
+        window.dispatchEvent(new CustomEvent('afcon:ride-status-handoff',
+            { detail: { status: st || '' } }));
+    }
+
+    function enterNoSupply() {
+        /* Truthful terminal state: budget exhausted while the booking is
+           still genuinely matching. No backend change, no fake driver,
+           no new booking — rider-facing polling ends here. */
+        finished = true;
+        noSupply = true;
+        if (optTimer) { clearInterval(optTimer); optTimer = null; }
+        if (pingEl) pingEl.className = 'rm-step done';
+        if (availEl) availEl.textContent =
+            'No drivers available right now. ' +
+            'Try again later or choose another transport option.';
+        if (optsEl) {
+            optsEl.innerHTML = '';
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-secondary rm-retry';
+            btn.textContent = 'Try Again';
+            btn.addEventListener('click', retrySearch);
+            optsEl.appendChild(btn);
+        }
+    }
+
+    function retrySearch() {
+        /* Explicit rider retry against the SAME booking: reset the
+           frontend budget and restart the existing pollers. statusUrl
+           and optionsUrl are unchanged, so no second booking can result
+           and no backend dispatch state is touched. */
+        if (!noSupply) return;
+        noSupply = false;
+        finished = false;
+        polls = 0;
+        if (pingEl) pingEl.className = 'rm-step active';
+        if (availEl) availEl.textContent = 'Checking available vehicles…';
+        if (optsEl) optsEl.innerHTML = '';
+        fetchOptions();
+        startOptionPolling();
+        tick();
+    }
+
+    function startOptionPolling() {
+        stopOptionPolling();
+        optTimer = setInterval(function () {
+            if (finished) { stopOptionPolling(); return; }
+            fetchOptions();
+        }, 20000);
+    }
+
+    function stopOptionPolling() {
+        if (optTimer) { clearInterval(optTimer); optTimer = null; }
     }
 
     function tick() {
         if (finished) return;
-        fetch(statusUrl, {
+        fetchWithTimeout(statusUrl, {
             credentials: 'same-origin',
             headers: { 'Accept': 'application/json' }
         })
             .then(function (r) { if (!r.ok) throw new Error('status ' + r.status); return r.json(); })
             .then(function (payload) {
                 if (finished) return;
+                failures = 0;
                 var st = readStatus(payload);
-                if (st && !MATCHING[st]) {
+                if (st && !isMatchingStatus(st)) {
                     /* Cancelled: reload immediately so the page reflects it. */
                     if (st === 'cancelled') { finished = true; window.location.reload(); return; }
-                    enterAssigned();
+                    enterAssigned(st);
                     return;
                 }
                 polls += 1;
-                /* 3.5s while actively matching; slow down after ~7 min. */
-                setTimeout(tick, polls < 120 ? 3500 : 10000);
+                /* Budget is checked only after a confirmed MATCHING read,
+                   so a legitimate assignment at the boundary always wins. */
+                if (budgetExhausted(polls)) { enterNoSupply(); return; }
+                setTimeout(tick, 3500);
             })
             .catch(function () {
-                if (!finished) setTimeout(tick, 5000);
+                /* Transient failure: retry on the same cadence without
+                   spending budget — a network error must never read as
+                   "no drivers". The finished guard keeps a terminal
+                   state authoritative. */
+                if (!finished) { noteFailure(); setTimeout(tick, 5000); }
             });
     }
 
     fetchOptions();
-    var optTimer = setInterval(function () {
-        if (finished) { clearInterval(optTimer); return; }
-        fetchOptions();
-    }, 20000);
+    startOptionPolling();
     tick();
+
+    /* Node-test seam (zero browser effect): expose the pure matching
+       policy for deterministic tests. `typeof` guard keeps this safe
+       in browsers. */
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = {
+            isMatchingStatus: isMatchingStatus,
+            budgetExhausted: budgetExhausted,
+            SEARCH_BUDGET_POLLS: SEARCH_BUDGET_POLLS
+        };
+    }
 })();

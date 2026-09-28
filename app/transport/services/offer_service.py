@@ -691,8 +691,11 @@ class OfferService:
             actual_driver = (
                 _to_str(driver_id) if driver_id is not None else owner_driver
             )
-            redis_client.srem(cls._index_key(booking_ref), actual_driver)
-            if actual_driver:
+            # D-15-guard: when the offer hash already expired there is no
+            # owner left; SREM with None would raise a Redis TypeError for
+            # nothing left to clean — silent no-op instead.
+            if actual_driver is not None:
+                redis_client.srem(cls._index_key(booking_ref), actual_driver)
                 redis_client.srem(cls._driver_key(int(actual_driver)), booking_ref)
             redis_client.delete(key)
         except Exception as exc:

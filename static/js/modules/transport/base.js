@@ -41,6 +41,30 @@
    * server-built request URL (data-url) and a display name for cosmetic
    * messages — the internal vehicle id never reaches the page (AGENTS §12.1).
    */
+  /* Bounded request (FS-4): abort so a stalled network restores the
+     button with a truthful message instead of spinning forever. */
+  var REQ_TIMEOUT_MS = 20000;
+  function fetchWithTimeout(url, options) {
+    options = options || {};
+    var controller;
+    try {
+      controller = new AbortController();
+    } catch (e) {
+      return fetch(url, options);
+    }
+    var timer = setTimeout(function () {
+      try { controller.abort(); } catch (e) {}
+    }, REQ_TIMEOUT_MS);
+    options.signal = controller.signal;
+    return fetch(url, options).then(function (r) {
+      clearTimeout(timer);
+      return r;
+    }, function (err) {
+      clearTimeout(timer);
+      throw err;
+    });
+  }
+
   function requestVehicle(btn) {
     var url = btn.getAttribute('data-url');
     var name = btn.getAttribute('data-vehicle-name') || 'this vehicle';
@@ -55,7 +79,7 @@
     var prevDisabled = btn.disabled;
     btn.disabled = true;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-    fetch(url, {
+    fetchWithTimeout(url, {
       method: 'POST',
       headers: csrfHeaders(),
       body: '{}'

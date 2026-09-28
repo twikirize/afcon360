@@ -795,3 +795,68 @@ class TestClaimInvalidatesBookingReadCache:
         finally:
             _delete(app, (DriverVehicleHistory, hist), (Booking, bk_id),
                     (DriverProfile, drv), (Vehicle, veh))
+
+
+# =====================================================================
+# FS-1b: trip actions invalidate the booking read cache
+# =====================================================================
+
+class TestTripActionInvalidatesBookingReadCache:
+    """en_route/arrive/start perform guarded UPDATEs outside
+    transition_status — they must still drop the cached get_booking
+    dict so the rider page reflects the new state immediately."""
+
+    def test_en_route_clears_booking_cache(self, app):
+        pax_id = _create_user(app, "paxTrip")
+        _, drv, veh, hist = _make_matchable_driver(app, "t1")
+        bk_id, bk_ref = _create_booking(app, pax_id, "trip")
+        try:
+            with app.app_context():
+                from app.extensions import cache
+                from app.transport.api.driver_routes import (
+                    _execute_driver_trip_action)
+                from app.transport.services import get_booking_service
+                svc = get_booking_service()
+                AssignmentService.claim(bk_ref, drv, veh, actor=None)
+                assert svc.get_booking(bk_id)["status"] == (
+                    BookingStatus.ASSIGNED.value)
+                booking = db.session.get(Booking, bk_id)
+                profile = db.session.get(DriverProfile, drv)
+                body, code = _execute_driver_trip_action(
+                    booking, profile, "en_route", None)
+                assert code == 200, body
+                assert cache.get(f"transport:booking:{bk_id}") is None
+                fresh = svc.get_booking(bk_id)
+                assert fresh["status"] == BookingStatus.DRIVER_EN_ROUTE.value
+                assert fresh["driver_en_route_at"] is not None
+        finally:
+            _delete(app, (DriverVehicleHistory, hist), (Booking, bk_id),
+                    (DriverProfile, drv), (Vehicle, veh))
+
+
+# =====================================================================
+# D-15-guard: cleanup_offer is None-safe on expired offers
+# =====================================================================
+
+class TestCleanupOfferNoneSafe:
+    def test_cleanup_missing_offer_is_silent_noop(self, app, monkeypatch):
+        """Expired hash -> actual_driver None -> no SREM TypeError."""
+        fake = _FakeRedis()
+        monkeypatch.setattr(
+            "app.transport.services.offer_service.redis_client", fake)
+        with app.app_context():
+            assert OfferService.cleanup_offer("REF-NEVER-EXISTED") is None
+
+    def test_cleanup_valid_offer_clears_sets(self, app, monkeypatch):
+        fake = _FakeRedis()
+        monkeypatch.setattr(
+            "app.transport.services.offer_service.redis_client", fake)
+        with app.app_context():
+            OfferService.create_offer("REF-CLEANUP", 123, 456, ttl=300)
+            assert fake.smembers(
+                OfferService._driver_key(123)) == {"REF-CLEANUP"}
+            OfferService.cleanup_offer("REF-CLEANUP", 123)
+            assert fake.smembers(
+                OfferService._driver_key(123)) == set()
+            assert fake.hgetall(
+                OfferService._offer_key("REF-CLEANUP")) == {}

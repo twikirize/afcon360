@@ -1237,6 +1237,32 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
     if (main) main.prepend(box);
   }
 
+  /* Bounded requests (FS-4): AbortController timeout so a stalled
+     network can never leave a permanent spinner. An abort lands in
+     each caller's existing catch path (control restored + truthful
+     flash message), never a fabricated success. */
+  var REQ_TIMEOUT_MS = 20000;
+  function fetchWithTimeout(url, options) {
+    options = options || {};
+    var controller;
+    try {
+      controller = new AbortController();
+    } catch (e) {
+      return fetch(url, options);
+    }
+    var timer = setTimeout(function () {
+      try { controller.abort(); } catch (e) {}
+    }, REQ_TIMEOUT_MS);
+    options.signal = controller.signal;
+    return fetch(url, options).then(function (r) {
+      clearTimeout(timer);
+      return r;
+    }, function (err) {
+      clearTimeout(timer);
+      throw err;
+    });
+  }
+
   // ===== PANEL SWITCHING (single source: base.html sidebar + mobile dock) =====
   document.documentElement.classList.add('ck-js');
 
@@ -1280,7 +1306,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
         document.querySelectorAll('[data-online-toggle]').forEach(function (t) { t.checked = !online; });
         return;
       }
-      fetch(url, {
+      fetchWithTimeout(url, {
         method: 'POST',
         headers: csrfHeaders(),
         body: JSON.stringify({is_online: online, is_available: online})
@@ -1328,7 +1354,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
       const prev = this.innerHTML; this.disabled = true;
       this.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
       try {
-        const r = await fetch(this.dataset.url, {method: 'POST', headers: csrfHeaders(), body: '{}'});
+        const r = await fetchWithTimeout(this.dataset.url, {method: 'POST', headers: csrfHeaders(), body: '{}'});
         const d = await r.json();
         if (d.success) {
           flashMsg('Offer accepted — trip assigned to you', true);
@@ -1347,7 +1373,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
     btn.addEventListener('click', async function () {
       this.disabled = true;
       try {
-        await fetch(this.dataset.url, {method: 'POST', headers: csrfHeaders(), body: '{}'});
+        await fetchWithTimeout(this.dataset.url, {method: 'POST', headers: csrfHeaders(), body: '{}'});
         flashMsg('Offer declined', true);
         setTimeout(() => location.reload(), 700);
       } catch (e) {
@@ -1366,7 +1392,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
       const prev = this.innerHTML; this.disabled = true;
       this.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
       try {
-        const r = await fetch(this.dataset.url, {method: 'POST', headers: csrfHeaders(), body: JSON.stringify({action: action})});
+        const r = await fetchWithTimeout(this.dataset.url, {method: 'POST', headers: csrfHeaders(), body: JSON.stringify({action: action})});
         const d = await r.json();
         if (d.success) {
           flashMsg('Trip updated', true);
@@ -1389,7 +1415,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
       const prev = this.innerHTML; this.disabled = true;
       this.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
       try {
-        const r = await fetch(this.dataset.url, {
+        const r = await fetchWithTimeout(this.dataset.url, {
           method: 'POST',
           headers: csrfHeaders(),
           body: JSON.stringify({vehicle_id: Number(this.dataset.vehicleId), reason: 'shift_start'})

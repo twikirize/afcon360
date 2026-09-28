@@ -1,0 +1,120 @@
+<style>
+.trips-panel { padding-bottom: 16px; }
+.trip-section-title { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); margin: 20px 0 10px; }
+.trip-card { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; transition: border-color 0.15s ease; }
+.trip-card:hover { border-color: var(--brand-primary); }
+.trip-route { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); }
+.trip-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.78rem; color: var(--text-secondary); margin-top: 6px; }
+.trip-actions { display: flex; gap: 8px; margin-top: 10px; }
+.trips-panel .btn-sm { min-height: 44px; }
+.trips-search { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
+.trips-search input[type="search"] { flex: 1 1 220px; min-height: 44px; padding: 0 14px; font-size: 0.9rem; color: var(--text-primary); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; }
+.trips-search input[type="search"]:focus { outline: none; border-color: var(--brand-primary); }
+.trips-note { color: var(--text-muted); font-size: 0.82rem; }
+.trips-more { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 16px 0 4px; }
+.trips-load-more { width: 100%; max-width: 320px; }
+.trips-more-count { font-size: 0.78rem; color: var(--text-secondary); }
+.trips-error { font-size: 0.78rem; color: #dc3545; margin-top: 8px; }
+.empty-state { text-align: center; padding: 40px 16px; color: var(--text-secondary); }
+.empty-state h3 { color: var(--text-primary); margin: 12px 0 6px; }
+</style>
+
+<div id="tripsPanel" class="trips-panel"
+     data-list-url="{{ request.path }}"
+     data-q="{{ q }}"
+     data-page="{{ page }}"
+     data-per-page="{{ per_page }}">
+  <div class="page-header">
+    <div class="page-header-left">
+      <h1 class="page-title">My Trips</h1>
+      <p class="page-subtitle">
+        {%- if capped %}{{ total }}+ trips{% elif total == 1 %}1 trip{% else %}{{ total }} trips{% endif -%}
+        {%- if q %} matching &ldquo;{{ q }}&rdquo;{% endif -%}
+      </p>
+    </div>
+    <div class="page-actions">
+      <a href="{{ url_for('transport.home') }}" class="btn btn-primary btn-sm">
+        <i class="fa-solid fa-plus"></i> Book a Ride
+      </a>
+    </div>
+  </div>
+
+  <form class="trips-search" method="get" action="{{ url_for('transport.bookings_index') }}" role="search">
+    <input type="search" name="q" value="{{ q }}" maxlength="64"
+           placeholder="Search route, destination or reference" aria-label="Search trips">
+    <button type="submit" class="btn btn-primary btn-sm">Search</button>
+    {% if q %}
+    <a href="{{ url_for('transport.bookings_index') }}" class="btn btn-secondary btn-sm">Clear</a>
+    {% endif %}
+  </form>
+
+  {% set badge = {'completed':'green','in_progress':'blue','assigned':'amber','confirmed':'blue','cancelled':'red','pending_payment':'amber','driver_en_route':'blue','pickup_arrived':'blue','no_show':'gray','disputed':'red'} %}
+  {% set live = ['confirmed','assigned','driver_en_route','pickup_arrived','in_progress'] %}
+
+  {% macro trip_row(ride) -%}
+  <div class="trip-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <span class="td-primary td-mono">{{ ride.booking_reference }}</span>
+      <span class="badge badge-{{ badge.get(ride.status,'gray') }}">{{ ride.status|replace('_',' ')|title if ride.status else 'Unknown' }}</span>
+    </div>
+    <div class="trip-route">{{ ride.pickup_location }} → {{ ride.dropoff_location }}</div>
+    <div class="trip-meta">
+      <span><i class="fa-solid fa-clock"></i> {{ ride.pickup_time|datetimeformat|default('—') }}</span>
+      {% if ride.final_price is not none %}
+      <span class="td-mono">{{ ride.final_price }} {{ ride.currency|default('') }}</span>
+      {% endif %}
+    </div>
+    <div class="trip-actions">
+      <a href="{{ url_for('transport.rides_show', booking_reference=ride.booking_reference) }}" class="btn btn-secondary btn-sm">View</a>
+      {% if ride.status in live %}
+      <a href="{{ url_for('transport.rides_show', booking_reference=ride.booking_reference) }}" class="btn btn-secondary btn-sm">Track</a>
+      {% endif %}
+    </div>
+  </div>
+  {%- endmacro %}
+
+  {% if rides %}
+  <h2 class="trip-section-title">Upcoming</h2>
+  {% if upcoming %}
+    {% for ride in upcoming %}{{ trip_row(ride) }}{% endfor %}
+  {% else %}
+    <p class="trips-note">No upcoming trips.</p>
+  {% endif %}
+
+  <h2 class="trip-section-title">Past</h2>
+  <div id="pastList">
+  {% if past %}
+    {% for ride in past %}{{ trip_row(ride) }}{% endfor %}
+  {% else %}
+    <p class="trips-note">No past trips.</p>
+  {% endif %}
+  </div>
+
+  {% if past_has_more %}
+  <div class="trips-more">
+    <button type="button" class="btn btn-secondary trips-load-more" data-next-page="{{ page + 1 }}">
+      Load more past trips
+    </button>
+    <span class="trips-more-count">Showing {{ (page - 1) * per_page + past|length }} of {{ past_total }} past trips</span>
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="empty-state">
+    {% if q %}
+    <i class="fa-solid fa-magnifying-glass fa-2x"></i>
+    <h3>No trips match &ldquo;{{ q }}&rdquo;</h3>
+    <p>Try a different route, destination or booking reference.</p>
+    <a href="{{ url_for('transport.bookings_index') }}" class="btn btn-secondary btn-sm">Clear search</a>
+    {% else %}
+    <i class="fa-solid fa-car-side fa-2x"></i>
+    <h3>No trips yet</h3>
+    <p>Your booked rides will appear here.</p>
+    <a href="{{ url_for('transport.home') }}" class="btn btn-primary btn-sm">Book your first ride</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <p class="trips-error" hidden></p>
+</div>
+
+<script src="{{ url_for('static', filename='js/modules/transport/trips_panel.js') }}"></script>

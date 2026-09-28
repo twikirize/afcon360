@@ -646,6 +646,7 @@ class BookingService:
         *,
         include_cancelled: bool = False,
         include_draft: bool = False,
+        q: str = "",
     ) -> List[Dict[str, Any]]:
         """Recent bookings for one authenticated user.
 
@@ -655,6 +656,11 @@ class BookingService:
 
         Callers that need the full history (e.g. My Trips list) can opt in
         via ``include_cancelled=True`` / ``include_draft=True``.
+
+        ``q`` (optional) narrows the result to bookings whose reference,
+        pickup/dropoff address, or pickup/dropoff location text contains
+        the term (case-insensitive). Wildcard characters in ``q`` are
+        escaped so they match literally.
 
         Used by the Transport front page to render a truthful, user-scoped
         Recent Rides list. Never returns another user's bookings.
@@ -672,6 +678,24 @@ class BookingService:
                 excluded.append(BookingStatus.DRAFT)
             if excluded:
                 query = query.filter(~Booking.status.in_(excluded))
+
+            term = (q or "").strip()
+            if term:
+                escaped = (
+                    term.replace("\\", "\\\\")
+                    .replace("%", "\\%")
+                    .replace("_", "\\_")
+                )
+                pattern = f"%{escaped}%"
+                query = query.filter(
+                    sa.or_(
+                        Booking.booking_reference.ilike(pattern),
+                        Booking.pickup_address.ilike(pattern),
+                        Booking.dropoff_address.ilike(pattern),
+                        sa.cast(Booking.pickup_location, sa.Text).ilike(pattern),
+                        sa.cast(Booking.dropoff_location, sa.Text).ilike(pattern),
+                    )
+                )
 
             bookings = (
                 query

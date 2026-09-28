@@ -541,6 +541,17 @@ def _execute_driver_trip_action(booking, profile, action, actor):
                 }, 409
             db.session.commit()
             db.session.expire_all()
+            # FS-1b: trip-action writes must invalidate the booking read
+            # cache like claim/release/transition do, otherwise the rider
+            # page keeps serving the pre-transition dict until TTL expiry.
+            # Best-effort: never fail a committed transition over cache.
+            try:
+                from app.transport.services import get_booking_service
+                get_booking_service()._invalidate_booking_caches(booking_id)
+            except Exception:
+                logger.warning(
+                    "booking read-cache invalidation failed for %s",
+                    booking_id, exc_info=True)
             result = {
                 "booking_id": booking_id,
                 "status": target.value,

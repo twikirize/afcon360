@@ -165,6 +165,40 @@ class BookingListResource(Resource):
 # Booking Detail
 # ===========================================================================
 
+def _rider_driver_display(booking):
+    """Public-safe driver/vehicle card for the rider (F-NEW-D).
+
+    Mirrors exactly what templates/transport/rides/show.html renders
+    server-side (display name or driver code, phone or fallback, rating,
+    vehicle make/model/plate/class). No internal ids, no licence data,
+    no user internals — only fields already authorized for rider
+    visibility. Returns None when no driver is assigned so the rider
+    page renders no card.
+    """
+    driver = getattr(booking, "driver", None)
+    if driver is None:
+        return None
+    user = getattr(driver, "user", None)
+    name = (getattr(user, "display_name", None)
+            or getattr(driver, "driver_code", None) or "Driver")
+    vehicle = getattr(booking, "vehicle", None)
+    vehicle_class = getattr(vehicle, "vehicle_class", None)
+    return {
+        "name": name,
+        "phone": getattr(user, "phone", None),
+        "rating": (float(driver.average_rating)
+                   if getattr(driver, "average_rating", None) else None),
+        "vehicle": None if vehicle is None else {
+            "make": getattr(vehicle, "make", None),
+            "model": getattr(vehicle, "model", None),
+            "license_plate": getattr(vehicle, "license_plate", None),
+            "vehicle_class": (vehicle_class.value
+                              if hasattr(vehicle_class, "value")
+                              else vehicle_class),
+        },
+    }
+
+
 class BookingDetailResource(Resource):
     """GET/PUT/DELETE /api/transport/bookings/<booking_reference>"""
 
@@ -189,6 +223,7 @@ class BookingDetailResource(Resource):
                     if booking.driver else None
                 ),
                 "vehicle": booking.vehicle.to_dict() if booking.vehicle else None,
+                "driver_display": _rider_driver_display(booking),
                 "route": booking.assigned_route.to_dict() if booking.assigned_route else None,
                 "payments": [p.to_dict() for p in booking.payments],
                 "incidents": [i.to_dict() for i in booking.incidents],

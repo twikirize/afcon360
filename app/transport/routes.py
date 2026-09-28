@@ -340,6 +340,15 @@ def api_nearby_drivers():
 def home():
     """Transport module homepage with integrated booking form."""
     is_pane = request.args.get('_pane') == '1'
+    # Dashboard shell pane (?_pane=1): the sidebar "Rides" nav and
+    # ?view=/transport/ must show the rider's My Trips (past/present/
+    # future), not the public landing home. Anonymous pane loads keep the
+    # landing page (tests/test_transport_front_page.py pane contract).
+    if is_pane and bool(getattr(current_user, "is_authenticated", False)):
+        logger.info(f"Transport home pane served as My Trips for user_id={_uid()}")
+        return render_template(
+            "transport/bookings/_trips_panel.html", **_my_trips_context()
+        )
 
     # Canonical, backend-sourced ride/service types for the front page cards.
     # These come from the real ServiceType enum (app/transport/models.py), never
@@ -413,13 +422,13 @@ def home():
         tile_attribution=current_app.config["TILE_PROVIDER_ATTRIBUTION"],
     )
 
-    return render_template("transport/home.html", **ctx)
+    return render_template("transport/new_home.html", **ctx)
 
 
 @transport_bp.route("/new-home", methods=["GET"])
 @module_enabled_required("transport")
 def new_home():
-    """Temporary new home page for testing - will replace home() when approved."""
+    """Rider home alias — renders the same canonical template as home()."""
     is_pane = request.args.get('_pane') == '1'
 
     service_labels = {
@@ -777,30 +786,78 @@ def _compensation_label(listing):
 # Bookings
 # =========================================================================
 
+# My Trips list bounds: hard fetch cap (honest "N+" beyond it) and
+# past-list pagination defaults used by the full page, the dashboard pane,
+# and Load more chunk fetches alike.
+_TRIPS_FETCH_CAP = 500
+_TRIPS_PER_PAGE = 10
+_TRIPS_PER_PAGE_MAX = 50
+
+
 @transport_bp.route("/bookings")
 @module_enabled_required("transport")
 @login_required
 def bookings_index():
     """Rider My Trips list — upcoming and past rides for one user."""
     logger.info(f"Bookings index accessed by user_id={_uid()}")
+    ctx = _my_trips_context()
+    # Dashboard pane fetch (?_pane=1) must receive the HTML fragment; the
+    # _json_or_template XHR branch below would inject raw JSON into
+    # #shellContent otherwise.
+    if request.args.get("_pane") == "1":
+        return render_template("transport/bookings/_trips_panel.html", **ctx)
+    return _json_or_template("transport/bookings/index.html", **ctx)
+
+
+def _my_trips_context():
+    """User-scoped My Trips context (search + paginated past list).
+
+    Shared by the full bookings page, the dashboard pane, and pane chunk
+    fetches (Load more) so every surface renders from one context builder.
+
+    - ``q``          server-side search term (passed to the service)
+    - ``page``       1-based past-trip page; upcoming renders in full
+    - ``per_page``   past trips per page (default 10, max 50)
+    - ``past``       the current page slice of past trips only
+    - ``total``      matched trips loaded (cap ``_TRIPS_FETCH_CAP``;
+                     ``capped`` tells the template to render "N+")
+
+    Never crosses user scopes: get_user_bookings is keyed on current_user.id.
+    """
+    q = (request.args.get("q", "") or "").strip()[:64]
+    page = max(request.args.get("page", 1, type=int), 1)
+    per_page = min(
+        max(request.args.get("per_page", _TRIPS_PER_PAGE, type=int), 1),
+        _TRIPS_PER_PAGE_MAX,
+    )
     rides = []
     try:
         rides = get_booking_service().get_user_bookings(
             current_user.id,
-            limit=100,
+            limit=_TRIPS_FETCH_CAP,
             include_cancelled=True,
             include_draft=True,
+            q=q,
         )
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error loading bookings for user_id={_uid()}: {e}")
-    upcoming, past = _split_rides(rides)
-    return _json_or_template(
-        "transport/bookings/index.html",
-        rides=rides,
-        upcoming=upcoming,
-        past=past,
-    )
+    upcoming, past_all = _split_rides(rides)
+    past_total = len(past_all)
+    start = (page - 1) * per_page
+    past = past_all[start:start + per_page]
+    return {
+        "rides": rides,
+        "upcoming": upcoming,
+        "past": past,
+        "q": q,
+        "page": page,
+        "per_page": per_page,
+        "past_total": past_total,
+        "past_has_more": past_total > start + len(past),
+        "total": len(rides),
+        "capped": len(rides) >= _TRIPS_FETCH_CAP,
+    }
 
 
 def _split_rides(rides):
@@ -1166,6 +1223,8 @@ def rides_show(booking_reference):
         vehicle=vehicle,
         tracking_allowed=tracking_allowed,
         tracking_booking_ref=tracking_booking_ref,
+        tile_url=current_app.config["TILE_PROVIDER_URL_TEMPLATE"],
+        tile_attribution=current_app.config["TILE_PROVIDER_ATTRIBUTION"],
     )
 
 
