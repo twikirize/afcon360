@@ -200,3 +200,47 @@ class TestStoredLocationShape:
         for field in ("latitude", "longitude", "accuracy", "speed",
                       "heading", "timestamp"):
             assert field in recorded
+
+
+class TestClientTsPassthrough:
+    """D9 latency observability: client send-time rides the Redis/JSON
+    payload only — never authoritative, never a column, invalid values
+    ignored without failing the publish."""
+
+    def _recorded(self, app, live_driver, monkeypatch, payload):
+        import json as _json
+
+        recorded = {}
+
+        class _Recorder(_StoreRedis):
+            def setex(self, key, ttl, value):
+                recorded.update(_json.loads(value))
+                super().setex(key, ttl, value)
+
+        monkeypatch.setattr(
+            "app.transport.services.tracking_service.redis_client",
+            _Recorder())
+        result = TrackingService.update_location(
+            "driver", live_driver.id, payload)
+        assert result["success"] is True
+        return recorded
+
+    def test_numeric_client_ts_carried(self, app, live_driver, monkeypatch):
+        recorded = self._recorded(
+            app, live_driver, monkeypatch,
+            {"latitude": -1.2833, "longitude": 36.8167,
+             "client_ts": 1759074600000})
+        assert recorded["client_ts"] == 1759074600000
+        assert "timestamp" in recorded  # server receipt stays authoritative
+
+    def test_missing_or_invalid_client_ts_ignored(
+            self, app, live_driver, monkeypatch):
+        for payload in (
+            {"latitude": -1.2833, "longitude": 36.8167},
+            {"latitude": -1.2833, "longitude": 36.8167, "client_ts": None},
+            {"latitude": -1.2833, "longitude": 36.8167, "client_ts": "soon"},
+            {"latitude": -1.2833, "longitude": 36.8167, "client_ts": -5},
+            {"latitude": -1.2833, "longitude": 36.8167, "client_ts": True},
+        ):
+            recorded = self._recorded(app, live_driver, monkeypatch, payload)
+            assert "client_ts" not in recorded

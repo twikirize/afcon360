@@ -104,3 +104,84 @@ class TestBellRender:
         assert 'afc-notif' in html
         assert 'Notification.requestPermission()' in html
         assert 'new Notification(' in html
+
+    def test_linkless_item_falls_back_to_module_inbox(self, app):
+        """SMALL-01 (P4): a notification without a deep link must land on
+        the existing module-filtered inbox, never a dead '#'."""
+        from datetime import datetime, timezone
+        from types import SimpleNamespace
+
+        with app.app_context():
+            user = User(
+                email=f'bell_p4_{uuid.uuid4().hex[:6]}@example.com',
+                username=f'bellp4_{uuid.uuid4().hex[:6]}',
+                password_hash='hashed',
+                is_active=True,
+                is_verified=True,
+            )
+            db.session.add(user)
+            db.session.commit()
+            user_id = user.id
+
+        with app.test_request_context('/'):
+            from app.identity.models.user import User as UserModel
+
+            user = db.session.get(UserModel, user_id)
+            login_user(user)
+            from flask import render_template
+
+            item = SimpleNamespace(
+                id=4242, module='transport', link=None, is_read=False,
+                subject='Ride update', type='ride_update', body='Driver nearby',
+                created_at=datetime.now(timezone.utc),
+            )
+            html = render_template(
+                'components/notification_bell.html',
+                recent_notifications=[item],
+                notif_badges={}, notif_modules=[],
+            )
+
+        assert 'href="#"' not in html
+        assert '/notifications?module=transport' in html
+
+    def test_linkless_system_item_falls_back_to_plain_inbox(self, app):
+        """SMALL-01 verification (P4): link NULL + module system/None must
+        land on the plain notifications inbox — valid route, no exception,
+        no dead '#'."""
+        from datetime import datetime, timezone
+        from types import SimpleNamespace
+
+        with app.app_context():
+            user = User(
+                email=f'bell_p4s_{uuid.uuid4().hex[:6]}@example.com',
+                username=f'bellp4s_{uuid.uuid4().hex[:6]}',
+                password_hash='hashed',
+                is_active=True,
+                is_verified=True,
+            )
+            db.session.add(user)
+            db.session.commit()
+            user_id = user.id
+
+        with app.test_request_context('/'):
+            from app.identity.models.user import User as UserModel
+
+            user = db.session.get(UserModel, user_id)
+            login_user(user)
+            from flask import render_template
+
+            def _item(i, module):
+                return SimpleNamespace(
+                    id=5000 + i, module=module, link=None, is_read=False,
+                    subject='System note', type='system_note', body='hi',
+                    created_at=datetime.now(timezone.utc),
+                )
+
+            html = render_template(
+                'components/notification_bell.html',
+                recent_notifications=[_item(1, 'system'), _item(2, None)],
+                notif_badges={}, notif_modules=[],
+            )
+
+        assert 'href="#"' not in html
+        assert 'href="/notifications"' in html

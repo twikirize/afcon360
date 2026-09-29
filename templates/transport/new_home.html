@@ -1264,6 +1264,15 @@
   function fmtCur(n, cur){
     return (cur || 'USD') + ' ' + Number(n || 0).toFixed(2);
   }
+  /* SMALL-01 (J1): render a datetime-local value in the server's
+     datetimeformat convention ('%d %b %Y, %H:%M'). Wall-clock time is
+     kept as-is (no timezone shift). Unparseable input passes through. */
+  function fmtSched(v){
+    var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(v || '');
+    if (!m) return v;
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return m[3] + ' ' + months[Number(m[2]) - 1] + ' ' + m[1] + ', ' + m[4] + ':' + m[5];
+  }
   function vehicleIcon(vc){
     var m = {
       economy:'fa-car-side', comfort:'fa-car', premium:'fa-car-on',
@@ -1521,6 +1530,7 @@
     state.selectedClass = el.dataset.class;
     state.selectedFare = Number(el.dataset.fare);
     state.selectedName = el.dataset.name;
+    state.currency = currency;
     try { state.fareBreakdown = JSON.parse(el.dataset.breakdown || '{}'); }
     catch (e) { state.fareBreakdown = null; }
     if (el.dataset.distance) state.distanceKm = Number(el.dataset.distance);
@@ -1553,7 +1563,7 @@
     sumPickup.textContent = state.pickup || '—';
     sumDest.textContent = state.dest || '—';
     sumRide.textContent = state.selectedName
-      ? state.selectedName + ' · USD ' + state.selectedFare.toFixed(0)
+      ? state.selectedName + ' · ' + fmtCur(state.selectedFare, state.currency || 'USD')
       : '—';
 
     var b = state.fareBreakdown, km = state.distanceKm;
@@ -1564,12 +1574,12 @@
                 fmtCur(b.distance_charge, 'USD')) +
         fareRow('Class multiplier', '× ' + Number(b.class_multiplier || 1).toFixed(2)) +
         fareRow('Surge', '× ' + Number(b.surge_multiplier || 1).toFixed(2)) +
-        fareRow('Total', 'USD ' + state.selectedFare.toFixed(0), true);
+        fareRow('Total', fmtCur(state.selectedFare, state.currency || 'USD'), true);
     } else {
-      fareRows.innerHTML = fareRow('Total', 'USD ' + state.selectedFare.toFixed(0), true);
+      fareRows.innerHTML = fareRow('Total', fmtCur(state.selectedFare, state.currency || 'USD'), true);
     }
     confirmTimeSub.textContent = state.schedule === 'later'
-      ? 'Scheduled for ' + (schedAt.value || 'later today').replace('T', ' at ')
+      ? 'Scheduled for ' + (schedAt.value ? fmtSched(schedAt.value) : 'later today')
       : 'Leaving now.';
   }
   function fareRow(label, value, strong){

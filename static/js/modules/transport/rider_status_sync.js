@@ -68,13 +68,35 @@
         }).join(' ');
     }
 
-    /* Observed server rendering: booking.* are already-serialized
-     * ISO strings (service dict), so |datetimeformat passes them
-     * through unchanged. Display the canonical payload's timestamps
-     * verbatim - no client-side reformatting - so an unchanged
-     * payload matches the rendered DOM exactly (zero rewrite). */
+    /* SMALL-01 (J1), verification addendum: the live poll payload carries
+     * ISO-8601 strings. Format them in the server's datetimeformat
+     * convention ('%d %b %Y, %H:%M', e.g. "28 Sep 2026, 09:20") so live
+     * timeline updates match the server-rendered cells. The server filter
+     * renders a value's OWN wall-clock fields (no timezone conversion), so
+     * the client extracts wall fields straight from the ISO shape instead
+     * of Date getters — Date getters would shift naive strings by the
+     * browser's offset (e.g. a +03:00 browser turning 14:30 into 11:30).
+     * Non-ISO values keep a UTC-getter fallback (deterministic,
+     * timezone-independent); unparseable values fall back verbatim. */
+    var TS_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
     function tsText(v) {
-        return v ? String(v) : '';
+        if (!v) return '';
+        var s = String(v);
+        var m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/.exec(s);
+        if (m) {
+            return m[3] + ' ' + TS_MONTHS[Number(m[2]) - 1] + ' ' + m[1] +
+                ', ' + m[4] + ':' + m[5];
+        }
+        /* Already in the server convention — return verbatim so the
+         * formatter is idempotent and never shifts wall time. */
+        if (/^\d{2} [A-Z][a-z]{2} \d{4}, \d{2}:\d{2}$/.test(s)) return s;
+        var d = new Date(s);
+        if (isNaN(d.getTime())) return s;
+        return pad2(d.getUTCDate()) + ' ' + TS_MONTHS[d.getUTCMonth()] + ' ' +
+            d.getUTCFullYear() + ', ' + pad2(d.getUTCHours()) + ':' +
+            pad2(d.getUTCMinutes());
     }
 
     function normStatus(raw) {

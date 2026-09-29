@@ -397,38 +397,35 @@ class TestConcurrentCancelVsClaim:
 
         _delete(app, (Booking, bk_id), (DriverProfile, drv), (Vehicle, veh))
 
-    def test_claim_before_cancel_r1_prevents_double_assign(self, app):
+    def test_claim_before_cancel_r1_allows_cancellation_with_release(self, app):
         pax_id = _create_user(app, "pax4b")
         drv_user, drv = _create_driver(app, "d4b")
         veh = _create_vehicle(app, drv, "v4b")
         bk_id, bk_ref = _create_booking(app, pax_id, "t4b")
 
         # Sequential, deterministic: claim() commits first, so the booking
-        # is ASSIGNED and a later cancel cannot orphan the assignment.
+        # is ASSIGNED. New policy: rider may cancel post-assignment with
+        # proper driver/vehicle release through AssignmentService.release().
         with app.app_context():
             result = AssignmentService.claim(bk_ref, drv, veh, actor=None)
         assert result["status"] == BookingStatus.ASSIGNED.value
         assert _bk_field(app, bk_id, "assigned_driver_id") == drv
 
-        from app.transport.services.booking_service import ValidationError
         from app.transport.services.booking_service import BookingService
         with app.app_context():
-            try:
-                BookingService().cancel_booking(
-                    booking_id=bk_id, user_id=pax_id,
-                    reason="passenger change of mind",
-                )
-                cancelled = True
-            except ValidationError:
-                cancelled = False
-        assert cancelled is False, (
-            "Booking was claimed first, so cancel after claim must not "
-            "succeed (it would orphantically release the assignment)."
-        )
+            result = BookingService().cancel_booking(
+                booking_id=bk_id, user_id=pax_id,
+                reason="passenger change of mind",
+            )
+        assert result["success"] is True
+        assert result["data"]["stage_at_cancellation"] == "assigned"
 
-        # Cancel never mutated the assignment; release cleanly instead.
-        with app.app_context():
-            AssignmentService.release(bk_id, BookingStatus.COMPLETED, actor=None, reason="test")
+        # Verify driver and vehicle were properly released
+        assert _bk_field(app, bk_id, "status") == BookingStatus.CANCELLED.value
+        assert _bk_field(app, bk_id, "assigned_driver_id") is None
+        assert _bk_field(app, bk_id, "assigned_vehicle_id") is None
+        assert _drv_field(app, drv, "is_available") is True
+
         _delete(app, (Booking, bk_id), (DriverProfile, drv), (Vehicle, veh))
 
 

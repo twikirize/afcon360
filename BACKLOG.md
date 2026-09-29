@@ -668,6 +668,277 @@ the proposed design, and the ownership boundary. NOT yet implemented unless note
 
 ---
 
+## A12 — Rider Cancellation Refinement Package
+
+**Status:** DEFERRED / BACKLOG
+**Core objective:** CLOSED / ACCEPTED
+**Priority:** Revisit only when triggered by product, safety, audit, marketplace, deployment, or scheduled transport QA requirements.
+
+### Core product decision
+
+AFCON360 must allow a rider to cancel a ride before the trip starts.
+
+The current implementation provides cancellation through the pre-trip stages:
+
+`PENDING_PAYMENT → CONFIRMED → ASSIGNED → DRIVER_EN_ROUTE → PICKUP_ARRIVED`
+
+Normal cancellation is rejected once the trip is:
+
+`IN_PROGRESS` or `COMPLETED`
+
+Current core lifecycle evidence:
+
+`[FILE] app/transport/services/booking_service.py:L406-L590`
+
+`[FILE] app/transport/services/assignment_service.py:L312-L473`
+
+Cancellation lifecycle tests were reported PASS.
+
+**Decision:** The existence of rider cancellation is sufficient for the current product stage. Cancellation refinement must not block unrelated AFCON360 fine-grade work.
+
+---
+
+### A12b — Cancellation Fee Policy
+
+**Status:** DEFERRED
+
+**Current behaviour:** Cancellation fee is calculated from time before pickup. Safety cancellation categories waive the fee.
+
+`[FILE] app/transport/services/booking_service.py:L1245-L1277`
+
+**Open product question:**
+
+Should the cancellation fee remain purely time-based, or should it also reflect journey stage / driver effort?
+
+Examples of stages to consider later:
+
+`Assigned → Driver En Route → Driver Arrived`
+
+**Do not change fee logic merely to close A12.**
+
+**Future acceptance decision:**
+
+* retain current time-based policy; or
+* introduce an approved stage/effort-sensitive policy.
+
+**Reopen trigger:** pricing review, cancellation complaints, driver-effort concerns, marketplace economics, or policy review.
+
+---
+
+### A12c — Cancellation Actor / Admin Semantics
+
+**Status:** DEFERRED
+
+**Current evidence:** Rider, admin and status-transition cancellation paths are distinct.
+
+`[FILE] app/transport/routes.py:L1231-L1279`
+
+`[FILE] app/transport/routes.py:L2587-L2617`
+
+`[FILE] app/transport/api/booking_routes.py:L314-L363`
+
+**Open questions:**
+
+Who initiated the cancellation?
+
+Should `cancellation_initiated_by` always be populated?
+
+How should the system distinguish:
+
+`rider / driver / admin / system`
+
+when those capabilities are expanded?
+
+**Reopen trigger:** audit requirement, dispute investigation, admin workflow refinement, or actor-attribution bug.
+
+---
+
+### A12d — Canonical Cancellation Audit Event
+
+**Status:** DEFERRED
+
+**Current evidence:** Post-assignment release has an audit path.
+
+`[FILE] app/transport/services/assignment_service.py:L435-L445`
+
+The reviewed pre-assignment cancellation path updates the booking without the same canonical audit event.
+
+**Open question:**
+
+Should every cancellation, regardless of assignment state, create one canonical queryable cancellation audit event?
+
+**Future acceptance criterion:**
+
+A cancellation should have a clear durable audit record containing the appropriate actor, reason, stage and timestamp.
+
+**Reopen trigger:** audit/compliance requirement, dispute, forensic investigation, or broader audit standardisation work.
+
+---
+
+### A12e — Cancellation Notification Verification
+
+**Status:** DEFERRED
+
+**Current evidence:**
+
+Cancellation calls the transport notification service:
+
+`[FILE] app/transport/services/booking_service.py:L550-L562`
+
+Notification routing/persistence is handled through the notification service:
+
+`[FILE] app/notifications/services/notification_service.py:L70-L74`
+
+`[FILE] app/notifications/services/notification_service.py:L291-L423`
+
+**Open question:**
+
+Is source-level notification integration sufficient, or should automated tests and physical-device evidence prove:
+
+`cancellation → notification created → correct recipient → notification visible`
+
+**Future acceptance criterion:**
+
+Driver receives/has access to the expected cancellation notification when appropriate.
+
+**Reopen trigger:** notification defect, notification QA workstream, or next full transport E2E validation.
+
+---
+
+### A12f — Physical-Device Cancellation Journey
+
+**Status:** DEFERRED
+
+**Current source evidence:** Rider cancellation UI/reason selection/POST flow exists.
+
+`[FILE] templates/transport/rides/show.html:L340-L465`
+
+**Future live journey:**
+
+`Create booking`
+→ `Assign driver`
+→ `Rider sees assignment`
+→ `Rider cancels`
+→ `Reason selected`
+→ `Booking cancelled`
+→ `Assignment released`
+→ `Vehicle/driver released`
+→ `Rider UI updates without reload`
+→ `Driver notification verified`
+
+**Reopen trigger:** scheduled physical-device transport QA or cancellation-related defect.
+
+---
+
+### A12g — Cancellation Anti-Abuse Controls
+
+**Status:** DEFERRED / FUTURE WORKSTREAM
+
+**Current position:**
+
+The product intentionally has not established a cancellation anti-abuse policy in this A12 closure.
+
+Future work may consider:
+
+* cancellation frequency monitoring
+* repeated-cancellation detection
+* marketplace/driver protection
+* account-level actions
+* fraud/abuse signals
+* dispute/appeal handling
+
+**Important:**
+
+Do not invent or implement anti-abuse policy as part of ordinary A12 maintenance.
+
+**Reopen trigger:** measurable abuse, marketplace scaling requirements, fraud findings, or a dedicated policy workstream.
+
+---
+
+### A12h — Cancellation Schema Migration / Deployment Readiness
+
+**Status:** OWNER ACTION / DEFERRED FROM ACTIVE WORKSTREAM
+
+The implementation added cancellation-related Booking fields.
+
+The authorized owner will perform the database migration.
+
+**Rule:**
+
+The coding agent must not create or execute the migration.
+
+**Migration owner:** AFCON360 project owner.
+
+**Deployment requirement:**
+
+Before deploying/relying on the schema-dependent implementation, verify that the authorized migration and upgrade have been applied successfully.
+
+**Reopen trigger:** deployment or environment promotion involving the cancellation schema.
+
+---
+
+## A12 Closure Rule
+
+A12 must not become an indefinite blocking workstream.
+
+The current core requirement is considered satisfied:
+
+> **Rider can cancel before trip start.**
+
+The refinement items above remain available for future implementation and validation.
+
+When a future agent receives an A12 task, it must first read this section and determine which specific A12 item has been triggered.
+
+Do not reopen or redesign unrelated cancellation behaviour merely because A12 exists in the backlog.
+
+---
+
+## Historical Evidence
+
+### Core cancellation implementation
+
+`[FILE] app/transport/services/booking_service.py:L406-L590`
+
+`[FILE] app/transport/services/assignment_service.py:L312-L473`
+
+### Cancellation UI
+
+`[FILE] templates/transport/rides/show.html:L340-L465`
+
+### Fee logic
+
+`[FILE] app/transport/services/booking_service.py:L1245-L1277`
+
+### Admin/API paths
+
+`[FILE] app/transport/routes.py:L2587-L2617`
+
+`[FILE] app/transport/api/booking_routes.py:L314-L363`
+
+### Notification path
+
+`[FILE] app/transport/services/booking_service.py:L550-L562`
+
+`[FILE] app/notifications/services/notification_service.py:L70-L74`
+
+`[FILE] app/notifications/services/notification_service.py:L291-L423`
+
+### Audit path
+
+`[FILE] app/transport/services/assignment_service.py:L435-L445`
+
+---
+
+## Final A12 Gate
+
+**PASS — CORE OBJECTIVE CLOSED**
+
+**Refinements:** DEFERRED / BACKLOG
+
+**A12 is not an active blocker for unrelated fine-grade work.**
+
+---
+
 ## 4. Operational Daily/Monthly Wallet Configuration (deferred from audit)
 - **Status:** Open (decision required)
 - **Raised:** 2026-08-28
@@ -3133,3 +3404,16 @@ matching / realtime / maps / routing
 - Owner/area: transport / rider booking show (`templates/transport/bookings/show.html`)
 - Evidence/source: Playwright session 2026-09-25 20:13-20:18 (page navigations, network log, DOM text extraction pre/post reload); psql `transport_bookings` id 15
 - Links: `templates/transport/bookings/show.html`, `app/transport/routes.py::bookings_show`, `app/transport/services/booking_service.py` (timeline/status context), report items D-5/D-6/D-9
+
+---
+
+## PWA/APP-TELEMETRY-01 — Privacy-aware installation and active-device registry (FUTURE / TELEMETRY)
+- Status: Not started (recorded 2026-09-28 as J9 physical-device follow-up; DO NOT implement inside J9)
+- Raised: 2026-09-28 (J9 physical-device validation: owner installed driver PWA manually on Android, launch confirmed, tile icon unconfirmed)
+- Context: AFCON360 ships installable PWA surfaces (rider via `static/manifest.json`, driver via `static/transport/manifest.json` + `/transport/sw.js`) but has zero visibility into real-world installation, version spread, or active-device population. A future registry would inform support, staged rollouts, and stale-version nudges.
+- Required future concepts (registry fields): random AFCON360 installation ID (server-issued UUID, rotatable); platform (android/ios/desktop + browser); rider/driver surface; app version (manifest/SW cache name); first seen; last seen; last active; installation observation; recent activity state; optional authenticated user association ONLY where justified.
+- Architecture must distinguish: installation vs first run vs active session vs recent heartbeat vs download/distribution. Absence of heartbeat MUST NOT be equated with confirmed uninstall.
+- Hard privacy constraints: NO IMEI, hardware serial, advertising ID, or persistent device fingerprint as default identity. NO exact GPS in the installation registry. Lawful purpose, user notice, retention schedule, access control, and deletion/de-identification + data minimisation must be explicitly addressed BEFORE implementation (Uganda Data Protection and Privacy Act: specific lawful purposes + information to data subjects about collection/retention).
+- What needs to happen: separately authorized telemetry node producing (1) privacy review against the Act, (2) in-product notice + consent wording, (3) minimal schema + retention/deletion design, (4) SW heartbeat protocol that degrades truthfully offline. No database work until then.
+- Owner/area: platform / privacy + transport PWA
+- Links: `static/manifest.json`, `static/transport/manifest.json`, `static/transport/sw.js`, J9 reports (source+test+device)

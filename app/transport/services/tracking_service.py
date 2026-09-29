@@ -60,6 +60,21 @@ class TrackingService:
                 'heading': float(location_data.get('heading', 0.0)),
                 'timestamp': datetime.now(timezone.utc).isoformat()
             }
+            # D9 latency observability (additive, non-authoritative): carry
+            # the client's send-time (ms epoch) into the Redis/JSON payload
+            # so reads can compute client->server latency. The server
+            # 'timestamp' above stays the single authority for freshness;
+            # client_ts is never trusted, never persisted to a column.
+            try:
+                _cts = location_data.get('client_ts')
+                if _cts is None or isinstance(_cts, bool):
+                    pass
+                else:
+                    _cts = int(float(_cts))
+                    if _cts > 0:
+                        location_update['client_ts'] = _cts
+            except (TypeError, ValueError):
+                pass
 
             # Store in Redis (resilient to Redis unavailability)
             redis_key = f"{TrackingService.REDIS_PREFIX}:{entity_type}:{entity_id}"

@@ -1740,9 +1740,19 @@ def create_app(config_object=None) -> Flask:
         dashboard contexts (compact date + HH:MM). ``None``/empty renders as an
         empty string, mirroring the ``strftime`` launcher filter behaviour so
         ``|datetimeformat`` never crashes template compilation.
+
+        SMALL-01 (J1): service dicts (e.g. get_user_bookings) carry ISO-8601
+        strings, which previously passed through verbatim and rendered raw
+        on the page. ISO strings are now parsed and rendered in the same
+        convention; unparseable strings still pass through unchanged.
         """
         if value is None or value == '':
             return ''
+        if isinstance(value, str):
+            try:
+                value = datetime.fromisoformat(value)
+            except (ValueError, TypeError):
+                return value
         try:
             return value.strftime('%d %b %Y, %H:%M')
         except (AttributeError, TypeError, ValueError):

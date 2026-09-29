@@ -405,56 +405,167 @@ class BookingService:
 
     @monitor_endpoint("cancel_booking")
     def cancel_booking(self, booking_id: int, user_id: int,
-                       reason: Optional[str] = None) -> Dict[str, Any]:
+                       reason: Optional[str] = None,
+                       reason_category: Optional[str] = None,
+                       safety_flag: bool = False) -> Dict[str, Any]:
+        """Cancel a booking with stage-aware policy.
+
+        Rider may cancel in these stages:
+          - PENDING_PAYMENT, CONFIRMED (pre-assignment): no fee normally
+          - ASSIGNED: low/no protection during initial grace
+          - DRIVER_EN_ROUTE: driver-protection compensation may apply
+          - PICKUP_ARRIVED: stronger driver protection may apply
+          - IN_PROGRESS, COMPLETED: NOT allowed (separate safety process)
+
+        Safety/mismatch cancellations (reason_category in safety_categories)
+        waive the cancellation fee.
+        """
+        from app.transport.services.assignment_service import (
+            AssignmentService,
+            DispatchClaimError,
+            ACTIVE_ASSIGNMENT_STATUSES,
+        )
+
+        # Stage definitions
+        PRE_ASSIGNMENT_STATUSES = {
+            BookingStatus.PENDING_PAYMENT.value,
+            BookingStatus.CONFIRMED.value,
+        }
+        POST_ASSIGNMENT_CANCELLABLE_STATUSES = {
+            BookingStatus.ASSIGNED.value,
+            BookingStatus.DRIVER_EN_ROUTE.value,
+            BookingStatus.PICKUP_ARRIVED.value,
+        }
+        ALL_CANCELLABLE_STATUSES = PRE_ASSIGNMENT_STATUSES | POST_ASSIGNMENT_CANCELLABLE_STATUSES
+        SAFETY_CATEGORIES = {
+            'driver_vehicle_mismatch',
+            'driver_identity_mismatch',
+            'safety_concern',
+            'driver_requested_cancel',
+            'unexpected_driver_behaviour',
+        }
+
         try:
             booking = db.session.get(Booking, booking_id)
             if not booking:
                 raise NotFoundError("Booking not found", resource_type="booking", resource_id=booking_id)
 
+            # Authorization: rider (booker), assigned driver, or provider/admin
             if booking.user_id != user_id and booking.assigned_driver_id != user_id and booking.provider_id != user_id:
                 raise PermissionError("Cannot cancel another user's booking")
 
             if booking.is_deleted:
                 raise NotFoundError("Booking not found", resource_type="booking", resource_id=booking_id)
 
-            # Race-E-safe cancellation (D2): the pre-assignment status gate is
-            # enforced atomically by the conditional UPDATE. Ownership is
-            # checked above (authorization), the status gate is part of the
-            # guarded statement so a concurrent claim cannot slip between a
-            # read and a write. rowcount == 1 is REQUIRED.
-            cancellation_fee = self._calculate_cancellation_fee(booking)
+            current_status = booking.status.value
+            if current_status not in ALL_CANCELLABLE_STATUSES:
+                raise ValidationError(
+                    f"Cannot cancel booking in {current_status} stage. "
+                    "Normal rider cancellation is only available before the trip starts."
+                )
+
+            # Determine if this is a safety/mismatch cancellation (fee waiver)
+            is_safety_cancellation = (reason_category or '').lower() in SAFETY_CATEGORIES
+            safety_flag = bool(safety_flag) or is_safety_cancellation
+
+            # Calculate fee (waived for safety cancellations)
+            if is_safety_cancellation:
+                cancellation_fee = Decimal("0.00")
+            else:
+                cancellation_fee = self._calculate_cancellation_fee(booking)
             refund_amount = float(booking.final_price - cancellation_fee)
 
-            result = db.session.execute(
-                sa.update(Booking.__table__)
-                .where(
-                    Booking.__table__.c.id == booking_id,
-                    Booking.__table__.c.status.in_([
-                        BookingStatus.PENDING_PAYMENT.value,
-                        BookingStatus.CONFIRMED.value,
-                    ]),
-                    Booking.__table__.c.is_deleted.is_(False),
+            now = datetime.now(timezone.utc)
+
+            if current_status in PRE_ASSIGNMENT_STATUSES:
+                # Pre-assignment: simple status update (existing behavior)
+                result = db.session.execute(
+                    sa.update(Booking.__table__)
+                    .where(
+                        Booking.__table__.c.id == booking_id,
+                        Booking.__table__.c.status.in_(list(PRE_ASSIGNMENT_STATUSES)),
+                        Booking.__table__.c.is_deleted.is_(False),
+                    )
+                    .values(
+                        status=BookingStatus.CANCELLED.value,
+                        cancelled_at=now,
+                        cancellation_reason=reason,
+                        cancellation_reason_category=reason_category,
+                        cancellation_safety_flag=safety_flag,
+                        cancelled_stage=current_status,
+                        cancellation_fee=cancellation_fee,
+                    )
+                    .execution_options(synchronize_session=False)
                 )
-                .values(
-                    status=BookingStatus.CANCELLED.value,
-                    cancelled_at=datetime.now(timezone.utc),
-                    cancellation_reason=reason,
-                    cancellation_fee=cancellation_fee,
-                )
-                .execution_options(synchronize_session=False)
-            )
-            if result.rowcount != 1:
-                db.session.rollback()
-                raise ValidationError(
-                    "Cannot cancel booking: it is no longer in a cancellable "
-                    "(pre-assignment) state"
-                )
+                if result.rowcount != 1:
+                    db.session.rollback()
+                    raise ValidationError(
+                        "Cannot cancel booking: it is no longer in a cancellable state"
+                    )
+                release_result = None
+            else:
+                # Post-assignment: use canonical release through AssignmentService
+                # This atomically: sets status=CANCELLED, clears assigned_driver_id/vehicle_id,
+                # releases driver/vehicle availability, cleans up offers
+                try:
+                    release_result = AssignmentService.release(
+                        booking_id,
+                        BookingStatus.CANCELLED,
+                        actor=None,
+                        reason=reason,
+                        audit_extra={
+                            "from": current_status,
+                            "reason_category": reason_category,
+                            "safety_flag": safety_flag,
+                            "cancelled_by": "rider",
+                        },
+                    )
+                    # Update the booking with additional cancellation metadata
+                    # (AssignmentService.release sets status, cancelled_at, assigned_driver_id=None, assigned_vehicle_id=None)
+                    db.session.execute(
+                        sa.update(Booking.__table__)
+                        .where(
+                            Booking.__table__.c.id == booking_id,
+                            Booking.__table__.c.is_deleted.is_(False),
+                        )
+                        .values(
+                            cancellation_reason=reason,
+                            cancellation_reason_category=reason_category,
+                            cancellation_safety_flag=safety_flag,
+                            cancelled_stage=current_status,
+                            cancellation_fee=cancellation_fee,
+                            cancellation_initiated_by="rider",
+                        )
+                        .execution_options(synchronize_session=False)
+                    )
+                except DispatchClaimError as e:
+                    db.session.rollback()
+                    raise ValidationError(e.message)
 
             db.session.commit()
             db.session.expire_all()
             self._invalidate_booking_caches(booking_id)
 
-            record_metric("booking_cancelled", tags={"status": "success"}, value=1)
+            # Send cancellation notification (includes driver if assigned)
+            try:
+                from app.transport.services.notification_service import NotificationService
+                NotificationService.send_transport_notification(
+                    booking_id=booking_id,
+                    notification_type="booking_cancelled",
+                    extra_data={
+                        "cancellation_reason": reason,
+                        "cancellation_reason_category": reason_category,
+                        "safety_flag": safety_flag,
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"Cancellation notification failed for booking {booking_id}: {e}")
+
+            record_metric("booking_cancelled", tags={
+                "status": "success",
+                "stage": current_status,
+                "safety": str(safety_flag).lower(),
+            }, value=1)
 
             return {
                 "success": True,
@@ -462,7 +573,10 @@ class BookingService:
                 "data": {
                     "booking_id": booking_id,
                     "cancellation_fee": float(cancellation_fee),
-                    "refund_amount": refund_amount,  # using final_price
+                    "refund_amount": refund_amount,
+                    "stage_at_cancellation": current_status,
+                    "safety_cancellation": safety_flag,
+                    "release": release_result,
                 }
             }
 

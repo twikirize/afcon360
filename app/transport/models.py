@@ -1111,6 +1111,9 @@ class Booking(TransportBase):
     # Status
     status = db.Column(SQLEnum(BookingStatus), default=BookingStatus.DRAFT, nullable=False)
     cancellation_reason = db.Column(db.String(100))
+    cancellation_reason_category = db.Column(db.String(50))  # safety, mismatch, rider_change, driver_requested, other
+    cancellation_safety_flag = db.Column(db.Boolean, default=False, nullable=False, server_default="false")
+    cancelled_stage = db.Column(db.String(50))  # booking status at time of cancellation
     cancellation_initiated_by = db.Column(db.String(20))  # user, driver, system, admin
     cancellation_fee = db.Column(db.Numeric(10, 2), default=0.00)
 

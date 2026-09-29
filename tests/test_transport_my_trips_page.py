@@ -269,3 +269,56 @@ def test_search_filters_real_booking_rows(client, test_user):
     text2 = resp2.get_data(as_text=True)
     assert ref_e in text2
     assert ref_n not in text2
+
+
+def test_trip_fare_and_time_render_human_readable(
+    client, test_user, monkeypatch
+):
+    """SMALL-01 (P6 + J1): trip rows render fares at two-decimal precision
+    and ISO pickup strings through the human-readable datetime convention
+    (no raw '35.1' fare, no raw ISO timestamp)."""
+    import app.transport.routes as routes_mod
+
+    when = datetime(2026, 9, 28, 9, 20, tzinfo=timezone.utc)
+    ride = _ride("TR-FMT-1", "completed", timedelta(days=-1), price=35.10)
+    ride["pickup_time"] = when.isoformat()
+    monkeypatch.setattr(
+        routes_mod, "get_booking_service", lambda: _stub_service([ride])
+    )
+    _login_as(client, test_user)
+
+    resp = client.get("/transport/bookings")
+    assert resp.status_code == 200, resp.status_code
+    text = resp.get_data(as_text=True)
+    assert "35.10 USD" in text
+    assert when.strftime("%d %b %Y, %H:%M") in text
+    assert when.isoformat() not in text
+
+
+def test_trip_fare_value_matrix(client, test_user, monkeypatch):
+    """SMALL-01 verification (P6): 0 renders 0.00 (a real zero, not a
+    fallback), numeric strings format, and None renders the panel's
+    unavailable placeholder — never a fabricated 0.00."""
+    import app.transport.routes as routes_mod
+
+    def _priced(ref, price):
+        ride = _ride(ref, "completed", timedelta(days=-1), price=price)
+        return ride
+
+    rides = [
+        _priced("TR-FMT-ZERO", 0),
+        _priced("TR-FMT-STR", "35.10"),
+        _priced("TR-FMT-NONE", None),
+    ]
+    monkeypatch.setattr(
+        routes_mod, "get_booking_service", lambda: _stub_service(rides)
+    )
+    _login_as(client, test_user)
+
+    resp = client.get("/transport/bookings")
+    assert resp.status_code == 200, resp.status_code
+    text = resp.get_data(as_text=True)
+    assert "0.00 USD" in text
+    assert "35.10 USD" in text
+    assert "TR-FMT-NONE" in text
+    assert '<span class="td-mono">—</span>' in text

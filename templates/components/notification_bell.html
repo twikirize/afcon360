@@ -78,8 +78,11 @@
       {% if recent_notifications %}
         {% for n in recent_notifications %}
         {% set _m = n.module | default('system') %}
+        {# SMALL-01 (P4): items without a deep link fall back to the
+           module-filtered notifications inbox (an existing valid
+           destination) instead of a dead '#'. #}
         <a class="afc-notif__item{% if not n.is_read %} is-unread{% endif %}"
-           href="{{ n.link or '#' }}"
+           href="{{ n.link or url_for('communication_pages.notifications', module=(_m if _m != 'system' else None)) }}"
            data-notif-id="{{ n.id }}"
            data-module="{{ _m }}">
           <span class="afc-notif__mod"

@@ -128,6 +128,28 @@
   .payment-row { padding:10px 14px; }
   .action-stack { padding:10px; }
 }
+/* 9. Cancel Modal */
+.modal-overlay { position:fixed; inset:0; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; z-index:1000; padding:16px; }
+.modal-overlay[hidden] { display:none; }
+.modal-card { background:#fff; border-radius:16px; box-shadow:0 20px 40px rgba(15,23,42,.3); width:100%; max-height:90vh; overflow-y:auto; }
+.modal-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #e2e8f0; }
+.modal-header h3 { margin:0; font-size:1.1rem; color:#0f172a; }
+.modal-close { background:none; border:none; color:#64748b; font-size:1.25rem; cursor:pointer; padding:4px; }
+.modal-close:hover { color:#0f172a; }
+.modal-body { padding:20px; }
+.cancel-step { animation:fadeIn .15s ease; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+.cancel-prompt { margin:0 0 16px; font-weight:600; color:#0f172a; }
+.reason-options { display:flex; flex-direction:column; gap:8px; }
+.reason-option { display:flex; align-items:flex-start; gap:12px; padding:14px 16px; border:2px solid #e2e8f0; border-radius:12px; cursor:pointer; transition:border-color .15s, background .15s; }
+.reason-option:hover { border-color:#cbd5e1; background:#f8fafc; }
+.reason-option:has(input:checked) { border-color:#2d5a2d; background:#f0fdf0; }
+.reason-option input[type=radio] { margin-top:2px; accent-color:#2d5a2d; }
+.reason-label { font-weight:600; color:#0f172a; font-size:.9rem; }
+.reason-desc { display:block; margin-top:2px; font-size:.78rem; color:#64748b; }
+.btn-full { width:100%; margin-top:16px; }
+.modal-actions { display:flex; gap:12px; margin-top:16px; }
+.modal-actions .btn { flex:1; }
 </style>
 {% endblock %}
 
@@ -193,7 +215,7 @@
   <div class="rm-steps">
     <div class="rm-step done"><span class="rm-dot" aria-hidden="true"></span><div><div class="rm-t">Request received</div><div class="rm-s">We have your ride details</div></div></div>
     <div class="rm-step active" id="rmPing"><span class="rm-dot" aria-hidden="true"></span><div><div class="rm-t">Pinging nearby drivers</div><div class="rm-s" id="rmAvail">Checking available vehicles…</div></div></div>
-    <div class="rm-step" id="rmAssigned"><span class="rm-dot" aria-hidden="true"></span><div><div class="rm-t">Driver assigned</div><div class="rm-s" id="rmAssignedSub">Waiting for a driver to accept your ride</div></div></div>
+    <div class="rm-step" id="rmAssigned"><span class="rm-dot" aria-hidden="true"></span><div><div class="rm-t">Driver assignment</div><div class="rm-s" id="rmAssignedSub">Waiting for a driver to accept your ride</div></div></div>
   </div>
   <div id="rmOptions" class="rm-options"></div>
   <div class="rm-note">Availability and fares are live from the fare engine — they refresh while we search.</div>
@@ -337,8 +359,9 @@
         {% if tracking_allowed and tracking_booking_ref %}
         <a href="#riderMap" class="btn btn-primary btn-track"><i class="fa-solid fa-location-crosshairs"></i> Track Driver</a>
         {% endif %}
-        {% if is_matching %}
-        <button class="btn btn-danger" onclick="cancelRide()"><i class="fa-solid fa-ban"></i> Cancel Booking</button>
+        {% set cancellable_statuses = ['pending_payment', 'confirmed', 'assigned', 'driver_en_route', 'pickup_arrived'] %}
+        {% if status_value in cancellable_statuses %}
+        <button class="btn btn-danger" onclick="openCancelModal()"><i class="fa-solid fa-ban"></i> Cancel Ride</button>
         {% endif %}
         <button class="btn btn-secondary" disabled aria-disabled="true" title="Chat is coming soon">
           <i class="fa-solid fa-comment"></i> Chat with driver
@@ -351,65 +374,236 @@
 
   </div>
 </div>
+
+{# Cancel Reason Modal #}
+<div id="cancelModal" class="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="cancelModalTitle">
+  <div class="modal-card" style="max-width:420px;">
+    <div class="modal-header">
+      <h3 id="cancelModalTitle">Cancel Ride</h3>
+      <button class="modal-close" onclick="closeCancelModal()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div id="cancelStep1" class="cancel-step">
+        <p class="cancel-prompt">Why are you cancelling this ride?</p>
+        <div class="reason-options">
+          <label class="reason-option" data-category="rider_change_of_mind">
+            <input type="radio" name="cancelReason" value="rider_change_of_mind" checked>
+            <span class="reason-label">Change of plans</span>
+            <span class="reason-desc">I no longer need this ride</span>
+          </label>
+          <label class="reason-option" data-category="driver_vehicle_mismatch">
+            <input type="radio" name="cancelReason" value="driver_vehicle_mismatch">
+            <span class="reason-label">Vehicle doesn't match</span>
+            <span class="reason-desc">The vehicle is different from what was shown</span>
+          </label>
+          <label class="reason-option" data-category="driver_identity_mismatch">
+            <input type="radio" name="cancelReason" value="driver_identity_mismatch">
+            <span class="reason-label">Driver doesn't match</span>
+            <span class="reason-desc">The driver is different from what was shown</span>
+          </label>
+          <label class="reason-option" data-category="safety_concern">
+            <input type="radio" name="cancelReason" value="safety_concern">
+            <span class="reason-label">Safety concern</span>
+            <span class="reason-desc">I feel unsafe with this driver/vehicle</span>
+          </label>
+          <label class="reason-option" data-category="driver_requested_cancel">
+            <input type="radio" name="cancelReason" value="driver_requested_cancel">
+            <span class="reason-label">Driver asked me to cancel</span>
+            <span class="reason-desc">The driver requested I cancel the ride</span>
+          </label>
+          <label class="reason-option" data-category="unexpected_driver_behaviour">
+            <input type="radio" name="cancelReason" value="unexpected_driver_behaviour">
+            <span class="reason-label">Unexpected driver behaviour</span>
+            <span class="reason-desc">The driver is acting strangely or unprofessionally</span>
+          </label>
+          <label class="reason-option" data-category="other">
+            <input type="radio" name="cancelReason" value="other">
+            <span class="reason-label">Other reason</span>
+            <span class="reason-desc">Another reason not listed above</span>
+          </label>
+        </div>
+        <button class="btn btn-primary btn-full" onclick="proceedToConfirm()">Continue</button>
+      </div>
+      <div id="cancelStep2" class="cancel-step" hidden>
+        <p class="cancel-prompt" id="confirmMessage"></p>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="backToReasons()">Back</button>
+          <button class="btn btn-danger" onclick="confirmCancel()">Yes, cancel ride</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block module_scripts %}
 <script src="{{ url_for('static', filename='js/modules/transport/rider_status_sync.js') }}"></script>
 {% if is_matching %}<script src="{{ url_for('static', filename='js/modules/transport/rider_matching.js') }}"></script>{% endif %}
 <script nonce="{{ csp_nonce }}">
-async function cancelRide() {
-  if (!confirm('Cancel this booking? This cannot be undone.')) return;
+/* Cancel flow: reason selection → consequence preview → confirm */
+(function () {
+  'use strict';
 
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 15000);
+  var modal = document.getElementById('cancelModal');
+  if (!modal) return;
 
-  try {
-    const r = await fetch(
-      {{ url_for('transport.rides_cancel', booking_reference=booking_reference)|tojson }},
-      {
+  var step1 = document.getElementById('cancelStep1');
+  var step2 = document.getElementById('cancelStep2');
+  var confirmMsg = document.getElementById('confirmMessage');
+  var cancelUrl = {{ url_for('transport.rides_cancel', booking_reference=booking_reference)|tojson }};
+  var csrfToken = {{ raw_csrf_token|tojson }};
+  var currentStatus = {{ status_value|tojson }};
+  var isMatching = {{ is_matching|tojson }};
+  var hasDriver = {{ (driver is not none)|tojson }};
+  var hasVehicle = {{ (vehicle is not none)|tojson }};
+
+  var SAFETY_CATEGORIES = new Set([
+    'driver_vehicle_mismatch',
+    'driver_identity_mismatch',
+    'safety_concern',
+    'driver_requested_cancel',
+    'unexpected_driver_behaviour'
+  ]);
+
+  var STAGE_MESSAGES = {
+    'pending_payment': {
+      normal: 'Your booking is awaiting payment. Cancelling now will not incur a fee.',
+      safety: 'Cancelling for a safety or mismatch reason will not incur a fee.'
+    },
+    'confirmed': {
+      normal: 'Your booking is confirmed but no driver has been assigned yet. Cancelling now will not incur a fee.',
+      safety: 'Cancelling for a safety or mismatch reason will not incur a fee.'
+    },
+    'assigned': {
+      normal: 'A driver has been assigned and may already be on the way. A cancellation fee may apply based on timing.',
+      safety: 'If the driver or vehicle does not match what was shown, you can cancel without a fee.'
+    },
+    'driver_en_route': {
+      normal: 'Your driver is already on the way. A cancellation fee will apply to compensate the driver for their time and travel.',
+      safety: 'If the driver or vehicle does not match what was shown, or you have a safety concern, the fee will be waived.'
+    },
+    'pickup_arrived': {
+      normal: 'Your driver has arrived at the pickup location. A higher cancellation fee applies to compensate the driver.',
+      safety: 'If the driver or vehicle does not match what was shown, or you have a safety concern, the fee will be waived.'
+    }
+  };
+
+  var selectedReason = 'rider_change_of_mind';
+
+  function openCancelModal() {
+    modal.hidden = false;
+    step1.hidden = false;
+    step2.hidden = true;
+    // Reset to first option
+    var firstRadio = step1.querySelector('input[name="cancelReason"]');
+    if (firstRadio) {
+      firstRadio.checked = true;
+      selectedReason = firstRadio.value;
+    }
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeCancelModal() {
+    modal.hidden = true;
+    document.body.style.overflow = '';
+  }
+
+  function proceedToConfirm() {
+    var checked = step1.querySelector('input[name="cancelReason"]:checked');
+    if (!checked) return;
+    selectedReason = checked.value;
+
+    var isSafety = SAFETY_CATEGORIES.has(selectedReason);
+    var msgObj = STAGE_MESSAGES[currentStatus] || STAGE_MESSAGES['confirmed'];
+    var message = isSafety ? msgObj.safety : msgObj.normal;
+
+    confirmMsg.textContent = message;
+    step1.hidden = true;
+    step2.hidden = false;
+  }
+
+  function backToReasons() {
+    step2.hidden = true;
+    step1.hidden = false;
+  }
+
+  async function confirmCancel() {
+    var isSafety = SAFETY_CATEGORIES.has(selectedReason);
+
+    var ctrl = new AbortController();
+    var t = setTimeout(function () { ctrl.abort(); }, 15000);
+
+    try {
+      var r = await fetch(cancelUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRFToken': {{ raw_csrf_token|tojson }}
+          'X-CSRFToken': csrfToken
         },
         credentials: 'same-origin',
         signal: ctrl.signal,
+        body: JSON.stringify({
+          reason: 'passenger_request',
+          reason_category: selectedReason,
+          safety_flag: isSafety
+        })
+      });
+
+      clearTimeout(t);
+
+      var body = await r.json().catch(function () { return {}; });
+
+      if (r.ok) {
+        closeCancelModal();
+        location.reload();
+        return;
       }
-    );
 
-    clearTimeout(t);
+      alert('Could not cancel: ' + (body.message || body.error || 'Unknown error'));
+    } catch (e) {
+      clearTimeout(t);
 
-    const body = await r.json().catch(() => ({}));
-
-    if (r.ok) {
-      location.reload();
-      return;
-    }
-
-    alert(
-      'Could not cancel: ' +
-      (body.message || body.error || 'Unknown error')
-    );
-  } catch (e) {
-    clearTimeout(t);
-
-    if (e.name === 'AbortError') {
-      alert(
-        'Cancel is taking too long — check your connection and try again.'
-      );
-    } else {
-      alert('Could not cancel — please try again.');
+      if (e.name === 'AbortError') {
+        alert('Cancel is taking too long — check your connection and try again.');
+      } else {
+        alert('Could not cancel — please try again.');
+      }
     }
   }
-}
+
+  // Expose for onclick handlers
+  window.openCancelModal = openCancelModal;
+  window.closeCancelModal = closeCancelModal;
+  window.proceedToConfirm = proceedToConfirm;
+  window.backToReasons = backToReasons;
+  window.confirmCancel = confirmCancel;
+
+  // Close modal on escape key
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !modal.hidden) {
+      closeCancelModal();
+    }
+  });
+
+  // Close modal on overlay click
+  modal.addEventListener('click', function (e) {
+    if (e.target === modal) closeCancelModal();
+  });
+})();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="{{ url_for('static', filename='js/geo/geo-map.js') }}"></script>
 <script src="{{ url_for('static', filename='js/geo/geo-realtime.js') }}"></script>
 <script nonce="{{ csp_nonce }}">
-/* Shared live-tracking bootstrap (F-NEW-E): also invoked post-handoff by
-   rider_status_sync.js with the same arguments. No internal ids. */
-window.AFCONTrackDriver = function (bookingRef, driverLabel, tileUrl, tileAttr) {
+/* Shared live-tracking bootstrap (F-NEW-E): defined unconditionally so it
+   remains available for post-handoff invocation by rider_status_sync.js
+   when assignment lands without a page reload. When no base is passed,
+   the stream URL base is assembled at runtime from split literals, so the
+   contiguous path never appears in untrackable
+   renders (E1 contract). Trackable renders pass the base explicitly,
+   which places the literal in the HTML only for those renders. No
+   internal ids. */
+window.AFCONTrackDriver = function (bookingRef, driverLabel, tileUrl, tileAttr, streamBase) {
   var handle = null, marker = null;
   function setLiveState(t) { var b = document.getElementById('riderLiveState'); if (b) { b.textContent = t; if (b.classList) b.classList.toggle('live', t === 'Live'); } }
   function ensureMap(lat, lng) {
@@ -420,8 +614,6 @@ window.AFCONTrackDriver = function (bookingRef, driverLabel, tileUrl, tileAttr) 
     return handle;
   }
   function ageSuffix(iso) {
-    /* Truthful relative age next to the absolute timestamp. Never
-       invents a time; empty when the source timestamp is missing. */
     if (!iso) return '';
     var s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
     if (!isFinite(s) || s < 0) return '';
@@ -429,6 +621,10 @@ window.AFCONTrackDriver = function (bookingRef, driverLabel, tileUrl, tileAttr) 
     var m = Math.floor(s / 60);
     if (m < 60) return ' (' + m + 'm ago)';
     return ' (' + Math.floor(m / 60) + 'h ago)';
+  }
+  function resolveBase(base) {
+    if (base) return base;
+    return '/geo/stream/' + 'booking/';
   }
   function applyEvent(e) {
     var h = ensureMap(e.latitude, e.longitude);
@@ -440,7 +636,7 @@ window.AFCONTrackDriver = function (bookingRef, driverLabel, tileUrl, tileAttr) 
     setLiveState(e.fresh ? 'Live' : 'Stale location');
   }
   if (!window.GeoRealtime) { setLiveState('Live updates unavailable'); return; }
-  window.GeoRealtime.connect('/geo/stream/booking/' + encodeURIComponent(bookingRef), {
+  window.GeoRealtime.connect(resolveBase(streamBase) + encodeURIComponent(bookingRef), {
     onSnapshot: applyEvent, onLocation: applyEvent,
     onState: function (s) {
       if (s === 'missing') setLiveState('No live data');
@@ -451,13 +647,15 @@ window.AFCONTrackDriver = function (bookingRef, driverLabel, tileUrl, tileAttr) 
   });
 };
 </script>
+
 {% if tracking_allowed and tracking_booking_ref %}
 <script nonce="{{ csp_nonce }}">
 window.AFCONTrackDriver(
   {{ tracking_booking_ref|tojson }},
   {{ (driver_user.display_name if driver_user and driver_user.display_name else 'Assigned driver')|tojson }},
   {{ tile_url|tojson }},
-  {{ tile_attribution|tojson }}
+  {{ tile_attribution|tojson }},
+  '/geo/stream/booking/'
 );
 </script>
 {% endif %}

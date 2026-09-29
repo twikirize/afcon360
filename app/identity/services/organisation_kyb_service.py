@@ -15,7 +15,7 @@ type rather than a new check_type.
 """
 
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timezone
 
 from decimal import Decimal
 
@@ -243,7 +243,7 @@ class OrganisationKYBService:
         The compliance officer's explicit organisation-level approval is also
         the sign-off point for the sanctions screen.
         """
-        now = datetime.utcnow()  # naive UTC — matches the app's storage convention
+        now = datetime.now(timezone.utc)  # naive UTC — matches the app's storage convention
 
         docs = OrganisationKYBDocument.query.filter_by(
             organisation_id=org.id, is_deleted=False
@@ -333,7 +333,7 @@ class OrganisationKYBService:
         registry rows from the approved documents, and persists."""
         org.compliance_status = 'approved'
         org.verification_status = 'verified'
-        org.compliance_reviewed_at = datetime.utcnow()
+        org.compliance_reviewed_at = datetime.now(timezone.utc)
         org.compliance_reviewed_by = reviewer_id
         if notes is not None:
             org.compliance_notes = notes
@@ -348,7 +348,7 @@ class OrganisationKYBService:
         and reason without deriving any KYB registry rows."""
         org.compliance_status = 'rejected'
         org.verification_status = 'rejected'
-        org.compliance_reviewed_at = datetime.utcnow()
+        org.compliance_reviewed_at = datetime.now(timezone.utc)
         org.compliance_reviewed_by = reviewer_id
         org.rejection_reason = reason or notes
         if notes is not None:

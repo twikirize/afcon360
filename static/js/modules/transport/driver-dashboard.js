@@ -123,11 +123,24 @@ window.addEventListener('appinstalled', () => {
         return { status: resp.status, data: data };
     }
 
-    function setLocBadge(msg, isErr) {
+    function setLocBadge(msg, isErr, showRetry) {
         var el = document.getElementById("dcLocBadge");
         if (!el) return;
-        el.textContent = msg;
         el.className = isErr ? "dc-toast err" : "dc-toast ok";
+        if (showRetry) {
+            el.innerHTML = msg + ' <button type="button" class="btn btn-sm btn-outline" id="dcLocRetry" style="margin-left:8px;padding:2px 8px;font-size:0.75rem;">Retry</button>';
+            var btn = document.getElementById("dcLocRetry");
+            if (btn) btn.addEventListener("click", retryLocationPermission);
+        } else {
+            el.textContent = msg;
+        }
+    }
+
+    function geoErrorName(code) {
+        if (code === 1) return "Permission denied";
+        if (code === 2) return "Position unavailable";
+        if (code === 3) return "Timeout";
+        return "Unknown error (" + (code || "?") + ")";
     }
 
     // The availability checkbox is the live truth; the data attribute is the
@@ -204,16 +217,30 @@ window.addEventListener('appinstalled', () => {
     function renderAvailabilityBadge() {
         if (blockedByPermission) {
             setLocBadge(
-                "Location permission denied. Re-grant it in the browser — retrying every " +
-                pingInterval + "s.",
+                "Location permission denied. Open browser site settings → Location → Allow. " +
+                "Then click Retry or refresh the page.",
+                true,
                 true
             );
             return;
         }
         if (!best) {
             setLocBadge(
-                "Location unavailable this tick (" + (lastGeoCode || "?") +
+                "Location unavailable (" + geoErrorName(lastGeoCode) +
                 "). Retrying every " + pingInterval + "s.",
+                true
+            );
+            return;
+        }
+        // D6/D7 (proven live): a retained best older than FRESHNESS_MS is
+        // never published, so the badge must say stale — not "Publishing".
+        if ((Date.now() - best.ts) > FRESHNESS_MS) {
+            var ageS = Math.max(0, Math.round((Date.now() - best.ts) / 1000));
+            var ageTxt = ageS < 60 ? ageS + "s ago" :
+                Math.floor(ageS / 60) + "m ago";
+            setLocBadge(
+                "Location stale (last fix " + ageTxt + "). Retrying every " +
+                pingInterval + "s.",
                 true
             );
             return;
@@ -276,6 +303,36 @@ window.addEventListener('appinstalled', () => {
         }
     }
 
+    // Manual retry for permission denied — user clicked Retry button.
+    // Clears the blocked flag and attempts a fresh getCurrentPosition.
+    function retryLocationPermission() {
+        if (!navigator.geolocation || !navigator.geolocation.getCurrentPosition) return;
+        if (!syncOnline()) return;
+        blockedByPermission = false;
+        setLocBadge("Requesting location permission…", false);
+        try {
+            navigator.geolocation.getCurrentPosition(
+                function (pos) {
+                    ingestPosition(pos);
+                    ensureWatch();
+                    publishLocation();
+                },
+                function (err) {
+                    if (err && err.code === 1) {
+                        blockedByPermission = true;
+                        watchPermissionResume();
+                    }
+                    onAcquireError(err);
+                    renderAvailabilityBadge();
+                },
+                OPT_FAST
+            );
+        } catch (e) {
+            blockedByPermission = true;
+            renderAvailabilityBadge();
+        }
+    }
+
     // Fast first fix without forcing a high-accuracy wait; refinement
     // continues on the watcher either way (unless permission was denied).
     function kickFastFirst() {
@@ -327,7 +384,11 @@ window.addEventListener('appinstalled', () => {
         try {
             var r = await postJSON(
                 "/api/transport/drivers/" + driverId + "/location",
-                { latitude: best.lat, longitude: best.lon, accuracy: best.acc }
+                // D9 latency observability: client send-time (ms epoch).
+                // Server timestamp stays authoritative; client_ts only lets
+                // reads compute client→server latency. Never trusted.
+                { latitude: best.lat, longitude: best.lon, accuracy: best.acc,
+                  client_ts: Date.now() }
             );
             if (r.status === 200 && r.data && r.data.success) {
                 setLocBadge("Published " + new Date().toLocaleTimeString() + ".", false);

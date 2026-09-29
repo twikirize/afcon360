@@ -36,6 +36,10 @@
 
   <!-- PWA -->
   <link rel="manifest" href="{{ url_for('static', filename='transport/manifest.json') }}">
+  {# J9: existing brand assets only — tab icon + iOS home-screen icon
+     (iOS ignores manifest icons; icon-192.png is the canonical asset). #}
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
   <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#1E1E1E" media="(prefers-color-scheme: dark)" />
   <meta name="mobile-web-app-capable" content="yes">

@@ -61,7 +61,12 @@
     <div class="trip-meta">
       <span><i class="fa-solid fa-clock"></i> {{ ride.pickup_time|datetimeformat|default('—') }}</span>
       {% if ride.final_price is not none %}
-      <span class="td-mono">{{ ride.final_price }} {{ ride.currency|default('') }}</span>
+      <span class="td-mono">{{ '%.2f'|format(ride.final_price|float) }} {{ ride.currency|default('') }}</span>
+      {% else %}
+      {# SMALL-01 verification (P6): None means unknown/not available (the
+         service emits None when unset) — an em dash, the panel's existing
+         unavailable-value placeholder, never a fabricated 0.00. #}
+      <span class="td-mono">—</span>
       {% endif %}
     </div>
     <div class="trip-actions">

@@ -96,6 +96,19 @@ def test_rider_page_management_view_shows_driver(app, client):
     assert 'href="/transport/bookings/' not in html
 
 
+def test_rider_matching_copy_neutral_pre_assignment(app, client):
+    """SMALL-01 (P3): the pre-JS matching steps must never claim
+    'assigned' while still waiting for acceptance."""
+    owner = _seed_owner(app, "neutral")
+    booking_id, ref = _seed_booking(app, owner, BookingStatus.CONFIRMED)
+    _rider_client(app, client, owner)
+    resp = client.get(f"/transport/rides/{ref}")
+    assert resp.status_code == 200, resp.status_code
+    html = _html(resp)
+    assert '<div class="rm-t">Driver assigned</div>' not in html
+    assert "Waiting for a driver to accept your ride" in html
+
+
 def test_rider_page_foreign_rider_denied(app, authenticated_client):
     owner = _seed_owner(app, "own")
     booking_id, ref = _seed_booking(app, owner, BookingStatus.CONFIRMED)

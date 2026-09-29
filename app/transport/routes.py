@@ -1065,12 +1065,13 @@ def bookings_show(id):
 @module_enabled_required("transport")
 @login_required
 def bookings_cancel(id):
-    """Passenger cancel binding (Policy A, TH-3-D2).
+    """Passenger cancel binding (Stage-aware Policy).
 
-    A passenger may cancel only while the booking is in a pre-assignment
-    status (PENDING_PAYMENT / CONFIRMED). The service applies the atomic
-    Race-E status gate (conditional UPDATE, rowcount == 1); once a driver
-    has been assigned the booking is no longer passenger-cancellable.
+    A passenger may cancel in these stages:
+    - PENDING_PAYMENT, CONFIRMED (pre-assignment): allowed, fee based on timing
+    - ASSIGNED, DRIVER_EN_ROUTE, PICKUP_ARRIVED (post-assignment): allowed,
+      driver protection compensation may apply, safety/mismatch waives fee
+    - IN_PROGRESS, COMPLETED: NOT allowed (separate safety process)
     """
     try:
         booking_model = db.session.get(Booking, id)
@@ -1078,13 +1079,24 @@ def bookings_cancel(id):
             abort(404)
         _require_ownership(booking_model, "user_id")
 
+        data = request.get_json(silent=True) or {}
+        reason = data.get("reason", "passenger_request")
+        reason_category = data.get("reason_category")
+        safety_flag = data.get("safety_flag", False)
+
         result = get_booking_service().cancel_booking(
-            id, user_id=current_user.id, reason="passenger_request"
+            id, user_id=current_user.id,
+            reason=reason,
+            reason_category=reason_category,
+            safety_flag=safety_flag,
         )
         audit_log(action="booking_cancelled_passenger", resource_type="booking",
                   resource_id=id, user_id=current_user.id,
-                  details={"status": "cancelled", "source": "passenger"})
-        logger.info(f"Booking {id} cancelled by passenger user_id={_uid()}")
+                  details={"status": "cancelled", "source": "passenger",
+                            "reason_category": reason_category,
+                            "safety_flag": safety_flag})
+        logger.info(f"Booking {id} cancelled by passenger user_id={_uid()}, "
+                    f"category={reason_category}, safety={safety_flag}")
         if request.is_json:
             return jsonify({"status": "success", **result}), 200
         flash("Booking cancelled successfully", "success")
@@ -1234,21 +1246,32 @@ def rides_show(booking_reference):
 def rides_cancel(booking_reference):
     """Passenger cancel for their own ride, keyed by public reference.
 
-    Same Policy A pre-assignment gate as /bookings/<id>/cancel (the service
-    applies the atomic Race-E status gate); the rider page never handles
-    internal booking ids.
+    Stage-aware cancellation policy:
+    - Pre-assignment (PENDING_PAYMENT, CONFIRMED): allowed, fee based on timing
+    - Post-assignment (ASSIGNED, DRIVER_EN_ROUTE, PICKUP_ARRIVED): allowed,
+      driver protection compensation may apply, safety/mismatch waives fee
+    - IN_PROGRESS, COMPLETED: NOT allowed (separate safety process)
     """
     booking_model = _load_owned_ride(booking_reference)
     try:
+        data = request.get_json(silent=True) or {}
+        reason = data.get("reason", "passenger_request")
+        reason_category = data.get("reason_category")
+        safety_flag = data.get("safety_flag", False)
+        
         get_booking_service().cancel_booking(
             booking_model.id, user_id=current_user.id,
-            reason="passenger_request",
+            reason=reason,
+            reason_category=reason_category,
+            safety_flag=safety_flag,
         )
         audit_log(action="booking_cancelled_passenger", resource_type="booking",
                   resource_id=booking_model.id, user_id=current_user.id,
-                  details={"status": "cancelled", "source": "passenger"})
+                  details={"status": "cancelled", "source": "passenger",
+                            "reason_category": reason_category,
+                            "safety_flag": safety_flag})
         logger.info(f"Ride {booking_reference} cancelled by passenger "
-                    f"user_id={_uid()}")
+                    f"user_id={_uid()}, category={reason_category}, safety={safety_flag}")
         if request.is_json:
             return jsonify({"status": "success"}), 200
         flash("Booking cancelled successfully", "success")

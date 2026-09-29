@@ -261,6 +261,16 @@ class TestOverviewDataSource:
         assert isinstance(rendered, str) and "2026" in rendered
         assert fil(None) == ""
 
+    def test_datetimeformat_filter_parses_iso_strings(self, app):
+        """SMALL-01 (J1): ISO-8601 strings (service-dict shape) render in
+        the same human-readable convention as datetimes; garbage passes
+        through unchanged."""
+        fil = app.jinja_env.filters.get("datetimeformat")
+        assert fil is not None
+        assert fil("2026-09-28T09:20:00+00:00") == "28 Sep 2026, 09:20"
+        assert fil("not-a-date") == "not-a-date"
+        assert fil("") == ""
+
     def test_service_module_enabled_key_must_not_shadow_template_helper(self, app):
         """DashboardService returns a ``module_enabled`` boolean (service
         contract). The canonical route must strip it before render so the
