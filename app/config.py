@@ -211,12 +211,17 @@ class Config:
     # ---- Transport dispatch (TH-3-D2, docs/transport/d2-atomic-dispatch-claim.md §4.1) ----
     # Documented P0 defaults. Configurable override at ship/runtime; an override
     # changes only the constant, never the guard semantics (§5/§9).
-    TRANSPORT_OFFER_TTL_SECONDS      = int(os.getenv("TRANSPORT_OFFER_TTL_SECONDS", "300"))
+    # MATCH-01-owned: per-offer timeout 25s and pool size 5 are pre-approved
+    # MATCH-01 decisions (env overrides preserved; existing deployments that
+    # export the old values keep them until reconfigured).
+    TRANSPORT_OFFER_TTL_SECONDS      = int(os.getenv("TRANSPORT_OFFER_TTL_SECONDS", "25"))
     TRANSPORT_STALL_TIMEOUT_SECONDS  = int(os.getenv("TRANSPORT_STALL_TIMEOUT_SECONDS", "600"))
     # Contained dispatch-loop knobs: max ranked candidates offered per booking,
     # and the per-beat recovery batch cap.
-    TRANSPORT_DISPATCH_MAX_CANDIDATES = int(os.getenv("TRANSPORT_DISPATCH_MAX_CANDIDATES", "3"))
+    TRANSPORT_DISPATCH_MAX_CANDIDATES = int(os.getenv("TRANSPORT_DISPATCH_MAX_CANDIDATES", "5"))
     TRANSPORT_DISPATCH_RECOVERY_BATCH = int(os.getenv("TRANSPORT_DISPATCH_RECOVERY_BATCH", "50"))
+    # MATCH-01-owned: matching window per attempt in seconds (pre-approved: 3 min).
+    TRANSPORT_MATCHING_WINDOW_SECONDS = int(os.getenv("TRANSPORT_MATCHING_WINDOW_SECONDS", "180"))
 
     # ---- Email --------------------------------------------------------------
     MAIL_SERVER         = os.getenv("MAIL_SERVER",    "smtp.gmail.com")

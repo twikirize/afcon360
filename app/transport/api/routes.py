@@ -37,6 +37,7 @@ def register_api_resources(api):
         DriverTripReferenceResource,
         DriverStatusResource,
         DriverVehicleSwitchResource,
+        DriverAdminOnlineOverrideResource,
     )
     from .vehicle_routes import (
         VehicleListResource,
@@ -124,6 +125,14 @@ def register_api_resources(api):
     # Driver self-service vehicle switch (Phase C2 Driver Workspace)
     safe_add_resource(DriverVehicleSwitchResource, "/drivers/<int:driver_id>/vehicles/switch",
                      endpoint="driver_me_vehicle_switch")
+
+    # SUPPLY-00 -- admin online override (per-driver go-live bypass,
+    # audited; blocked states remain absolute)
+    safe_add_resource(
+        DriverAdminOnlineOverrideResource,
+        "/drivers/<int:driver_id>/admin-online-override",
+        endpoint="driver_admin_online_override",
+    )
 
     # Vehicles
     safe_add_resource(VehicleListResource, "/vehicles", endpoint="vehicle_list")

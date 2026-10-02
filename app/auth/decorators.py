@@ -42,8 +42,8 @@ import logging
 from functools import wraps
 from typing import Callable, Optional
 
-from flask import abort, current_app, g, flash, redirect, url_for, request
-from flask_login import current_user
+from flask import abort, current_app, g, flash, redirect, url_for, request, session
+from flask_login import current_user, logout_user
 from app.extensions import db
 from app.identity.models.user import User
 
@@ -98,7 +98,27 @@ def require_fresh_user(f):
     def decorated_function(*args, **kwargs):
         user = get_fresh_user()
         if not user:
-            return redirect(url_for('auth.logout'))
+            # Forced logout inline: the session belongs to a deleted/inactive
+            # user. Perform the same local logout as auth.logout (revoke
+            # server session, clear auth keys, redirect to login) WITHOUT
+            # redirecting to the POST-only /logout endpoint (GET would 405).
+            try:
+                from app.auth.services import revoke_session
+                ssid = session.get("server_session_id")
+                if ssid:
+                    revoke_session(ssid)
+            except Exception:
+                pass
+            logout_user()
+            for key in (
+                "server_session_id", "user_id", "username", "ip", "user_agent",
+                "current_context", "current_org_id", "has_organisations",
+                "available_orgs", "needs_profile_completion",
+                "active_context_type", "active_context_id", "active_role",
+            ):
+                session.pop(key, None)
+            flash("Your session is no longer valid. Please sign in again.", "warning")
+            return redirect(url_for('auth.login'))
         g.fresh_user = user
         return f(*args, **kwargs)
     return decorated_function

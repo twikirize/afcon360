@@ -192,7 +192,7 @@ def trip(booking_id, action):
             raise click.ClickException(
                 f"trip advance refused: {getattr(e, 'kind', None) or getattr(e, 'message', e)}")
         booking = result["booking"]
-        click.echo(f"booking status={booking.status.value}")
+        click.echo(f"booking status={booking.status}")
 
 
 @driver_group.command("seed-test-driver")

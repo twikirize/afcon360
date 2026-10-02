@@ -18,6 +18,7 @@ from app.transport.services.assignment_service import (
 )
 from app.transport.services.booking_service import _validate_booking_location_coordinates
 from app.transport.services.booking_service import STATUS_TRANSITIONS
+from app.transport.services.booking_service import allowed_transition_values
 from app.transport.utils.helpers import paginate, filter_query, sort_query
 from datetime import datetime, timezone
 from sqlalchemy import func, or_
@@ -49,11 +50,15 @@ def _booking_by_reference_or_404(booking_reference):
 
 
 def _current_user_is_admin():
-    return (
+    from flask import session
+    result = (
         current_user.is_authenticated
         and hasattr(current_user, "has_global_role")
         and current_user.has_global_role("admin", "super_admin", "owner")
     )
+    # DEBUG
+    print(f"[DEBUG _current_user_is_admin] user_id={getattr(current_user,'id',None)} auth={current_user.is_authenticated} has_glob_role={hasattr(current_user,'has_global_role')} active_role={session.get('active_global_role')} result={result}")
+    return result
 
 
 # ===========================================================================
@@ -214,10 +219,32 @@ class BookingDetailResource(Resource):
             )
             abort(403)
 
+        data = booking.to_dict()
+        if not _current_user_is_admin():
+            # MATCH-01-owned: the durable offer ledger
+            # (booking_metadata.offer_attempts, outcomes "offered"/"declined")
+            # is admin-visible only. The rider surface must never carry
+            # rejection internals (negative "reject"/"decline"/"refuse"
+            # guarantee) — strip the key for non-admin readers. The raw
+            # no_match_reason value ("all_rejected") contains the same
+            # forbidden substring, so it is stripped too: riders learn the
+            # branch from the server-rendered page (which reloads on
+            # no_match), never from this payload. The audit_log trail
+            # records the same internal reason strings, so it is withheld
+            # from non-admin readers as well (riders have the timeline).
+            # The rider template and rider_matching.js both consume this
+            # endpoint.
+            meta = data.get("booking_metadata")
+            if isinstance(meta, dict) and "offer_attempts" in meta:
+                meta = dict(meta)
+                meta.pop("offer_attempts", None)
+                data["booking_metadata"] = meta
+            data.pop("no_match_reason", None)
+            data.pop("audit_log", None)
         return {
             "success": True,
             "data": {
-                "booking": booking.to_dict(),
+                "booking": data,
                 "driver": (
                     booking.driver.to_dict(exclude=["license_number_encrypted"])
                     if booking.driver else None
@@ -343,7 +370,7 @@ class BookingStatusResource(Resource):
             return {
                 "success": False,
                 "error": e.message,
-                "allowed_transitions": [s.value for s in STATUS_TRANSITIONS.get(booking.status, [])],
+                "allowed_transitions": allowed_transition_values(booking.status),
             }, 422
         except DispatchClaimError as e:
             db.session.rollback()
@@ -351,7 +378,7 @@ class BookingStatusResource(Resource):
                 "success": False,
                 "error": e.message,
                 "code": e.kind,
-                "allowed_transitions": [s.value for s in STATUS_TRANSITIONS.get(booking.status, [])],
+                "allowed_transitions": allowed_transition_values(booking.status),
             }, 409
 
         refreshed = result["booking"]

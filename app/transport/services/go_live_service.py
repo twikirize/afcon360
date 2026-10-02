@@ -106,6 +106,16 @@ def can_go_live(driver: Any) -> GoLiveChecklist:
 
     now = datetime.now(timezone.utc)
 
+    # --- 0. Admin online override (bypass for testing / verification-  --
+    #         system failure / controlled rollout) ------------------------
+    # When active, requirement gates (KYC, approval, licence, vehicle) are
+    # bypassed.  Two gates are NEVER bypassed:
+    #   * profile existence -- a driver profile must exist and be live;
+    #   * blocked state    -- suspended/revoked/blacklisted is absolute.
+    meta = getattr(driver, "driver_metadata", None) or {}
+    _ov = meta.get("admin_online_override") if isinstance(meta, dict) else None
+    override_active = bool(isinstance(_ov, dict) and _ov.get("enabled"))
+
     # --- 1. Participation / live profile ---------------------------------
     profile_ok = bool(getattr(driver, "id", None)) and not bool(
         getattr(driver, "is_deleted", False)
@@ -123,6 +133,40 @@ def can_go_live(driver: Any) -> GoLiveChecklist:
     compliance_raw = getattr(getattr(driver, "compliance_status", None), "value", None)
     compliance_raw = compliance_raw or getattr(driver, "compliance_status", None)
     blocked_ok = str(compliance_raw or "").lower() not in _BLOCKED_DRIVER_STATES
+
+    # Override short-circuit: profile + blocked are the only hard gates.
+    if override_active:
+        checks = [
+            GoLiveCheckItem(
+                key="profile",
+                label="Active driver profile",
+                ok=profile_ok,
+                required=True,
+                hint="Register as a driver to continue." if not profile_ok else "",
+            ),
+            GoLiveCheckItem(
+                key="blocked",
+                label="Not suspended or blocked",
+                ok=blocked_ok,
+                required=True,
+                hint="Contact support - your driver account is blocked."
+                if not blocked_ok else "",
+            ),
+            GoLiveCheckItem(
+                key="admin_override",
+                label="Admin online override active",
+                ok=True,
+                required=False,
+                hint=(
+                    "Granted by admin user #"
+                    + str(_ov.get("by") or "?")
+                    + (": " + _ov.get("reason") if _ov.get("reason") else "")
+                    + " -- requirement gates bypassed."
+                ),
+            ),
+        ]
+        required_failures = [c for c in checks if c.required and not c.ok]
+        return GoLiveChecklist(ready=not required_failures, checks=checks)
 
     # --- 4. Compliance approved (same gate as dispatch claim) -------------
     approved_ok = str(compliance_raw or "").lower() == "approved"

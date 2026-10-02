@@ -27,10 +27,25 @@ def _pickup_zone(booking) -> Optional[str]:
     return None
 
 
+# --- MATCH-01-owned: terminal matching-failure reasons (single state,
+# single reason field — never a second terminal state per reason) ---
+NO_MATCH_NO_SUPPLY = "no_supply"
+NO_MATCH_ALL_REJECTED = "all_rejected"
+NO_MATCH_REASONS = frozenset({NO_MATCH_NO_SUPPLY, NO_MATCH_ALL_REJECTED})
+
+
 class MatchingService:
     """Service for matching bookings with providers"""
 
     CACHE_PREFIX = "transport:matching"
+
+    # --- MATCH-01-owned: matching-cycle constants (pre-approved) ---
+    # Window: 3 minutes per matching attempt. Pool: 5 drivers per cycle.
+    # Per-offer timeout: 25 seconds (overrides the legacy 300s default via
+    # config; set TRANSPORT_OFFER_TTL_SECONDS=25 in config.py).
+    MATCHING_WINDOW_SECONDS = 180
+    MATCHING_POOL_SIZE = 5
+    OFFER_TIMEOUT_SECONDS = 25
 
     @staticmethod
     def _booking_vehicle_class(booking: Booking) -> Optional[str]:
@@ -172,7 +187,10 @@ class MatchingService:
 
             if max_candidates is None:
                 max_candidates = int(
-                    current_app.config.get("TRANSPORT_DISPATCH_MAX_CANDIDATES", 3)
+                    current_app.config.get(
+                        "TRANSPORT_DISPATCH_MAX_CANDIDATES",
+                        MatchingService.MATCHING_POOL_SIZE,
+                    )
                 )
 
             created: List[int] = []
@@ -216,6 +234,111 @@ class MatchingService:
         except Exception as e:
             current_app.logger.error(f"Error discovering/offering booking: {e}", exc_info=True)
             return {'success': False, 'reason': 'error', 'offers_created': 0}
+
+    @staticmethod
+    def _matching_window_seconds() -> int:
+        try:
+            return int(current_app.config.get(
+                "TRANSPORT_MATCHING_WINDOW_SECONDS",
+                MatchingService.MATCHING_WINDOW_SECONDS,
+            ))
+        except (TypeError, ValueError):
+            return MatchingService.MATCHING_WINDOW_SECONDS
+
+    @staticmethod
+    def _matching_pool_size() -> int:
+        try:
+            return int(current_app.config.get(
+                "TRANSPORT_DISPATCH_MAX_CANDIDATES",
+                MatchingService.MATCHING_POOL_SIZE,
+            ))
+        except (TypeError, ValueError):
+            return MatchingService.MATCHING_POOL_SIZE
+
+    @staticmethod
+    @monitor_endpoint("check_matching_outcome")
+    def check_matching_outcome(booking_id: int) -> Dict[str, Any]:
+        """MATCH-01-owned: idempotent terminal detection for one booking.
+
+        Called from three triggers (review Conditions 2+5): post-decline
+        (all_rejected fast path), the rider page render (no_supply fast
+        path), and the dispatch_recovery beat (safety net). Safe to call
+        from all three: bookings outside CONFIRMED+unassigned return
+        ``{"terminal": False}`` without writing, and mark_no_match replays
+        NO_MATCH rows without rewriting.
+
+        Distinguishes the two reasons WITHOUT touching cancellation state:
+          * pool exhausted (declined distinct drivers >= pool size, no live
+            offer, still unassigned) -> all_rejected, closes immediately
+            even if the 3-minute window has not elapsed;
+          * window expired with zero offers ever created -> no_supply.
+        """
+        from app.transport.services.booking_service import (
+            _matching_window_start,
+        )
+        from app.transport.services.offer_service import OfferService
+
+        try:
+            booking = db.session.get(Booking, booking_id)
+            if not booking or booking.is_deleted:
+                return {'terminal': False, 'reason': 'booking_not_found'}
+            if booking.status == BookingStatus.NO_MATCH:
+                return {'terminal': True, 'replayed': True,
+                        'reason': booking.no_match_reason}
+            if (booking.status != BookingStatus.CONFIRMED
+                    or booking.assigned_driver_id is not None
+                    or booking.assigned_vehicle_id is not None):
+                return {'terminal': False, 'reason': 'not_awaiting_matching'}
+
+            db.session.refresh(booking)
+            meta = booking.booking_metadata or {}
+            attempts = meta.get("offer_attempts") if isinstance(meta, dict) else None
+            attempts = attempts if isinstance(attempts, list) else []
+            offered = {str(a.get("driver_id")) for a in attempts
+                       if isinstance(a, dict) and a.get("driver_id") is not None
+                       and a.get("outcome") in ("offered", "declined", "expired")}
+            declined = {str(a.get("driver_id")) for a in attempts
+                        if isinstance(a, dict) and a.get("driver_id") is not None
+                        and a.get("outcome") == "declined"}
+
+            live_offer = OfferService.get_offer(booking.booking_reference)
+            pool_size = MatchingService._matching_pool_size()
+
+            # Pool exhausted -> all_rejected, immediately (no full-window wait).
+            if live_offer is None and len(declined) >= pool_size:
+                from app.transport.services.booking_service import BookingService
+                out = BookingService.mark_no_match(
+                    booking_id, NO_MATCH_ALL_REJECTED, initiated_by="system")
+                return {'terminal': True, 'replayed': bool(out.get("replayed")),
+                        'reason': NO_MATCH_ALL_REJECTED}
+
+            # Window expiry (only when no live offer is pending a decision).
+            # Zero offers ever -> no_supply; anything offered -> all_rejected
+            # (covers small pools that can never reach the pool-size bar).
+            window = MatchingService._matching_window_seconds()
+            started = _matching_window_start(booking)
+            if started is not None and live_offer is None:
+                elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+                if elapsed >= window:
+                    from app.transport.services.booking_service import BookingService
+                    reason = (NO_MATCH_ALL_REJECTED if offered
+                              else NO_MATCH_NO_SUPPLY)
+                    out = BookingService.mark_no_match(
+                        booking_id, reason, initiated_by="system")
+                    return {'terminal': True,
+                            'replayed': bool(out.get("replayed")),
+                            'reason': reason}
+            return {'terminal': False, 'reason': 'matching_in_progress',
+                    'offered': len(offered), 'declined': len(declined)}
+        except Exception as e:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            current_app.logger.error(
+                f"Error checking matching outcome for {booking_id}: {e}",
+                exc_info=True)
+            return {'terminal': False, 'reason': 'error'}
 
     @staticmethod
     def _rank_drivers_for_booking(drivers: List[Dict[str, Any]], booking: Booking) -> List[Dict[str, Any]]:
@@ -385,7 +508,7 @@ class MatchingService:
                     'booking_id': booking_id,
                     'driver_id': driver_id,
                     'vehicle_id': driver_vehicle_id,
-                    'booking_status': booking.status.value if booking else result['status'],
+                    'booking_status': booking.status if booking else result['status'],
                 }
             }
 

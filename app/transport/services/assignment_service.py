@@ -190,21 +190,22 @@ class AssignmentService:
                 Booking.__table__.c.is_deleted.is_(False),
             )
         )
+        # SUPPLY-00a: claim no longer writes is_available. Under the corrected
+        # model, is_available means "qualified" and is not affected by trip
+        # lifecycle. Busy protection comes from driver_engaged_other below.
         r2 = db.session.execute(
-            sa.update(DriverProfile.__table__)
+            sa.select(DriverProfile.__table__.c.id)
             .where(
                 DriverProfile.__table__.c.id == driver_id,
                 DriverProfile.__table__.c.is_deleted.is_(False),
                 DriverProfile.__table__.c.compliance_status
                 == ComplianceStatus.APPROVED.value,
                 sa.or_(DriverProfile.__table__.c.is_online.is_(True), forced),
-                sa.or_(DriverProfile.__table__.c.is_available.is_(True), forced),
                 ~driver_engaged_other,
             )
-            .values(is_available=False)
-            .execution_options(synchronize_session=False)
+            .with_for_update()
         )
-        if r2.rowcount != 1:
+        if r2.first() is None:
             db.session.rollback()
             raise DispatchClaimError(
                 "driver_unavailable",
@@ -373,28 +374,12 @@ class AssignmentService:
                     booking_id=booking_id,
                 )
 
-            if row.assigned_driver_id is not None:
-                db.session.execute(
-                    sa.update(DriverProfile.__table__)
-                    .where(
-                        DriverProfile.__table__.c.id == row.assigned_driver_id,
-                        DriverProfile.__table__.c.is_available.is_(False),
-                        DriverProfile.__table__.c.is_deleted.is_(False),
-                        ~sa.exists(
-                            sa.select(sa.literal(1))
-                            .select_from(Booking.__table__)
-                            .where(
-                                Booking.__table__.c.assigned_driver_id
-                                == row.assigned_driver_id,
-                                Booking.__table__.c.id != booking_id,
-                                Booking.__table__.c.status.in_(ACTIVE_ASSIGNMENT_STATUSES),
-                                Booking.__table__.c.is_deleted.is_(False),
-                            )
-                        ),
-                    )
-                    .values(is_available=True)
-                    .execution_options(synchronize_session=False)
-                )
+            # SUPPLY-00a: release no longer writes is_available. Under the
+            # corrected model, is_available means "qualified" and is not
+            # affected by trip lifecycle. SUPPLY-01's predicate is superseded
+            # because the write itself is removed. Busy protection during a
+            # trip comes from booking status (ACTIVE_ASSIGNMENT_STATUSES),
+            # not from is_available.
 
             if row.assigned_vehicle_id is not None:
                 db.session.execute(

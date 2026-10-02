@@ -857,3 +857,98 @@ class TestCleanupOfferNoneSafe:
                 OfferService._driver_key(123)) == set()
             assert fake.hgetall(
                 OfferService._offer_key("REF-CLEANUP")) == {}
+
+
+# =====================================================================
+# SUPPLY-01: release must respect driver is_online flag
+# =====================================================================
+
+class TestSupply01ReleaseOffline:
+    """Verify AssignmentService.release respects driver.is_online flag."""
+
+    def test_offline_driver_release_keeps_unavailable(self, app):
+        """Offline driver after assignment must stay unavailable after release."""
+        pax_id = _create_user(app, "paxOff")
+        _, drv, veh, hist = _make_matchable_driver(app, "off")
+        bk_id, bk_ref = _create_booking(app, pax_id, "off")
+        try:
+            # claim while driver online
+            AssignmentService.claim(bk_ref, drv, veh, actor=None)
+            # driver goes offline mid‑trip
+            with app.app_context():
+                d = db.session.get(DriverProfile, drv)
+                d.is_online = False
+                db.session.commit()
+            # release (completed)
+            AssignmentService.release(bk_id, BookingStatus.COMPLETED, actor=None, reason="test")
+            with app.app_context():
+                d = db.session.get(DriverProfile, drv)
+                assert d.is_available is False, "Offline driver must stay unavailable"
+        finally:
+            _delete(app, (DriverVehicleHistory, hist), (Booking, bk_id),
+                    (DriverProfile, drv), (Vehicle, veh))
+
+    def test_online_driver_release_becomes_available(self, app):
+        """Online driver after assignment becomes available after release."""
+        pax_id = _create_user(app, "paxOn")
+        _, drv, veh, hist = _make_matchable_driver(app, "on")
+        bk_id, bk_ref = _create_booking(app, pax_id, "on")
+        try:
+            AssignmentService.claim(bk_ref, drv, veh, actor=None)
+            # driver stays online
+            AssignmentService.release(bk_id, BookingStatus.COMPLETED, actor=None, reason="test")
+            with app.app_context():
+                d = db.session.get(DriverProfile, drv)
+                v = db.session.get(Vehicle, veh)
+                assert d.is_available is True, "Online driver must become available"
+                assert v.is_available is True, "Vehicle must become available"
+        finally:
+            _delete(app, (DriverVehicleHistory, hist), (Booking, bk_id),
+                    (DriverProfile, drv), (Vehicle, veh))
+
+    def test_offline_driver_cancel_post_assignment_stays_unavailable(self, app):
+        """Offline driver after post‑assignment cancellation stays unavailable."""
+        pax_id = _create_user(app, "paxCancel")
+        _, drv, veh, hist = _make_matchable_driver(app, "canc")
+        bk_id, bk_ref = _create_booking(app, pax_id, "canc")
+        try:
+            AssignmentService.claim(bk_ref, drv, veh, actor=None)
+            # driver goes offline
+            with app.app_context():
+                d = db.session.get(DriverProfile, drv)
+                d.is_online = False
+                db.session.commit()
+            # cancel (post‑assignment) -> uses release internally
+            AssignmentService.release(bk_id, BookingStatus.CANCELLED, actor=None, reason="rider")
+            with app.app_context():
+                d = db.session.get(DriverProfile, drv)
+                assert d.is_available is False, "Offline driver must stay unavailable after cancel"
+        finally:
+            _delete(app, (DriverVehicleHistory, hist), (Booking, bk_id),
+                    (DriverProfile, drv), (Vehicle, veh))
+
+    def test_reverse_active_booking_protection(self, app):
+        """Release must not free driver/vehicle if they have another active booking."""
+        pax1 = _create_user(app, "paxA")
+        pax2 = _create_user(app, "paxB")
+        _, drv, veh, hist = _make_matchable_driver(app, "prot")
+        bk1_id, bk1_ref = _create_booking(app, pax1, "a")
+        bk2_id, bk2_ref = _create_booking(app, pax2, "b")
+        try:
+            # assign both bookings to same driver/vehicle sequentially (first claim)
+            AssignmentService.claim(bk1_ref, drv, veh, actor=None)
+            # second claim should fail because driver/vehicle already engaged
+            from app.transport.services.assignment_service import DispatchClaimError
+            with pytest.raises(DispatchClaimError) as exc_info:
+                AssignmentService.claim(bk2_ref, drv, veh, actor=None)
+            assert exc_info.value.kind in ("driver_unavailable", "vehicle_unavailable")
+            # release first booking
+            AssignmentService.release(bk1_id, BookingStatus.COMPLETED, actor=None, reason="test")
+            with app.app_context():
+                d = db.session.get(DriverProfile, drv)
+                v = db.session.get(Vehicle, veh)
+                assert d.is_available is True
+                assert v.is_available is True
+        finally:
+            _delete(app, (DriverVehicleHistory, hist), (Booking, bk1_id), (Booking, bk2_id),
+                    (DriverProfile, drv), (Vehicle, veh))

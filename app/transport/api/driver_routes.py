@@ -5,6 +5,7 @@ from flask_login import current_user, login_required
 from app.extensions import db
 from app.transport.models import DriverProfile, DriverVehicleHistory, Booking, BookingStatus
 from app.auth.decorators import admin_required
+from app.transport.decorator import transport_admin_required
 from app.transport.utils.helpers import paginate, filter_query, sort_query
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import or_, func
@@ -158,7 +159,7 @@ class DriverDetailResource(Resource):
             },
         }
 
-    @admin_required
+    @transport_admin_required
     def put(self, driver_id):
         """Update driver fields"""
         driver = DriverProfile.query.get_or_404(driver_id)
@@ -172,6 +173,15 @@ class DriverDetailResource(Resource):
             "max_passenger_capacity", "max_luggage_capacity",
             "commission_rate", "is_online", "is_available",
         ]
+        # SUPPLY-00c: enforce is_online => is_available against the projected
+        # end state before applying any field.
+        projected_online = data.get("is_online", driver.is_online)
+        projected_available = data.get("is_available", driver.is_available)
+        if projected_online and not projected_available:
+            return {
+                "success": False,
+                "error": "Driver cannot be online without being available",
+            }, 422
         for field in updatable_fields:
             if field in data:
                 setattr(driver, field, data[field])
@@ -697,10 +707,16 @@ class DriverStatusResource(Resource):
         if is_available is not None:
             is_available = bool(is_available)
 
-        if is_available and not is_online:
+        # SUPPLY-00b: corrected invariant -- is_online => is_available.
+        # Refuse the forbidden combination (online without qualification).
+        # Project the end state so a partial payload is validated against
+        # the resulting state, not just the fields present.
+        projected_online = is_online if is_online is not None else driver.is_online
+        projected_available = is_available if is_available is not None else driver.is_available
+        if projected_online and not projected_available:
             return {
                 "success": False,
-                "error": "Driver must be online to become available",
+                "error": "Driver must be available to become online",
             }, 422
 
         # Eligibility gate: going online is only allowed when can_go_live is
@@ -889,3 +905,57 @@ class DriverVehicleSwitchResource(Resource):
                 "reason": reason,
             },
         }
+
+# ===========================================================================
+# SUPPLY-00 -- admin online override
+# ===========================================================================
+
+class DriverAdminOnlineOverrideResource(Resource):
+    """POST /api/transport/drivers/<int:driver_id>/admin-online-override
+
+    Authorized-admin control: grant or revoke the per-driver online
+    override.  Owner / super_admin / admin / transport_admin only.
+    Blocked drivers cannot
+    be override-enabled.  All go-live requirement gates (KYC, compliance
+    approval, licence, vehicle) are bypassed while the override is active.
+    """
+
+    @transport_admin_required
+    def post(self, driver_id):
+        from app.auth.helpers import has_global_role
+        from app.transport.services.provider_service import get_provider_service
+        from app.utils.exceptions import (
+            NotFoundError as _NotFound,
+            ValidationError as _Validation,
+        )
+
+        if not has_global_role(current_user, "owner", "super_admin", "admin", "transport_admin"):
+            return {"success": False, "error": "not authorized"}, 403
+
+        data = request.get_json(silent=True) or {}
+        enabled = data.get("enabled")
+        if enabled is None:
+            return {"success": False, "error": "enabled is required"}, 400
+
+        reason = (data.get("reason") or "").strip()[:200]
+
+        try:
+            result = get_provider_service().set_admin_online_override(
+                driver_id=driver_id,
+                enabled=bool(enabled),
+                actor_user_id=current_user.id,
+                reason=reason,
+            )
+            return result, 200
+        except _NotFound:
+            return {"success": False, "error": "driver not found"}, 404
+        except _Validation as e:
+            return {"success": False, "error": str(e)}, 422
+        except Exception as e:
+            db.session.rollback()
+            logger.error(
+                f"admin override error for driver {driver_id}: {e}",
+                exc_info=True,
+            )
+            return {"success": False, "error": "could not set override"}, 500
+

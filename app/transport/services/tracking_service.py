@@ -252,7 +252,7 @@ class TrackingService:
 
             tracking_info = {
                 'booking_id': booking_id,
-                'status': booking.status.value,
+                'status': booking.status,
                 'pickup_location': booking.pickup_location,
                 'dropoff_location': booking.dropoff_location,
                 'driver_location': None,

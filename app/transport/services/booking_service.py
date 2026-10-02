@@ -140,7 +140,9 @@ def _measured_distance_km(pickup_location: Any,
 STATUS_TRANSITIONS = {
     BookingStatus.DRAFT:           [BookingStatus.PENDING_PAYMENT, BookingStatus.CANCELLED],
     BookingStatus.PENDING_PAYMENT: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
-    BookingStatus.CONFIRMED:       [BookingStatus.ASSIGNED, BookingStatus.CANCELLED],
+    # MATCH-01-owned: CONFIRMED gains the NO_MATCH terminal edge (additive;
+    # the pre-existing ASSIGNED and CANCELLED edges are unchanged).
+    BookingStatus.CONFIRMED:       [BookingStatus.ASSIGNED, BookingStatus.NO_MATCH, BookingStatus.CANCELLED],
     BookingStatus.ASSIGNED:        [BookingStatus.DRIVER_EN_ROUTE, BookingStatus.CANCELLED],
     BookingStatus.DRIVER_EN_ROUTE: [BookingStatus.PICKUP_ARRIVED, BookingStatus.CANCELLED],
     BookingStatus.PICKUP_ARRIVED:  [BookingStatus.IN_PROGRESS, BookingStatus.NO_SHOW],
@@ -149,11 +151,79 @@ STATUS_TRANSITIONS = {
     BookingStatus.CANCELLED:       [],
     BookingStatus.NO_SHOW:         [],
     BookingStatus.DISPUTED:        [BookingStatus.COMPLETED, BookingStatus.CANCELLED],
+    # MATCH-01-owned: terminal matching-failure state (additive).
+    # The single outbound edge NO_MATCH -> CONFIRMED is the manual rider
+    # "Try again" reopen (retry_matching only); nothing fires it automatically.
+    BookingStatus.NO_MATCH:        [BookingStatus.CONFIRMED],
 }
 
 
 def _can_transition(current: BookingStatus, target: BookingStatus) -> bool:
-    return target in STATUS_TRANSITIONS.get(current, [])
+    member = _status_member(current)
+    if member is None:
+        return False
+    return target in STATUS_TRANSITIONS.get(member, [])
+
+
+def _status_member(value: Any) -> Optional[BookingStatus]:
+    """Normalize a stored status (plain str) or member to a member.
+
+    Permanent-convention helper: storage is VARCHAR, so ORM attributes
+    arrive as strings; the transition map stays member-keyed as the
+    single source of truth. Unknown strings map to None (closed world).
+    """
+    if isinstance(value, BookingStatus):
+        return value
+    try:
+        return BookingStatus(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def allowed_transition_values(current: Any) -> List[str]:
+    """Lowercase allowed-transition values for any stored/member status."""
+    member = _status_member(current)
+    if member is None:
+        return []
+    return [s.value for s in STATUS_TRANSITIONS.get(member, [])]
+
+
+# --- MATCH-01-owned: matching-window cursor helpers (additive) ---
+# The 3-minute matching window is measured from a cursor stored in
+# booking_metadata["matching_started_at"] (ISO-8601), NOT from confirmed_at:
+# confirmed_at is first-confirmation audit history rendered by the rider
+# timeline (rider_status_sync.js), the rider/admin templates and several
+# tests, so retry must not rewrite it (review Condition 1). Rows created
+# before MATCH-01 fall back to confirmed_at (back-compat).
+MATCHING_WINDOW_META_KEY = "matching_started_at"
+
+
+def _stamp_matching_window_start(booking: Booking, now: datetime) -> None:
+    """(Re)start the matching window cursor on an in-memory Booking row.
+
+    Caller commits. Overwrites any previous cursor (retry semantics).
+    """
+    meta = dict(booking.booking_metadata or {})
+    meta[MATCHING_WINDOW_META_KEY] = now.isoformat()
+    booking.booking_metadata = meta
+
+
+def _matching_window_start(booking: Booking) -> Optional[datetime]:
+    """Window cursor as aware datetime, or None when unknowable."""
+    meta = booking.booking_metadata or {}
+    raw = meta.get(MATCHING_WINDOW_META_KEY) if isinstance(meta, dict) else None
+    if raw:
+        try:
+            parsed = datetime.fromisoformat(str(raw))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed
+        except (ValueError, TypeError):
+            pass
+    fallback = getattr(booking, "confirmed_at", None)
+    if fallback is not None and fallback.tzinfo is None:
+        fallback = fallback.replace(tzinfo=timezone.utc)
+    return fallback
 
 
 class BookingService:
@@ -335,7 +405,7 @@ class BookingService:
                     "booking_public_id": booking.booking_reference,
                     "booking_reference": booking.booking_reference,
                     "estimated_price": float(estimated_price),
-                    "status": booking.status.value,
+                    "status": booking.status,
                     "pickup_time": booking.pickup_time.isoformat()
                 }
             }
@@ -457,7 +527,7 @@ class BookingService:
             if booking.is_deleted:
                 raise NotFoundError("Booking not found", resource_type="booking", resource_id=booking_id)
 
-            current_status = booking.status.value
+            current_status = booking.status
             if current_status not in ALL_CANCELLABLE_STATUSES:
                 raise ValidationError(
                     f"Cannot cancel booking in {current_status} stage. "
@@ -627,7 +697,7 @@ class BookingService:
 
         if not _can_transition(booking.status, new_status):
             raise ValidationError(
-                message=f"Cannot transition from {booking.status.value} "
+                message=f"Cannot transition from {booking.status} "
                         f"to {new_status.value}",
                 field="status",
             )
@@ -653,7 +723,7 @@ class BookingService:
                     new_status,
                     actor=actor,
                     reason=reason,
-                    audit_extra={"from": old_status.value},
+                    audit_extra={"from": old_status},
                 )
             except DispatchClaimError:
                 db.session.rollback()
@@ -670,6 +740,12 @@ class BookingService:
         # Set lifecycle timestamps automatically
         if new_status == BookingStatus.CONFIRMED:
             booking.confirmed_at = now
+            # MATCH-01-owned: (re)start the matching window cursor. Kept in
+            # booking_metadata (transient matching cursor, not audit history)
+            # so confirmed_at keeps its first-confirmation meaning for the
+            # rider timeline and admin reports (review Condition 1, option
+            # chosen: dedicated cursor, zero-column variant).
+            _stamp_matching_window_start(booking, now)
         elif new_status == BookingStatus.COMPLETED:
             booking.completed_at = now
         elif new_status == BookingStatus.CANCELLED:
@@ -682,7 +758,7 @@ class BookingService:
         # Append to audit log
         booking.audit_log = (booking.audit_log or []) + [{
             "action": "status_changed",
-            "from": old_status.value,
+            "from": old_status,
             "to": new_status.value,
             "at": now.isoformat(),
             "reason": reason,
@@ -691,7 +767,7 @@ class BookingService:
         try:
             db.session.commit()
             logger.info(
-                f"Booking {booking_id} status: {old_status.value} → "
+                f"Booking {booking_id} status: {old_status} → "
                 f"{new_status.value}"
             )
             # transition_status is a @staticmethod: invalidate via an
@@ -703,6 +779,177 @@ class BookingService:
                          exc_info=True)
             raise ServiceUnavailableError("Could not transition booking")
         return {"booking": booking, "release": None}
+
+    # =========================================================
+    # MATCH-01-owned: terminal matching-failure transitions (additive).
+    # cancel_booking and its helpers above are untouched.
+    # =========================================================
+
+    @staticmethod
+    def mark_no_match(booking_id: int, reason: str,
+                      *, initiated_by: str = "system") -> Dict[str, Any]:
+        """Close a CONFIRMED+unassigned booking as NO_MATCH with a reason.
+
+        ``reason`` must be ``no_supply`` (no candidates ever offered within
+        the window) or ``all_rejected`` (pool exhausted). Idempotent: a
+        booking already in NO_MATCH returns success without rewriting
+        (review Condition 5 — rider poll + beat may both fire).
+
+        App-level invariant (holds pre-migration): NO_MATCH without a valid
+        reason is refused here; the DB CHECK (chk_no_match_reason) enforces
+        the same post-migration. Never touches cancellation_* fields, never
+        assigns a driver, never refunds — matching failure is not a
+        cancellation.
+        """
+        from app.transport.services.matching_service import NO_MATCH_REASONS
+
+        if reason not in NO_MATCH_REASONS:
+            raise ValidationError(
+                message=f"Invalid no_match reason: {reason}",
+                field="no_match_reason",
+            )
+        booking = db.session.get(Booking, booking_id)
+        if not booking or booking.is_deleted:
+            raise NotFoundError("Booking not found",
+                                resource_type="booking",
+                                resource_id=booking_id)
+        if booking.status == BookingStatus.NO_MATCH:
+            return {"booking": booking, "replayed": True,
+                    "reason": booking.no_match_reason}
+        if booking.status != BookingStatus.CONFIRMED:
+            raise ValidationError(
+                message=f"Cannot mark no_match from {booking.status}",
+                field="status",
+            )
+        if (booking.assigned_driver_id is not None
+                or booking.assigned_vehicle_id is not None):
+            raise ValidationError(
+                message="Cannot mark no_match on an assigned booking",
+                field="status",
+            )
+        now = datetime.now(timezone.utc)
+        old_status = booking.status
+        result = db.session.execute(
+            sa.update(Booking.__table__)
+            .where(
+                Booking.__table__.c.id == booking_id,
+                Booking.__table__.c.status == BookingStatus.CONFIRMED.value,
+                Booking.__table__.c.assigned_driver_id.is_(None),
+                Booking.__table__.c.assigned_vehicle_id.is_(None),
+                Booking.__table__.c.is_deleted.is_(False),
+            )
+            .values(
+                status=BookingStatus.NO_MATCH.value,
+                no_match_reason=reason,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if result.rowcount != 1:
+            db.session.rollback()
+            refreshed = db.session.get(Booking, booking_id)
+            if refreshed is not None and refreshed.status == BookingStatus.NO_MATCH:
+                return {"booking": refreshed, "replayed": True,
+                        "reason": refreshed.no_match_reason}
+            raise ValidationError(
+                "Cannot mark no_match: booking is no longer awaiting matching"
+            )
+        db.session.commit()
+        db.session.expire_all()
+        refreshed = db.session.get(Booking, booking_id)
+        refreshed.audit_log = (refreshed.audit_log or []) + [{
+            "action": "marked_no_match",
+            "from": old_status,
+            "to": BookingStatus.NO_MATCH.value,
+            "at": now.isoformat(),
+            "reason": reason,
+            "initiated_by": initiated_by,
+        }]
+        try:
+            db.session.commit()
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            logger.error(f"Error appending no_match audit for {booking_id}: {e}",
+                         exc_info=True)
+            raise ServiceUnavailableError("Could not record matching outcome")
+        BookingService()._invalidate_booking_caches(booking_id)
+        logger.info(f"Booking {booking_id} marked no_match ({reason})")
+        return {"booking": refreshed, "replayed": False, "reason": reason}
+
+    @staticmethod
+    def retry_matching(booking_id: int, user_id: int) -> Dict[str, Any]:
+        """Manual rider "Try again": NO_MATCH -> CONFIRMED + fresh window.
+
+        Authorization mirrors cancel_booking's rider check (booker only;
+        admins use the admin status endpoint). Resets the matching-window
+        cursor (review Condition 1) and clears no_match_reason so the CHECK
+        holds; then immediately re-runs discover_and_offer so the rider
+        lands on a live matching screen. No auto-retry exists anywhere else.
+        """
+        booking = db.session.get(Booking, booking_id)
+        if not booking or booking.is_deleted:
+            raise NotFoundError("Booking not found",
+                                resource_type="booking",
+                                resource_id=booking_id)
+        if booking.user_id != user_id:
+            raise PermissionError("Cannot retry another user's ride")
+        if booking.status != BookingStatus.NO_MATCH:
+            raise ValidationError(
+                message=f"Retry is only available from no_match "
+                        f"(current: {booking.status})",
+                field="status",
+            )
+        now = datetime.now(timezone.utc)
+        result = db.session.execute(
+            sa.update(Booking.__table__)
+            .where(
+                Booking.__table__.c.id == booking_id,
+                Booking.__table__.c.status == BookingStatus.NO_MATCH.value,
+                Booking.__table__.c.is_deleted.is_(False),
+            )
+            .values(
+                status=BookingStatus.CONFIRMED.value,
+                no_match_reason=None,
+                confirmed_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if result.rowcount != 1:
+            db.session.rollback()
+            raise ValidationError("Retry failed: ride is no longer in no_match")
+        db.session.commit()
+        db.session.expire_all()
+        refreshed = db.session.get(Booking, booking_id)
+        # Fresh window cursor (Condition 1): confirmed_at is re-stamped above
+        # as the user-observable "search restarted" time AND the metadata
+        # cursor is reset — either alone suffices; both are set so the
+        # confirmed_at fallback path can never see a stale window.
+        _stamp_matching_window_start(refreshed, now)
+        refreshed.audit_log = (refreshed.audit_log or []) + [{
+            "action": "retry_matching",
+            "from": BookingStatus.NO_MATCH.value,
+            "to": BookingStatus.CONFIRMED.value,
+            "at": now.isoformat(),
+            "reason": "rider_retry",
+            "initiated_by": "rider",
+        }]
+        try:
+            db.session.commit()
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            logger.error(f"Error auditing retry for {booking_id}: {e}",
+                         exc_info=True)
+            raise ServiceUnavailableError("Could not restart matching")
+        BookingService()._invalidate_booking_caches(booking_id)
+        offers_created = 0
+        try:
+            from app.transport.services.matching_service import MatchingService
+            outcome = MatchingService.discover_and_offer(booking_id)
+            offers_created = int(outcome.get("offers_created", 0))
+        except Exception as e:
+            db.session.rollback()
+            logger.warning(f"Retry re-dispatch soft-failed for {booking_id}: {e}")
+        return {"booking": refreshed, "replayed": False,
+                "offers_created": offers_created}
 
     # =========================================================
     # List & Analytics (Enhanced for Admin Dashboard)
@@ -834,7 +1081,7 @@ class BookingService:
                     "booking_reference": b.booking_reference,
                     "pickup_location": pickup or "Pickup",
                     "dropoff_location": dropoff or "Destination",
-                    "status": b.status.value if b.status else None,
+                    "status": b.status if b.status else None,
                     "pickup_time": b.pickup_time.isoformat() if b.pickup_time else None,
                     "created_at": b.created_at.isoformat() if b.created_at else None,
                     "final_price": float(b.final_price) if b.final_price is not None else None,

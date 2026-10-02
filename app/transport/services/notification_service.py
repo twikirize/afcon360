@@ -97,7 +97,7 @@ class NotificationService:
                 'notification_sent',
                 tags={
                     'notification_type': notification_type,
-                    'booking_status': booking.status.value,
+                    'booking_status': booking.status,
                     'recipient_count': len(recipients)
                 },
                 value=1

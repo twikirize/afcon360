@@ -89,6 +89,8 @@ class BookingStatus(str, Enum):
     CANCELLED = 'cancelled'
     NO_SHOW = 'no_show'
     DISPUTED = 'disputed'
+    # --- MATCH-01-owned: terminal matching-failure state (additive) ---
+    NO_MATCH = 'no_match'
 
 
 class PaymentStatus(str, Enum):
@@ -1007,6 +1009,26 @@ class Booking(TransportBase):
         ),
         Index('ix_booking_idem', 'idempotency_key', unique=True,
               postgresql_where=db.text("idempotency_key IS NOT NULL")),
+        # --- Permanent convention: valid booking statuses (additive) ---
+        # Carried to the database by scripts/sync_check_constraints.py
+        # (Alembic cannot autogenerate CHECK ADDs). Values are the
+        # BookingStatus lowercase .value strings, including NO_MATCH.
+        CheckConstraint(
+            "status IN ('draft', 'pending_payment', 'confirmed', 'assigned', "
+            "'driver_en_route', 'pickup_arrived', 'in_progress', 'completed', "
+            "'cancelled', 'no_show', 'disputed', 'no_match')",
+            name="ck_transport_bookings_status",
+        ),
+        # --- MATCH-01-owned: reason required iff terminal no_match (additive) ---
+        # NOTE: written against plain VARCHAR status (post ENUM→String
+        # conversion). The ::text cast is no longer needed and is dropped
+        # so the model text matches the synced DB text exactly.
+        CheckConstraint(
+            "(status = 'no_match' AND no_match_reason IS NOT NULL"
+            " AND no_match_reason IN ('no_supply', 'all_rejected'))"
+            " OR (status != 'no_match' AND no_match_reason IS NULL)",
+            name="chk_no_match_reason",
+        ),
     )
 
     # Identification
@@ -1108,8 +1130,19 @@ class Booking(TransportBase):
     wallet_balance_used = db.Column(db.Numeric(10, 2), default=0.00)
     idempotency_key = db.Column(db.String(128), nullable=True)
 
-    # Status
-    status = db.Column(SQLEnum(BookingStatus), default=BookingStatus.DRAFT, nullable=False)
+    # Status — permanent convention (ENUM→String reference implementation):
+    # Python BookingStatus enum (application API) -> VARCHAR storage ->
+    # PostgreSQL CHECK barrier. No PostgreSQL ENUM (AGENTS.md §14).
+    # Stored strings are the enum's lowercase .value strings, so API/JSON,
+    # templates, JS maps and member comparisons behave exactly as before.
+    status = db.Column(db.String(30), default=BookingStatus.DRAFT.value, nullable=False)
+    # --- MATCH-01-owned: terminal matching-failure reason (additive, nullable).
+    # Required iff status == NO_MATCH; enforced by chk_no_match_reason below
+    # AND by BookingService.mark_no_match at the app level (the CHECK only
+    # bites after the owner runs the migration; the app guard holds before).
+    # Values: 'no_supply' | 'all_rejected'. Never rider-rendered verbatim;
+    # the rider template maps each reason to approved copy. ---
+    no_match_reason = db.Column(db.String(30), nullable=True)
     cancellation_reason = db.Column(db.String(100))
     cancellation_reason_category = db.Column(db.String(50))  # safety, mismatch, rider_change, driver_requested, other
     cancellation_safety_flag = db.Column(db.Boolean, default=False, nullable=False, server_default="false")
@@ -2106,23 +2139,26 @@ def update_setting(key: str, value: Any, modified_by: Optional[int] = None) -> b
     setting.last_modified_by = modified_by
 
     try:
-        db.session.commit()
-
-        # Invalidate cache
-        cache.delete(f"transport:setting:{key}")
-
-        # Log setting change. (Governance repair: app.core.logging does
+        # Log setting change in the same transaction as the setting write
+        # (SUPPLY-00: audit row must precede the commit to persist).
+        # (Governance repair: app.core.logging does
         # not exist, so every settings write previously raised here
         # AFTER committing and returned failure. The established audit
         # helper is app.utils.audit.)
         from app.utils.audit import audit_log
         audit_log(
             action='setting_updated',
-            entity_type='transport_setting',
-            entity_id=setting.id,
+            resource_type='transport_setting',
+            resource_id=str(setting.id),
             details={'key': key, 'old_value': history_entry['old_value'], 'new_value': value},
-            user_id=modified_by
+            user_id=modified_by,
+            db_session=db.session,
         )
+
+        db.session.commit()
+
+        # Invalidate cache
+        cache.delete(f"transport:setting:{key}")
 
         return True
     except Exception as e:

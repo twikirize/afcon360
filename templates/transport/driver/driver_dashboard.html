@@ -172,8 +172,8 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
     {% if go_live and go_live.ready %}
     <div class="ck-status" title="Availability">
       <div>
-        <div class="ck-status-label">Availability</div>
-        <div class="ck-status-value" data-online-label>{{ 'Available' if driver_profile.is_online else 'Offline' }}</div>
+        <div class="ck-status-label">Online status</div>
+        <div class="ck-status-value" data-online-label>{{ 'Online' if driver_profile.is_online else 'Offline' }}</div>
       </div>
       <label class="toggle">
         <input type="checkbox" data-online-toggle
@@ -185,7 +185,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
     {% else %}
     <div class="ck-status" title="Availability">
       <div>
-        <div class="ck-status-label">Availability</div>
+        <div class="ck-status-label">Online status</div>
         <div class="ck-status-value">Unavailable</div>
       </div>
       <span class="badge badge-amber" style="cursor:not-allowed;">Go-live pending</span>
@@ -557,7 +557,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
 
   <div class="card ws-card">
     <div class="card-header">
-      <span class="card-title"><i class="fa-solid fa-signal"></i> Availability</span>
+      <span class="card-title"><i class="fa-solid fa-signal"></i> Online status</span>
       <span class="badge badge-{{ readiness_badge }}">{{ 'Ready' if go_live and go_live.ready else 'Action needed' }}</span>
     </div>
     <div style="padding:22px; display:flex; align-items:center; gap:20px; flex-wrap:wrap;">
@@ -567,7 +567,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
         </div>
         <div style="font-size:0.82rem; color:var(--text-muted); margin-top:4px;">
           {% if driver_profile.is_online %}
-            Available to receive ride offers. Toggle off to pause.
+            Online -- receiving ride offers. Toggle off to pause and return to the vehicle marketplace.
           {% elif go_live and go_live.ready %}
             Go online to start receiving offers.
           {% else %}
@@ -577,7 +577,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
       </div>
       {% if go_live and go_live.ready %}
       <div style="display:flex; align-items:center; gap:14px;">
-        <span class="ck-status-value" data-online-label>{{ 'Available' if driver_profile.is_online else 'Offline' }}</span>
+        <span class="ck-status-value" data-online-label>{{ 'Online' if driver_profile.is_online else 'Offline' }}</span>
         <label class="toggle" style="transform:scale(1.2); transform-origin:right center;">
           <input type="checkbox" data-online-toggle
                  data-url="{{ url_for('transport_api.driver_go_live_status', driver_id=driver_profile.id) }}"
@@ -1190,6 +1190,149 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
     </div>
 
     <div class="card ws-card">
+      <div class="card-header">
+        <span class="card-title"><i class="fa-solid fa-bell"></i> Offer alert sound</span>
+      </div>
+      <div style="padding:14px 16px;font-size:0.82rem;color:var(--text-secondary);line-height:1.5;">
+        Choose the sound this phone plays when a new ride offer arrives. Stored on this device.
+      </div>
+      <div id="alertSoundList" role="radiogroup" aria-label="Offer alert sound" style="padding:0 16px 8px;display:flex;flex-direction:column;gap:8px;">
+        <label style="display:flex;align-items:center;gap:10px;font-size:0.88rem;min-height:44px;">
+          <input type="radio" name="alert_sound" value="chime" style="width:20px;height:20px;"> Chime <span style="color:var(--text-muted);font-size:0.76rem;">gentle, default</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;font-size:0.88rem;min-height:44px;">
+          <input type="radio" name="alert_sound" value="urgent" style="width:20px;height:20px;"> Urgent <span style="color:var(--text-muted);font-size:0.76rem;">loud, repeated</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;font-size:0.88rem;min-height:44px;">
+          <input type="radio" name="alert_sound" value="bell" style="width:20px;height:20px;"> Bell <span style="color:var(--text-muted);font-size:0.76rem;">deep, sustained</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;font-size:0.88rem;min-height:44px;">
+          <input type="radio" name="alert_sound" value="horn" style="width:20px;height:20px;"> Horn <span style="color:var(--text-muted);font-size:0.76rem;">dual-tone, strong</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;font-size:0.88rem;min-height:44px;">
+          <input type="radio" name="alert_sound" value="custom" style="width:20px;height:20px;"> My own sound <span style="color:var(--text-muted);font-size:0.76rem;">audio file from this phone</span>
+        </label>
+      </div>
+      <div style="padding:0 16px 8px;display:none;" id="customSoundRow">
+        <input type="file" id="customSoundFile" accept="audio/*" aria-label="Choose a sound file from this phone" style="font-size:0.82rem;max-width:100%;">
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+          <button type="button" class="btn btn-secondary btn-sm" id="customSoundRemove">Remove my sound</button>
+          <span id="customSoundStatus" style="font-size:0.76rem;color:var(--text-muted);"></span>
+        </div>
+        <div style="font-size:0.74rem;color:var(--text-muted);margin-top:6px;line-height:1.5;">Kept only on this phone (never uploaded). Max 5&nbsp;MB.</div>
+      </div>
+      <div class="workspace-actions">
+        <button type="button" class="btn btn-secondary" id="alertSoundPreview">
+          <i class="fa-solid fa-play"></i> Preview sound
+        </button>
+      </div>
+    </div>
+    <script>
+    (function () {
+      // Offer alert sound picker: device-local choice, preview on tap.
+      var KEY = 'ck_alert_sound';
+      function current() {
+        try {
+          var v = localStorage.getItem(KEY);
+          if (v === 'chime' || v === 'urgent' || v === 'bell' || v === 'horn' || v === 'custom') return v;
+        } catch (e) {}
+        return 'chime';
+      }
+      var MAX_CUSTOM_BYTES = 5 * 1024 * 1024;
+      function customRow() { return document.getElementById('customSoundRow'); }
+      function customStatus() { return document.getElementById('customSoundStatus'); }
+      function refreshCustomRow(sel) {
+        var row = customRow();
+        if (row) row.style.display = (sel === 'custom') ? 'block' : 'none';
+        var st = customStatus();
+        if (st && window.AFCONDriverSound) {
+          if (sel !== 'custom') {
+            st.textContent = '';
+          } else if (window.AFCONDriverSound.customReady()) {
+            st.textContent = 'Saved on this phone.';
+            window.AFCONDriverSound.customName(function (name) {
+              var el = document.getElementById('customSoundStatus');
+              if (el && name) el.textContent = 'Saved on this phone: ' + name;
+            });
+          } else if (window.AFCONDriverSound.customState &&
+                     window.AFCONDriverSound.customState() === 'unknown') {
+            st.textContent = 'Loading your sound…';
+          } else {
+            st.textContent = 'No file saved yet — choose one below.';
+          }
+        }
+      }
+      var checked = current();
+      Array.prototype.forEach.call(
+        document.querySelectorAll('input[name="alert_sound"]'),
+        function (r) {
+          r.checked = (r.value === checked);
+          r.addEventListener('change', function () {
+            try { localStorage.setItem(KEY, r.value); } catch (e) {}
+            refreshCustomRow(r.value);
+          });
+        });
+      refreshCustomRow(checked);
+      var fileInput = document.getElementById('customSoundFile');
+      if (fileInput) fileInput.addEventListener('change', function () {
+        var st = customStatus();
+        var f = fileInput.files && fileInput.files[0];
+        if (!f) return;
+        if (f.size > MAX_CUSTOM_BYTES) {
+          if (st) st.textContent = 'File too large (max 5 MB).';
+          fileInput.value = '';
+          return;
+        }
+        var rd = new FileReader();
+        rd.onload = function () {
+          if (st) st.textContent = 'Preparing sound…';
+          if (window.AFCONDriverSound && window.AFCONDriverSound.prepareCustom) {
+            window.AFCONDriverSound.prepareCustom(rd.result, f.name, function (ok) {
+              if (st) st.textContent = ok ? 'Saved on this phone.' : 'That file would not play — try another.';
+              if (ok) {
+                // Saving implicitly selects the custom sound: previewing
+                // alone must never leave offers ringing the old choice.
+                try { localStorage.setItem(KEY, 'custom'); } catch (e) {}
+                Array.prototype.forEach.call(
+                  document.querySelectorAll('input[name="alert_sound"]'),
+                  function (r) { r.checked = (r.value === 'custom'); });
+                window.AFCONDriverSound.preview('custom');
+              }
+            });
+          }
+        };
+        rd.onerror = function () {
+          if (st) st.textContent = 'Could not read that file.';
+        };
+        try { rd.readAsArrayBuffer(f); } catch (e) {
+          if (st) st.textContent = 'Could not read that file.';
+        }
+      });
+      var rmBtn = document.getElementById('customSoundRemove');
+      if (rmBtn) rmBtn.addEventListener('click', function () {
+        var st = customStatus();
+        if (window.AFCONDriverSound) {
+          window.AFCONDriverSound.clearCustom(function () {
+            if (st) st.textContent = 'Removed. Chime will play instead.';
+          });
+        }
+        try { localStorage.setItem(KEY, 'chime'); } catch (e) {}
+        Array.prototype.forEach.call(
+          document.querySelectorAll('input[name="alert_sound"]'),
+          function (r) { r.checked = (r.value === 'chime'); });
+        refreshCustomRow('chime');
+      });
+      var prev = document.getElementById('alertSoundPreview');
+      if (prev) prev.addEventListener('click', function () {
+        var sel = document.querySelector('input[name="alert_sound"]:checked');
+        var name = sel ? sel.value : current();
+        try { localStorage.setItem(KEY, name); } catch (e) {}
+        if (window.AFCONDriverSound) window.AFCONDriverSound.preview(name);
+      });
+    })();
+    </script>
+
+    <div class="card ws-card">
       <div class="card-header"><span class="card-title"><i class="fa-solid fa-headset"></i> Support</span></div>
       <div style="padding:14px 16px;font-size:0.78rem;color:var(--text-muted);line-height:1.5;">
         For help with trips, payments or your account, contact the AFCON360 transport team from the main help centre.
@@ -1309,13 +1452,15 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
       fetchWithTimeout(url, {
         method: 'POST',
         headers: csrfHeaders(),
-        body: JSON.stringify({is_online: online, is_available: online})
+        // SUPPLY-00b: toggle is an is_online control only. is_available is
+        // qualification (set at approval), not user-toggleable.
+        body: JSON.stringify({is_online: online})
       }).then(async r => {
         const d = await r.json();
         if (!d.success) {
           document.querySelectorAll('[data-online-toggle]').forEach(function (t) { t.checked = !online; });
           document.querySelectorAll('[data-online-label]').forEach(function (l) {
-            l.textContent = !online ? 'Available' : 'Offline';
+            l.textContent = !online ? 'Online' : 'Offline';
           });
           let msg = d.error || 'Could not update availability';
           if (d.go_live && d.go_live.ready === false) {
@@ -1324,14 +1469,14 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
           flashMsg(msg, false);
         } else {
           document.querySelectorAll('[data-online-label]').forEach(function (l) {
-            l.textContent = online ? 'Available' : 'Offline';
+            l.textContent = online ? 'Online' : 'Offline';
           });
           if (online) setTimeout(() => location.reload(), 1200);
         }
       }).catch(() => {
         document.querySelectorAll('[data-online-toggle]').forEach(function (t) { t.checked = !online; });
         document.querySelectorAll('[data-online-label]').forEach(function (l) {
-          l.textContent = !online ? 'Available' : 'Offline';
+          l.textContent = !online ? 'Online' : 'Offline';
         });
       });
     });

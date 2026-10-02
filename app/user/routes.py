@@ -1,7 +1,7 @@
 # app/user/routes.py
 from decimal import Decimal
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
-from flask_login import login_required, current_user
+from flask_login import login_required, current_user, logout_user
 from app.extensions import db
 from app.events.services import EventService
 from app.wallet.services.wallet_service import WalletService
@@ -324,7 +324,11 @@ def dashboard():
 
         user = User.query.options(joinedload(User.organisations)).get(current_user.id)
         if not user:
-            return redirect(url_for('auth.logout'))
+            # Stale session (user row gone). Log out inline and go to
+            # login — do NOT redirect to POST-only /logout (GET would 405).
+            logout_user()
+            flash("Your session is no longer valid. Please sign in again.", "warning")
+            return redirect(url_for('auth.login'))
 
         # Fan/Tournament Mode Logic
         mode = get_dashboard_mode(user)

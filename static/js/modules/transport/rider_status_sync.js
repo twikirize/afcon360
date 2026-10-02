@@ -34,7 +34,9 @@
     /* app/transport/routes.py _MATCHING_STATUSES */
     var MATCHING = { pending_payment: true, confirmed: true };
     /* app/transport/services/booking_service.py STATUS_TRANSITIONS (out == []) */
-    var TERMINAL = { completed: true, cancelled: true, no_show: true };
+    /* MATCH-01-owned: no_match is terminal for matching (single outbound
+       edge = manual rider retry, which reloads the page server-side). */
+    var TERMINAL = { completed: true, cancelled: true, no_show: true, no_match: true };
     /* show.html badge class map `sc` (unknown -> pay-pill-pending) */
     var BADGE_CLASS = {
         completed: 'pay-pill-paid',
@@ -46,7 +48,8 @@
         cancelled: 'pay-pill-fail',
         pending_payment: 'pay-pill-pending',
         no_show: 'pay-pill-fail',
-        disputed: 'pay-pill-fail'
+        disputed: 'pay-pill-fail',
+        no_match: 'pay-pill-fail'
     };
 
     /* Bounded polling contract (repo patterns: 3.5s-30s intervals,
@@ -227,8 +230,12 @@
     function renderDriverCard(display) {
         var mount = document.getElementById('riderDriverMount');
         if (!mount) return;
-        /* Server already rendered the card — nothing to do. */
-        if (document.querySelector('.driver-focus')) {
+        /* Server already rendered the card — nothing to do. A card inside
+         * our own mount is client-injected, not server-rendered: it must
+         * be kept (and refreshed from display), never wiped. Otherwise
+         * the first post-handoff poll cycle deletes the live card. */
+        var srv = document.querySelector('.driver-focus');
+        if (srv && !mount.contains(srv)) {
             if (mount.innerHTML !== '') mount.innerHTML = '';
             return;
         }
@@ -279,16 +286,20 @@
     function renderTracking(display, ref, status) {
         var mount = document.getElementById('riderTrackingMount');
         if (!mount) return;
-        /* Server already rendered the card — nothing to do. */
-        if (document.getElementById('riderMap')) {
-            if (mount.innerHTML !== '') mount.innerHTML = '';
-            return;
-        }
         if (!display || !TRACKABLE[status] || !ref ||
                 typeof window.AFCONTrackDriver !== 'function') {
             if (mount.innerHTML !== '') mount.innerHTML = '';
             return;
         }
+        var existingMap = document.getElementById('riderMap');
+        if (existingMap && !mount.contains(existingMap)) {
+            /* Server rendered the card — nothing to do. */
+            if (mount.innerHTML !== '') mount.innerHTML = '';
+            return;
+        }
+        /* Our injected card is already live (map + open stream) — keep it.
+         * Re-bootstrapping would duplicate the GeoRealtime connection. */
+        if (existingMap) return;
         var tileUrl = mount.getAttribute('data-tile-url') || '';
         var tileAttr = mount.getAttribute('data-tile-attr') || '';
         if (!tileUrl) {

@@ -56,9 +56,38 @@ from app.utils.caching import (
 from app.utils.rate_limiting import rate_limit
 from app.utils.idempotency import idempotent_request
 from app.utils.audit import audit_log
+from contextlib import contextmanager
 
 # Create module-level logger
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _redis_lock(key: str, ttl: int = 10):
+    """Best-effort Redis distributed lock as a context manager.
+
+    SUPPLY-00: ``with_cache_lock`` in app.utils.caching is a decorator
+    factory, not a context manager, so ``with with_cache_lock(...)`` raised
+    TypeError before any registration logic ran. This helper provides the
+    intended check-then-insert serialization with identical best-effort
+    semantics (proceed on lock failure; the DB unique constraint on
+    ``driver_profiles.user_id`` remains authoritative).
+    """
+    acquired = False
+    try:
+        from app.extensions import redis_client
+        acquired = bool(redis_client.set(key, "1", nx=True, ex=ttl))
+    except Exception:
+        acquired = False
+    try:
+        yield acquired
+    finally:
+        if acquired:
+            try:
+                from app.extensions import redis_client
+                redis_client.delete(key)
+            except Exception:
+                pass
 
 
 def _assert_no_open_flags(entity_type: str, entity_id: int):
@@ -645,18 +674,26 @@ class ProviderService:
             eligibility = self.validate_driver_eligibility(user_id)
 
             # PHASE 2: VALIDATE DRIVER DATA
-            sanitized_data = sanitize_input(driver_data)
-            validation_result = validate_driver_registration(sanitized_data)
+            # SUPPLY-00: sanitize_input operates on strings; sanitize each
+            # string value of the mapping (same pattern as
+            # register_vehicle_internal below).
+            sanitized_data = {
+                key: sanitize_input(value) if isinstance(value, str) else value
+                for key, value in (driver_data or {}).items()
+            }
+            # SUPPLY-00: validate_driver_registration returns
+            # Tuple[bool, List[str]]; unpack positionally.
+            is_valid, validation_errors = validate_driver_registration(sanitized_data)
 
-            if not validation_result['valid']:
+            if not is_valid:
                 raise ValidationError(
                     message="Driver registration validation failed",
-                    details=validation_result['errors'],
+                    details=validation_errors,
                     code="VALIDATION_FAILED"
                 )
 
             # PHASE 3: CHECK FOR EXISTING REGISTRATION
-            with with_cache_lock(f"lock:driver_registration:{user_id}", timeout=10):
+            with _redis_lock(f"lock:driver_registration:{user_id}", ttl=10):
                 existing = DriverProfile.query.filter_by(
                     user_id=user_id,
                     is_deleted=False
@@ -717,8 +754,14 @@ class ProviderService:
                     preferred_zones=sanitized_data.get('preferred_zones', []),
                     max_passenger_capacity=sanitized_data.get('passenger_capacity', 4),
                     max_luggage_capacity=sanitized_data.get('luggage_capacity', 2),
-                    is_online=auto_approve,
-                    is_available=False,
+                    # SUPPLY-00b: registration always creates the driver in
+                    # the qualified, not-online state. auto_approve -> compliance
+                    # APPROVED -> qualified (is_available=True). No vehicle
+                    # exists yet -> not dispatch-ready (is_online=False).
+                    # Admin override enables dispatch without a vehicle via
+                    # the dedicated control on the admin driver detail page.
+                    is_online=False,
+                    is_available=auto_approve,
                     auto_accept_bookings=False,
                     commission_rate=Decimal('15.00'),
                     emergency_contact_name=sanitized_data.get('emergency_contact_name'),
@@ -737,18 +780,19 @@ class ProviderService:
                 db.session.add(driver)
                 db.session.flush()
 
-                # Create audit log
+                # Create audit log (persists via the commit below)
                 audit_log(
                     action='driver_registered',
-                    entity_type='driver',
-                    entity_id=driver.id,
+                    resource_type='driver',
+                    resource_id=str(driver.id),
                     user_id=user_id,
                     details={
                         'auto_approved': auto_approve,
                         'identity_check': eligibility,
-                        'verification_tier': driver.verification_tier.value
+                        'verification_tier': driver.verification_tier.value,
+                        'request_id': request_id,
                     },
-                    request_id=request_id
+                    db_session=db.session,
                 )
 
                 # Note: Vehicle registration is a SEPARATE, later operation
@@ -1226,18 +1270,23 @@ class ProviderService:
                     )
                 updates['compliance_status'] = driver.compliance_status.value
 
+            # SUPPLY-00b: corrected invariant — is_online ⇒ is_available.
+            # Validate the projected end state before writing either field.
+            projected_online = bool(status_data.get('is_online', driver.is_online))
+            projected_available = bool(status_data.get('is_available', driver.is_available))
+            if projected_online and not projected_available:
+                raise ValidationError(
+                    message="Driver must be available to become online",
+                    field="is_online",
+                )
+
             if 'is_online' in status_data:
-                driver.is_online = bool(status_data['is_online'])
+                driver.is_online = projected_online
                 driver.last_seen_at = datetime.now(timezone.utc)
                 updates['is_online'] = driver.is_online
 
             if 'is_available' in status_data:
-                if bool(status_data['is_available']) and not driver.is_online:
-                    raise ValidationError(
-                        message="Driver must be online to become available",
-                        field="is_available",
-                    )
-                driver.is_available = bool(status_data['is_available'])
+                driver.is_available = projected_available
                 updates['is_available'] = driver.is_available
 
             db.session.commit()
@@ -1323,13 +1372,16 @@ class ProviderService:
                 message="Cannot update another driver's status"
             )
 
-        checklist = can_go_live(driver)
-        if not checklist.ready:
-            raise ValidationError(
-                message="Driver is not eligible to go live",
-                field="is_online",
-                details={"go_live": checklist.to_dict()},
-            )
+        # Only check can_go_live when attempting to go online (is_online=True)
+        checklist = None
+        if is_online is True:
+            checklist = can_go_live(driver)
+            if not checklist.ready:
+                raise ValidationError(
+                    message="Driver is not eligible to go live",
+                    field="is_online",
+                    details={"go_live": checklist.to_dict()},
+                )
 
         if is_online is None and is_available is None:
             raise ValidationError(
@@ -1337,19 +1389,24 @@ class ProviderService:
                 field="status",
             )
 
+        # SUPPLY-00b: corrected invariant — is_online ⇒ is_available.
+        # Validate the projected end state before writing either field.
+        projected_online = bool(is_online) if is_online is not None else driver.is_online
+        projected_available = bool(is_available) if is_available is not None else driver.is_available
+        if projected_online and not projected_available:
+            raise ValidationError(
+                message="Driver must be available to become online",
+                field="is_online",
+            )
+
         updates: Dict[str, Any] = {}
         if is_online is not None:
-            driver.is_online = bool(is_online)
+            driver.is_online = projected_online
             driver.last_seen_at = datetime.now(timezone.utc)
             updates['is_online'] = driver.is_online
 
         if is_available is not None:
-            if bool(is_available) and not driver.is_online:
-                raise ValidationError(
-                    message="Driver must be online to become available",
-                    field="is_available",
-                )
-            driver.is_available = bool(is_available)
+            driver.is_available = projected_available
             updates['is_available'] = driver.is_available
 
         db.session.commit()
@@ -1362,7 +1419,123 @@ class ProviderService:
             'data': {
                 'driver_id': driver_id,
                 'updates': updates,
-                'go_live': checklist.to_dict(),
+                'go_live': checklist.to_dict() if checklist else None,
+            },
+        }
+
+    @monitor_endpoint("driver_admin_online_override")
+    @rate_limit("driver_status_update", limit=60, period=60)
+    def set_admin_online_override(
+        self,
+        driver_id: int,
+        enabled: bool,
+        actor_user_id: int,
+        reason: str = "",
+    ) -> Dict[str, Any]:
+        """Grant or revoke the per-driver admin online override.
+
+        When enabled: forces is_available=True and records the audit fields
+        under driver_metadata.admin_online_override.  can_go_live then
+        returns ready=True for this driver, bypassing KYC, compliance-
+        approval, licence and vehicle gates.  Blocked states remain
+        absolute: a suspended / revoked / blacklisted driver cannot be
+        override-enabled.
+
+        When disabled: clears the flag, reverts is_available to the
+        compliance-driven state, and forces is_online=False if the driver
+        would no longer pass can_go_live.  All transitions are audited.
+
+        Intended for testing and controlled rollout when the standard
+        verification path is temporarily unavailable.
+        """
+        from sqlalchemy.orm.attributes import flag_modified
+        from app.transport.services.go_live_service import can_go_live
+
+        driver = db.session.get(DriverProfile, driver_id)
+        if not driver or driver.is_deleted:
+            raise NotFoundError(
+                message="Driver not found",
+                resource_type="driver",
+                resource_id=driver_id,
+            )
+
+        compliance_raw = (
+            driver.compliance_status.value
+            if hasattr(driver.compliance_status, "value")
+            else driver.compliance_status
+        )
+        compliance_lower = str(compliance_raw or "").lower()
+
+        # Safety gate -- blocked drivers cannot be override-enabled.
+        if enabled and compliance_lower in ("suspended", "revoked", "blacklisted"):
+            raise ValidationError(
+                message="Cannot enable override for a blocked driver. "
+                        "Clear the compliance block first.",
+                field="compliance_status",
+            )
+
+        meta = dict(driver.driver_metadata or {})
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        if enabled:
+            meta["admin_online_override"] = {
+                "enabled": True,
+                "by": actor_user_id,
+                "at": now_iso,
+                "reason": (reason or "").strip()[:200],
+            }
+            # Override vouches for qualification -- force is_available=True so
+            # the invariant is_online => is_available holds.
+            driver.is_available = True
+        else:
+            meta["admin_online_override"] = {
+                "enabled": False,
+                "by": actor_user_id,
+                "at": now_iso,
+                "reason": (reason or "").strip()[:200],
+            }
+            # Revert is_available to compliance-driven state.
+            driver.is_available = (compliance_lower == "approved")
+
+        driver.driver_metadata = meta
+        flag_modified(driver, "driver_metadata")
+
+        if not enabled:
+            # Flush so can_go_live sees the updated (disabled) metadata.
+            db.session.flush()
+            if driver.is_online and not can_go_live(driver).ready:
+                driver.is_online = False
+
+        # SUPPLY-00: audit row must precede the commit to persist in the
+        # same transaction as the metadata write (utility only adds).
+        audit_log(
+            action="driver_admin_online_override_set",
+            resource_type="driver",
+            resource_id=str(driver_id),
+            user_id=actor_user_id,
+            details={
+                "enabled": bool(enabled),
+                "reason": (reason or "").strip()[:200],
+                "is_available": driver.is_available,
+                "is_online": driver.is_online,
+            },
+            db_session=db.session,
+        )
+
+        db.session.commit()
+        self._invalidate_driver_caches(driver_id)
+        self._invalidate_available_drivers_cache()
+
+        return {
+            "success": True,
+            "data": {
+                "driver_id": driver_id,
+                "admin_online_override": bool(enabled),
+                "admin_online_override_by": actor_user_id,
+                "admin_online_override_at": now_iso,
+                "admin_online_override_reason": (reason or "").strip()[:200],
+                "is_available": driver.is_available,
+                "is_online": driver.is_online,
             },
         }
 

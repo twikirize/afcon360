@@ -3,10 +3,11 @@
 Idempotency utilities for AFCON360
 """
 import hashlib
+import inspect
 import json
 import time
 from functools import wraps
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any, Callable, Union
 import logging
 
 logger = logging.getLogger(__name__)
@@ -87,28 +88,69 @@ def generate_idempotency_key(
     return f"idempotent:{hashlib.sha256(key_string.encode()).hexdigest()}"
 
 
+def _has_self_first_param(func) -> bool:
+    """True when the wrapped callable's first parameter is ``self`` / ``cls``.
+
+    Used to exclude the service instance from string-namespace key material,
+    so keys remain stable across processes (default ``repr`` embeds a memory
+    address). Inspection-based rather than type-based, so a decorated function
+    whose legitimate first argument happens to be an object is not
+    misidentified as a method.
+    """
+    try:
+        params = list(inspect.signature(func).parameters.values())
+    except (TypeError, ValueError):
+        return False
+    return bool(params) and params[0].name in ("self", "cls")
+
+
 def idempotent_request(
-        key_getter: Optional[Callable] = None,
+        key_getter: Optional[Union[str, Callable]] = None,
         ttl: int = 3600,
         store_errors: bool = False
 ):
-    """
-    Decorator for idempotent requests
+    """Decorator for idempotent requests.
+
+    ``key_getter`` accepts three forms:
+
+    * ``None``      — read the idempotency key from the ``Idempotency-Key``
+                      request header (unchanged legacy behavior).
+    * ``str``       — stable namespace; the key is derived from that namespace
+                      plus the wrapped function's arguments via
+                      ``generate_idempotency_key``. When the wrapped function
+                      is a method (first parameter is ``self`` / ``cls``),
+                      the service instance is excluded so keys remain stable
+                      across processes.
+    * ``Callable``  — invoked with the wrapped function's arguments and must
+                      return the idempotency key string (unchanged legacy
+                      behavior).
     """
 
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
             # Get idempotency key
-            if key_getter:
-                idempotency_key = key_getter(*args, **kwargs)
-            else:
+            if key_getter is None:
                 # Try to get from Flask request headers
                 try:
                     from flask import request
                     idempotency_key = request.headers.get('Idempotency-Key')
-                except:
+                except Exception:
                     idempotency_key = None
+            elif isinstance(key_getter, str):
+                key_args = args
+                if key_args and _has_self_first_param(func):
+                    key_args = key_args[1:]
+                idempotency_key = generate_idempotency_key(
+                    key_getter, key_args, kwargs
+                )
+            elif callable(key_getter):
+                idempotency_key = key_getter(*args, **kwargs)
+            else:
+                raise TypeError(
+                    "idempotent_request: key_getter must be None, a string "
+                    f"namespace, or a callable; got {type(key_getter).__name__}"
+                )
 
             # If no key provided, just execute normally
             if not idempotency_key:

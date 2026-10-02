@@ -59,7 +59,7 @@
         </div>
         <div class="loc-info-item">
           <div class="loc-info-k">Updated</div>
-          <div class="loc-info-v" id="driverLiveUpdated">{{ driver.location_updated_at.strftime('%H:%M %d %b') if driver.location_updated_at else '—' }}</div>
+          <div class="loc-info-v" id="driverLiveUpdated">{{ driver.location_updated_at.strftime('%H:%M %d %b') if driver.location_updated_at else '—' }}{% if location_age_display %} · {{ location_age_display }}{% endif %}</div>
         </div>
       </div>
       {% else %}

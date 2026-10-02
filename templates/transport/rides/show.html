@@ -222,6 +222,37 @@
 </div>
 {% endif %}
 
+{# MATCH-01-owned: terminal matching-failure branch. One state (no_match),
+   two reasons, distinct copy + CTAs. The words rejected/declined/refused
+   must never appear in this block or anywhere rider-visible. #}
+{% if status_value == 'no_match' %}
+{# data attribute carries NO reason string: the raw 'all_rejected' value
+   contains the substring "reject", which the rider must never see. The
+   branch is chosen server-side; no client code reads a reason token. #}
+<div class="card" id="riderNoMatch">
+  <div class="card-header">
+    <span class="card-title">
+      {% if no_match_reason == 'all_rejected' %}Couldn't match this ride right now{% else %}No cars available right now{% endif %}
+    </span>
+    <span class="badge pay-pill-fail" role="status" aria-live="polite">No match found</span>
+  </div>
+  <div class="card-body">
+    <p>
+      {% if no_match_reason == 'all_rejected' %}We asked the drivers near you and none could take this ride.{% else %}Drivers come online all the time. Try again in a few minutes.{% endif %}
+    </p>
+    <div class="action-stack">
+      <form method="post" action="{{ url_for('transport.rides_retry_matching', booking_reference=booking_reference) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-primary btn-full">Try again</button>
+      </form>
+      {% if no_match_reason == 'all_rejected' %}
+      <a class="btn btn-secondary" href="{{ url_for('transport.home', pickup_location=prefill_pickup, dropoff_location=prefill_dropoff, service_type=prefill_service) }}">Adjust request</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="booking-layout">
   <div style="display:flex; flex-direction:column; gap:16px;">
 
@@ -229,8 +260,10 @@
     <div class="card ride-card">
       <div class="card-header">
         <span class="card-title">Trip Details</span>
-        {% set sc = {'completed':'pay-pill-paid','in_progress':'pay-pill-pending','assigned':'pay-pill-pending','driver_en_route':'pay-pill-pending','pickup_arrived':'pay-pill-pending','confirmed':'pay-pill-pending','cancelled':'pay-pill-fail','pending_payment':'pay-pill-pending','no_show':'pay-pill-fail','disputed':'pay-pill-fail'} %}
-        <span id="riderStatusBadge" class="badge {{ sc.get(current_status,'pay-pill-pending') }}" data-status="{{ current_status }}">{{ current_status|replace('_',' ')|title }}</span>
+        {# MATCH-01-owned: CONFIRMED means payment taken and matching active —
+           the rider must see "Finding your driver", never a stale "Confirmed". #}
+        {% set sc = {'completed':'pay-pill-paid','in_progress':'pay-pill-pending','assigned':'pay-pill-pending','driver_en_route':'pay-pill-pending','pickup_arrived':'pay-pill-pending','confirmed':'pay-pill-pending','no_match':'pay-pill-fail','cancelled':'pay-pill-fail','pending_payment':'pay-pill-pending','no_show':'pay-pill-fail','disputed':'pay-pill-fail'} %}
+        <span id="riderStatusBadge" class="badge {{ sc.get(current_status,'pay-pill-pending') }}" data-status="{{ current_status }}">{% if current_status == 'confirmed' %}Finding your driver{% elif current_status == 'no_match' %}No match found{% else %}{{ current_status|replace('_',' ')|title }}{% endif %}</span>
       </div>
       <div class="info-grid">
         <div class="info-row"><div class="info-k">Service</div><div class="info-v">{{ booking.service_type.value|replace('_',' ')|title if booking.service_type and booking.service_type.value is defined else '—' }}</div></div>

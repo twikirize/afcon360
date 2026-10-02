@@ -58,9 +58,14 @@ def dispatch_recovery() -> dict:
     mid-flight crash before creation). Redis is never authoritative — the
     booking stays CONFIRMED/unassigned until a driver's claim commits.
 
+    MATCH-01-owned: per booking, check-then-rediscover — expired matching
+    windows close as NO_MATCH (no_supply / all_rejected) instead of being
+    re-offered forever.
+
     Returns:
-        dict: sweep results (checked / cleaned) and rediscovery results
-            (bookings considered / offers created).
+        dict: sweep results (checked / cleaned), rediscovery results
+            (bookings considered / offers created) and no_match results
+            (closed bookings with reasons).
     """
     result = {"checked": 0, "cleaned": 0}
     try:
@@ -76,12 +81,19 @@ def dispatch_recovery() -> dict:
 
     rediscovered = 0
     offers_created = 0
+    # MATCH-01-owned safety net (review Condition 2): per booking,
+    # check-then-rediscover. check_matching_outcome closes expired windows
+    # (no_supply) and exhausted pools (all_rejected) idempotently; only
+    # bookings still genuinely matching are re-offered. The rider page
+    # render is the fast path; this beat catches riders who closed the tab.
+    no_match_closed = []
     try:
         from flask import current_app
 
         from app.transport.services.matching_service import MatchingService
 
         batch = int(current_app.config.get("TRANSPORT_DISPATCH_RECOVERY_BATCH", 50))
+        window = int(current_app.config.get("TRANSPORT_MATCHING_WINDOW_SECONDS", 180))
         from app.transport.services.assignment_service import CLAIMABLE_STATUSES
 
         candidates = (
@@ -92,12 +104,28 @@ def dispatch_recovery() -> dict:
             ).limit(batch).all()
         )
         for booking in candidates:
-            outcome = MatchingService.discover_and_offer(booking.id)
+            try:
+                outcome = MatchingService.check_matching_outcome(booking.id)
+            except Exception as e:
+                logger.warning(
+                    f"no_match sweep failed for booking {booking.id}: {e}")
+                outcome = {}
+            if outcome.get("terminal"):
+                no_match_closed.append(
+                    {"id": booking.id, "reason": outcome.get("reason")})
+                continue
+            offer_outcome = MatchingService.discover_and_offer(booking.id)
             rediscovered += 1
-            offers_created += int(outcome.get("offers_created", 0))
+            offers_created += int(offer_outcome.get("offers_created", 0))
 
         result["rediscovered"] = rediscovered
         result["offers_created"] = offers_created
+        result["no_match_closed"] = no_match_closed
+        result["matching_window_seconds"] = window
+        if no_match_closed:
+            logger.info(
+                f"Transport no_match sweep closed {len(no_match_closed)} "
+                f"booking(s): {no_match_closed}")
     except Exception as e:
         logger.error(f"Transport dispatch recovery rediscovery failed: {e}", exc_info=True)
         result["rediscovery_error"] = str(e)

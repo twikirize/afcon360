@@ -212,7 +212,87 @@ class OfferService:
         }
         logger.info("Offer created for booking %s -> driver %s (ttl=%ss)",
                     booking_ref, driver_id, ttl)
+        # MATCH-01-owned: durable offered-ledger (best-effort, never raises).
+        cls.record_offer_ledger(booking_ref, driver_id, "offered",
+                                vehicle_id=vehicle_id)
         return offer
+
+    @classmethod
+    def record_offer_ledger(
+        cls,
+        booking_ref: str,
+        driver_id: int,
+        outcome: str,
+        vehicle_id: Optional[int] = None,
+    ) -> bool:
+        """MATCH-01-owned: durable per-offer ledger entry (admin-visible only).
+
+        Appends ``{"driver_id","vehicle_id","outcome","at"}`` to
+        ``booking.booking_metadata["offer_attempts"]`` in ONE SQL UPDATE
+        using native ``jsonb_set(... || ...)`` (review Condition 3):
+        under READ_COMMITTED the row lock serializes concurrent decliners,
+        so parallel declines can never lose an entry (no read-modify-write
+        in Python). ``outcome`` is ``offered`` (dispatch) or ``declined``
+        (driver said no). Best-effort: returns False instead of raising so
+        dispatch/decline degrade safely. The key is NEVER read by any rider
+        serializer or template — admin detail only.
+        """
+        from datetime import datetime, timezone
+
+        from sqlalchemy.dialects.postgresql import JSONB
+
+        import sqlalchemy as sa
+
+        if outcome not in ("offered", "declined"):
+            return False
+        try:
+            from app.transport.models import Booking
+
+            entry = {
+                "driver_id": int(driver_id),
+                "vehicle_id": int(vehicle_id) if vehicle_id is not None else None,
+                "outcome": outcome,
+                "at": datetime.now(timezone.utc).isoformat(),
+            }
+            meta_col = Booking.__table__.c.booking_metadata
+            attempts = sa.func.coalesce(
+                meta_col.op("->")("offer_attempts"),
+                sa.text("'[]'::jsonb"),
+            )
+            # NOTE: the entry MUST be bound as a dict with the JSONB type.
+            # Binding a pre-dumped str (even under CAST AS jsonb) double
+            # encodes it into a jsonb *string* scalar instead of an object.
+            entry_param = sa.bindparam(
+                "match01_entry", value=entry, type_=JSONB)
+            stmt = (
+                sa.update(Booking.__table__)
+                .where(Booking.__table__.c.booking_reference == booking_ref)
+                .where(Booking.__table__.c.is_deleted.is_(False))
+                .values(
+                    booking_metadata=sa.func.jsonb_set(
+                        sa.func.coalesce(meta_col, sa.text("'{}'::jsonb")),
+                        "{offer_attempts}",
+                        attempts.op("||")(entry_param),
+                    )
+                )
+                .execution_options(synchronize_session=False)
+            )
+            # Deferred: importing db here avoids a hard import cycle at
+            # module load (matching_service imports this module lazily too).
+            from app.extensions import db as _db
+
+            result = _db.session.execute(stmt)
+            _db.session.commit()
+            return result.rowcount == 1
+        except Exception as exc:
+            try:
+                from app.extensions import db as _db2
+
+                _db2.session.rollback()
+            except Exception:
+                pass
+            logger.warning("offer ledger append failed for %s: %s", booking_ref, exc)
+            return False
 
     # ------------------------------------------------------------------ #
     # Read
@@ -659,7 +739,15 @@ class OfferService:
 
     @classmethod
     def decline_offer(cls, booking_ref: str, driver_id: int) -> bool:
-        """Withdraw an offer. Non-authoritative; safe in any state."""
+        """Withdraw an offer. Non-authoritative; safe in any state.
+
+        MATCH-01-owned additions: records the decline in the durable
+        offer ledger (atomic append; admin-visible only, never rider
+        rendered) and fires the pool-exhausted terminal check. A decline
+        is NOT a cancellation and NEVER touches DriverProfile
+        cancellation_rate/acceptance_rate (verified by
+        tests/transport/test_match01_retry.py).
+        """
         key = cls._offer_key(booking_ref)
         dkey = cls._driver_key(driver_id)
         ikey = cls._index_key(booking_ref)
@@ -676,7 +764,29 @@ class OfferService:
         except Exception as exc:
             logger.warning("offer decline failed (Redis) for %s: %s", booking_ref, exc)
             return False
-        return result is not None and int(result) == 1
+        declined = result is not None and int(result) == 1
+        if declined:
+            cls.record_offer_ledger(booking_ref, driver_id, "declined")
+            # all_rejected fast path (review Condition 2): after the last
+            # decline of a pool, close immediately. Best-effort and
+            # idempotent — never fails the decline itself.
+            try:
+                from app.transport.models import Booking as _Booking
+
+                row = _Booking.query.filter(
+                    _Booking.booking_reference == booking_ref,
+                    _Booking.is_deleted == False,  # noqa: E712
+                ).first()
+                if row is not None:
+                    from app.transport.services.matching_service import (
+                        MatchingService as _MS,
+                    )
+
+                    _MS.check_matching_outcome(row.id)
+            except Exception as exc:
+                logger.warning("post-decline terminal check failed for %s: %s",
+                               booking_ref, exc)
+        return declined
 
     @classmethod
     def cleanup_offer(cls, booking_ref: str, driver_id: Optional[int] = None) -> None:

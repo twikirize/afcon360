@@ -74,6 +74,15 @@ def test_shells_link_one_manifest_plus_icons():
     assert 'rel="apple-touch-icon"' in driver
 
 
+def test_driver_shell_loads_offer_alert_layer():
+    """The offer chime (poll stamp + WebAudio ring) only works if the alert
+    layer is actually included on the driver shell."""
+    driver = (TEMPLATES / "transport/driver/base.html").read_text(
+        encoding="utf-8"
+    )
+    assert "driver_alerts.js" in driver
+
+
 def test_pwa_assets_served(client):
     for url, ctype in (
         ("/static/manifest.json", "application/json"),

@@ -301,7 +301,7 @@ class DashboardOverviewResource(Resource):
                         {
                             "id": b.id,
                             "reference": b.booking_reference,
-                            "status": b.status.value,
+                            "status": b.status,
                             "service_type": b.service_type.value,
                             "final_price": float(b.final_price),
                             "created_at": b.created_at.isoformat(),

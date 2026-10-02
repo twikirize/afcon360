@@ -42,6 +42,12 @@ from app.auth.context import (
 from app.transport import transport_bp, transport_admin_bp
 from app.utils.module_guard import module_enabled as check_module_enabled
 from app.utils.exceptions import NotFoundError, ServiceUnavailableError, ValidationError
+# MATCH-01-owned: the booking service raises app.utils.exceptions
+# .PermissionError (alias of AuthorizationError, NOT the builtin) for
+# booker violations in retry_matching. Imported explicitly so the retry
+# route's 403 branch is live. Existing cancellation handlers and their
+# bare `except PermissionError` (builtin) clauses are untouched.
+from app.utils.exceptions import AuthorizationError as _Match01AuthError
 from app.utils.audit import audit_log
 from app.transport.services.payment_methods import get_available_payment_methods
 from app.transport.services import get_booking_service, get_provider_service, get_dashboard_service
@@ -192,6 +198,7 @@ _PUBLIC_ENDPOINTS = {
     "transport.bookings_cancel",
     "transport.rides_show",
     "transport.rides_cancel",
+    "transport.rides_retry_matching",
     "transport.become_driver",
     "transport.register_vehicle",
     "transport.vehicle_dashboard",
@@ -1184,6 +1191,29 @@ def rides_show(booking_reference):
     status_value = _status_value(booking)
     is_matching = status_value in _MATCHING_STATUSES
 
+    # MATCH-01-owned fast path (review Condition 2): a rider opening the page
+    # re-evaluates the matching outcome (idempotent; a booking already past
+    # CONFIRMED is a read-only no-op). This closes the no_supply window for
+    # riders with the tab open; the dispatch_recovery beat is the safety net
+    # for riders who closed the tab. The rider JSON detail endpoint stays
+    # side-effect free by design.
+    if status_value == "confirmed":
+        try:
+            from app.transport.services.matching_service import (
+                MatchingService as _MS,
+            )
+
+            outcome = _MS.check_matching_outcome(booking_model.id)
+            if outcome.get("terminal"):
+                db.session.expire_all()
+                booking = get_booking_service().get_booking(booking_model.id)
+                status_value = _status_value(booking)
+                is_matching = status_value in _MATCHING_STATUSES
+        except Exception as e:
+            db.session.rollback()
+            logger.warning(f"Ride {booking_reference}: matching outcome "
+                           f"check failed: {e}")
+
     # Driver identity is relationship data and therefore NOT part of the
     # serialized booking dict — load it explicitly for the assigned-and-after
     # management view (rider must see who is coming).
@@ -1230,6 +1260,20 @@ def rides_show(booking_reference):
         booking_reference=booking_model.booking_reference,
         status_value=status_value,
         is_matching=is_matching,
+        # MATCH-01-owned: terminal reason for the no_match branch (None
+        # unless status is no_match; read from the model, never from rider
+        # input). Also passed explicitly because cached service dicts may
+        # predate the column.
+        no_match_reason=getattr(booking_model, "no_match_reason", None),
+        # MATCH-01-owned: "Adjust request" prefill (all_rejected only).
+        # Computed server-side from the model (the `booking` context var is
+        # a service dict, so model properties are read here, not in Jinja).
+        prefill_pickup=booking_model.pickup_location_text or "",
+        prefill_dropoff=booking_model.dropoff_location_text or "",
+        prefill_service=(booking_model.service_type.value
+                         if getattr(booking_model, "service_type", None)
+                         is not None and hasattr(booking_model.service_type, "value")
+                         else (booking_model.service_type or "")),
         driver=driver,
         driver_user=driver_user,
         vehicle=vehicle,
@@ -1297,6 +1341,62 @@ def rides_cancel(booking_reference):
             return jsonify({"status": "error",
                             "message": "Unable to cancel booking"}), 500
         flash("Unable to cancel booking", "danger")
+
+    return redirect(url_for("transport.rides_show",
+                            booking_reference=booking_reference))
+
+
+# ---------------------------------------------------------------------------
+# MATCH-01-owned: manual rider retry (rides section — NOT the cancellation
+# section; cancellation-owned rides_cancel/bookings_cancel above untouched).
+# ---------------------------------------------------------------------------
+
+@transport_bp.route("/rides/<string:booking_reference>/retry", methods=["POST"])
+@module_enabled_required("transport")
+@login_required
+def rides_retry_matching(booking_reference):
+    """Rider "Try again" from the no_match terminal state.
+
+    NO_MATCH -> CONFIRMED with a fresh matching window (Condition 1), then
+    immediate re-dispatch. Manual only — nothing auto-retries. Ownership is
+    enforced by _load_owned_ride (called, not modified).
+    """
+    booking_model = _load_owned_ride(booking_reference)
+    try:
+        result = get_booking_service().retry_matching(
+            booking_model.id, user_id=current_user.id)
+        audit_log(action="ride_retry_matching", resource_type="booking",
+                  resource_id=booking_model.id, user_id=current_user.id,
+                  details={"status": "confirmed", "source": "rider_retry",
+                           "offers_created": result.get("offers_created", 0)})
+        logger.info(f"Ride {booking_reference} retry by "
+                    f"user_id={_uid()}, offers={result.get('offers_created', 0)}")
+        if request.is_json:
+            return jsonify({"status": "success",
+                            "offers_created": result.get("offers_created", 0)}), 200
+        flash("Searching for drivers again", "success")
+    except ValidationError as e:
+        logger.warning(f"Ride retry {booking_reference} rejected: {e}")
+        if request.is_json:
+            return jsonify({"status": "error", "message": str(e)}), 409
+        flash(str(e), "danger")
+    except (_Match01AuthError, PermissionError) as e:
+        logger.warning(f"Ride retry {booking_reference} forbidden: {e}")
+        if request.is_json:
+            return jsonify({"status": "error", "message": str(e)}), 403
+        flash(str(e), "danger")
+    except NotFoundError as e:
+        if request.is_json:
+            return jsonify({"status": "error", "message": str(e)}), 404
+        flash(str(e), "warning")
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Unexpected error on ride retry "
+                     f"{booking_reference}: {e}", exc_info=True)
+        if request.is_json:
+            return jsonify({"status": "error",
+                            "message": "Unable to restart matching"}), 500
+        flash("Unable to restart matching", "danger")
 
     return redirect(url_for("transport.rides_show",
                             booking_reference=booking_reference))
@@ -1932,7 +2032,31 @@ def drivers_location(id):
         flash("Driver not found", "warning")
         return redirect(url_for("transport.drivers_index"))
 
-    return _json_or_template("transport/drivers/location.html", driver=driver_model, id=id)
+    # D3 background-location truthfulness (additive display only): relative
+    # age of the last location fix for the admin view, so an online driver
+    # with a stale fix is never mistaken for live. Never alters freshness
+    # semantics (D5), heartbeat cadence (D2), or stale UI badge logic (D6);
+    # the "Live" badge condition is untouched.
+    location_age_display = None
+    try:
+        updated_at = getattr(driver_model, "location_updated_at", None)
+        if updated_at is not None:
+            if updated_at.tzinfo is None:
+                updated_at = updated_at.replace(tzinfo=timezone.utc)
+            age_s = int((datetime.now(timezone.utc) - updated_at).total_seconds())
+            if age_s < 0:
+                age_s = 0
+            if age_s < 60:
+                location_age_display = f"{age_s}s ago"
+            elif age_s < 3600:
+                location_age_display = f"{age_s // 60}m ago"
+            else:
+                location_age_display = f"{age_s // 3600}h ago"
+    except Exception:
+        location_age_display = None
+
+    return _json_or_template("transport/drivers/location.html", driver=driver_model, id=id,
+                             location_age_display=location_age_display)
 
 
 @transport_bp.route("/drivers/<int:id>/verification")
@@ -2624,7 +2748,7 @@ def cancel_booking(booking_id):
 @transport_admin_bp.route("/drivers", methods=["GET"])
 @module_enabled_required("transport")
 @login_required
-@role_required("admin")
+@transport_admin_required
 def list_drivers():
     """List all drivers with pagination"""
     page, per_page = _paginate_args()
@@ -2645,7 +2769,7 @@ def list_drivers():
 @transport_admin_bp.route("/drivers/filter", methods=["GET"])
 @module_enabled_required("transport")
 @login_required
-@role_required("admin")
+@transport_admin_required
 def drivers_filter():
     """Filtered drivers list - used for ?status=pending, ?online=true"""
     page, per_page = _paginate_args()
@@ -2673,7 +2797,7 @@ def drivers_filter():
 @transport_admin_bp.route("/drivers/<int:driver_id>/approve", methods=["POST"])
 @module_enabled_required("transport")
 @login_required
-@role_required("admin")
+@transport_admin_required
 def approve_driver(driver_id):
     """Approve a driver registration"""
     try:
@@ -2702,7 +2826,7 @@ def approve_driver(driver_id):
 @transport_admin_bp.route("/drivers/<int:driver_id>/reject", methods=["POST"])
 @module_enabled_required("transport")
 @login_required
-@role_required("admin")
+@transport_admin_required
 def reject_driver(driver_id):
     """Reject a driver registration"""
     try:
@@ -2726,6 +2850,30 @@ def reject_driver(driver_id):
         flash("Unable to reject driver", "danger")
 
     return redirect(url_for("transport_admin.list_drivers"))
+
+
+@transport_admin_bp.route("/drivers/<int:driver_id>/detail", methods=["GET"])
+@module_enabled_required("transport")
+@login_required
+@transport_admin_required
+def admin_driver_detail(driver_id):
+    """Admin driver detail page -- profile, compliance, vehicle, and the
+    admin online override control (SUPPLY-00).
+    """
+    driver = db.session.get(DriverProfile, driver_id)
+    if not driver or driver.is_deleted:
+        abort(404)
+
+    meta = driver.driver_metadata or {}
+    override = meta.get("admin_online_override") if isinstance(meta, dict) else None
+    override_active = bool(isinstance(override, dict) and override.get("enabled"))
+
+    return render_template(
+        "transport/admin/driver_detail.html",
+        driver=driver,
+        override=override if isinstance(override, dict) else None,
+        override_active=override_active,
+    )
 
 
 # -------------------------------------------------------------------------

@@ -61,7 +61,7 @@ class PaymentService:
             # Check if booking can be paid for
             if booking.status not in [BookingStatus.COMPLETED, BookingStatus.CONFIRMED]:
                 raise ValidationError(
-                    message=f"Cannot process payment for booking in {booking.status.value} status"
+                        message=f"Cannot process payment for booking in {booking.status} status"
                 )
 
             # Calculate final price
@@ -157,7 +157,7 @@ class PaymentService:
                     'payment_method': payment_method,
                     'payment_status': payment_status,
                     'payment_reference': payment_ref,
-                    'booking_status': booking.status.value
+                    'booking_status': booking.status
                 }
             }
 

@@ -336,15 +336,15 @@ class SettingsService:
             if updated_keys:
                 audit_log(
                     action='settings_updated',
-                    entity_type='settings',
+                    resource_type='settings',
                     user_id=user_id,
                     details={
                         'updated_keys': updated_keys,
                         'failed_keys': failed_keys,
                         'requires_restart': requires_restart,
-                        'request_id': request_id
+                        'request_id': request_id,
                     },
-                    request_id=request_id
+                    db_session=db.session,
                 )
 
             # Invalidate cache
@@ -439,13 +439,14 @@ class SettingsService:
             # Create audit log
             audit_log(
                 action='settings_reset',
-                entity_type='settings',
+                resource_type='settings',
                 user_id=user_id,
                 details={
                     'reset_count': reset_count,
-                    'failed_keys': failed_keys
+                    'failed_keys': failed_keys,
+                    'request_id': request_id,
                 },
-                request_id=request_id
+                db_session=db.session,
             )
 
             # Invalidate cache
@@ -671,13 +672,13 @@ class SettingsService:
                 # Create audit log
                 audit_log(
                     action='module_toggled',
-                    entity_type='module',
+                    resource_type='module',
                     user_id=user_id,
                     details={
                         'enabled': enabled,
-                        'request_id': request_id
+                        'request_id': request_id,
                     },
-                    request_id=request_id
+                    db_session=db.session,
                 )
 
                 # Invalidate cache
@@ -732,13 +733,13 @@ class SettingsService:
                 # Create audit log
                 audit_log(
                     action='maintenance_toggled',
-                    entity_type='maintenance',
+                    resource_type='maintenance',
                     user_id=user_id,
                     details={
                         'enabled': enabled,
-                        'request_id': request_id
+                        'request_id': request_id,
                     },
-                    request_id=request_id
+                    db_session=db.session,
                 )
 
                 # Invalidate cache
@@ -936,16 +937,16 @@ class SettingsService:
             if imported_count > 0:
                 audit_log(
                     action='settings_imported',
-                    entity_type='settings',
+                    resource_type='settings',
                     user_id=user_id,
                     details={
                         'imported_count': imported_count,
                         'skipped_count': skipped_count,
                         'failed_count': len(failed_keys),
                         'overwrite': overwrite,
-                        'request_id': request_id
+                        'request_id': request_id,
                     },
-                    request_id=request_id
+                    db_session=db.session,
                 )
 
             # Invalidate cache

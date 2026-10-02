@@ -1,0 +1,72 @@
+{% extends "transport/base.html" %}
+{% block title %}Drivers — Admin{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span>
+<span class="current">Drivers</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">All Drivers</h1>
+    <p class="page-subtitle">Transport driver roster</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('transport_admin.dashboard') }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-arrow-left"></i> Dashboard
+    </a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">Drivers</span>
+    <span class="badge badge-gray">{{ drivers.total if drivers else 0 }}</span>
+  </div>
+  {% if drivers and drivers.items %}
+  <div class="t-table-wrap">
+    <table class="t-table">
+      <thead>
+        <tr>
+          <th>Driver Code</th>
+          <th>Name</th>
+          <th>Compliance</th>
+          <th>Online</th>
+          <th>Available</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in drivers.items %}
+        <tr>
+          <td class="td-mono">{{ d.driver_code }}</td>
+          <td>{{ d.user.display_name if d.user else '—' }}</td>
+          <td>{{ (d.compliance_status.value if d.compliance_status else '—')|replace('_',' ')|title }}</td>
+          <td>
+            <span class="badge badge-{{ 'green' if d.is_online else 'gray' }}">
+              {{ 'Online' if d.is_online else 'Offline' }}
+            </span>
+          </td>
+          <td>
+            <span class="badge badge-{{ 'green' if d.is_available else 'gray' }}">
+              {{ 'Available' if d.is_available else 'Not available' }}
+            </span>
+          </td>
+          <td>
+            <a href="{{ url_for('transport_admin.admin_driver_detail', driver_id=d.id) }}"
+               class="btn btn-secondary btn-sm">
+              <i class="fa-solid fa-sliders"></i> Manage
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="padding:24px; text-align:center; color:var(--text-muted);">
+    No drivers found.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

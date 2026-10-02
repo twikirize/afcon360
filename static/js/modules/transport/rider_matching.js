@@ -235,6 +235,11 @@
                 if (st && !isMatchingStatus(st)) {
                     /* Cancelled: reload immediately so the page reflects it. */
                     if (st === 'cancelled') { finished = true; window.location.reload(); return; }
+                    /* MATCH-01-owned: matching failed terminally — reload so
+                       the server renders the no_match branch (reason copy +
+                       Try again / Adjust request). Never enterAssigned: no
+                       driver accepted. */
+                    if (st === 'no_match') { finished = true; window.location.reload(); return; }
                     enterAssigned(st);
                     return;
                 }

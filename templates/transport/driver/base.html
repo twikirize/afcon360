@@ -100,9 +100,12 @@
         <div class="ck-user-name">{{ current_user.display_name|default('Driver') }}</div>
         <div class="ck-user-role">Driver</div>
       </div>
-      <a href="{{ url_for('auth.logout') }}" title="Sign out" class="ck-user-logout">
-        <i class="fa-solid fa-arrow-right-from-bracket"></i>
-      </a>
+      <form method="POST" action="{{ url_for('auth.logout') }}" style="display:inline; margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
+        <button type="submit" class="ck-user-logout" title="Sign out" aria-label="Sign out" style="cursor:pointer;">
+          <i class="fa-solid fa-arrow-right-from-bracket"></i>
+        </button>
+      </form>
     </div>
   </aside>
 

@@ -77,7 +77,29 @@ def test_driver_dashboard_preserves_workspace_sections(app, client):
 
 
 def test_driver_dashboard_denied_without_driver_context(app,
-                                                        authenticated_client):
+                                                         authenticated_client):
     resp = authenticated_client.get("/transport/driver-dashboard",
                                     follow_redirects=False)
     assert resp.status_code == 403
+
+
+def test_driver_dashboard_offer_sound_picker(app, client):
+    """Account panel offers a device-local alert-sound choice with preview."""
+    user_id, code = _seed_driver(app)
+    _login_as(app, client, user_id)
+    resp = client.post("/switch-context",
+                       json={"type": "driver", "public_id": code,
+                             "role": "driver"})
+    assert resp.status_code == 200, resp.data.decode("utf-8")[:300]
+    resp = client.get("/transport/driver-dashboard")
+    assert resp.status_code == 200
+    html = resp.data.decode("utf-8")
+    assert "Offer alert sound" in html
+    for value in ("value=\"chime\"", "value=\"urgent\"",
+                  "value=\"bell\"", "value=\"horn\"",
+                  "value=\"custom\""):
+        assert value in html
+    assert "alertSoundPreview" in html
+    assert "AFCONDriverSound" in html
+    assert "customSoundFile" in html
+    assert "customSoundRemove" in html

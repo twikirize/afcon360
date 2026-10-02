@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, current_app, request, abort, jsonify, session
-from flask_login import current_user, login_required
+from flask_login import current_user, login_required, logout_user
 from datetime import datetime, timezone
 from app.identity.models.user import User, Session as UserSession
 from app.profile.models import get_profile_by_user
@@ -65,7 +65,11 @@ def public_profile(public_id):
 def account_overview():
     user = User.query.filter_by(public_id=str(current_user.public_id)).first()
     if not user:
-        return redirect(url_for('auth.logout'))
+        # Stale session (user row gone). Log out inline and go to login —
+        # do NOT redirect to POST-only /logout (GET would 405).
+        logout_user()
+        flash("Your session is no longer valid. Please sign in again.", "warning")
+        return redirect(url_for('auth.login'))
 
     profile = get_profile_by_user(current_user.public_id)
 

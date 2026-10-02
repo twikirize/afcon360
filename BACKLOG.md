@@ -3417,3 +3417,105 @@ matching / realtime / maps / routing
 - What needs to happen: separately authorized telemetry node producing (1) privacy review against the Act, (2) in-product notice + consent wording, (3) minimal schema + retention/deletion design, (4) SW heartbeat protocol that degrades truthfully offline. No database work until then.
 - Owner/area: platform / privacy + transport PWA
 - Links: `static/manifest.json`, `static/transport/manifest.json`, `static/transport/sw.js`, J9 reports (source+test+device)
+
+---
+
+## DEV-DRIFT-01 — Model-vs-database drift silently degrades pages (FUTURE / PLATFORM)
+- Status: Not started (observed 2026-09-30: driver dashboard showed "No driver profile found" for an existing profile)
+- Raised: 2026-09-30 (sound-testing session)
+- Context: A parallel workstream added `transport_bookings.no_match_reason` to the model without the column existing in the dev database. First query failed (`UndefinedColumn`), poisoning the request transaction; every later query aborted (`InFailedSqlTransaction`); the dashboard's broad `except` set `profile=None`, rendering "No driver profile found". Intact user data looked like a deleted profile for ~1 hour of live testing. Same drift class previously broke 61 tests on the test DB (`cancellation_reason_category`).
+- What needs to happen: (1) startup/CI guard that compares model metadata against the live database (columns, enum values) and fails fast with a NAMED drift report instead of serving degraded pages; (2) narrow the dashboard's exception handling so data-access failures surface as errors, never as "not found"; (3) keep migration execution with its owner — the guard must detect and report, not auto-repair. No implementation in this entry.
+- Owner/area: platform (consumers: all workspace pages, test bootstrap)
+- Links: `app/transport/routes.py::driver_dashboard`, `app/transport/services/booking_service.py::get_driver_bookings`, `scripts/setup_test_db_schema.py`
+
+---
+
+## Driver-console `driverConsole` assertion has no template counterpart — stale test (RECORDED / TRANSPORT TESTS)
+- Status: Not started (record only — DO NOT modify the test or the template inside the D3/background node)
+- Raised: 2026-09-29
+- Context: `tests/transport/test_driver_console.py:195` (`test_driver_dashboard_carries_console_location_feature`) asserts `id="driverConsole"` in the rendered `/transport/driver-dashboard` body. PROOF it pre-dates the current session: `git stash push` -> single-test run at clean HEAD -> 1 failed; `git stash pop` -> byte-identical tree restored. `git grep 'driverConsole' HEAD -- templates tests static` hits ONLY the test assertion; `git show 1ebcd51 -- templates/transport/driver/driver_dashboard.html` (the commit that added the 356-line test file) contains zero `driverConsole` lines — the id was never in any template or static file. VERDICT: the test is stale/aspirational (written against a `driverConsole` container that never landed); the template is NOT missing a contracted feature (no contract cites that id; the dashboard renders and publishes without it).
+- What needs to happen: one authoritative decision — (a) drop/relax the assertion to the elements that actually exist (`dcLocBadge`, `data-ping-interval`), or (b) define a `driverConsole` container as a real feature with a contract and add it to the template. Either path is a test/template change that must NOT ride along with background-location work; keep the test-edit trail clean.
+- Owner/area: transport / driver workspace tests
+- Links: `tests/transport/test_driver_console.py:186-200`, `templates/transport/driver/driver_dashboard.html`, commit `1ebcd51`
+- Evidence/source: stash/pop reproduction run 2026-09-29 (1 failed at clean HEAD)
+
+---
+
+## DRIVER-SOUND-01 — Custom song file lost across sessions on driver's phone (DEFERRED / DRIVER ALERTS)
+- Status: Not started (recorded 2026-09-30; chosen synth sounds persist fine — only the custom-file case)
+- Raised: 2026-09-30 (live sound testing with driver 179)
+- Context: Choice (`localStorage ck_alert_sound`) survives re-login, but the custom audio bytes do not: IndexedDB record gone AND localStorage base64 backup gone after re-login, despite a successful save ("Saved on this phone") minutes earlier. Dual-write (IDB primary + localStorage backup, `backupCustom`/`loadBackup`) already in place and syntax-green, yet the file still vanishes — pointing at phone-browser site-data clearing on exit, a separate app instance (tile vs tab) with partitioned storage, or aggressive eviction; NOT app code (nothing clears those keys — verified repo-wide) and NOT the server (device-local only).
+- What needs to happen: (1) confirm single app instance (tile vs browser tab) with the owner; (2) check phone browser "clear on exit"/storage settings; (3) if storage is genuinely wiped per session, consider alternatives: re-pick-per-session UX, smaller clip transcoding to fit safer quotas, or server-side sound hosting (needs privacy/product decision — sounds would leave the phone). Do NOT add columns/DB storage without an authorized schema node.
+- Owner/area: transport / driver alert layer (`static/js/modules/transport/driver_alerts.js`: `saveCustom`, `loadBackup`, `customState`)
+- Links: `static/js/modules/transport/driver_alerts.js`, `templates/transport/driver/driver_dashboard.html` (picker card)
+
+---
+
+## LOGOUT-UI-01 — Migrate remaining GET logout anchors to POST + CSRF forms (DEFERRED / AUTH UX)
+- Status: Not started (recorded 2026-09-30; intentional deferral — POST-only `/logout` is correct, these callers 405 until migrated)
+- Raised: 2026-09-30 (logout PWA investigation + redirect-fix phase)
+- Context: `/logout` is intentionally POST-only (`app/auth/routes.py:1140`). Seven user-facing controls still use `<a href="{{ url_for('auth.logout') }}">` (GET) and return 405 when clicked. The canonical replacement pattern already exists (`templates/base.html:395,451,562,743` — POST form + `raw_csrf_token`; also `templates/wallet/base_wallet.html:896`, `templates/admin/moderator/base_moderator.html:896`, `templates/admin/compliance/base_compliance.html:760`, fixed driver shell `templates/transport/driver/base.html:103-108`).
+- What needs to happen: convert each anchor below to a POST + CSRF form preserving icon, CSS class, styling, and accessibility attributes; verify each icon logs out instead of 405. Do NOT re-enable GET /logout to accommodate them.
+- Owner/area: transport shells + owner + auditor UX
+- Links: `templates/transport/base.html:111`, `templates/transport/dashboard/base_dashboard.html:383,435`, `templates/transport/dashboard/keep.html:219,282`, `templates/owner/dashboard.html:181`, `templates/auditor/dashboard.html:50`
+
+---
+
+## LOGOUT-TEST-01 — Stale GET logout helpers + missing dedicated logout coverage (DEFERRED / TESTS)
+- Status: Not started (recorded 2026-09-30)
+- Raised: 2026-09-30 (logout investigation)
+- Context: `tests/transport/test_marketplace_ux_harmonisation.py:270,302,340,397` call `client.get(url_for('auth.logout'))` (now 405 by design). Return values are discarded and each is followed by manual re-login via `session_transaction`, so the suite passes anyway — the calls are stale session-clear helpers, not intentional 405 tests. Only `:229` uses the method-correct POST, also unasserted.
+- What needs to happen: migrate the four helpers to method-correct POST; add dedicated tests for (a) authenticated POST logout success, (b) GET /logout → 405, (c) missing/invalid CSRF → rejection, (d) actual session invalidation after logout (server session revoked, auth keys cleared).
+- Owner/area: transport tests + auth tests
+- Links: `tests/transport/test_marketplace_ux_harmonisation.py:229,270,302,340,397`, `tests/conftest.py:515` (`journey.logout()` helper bypasses HTTP)
+
+---
+
+## LOGOUT-CSRF-01 — CSRF-enabled fixture needed for logout tests (DEFERRED / TEST INFRA)
+- Status: Not started (recorded 2026-09-30)
+- Raised: 2026-09-30 (logout investigation)
+- Context: Normal test config disables CSRF (`app/config.py:475` `TestingConfig.WTF_CSRF_ENABLED = False`, reinforced `tests/conftest.py:289`), so no current test can prove valid-token logout or missing-token rejection. Production enables it (`app/config.py:277-284`: `WTF_CSRF_ENABLED=true`, `CHECK_DEFAULT=True`, `METHODS=[POST,PUT,PATCH,DELETE]`). The wallet suite's CSRF harness (`tests/wallet/test_withdraw_api.py:90-110`) is a reusable pattern.
+- What needs to happen: provide a CSRF-enabled app/client fixture for logout tests WITHOUT changing the default test configuration in this phase.
+- Owner/area: test infrastructure + auth
+- Links: `app/config.py:277-284,475`, `tests/conftest.py:285-290`, `tests/wallet/test_withdraw_api.py:90-110`
+
+---
+
+## LOGOUT-CSS-01 — Driver logout form inline-style cleanup, optional (DEFERRED / TRANSPORT CSS)
+- Status: Not started (recorded 2026-09-30; visual behavior correct as-is)
+- Raised: 2026-09-30 (logout investigation)
+- Context: `templates/transport/driver/base.html:103-108` uses `style="display:inline; margin:0"` on the form (required — bare form would break the `.ck-pane-foot` flex row, `driver-dashboard.css:208-215`) and `style="cursor:pointer"` on the button (required — `.ck-user-logout`, `:246-262`, sets size/border/hover but no cursor, unlike anchors).
+- What needs to happen (optional): move both into `static/css/modules/transport/driver-dashboard.css` (e.g. `.ck-pane-foot form{display:inline;margin:0}` + `cursor:pointer` on `.ck-user-logout`), preserving exact appearance. Not done in the redirect-fix phase per scope.
+- Owner/area: transport / driver workspace CSS
+- Links: `templates/transport/driver/base.html:103-108`, `static/css/modules/transport/driver-dashboard.css:208-262`
+
+---
+
+## LOGOUT-PROTOTYPE-01 — pushups/auth.py dead GET /logout review before any deletion (DEFERRED / CLEANUP)
+- Status: Not started (recorded 2026-09-30; DO NOT delete without explicit review)
+- Raised: 2026-09-30 (logout investigation)
+- Context: `pushups/auth.py:18-21` defines a second `Blueprint('auth')` with GET `/logout` + `session.clear()`. Evidence says dead: zero imports/registrations of `pushups` anywhere (only docs/`tree.md` mention it), factory registers blueprints from `app/*` only, and the file body is truncated stubs. Risk: the `auth` blueprint name collides with the real application auth blueprint if ever imported.
+- What needs to happen: explicitly confirm unreachability, then decide keep-as-archive vs delete. No deletion in the redirect-fix phase.
+- Owner/area: platform cleanup
+- Links: `pushups/auth.py:1-21`
+
+---
+
+## AUTH-AUDIT-01 — Broader authentication/security audit (DEFERRED / SECURITY PHASE)
+- Status: Not started (recorded 2026-09-30; explicitly out of scope for the logout redirect phase)
+- Raised: 2026-09-30 (logout investigation follow-up)
+- Context: The logout work touched only redirects + PWA caller. The wider auth surface was not audited.
+- What needs to happen (separately authorized phase): session replay after logout, server-side session revocation coverage, session fixation / session-ID rotation, authentication cookie attributes, password recovery, verification flows, session expiration, impersonation/session transitions (`app/admin/routes_ultimate.py:368-395`, `app/admin/owner/routes.py:824-855`), broader authentication security review.
+- Owner/area: auth + security
+- Links: `app/auth/routes.py`, `app/auth/decorators.py`, `app/admin/routes_ultimate.py`, `app/admin/owner/routes.py`
+
+---
+
+## FUTURE-MAP-01 — Driver-side rider/pickup live location (FUTURE / MOBILITY)
+- Status: Not started (recorded 2026-09-30 as Node 6 follow-up; DO NOT implement inside Node 6)
+- Raised: 2026-09-30 (rider live tracking verified; reverse direction does not exist)
+- Context: The driver currently does NOT see the rider's live position on the map. Rider→driver tracking is proven (Node 7, live journeys); driver→rider visibility has no contract, no endpoint, and no UI.
+- Purpose: allow the driver, during an active assigned ride, to see the authorized rider/pickup location where product policy permits.
+- Future requirements must define (separately authorized node): authorization (which driver, which booking states); privacy (rider consent/product basis where required); location freshness (reuse the 300s TTL or justify a different bound); pickup identity/safety; stale-location handling; no exact rider location exposure outside the authorized trip context.
+- Owner/area: transport / GEO (consumers: driver workspace map, tracking subject model)
+- Links: `app/transport/services/tracking_service.py::get_rider_tracking_subject` (reverse-direction analogue needed), `static/transport/sw.js`, Node 7 report

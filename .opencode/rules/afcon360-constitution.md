@@ -167,6 +167,76 @@ Evidence may include: files inspected, specifications reviewed, relevant models/
 
 Do not report success merely because code was written.
 
+### §7.1 Full-Code Evidence Rule
+
+For every implementation or defect review, agents MUST provide enough current source code to establish the behavior being changed.
+
+#### Default requirement
+
+For a function-level defect:
+> Provide the **full current function**, not only the suspected lines.
+
+For a class-level defect:
+> Provide the **full current class** or the complete class section necessary to understand state, helpers, decorators, inheritance, and related methods.
+
+For a cross-function defect:
+> Provide the **full relevant caller and callee functions**.
+
+For a transaction or state-flow defect:
+> Provide all relevant functions participating in the transaction/state transition, including commit/rollback boundaries.
+
+#### Also provide
+
+* exact file path
+* exact symbol/class/function
+* exact line range
+* relevant callers
+* relevant tests
+* current observed behavior
+* invariant being violated
+* exact proposed correction
+* verification plan
+
+#### Do not
+
+* provide only isolated lines when surrounding logic matters
+* paraphrase code that is necessary to validate the claim
+* assume a helper behaves a certain way without showing its implementation
+* assume a test fixture behaves a certain way without showing the fixture
+* propose a patch against code that has not been presented in sufficient context
+
+#### Review principle
+
+> **Never approve a patch from a fragment when the surrounding function/class can change the meaning of that fragment.**
+
+The agent's report should carry the source evidence needed for adversarial review, so the reviewer does not need to repeatedly rediscover the same code.
+
+#### Implementation discipline
+
+Before implementation:
+```
+FULL CURRENT SOURCE
+        ↓
+PROBLEM PROVEN
+        ↓
+MINIMAL PATCH
+        ↓
+TEST CONTRACT
+        ↓
+APPROVAL
+```
+
+After implementation:
+```
+FULL RELEVANT SOURCE / ACTUAL DIFF
+        ↓
+TEST RESULTS
+        ↓
+REGRESSION RESULTS
+        ↓
+GATE
+```
+
 ---
 
 ## §8 Completion Status (AGENTS.md §8)
