@@ -528,14 +528,36 @@ class TestLocationEndToEnd:
         with app.app_context():
             return get_booking_service().create_booking(rider_id, payload)
 
-    def test_text_only_locations_no_fabricated_coords(
+    def test_text_only_locations_rejected_at_creation(
             self, app, client, monkeypatch):
+        """UI-LOC-02A: text-only bookings are rejected at creation."""
+        from app.transport.services.booking_service import get_booking_service
+        from app.utils.exceptions import ValidationError
+
+        rider = _seed_driver(app)
+        with app.app_context():
+            with pytest.raises(ValidationError):
+                get_booking_service().create_booking(rider.id, {
+                    "pickup_location": "Kampala Serena",
+                    "dropoff_location": "Entebbe Airport",
+                    "pickup_time": (
+                        datetime.now(timezone.utc) + timedelta(hours=3)).isoformat(),
+                    "service_type": "on_demand",
+                })
+
+    def test_coordinates_via_form_fields_preserved(
+            self, app, client, monkeypatch):
+        """Coordinates passed via form fields (pickup_latitude, etc.) are preserved."""
         from app.transport.models import Booking
 
         rider = _seed_driver(app)
         result = self._create_via_service(app, rider.id, {
             "pickup_location": "Kampala Serena",
             "dropoff_location": "Entebbe Airport",
+            "pickup_latitude": 0.3476,
+            "pickup_longitude": 32.5825,
+            "dropoff_latitude": 0.3136,
+            "dropoff_longitude": 32.5811,
             "pickup_time": (
                 datetime.now(timezone.utc) + timedelta(hours=3)).isoformat(),
             "service_type": "on_demand",
@@ -547,54 +569,11 @@ class TestLocationEndToEnd:
             stored = Booking.query.filter_by(
                 booking_reference=ref).first()
             assert stored is not None
-            # Original human text survives verbatim at the source.
-            assert stored.pickup_location == "Kampala Serena"
-            assert stored.dropoff_location == "Entebbe Airport"
-
-        driver = _seed_driver(app)
-        vehicle_id = _make_ready(app, driver)
-        _offer(app, monkeypatch, ref, driver.driver_profile_id, vehicle_id)
-        _login(client, driver)
-
-        offer = client.get(
-            "/api/transport/drivers/me/offers").get_json()["data"]["offers"][0]
-        assert offer["pickup"]["text"] == "Kampala Serena"
-        assert offer["destination"]["text"] == "Entebbe Airport"
-        # Nothing fabricated: no coordinates exist, none are claimed.
-        assert offer["pickup"]["latitude"] is None
-        assert offer["pickup"]["longitude"] is None
-        assert offer["destination"]["latitude"] is None
-        assert offer["destination"]["longitude"] is None
-
-    def test_text_plus_coordinates_both_preserved(
-            self, app, client, monkeypatch):
-        from app.transport.models import Booking
-
-        rider = _seed_driver(app)
-        result = self._create_via_service(app, rider.id, {
-            "pickup_location": {
-                "latitude": 0.3476,
-                "longitude": 32.5825,
-                "address": "Kampala Serena",
-            },
-            "dropoff_location": {
-                "latitude": 0.3136,
-                "longitude": 32.5811,
-                "address": "Entebbe Airport",
-            },
-            "pickup_time": (
-                datetime.now(timezone.utc) + timedelta(hours=3)).isoformat(),
-            "service_type": "on_demand",
-        })
-        assert result["success"] is True, result
-        ref = result["data"]["booking_reference"]
-
-        with app.app_context():
-            stored = Booking.query.filter_by(
-                booking_reference=ref).first()
-            assert stored is not None
-            assert stored.pickup_location["address"] == "Kampala Serena"
-            assert stored.pickup_location["latitude"] == 0.3476
+            # Node 1 contract: canonical snapshot carries `label` (the
+            # rider-typed text); no presentation-only `address` key exists.
+            assert stored.pickup_location["label"] == "Kampala Serena"
+            assert "address" not in stored.pickup_location
+            assert stored.pickup_location["latitude"] == pytest.approx(0.3476)
 
         driver = _seed_driver(app)
         vehicle_id = _make_ready(app, driver)

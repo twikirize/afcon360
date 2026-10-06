@@ -380,6 +380,13 @@
   display:flex;align-items:center;justify-content:center;gap:6px;
 }
 .bolt-map-hint .bi{color:var(--brand)}
+.gps-status{font-size:.72rem;color:var(--muted);margin-left:6px;min-height:1em;display:inline-block}
+.gps-status[data-gps-state="locating"]{color:var(--brand)}
+.gps-status[data-gps-state="error"]{color:#b91c1c}
+.gps-status[data-gps-state="success"]{color:var(--brand-dark)}
+.map-target-indicator{position:absolute;top:10px;left:10px;z-index:500;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:.74rem;font-weight:700;color:var(--ink);box-shadow:0 2px 8px rgba(12,21,18,.12);pointer-events:none}
+.bolt-cta-reason{display:block;margin-top:8px;font-size:.78rem;color:var(--muted);text-align:center;min-height:1.2em}
+.bolt-cta-reason:not(:empty){color:#7a5a00}
 
 /* ---------- Below card: recents ---------- */
 .bolt-recents{
@@ -867,6 +874,7 @@
                     aria-label="Use my current location">
                 <i class="bi bi-crosshair"></i>
               </span>
+              <span class="gps-status" id="gpsStatus" aria-live="polite" aria-atomic="true"></span>
             </label>
             <label class="bolt-field bolt-field-dest">
               <span class="dot dot-dest"><i class="bi bi-flag"></i></span>
@@ -883,15 +891,18 @@
 
         <div class="bolt-chips" id="destChips" aria-label="Popular destinations">
           <button type="button" class="bolt-chip"
-                  data-dest="Mandela National Stadium, Namboole">
+                  data-dest="Mandela National Stadium, Namboole"
+                  title="Sets destination text only (coordinates must be selected on map)">
             <i class="bi bi-geo-fill"></i> Namboole Stadium
           </button>
           <button type="button" class="bolt-chip"
-                  data-dest="Lugogo Cricket Oval, Kampala">
+                  data-dest="Lugogo Cricket Oval, Kampala"
+                  title="Sets destination text only (coordinates must be selected on map)">
             <i class="bi bi-geo-fill"></i> Lugogo Oval
           </button>
           <button type="button" class="bolt-chip"
-                  data-dest="Nile Independence Stadium">
+                  data-dest="Nile Independence Stadium"
+                  title="Sets destination text only (coordinates must be selected on map)">
             <i class="bi bi-geo-fill"></i> Nile Independence
           </button>
         </div>
@@ -932,10 +943,12 @@
 
         <div class="bolt-cta-wrap">
           <button type="button" class="bolt-cta"
-                  id="btnContinue" disabled>
+                  id="btnContinue" disabled
+                  aria-describedby="continueDisabledReason">
             <span>Find a Ride</span>
             <span class="bolt-cta-hint"><i class="bi bi-arrow-right"></i></span>
           </button>
+          <span id="continueDisabledReason" class="bolt-cta-reason" aria-live="polite"></span>
         </div>
 
         {% if is_authenticated and recent_rides %}
@@ -962,6 +975,7 @@
 
       {# ---------- RIGHT: map panel ---------- #}
       <div class="bolt-map-panel" aria-label="Live map">
+        <div class="map-target-indicator" id="mapTargetIndicator" aria-live="polite" aria-atomic="true"></div>
         <div id="pickMap"></div>
       </div>
 
@@ -1192,8 +1206,8 @@
 
 <link rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="{{ url_for('static', filename='js/geo/geo-map.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/geo/geo-map.js') }}"></script>
 {% endblock %}
 
 {% block scripts %}
@@ -1247,6 +1261,9 @@
   var svcBtns      = document.querySelectorAll('.bolt-svc');
   var pickupHint   = document.getElementById('pickupHint');
   var token        = '{{ raw_csrf_token }}';
+  var gpsStatus    = document.getElementById('gpsStatus');
+  var mapTargetIndicator = document.getElementById('mapTargetIndicator');
+  var continueDisabledReason = document.getElementById('continueDisabledReason');
 
   var RIDE_OPTIONS_URL = '{{ url_for("transport_api.ride_options") }}';
 
@@ -1284,6 +1301,63 @@
     var d = new Date();
     d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
     hPickupTime.value = d.toISOString().slice(0, 16);
+  }
+
+  var gpsSeq = 0;
+  function bumpGpsSeq(){ gpsSeq += 1; return gpsSeq; }
+  function invalidateGpsRequest(){
+    gpsSeq += 1;
+    if (typeof btnLocate !== 'undefined' && btnLocate) {
+      btnLocate.innerHTML = '<i class="bi bi-crosshair"></i>';
+    }
+    updateGpsStatus('', '');
+    return gpsSeq;
+  }
+  function isPickupResolved(){
+    var lat = document.getElementById('pickup_latitude').value;
+    var lng = document.getElementById('pickup_longitude').value;
+    return !!(lat && lng);
+  }
+  function isDropoffResolved(){
+    var lat = document.getElementById('dropoff_latitude').value;
+    var lng = document.getElementById('dropoff_longitude').value;
+    return !!(lat && lng);
+  }
+  function updateGpsStatus(st, msg){
+    if (!gpsStatus) return;
+    gpsStatus.textContent = msg || '';
+    gpsStatus.setAttribute('data-gps-state', st || '');
+  }
+  function updateMapTarget(){
+    if (!mapTargetIndicator) return;
+    if (window.__boltMapAvailable === false) {
+      mapTargetIndicator.textContent = 'Map unavailable – use GPS for pickup; destination needs the map when it returns.';
+      return;
+    }
+    var pr = isPickupResolved(), dr = isDropoffResolved();
+    var msg = '';
+    if (!pr && !dr) msg = 'Select pickup on the map';
+    else if (pr && !dr) msg = 'Select destination on the map';
+    else if (!pr && dr) msg = 'Select pickup on the map';
+    else msg = 'Map ready – tap to adjust pickup or destination';
+    mapTargetIndicator.textContent = msg;
+  }
+  function updateContinueReason(){
+    if (!continueDisabledReason) return;
+    if (!btnContinue.disabled) {
+      continueDisabledReason.textContent = '';
+      btnContinue.removeAttribute('title');
+      return;
+    }
+    var msg = 'Select a pickup and destination to continue.';
+    if (!state.pickup && !state.dest) msg = 'Select a pickup and destination to continue.';
+    else if (!state.pickup) msg = 'Select a pickup to continue.';
+    else if (!state.dest) msg = 'Select a destination to continue.';
+    else if (!isPickupResolved() && !isDropoffResolved()) msg = 'Select pickup and destination on the map to continue.';
+    else if (!isPickupResolved()) msg = 'Select a pickup to continue – use GPS or tap the map.';
+    else if (!isDropoffResolved()) msg = 'Select destination on the map to continue – chips set text only.';
+    continueDisabledReason.textContent = msg;
+    btnContinue.setAttribute('title', msg);
   }
 
   // ---------- Schedule toggle ----------
@@ -1325,14 +1399,22 @@
   function validateA(){
     state.dest   = inputDest.value.trim();
     state.pickup = inputPickup.value.trim();
-    btnContinue.disabled = !state.dest || !state.pickup;
+    var pickupLat = document.getElementById('pickup_latitude').value;
+    var pickupLng = document.getElementById('pickup_longitude').value;
+    var dropoffLat = document.getElementById('dropoff_latitude').value;
+    var dropoffLng = document.getElementById('dropoff_longitude').value;
+    var coordsPresent = pickupLat && pickupLng && dropoffLat && dropoffLng;
+    btnContinue.disabled = !state.dest || !state.pickup || !coordsPresent;
     if (pickupHint) pickupHint.style.display = state.pickup ? 'none' : '';
+    updateMapTarget();
+    updateContinueReason();
   }
   inputDest.addEventListener('input', function(){
     if (window.__mapClearSide) window.__mapClearSide('dest');
     validateA();
   });
   inputPickup.addEventListener('input', function(){
+    invalidateGpsRequest();
     if (window.__mapClearSide) window.__mapClearSide('pickup');
     validateA();
   });
@@ -1353,6 +1435,7 @@
 
   if (btnSwap) btnSwap.addEventListener('click', function(){
     var d = inputDest.value, p = inputPickup.value;
+    invalidateGpsRequest();
     inputDest.value = p; inputPickup.value = d;
     state.dest = p.trim(); state.pickup = d.trim();
     if (window.__mapSwapSides) window.__mapSwapSides();
@@ -1360,29 +1443,47 @@
   });
 
   btnLocate.addEventListener('click', function(){
+    var hadResolved = isPickupResolved();
+    var prevText = inputPickup.value;
+    var prevLat = document.getElementById('pickup_latitude').value;
+    var prevLng = document.getElementById('pickup_longitude').value;
+    var mySeq = bumpGpsSeq();
     if (!navigator.geolocation) {
-      inputPickup.value = 'Current location';
+      updateGpsStatus('unavailable', 'Geolocation not supported by this device.');
       validateA();
       return;
     }
     inputPickup.value = 'Locating…';
     btnLocate.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
+    updateGpsStatus('locating', 'Getting your location…');
     navigator.geolocation.getCurrentPosition(
       function(pos){
+        if (mySeq !== gpsSeq) return;
         inputPickup.value = 'Current location';
         document.getElementById('pickup_latitude').value  = pos.coords.latitude;
         document.getElementById('pickup_longitude').value = pos.coords.longitude;
         validateA();
         btnLocate.innerHTML = '<i class="bi bi-crosshair"></i>';
+        updateGpsStatus('success', 'Current location acquired.');
         if (window.__mapPinPickup) {
           window.__mapPinPickup(pos.coords.latitude, pos.coords.longitude, 'Current location');
         }
       },
       function(){
-        inputPickup.value = '';
-        if (window.__mapClearSide) window.__mapClearSide('pickup');
-        validateA();
+        if (mySeq !== gpsSeq) return;
         btnLocate.innerHTML = '<i class="bi bi-crosshair"></i>';
+        if (hadResolved) {
+          inputPickup.value = prevText;
+          document.getElementById('pickup_latitude').value = prevLat;
+          document.getElementById('pickup_longitude').value = prevLng;
+          validateA();
+          updateGpsStatus('error', 'Location attempt failed – previous pickup kept.');
+        } else {
+          inputPickup.value = '';
+          if (window.__mapClearSide) window.__mapClearSide('pickup');
+          validateA();
+          updateGpsStatus('error', 'Unable to get location – choose pickup on the map.');
+        }
       },
       {enableHighAccuracy: true, timeout: 8000}
     );
@@ -1423,6 +1524,14 @@
   }
 
   function loadOptions(){
+    // Guard: only request options when both endpoints have coordinates
+    var pickupLat = document.getElementById('pickup_latitude').value;
+    var pickupLng = document.getElementById('pickup_longitude').value;
+    var dropoffLat = document.getElementById('dropoff_latitude').value;
+    var dropoffLng = document.getElementById('dropoff_longitude').value;
+    if (!pickupLat || !pickupLng || !dropoffLat || !dropoffLng) {
+      return;
+    }
     optionsBox.innerHTML = skeletonBox();
     btnReview.disabled = true;
     reviewAmt.textContent = '';
@@ -1639,8 +1748,11 @@
   (function initMap(){
     var mapEl = document.getElementById('pickMap');
     if (!mapEl) return;
+    window.__boltMapAvailable = true;
     if (!window.GeoMap) {
       mapEl.setAttribute('data-geo-map-status', 'unavailable');
+      window.__boltMapAvailable = false;
+      updateMapTarget();
       return;
     }
     var handle = window.GeoMap.init('pickMap', {
@@ -1649,7 +1761,12 @@
       center: {latitude: 0.3136, longitude: 32.5811},
       zoom: 12
     });
-    if (!handle || handle.status !== 'rendered') return;
+    if (!handle || handle.status !== 'rendered') {
+      window.__boltMapAvailable = false;
+      updateMapTarget();
+      return;
+    }
+    window.__boltMapAvailable = true;
     setTimeout(function(){ if (handle.map) handle.map.invalidateSize(); }, 250);
 
     var pins = {pickup: null, dropoff: null};
@@ -1692,6 +1809,7 @@
         pins[kind].marker.on('dragend', function(){
           var ll = pins[kind].marker.getLatLng();
           pins[kind].lat = ll.lat; pins[kind].lng = ll.lng;
+          if (kind === 'pickup') invalidateGpsRequest();
           setFieldSync(kind === 'pickup' ? inputPickup : inputDest, pinnedLabel(ll));
           writeFields(); validateA();
         });
@@ -1708,18 +1826,23 @@
       }
     }
 
-    // Tap-to-place: smart selection based on current state.
+    // Tap-to-place: target derived from resolved coordinates, not text.
     handle.map.on('click', function(e){
-      var hasPickup   = !!pins.pickup   || !!inputPickup.value.trim();
-      var hasDropoff  = !!pins.dropoff  || !!inputDest.value.trim();
-      if (!hasPickup)      placePin('pickup',  e.latlng);
-      else if (!hasDropoff) placePin('dropoff', e.latlng);
+      var pLat = document.getElementById('pickup_latitude').value;
+      var pLng = document.getElementById('pickup_longitude').value;
+      var dLat = document.getElementById('dropoff_latitude').value;
+      var dLng = document.getElementById('dropoff_longitude').value;
+      var pickupResolved = !!(pLat && pLng);
+      var dropoffResolved = !!(dLat && dLng);
+      if (!pickupResolved && !dropoffResolved) { invalidateGpsRequest(); placePin('pickup', e.latlng); }
+      else if (pickupResolved && !dropoffResolved) { placePin('dropoff', e.latlng); }
+      else if (!pickupResolved && dropoffResolved) { invalidateGpsRequest(); placePin('pickup', e.latlng); }
       else {
-        // Both exist. Replace the nearest pin.
+        // Both resolved. Preserve deterministic nearest-pin replacement.
         var dP = pins.pickup  ? handle.map.distance(e.latlng, L.latLng(pins.pickup.lat,  pins.pickup.lng))  : Infinity;
         var dD = pins.dropoff ? handle.map.distance(e.latlng, L.latLng(pins.dropoff.lat, pins.dropoff.lng)) : Infinity;
-        if (dP < dD) placePin('pickup',  e.latlng);
-        else         placePin('dropoff', e.latlng);
+        if (dP < dD) { invalidateGpsRequest(); placePin('pickup',  e.latlng); }
+        else         { placePin('dropoff', e.latlng); }
       }
     });
 

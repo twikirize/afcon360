@@ -43,7 +43,7 @@ ROLE_AUDITOR = "auditor"                     # NEW: read-only audit access
 ROLE_COMPLIANCE_OFFICER = "compliance_officer"  # NEW: AML review access
 ROLE_MODERATOR = "moderator"               # NEW: content moderation
 ROLE_SUPPORT = "support"                   # NEW: customer support
-ROLE_EVENT_MANAGER = "event_manager"         # NEW: event management
+ROLE_EVENT_ADMIN = "event_admin"           # NEW: platform event administration
 ROLE_TRANSPORT_ADMIN = "transport_admin"     # NEW: transport management
 ROLE_WALLET_ADMIN = "wallet_admin"         # NEW: wallet management
 ROLE_ACCOMMODATION_ADMIN = "accommodation_admin"  # NEW: accommodation management
@@ -65,7 +65,7 @@ ALL_GLOBAL_ROLES_LIST = [
     ROLE_COMPLIANCE_OFFICER,
     ROLE_MODERATOR,
     ROLE_SUPPORT,
-    ROLE_EVENT_MANAGER,
+    ROLE_EVENT_ADMIN,
     ROLE_TRANSPORT_ADMIN,
     ROLE_WALLET_ADMIN,
     ROLE_ACCOMMODATION_ADMIN,
@@ -82,7 +82,7 @@ ROLE_PERMISSIONS = {
     ROLE_COMPLIANCE_OFFICER: ["audit.read", "aml.review", "aml.resolve"],
     ROLE_MODERATOR: ["content.moderate", "audit.read"],
     ROLE_SUPPORT: ["support.tickets", "user.view", "audit.read"],
-    ROLE_EVENT_MANAGER: [
+    ROLE_EVENT_ADMIN: [
         "events.manage",      # Create, edit, delete events
         "events.approve",     # Approve/reject events
         "events.analytics",   # View event analytics

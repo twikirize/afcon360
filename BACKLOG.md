@@ -1,5 +1,11 @@
 # AFCON360 — Deferred Work Backlog
 
+## DRILL-HYGIENE-01 — Rotate DEEPSEEK_API_KEY leaked into drill artifact (DEFERRED / SECURITY, human decision)
+- Status: Not started (recorded 2026-10-03; rotation explicitly deferred by human — "ignore changing the key" for now, handle later)
+- Raised: 2026-10-03 (live drill session; third-party review of %TEMP%\opencode\drill artefacts)
+- Context: A process dump file (%TEMP%\opencode\drill\smoke-proc.xml, since deleted) contained the full StartInfo.Environment block including the plaintext DEEPSEEK_API_KEY value. The leaked COPY has been deleted from the drill dir, but the key itself is still live and must be rotated in its provider console when the human decides. Do NOT paste `Process | Export-Clixml` output into shared context again — it serializes environment variables by default; use `Select-Object Id,ProcessName,StartTime,HasExited` first. Related hygiene: drill smoke supervisor (smoke.js) cannot gracefully stop a venv-launched consumer (launcher-PID vs interpreter-PID + blocked event loop + console-group delivery); a fresh correctly-supervised smoke run is still needed to prove the SIGINT/shutdown lines if the gate requires it.
+- Owner/area: security / human (only the human can rotate the provider key)
+
 **Purpose:** A single source of truth for work that is **identified but NOT completed in the current session** yet still needs to live in the system. Any agent (Code/Ask/Debug mode) must record such items here so they are not lost between sessions.
 
 **Rule (mandatory for all agents):** If you identify, discuss, or partially implement something that cannot/should not be finished today (blocked, out of scope, needs review, needs migration, needs another team's sign-off, etc.), create an entry below before ending your turn. Do not let deferred work disappear into chat history.
@@ -3519,3 +3525,77 @@ matching / realtime / maps / routing
 - Future requirements must define (separately authorized node): authorization (which driver, which booking states); privacy (rider consent/product basis where required); location freshness (reuse the 300s TTL or justify a different bound); pickup identity/safety; stale-location handling; no exact rider location exposure outside the authorized trip context.
 - Owner/area: transport / GEO (consumers: driver workspace map, tracking subject model)
 - Links: `app/transport/services/tracking_service.py::get_rider_tracking_subject` (reverse-direction analogue needed), `static/transport/sw.js`, Node 7 report
+
+---
+
+## CSP-ENFORCEMENT-01 — Empty enforcement CSP value; policy active report-only only (DEFERRED / SECURITY OBSERVATION)
+- Status: RESOLVED 2026-10-03 — enforcement CSP header now populated; driver dashboard scripts nonced
+- Raised: 2026-10-03 (live AFCON360 driver-dashboard / `window.AFCON` browser probe)
+- Resolved: 2026-10-03
+- Context: A live browser probe against the already-running server (`https://127.0.0.1:5443`) observed that the `Content-Security-Policy` response header is **present but carries an empty enforcement value** on the driver dashboard, on `/login`, and on the static `utils.js` asset. A defined policy is simultaneously active via `Content-Security-Policy-Report-Only` (`report-to csp-endpoint; report-uri /csp-report`), with `Report-To` / `Reporting-Endpoints` pointing at `/csp-report` and `max_age=10886400`. An empty enforcement value is NOT the same as an absent header: it parses to an empty policy set, so nothing is enforced. Observed headers (dashboard document): `content-security-policy:` (empty), `content-security-policy-report-only: report-to csp-endpoint; report-uri /csp-report`, `x-frame-options: DENY`, `x-content-type-options: nosniff`, `cross-origin-opener-policy: same-origin`, `cross-origin-resource-policy: same-origin`, `strict-transport-security: max-age=63072000; includeSubDomains; preload`.
+- Root cause: Python operator precedence bug in `app/__init__.py::after_request_pipeline`. The ternary expression `"upgrade-insecure-requests;" if should_upgrade_insecure() else ""` only applied to the last string literal due to operator precedence, causing the entire CSP enforcement string to evaluate to empty when `should_upgrade_insecure()` returned `False` (default).
+- Fix applied:
+  1. Fixed operator precedence in `app/__init__.py` by extracting the ternary to a variable `upgrade_directive` before string concatenation.
+  2. Added `nonce="{{ csp_nonce }}"` to all external and inline `<script>` tags in `templates/transport/driver/base.html` (utils.js, base.js, theme-manager.js, driver_alerts.js, and the inline DOMContentLoaded handler).
+  3. Added `nonce="{{ csp_nonce }}"` to the inline script in `templates/transport/driver/driver_dashboard.html` (offer alert sound picker) and to all scripts in the `extra_js` block (driver-dashboard.js, driver_offer_poll.js, and the large inline script).
+- Verification: CSP enforcement header now correctly populated on all responses. Driver dashboard loads without CSP violations. Transport REST auth tests (5/5) and canonical identity tests (17/17) pass.
+- GEO-18 contradiction resolved: The GEO-18 premise about enforced CSP was based on the intended policy; the bug made it appear empty. Now both enforcement and report-only headers are active and consistent.
+- Owner/area: security / platform (header assembly)
+- Links: `app/__init__.py::after_request_pipeline`, `templates/transport/driver/base.html`, `templates/transport/driver/driver_dashboard.html`, `app/Documentation/CSP_POLICY.md`
+
+---
+
+## REG-PARTXIX-NAMING-01 — Part XIX rows 2.5/2.6 titles name work they do not contain (DEFERRED / DOCUMENTATION OBSERVATION)
+- Status: Not started (recorded 2026-10-03; observation only — register reconciliation is CLOSED and must NOT be reopened)
+- Raised: 2026-10-03 (during `RECONCILIATION-Part-XIX` verification)
+- Context: During verification of the Part XIX register reconciliation (already committed in `1ebcd51`, working tree clean), a naming mismatch was identified. The `RECONCILIATION-Part-XIX` contract directed that rows 2.5 and 2.6 be set to `PASS` with evidence `Fix-2.5-record.md` and `Fix-2.6-record.md` while keeping the Part VII titles. The committed register therefore reads: row 2.5 = "Map/tile resilience" and row 2.6 = "Analytics optimization". The records themselves document different work: `Fix-2.5-record.md` states booking request points extraction, and `Fix-2.6-record.md` states public endpoint rate limiting (`POST /api/transport/ride-options` and `POST /api/transport/fare/estimate`, 30 requests / 60 seconds). This is the known implementation-order vs Part VII listing divergence, which the register's own "Numbering reconciliation (2026-09-24)" note documents below the table — but that note explains Fix ID divergence and does not correct the row titles, so the titles name work that is not what those rows contain. Row 2.3, by contrast, is correct ("Reservation callback idempotency" matches `Fix-2.3-record.md`).
+- What needs to happen (separately authorized node, documentation only): decide whether the register rows keep the Part VII titles with the reconciliation note as the mapping, or whether the row titles are corrected to name the implemented work. Requires the human to author the contract; the register is the human's step and the agent does not write it.
+- Explicitly NOT authorized now: do NOT reopen, rename, or alter the already-committed register reconciliation in `docs/transport/00-MANIFESTO-EDITION-2.0.md` Part XIX. Do NOT change rows 2.2-2.6 status or evidence values. Do NOT modify `fine tuning transport.md` for this item.
+- Owner/area: transport documentation / register owner
+- Links: `docs/transport/00-MANIFESTO-EDITION-2.0.md` (Part XIX register, rows 2.5-2.6 + numbering reconciliation note), `docs/transport/fixes/RECONCILIATION-Part-XIX-contract.md`, `docs/transport/fixes/Fix-2.5-record.md`, `docs/transport/fixes/Fix-2.6-record.md`, commit `1ebcd51`
+---
+
+## CSP-R2-R3-MIGRATION — Inline `<script>` blocks and inline event handlers are CSP-blocked; page JS is dead (DEFERRED / FUTURE WORKSTREAM)
+
+- Status: Not started. Recorded 2026-10-05 by node `UI-20` (panel PASS, node CLOSED). **Deliberately not remediated** — it is a multi-workstream migration and must NOT be folded into `UI-LOC-0B`, `UI-LOC-0C`, Node 1+, or any other active node.
+- Raised: 2026-10-05 (node `UI-20`, CSP / console technical-hygiene audit; Chromium probe against a throwaway `create_app(TestingConfig)` server on the test database)
+- Context: The enforced policy is assembled in `app/__init__.py::after_request_pipeline` and its `script-src` is `'self' 'nonce-<per-request-nonce>' https://cdn.jsdelivr.net` (no `'unsafe-inline'`, no `'unsafe-eval'`, no `'unsafe-hashes'`). Under that policy a large amount of template JavaScript never executes. The enforcement semantics below were **browser-verified**, not assumed, and the first source-level hypothesis was wrong and had to be overturned:
+
+  | # | Construct | Browser-verified result | Triage |
+  |---|-----------|-------------------------|---------|
+  | R1 | External `<script src>` from an allowed origin, **no** `nonce` attribute | **ALLOWED**, executes | Consistency defect only. **Do not spend remediation effort here** — adding `nonce="{{ csp_nonce }}"` to external scripts is good hygiene and matches the shared shells, but it fixes nothing observable. |
+  | R2 | Inline `<script>` with no `src` and no `nonce` | **BLOCKED** | Real defect. The page's inline JavaScript never runs; its controls are silently dead. |
+  | R3 | Inline event-handler attribute (`onclick="…"`, `onerror="…"`, …) | **BLOCKED**, always | Real defect. Handlers cannot be nonced, and hashes do not apply to handler attributes without `'unsafe-hashes'`. |
+
+  Measured debt (static scan of 609 templates under `templates/**`, HTML comments stripped):
+
+  | Class | Count | Files affected |
+  |-------|-------|----------------|
+  | R2 inline `<script>` without nonce | 158 | 152 |
+  | R3 inline event-handler attributes | 665 | 154 |
+  | R1 external `<script>` without nonce (hygiene only, NOT blocking) | 94 | 62 |
+  | Inline `<script>` correctly nonced | 26 | — |
+
+  **The R3 count is a lower bound and must not be treated as exact.** The scanner cannot see handlers emitted inside Jinja conditionals that span tag boundaries; `templates/base.html` alone really carries 9 handlers while the scan reports 1. Under-counting errs in the safe direction for a "do not touch" decision.
+
+  Browser-proven instances (counts match the source scan exactly): `/login` ×1 (`:483`), `/register` ×2 (`:297`, `:336`), `/events/` ×1 (`:968`). Example console output:
+
+  ```text
+  [ERROR] Executing inline script violates the following Content Security Policy
+  directive 'script-src 'self' 'nonce-…' https://cdn.jsdelivr.net'. Either the
+  'unsafe-inline' keyword, a hash (…), or a nonce ('nonce-...') is required to
+  enable inline execution. The action has been blocked.
+  ```
+
+  **Sharpest instances, in priority order:**
+
+  1. `/login` password-visibility toggle — `templates/login.html:503`. The button renders and is clickable, but its handler lives in the R2-blocked inline script, so clicking does nothing (browser-proven: input `type` unchanged after a click). Fix is 3 nonced tags on lines 501/502/503. **Fastest high-value win available.** NOTE: that file was live-edited by a concurrent auth workstream when `UI-20` ran — hand it to whoever owns the file.
+  2. Shared-shell handlers, highest blast radius because every page inherits them: `templates/base.html` L127, 334, 335, 342, 348, 634, 635, 639, 642; `templates/transport/base.html` L120 (`toggleSidebar()`), L166; `templates/transport/driver/base.html` L177; `templates/transport/driver/driver_dashboard.html` L1382.
+  3. **Behavioural trap worth flagging:** the module-disabled guards use `onclick="event.preventDefault(); flash(…)"`. Under a blocked handler `event.preventDefault()` never runs, so a "disabled" module link **navigates instead of warning**. This touches `AGENTS.md §28` module-toggle behaviour, so any fix needs explicit authorization for that interaction.
+  4. Worst R2 files by count: `templates/events/attendee/registerO.html` (3), `templates/owner/settings.html` (2), `templates/super_admin_dashboard.html` (2), `templates/transport/dashboard/base_dashboard.html` (2), `templates/register.html` (2).
+- What needs to happen (separately authorized node, per domain): (1) the human authors the contract; (2) split by owning domain — rider/transport, admin, owner, wallet, events, accommodation — since no single agent should sweep all ~150 templates; (3) R2 remediation is `nonce="{{ csp_nonce }}"` on the inline `<script>`, or preferably move the code to a file under `static/js/`; (4) R3 remediation is `addEventListener` from a nonced or external script — **not** `'unsafe-hashes'`, which would re-open the handler hole; (5) re-probe every changed page in a real browser, since the whole point is observable dead controls; (6) close the `xfail` tripwire in `tests/test_ui_20_csp.py` as each shell lands. Note `templates/transport/new_home.html` is **already CSP-clean** (3/3 scripts nonced, 0 handlers) — do not "fix" CSP there.
+- Already guarded, do NOT redo: header integrity, `script-src` hardening (no `unsafe-inline`/`unsafe-eval`/`unsafe-hashes`), nonce uniqueness + header/body propagation invariant, report-only strictness, third-party origin allowlist pinning, `upgrade-insecure-requests` conditional consistency, and `POST /csp-report` acceptance all have automated coverage in `tests/test_ui_20_csp.py` (45 cases, plus a 6/6 mutation proof that the guards are non-vacuous). This item is **template-layer remediation only**.
+- Explicitly NOT authorized now: do NOT add `'unsafe-inline'` or `'unsafe-hashes'` to `script-src` to silence this; do NOT weaken the policy; do NOT treat report-only `style-src` violations (`style="…"` attributes) as part of this item — that is the separate, by-design style migration tracked under `CSP_POLICY.md`; do NOT reopen `UI-LOC-02A` or `UI-20`; do NOT modify `templates/transport/new_home.html`.
+- Related but separate: `static/favicon.ico` does not exist and no route serves it, so every page load logs a 404. Needs an asset/branding decision, so it was never a plausible CSP-node fix. Track it with this item or separately, at the human's election.
+- Owner/area: security / platform (policy owner) + per-domain template owners (rider/transport, admin, owner, wallet, events, accommodation)
+- Links: `app/__init__.py::after_request_pipeline`, `app/Documentation/CSP_POLICY.md` (see "Enforcement semantics" and "Known debt"), `tests/test_ui_20_csp.py`, `docs/transport/nodes/UI-20-evidence.md`, `docs/transport/nodes/UI-20-record.md`, this file's `CSP-ENFORCEMENT-01` entry (the header-assembly predecessor — resolved, and its regression class is now covered by `tests/test_ui_20_csp.py`)

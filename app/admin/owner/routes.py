@@ -1396,10 +1396,29 @@ def revoke_role():
         # Revoke the role
         user_role = UserRole.query.filter_by(user_id=internal_user_id, role_id=role_id).first()
         if user_role:
-            from app.auth.deletion_guard import authorize_privileged_deletion_from_form
-            authorize_privileged_deletion_from_form(db.session, actor=current_user)
-            db.session.delete(user_role)
-            db.session.commit()
+            # For owner/super_admin roles, require privileged deletion (owner MFA)
+            # For other roles, use standard revoke service
+            if role.name in ('owner', 'super_admin'):
+                from app.auth.deletion_guard import authorize_privileged_deletion_from_form
+                authorize_privileged_deletion_from_form(db.session, actor=current_user)
+                db.session.delete(user_role)
+                db.session.commit()
+
+                # Log the revocation
+                from app.audit.comprehensive_audit import AuditService
+                AuditService.data_change(
+                    entity_type="user_role",
+                    entity_id=str(internal_user_id),
+                    operation="revoke_role",
+                    old_value={"role": role.name},
+                    new_value=None,
+                    changed_by=current_user.id,
+                    extra_data={"action": "revoke_global_role"}
+                )
+            else:
+                # Use service function for standard roles
+                from app.auth.roles import revoke_global_role
+                revoke_global_role(internal_user_id, role.name, revoked_by_id=current_user.id)
 
             flash(f"Successfully revoked {role.name} role from {user.username}", "success")
             log_owner_action(

@@ -417,6 +417,27 @@ class User(UserMixin, ProtectedModel):
     def role_names(self) -> list[str]:
         return [ur.role.name for ur in self.roles if ur.role]
 
+    @property
+    def role(self) -> str:
+        """Return the user's highest privilege global role.
+        
+        Uses the global role hierarchy: owner > super_admin > admin > moderator > support > user
+        Respects active role context if set in session.
+        """
+        try:
+            from app.auth.helpers import get_active_role_name, ROLE_HIERARCHY
+            active_role = get_active_role_name()
+            if active_role and active_role in self.role_names:
+                return active_role
+        except Exception:
+            pass
+        
+        # Return highest privilege role from hierarchy
+        for role_name in ROLE_HIERARCHY:
+            if role_name in self.role_names:
+                return role_name
+        return "user"
+
     def is_app_owner(self) -> bool:
         return "owner" in self.role_names
 

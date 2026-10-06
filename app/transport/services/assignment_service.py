@@ -148,6 +148,21 @@ class AssignmentService:
         now = datetime.now(timezone.utc)
         forced = bool(force)
 
+        # r0 - acquire driver row lock first to establish total lock order
+        r0 = db.session.execute(
+            sa.select(DriverProfile.__table__.c.id)
+            .where(DriverProfile.__table__.c.id == driver_id)
+            .with_for_update()
+        )
+        if r0.first() is None:
+            db.session.rollback()
+            raise DispatchClaimError(
+                "driver_unavailable",
+                "driver not found",
+                driver_id=driver_id,
+                booking_ref=booking_ref,
+            )
+
         # ------------------------------------------------------------------
         # r1 - booking must be CONFIRMED and completely unassigned
         # ------------------------------------------------------------------
@@ -203,7 +218,6 @@ class AssignmentService:
                 sa.or_(DriverProfile.__table__.c.is_online.is_(True), forced),
                 ~driver_engaged_other,
             )
-            .with_for_update()
         )
         if r2.first() is None:
             db.session.rollback()

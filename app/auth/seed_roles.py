@@ -55,12 +55,15 @@ GLOBAL_ROLE_DEFS: List[RoleDef] = [
     RoleDef("compliance_officer", 5, "AML review and compliance management"),
     RoleDef("moderator", 6, "Content moderation and user support"),
     RoleDef("support", 7, "Assists users with issues; read-heavy access"),
-    RoleDef("event_manager", 8, "Event management and approval"),
+    RoleDef("event_admin", 8, "Platform-wide event administration"),
     RoleDef("transport_admin", 9, "Transport system administration"),
     RoleDef("wallet_admin", 10, "Wallet and transaction management"),
     RoleDef("accommodation_admin", 11, "Accommodation property management"),
     RoleDef("tourism_admin", 12, "Tourism content and destination management"),
-    RoleDef("user", 13, "Default registered user - can browse and book services"),
+    # Individual/independent operator roles (not org employees)
+    RoleDef("independent_driver", 13, "Independent driver (Uber-style)", "global"),
+    RoleDef("independent_host", 13, "Independent host (Airbnb-style)", "global"),
+    RoleDef("user", 14, "Default registered user - can browse and book services"),
 ]
 
 ORG_ROLE_DEFS: List[RoleDef] = [
@@ -71,6 +74,13 @@ ORG_ROLE_DEFS: List[RoleDef] = [
     RoleDef("hr_manager", 3, "Manages staff and member records", "org"),
     RoleDef("dispatcher", 4, "Assigns and dispatches drivers to trips", "org"),
     RoleDef("project_manager", 3, "Manages projects within the organisation", "org"),
+    RoleDef("event_manager", 3, "Manages events within the organisation", "org"),
+    RoleDef("event_organizer", 4, "Creates and organizes events", "org"),
+    # Org staff roles (employees of the organisation)
+    RoleDef("org_driver", 4, "Employee driver assigned to org transport routes", "org"),
+    RoleDef("org_host", 4, "Hotel/facility staff managing org accommodation", "org"),
+    RoleDef("facility_manager", 3, "Manages accommodation facilities for org", "org"),
+    RoleDef("staff", 5, "General staff member", "org"),
     RoleDef("org_member", 5, "Standard organisation member", "org"),
     RoleDef("org_guest", 6, "Limited read-only guest access", "org"),
 ]
@@ -142,6 +152,12 @@ GLOBAL_PERMISSION_DEFS: List[PermDef] = [
     PermDef("transport.settings", "Configure transport module settings",
             ["owner", "super_admin"]),
 
+    # Independent operators (global roles)
+    PermDef("transport.drive", "Drive as independent driver",
+            ["owner", "super_admin", "independent_driver"]),
+    PermDef("accommodation.host", "Host as independent host",
+            ["owner", "super_admin", "independent_host"]),
+
     # System
     PermDef("system.modules", "Enable or disable platform modules",
             ["owner"]),
@@ -212,11 +228,13 @@ ORG_PERMISSION_DEFS: List[PermDef] = [
 
     # Transport
     PermDef("org.transport.view", "View org transport operations",
-            ["org_owner", "org_admin", "transport_manager", "dispatcher"]),
+            ["org_owner", "org_admin", "transport_manager", "dispatcher", "org_driver"]),
     PermDef("org.transport.manage", "Manage drivers, vehicles, routes",
             ["org_owner", "transport_manager"]),
     PermDef("org.transport.dispatch", "Assign drivers to trips",
             ["org_owner", "transport_manager", "dispatcher"]),
+    PermDef("org.transport.drive", "Drive assigned routes (org driver)",
+            ["org_owner", "org_driver"]),
 
     # Members / HR
     PermDef("org.members.view", "View org member list",
@@ -238,13 +256,29 @@ ORG_PERMISSION_DEFS: List[PermDef] = [
     PermDef("org.projects.manage", "Manage org projects",
             ["org_owner", "project_manager"]),
 
+    # Events
+    PermDef("org.events.view", "View org events",
+            ["org_owner", "org_admin", "event_manager", "event_organizer"]),
+    PermDef("org.events.manage", "Create and manage org events",
+            ["org_owner", "event_manager"]),
+    PermDef("org.events.staff.manage", "Manage event staff and volunteers",
+            ["org_owner", "event_manager"]),
+    PermDef("org.events.analytics", "View event analytics",
+            ["org_owner", "org_admin", "event_manager"]),
+    PermDef("org.events.tickets.manage", "Manage ticket types and sales",
+            ["org_owner", "event_manager", "event_organizer"]),
+    PermDef("org.events.checkin", "Check in attendees",
+            ["org_owner", "event_manager", "event_organizer", "staff"]),
+
     # Accommodation
     PermDef("org.accommodation.view", "View org's accommodation listings",
-            ["org_owner", "org_admin", "transport_manager"]),
+            ["org_owner", "org_admin", "transport_manager", "facility_manager", "org_host"]),
     PermDef("org.accommodation.manage", "Manage org's accommodation listings",
-            ["org_owner", "transport_manager"]),
+            ["org_owner", "facility_manager"]),
     PermDef("org.accommodation.pricing", "Manage pricing for org listings",
             ["org_owner", "transport_manager", "finance_manager"]),
+    PermDef("org.accommodation.host", "Manage own accommodation as org host",
+            ["org_owner", "org_host", "facility_manager"]),
 ]
 
 
@@ -267,7 +301,8 @@ ORG_ROLE_TEMPLATES: Dict[str, OrgRoleTemplate] = {
         "org_admin", "Organisation administrator",
         ["org.finance.view", "org.transport.view",
          "org.members.view", "org.members.manage",
-         "org.settings.view"],
+         "org.settings.view", "org.events.view",
+         "org.events.analytics"],
     ),
     "finance_manager": OrgRoleTemplate(
         "finance_manager", "Finance manager",
@@ -291,7 +326,34 @@ ORG_ROLE_TEMPLATES: Dict[str, OrgRoleTemplate] = {
     ),
     "org_member": OrgRoleTemplate(
         "org_member", "Standard member",
-        ["org.members.view"],
+        ["org.members.view", "org.events.view"],
+    ),
+    "facility_manager": OrgRoleTemplate(
+        "facility_manager", "Facility manager",
+        ["org.accommodation.view", "org.accommodation.manage", "org.accommodation.host", "org.accommodation.pricing"],
+    ),
+    "org_driver": OrgRoleTemplate(
+        "org_driver", "Org driver",
+        ["org.transport.view", "org.transport.drive"],
+    ),
+    "org_host": OrgRoleTemplate(
+        "org_host", "Org host / facility staff",
+        ["org.accommodation.view", "org.accommodation.host"],
+    ),
+    "event_manager": OrgRoleTemplate(
+        "event_manager", "Event manager",
+        ["org.events.view", "org.events.manage",
+         "org.events.staff.manage", "org.events.analytics",
+         "org.events.tickets.manage", "org.events.checkin"],
+    ),
+    "event_organizer": OrgRoleTemplate(
+        "event_organizer", "Event organizer",
+        ["org.events.view", "org.events.manage",
+         "org.events.tickets.manage", "org.events.checkin"],
+    ),
+    "staff": OrgRoleTemplate(
+        "staff", "Staff member",
+        ["org.events.checkin"],
     ),
     "org_guest": OrgRoleTemplate(
         "org_guest", "Guest access",

@@ -28,6 +28,10 @@ from app.utils.security import sanitize_input
 from app.utils.validators import validate_booking_request
 from app.utils.monitoring import monitor_endpoint, record_metric
 from app.utils.audit import audit_log
+from app.transport.services.location_snapshot import (
+    build_canonical_location_snapshot,
+    build_canonical_snapshot_from_coordinates,
+)
 
 # Module-level logger (doesn't need app context)
 logger = logging.getLogger(__name__)
@@ -89,6 +93,25 @@ def _resolve_canonical_location(raw_location: Any, data: Dict[str, Any],
             message=f"{field_name} must include both 'latitude' and 'longitude'",
         )
 
+    # Type narrowing (pyright): _blank() above already excluded None and
+    # blank strings, but the checker cannot see through the helper. Reject
+    # anything that is not a numeric scalar here; the canonical validator
+    # below still owns the coordinate verdict (bool included — bool passes
+    # isinstance(int) and is rejected there, never laundered by float()).
+    if not isinstance(lat_raw, (str, int, float)) or not isinstance(lng_raw, (str, int, float)):
+        raise ValidationError(
+            message=f"{field_name} coordinates must be numeric",
+        )
+
+    # UI-LOC-02A: validate RAW values before float() launders
+    # bool/nan/inf into floats. Canonical validator owns the verdict.
+    try:
+        validate_coordinates(lat_raw, lng_raw)
+    except Exception:
+        raise ValidationError(
+            message=f"{field_name} coordinates must be numeric",
+        )
+
     try:
         lat = float(lat_raw)
         lng = float(lng_raw)
@@ -98,7 +121,7 @@ def _resolve_canonical_location(raw_location: Any, data: Dict[str, Any],
         )
 
     validate_coordinates(lat, lng)
-    resolved = {"latitude": lat, "longitude": lng}
+    resolved: Dict[str, Any] = {"latitude": lat, "longitude": lng}
     if isinstance(raw_location, str) and raw_location.strip():
         resolved["address"] = raw_location.strip()
     elif isinstance(raw_location, dict) and raw_location.get("address"):
@@ -114,9 +137,17 @@ def _measured_distance_km(pickup_location: Any,
     def _coords(location: Any):
         if not isinstance(location, dict):
             return None
+        raw_lat = location.get("latitude")
+        raw_lng = location.get("longitude")
+        # Type narrowing (pyright) + 02A bool hygiene: only numeric scalars
+        # reach float(); bool can never be a coordinate (fail-closed None).
+        if (isinstance(raw_lat, bool) or isinstance(raw_lng, bool)
+                or not isinstance(raw_lat, (str, int, float))
+                or not isinstance(raw_lng, (str, int, float))):
+            return None
         try:
-            lat = float(location.get("latitude"))
-            lng = float(location.get("longitude"))
+            lat = float(raw_lat)
+            lng = float(raw_lng)
         except (TypeError, ValueError):
             return None
         if not (-90.0 <= lat <= 90.0 and -180.0 <= lng <= 180.0):
@@ -273,26 +304,107 @@ class BookingService:
                     message="; ".join(validation_errors) or "Booking validation failed"
                 )
 
-            pickup_location = _resolve_canonical_location(
-                sanitized_data.get("pickup_location"), sanitized_data,
-                "pickup", "pickup_location")
-            dropoff_location = _resolve_canonical_location(
-                sanitized_data.get("dropoff_location"), sanitized_data,
-                "dropoff", "dropoff_location")
+            # Resolve coordinates from form data (mirrors old _resolve_canonical_location logic)
+            def _extract_coords(data: Dict[str, Any], prefix: str) -> tuple[Optional[float], Optional[float]]:
+                def _blank(v):
+                    return v is None or (isinstance(v, str) and not v.strip())
+                lat_raw = data.get(f"{prefix}_latitude") if isinstance(data, dict) else None
+                lng_raw = data.get(f"{prefix}_longitude") if isinstance(data, dict) else None
+                if _blank(lat_raw) or _blank(lng_raw):
+                    return None, None
+                # UI-LOC-02A / Node 2 correction: validate RAW values BEFORE
+                # float() launders bool/NaN/Inf into floats (float(True)
+                # == 1.0). The canonical validator owns the verdict on the
+                # raw input; only validated raw values reach float().
+                try:
+                    validate_coordinates(lat_raw, lng_raw)
+                except (TypeError, ValueError, ValidationError):
+                    return None, None
+                try:
+                    lat = float(lat_raw)
+                    lng = float(lng_raw)
+                except (TypeError, ValueError):
+                    return None, None
+                try:
+                    validate_coordinates(lat, lng)
+                except (TypeError, ValueError, ValidationError):
+                    return None, None
+                return lat, lng
 
-            # Measured GEO straight-line distance wins when both ends
-            # resolved to coordinates; otherwise the caller-supplied
-            # estimate (default 5 km planning fallback) is preserved
-            # verbatim. The USED value is stored so the priced distance
-            # is always explainable.
-            measured_km = _measured_distance_km(pickup_location,
-                                                dropoff_location)
-            if measured_km is not None:
-                distance_for_fare = measured_km
-                distance_basis = "straight_line_planner"
-            else:
-                distance_for_fare = sanitized_data.get("estimated_distance", 5)
-                distance_basis = "planning_default"
+            pickup_lat, pickup_lng = _extract_coords(sanitized_data, "pickup")
+            dropoff_lat, dropoff_lng = _extract_coords(sanitized_data, "dropoff")
+
+            # UI-LOC-02A: text-only bookings are rejected at creation (safety closure)
+            # Both pickup and dropoff must have resolved coordinates
+            if pickup_lat is None or pickup_lng is None:
+                raise ValidationError(
+                    message="pickup_location must include both 'latitude' and 'longitude'",
+                    field="pickup_location",
+                )
+            if dropoff_lat is None or dropoff_lng is None:
+                raise ValidationError(
+                    message="dropoff_location must include both 'latitude' and 'longitude'",
+                    field="dropoff_location",
+                )
+
+            # Build canonical location snapshots per Node 1 contract (Node 2)
+            # Pass resolved coordinates via location_payload dict so snapshot builder has them
+            pickup_loc_raw = sanitized_data.get("pickup_location")
+            pickup_payload = dict(pickup_loc_raw) if isinstance(pickup_loc_raw, dict) else {}
+            pickup_payload["latitude"] = pickup_lat
+            pickup_payload["longitude"] = pickup_lng
+
+            dropoff_loc_raw = sanitized_data.get("dropoff_location")
+            dropoff_payload = dict(dropoff_loc_raw) if isinstance(dropoff_loc_raw, dict) else {}
+            dropoff_payload["latitude"] = dropoff_lat
+            dropoff_payload["longitude"] = dropoff_lng
+
+            # Use pickup_location string as explicit_address if no pickup_address provided
+            pickup_explicit_address = sanitized_data.get("pickup_address")
+            if not pickup_explicit_address:
+                pickup_loc_raw = sanitized_data.get("pickup_location")
+                if isinstance(pickup_loc_raw, str) and pickup_loc_raw.strip():
+                    pickup_explicit_address = pickup_loc_raw.strip()
+
+            dropoff_explicit_address = sanitized_data.get("dropoff_address")
+            if not dropoff_explicit_address:
+                dropoff_loc_raw = sanitized_data.get("dropoff_location")
+                if isinstance(dropoff_loc_raw, str) and dropoff_loc_raw.strip():
+                    dropoff_explicit_address = dropoff_loc_raw.strip()
+
+            pickup_snapshot = build_canonical_location_snapshot(
+                location_payload=pickup_payload,
+                explicit_address=pickup_explicit_address,
+            )
+            dropoff_snapshot = build_canonical_location_snapshot(
+                location_payload=dropoff_payload,
+                explicit_address=dropoff_explicit_address,
+            )
+
+            # Ensure both locations are resolved with canonical coordinates
+            def _ensure_canonical_coords(loc, field_name):
+                if not isinstance(loc, dict) or loc.get("latitude") is None or loc.get("longitude") is None:
+                    raise ValidationError(
+                        message=f"{field_name} must be a resolved location with coordinates",
+                        field=field_name,
+                    )
+
+            _ensure_canonical_coords(pickup_snapshot, "pickup_location")
+            _ensure_canonical_coords(dropoff_snapshot, "dropoff_location")
+
+            # UI-LOC-02A: booking-bound pricing has no silent fallback.
+            # Measured GEO straight-line distance from resolved coordinates
+            # is the ONLY booking fare basis. Explicit estimates live in
+            # fare_routes.FareEstimateResource (planning_default labelled).
+            measured_km = _measured_distance_km(pickup_snapshot,
+                                                dropoff_snapshot)
+            if measured_km is None:
+                raise ValidationError(
+                    message="Resolved coordinates required for fare calculation",
+                    field="pickup_location",
+                )
+            distance_for_fare = measured_km
+            distance_basis = "straight_line_planner"
 
             # Canonical fare engine (fare node): one computation feeds the
             # stored price, the recorded surge, and the stored distance
@@ -337,8 +449,8 @@ class BookingService:
                     (sanitized_data.get("provider_type") or "individual_driver").lower()
                 ),
                 service_type=ServiceType(sanitized_data["service_type"].lower()),
-                pickup_location=pickup_location,
-                dropoff_location=dropoff_location,
+                pickup_location=pickup_snapshot,
+                dropoff_location=dropoff_snapshot,
                 pickup_time=pickup_time,
                 passenger_count=int(sanitized_data.get("passenger_count") or 1),
                 luggage_count=int(sanitized_data.get("luggage_count") or 0),

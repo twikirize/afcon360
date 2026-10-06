@@ -1062,19 +1062,27 @@ class ProviderService:
             # Verify organisation eligibility
             eligibility = self.validate_organisation_eligibility(organisation_id)
 
-            # Validate transport data
-            sanitized_data = sanitize_input(data)
-            validation_result = validate_organisation_transport(sanitized_data)
+            # Validate transport data. ``sanitize_input`` operates on strings
+            # only; sanitize each string value of the mapping (same pattern
+            # as register_driver / register_vehicle_internal).
+            sanitized_data = {
+                key: sanitize_input(value) if isinstance(value, str) else value
+                for key, value in (data or {}).items()
+            }
+            # validate_organisation_transport returns Tuple[bool, List[str]].
+            is_valid, validation_errors = validate_organisation_transport(sanitized_data)
 
-            if not validation_result['valid']:
+            if not is_valid:
                 raise ValidationError(
                     message="Organisation transport validation failed",
-                    details=validation_result['errors'],
+                    details=validation_errors,
                     code="VALIDATION_FAILED"
                 )
 
-            # Check for existing registration
-            with with_cache_lock(f"lock:org_transport:{organisation_id}", timeout=10):
+            # Check for existing registration. with_cache_lock is a decorator
+            # factory, not a context manager; _redis_lock is the module-local
+            # context-manager equivalent already proven at site 667.
+            with _redis_lock(f"lock:org_transport:{organisation_id}", ttl=10):
                 existing = OrganisationTransportProfile.query.filter_by(
                     organisation_id=organisation_id,
                     is_deleted=False
@@ -1083,9 +1091,10 @@ class ProviderService:
                 if existing:
                     raise ConflictError(
                         message="Organisation already registered for transport",
-                        resource_type="organisation_transport",
-                        resource_id=organisation_id,
-                        code="ALREADY_REGISTERED"
+                        resource="organisation_transport",
+                        conflict_type="ALREADY_REGISTERED",
+                        code="ALREADY_REGISTERED",
+                        details={"organisation_id": organisation_id},
                     )
 
                 # Guard: cannot register organisation transport if there are open ContentFlag records

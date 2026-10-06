@@ -370,7 +370,7 @@
                   <i class="bi bi-person-plus"></i> Assign
                 </button>
                 {% if user.role != 'user' %}
-                <button class="btn-sm btn-revoke" onclick="showRevokeRoleModal({{ user.id }}, '{{ user.username }}')">
+                <button class="btn-sm btn-revoke" onclick="showRevokeRoleModal({{ user.id }}, '{{ user.username }}', '{{ user.role }}')">
                   <i class="bi bi-person-dash"></i> Revoke
                 </button>
                 {% endif %}
@@ -468,11 +468,12 @@
   <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 12px; padding: 2rem; width: 90%; max-width: 500px;">
     <h3 style="margin-bottom: 1rem;">Revoke Role</h3>
     <p style="color: #6b7280; margin-bottom: 1rem;">
-      Are you sure you want to revoke the role from <strong id="revokeUsername"></strong>? This will reset them to a regular user.
+      Are you sure you want to revoke the <strong id="revokeRoleName"></strong> role from <strong id="revokeUsername"></strong>?
     </p>
     <form method="POST" action="{{ url_for('owner_role_management.revoke_role') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" id="revokeUserId" name="user_id">
+      <input type="hidden" id="revokeRoleName" name="role_name">
       
       <div class="form-group" style="margin-bottom: 1rem;">
         <label for="revokeReason">Reason (optional)</label>
@@ -484,9 +485,9 @@
         <input type="password" id="revokePassword" name="delete_password" class="form-control" required autocomplete="current-password" placeholder="Enter your admin password">
       </div>
 
-      <div class="form-group" style="margin-bottom: 1rem;">
+      <div class="form-group" id="ownerMfaGroup" style="margin-bottom: 1rem; display: none;">
         <label for="revokeOtp">Owner MFA Code</label>
-        <input type="text" id="revokeOtp" name="delete_otp" class="form-control" required inputmode="numeric" maxlength="8" placeholder="6-digit code from the owner's authenticator">
+        <input type="text" id="revokeOtp" name="delete_otp" class="form-control" inputmode="numeric" maxlength="8" placeholder="6-digit code from the owner's authenticator">
         <small style="color: #9ca3af;">The platform owner's TOTP or backup code (8 hex chars)</small>
       </div>
       
@@ -512,9 +513,23 @@ function hideAssignRoleModal() {
   document.getElementById('assignRoleModal').style.display = 'none';
 }
 
-function showRevokeRoleModal(userId, username) {
+function showRevokeRoleModal(userId, username, roleName) {
   document.getElementById('revokeUserId').value = userId;
   document.getElementById('revokeUsername').textContent = username;
+  document.getElementById('revokeRoleName').textContent = roleName.replace('_', ' ').title();
+  document.getElementById('revokeRoleName').value = roleName;
+  
+  // Show owner MFA field only for owner/super_admin roles
+  var ownerMfaGroup = document.getElementById('ownerMfaGroup');
+  var revokeOtp = document.getElementById('revokeOtp');
+  if (roleName === 'owner' || roleName === 'super_admin') {
+    ownerMfaGroup.style.display = 'block';
+    revokeOtp.required = true;
+  } else {
+    ownerMfaGroup.style.display = 'none';
+    revokeOtp.required = false;
+  }
+  
   document.getElementById('revokeRoleModal').style.display = 'block';
 }
 

@@ -311,8 +311,8 @@ def manage_users():
             active_admin_page="users",
         )
     except Exception as e:
-        logger.error(f"Error loading users: {e}")
-        flash("Error loading users.", "danger")
+        logger.error(f"Error loading users: {e}", exc_info=True)
+        flash(f"Error loading users: {str(e)}", "danger")
         return redirect(url_for("admin.super_dashboard"))
 
 
@@ -483,14 +483,9 @@ def resend_activation(user_id):
 def promote_user(user_id):
     """Promote a user to the next higher role in hierarchy."""
     from app.identity.models.user import User
-    from app.identity.models import Role, UserRole
-
-    # Full role hierarchy from seed_roles.py
-    ROLE_HIERARCHY = [
-        "owner", "super_admin", "admin", "auditor", "compliance_officer",
-        "moderator", "support", "event_manager", "transport_admin",
-        "wallet_admin", "accommodation_admin", "tourism_admin", "fan"
-    ]
+    from app.identity.models import Role
+    from app.auth.roles import assign_global_role
+    from app.auth.helpers import ROLE_HIERARCHY
 
     try:
         user = User.query.filter_by(public_id=user_id).first()
@@ -524,14 +519,9 @@ def promote_user(user_id):
 
             role = Role.query.filter_by(name=next_role_name).first()
             if role:
-                existing = UserRole.query.filter_by(user_id=user.id, role_id=role.id).first()
-                if not existing:
-                    user_role = UserRole(user_id=user.id, role_id=role.id)
-                    db.session.add(user_role)
-                    db.session.commit()
-                    flash(f"User {user.username} promoted to {next_role_name.replace('_', ' ').title()}.", "success")
-                else:
-                    flash(f"User {user.username} already has role {next_role_name}.", "info")
+                # Use service function for proper audit logging
+                assign_global_role(user.id, next_role_name, assigned_by_id=current_user.id)
+                flash(f"User {user.username} promoted to {next_role_name.replace('_', ' ').title()}.", "success")
             else:
                 flash(f"Role '{next_role_name}' not found.", "danger")
         else:
@@ -552,13 +542,9 @@ def promote_user(user_id):
 def demote_user(user_id):
     """Demote a user to the next lower role in hierarchy."""
     from app.identity.models.user import User
-    from app.identity.models import Role, UserRole
-
-    ROLE_HIERARCHY = [
-        "owner", "super_admin", "admin", "auditor", "compliance_officer",
-        "moderator", "support", "event_manager", "transport_admin",
-        "wallet_admin", "accommodation_admin", "tourism_admin", "fan"
-    ]
+    from app.identity.models import Role
+    from app.auth.roles import assign_global_role, revoke_global_role
+    from app.auth.helpers import ROLE_HIERARCHY
 
     try:
         user = User.query.filter_by(public_id=user_id).first()
@@ -592,22 +578,12 @@ def demote_user(user_id):
 
             role = Role.query.filter_by(name=next_role_name).first()
             if role:
-                current_role_obj = Role.query.filter_by(name=current_role).first()
-                if current_role_obj:
-                    user_role = UserRole.query.filter_by(
-                        user_id=user.id, role_id=current_role_obj.id
-                    ).first()
-                    if user_role:
-                        from app.auth.deletion_guard import authorize_privileged_deletion_from_form
-                        authorize_privileged_deletion_from_form(db.session, actor=current_user)
-                        db.session.delete(user_role)
-
-                existing = UserRole.query.filter_by(user_id=user.id, role_id=role.id).first()
-                if not existing:
-                    new_role = UserRole(user_id=user.id, role_id=role.id)
-                    db.session.add(new_role)
-
-                db.session.commit()
+                # Revoke the current role using service function
+                if current_role:
+                    revoke_global_role(user.id, current_role, revoked_by_id=current_user.id)
+                
+                # Assign the next lower role
+                assign_global_role(user.id, next_role_name, assigned_by_id=current_user.id)
                 flash(f"User {user.username} demoted to {next_role_name.replace('_', ' ').title()}.", "warning")
             else:
                 flash(f"Role '{next_role_name}' not found.", "danger")

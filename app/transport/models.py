@@ -1244,18 +1244,22 @@ class Booking(TransportBase):
     def pickup_location_text(self):
         """Canonical text representation of pickup location.
 
-        Handles both dict (with lat/lng/address) and string
-        (raw address) JSONB shapes. Returns None when empty so
+        Handles both canonical snapshot (with display_name/identity_status)
+        and legacy dict/string shapes. Returns None when empty so
         templates can use |default.
         """
+        from app.transport.services.location_snapshot import (
+            get_display_text,
+            legacy_location_text,
+        )
         loc = self.pickup_location
         if loc is None:
             return None
-        if isinstance(loc, dict):
-            return loc.get("address") or loc.get("name") or loc.get("label") or None
-        if isinstance(loc, str) and loc.strip():
-            return loc.strip()
-        return None
+        if isinstance(loc, dict) and loc.get("latitude") is not None:
+            # Canonical snapshot - use display logic with honest fallback
+            return get_display_text(loc)
+        # Legacy compatibility
+        return legacy_location_text(loc)
 
     @property
     def dropoff_location_text(self):
@@ -1263,14 +1267,18 @@ class Booking(TransportBase):
 
         See pickup_location_text for the same logic.
         """
+        from app.transport.services.location_snapshot import (
+            get_display_text,
+            legacy_location_text,
+        )
         loc = self.dropoff_location
         if loc is None:
             return None
-        if isinstance(loc, dict):
-            return loc.get("address") or loc.get("name") or loc.get("label") or None
-        if isinstance(loc, str) and loc.strip():
-            return loc.strip()
-        return None
+        if isinstance(loc, dict) and loc.get("latitude") is not None:
+            # Canonical snapshot - use display logic with honest fallback
+            return get_display_text(loc)
+        # Legacy compatibility
+        return legacy_location_text(loc)
 
     @property
     def is_completed_successfully(self):

@@ -628,6 +628,11 @@ class TransportValidators:
         Returns:
             Boolean indicating if coordinates are valid
         """
+        # UI-LOC-02A: bool is a subclass of int — float(True) == 1.0 would
+        # otherwise launder True/False into valid coordinates. Raw bool
+        # input is never a coordinate.
+        if isinstance(lat, bool) or isinstance(lng, bool):
+            return False
         try:
             latitude = float(lat)
             longitude = float(lng)

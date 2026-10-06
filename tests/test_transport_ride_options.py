@@ -132,14 +132,21 @@ class _OnlineFleetIsolation:
 
 
 def test_ride_options_empty_body_returns_labeled_defaults(app, anonymous_client):
-    resp = anonymous_client.post("/api/transport/ride-options", json={})
+    # Now requires coordinates; provide a minimal valid coordinate set
+    body = {
+        "pickup_latitude": 0.3136,
+        "pickup_longitude": 32.5811,
+        "dropoff_latitude": 0.32,
+        "dropoff_longitude": 32.59,
+    }
+    resp = anonymous_client.post("/api/transport/ride-options", json=body)
     assert resp.status_code == 200
     payload = resp.get_json()
     assert payload["success"] is True
     data = payload["data"]
     assert data["service_type"] == "on_demand"
     assert data["currency"] == "USD"
-    assert data["distance_basis"] == "planning_default"
+    assert data["distance_basis"] == "straight_line_planner"
     assert data["note"]
     if data["options"]:
         assert set(data["options"][0]) >= {
@@ -174,22 +181,34 @@ def test_ride_options_prices_available_classes_via_engine(
 
     iso = _OnlineFleetIsolation(keep)
     try:
+        # Provide coordinates to satisfy new validation
+        body = {"service_type": "on_demand", "currency": "USD",
+                "pickup_latitude": 0.3136, "pickup_longitude": 32.5811,
+                "dropoff_latitude": 0.32, "dropoff_longitude": 32.59}
         resp = anonymous_client.post(
             "/api/transport/ride-options",
-            json={"service_type": "on_demand", "currency": "USD",
-                  "estimated_distance_km": 5})
+            json=body)
         assert resp.status_code == 200
         data = resp.get_json()["data"]
-        assert data["distance_basis"] == "planning_default"
+        assert data["distance_basis"] == "straight_line_planner"
         comfort = next(o for o in data["options"]
                        if o["vehicle_class"] == "comfort")
         economy = next(o for o in data["options"]
                        if o["vehicle_class"] == "economy")
         assert comfort["available_count"] == 2
         assert economy["available_count"] == 1
+        # Compute expected fare using actual straight-line distance from coordinates
+        from app.geo.interfaces import GeoPoint
+        from app.geo.services import straight_line_distance_m
+        pickup_pt = GeoPoint(0.3136, 32.5811)
+        dropoff_pt = GeoPoint(0.32, 32.59)
+        expected_km = straight_line_distance_m(pickup_pt, dropoff_pt) / 1000.0
         expected = calculate_estimate(service_type="on_demand",
-                                      vehicle_class="comfort", distance_km=5)
-        assert Decimal(str(comfort["fare_total"])) == expected["total"]
+                                      vehicle_class="comfort", distance_km=expected_km)
+        # Compare with tolerance due to floating point precision
+        comfort_fare = Decimal(str(comfort["fare_total"]))
+        expected_fare = expected["total"]
+        assert abs(comfort_fare - expected_fare) < Decimal('0.01')
         assert comfort["fare_version"] == FARE_VERSION
         # Cheapest first.
         totals = [Decimal(str(o["fare_total"])) for o in data["options"]]
@@ -198,6 +217,103 @@ def test_ride_options_prices_available_classes_via_engine(
         assert "driver_id" not in blob and '"id":' not in blob
     finally:
         iso.restore()
+
+
+def test_ride_options_missing_pickup_coords(app, anonymous_client):
+    body = {
+        "dropoff_latitude": 0.32,
+        "dropoff_longitude": 32.59,
+    }
+    resp = anonymous_client.post("/api/transport/ride-options", json=body)
+    assert resp.status_code == 400
+    payload = resp.get_json()
+    assert payload["success"] is False
+    assert "Missing coordinate" in payload["error"]
+
+
+def test_ride_options_missing_dropoff_coords(app, anonymous_client):
+    body = {
+        "pickup_latitude": 0.3136,
+        "pickup_longitude": 32.5811,
+    }
+    resp = anonymous_client.post("/api/transport/ride-options", json=body)
+    assert resp.status_code == 400
+    payload = resp.get_json()
+    assert payload["success"] is False
+    assert "Missing coordinate" in payload["error"]
+
+
+def test_ride_options_partial_pickup_coords(app, anonymous_client):
+    body = {
+        "pickup_latitude": 0.3136,
+        "dropoff_latitude": 0.32,
+        "dropoff_longitude": 32.59,
+    }
+    resp = anonymous_client.post("/api/transport/ride-options", json=body)
+    assert resp.status_code == 400
+    payload = resp.get_json()
+    assert payload["success"] is False
+    assert "Missing coordinate" in payload["error"]
+
+
+def test_ride_options_invalid_non_numeric(app, anonymous_client):
+    body = {
+        "pickup_latitude": "abc",
+        "pickup_longitude": 32.5811,
+        "dropoff_latitude": 0.32,
+        "dropoff_longitude": 32.59,
+    }
+    resp = anonymous_client.post("/api/transport/ride-options", json=body)
+    assert resp.status_code == 400
+    payload = resp.get_json()
+    assert payload["success"] is False
+    assert "Invalid coordinate" in payload["error"]
+
+
+def test_ride_options_out_of_range_latitude(app, anonymous_client):
+    body = {
+        "pickup_latitude": 999.0,
+        "pickup_longitude": 32.5811,
+        "dropoff_latitude": 0.32,
+        "dropoff_longitude": 32.59,
+    }
+    resp = anonymous_client.post("/api/transport/ride-options", json=body)
+    assert resp.status_code == 400
+    payload = resp.get_json()
+    assert payload["success"] is False
+    assert "Invalid latitude" in payload["error"]
+
+
+def test_ride_options_invalid_longitude(app, anonymous_client):
+    body = {
+        "pickup_latitude": 0.3136,
+        "pickup_longitude": 200.0,
+        "dropoff_latitude": 0.32,
+        "dropoff_longitude": 32.59,
+    }
+    resp = anonymous_client.post("/api/transport/ride-options", json=body)
+    assert resp.status_code == 400
+    payload = resp.get_json()
+    assert payload["success"] is False
+    assert "Invalid longitude" in payload["error"]
+
+
+def test_ride_options_valid_coordinates(app, anonymous_client):
+    body = {
+        "pickup_latitude": 0.3136,
+        "pickup_longitude": 32.5811,
+        "dropoff_latitude": 0.32,
+        "dropoff_longitude": 32.59,
+    }
+    resp = anonymous_client.post("/api/transport/ride-options", json=body)
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["success"] is True
+    data = payload["data"]
+    assert data["distance_basis"] == "straight_line_planner"
+    assert data["distance_km"] is not None
+    assert isinstance(data["options"], list)
+
 
 
 def test_ride_options_excludes_unavailable_and_inactive(
@@ -218,7 +334,10 @@ def test_ride_options_excludes_unavailable_and_inactive(
 
     iso = _OnlineFleetIsolation(keep)
     try:
-        resp = anonymous_client.post("/api/transport/ride-options", json={})
+        # Provide coordinates to satisfy validation
+        body = {"pickup_latitude": 0.3136, "pickup_longitude": 32.5811,
+                "dropoff_latitude": 0.32, "dropoff_longitude": 32.59}
+        resp = anonymous_client.post("/api/transport/ride-options", json=body)
         assert resp.status_code == 200
         data = resp.get_json()["data"]
         assert all(o["vehicle_class"] != "luxury" for o in data["options"])

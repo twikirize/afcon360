@@ -67,16 +67,55 @@ class RideOptionsResource(Resource):
             return {"success": False,
                     "error": f"Unknown currency: {currency}"}, 400
 
-        # Distance basis (same rules as fare estimate): caller-supplied
-        # estimate wins, then straight-line from supplied pins, then the
-        # engine's planning default.
-        distance_km = data.get("estimated_distance_km")
-        distance_basis = "planning_default"
-        if distance_km is None:
-            sl = _straight_line_km(data)
-            if sl is not None:
-                distance_km = sl
-                distance_basis = "straight_line_planner"
+        # UI-LOC-02A: booking-bound quote inputs must carry resolved
+        # coordinates. Validate RAW values with the canonical validator
+        # (no float() pre-conversion — that launders bool/nan/inf).
+        # Only after validation converts to float for distance/fare.
+        from app.core.validators import validate_coordinates
+        pickup_lat = data.get("pickup_latitude")
+        pickup_lng = data.get("pickup_longitude")
+        dropoff_lat = data.get("dropoff_latitude")
+        dropoff_lng = data.get("dropoff_longitude")
+
+        # All four coordinate fields must be present and numeric
+        coord_fields = {
+            "pickup_latitude": pickup_lat,
+            "pickup_longitude": pickup_lng,
+            "dropoff_latitude": dropoff_lat,
+            "dropoff_longitude": dropoff_lng,
+        }
+        for name, value in coord_fields.items():
+            if value is None or (isinstance(value, str) and value == ""):
+                return {"success": False, "error": f"Missing coordinate: {name}"}, 400
+            # Canonical verdict on the RAW value, paired with a known-valid
+            # peer (0.0 is in range on both axes), so any rejection is
+            # attributable to `value` alone. No float() pre-conversion here.
+            try:
+                if name.endswith("latitude"):
+                    validate_coordinates(value, 0)
+                else:
+                    validate_coordinates(0, value)
+            except Exception:
+                # Message granularity only (not a second verdict): the
+                # rejection above is authoritative. Non-numeric (incl. bool)
+                # keeps the historic "Invalid coordinate" text; numeric but
+                # rejected (range/non-finite) keeps axis-specific text.
+                if isinstance(value, bool):
+                    return {"success": False, "error": f"Invalid coordinate: {name}"}, 400
+                try:
+                    float(value)
+                except (TypeError, ValueError):
+                    return {"success": False, "error": f"Invalid coordinate: {name}"}, 400
+                if name.endswith("latitude"):
+                    return {"success": False, "error": f"Invalid latitude: {name}"}, 400
+                return {"success": False, "error": f"Invalid longitude: {name}"}, 400
+
+        # Distance must be derived from supplied coordinates (no planning default)
+        sl = _straight_line_km(data)
+        if sl is None:
+            return {"success": False, "error": "Invalid coordinates for distance calculation"}, 400
+        distance_km = sl
+        distance_basis = "straight_line_planner"
 
         pickup = _point(data, "pickup")
 

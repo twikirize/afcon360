@@ -455,6 +455,7 @@ def create_app(config_object=None) -> Flask:
         # 2. Security headers (CSP, HSTS, etc.)
         from flask import g
         nonce = getattr(g, "csp_nonce", "")
+        upgrade_directive = "upgrade-insecure-requests;" if should_upgrade_insecure() else ""
         csp_enforce = (
             "default-src 'self'; "
             f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
@@ -466,7 +467,7 @@ def create_app(config_object=None) -> Flask:
             "frame-ancestors 'none'; "
             "form-action 'self'; "
             "base-uri 'self'; "
-            "upgrade-insecure-requests;" if should_upgrade_insecure() else ""
+            + upgrade_directive
         )
         response.headers["Content-Security-Policy"] = csp_enforce
 
@@ -481,8 +482,8 @@ def create_app(config_object=None) -> Flask:
             "frame-ancestors 'none'; "
             "form-action 'self'; "
             "base-uri 'self'; "
-            "upgrade-insecure-requests; " if should_upgrade_insecure() else ""
-                                                                            "report-to csp-endpoint; report-uri /csp-report"
+            + upgrade_directive
+            + "report-to csp-endpoint; report-uri /csp-report"
         )
         response.headers["Content-Security-Policy-Report-Only"] = csp_report_only
 

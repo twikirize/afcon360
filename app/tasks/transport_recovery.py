@@ -33,6 +33,7 @@ Scheduled-route execution (TH-3-D3):
 import logging
 import os
 from datetime import datetime, timedelta, timezone
+from functools import wraps
 
 from sqlalchemy import or_
 
@@ -47,7 +48,37 @@ TRANSPORT_STALL_TIMEOUT_SECONDS = int(
 )
 
 
+def _with_app_context(fn):
+    """Run *fn* inside a Flask app context.
+
+    Same semantics as the established ``_with_app`` helper in
+    app/notifications/events/tasks.py: reuse ``current_app`` when already
+    inside one (tests, inline invocation), otherwise create the app
+    defensively — these tasks execute under workers started without the
+    ContextTask binding (``celery -A app.celery_app`` with no app passed to
+    ``make_celery``), so DB access would otherwise raise
+    "Working outside of application context". Decorator form (rather than
+    the nested ``_run`` form) keeps the three task bodies untouched.
+    """
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            from flask import current_app
+            if current_app:
+                return fn(*args, **kwargs)
+        except Exception:
+            pass
+
+        from app import create_app
+        app = create_app()
+        with app.app_context():
+            return fn(*args, **kwargs)
+
+    return wrapper
+
+
 @celery_app.task(name="transport.dispatch_recovery")
+@_with_app_context
 def dispatch_recovery() -> dict:
     """Defensive sweep of expired/orphaned Redis offers PLUS rediscovery of
     CONFIRMED+unassigned bookings (pool -> ranker -> transient offer).
@@ -71,10 +102,13 @@ def dispatch_recovery() -> dict:
     try:
         from app.transport.services.offer_service import OfferService
 
-        checked, cleaned = OfferService.sweep_expired()
-        result = {"checked": checked, "cleaned": cleaned}
-        if cleaned > 0:
-            logger.info(f"Transport dispatch recovery cleaned {cleaned} expired offers")
+        # sweep_expired() returns an int (keys cleaned), not a tuple.
+        # "checked" is not tracked by the callee; report 0 rather than
+        # echoing cleaned.
+        changed = OfferService.sweep_expired()
+        result = {"checked": 0, "cleaned": int(changed or 0)}
+        if changed:
+            logger.info(f"Transport dispatch recovery cleaned {changed} expired offers")
     except Exception as e:
         logger.error(f"Transport dispatch recovery sweep failed: {e}", exc_info=True)
         result = {"checked": 0, "cleaned": 0, "error": str(e)}
@@ -141,6 +175,7 @@ def dispatch_recovery() -> dict:
 
 
 @celery_app.task(name="transport.stall_recovery")
+@_with_app_context
 def stall_recovery(stall_seconds: int = None, dry_run: bool = False) -> dict:
     """Cancel bookings stuck ASSIGNED with no driver en-route.
 
@@ -257,6 +292,7 @@ def _notify_stall_cancelled(booking: Booking) -> None:
 
 
 @celery_app.task(name="transport.scheduled_route_execution")
+@_with_app_context
 def scheduled_route_execution(batch: int = None, dry_run: bool = False) -> dict:
     """Resolve due ScheduledRoute departures into the canonical dispatch chain.
 

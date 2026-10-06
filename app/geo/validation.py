@@ -29,6 +29,11 @@ MAX_LOCATION_AGE_SECONDS = 24 * 3600  # history queries older than this warn
 
 def normalize_coordinate(value: Any, name: str) -> float:
     """Coerce to float + range-check one axis. Raises ValidationError."""
+    # UI-LOC-02A: reject raw bool before float() launders True->1.0.
+    if isinstance(value, bool):
+        raise ValidationError(
+            f"Invalid {name}: must be numeric, got {value!r}", field=name
+        )
     try:
         number = float(value)
     except (TypeError, ValueError):

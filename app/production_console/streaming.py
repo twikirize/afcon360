@@ -1,3 +1,4 @@
+# app/production console/streaming.py
 """
 Production Console Log Streaming Service.
 
@@ -209,14 +210,14 @@ class ProductionConsoleHandler(logging.Handler):
             pipe.execute()
             
         except Exception as e:
-            logger.debug(f"Failed to store console history: {e}")
+            logger.debug(f"Failed to store console history: {e}", extra={"prod_console_skip": True})
     
     def _broadcast_live(self, event: Dict[str, Any]) -> None:
         """Broadcast event to connected SocketIO clients."""
         try:
             socketio.emit('console_event', event, namespace='/console')
         except Exception as e:
-            logger.debug(f"Failed to broadcast console event: {e}")
+            logger.debug(f"Failed to broadcast console event: {e}", extra={"prod_console_skip": True})
     
     @classmethod
     def get_recent_history(cls, limit: int = 500) -> List[Dict[str, Any]]:
@@ -239,7 +240,7 @@ class ProductionConsoleHandler(logging.Handler):
             return [json.loads(e) for e in events]
             
         except Exception as e:
-            logger.debug(f"Failed to get console history: {e}")
+            logger.debug(f"Failed to get console history: {e}", extra={"prod_console_skip": True})
             return []
     
     @classmethod
@@ -269,7 +270,7 @@ class ProductionConsoleHandler(logging.Handler):
             return True
             
         except Exception as e:
-            logger.error(f"Failed to clear console history: {e}")
+            logger.error(f"Failed to clear console history: {e}", extra={"prod_console_skip": True})
             return False
 
 

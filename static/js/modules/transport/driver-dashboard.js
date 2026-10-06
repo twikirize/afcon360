@@ -66,6 +66,30 @@ window.addEventListener('appinstalled', () => {
     }
 
     var isOnline = root.getAttribute("data-is-online") === "1";
+    // Seeded last-known fix: show the approximate position immediately on
+    // page load instead of a blank badge, then refine when the first genuine
+    // browser fix arrives. Unknown/absent accuracy is stored as +Infinity
+    // (never rendered as meters, never compared as a real value): tierOf()
+    // reads it as "low" and Rules C/D always yield to a genuine fix, while
+    // Rule B still retires a stale seed. afconShouldReplaceBest/tierOf
+    // themselves are untouched (covered by ported unit tests).
+    function seedLastKnown() {
+        var lat = parseFloat(root.getAttribute("data-last-lat"));
+        var lon = parseFloat(root.getAttribute("data-last-lng"));
+        if (!isFinite(lat) || lat < -90 || lat > 90 ||
+            !isFinite(lon) || lon < -180 || lon > 180) return false;
+        var accRaw = parseFloat(root.getAttribute("data-last-acc"));
+        var acc = (isFinite(accRaw) && accRaw > 0) ? accRaw : Infinity;
+        var ts = Date.parse(root.getAttribute("data-last-ts") || "");
+        best = {
+            lat: lat, lon: lon, acc: acc,
+            ts: isFinite(ts) ? ts : 0,
+            seeded: true,
+        };
+        lastTier = tierOf(best);
+        renderAvailabilityBadge();
+        return true;
+    }
     var locTimer = null;
     var inFlight = false; // POST in flight (publish only)
     var blockedByPermission = false;
@@ -228,6 +252,20 @@ window.addEventListener('appinstalled', () => {
             setLocBadge(
                 "Location unavailable (" + geoErrorName(lastGeoCode) +
                 "). Retrying every " + pingInterval + "s.",
+                true
+            );
+            return;
+        }
+        // Seeded last-known fix (see seedLastKnown): show the approximate
+        // position immediately, honestly aged, until a genuine browser fix
+        // replaces it. Accuracy is unknown by construction and never printed.
+        if (best.seeded) {
+            var sAgeS = Math.max(0, Math.round((Date.now() - best.ts) / 1000));
+            var sAgeTxt = best.ts > 0
+                ? (sAgeS < 60 ? sAgeS + "s ago" : Math.floor(sAgeS / 60) + "m ago")
+                : "time unknown";
+            setLocBadge(
+                "Approximate location (last fix " + sAgeTxt + "). Refining…",
                 true
             );
             return;
@@ -413,6 +451,10 @@ window.addEventListener('appinstalled', () => {
         }
     }, true);
 
+    // Seed the live badge from the last known fix BEFORE the first
+    // startLocTimer() tick, so the page opens on an approximate position
+    // instead of a blank badge. Genuine fixes replace the seed via Rules B-D.
+    seedLastKnown();
     startLocTimer();
     document.addEventListener("visibilitychange", function () {
         if (!document.hidden && blockedByPermission && syncOnline()) publishLocation();

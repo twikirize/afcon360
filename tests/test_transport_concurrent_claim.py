@@ -411,6 +411,12 @@ class TestConcurrentCancelVsClaim:
         assert result["status"] == BookingStatus.ASSIGNED.value
         assert _bk_field(app, bk_id, "assigned_driver_id") == drv
 
+        # SUPPLY-00: capture the driver's qualification state before the
+        # cancellation. is_available is a qualification flag, never a busy
+        # flag, so the assertion below must prove it is UNCHANGED rather
+        # than re-assert a constant.
+        before = _drv_field(app, drv, "is_available")
+
         from app.transport.services.booking_service import BookingService
         with app.app_context():
             result = BookingService().cancel_booking(
@@ -420,11 +426,14 @@ class TestConcurrentCancelVsClaim:
         assert result["success"] is True
         assert result["data"]["stage_at_cancellation"] == "assigned"
 
-        # Verify driver and vehicle were properly released
+        # Verify driver and vehicle were properly released.
+        # SUPPLY-00: release clears the vehicle busy flag; the driver's
+        # qualification flag is never written by trip lifecycle.
         assert _bk_field(app, bk_id, "status") == BookingStatus.CANCELLED.value
         assert _bk_field(app, bk_id, "assigned_driver_id") is None
         assert _bk_field(app, bk_id, "assigned_vehicle_id") is None
-        assert _drv_field(app, drv, "is_available") is True
+        assert _drv_field(app, drv, "is_available") is before
+        assert _veh_field(app, veh, "is_available") is True
 
         _delete(app, (Booking, bk_id), (DriverProfile, drv), (Vehicle, veh))
 
@@ -446,12 +455,16 @@ class TestLateReleaseProtection:
         with app.app_context():
             AssignmentService.claim(bkA_ref, drv, veh, actor=None)
 
+        # SUPPLY-00: capture the driver's qualification state before release.
+        before = _drv_field(app, drv, "is_available")
+
         # Step 2: release booking A
         with app.app_context():
             AssignmentService.release(bkA_id, BookingStatus.CANCELLED, actor=None, reason="stale")
 
-        # Step 3: driver and vehicle should be available
-        assert _drv_field(app, drv, "is_available") is True
+        # Step 3: resources freed. The vehicle busy flag IS restored by
+        # release; the driver's qualification flag is never written by it.
+        assert _drv_field(app, drv, "is_available") is before
         assert _veh_field(app, veh, "is_available") is True
 
         # Step 4: claim booking B
@@ -459,6 +472,9 @@ class TestLateReleaseProtection:
             result_b = AssignmentService.claim(bkB_ref, drv, veh, actor=None)
         assert result_b["status"] == BookingStatus.ASSIGNED.value
         assert result_b["booking_id"] == bkB_id
+
+        # SUPPLY-00: capture the qualification state before the late release.
+        before_late = _drv_field(app, drv, "is_available")
 
         # Step 5: late release booking A — must not free B's resources
         with app.app_context():
@@ -469,8 +485,11 @@ class TestLateReleaseProtection:
         assert _bk_field(app, bkB_id, "assigned_vehicle_id") == veh
         assert _bk_field(app, bkB_id, "status") == BookingStatus.ASSIGNED.value
 
-        # Step 7: driver/vehicle still unavailable (held by B)
-        assert _drv_field(app, drv, "is_available") is False
+        # Step 7: B still holds both resources. SUPPLY-00: the driver's
+        # qualification flag is never a busy flag, so it is unchanged; the
+        # vehicle busy flag is still False because B's claim cleared it.
+        # Mutual exclusion is proven by the step 6 booking assertions.
+        assert _drv_field(app, drv, "is_available") is before_late
         assert _veh_field(app, veh, "is_available") is False
 
         # Cleanup: release B first (has FKs), then delete
@@ -864,10 +883,18 @@ class TestCleanupOfferNoneSafe:
 # =====================================================================
 
 class TestSupply01ReleaseOffline:
-    """Verify AssignmentService.release respects driver.is_online flag."""
+    """Release and post-assignment cancellation vs driver.is_online.
+
+    SUPPLY-00: driver.is_available is a qualification flag, never a busy
+    flag. Trip lifecycle never writes it, so every driver assertion below
+    is relational -- the qualification state is captured immediately before
+    the transition and compared afterward -- rather than a hardcoded
+    constant. Vehicle.is_available IS the busy flag and is toggled by
+    claim/release.
+    """
 
     def test_offline_driver_release_keeps_unavailable(self, app):
-        """Offline driver after assignment must stay unavailable after release."""
+        """Offline driver after assignment keeps its qualification state unchanged."""
         pax_id = _create_user(app, "paxOff")
         _, drv, veh, hist = _make_matchable_driver(app, "off")
         bk_id, bk_ref = _create_booking(app, pax_id, "off")
@@ -879,35 +906,42 @@ class TestSupply01ReleaseOffline:
                 d = db.session.get(DriverProfile, drv)
                 d.is_online = False
                 db.session.commit()
+            # capture qualification state after going offline, before release
+            before = _drv_field(app, drv, "is_available")
             # release (completed)
             AssignmentService.release(bk_id, BookingStatus.COMPLETED, actor=None, reason="test")
             with app.app_context():
                 d = db.session.get(DriverProfile, drv)
-                assert d.is_available is False, "Offline driver must stay unavailable"
+                assert d.is_available is before, (
+                    "release must not couple driver.is_available to is_online"
+                )
         finally:
             _delete(app, (DriverVehicleHistory, hist), (Booking, bk_id),
                     (DriverProfile, drv), (Vehicle, veh))
 
     def test_online_driver_release_becomes_available(self, app):
-        """Online driver after assignment becomes available after release."""
+        """Online driver after assignment keeps its qualification state unchanged."""
         pax_id = _create_user(app, "paxOn")
         _, drv, veh, hist = _make_matchable_driver(app, "on")
         bk_id, bk_ref = _create_booking(app, pax_id, "on")
         try:
             AssignmentService.claim(bk_ref, drv, veh, actor=None)
             # driver stays online
+            before = _drv_field(app, drv, "is_available")
             AssignmentService.release(bk_id, BookingStatus.COMPLETED, actor=None, reason="test")
             with app.app_context():
                 d = db.session.get(DriverProfile, drv)
                 v = db.session.get(Vehicle, veh)
-                assert d.is_available is True, "Online driver must become available"
+                assert d.is_available is before, (
+                    "release must not write driver.is_available"
+                )
                 assert v.is_available is True, "Vehicle must become available"
         finally:
             _delete(app, (DriverVehicleHistory, hist), (Booking, bk_id),
                     (DriverProfile, drv), (Vehicle, veh))
 
     def test_offline_driver_cancel_post_assignment_stays_unavailable(self, app):
-        """Offline driver after post‑assignment cancellation stays unavailable."""
+        """Offline driver after post‑assignment cancellation keeps its qualification state unchanged."""
         pax_id = _create_user(app, "paxCancel")
         _, drv, veh, hist = _make_matchable_driver(app, "canc")
         bk_id, bk_ref = _create_booking(app, pax_id, "canc")
@@ -919,10 +953,13 @@ class TestSupply01ReleaseOffline:
                 d.is_online = False
                 db.session.commit()
             # cancel (post‑assignment) -> uses release internally
+            before = _drv_field(app, drv, "is_available")
             AssignmentService.release(bk_id, BookingStatus.CANCELLED, actor=None, reason="rider")
             with app.app_context():
                 d = db.session.get(DriverProfile, drv)
-                assert d.is_available is False, "Offline driver must stay unavailable after cancel"
+                assert d.is_available is before, (
+                    "post-assignment cancellation must not write driver.is_available"
+                )
         finally:
             _delete(app, (DriverVehicleHistory, hist), (Booking, bk_id),
                     (DriverProfile, drv), (Vehicle, veh))
@@ -943,11 +980,16 @@ class TestSupply01ReleaseOffline:
                 AssignmentService.claim(bk2_ref, drv, veh, actor=None)
             assert exc_info.value.kind in ("driver_unavailable", "vehicle_unavailable")
             # release first booking
+            before = _drv_field(app, drv, "is_available")
             AssignmentService.release(bk1_id, BookingStatus.COMPLETED, actor=None, reason="test")
             with app.app_context():
                 d = db.session.get(DriverProfile, drv)
                 v = db.session.get(Vehicle, veh)
-                assert d.is_available is True
+                # SUPPLY-00: the driver qualification flag is untouched by
+                # release. Reverse active-booking protection is proven by the
+                # claim rejection above (bk2 was never claimed) and by the
+                # vehicle busy flag genuinely restored here.
+                assert d.is_available is before
                 assert v.is_available is True
         finally:
             _delete(app, (DriverVehicleHistory, hist), (Booking, bk1_id), (Booking, bk2_id),

@@ -346,7 +346,7 @@
                   <span class="kyc-tier-badge kyc-tier-{{ kyc_level }}">Tier {{ kyc_level }}</span>
                 </td>
                 <td class="action-group">
-                  <a href="{{ url_for('admin.view_user_by_username', username=user.username) }}" class="sad-btn sm" style="background:rgba(0,123,255,0.1);color:var(--sad-accent);border-color:rgba(0,123,255,0.25)">
+                  <a href="{{ url_for('admin.view_user', user_id=user.public_id) }}" class="sad-btn sm" style="background:rgba(0,123,255,0.1);color:var(--sad-accent);border-color:rgba(0,123,255,0.25)">
                     <i class="bi bi-eye"></i> View
                   </a>
                   {% if not user.is_verified %}

@@ -72,17 +72,19 @@ def test_pin_coordinates_become_canonical_endpoints(app):
     booking = _booking(app, booking_id)
     assert booking.pickup_location["latitude"] == pytest.approx(LAT_A)
     assert booking.pickup_location["longitude"] == pytest.approx(LNG_A)
-    assert booking.pickup_location["address"] == "Nile Stadium, Kampala"
+    # Node 1 contract: canonical snapshot carries `label`, never a
+    # presentation-only `address` key.
+    assert booking.pickup_location["label"] == "Nile Stadium, Kampala"
+    assert "address" not in booking.pickup_location
     assert booking.dropoff_location["latitude"] == pytest.approx(LAT_B)
 
 
-def test_text_only_booking_unchanged(app):
+def test_text_only_booking_rejected(app):
+    from app.utils.exceptions import ValidationError
     user_id = _user(app)
-    booking_id = _create(app, user_id)
-    booking = _booking(app, booking_id)
-    assert booking.pickup_location == "Nile Stadium, Kampala"
-    assert float(booking.estimated_distance_km) == 5.0
-    assert booking.booking_metadata["distance_basis"] == "planning_default"
+    with app.app_context():
+        with pytest.raises(ValidationError):
+            _create(app, user_id)
 
 
 def test_partial_coordinates_rejected(app):
@@ -130,12 +132,12 @@ def test_measured_distance_prices_booking(app):
         * Decimal("1.2") * booking.surge_multiplier), abs=0.01)
 
 
-def test_client_distance_preserved_without_coordinates(app):
+def test_client_distance_without_coordinates_rejected(app):
+    from app.utils.exceptions import ValidationError
     user_id = _user(app)
-    booking_id = _create(app, user_id, estimated_distance=12)
-    booking = _booking(app, booking_id)
-    assert float(booking.estimated_distance_km) == 12.0
-    assert booking.booking_metadata["distance_basis"] == "planning_default"
+    with app.app_context():
+        with pytest.raises(ValidationError):
+            _create(app, user_id, estimated_distance=12)
 
 
 # --- matchability ------------------------------------------------------------------------------
@@ -164,35 +166,19 @@ def test_coordinate_booking_is_matchable_text_is_not(app):
     coord_id = _create(
         app, user_id, pickup_latitude=LAT_A, pickup_longitude=LNG_A,
         dropoff_latitude=LAT_B, dropoff_longitude=LNG_B)
-    text_id = _create(app, user_id)
+    # UI-LOC-02A: text-only bookings are rejected at creation (safety
+    # closure). The valuable original behavior — text cannot book — is
+    # proven here at creation, not merely at the matching helper.
+    from app.utils.exceptions import ValidationError
     with app.app_context():
-        # Deterministic membership: the shared test DB accumulates
-        # online drivers across suites, and get_nearby_drivers takes
-        # an unordered LIMIT 50 (pre-existing robustness wart, not
-        # this node). Take everyone else offline first, then restore.
-        from app.extensions import db
-        from app.transport.models import DriverProfile
-        others = DriverProfile.query.filter(
-            DriverProfile.id != driver_id,
-            DriverProfile.is_online == True).all()  # noqa: E712
-        others_snapshot = [(d.id, d.is_online) for d in others]
-        try:
-            (DriverProfile.query.filter(DriverProfile.id != driver_id)
-             .update({DriverProfile.is_online: False}))
-            db.session.commit()
-            nearby = TrackingService.get_nearby_drivers(
-                {"latitude": LAT_A, "longitude": LNG_A}, radius_km=5)
-            assert any(d["driver_id"] == driver_id for d in nearby)
-        finally:
-            for did, was_online in others_snapshot:
-                db.session.get(DriverProfile, did).is_online = was_online
-            db.session.commit()
-    # The coordinate booking's own pickup now resolves for matching,
-    # while the text booking cannot (distance None) — the product gap,
-    # proven at the boundary that matters.
+        from app.transport.services.booking_service import get_booking_service
+        with pytest.raises(ValidationError):
+            get_booking_service().create_booking(user_id, _payload())
+    # The coordinate booking's own pickup resolves for matching, while
+    # text resolves to nothing — the product gap, proven at the boundary.
     from app.transport.services.matching_service import MatchingService
     assert MatchingService._coordinates_or_none(
         {"latitude": LAT_A, "longitude": LNG_A}) == (LAT_A, LNG_A)
     assert MatchingService._coordinates_or_none(
         "Nile Stadium, Kampala") == (None, None)
-    assert coord_id and text_id
+    assert coord_id

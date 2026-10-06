@@ -53,9 +53,37 @@ ROLE_HIERARCHY: tuple[str, ...] = (
     "owner",
     "super_admin",
     "admin",
+    "auditor",
+    "compliance_officer",
     "moderator",
     "support",
+    "event_admin",
+    "transport_admin",
+    "wallet_admin",
+    "accommodation_admin",
+    "tourism_admin",
+    "independent_driver",
+    "independent_host",
     "user",
+)
+
+#: Org role privilege order - index 0 = highest privilege (within an organisation).
+ORG_ROLE_HIERARCHY: tuple[str, ...] = (
+    "org_owner",
+    "org_admin",
+    "finance_manager",
+    "transport_manager",
+    "hr_manager",
+    "project_manager",
+    "event_manager",
+    "dispatcher",
+    "event_organizer",
+    "facility_manager",
+    "org_driver",
+    "org_host",
+    "staff",
+    "org_member",
+    "org_guest",
 )
 
 
@@ -384,6 +412,23 @@ def get_profile_completion_data(user: "User"):
 # ---------------------------------------------------------------------------
 # Organisation role helpers  (safe - only inspects role.name)
 # ---------------------------------------------------------------------------
+
+def get_org_member_roles(user: "User", org_id: int) -> list[str]:
+    """Return a list of org role names the user holds in the organisation."""
+    member = get_org_member(user, org_id)
+    if not member:
+        return []
+    return [our.role.name for our in (member.roles or []) if our.role]
+
+
+def highest_org_role(user: "User", org_id: int) -> str | None:
+    """Return the highest privilege org role for a user in an organisation."""
+    roles = get_org_member_roles(user, org_id)
+    for role_name in ORG_ROLE_HIERARCHY:
+        if role_name in roles:
+            return role_name
+    return None
+
 
 def get_org_member(
     user: "User",

@@ -205,13 +205,15 @@ Never mark an item CLOSED without verification.
 
 | # | Problem | Workstream / Owner | File / Function | Problem Definition + Code Evidence | Correction | Verification / Remarks / State |
 |---|---------|-------------------|-----------------|-----------------------------------|------------|-------------------------------|
-| SUPPLY-01 | release() restores is_available=True while is_online=False | Organisation / Fleet | AssignmentService.release() | **P1 invariant defect.** CURRENT CODE: release() can restore is_available=True while is_online=False. EVIDENCE: Invariant violation confirmed. Patch plan returned; needs A–F review under new protocol. | ACTUAL: Added DriverProfile.__table__.c.is_online.is_(True) to the driver availability-restore predicate in app/transport/services/assignment_service.py AssignmentService.release() Frontend: FRONTEND CHANGE NOT REQUIRED — EXISTING UI REMAINS TRUTHFUL. Regression: tests/test_transport_concurrent_claim.py 29 passed, 24 warnings. Verified scenarios: - offline driver release remains unavailable - online driver release restores availability - offline post-assignment cancellation remains unavailable - reverse active-booking protection preserved Scope: No frontend changes, vehicle-release changes, fleet, marketplace, admin-override, migration, wallet/payment, or unrelated changes. Gate: PASS — SUPPLY-01 VERIFIED | **CLOSED — VERIFIED** — All 4 regression scenarios proven; gate PASS |
+| SUPPLY-01 | release() restores is_available=True while is_online=False | Organisation / Fleet | AssignmentService.release() | **P1 invariant defect.** CURRENT CODE: release() can restore is_available=True while is_online=False. EVIDENCE: Invariant violation confirmed. Patch plan returned; needs A–F review under new protocol. | ACTUAL: Added DriverProfile.__table__.c.is_online.is_(True) to the driver availability-restore predicate in app/transport/services/assignment_service.py AssignmentService.release() Frontend: FRONTEND CHANGE NOT REQUIRED — EXISTING UI REMAINS TRUTHFUL. Regression: tests/test_transport_concurrent_claim.py 29 passed, 24 warnings. Verified scenarios: - offline driver release remains unavailable - online driver release restores availability - offline post-assignment cancellation remains unavailable - reverse active-booking protection preserved Scope: No frontend changes, vehicle-release changes, fleet, marketplace, admin-override, migration, wallet/payment, or unrelated changes. Gate: PASS — SUPPLY-01 VERIFIED | **CLOSED / SUPERSEDED by SUPPLY-00** — 4 scenarios proven under prior semantics; driver-restore predicate removed by SUPPLY-00 A2 (no driver is_available writes remain in assignment_service.py) |
 | SUPPLY-02 | Fleet participation not enforced at pool/availability/claim | Organisation / Fleet | Pool/availability/claim logic | **P0 if fleet pilot.** Design ready; conditional predicate shape pending. | PROPOSED: Enforce fleet participation at pool/availability/claim | **DESIGN READY** — Conditional predicate shape pending |
 | SUPPLY-03 | Marketplace contract dates not enforced | Marketplace | Contract date validation | **P0 if marketplace pilot.** Design ready; conditional predicate shape pending. | PROPOSED: Enforce marketplace contract dates | **DESIGN READY** — Conditional predicate shape pending |
 | SUPPLY-04 | _activate_contract swallows DriverVehicleHistory failure | Organisation / Fleet | _activate_contract() | **P1.** Design ready; caller map required. | PROPOSED: Fix _activate_contract to propagate DriverVehicleHistory failure | **DESIGN READY** — Caller map required |
 | SUPPLY-ADMIN | Admin update_driver_status sets is_online=True without checks | Auth / KYC | update_driver_status() | **POLICY.** 5-axis capability contract required. Authorized operational override is product direction, but detailed capability semantics still require control-session decisions. | DECISION REQUIRED — 5-axis capability contract | **POLICY** — 5-axis capability contract required; control session needed |
 | SUPPLY-Q3 | Scheduled-driver-without-vehicle ambiguity | Organisation / Fleet | Universal vehicle rule | **RESOLVED.** Universal vehicle-before-Online rule decides. | ACTUAL: Universal vehicle rule decided | **DECIDED** — Universal vehicle rule decides |
 | SUPPLY-00 | Driver is_available/is_online semantic inversion + admin override + audit fixes + idempotency key selection | Supply Truth | assignment_service.py claim()/release(); provider_service.py writers + register_driver + set_admin_online_override; go_live_service.py; driver_routes.py; api/routes.py; routes.py; driver_dashboard.html; utils/idempotency.py; admin templates | **Evidence trail (preserved): prior session BLOCKED on (1) TypeError 'str' object is not callable at idempotency.py:104, (2) 7 audit call sites passing entity_type/entity_id/request_id kwargs, (3) D4 audit placed after commit, (4) D4 disable-path flush/check before metadata assignment, (5) register_driver sanitize-dict / validation-tuple / with_cache_lock-CM defects. Corrected invariant: is_online => is_available; trip lifecycle never touches driver.is_available; override in driver_metadata JSONB with absolute blocked states.** | ACTUAL: A1/A2 claim-release writes removed; B1/B2 guards + B3 override endpoint; C1/C2 registration; D1-D7 writers + override method + register init (F,F)/(T,F); E1 go_live short-circuit; F1 detail route + admin templates; I1-I3 labels/payload; idempotency 3-way selection; audit kwargs + db_session with pre-commit ordering; _redis_lock helper. Transport-only; no migrations; no schema changes. | **GREEN — semantic correction + admin override + audit fixes + T1–T15 (16 exec) + idempotency contract (6)** — supply00 16/16; invariant 3/3; idempotency contract 6/6. SUPPLY-IDEMPOTENCY CLOSED / folded into SUPPLY-00. Residual OPEN: SUPPLY-LOCK-SITE-1048 (P1); test_one_driver_two_bookings (P3); SUPPLY-AUDIT-PERSIST; AuditLog collision; ActivityLog signature. NOTE: _redis_lock is module-private and single-use. When SUPPLY-LOCK-SITE-1048 lands, decide whether to promote it to app.utils.caching alongside a fix to with_cache_lock, or inline the correction. |
+| SUPPLY-05 | DriverDetailResource.put allowed is_online=True with is_available=False via admin PUT | Supply Truth | app/transport/api/driver_routes.py DriverDetailResource.put | **Defect.** Admin REST path wrote fields directly without the invariant guard enforced on service-layer writers; the forbidden combination (online without qualification) was reachable. | ACTUAL: B2 projected-state guard (is_online => is_available) before applying any field. | **CLOSED — VERIFIED** — T5 (online-without-available rejected 422) and T6 (unavailable-on-online rejected 422) pass. |
+| SUPPLY-IDEMPOTENCY | idempotent_request string key_getter invoked as callable | Supply Truth (shared utility) | app/utils/idempotency.py idempotent_request() | **Defect.** All 3 call sites pass a namespace string; wrapper called it as a function → TypeError 'str' object is not callable before any business logic; register_driver, register_organisation_transport and update_settings paths dead. No prior key semantics existed at those sites. | ACTUAL: three-way key selection (None header / str namespace via generate_idempotency_key with self-exclusion / callable); _has_self_first_param inspection-based. | **CLOSED / folded into SUPPLY-00** — focused contract 6/6; T7/T8 unblocked. |
 
 ---
 
@@ -224,7 +226,7 @@ Never mark an item CLOSED without verification.
 | MATCH-01-C | Terminals: no_supply / all_rejected | MATCH-01 (Agent 1) | Terminal state logic | Test-verified. Terminal states no_supply and all_rejected work correctly. | ACTUAL: Implemented and test-verified | **TEST-VERIFIED** — 48 tests |
 | MATCH-01-D | Rider projection (badge relabel, terminal copy, CTAs) | MATCH-01 (Agent 1) | Frontend rider projection | Implemented. Badge relabel, terminal copy, CTAs all implemented. | ACTUAL: Implemented | **IMPLEMENTED** |
 | MATCH-01-E | Retry endpoint | MATCH-01 (Agent 1) | Retry API endpoint | Implemented. Retry endpoint works. | ACTUAL: Implemented | **IMPLEMENTED** |
-| MATCH-01-F | Test suite (8 files, 48 tests) | MATCH-01 (Agent 1) | Test suite | 47 PASS, 1 FAIL. One test failing. | PROPOSED: Fix failing test | **47/48 PASS** — 1 FAIL |
+| MATCH-01-F | Test suite (8 files, 48 tests) | MATCH-01 (Agent 1) | Test suite | 47 PASS, 1 FAIL. One test failing. | PROPOSED: Fix failing test | **48/48 PASS** — per MATCH-01-G full suite green |
 | MATCH-01-G | _current_user_is_admin() misclassifies owner | MATCH-01 (Agent 1) | _current_user_is_admin() | **P1 DEFECT — Test/fixture isolation defect (NOT production authorization defect).** Over-strips admin payloads (safe direction). Current evidence establishes this as test/fixture isolation defect. Production code unchanged. Test fixture/session isolation corrected in `tests/transport/test_match01_payload_stripping.py`. Rider request now uses separate Flask test client from admin client. | ACTUAL: Fixed test fixture isolation in `tests/transport/test_match01_payload_stripping.py` — rider request uses separate Flask test client from admin client | **CLOSED — TEST/INTEGRATION FIXTURE DEFECT CORRECTED AND VERIFIED** — Focused payload-stripping test: PASS; Full MATCH-01 suite: 48/48 PASS; `tests/test_rider_sync_driver_card.cjs`: 17/17 PASS; `tests/test_rider_matching_search.cjs`: 18/18 PASS; Agent 1 gate: PASS — MATCH-01-G TEST DEFECT CORRECTED AND VERIFIED |
 | MATCH-01-H | JS harnesses | MATCH-01 (Agent 1) | JS test harnesses | 17/17, 18/18 PASS. All JS harnesses pass. | ACTUAL: All JS harnesses pass | **PASS** — 17/17, 18/18 |
 | MATCH-01-I | Live runs | MATCH-01 (Agent 1) | Live environment | NOT STARTED. Rider path safe from admin defect. | FUTURE / NOT IMPLEMENTED | **NOT STARTED** — Rider path safe |
@@ -245,6 +247,7 @@ Never mark an item CLOSED without verification.
 | DRIVER-SOUND-01 | Custom song persistence for driver alerts | Future | UNASSIGNED / DECISION REQUIRED | NOT FILED — needs register entry. | FUTURE / NOT IMPLEMENTED | **NOT FILED** — Needs register entry |
 | N7-EnRoute-CardVanish | Live-only defect from Node 7 | Transport / Rider Journey | UNASSIGNED / DECISION REQUIRED | NEEDS register entry + regression test. Live-only defect observed in Node 7. | PROPOSED: File register entry + create regression test | **NEEDS REGISTER ENTRY + REGRESSION TEST** |
 | FUTURE-MAP-01 | Driver-side rider/pickup live location | Future | UNASSIGNED / DECISION REQUIRED | FUTURE ONLY — not implemented. Privacy review required. | FUTURE / NOT IMPLEMENTED | **FUTURE ONLY** — Privacy review required |
+| PRODUCTION-CONSOLE-LOG-RECURSION-01 | Logging handler recursion when Redis unreachable | Production Console | app/production_console/streaming.py — _store_history, _broadcast_live, get_recent_history, clear_history | **P1 defect.** Recursion loop: emit() → _store_history() → pipe.execute() raises → logger.debug() → emit() again. Same in _broadcast_live, get_recent_history, clear_history. _should_skip filters prod_console_skip but fallback logs didn't tag it. | ACTUAL: Added extra={"prod_console_skip": True} to all four logger calls. Also fixed pre-existing docstring indent on line 2. Verified: import OK, create_app() OK. | **CLOSED** — 4 fixes applied; recursion broken; not on four-flow drill path |
 | PWA/APP-TELEMETRY-01 | Installation and active-device registry | Future | UNASSIGNED / DECISION REQUIRED | FUTURE ONLY — privacy review required. | FUTURE / NOT IMPLEMENTED | **FUTURE ONLY** — Privacy review required |
 | L-A8-move | Driver delivers ≥2 positions; marker visibly displaces | Evidence / L-series | UNASSIGNED / DECISION REQUIRED | L-series addition. Requires moving driver to verify marker displacement. | PROPOSED: Execute with moving driver | **OPEN** — Needs moving driver verification |
 | L-E2-tiles | Run on network where OSM tiles render | Evidence / L-series | UNASSIGNED / DECISION REQUIRED | L-series addition. Requires network with OSM tile rendering. | PROPOSED: Test on network with OSM tiles | **OPEN** — Needs OSM tile rendering network |
@@ -255,8 +258,9 @@ Never mark an item CLOSED without verification.
 
 | Priority | Register ID | Workstream | Current State | Next Action |
 |---|---|---|---|---|
-| 1 | MATCH-01-G | MATCH-01 | TEST/FIXTURE DEFECT | Correct test isolation → verify 48/48 |
-| 2 | SUPPLY-01 | Supply Truth | DESIGN READY | Exact patch → approval → implement |
+| 1 | SUPPLY-LOCK-SITE-1048 | Provider registration | OPEN | Fix context-manager misuse + regression test |
+| 2 | SUPPLY-00-TEST-UPDATE | Test hygiene | OPEN | Rewrite three superseded tests |
+| 3 | N7-EnRoute-CardVanish | Rider tracking | OPEN | Regression test + defect record |
 
 ---
 
@@ -379,6 +383,39 @@ correct, call-site kwargs were the defect class.
 
 Required closure:
 Dedicated rename/disambiguation node. Out of scope for SUPPLY-00.
+```
+
+```text
+SUPPLY-00-TEST-UPDATE
+Priority: P1
+Status: OPEN / FOLLOW-UP
+Area: test hygiene / SUPPLY-00
+File: tests/test_transport_concurrent_claim.py
+
+Finding:
+Three tests still assert pre-SUPPLY-00 busy-flag semantics
+(is_available=False after release). SUPPLY-00 changed the model so
+is_available is a qualification flag, untouched by trip lifecycle.
+Affected:
+  - TestSupply01ReleaseOffline (2 tests)
+  - test_late_release_... (1 test)
+
+Evidence:
+Full-run result 25/29. Three deterministic failures with the same
+assertion class. Passing in isolation does not apply — these are
+semantic mismatches, not flake.
+The concurrency guarantee they were asserting (mutual exclusion
+during claim) is preserved by SUPPLY-00 via SELECT ... FOR UPDATE
+plus the driver_engaged_other re-read.
+
+Required closure:
+Rewrite the three tests for the new model:
+  - assert the driver's is_available is unchanged by claim/release
+  - assert the vehicle's is_available is toggled (busy-flag)
+  - preserve the reverse active-booking-protection assertion
+
+Boundary: outside SUPPLY-00 ownership; separate node. Do not modify
+under the SUPPLY-00 closure.
 ```
 
 ```text

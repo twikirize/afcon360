@@ -139,7 +139,11 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
      data-driver-id="{{ driver_profile.id if driver_profile else '' }}"
      data-csrf="{{ raw_csrf_token }}"
      data-ping-interval="{{ ping_interval_seconds|default(120) }}"
-     data-is-online="{{ '1' if driver_profile and driver_profile.is_online else '0' }}">
+     data-is-online="{{ '1' if driver_profile and driver_profile.is_online else '0' }}"
+     data-last-lat="{{ driver_profile.last_location.get('latitude') if driver_profile and driver_profile.last_location and driver_profile.last_location.get('latitude') is not none else '' }}"
+     data-last-lng="{{ driver_profile.last_location.get('longitude') if driver_profile and driver_profile.last_location and driver_profile.last_location.get('longitude') is not none else '' }}"
+     data-last-acc="{{ driver_profile.last_location.get('accuracy') if driver_profile and driver_profile.last_location and driver_profile.last_location.get('accuracy') is not none else '' }}"
+     data-last-ts="{{ driver_profile.location_updated_at.isoformat() if driver_profile and driver_profile.location_updated_at else '' }}">
 {% if driver_profile %}
 {% set compliance = driver_profile.compliance_status.value %}
 {% set compliance_badge = 'green' if compliance == 'approved'
@@ -1227,7 +1231,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
         </button>
       </div>
     </div>
-    <script>
+    <script nonce="{{ csp_nonce }}">
     (function () {
       // Offer alert sound picker: device-local choice, preview on tap.
       var KEY = 'ck_alert_sound';
@@ -1362,9 +1366,9 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/modules/transport/driver-dashboard.js') }}"></script>
-<script src="{{ url_for('static', filename='js/modules/transport/driver_offer_poll.js') }}"></script>
-<script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/driver-dashboard.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/driver_offer_poll.js') }}"></script>
+<script nonce="{{ csp_nonce }}">
 (function () {
   function csrfHeaders() {
     return {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'};

@@ -72,14 +72,30 @@ def role_management_dashboard():
         
         # Get user statistics by role
         role_stats = {}
-        roles = ['owner', 'super_admin', 'admin', 'moderator', 'auditor', 'compliance_officer', 
-                'support', 'event_manager', 'transport_admin', 'wallet_admin', 'accommodation_admin',
-                'tourism_admin', 'org_admin', 'org_member', 'user']
+        # Global roles only (org roles handled separately)
+        global_roles = ['owner', 'super_admin', 'admin', 'auditor', 'compliance_officer', 
+                       'moderator', 'support', 'event_admin', 'transport_admin', 'wallet_admin',
+                       'accommodation_admin', 'tourism_admin', 'independent_driver',
+                       'independent_host', 'user']
         
-        for role in roles:
+        for role in global_roles:
             role_obj = Role.query.filter_by(name=role, scope='global').first()
             if role_obj:
                 role_stats[role] = UserRole.query.filter_by(role_id=role_obj.id).count()
+            else:
+                role_stats[role] = 0
+        
+        # Add org role stats
+        org_roles = ['org_owner', 'org_admin', 'finance_manager', 'transport_manager',
+                     'hr_manager', 'project_manager', 'event_manager', 'dispatcher',
+                     'event_organizer', 'facility_manager', 'org_driver', 'org_host',
+                     'staff', 'org_member', 'org_guest']
+        for role in org_roles:
+            role_obj = Role.query.filter_by(name=role, scope='org').first()
+            if role_obj:
+                # Count across all orgs
+                from app.identity.models.organisation_member import OrgUserRole
+                role_stats[role] = OrgUserRole.query.filter_by(role_id=role_obj.id).count()
             else:
                 role_stats[role] = 0
         
@@ -208,13 +224,18 @@ def assign_role():
 @login_required
 @require_owner_role
 def revoke_role():
-    """Revoke a role from a user"""
+    """Revoke a specific role from a user"""
     try:
         user_id = request.form.get('user_id')
+        role_name = request.form.get('role_name')
         reason = request.form.get('reason', 'Role revocation by owner')
         
         if not user_id:
             flash('User ID is required', 'danger')
+            return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
+        
+        if not role_name:
+            flash('Role name is required', 'danger')
             return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
         
         user = db.session.get(User, user_id)
@@ -222,24 +243,57 @@ def revoke_role():
             flash('User not found', 'danger')
             return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
         
-        user_role = UserRole.query.filter_by(user_id=user.id).first()
-        if not user_role:
-            flash(f'{user.username} does not have any assigned role', 'warning')
+        # Check if user has the role
+        from app.identity.models.roles_permission import Role
+        from app.identity.models.user import UserRole
+        role = Role.query.filter_by(name=role_name, scope='global').first()
+        if not role:
+            flash(f'Role {role_name} not found', 'danger')
             return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
         
-        old_role = user_role.role.name if user_role.role else 'unknown'
+        user_role = UserRole.query.filter_by(user_id=user.id, role_id=role.id).first()
+        if not user_role:
+            flash(f'{user.username} does not have the {role_name} role', 'warning')
+            return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
         
-        from app.auth.deletion_guard import authorize_privileged_deletion_from_form
-        authorize_privileged_deletion_from_form(db.session, actor=current_user)
-        db.session.delete(user_role)
-        db.session.commit()
+        # Prevent revoking owner role from last owner
+        if role_name == 'owner':
+            owner_count = UserRole.query.join(Role, UserRole.role_id == Role.id).filter(Role.name == 'owner', Role.scope == 'global').count()
+            if owner_count <= 1:
+                flash('Cannot revoke the owner role from the last remaining owner.', 'danger')
+                return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
         
-        flash(f'Role revoked successfully: {user.username} is now a regular user', 'success')
+        # Use service function for proper audit logging
+        # For owner/super_admin roles, require privileged deletion (owner MFA)
+        # For other roles, use standard revoke
+        if role_name in ('owner', 'super_admin'):
+            from app.auth.deletion_guard import authorize_privileged_deletion_from_form
+            authorize_privileged_deletion_from_form(db.session, actor=current_user)
+            db.session.delete(user_role)
+            db.session.commit()
+            
+            # Log the revocation
+            from app.audit.comprehensive_audit import AuditService
+            AuditService.data_change(
+                entity_type="user_role",
+                entity_id=str(user.id),
+                operation="revoke_role",
+                old_value={"role": role_name},
+                new_value=None,
+                changed_by=current_user.id,
+                extra_data={"action": "revoke_global_role", "reason": reason}
+            )
+        else:
+            # Use service function for standard roles
+            from app.auth.roles import revoke_global_role
+            revoke_global_role(user.id, role_name, revoked_by_id=current_user.id)
+        
+        flash(f'Role {role_name} revoked successfully from {user.username}', 'success')
         
     except Exception as e:
         logger.error(f"Error revoking role: {e}")
         db.session.rollback()
-        flash('Error revoking role', 'danger')
+        flash(f'Error revoking role: {str(e)}', 'danger')
     
     return redirect(url_for('admin.owner.owner_role_management.role_management_dashboard'))
 

@@ -87,6 +87,7 @@ class LazyRedis:
                 self._url,
                 decode_responses=False,
                 socket_connect_timeout=5,
+                socket_timeout=30,
                 socket_keepalive=True
             )
             # Test connection
