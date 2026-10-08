@@ -32,3 +32,16 @@ class BaseProvider:
     def health(self) -> ProviderHealth:
         return ProviderHealth(name=self.name,
                               available=self.is_available())
+
+
+class ProviderFailure(Exception):
+    """Explicit operational provider failure (transport / HTTP error /
+    malformed provider payload).
+
+    Raised ONLY for failures that must trigger fallback to the next
+    provider in the chain. A valid provider response with zero useful
+    candidates is NOT a failure: adapters return [] for that case and
+    the service treats it as an honest no-result WITHOUT fallback.
+    The service converts this exception into fallback-or-unresolved;
+    it never reaches API callers.
+    """

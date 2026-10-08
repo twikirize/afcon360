@@ -100,4 +100,200 @@ The rules that matter are short. The OS is long on purpose: every node enforces 
 
 ---
 
+## 7. Multi-Agent Tooling Policy
+
+We have multiple coding agents working on this repository, including OpenCode agents/subagents, Junie, and potentially other IDE/CLI coding agents.
+
+The repository must therefore have a **shared tooling-awareness policy**, rather than relying on one agent remembering which tools exist.
+
+### 7.1 Shared Rule
+
+Update the appropriate project-level agent guidance so that coding agents are instructed:
+
+> Before starting a workstream, discover and use relevant installed tooling/MCP capabilities when they materially improve investigation, execution, browser verification, JSON/API inspection, database inspection, debugging, or evidence collection.
+
+The rule is:
+
+**Discover first → use when materially useful → do not install unnecessarily.**
+
+MCP/tool availability does not change engineering governance.
+
+### 7.2 Playwright MCP
+
+Record explicitly that **Playwright MCP is installed and available** in the AFCON360 development environment.
+
+Agents capable of using it should use it for appropriate tasks such as:
+
+```text
+real browser navigation
+real UI interaction
+visual verification
+form submission
+JavaScript behavior investigation
+network/request inspection
+JSON/API response inspection
+browser console inspection
+gelocation testing
+session/authentication behavior
+responsive/UI verification
+end-to-end evidence collection
+```
+
+Do not substitute static HTML inspection when a real browser check is materially required.
+
+Do not assume Playwright MCP is unavailable without checking.
+
+### 7.3 Other MCPs
+
+There are additional MCP capabilities available in the development environment.
+
+Agents must not assume:
+
+> "I don't have that capability."
+
+without first checking whether an installed MCP/tool provides it.
+
+Examples of potentially useful capabilities include:
+
+```text
+browser/UI investigation
+GitHub/repository operations
+filesystem/document retrieval
+database/data inspection
+external-service integrations
+design/prototype inspection
+other environment-specific tools
+```
+
+Only use a tool when it materially helps the active workstream.
+
+Do NOT call every MCP just because it exists.
+
+Large MCP tool inventories add context and can make agents less effective, so agents should select only the MCPs relevant to the current node. This is consistent with OpenCode's own guidance that MCP servers add context and should be enabled/used carefully.
+
+### 7.4 Playwright MCP vs Playwright Test
+
+These are different and both are valid.
+
+#### Playwright MCP
+
+Use for:
+
+* interactive browser investigation;
+* live debugging;
+* visual inspection;
+* exploratory journeys;
+* controlled browser evidence.
+
+#### Playwright Test
+
+Use for:
+
+* repeatable automated regression;
+* committed `.spec.*` tests;
+* CI/test-suite execution;
+* permanent regression protection.
+
+Do NOT treat Playwright Test as a replacement for Playwright MCP.
+
+Do NOT treat Playwright MCP interactive success as automatically equivalent to a committed automated regression test when the node specifically requires repeatable automation.
+
+### 7.5 Agent-Specific Tool Access
+
+The project instructions must make agents aware that tool availability depends on the agent host/configuration.
+
+#### OpenCode
+
+OpenCode supports:
+
+* primary agents;
+* subagents;
+* project agents under `.opencode/agents/`;
+* project rules through `AGENTS.md`;
+* MCP servers configured in OpenCode.
+
+For every AFCON360 OpenCode agent/subagent that has browser/tool access, include the MCP-awareness rule in its operating instructions.
+
+Do not assume that because the main agent has a tool, every subagent automatically has identical permissions. The agent configuration must be checked.
+
+#### Junie
+
+Junie consumes project guidance through:
+
+```text
+.junie/AGENTS.md
+or
+AGENTS.md + .junie/playbook.md + .junie/rules/*.md
+```
+
+and supports MCP servers through its MCP configuration.
+
+Ensure the AFCON360 project guidance tells Junie to use relevant MCP capabilities when available, especially browser verification.
+
+If `.junie/AGENTS.md` exists, account for its precedence rather than assuming the root `AGENTS.md` is automatically combined.
+
+### 7.6 Other Coding Agents
+
+For other coding agents/IDEs such as JetBrains-based agents or future agent integrations:
+
+* preserve the shared AFCON360 engineering policy in root `AGENTS.md`;
+* where the agent has its own project-specific instruction file, add a corresponding MCP/tool-awareness rule there;
+* do not duplicate large architecture documents unnecessarily;
+* point agents back to the canonical project instructions.
+
+The objective is:
+
+```text
+one engineering governance source
++
+agent-specific tool availability
++
+MCP discovery when useful
+```
+
+not multiple conflicting rulebooks.
+
+### 7.7 Do Not Install MCPs or Packages Automatically
+
+Tool discovery does NOT authorize installation.
+
+When an agent finds that a required capability is missing:
+
+```text
+TRACE
+→ identify the smallest setup
+→ report dependency/change impact
+→ obtain required approval
+→ install/setup
+→ verify
+```
+
+Do not silently install:
+
+* MCP servers;
+* npm packages;
+* Python packages;
+* browser tooling;
+* database tools;
+* external services.
+
+### 7.8 AFCON360 Governance Still Overrides Tooling
+
+MCP availability never overrides:
+
+**UNDERSTAND → MAP → TRACE → PROVE → MINIMAL CHANGE → VERIFY → GATE → RECORD → NEXT**
+
+Agents must still:
+
+* establish source truth before edits;
+* establish ownership before changing code;
+* prove behavior before claiming completion;
+* preserve closed nodes;
+* avoid unrelated work;
+* avoid migrations unless authorized;
+* avoid production commands;
+* report evidence rather than assumptions.
+
+---
+
 *End of Directive. Begin with UNDERSTAND.*

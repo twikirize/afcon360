@@ -3181,6 +3181,107 @@ class VehicleContract(TransportBase):
 
 
 # ===========================================================================
+# LOCATION LIFECYCLE (CCLI)
+# ===========================================================================
+
+class LocationLifecycleEvent(TransportBase):
+    """Immutable lifecycle event for booking location.
+
+    Each booking has two independent location lifecycles: pickup and dropoff.
+    Events record the evolution from initial resolution through actual execution.
+    """
+    __tablename__ = "transport_location_lifecycle_events"
+    __table_args__ = (
+        Index("ix_lle_booking_endpoint", "booking_id", "endpoint"),
+        Index("ix_lle_booking_endpoint_type", "booking_id", "endpoint", "event_type"),
+        Index("ix_lle_parent", "parent_public_id"),
+        Index("ix_lle_geo_obs", "geo_observation_public_id"),
+        Index("ix_lle_transition", "transition_at"),
+        CheckConstraint(
+            "endpoint IN ('pickup', 'dropoff')",
+            name="chk_lle_endpoint"
+        ),
+        CheckConstraint(
+            "event_type IN ('BOOKING_LOCATION_SET', 'LOCATION_REFINED', 'ACTUAL_START', 'ACTUAL_END')",
+            name="chk_lle_event_type"
+        ),
+        ForeignKeyConstraint(
+            ["booking_id"], ["transport_bookings.id"],
+            ondelete="CASCADE",
+            name="fk_lle_booking"
+        ),
+        ForeignKeyConstraint(
+            ["parent_public_id"], ["transport_location_lifecycle_events.public_id"],
+            ondelete="SET NULL",
+            name="fk_lle_parent"
+        ),
+        ForeignKeyConstraint(
+            ["geo_observation_public_id"], ["geo_location_observations.public_id"],
+            ondelete="SET NULL",
+            name="fk_lle_geo_observation"
+        ),
+        ForeignKeyConstraint(
+            ["actor_user_id"], ["users.id"],
+            ondelete="SET NULL",
+            name="fk_lle_actor"
+        ),
+        UniqueConstraint("public_id", name="uq_lle_public_id"),
+    )
+
+    public_id = db.Column(
+        db.String(64),
+        unique=True,
+        nullable=False,
+        index=True,
+        default=lambda: str(uuid_lib.uuid4())
+    )
+
+    booking_id = db.Column(db.BigInteger, nullable=False)
+    endpoint = db.Column(db.String(10), nullable=False)  # pickup | dropoff
+    event_type = db.Column(db.String(30), nullable=False)  # BOOKING_LOCATION_SET | LOCATION_REFINED | ACTUAL_START | ACTUAL_END
+
+    # Canonical 13-key snapshot — only for resolution/refinement events
+    snapshot = db.Column(JSONB, nullable=True)
+
+    # Refinement chain (same booking + same endpoint)
+    parent_public_id = db.Column(db.String(64), nullable=True)
+
+    # Reference to immutable GEO observation — only for actual execution events
+    geo_observation_public_id = db.Column(db.String(64), nullable=True)
+
+    # Actor who triggered this lifecycle event
+    actor_user_id = db.Column(db.BigInteger, nullable=True)
+
+    # When the lifecycle transition occurred
+    transition_at = db.Column(db.DateTime(timezone=True), nullable=False,
+                              default=lambda: datetime.now(timezone.utc))
+
+    # Additional context: freshness, age_at_transition, reason, entrance_type, access_notes, etc.
+    event_metadata = db.Column(JSONB, default=lambda: {})
+
+    # Relationships
+    booking = relationship("Booking", foreign_keys=[booking_id])
+    parent = relationship(
+        "LocationLifecycleEvent",
+        remote_side="LocationLifecycleEvent.public_id",
+        foreign_keys=[parent_public_id],
+        backref="children"
+    )
+    geo_observation = relationship(
+        "LocationObservation",
+        primaryjoin="LocationLifecycleEvent.geo_observation_public_id==LocationObservation.public_id",
+        foreign_keys=[geo_observation_public_id],
+        viewonly=True
+    )
+    actor = relationship("User", foreign_keys=[actor_user_id])
+
+    def to_dict(self, include: Optional[List[str]] = None, exclude: Optional[List[str]] = None):
+        """Safe serialization with field control"""
+        from app.core.serializers import ModelSerializer
+        return ModelSerializer.serialize(self, include=include, exclude=exclude)
+
+
+# ===========================================================================
 # INITIALIZATION
 # ===========================================================================
 

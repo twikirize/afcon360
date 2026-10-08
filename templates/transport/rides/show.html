@@ -260,8 +260,8 @@
     <div class="card ride-card">
       <div class="card-header">
         <span class="card-title">Trip Details</span>
-        {# MATCH-01-owned: CONFIRMED means payment taken and matching active —
-           the rider must see "Finding your driver", never a stale "Confirmed". #}
+        {# MATCH-01-owned: CONFIRMED means the booking is accepted/claimable and matching is active;
+           payment state is tracked separately by payment_status. #}
         {% set sc = {'completed':'pay-pill-paid','in_progress':'pay-pill-pending','assigned':'pay-pill-pending','driver_en_route':'pay-pill-pending','pickup_arrived':'pay-pill-pending','confirmed':'pay-pill-pending','no_match':'pay-pill-fail','cancelled':'pay-pill-fail','pending_payment':'pay-pill-pending','no_show':'pay-pill-fail','disputed':'pay-pill-fail'} %}
         <span id="riderStatusBadge" class="badge {{ sc.get(current_status,'pay-pill-pending') }}" data-status="{{ current_status }}">{% if current_status == 'confirmed' %}Finding your driver{% elif current_status == 'no_match' %}No match found{% else %}{{ current_status|replace('_',' ')|title }}{% endif %}</span>
       </div>

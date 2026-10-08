@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Dict, List, Optional, Any
 import random
 import string
+import json
 import logging
 import sqlalchemy as sa
 from flask import current_app
@@ -23,6 +24,7 @@ from app.transport.models import (
     PaymentStatus,
 )
 from app.core.validators import validate_coordinates
+from app.geo.services import geocode_result_from_candidate
 from app.utils.exceptions import ValidationError, NotFoundError, PermissionError, ServiceUnavailableError
 from app.utils.security import sanitize_input
 from app.utils.validators import validate_booking_request
@@ -31,6 +33,7 @@ from app.utils.audit import audit_log
 from app.transport.services.location_snapshot import (
     build_canonical_location_snapshot,
     build_canonical_snapshot_from_coordinates,
+    SOURCE_METHOD_PAIRS,
 )
 
 # Module-level logger (doesn't need app context)
@@ -372,14 +375,99 @@ class BookingService:
                 if isinstance(dropoff_loc_raw, str) and dropoff_loc_raw.strip():
                     dropoff_explicit_address = dropoff_loc_raw.strip()
 
-            pickup_snapshot = build_canonical_location_snapshot(
-                location_payload=pickup_payload,
-                explicit_address=pickup_explicit_address,
-            )
-            dropoff_snapshot = build_canonical_location_snapshot(
-                location_payload=dropoff_payload,
-                explicit_address=dropoff_explicit_address,
-            )
+            # Node 3 (D3): the rider form marks HOW each endpoint was chosen.
+            # The marker is only ever carried through — the contract pairing
+            # table supplies the single method for that source, so a client
+            # can never mismatch a pair, and the source is never re-inferred
+            # from coordinates after the fact. An absent/empty marker keeps
+            # the historical inference path unchanged.
+            def _source_hint(prefix: str) -> tuple[Optional[str], Optional[str]]:
+                raw = sanitized_data.get(f"{prefix}_source")
+                if raw is None:
+                    return None, None
+                if isinstance(raw, str):
+                    raw = raw.strip()
+                if not raw:
+                    return None, None
+                method = SOURCE_METHOD_PAIRS.get(raw)
+                if method is None:
+                    raise ValidationError(
+                        message=f"{prefix}_source must be one of "
+                                f"{sorted(SOURCE_METHOD_PAIRS)}",
+                        field=f"{prefix}_source",
+                    )
+                return raw, method
+
+            pickup_source, pickup_method = _source_hint("pickup")
+            dropoff_source, dropoff_method = _source_hint("dropoff")
+
+            # UI-01: a "search" source is an evidence claim (H2). The
+            # only truthful backing is the provider result the rider's
+            # picker echoed back in <prefix>_geocode - one item exactly
+            # as GET /geo/api/geocode returned it (JSON string from the
+            # browser form, or a dict from a JSON API caller). Without
+            # it the canonical builder would refuse the claim anyway;
+            # failing here keeps the error field-precise and no row is
+            # created. gps/map/absent markers pass NO evidence - the
+            # historical behaviour is unchanged.
+            def _search_geocode_result(prefix: str):
+                field = f"{prefix}_source"
+                missing = (f"{prefix}_source 'search' requires "
+                           f"{prefix}_geocode provider evidence")
+                raw = sanitized_data.get(f"{prefix}_geocode")
+                if isinstance(raw, str):
+                    text = raw.strip()
+                    if not text:
+                        raise ValidationError(message=missing, field=field)
+                    try:
+                        candidate = json.loads(text)
+                    except ValueError as exc:
+                        raise ValidationError(
+                            message=missing, field=field) from exc
+                elif isinstance(raw, dict):
+                    candidate = raw
+                else:
+                    raise ValidationError(message=missing, field=field)
+                if not isinstance(candidate, dict):
+                    raise ValidationError(message=missing, field=field)
+                try:
+                    return geocode_result_from_candidate(candidate)
+                except ValidationError as exc:
+                    raise ValidationError(
+                        message=f"{missing} ({exc.message})",
+                        field=field,
+                    ) from exc
+
+            pickup_geocode_result = (
+                _search_geocode_result("pickup")
+                if pickup_source == "search" else None)
+            dropoff_geocode_result = (
+                _search_geocode_result("dropoff")
+                if dropoff_source == "search" else None)
+
+            try:
+                pickup_snapshot = build_canonical_location_snapshot(
+                    location_payload=pickup_payload,
+                    geocode_result=pickup_geocode_result,
+                    explicit_address=pickup_explicit_address,
+                    source=pickup_source,
+                    resolution_method=pickup_method,
+                )
+                dropoff_snapshot = build_canonical_location_snapshot(
+                    location_payload=dropoff_payload,
+                    geocode_result=dropoff_geocode_result,
+                    explicit_address=dropoff_explicit_address,
+                    source=dropoff_source,
+                    resolution_method=dropoff_method,
+                )
+            except ValueError as exc:
+                # The canonical builder is the authority on whether a
+                # provenance claim is satisfiable; an unsatisfiable claim is
+                # a client error, not a server error.
+                raise ValidationError(
+                    message=str(exc),
+                    field="pickup_location",
+                ) from exc
 
             # Ensure both locations are resolved with canonical coordinates
             def _ensure_canonical_coords(loc, field_name):
@@ -480,6 +568,34 @@ class BookingService:
             )
 
             db.session.add(booking)
+            db.session.flush()  # flush to get booking.id before creating lifecycle events
+
+            # Create lifecycle events for pickup and dropoff
+            from app.transport.models import LocationLifecycleEvent
+            now = datetime.now(timezone.utc)
+            
+            # Pickup lifecycle event
+            pickup_event = LocationLifecycleEvent(
+                booking_id=booking.id,
+                endpoint="pickup",
+                event_type="BOOKING_LOCATION_SET",
+                snapshot=pickup_snapshot,
+                actor_user_id=customer_id,
+                transition_at=now,
+                event_metadata={"created_by": "booking_service"}
+            )
+            # Dropoff lifecycle event
+            dropoff_event = LocationLifecycleEvent(
+                booking_id=booking.id,
+                endpoint="dropoff",
+                event_type="BOOKING_LOCATION_SET",
+                snapshot=dropoff_snapshot,
+                actor_user_id=customer_id,
+                transition_at=now,
+                event_metadata={"created_by": "booking_service"}
+            )
+            db.session.add(pickup_event)
+            db.session.add(dropoff_event)
             db.session.commit()
 
             self._invalidate_listing_caches()
@@ -1351,6 +1467,21 @@ class BookingService:
                 'page': page, 'per_page': per_page, 'pages': 0,
             }
 
+    @staticmethod
+    def _driver_trip_row(booking: Booking) -> Dict[str, Any]:
+        """Serialized booking row plus its canonical display strings.
+
+        ModelSerializer serializes columns only, so the derived
+        ``pickup_location_text`` / ``dropoff_location_text`` properties
+        never reached the driver dashboard context (Node 3, D1) and every
+        trip route rendered its literal 'Pickup' / 'Dropoff' fallback.
+        """
+        return {
+            **booking.to_dict(),
+            "pickup_location_text": booking.pickup_location_text,
+            "dropoff_location_text": booking.dropoff_location_text,
+        }
+
     @monitor_endpoint("get_driver_bookings")
     def get_driver_bookings(self, driver_user_id: int) -> List[Dict[str, Any]]:
         """Get bookings assigned to a driver, looked up by the driver's user_id.
@@ -1368,7 +1499,7 @@ class BookingService:
                 Booking.assigned_driver_id == profile.id,
                 Booking.is_deleted == False,  # noqa: E712
             ).order_by(Booking.created_at.desc()).limit(20).all()
-            return [b.to_dict() for b in bookings]
+            return [self._driver_trip_row(b) for b in bookings]
         except Exception as e:
             logger.error(f"Error getting driver bookings for user {driver_user_id}: {e}", exc_info=True)
             return []
@@ -1442,7 +1573,7 @@ class BookingService:
                 Booking.pickup_time > now,
                 Booking.is_deleted == False,  # noqa: E712
             ).order_by(Booking.pickup_time.asc()).limit(limit).all()
-            return [b.to_dict() for b in bookings]
+            return [self._driver_trip_row(b) for b in bookings]
         except Exception as e:
             logger.error(f"Error getting driver upcoming bookings: {e}", exc_info=True)
             return []
@@ -1517,7 +1648,7 @@ class BookingService:
                 Booking.assigned_driver_id == profile.id,
                 Booking.is_deleted == False,  # noqa: E712
             ).order_by(Booking.created_at.desc()).limit(limit).all()
-            return [b.to_dict() for b in bookings]
+            return [self._driver_trip_row(b) for b in bookings]
         except Exception as e:
             logger.error(f"Error getting driver recent bookings: {e}", exc_info=True)
             return []

@@ -19,7 +19,9 @@ from app.transport.services.assignment_service import (
 from app.transport.services.booking_service import _validate_booking_location_coordinates
 from app.transport.services.booking_service import STATUS_TRANSITIONS
 from app.transport.services.booking_service import allowed_transition_values
+from app.transport.services.location_snapshot import build_canonical_location_snapshot
 from app.transport.utils.helpers import paginate, filter_query, sort_query
+from app.utils.exceptions import ValidationError
 from datetime import datetime, timezone
 from sqlalchemy import func, or_
 import logging
@@ -59,6 +61,39 @@ def _current_user_is_admin():
     # DEBUG
     print(f"[DEBUG _current_user_is_admin] user_id={getattr(current_user,'id',None)} auth={current_user.is_authenticated} has_glob_role={hasattr(current_user,'has_global_role')} active_role={session.get('active_global_role')} result={result}")
     return result
+
+
+def _canonical_admin_location(raw_location, field_name, explicit_address=None):
+    """Canonicalize an admin-created endpoint before it becomes a row.
+
+    Node 3 (D2): bare text and coordinate-less dicts are rejected with the
+    project's standard validation error instead of being persisted as if
+    they were resolved locations. Where the request itself carries source /
+    resolution_method evidence it is passed through unchanged and validated
+    by the canonical builder; when it does not, the builder infers the
+    truthful direct-coordinate pair. No provenance is invented here.
+    """
+    payload = _validate_booking_location_coordinates(raw_location, field_name)
+    if (not isinstance(payload, dict)
+            or payload.get("latitude") is None
+            or payload.get("longitude") is None):
+        raise ValidationError(
+            message=f"{field_name} must include both 'latitude' and 'longitude'",
+            field=field_name,
+        )
+
+    try:
+        return build_canonical_location_snapshot(
+            location_payload=payload,
+            explicit_address=explicit_address,
+            source=payload.get("source"),
+            resolution_method=payload.get("resolution_method"),
+        )
+    except ValueError as exc:
+        # Unsatisfiable provenance claim (bad pairing, or a search/curated
+        # claim with no provider evidence) is a client error, not a 500.
+        raise ValidationError(message=f"{field_name}: {exc}",
+                              field=field_name) from exc
 
 
 # ===========================================================================
@@ -146,10 +181,18 @@ class BookingListResource(Resource):
             return {"success": False, "error": f"Missing fields: {missing}"}, 400
 
         try:
-            from app.utils.exceptions import ValidationError
             validated = dict(data)
-            validated["pickup_location"] = _validate_booking_location_coordinates(data.get("pickup_location"), "pickup_location")
-            validated["dropoff_location"] = _validate_booking_location_coordinates(data.get("dropoff_location"), "dropoff_location")
+            # Node 3 (D2): the admin path must not persist an un-canonicalized
+            # endpoint. Both endpoints are resolved through the canonical
+            # snapshot builder before the row is constructed.
+            validated["pickup_location"] = _canonical_admin_location(
+                data.get("pickup_location"), "pickup_location",
+                data.get("pickup_address"),
+            )
+            validated["dropoff_location"] = _canonical_admin_location(
+                data.get("dropoff_location"), "dropoff_location",
+                data.get("dropoff_address"),
+            )
             booking = Booking(**{k: validated[k] for k in required})
             booking.generate_booking_reference()
             db.session.add(booking)
@@ -241,6 +284,22 @@ class BookingDetailResource(Resource):
                 data["booking_metadata"] = meta
             data.pop("no_match_reason", None)
             data.pop("audit_log", None)
+            # Node 3: internal Booking identifiers must not cross the
+            # rider boundary (dual-ID law; cf. wallet F-04). The rider
+            # surface consumes status + driver_display only — nothing
+            # here reads these FKs. Admin payload keeps them.
+            for _k in (
+                "user_id",
+                "assigned_driver_id",
+                "assigned_vehicle_id",
+                "provider_id",
+                "original_provider_id",
+                "assigned_route_id",
+                "event_id",
+                "event_participation_id",
+                "group_leader_id",
+            ):
+                data.pop(_k, None)
         return {
             "success": True,
             "data": {

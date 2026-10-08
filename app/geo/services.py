@@ -19,9 +19,11 @@ from __future__ import annotations
 
 import logging
 import math
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.core.validators import validate_coordinates
 from app.geo.interfaces import (GeocodeResult, GeoPoint, NearbyItem,
                                 RouteResult)
 from app.geo.validation import (is_fresh, normalize_location_payload,
@@ -147,29 +149,190 @@ class RoutingService:
                  for d in row] for row in table]
 
 
+def geoapify_needs_secondary(hits: List[GeocodeResult]) -> bool:
+    """Evidence-based weak/ambiguous trigger for conditional Photon help.
+
+    Explicit v1 policy, testable, no invented composite score:
+    - exactly ONE candidate (a list lets the rider choose; zero is the
+      honest no-result path), AND
+    - positive weakness evidence from the provider's own signals:
+      ``match_type`` present and not ``"full_match"``, OR ``confidence``
+      present and below 0.5.
+    Absent signals never trigger (weakness must be evidenced, not
+    assumed). Thresholds are v1 pending bake-off calibration (§16).
+    """
+    if len(hits) != 1:
+        return False
+    raw = getattr(hits[0], "raw", None)
+    quality = raw.get("geoapify_quality") if isinstance(raw, dict) else None
+    if not isinstance(quality, dict):
+        return False
+    match_type = quality.get("match_type")
+    if isinstance(match_type, str) and match_type != "full_match":
+        return True
+    confidence = quality.get("confidence")
+    if (isinstance(confidence, (int, float))
+            and not isinstance(confidence, bool)
+            and confidence < 0.5):
+        return True
+    return False
+
+
+def reverse_identity_presentable(result: GeocodeResult) -> bool:
+    """Provider-neutral reverse-display suitability (explicit, testable).
+
+    Decides whether a reverse result may be SHOWN as a rider-facing
+    identity. Ground rules, all provider-supplied (no distance use —
+    snap thresholds belong to the future quality node):
+    - unresolved or blank display_name -> False (unknown stays unknown);
+    - Geoapify signals present -> False when ``result_type`` is
+      ``"unknown"``, when no ``formatted`` text exists, or when the
+      feature is a water body (``ocean`` key); otherwise True;
+    - other providers (no type/water signals, e.g. Photon) -> True iff
+      display_name is non-empty. Documented limitation: a named water
+      feature without those signals cannot be filtered here.
+    Never invents identity; never touches coordinates or source/method.
+    """
+    if result is None or not bool(getattr(result, "resolved", False)):
+        return False
+    display = getattr(result, "display_name", "") or ""
+    if not isinstance(display, str) or not display.strip():
+        return False
+    raw = getattr(result, "raw", None)
+    quality = (raw.get("geoapify_quality")
+               if isinstance(raw, dict) else None)
+    if not isinstance(quality, dict):
+        return True
+    if quality.get("result_type") == "unknown":
+        return False
+    if not quality.get("formatted_present"):
+        return False
+    if quality.get("is_water"):
+        return False
+    return True
+
+
 class GeocodingService:
     """
-    GEO geocoding facade. Until the Photon adapter node lands, returns
-    truthful misses (never fake coordinates).
+    GEO geocoding facade with provider chain: Geoapify (primary), then
+    configured fallbacks (public Photon best-effort), then truthful miss.
+
+    Policy (locked):
+    A. operational failure (timeout, network, 429/5xx/any HTTP error,
+       unusable shape, unavailable) -> next provider (ROLE A fallback);
+    B. valid success with useful candidates -> return them verbatim
+       (no ranking fusion, no merged lists, no double query);
+    C. valid success with zero useful candidates -> honest no-result,
+       NO automatic fallback (explicit Map / known-place recovery);
+    D. valid but weak/ambiguous single candidate (geoapify_needs_secondary)
+       -> conditional Photon supplement appended AFTER the Geoapify hits,
+       each carrying its answering provider name (ROLE B assistance).
+    Every result carries its answering provider's name, so downstream
+    provenance always identifies who actually resolved the candidate.
     """
 
-    def __init__(self, provider=None):
+    def __init__(self, provider=None, fallbacks=None):
         self._provider = provider
+        self._fallbacks = tuple(
+            p for p in (fallbacks or ()) if p is not None)
 
     @property
     def provider_name(self) -> str:
         return "unresolved" if self._provider is None else str(
             getattr(self._provider, "name", "custom"))
 
-    def geocode(self, query: str, limit: int = 5) -> List[GeocodeResult]:
+    def _chain(self):
         if self._provider is not None:
-            return self._provider.geocode(query, limit=limit)
-        logger.info("GEO geocode unresolved (no provider yet): %r", query)
+            yield self._provider
+        yield from self._fallbacks
+
+    @staticmethod
+    def _usable(provider) -> bool:
+        available = getattr(provider, "is_available", None)
+        if callable(available):
+            try:
+                return bool(available())
+            except Exception:
+                return False
+        return True
+
+    def _fallback_hits(self, query: str,
+                       limit: int) -> List[GeocodeResult]:
+        """ROLE A: first useful fallback answer wins, verbatim."""
+        from app.geo.providers.base import ProviderFailure
+        for provider in list(self._chain())[1:]:
+            if not self._usable(provider):
+                continue
+            try:
+                hits = provider.geocode(query, limit=limit)
+            except ProviderFailure as exc:
+                logger.warning("GEO fallback provider %s failed: %s",
+                               getattr(provider, "name", "custom"), exc)
+                continue
+            except ValidationError:
+                raise
+            except Exception as exc:
+                logger.warning("GEO fallback provider %s failed: %s",
+                               getattr(provider, "name", "custom"),
+                               type(exc).__name__)
+                continue
+            if hits:
+                return list(hits)
         return []
 
+    def geocode(self, query: str, limit: int = 5) -> List[GeocodeResult]:
+        from app.geo.providers.base import ProviderFailure
+        chain = list(self._chain())
+        if not chain:
+            logger.info("GEO geocode unresolved (no provider yet): %r", query)
+            return []
+        primary = chain[0]
+        if self._usable(primary):
+            try:
+                hits = primary.geocode(query, limit=limit)
+            except ProviderFailure as exc:
+                logger.warning("GEO primary provider %s failed: %s",
+                               getattr(primary, "name", "custom"), exc)
+                return self._fallback_hits(query, limit)
+            except ValidationError:
+                raise
+            except Exception as exc:
+                logger.warning("GEO primary provider %s failed: %s",
+                               getattr(primary, "name", "custom"),
+                               type(exc).__name__)
+                return self._fallback_hits(query, limit)
+            if hits:
+                hits = list(hits)
+                if (getattr(primary, "name", "") == "geoapify"
+                        and geoapify_needs_secondary(hits)):
+                    extra = self._fallback_hits(query, limit)
+                    if extra:
+                        logger.info(
+                            "GEO secondary assistance: photon supplements "
+                            "weak geoapify hit for %r", query)
+                        return hits + extra
+                return hits
+            logger.info("GEO primary provider %s honest no-result: %r",
+                        getattr(primary, "name", "custom"), query)
+            return []
+        return self._fallback_hits(query, limit)
+
     def reverse(self, point: GeoPoint) -> GeocodeResult:
-        if self._provider is not None:
-            return self._provider.reverse(point)
+        for provider in self._chain():
+            if not self._usable(provider):
+                continue
+            try:
+                result = provider.reverse(point)
+            except ValidationError:
+                raise
+            except Exception as exc:
+                logger.warning("GEO reverse provider %s failed: %s",
+                               getattr(provider, "name", "custom"),
+                               type(exc).__name__)
+                continue
+            if result is not None and bool(
+                    getattr(result, "resolved", False)):
+                return result
         return GeocodeResult(provider="unresolved", resolved=False)
 
 
@@ -319,17 +482,126 @@ def build_routing_service(config) -> RoutingService:
 def build_geocoding_service(config) -> GeocodingService:
     """Wire a GeocodingService from a GeoConfig (no I/O at build time).
 
-    Returns a Photon-backed service only when the operator explicitly
-    enabled + configured the endpoint; otherwise the truthful-miss
-    service. Callers check `resolved` / emptiness on every result.
+    Provider order (locked): Geoapify first when the operator explicitly
+    enabled it AND supplied an API key; public Photon as best-effort
+    fallback when explicitly enabled + configured; otherwise the
+    truthful-miss service. Callers check `resolved` / emptiness on every
+    result, and per-result `provider` names the answering provider.
     """
+    providers = []
+    geoapify = getattr(config, "geoapify", None)
+    if (bool(getattr(geoapify, "enabled", False))
+            and str(getattr(geoapify, "api_key", "") or "")):
+        from app.geo.providers.geoapify import GeoapifyGeocoder
+        providers.append(GeoapifyGeocoder(geoapify))
     photon = getattr(config, "photon", None)
     enabled = bool(getattr(photon, "enabled", False))
     base_url = str(getattr(photon, "base_url", "") or "")
     if enabled and base_url:
         from app.geo.providers.photon import PhotonGeocoder
-        return GeocodingService(provider=PhotonGeocoder(photon))
-    return GeocodingService()
+        providers.append(PhotonGeocoder(photon))
+    if not providers:
+        return GeocodingService()
+    return GeocodingService(provider=providers[0],
+                            fallbacks=providers[1:])
+
+
+def geocode_result_from_candidate(candidate: Any) -> GeocodeResult:
+    """Rebuild a resolved GeocodeResult from one search-result echo.
+
+    The rider location picker receives items of the ``GET
+    /geo/api/geocode`` success payload (``label`` / ``latitude`` /
+    ``longitude`` / ``provider`` + optional ``osm_type`` / ``osm_id``)
+    and echoes the selected one back in a hidden form field.  This
+    function is the ONLY server-side path that turns that echo into
+    provider evidence for a ``source="search"`` canonical snapshot (H2:
+    the builder refuses a search claim without resolved provider
+    identity).
+
+    Pure: no network, no Flask context, no I/O.
+
+    Contract:
+    - ``candidate`` must be a Mapping.
+    - ``provider`` must be a non-empty string and must NOT be
+      ``"unresolved"`` - an unresolved claim carries no evidence and is
+      refused rather than laundered into a provider identity.
+    - ``latitude`` / ``longitude`` must be real numbers (bool and
+      string are rejected, never coerced), finite, and within
+      [-90, 90] / [-180, 180] via the canonical raising validator.
+    - ``raw`` keeps ONLY the OSM provenance datum keys actually present
+      (``osm_type`` / ``osm_id``); nothing else is ever copied.
+    - Any violation raises ``ValidationError``.  Never fabricates
+      coordinates or provider identity.
+    """
+    if not isinstance(candidate, Mapping):
+        raise ValidationError(
+            message="geocode candidate must be a mapping with "
+                    "label/latitude/longitude/provider",
+            field="geocode",
+        )
+
+    provider = candidate.get("provider")
+    if not isinstance(provider, str) or not provider.strip():
+        raise ValidationError(
+            message="geocode candidate requires a non-empty provider",
+            field="geocode",
+        )
+    provider = provider.strip()
+    if provider == "unresolved":
+        raise ValidationError(
+            message="geocode candidate provider 'unresolved' carries no "
+                    "evidence; refusing to build provider identity",
+            field="geocode",
+        )
+
+    latitude_raw = candidate.get("latitude")
+    longitude_raw = candidate.get("longitude")
+    numbers: Dict[str, float] = {}
+    for name, value in (("latitude", latitude_raw),
+                        ("longitude", longitude_raw)):
+        # Raw-before-float safety (UI-LOC-02A): bool and non-numeric
+        # input is rejected here, never laundered by float().
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValidationError(
+                message=f"geocode candidate {name} must be a number, "
+                        f"got {value!r}",
+                field="geocode",
+            )
+        try:
+            number = float(value)
+        except (OverflowError, ValueError) as exc:
+            raise ValidationError(
+                message=f"geocode candidate {name} must be finite, "
+                        f"got {value!r}",
+                field="geocode",
+            ) from exc
+        if not math.isfinite(number):
+            raise ValidationError(
+                message=f"geocode candidate {name} must be finite, "
+                        f"got {value!r}",
+                field="geocode",
+            )
+        numbers[name] = number
+
+    # Canonical raising range validator (same one location_snapshot.py
+    # and the booking seam use).
+    validate_coordinates(numbers["latitude"], numbers["longitude"])
+
+    label = candidate.get("label")
+    raw: Dict[str, Any] = {}
+    for key in ("osm_type", "osm_id"):
+        value = candidate.get(key)
+        if value is not None:
+            raw[key] = value
+
+    return GeocodeResult(
+        latitude=numbers["latitude"],
+        longitude=numbers["longitude"],
+        display_name=label if isinstance(label, str) else "",
+        raw=raw,
+        provider=provider,
+        resolved=True,
+    )
 
 
 __all__ = [
@@ -348,4 +620,7 @@ __all__ = [
     "get_geocoding_service",
     "build_geocoding_service",
     "build_routing_service",
+    "geocode_result_from_candidate",
+    "geoapify_needs_secondary",
+    "reverse_identity_presentable",
 ]

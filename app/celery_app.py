@@ -8,13 +8,15 @@ Pool selection is automatic based on platform, with an env-var override
 for edge cases (WSL, Docker-on-Windows, CI runners, etc).
 
 Start workers:
-    celery -A app.celery_app worker --loglevel=info
+    celery -A app.celery_app worker -Q critical -c 4 -P threads -n critical@%h
+    celery -A app.celery_app worker -Q default  -c 4 -P threads -n default@%h
+    celery -A app.celery_app worker -Q bulk     -c 4 -P threads -n bulk@%h
 
 Start beat scheduler (runs periodic tasks):
-    celery -A app.celery_app beat --loglevel=info
+    celery -A app.celery_app beat -l info
 
-Or combined (dev only - not for production):
-    celery -A app.celery_app worker --beat --loglevel=info
+Start the stream consumer (long-poll, NOT on beat):
+    python -m app.notifications.events.stream_consumer --group afcon360-consumers --consumer dev-1
 
 Override pool/concurrency without touching code:
     set CELERY_WORKER_POOL=threads          (Windows)
@@ -135,10 +137,10 @@ def make_celery(app=None):
             "task": "events.relay_outbox",
             "schedule": 10.0,  # outbox -> Redis Streams (keep tight: user-facing latency)
         },
-        "events-consume": {
-            "task": "events.consume",
-            "schedule": 15.0,  # Redis Streams -> consumers (notification/audit/analytics/webhook)
-        },
+        # events.consume DELETED from beat: stream consumption is a
+        # long-poll loop, not a scheduled sweep. It now runs as a
+        # dedicated process: app/notifications/events/stream_consumer.py.
+        # See that module's docstring for the reasoning. DO NOT RE-ADD.
         "events-dispatch-webhooks": {
             "task": "events.dispatch_webhooks",
             "schedule": 30.0,  # queued partner webhooks -> HTTPS endpoints
@@ -221,6 +223,29 @@ def make_celery(app=None):
         task_soft_time_limit=25 * 60,
         result_expires=3600,
         worker_max_tasks_per_child=200,  # recycle workers, avoids slow mem creep
+
+        # --- Priority routing ------------------------------------------------
+        # A slow bulk task must never be able to delay a dispatch recovery or
+        # a payment. Each class has its own worker pool started with the
+        # appropriate -Q flag. See the "Start workers" block at the top of
+        # this file for the exact commands.
+        task_routes={
+            # Dispatch, payment, permissions: tight latency budget, must never
+            # share a pool with anything that might block on I/O.
+            "transport.*": {"queue": "critical"},
+            "wallet.*":    {"queue": "critical"},
+            # Event backbone periodic sweeps: bounded and idempotent, but
+            # they touch Redis and the outbox; isolate from bulk.
+            "events.*":    {"queue": "default"},
+            # Everything user-visible but not latency-critical.
+            "notifications.*":  {"queue": "bulk"},
+            "accommodation.*":  {"queue": "bulk"},
+            "media.*":          {"queue": "bulk"},
+            "backup.*":         {"queue": "bulk"},
+            # Catch-all so a new module is never silently on the wrong queue.
+            "*":                {"queue": "default"},
+        },
+        task_default_queue="default",
     )
 
     # Bind Flask app context so tasks can use current_app

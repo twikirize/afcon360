@@ -13,6 +13,11 @@ AFCON360 GEO - HTTP surface (control-plane integration slice).
   status. Requires login + enabled GEO module + ``geo.view`` permission
   (owner-granted for super_admin/admin). When GEO is disabled, the module
   guard returns the standard module-disabled page (runtime effect proof).
+- /geo/api/geocode: anonymous-allowed forward-geocode search for the rider
+  location picker (UI-01 + destination discovery). Deliberately NOT ``geo.view`` (that permission
+  is owner-only and would lock riders out) and NOT a GEO module hard-gate:
+  a disabled, unconfigured or unreachable provider degrades truthfully to
+  ``results: []`` instead of blocking.
 
 Full location/routing/geocoding endpoints arrive with their service nodes.
 """
@@ -24,7 +29,26 @@ from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.auth.decorators import admin_required, require_permission
 from app.geo import geo_bp
+from app.utils.exceptions import RateLimitError
 from app.utils.module_guard import require_module_enabled
+from app.utils.rate_limiting import rate_limit
+
+
+@geo_bp.errorhandler(RateLimitError)
+def _geo_rate_limited(error):
+    """429 JSON for GEO rate-limit breaches (blueprint-scoped).
+
+    The house ``rate_limit`` decorator raises ``RateLimitError``, which
+    has no application-wide handler (it would become a 500 via the
+    generic Exception handler). GEO answers 429 with the endpoint's
+    error shape instead. Scope is this blueprint only: no other
+    module's behavior changes.
+    """
+    return jsonify({
+        "success": False,
+        "error": getattr(error, "message", None) or "Rate limit exceeded",
+        "code": "RATE_LIMITED",
+    }), 429
 
 
 def _health_payload():
@@ -32,6 +56,7 @@ def _health_payload():
     from app.geo.config import load_geo_config
 
     config = load_geo_config()
+    geoapify = getattr(config, "geoapify", None)
     return {
         "module": "geo",
         "status": "ok",
@@ -40,10 +65,32 @@ def _health_payload():
                          "configured": bool(config.valhalla.base_url)},
             "photon": {"enabled": config.photon.enabled,
                        "configured": bool(config.photon.base_url)},
+            # The API key itself is never exposed: configured is a boolean.
+            "geoapify": {
+                "enabled": bool(getattr(geoapify, "enabled", False)),
+                "configured": bool(getattr(geoapify, "api_key", "")),
+            },
             "tiles": {"kind": config.tiles.kind,
                       "configured": bool(config.tiles.base_url)},
         },
     }
+
+
+def _provider_attribution(provider: str):
+    """Display credit for the answering geocoding provider.
+
+    Geoapify's free plan mandates "Powered by Geoapify"; OSM-derived data
+    mandates the OSM credit. None when no provider answered (no provider
+    data is displayed then). Plain text: rendering (link/placement) is the
+    consuming UI's decision.
+    """
+    if provider == "geoapify":
+        from app.geo.providers.geoapify import ATTRIBUTION_GEOAPIFY
+        return ATTRIBUTION_GEOAPIFY
+    if provider == "photon":
+        from app.geo.providers.geoapify import ATTRIBUTION_OSM
+        return ATTRIBUTION_OSM
+    return None
 
 
 @geo_bp.get("/api/health")
@@ -82,6 +129,229 @@ def health():
         adapters=payload["adapters"],
         location_ttl_seconds=config.location_ttl_seconds,
     )
+
+
+@geo_bp.get("/api/geocode")
+@rate_limit("geo_geocode", limit=60, period=60)
+def geocode_search():
+    """JSON forward-geocode search for the rider location picker (UI-01).
+
+    Anonymous-allowed so riders can discover places before signing in
+    (pickup AND destination search share this endpoint; the booking
+    action still goes through transport.book_transport with auth + KYC
+    + rate limit unchanged). No login, no ``require_permission("geo.view")``
+    (owner-only, would lock riders out), no GEO module hard-gate: a
+    disabled/unconfigured/unreachable provider degrades truthfully to
+    ``results: []`` instead of blocking the form. Abuse is bounded by
+    the per-IP ``rate_limit`` (60/minute) below.
+
+    Quota protection: 60 requests/minute shared endpoint budget (existing
+    ``rate_limit`` helper, in-memory; see note below), client-side
+    debounce retained, provider timeouts bounded per adapter.
+    Single-character queries are answered as honest no-results without
+    touching any provider.
+
+    Contract:
+        GET /geo/api/geocode?q=<query>&limit=<n>
+        - q: non-empty after strip, else 400 INVALID_QUERY.
+        - limit: optional positive int, default 5, clamped to max 5,
+          else 400 INVALID_LIMIT.
+        - 200: {success, query, provider, results[], attribution}. ``provider``
+          names the provider that ANSWERED ("geoapify" when the primary
+          produced candidates, "photon" when the fallback did,
+          "unresolved" when nothing did); each result is
+          {label, latitude, longitude, provider} plus ``osm_type`` /
+          ``osm_id`` ONLY when the provider actually supplied that datum
+          (the canonical provenance reference pair - never a wholesale
+          ``raw`` dump). ``attribution`` carries the required display
+          credit for the answering provider (Geoapify free plan mandates
+          "Powered by Geoapify"; OSM data mandates the OSM credit); it is
+          None when no provider answered.
+        - Every provider miss (disabled, unconfigured, timeout, HTTP
+          error, malformed response, empty collection, no matches)
+          returns ``results: []`` with ``success: true`` - never
+          fabricated coordinates.
+    """
+    from flask import request
+
+    from app.geo.config import load_geo_config
+    from app.geo.services import build_geocoding_service
+
+    query = request.args.get("q")
+    if not isinstance(query, str) or not query.strip():
+        return jsonify({
+            "success": False,
+            "error": "q must be a non-empty string",
+            "code": "INVALID_QUERY",
+        }), 400
+    query = query.strip()
+
+    if len(query) < 2:
+        # Minimum query length (quota protection): a single character
+        # cannot usefully resolve. Honest no-result, no provider call.
+        return jsonify({
+            "success": True,
+            "query": query,
+            "provider": "unresolved",
+            "results": [],
+            "attribution": None,
+        }), 200
+
+    limit_raw = request.args.get("limit")
+    if limit_raw is None:
+        limit = 5
+    else:
+        try:
+            limit = int(str(limit_raw).strip())
+        except (TypeError, ValueError):
+            limit = None
+        if limit is None or limit <= 0:
+            return jsonify({
+                "success": False,
+                "error": "limit must be a positive integer (max 5)",
+                "code": "INVALID_LIMIT",
+            }), 400
+    limit = min(limit, 5)
+
+    # Per-request service from the existing env/config surface: no global
+    # wiring change, and the existing get_geocoding_service() singleton
+    # (provider-less default) stays untouched for its current callers.
+    service = build_geocoding_service(load_geo_config())
+    results = service.geocode(query, limit=limit)
+
+    items = []
+    for result in results:
+        if result is None or not getattr(result, "resolved", False):
+            continue  # truthful miss: unresolved entries are never emitted
+        latitude = getattr(result, "latitude", None)
+        longitude = getattr(result, "longitude", None)
+        provider = getattr(result, "provider", None)
+        if latitude is None or longitude is None:
+            continue
+        if (not isinstance(provider, str) or not provider.strip()
+                or provider == "unresolved"):
+            # Every emitted result must be echoable as booking-time
+            # evidence; an identity-less result would be refused later
+            # (H2), so it is not presented now.
+            continue
+        item = {
+            "label": getattr(result, "display_name", "") or "",
+            "latitude": latitude,
+            "longitude": longitude,
+            "provider": provider,
+        }
+        raw = getattr(result, "raw", None)
+        if isinstance(raw, dict):
+            # OSM provenance datum pair only - never the raw payload.
+            if raw.get("osm_type") is not None:
+                item["osm_type"] = raw["osm_type"]
+            if raw.get("osm_id") is not None:
+                item["osm_id"] = raw["osm_id"]
+        items.append(item)
+
+    return jsonify({
+        "success": True,
+        "query": query,
+        # Answer-based provider identity: who actually resolved the
+        # candidates (geoapify > photon > unresolved). Never the wiring.
+        "provider": items[0]["provider"] if items else "unresolved",
+        "results": items,
+        "attribution": _provider_attribution(
+            items[0]["provider"] if items else "unresolved"),
+    }), 200
+
+
+@geo_bp.get("/api/reverse")
+@rate_limit("geo_reverse", limit=60, period=60)
+def reverse_lookup():
+    """JSON reverse-geocode for accepted GPS/map coordinates (UI bridge).
+
+    DISCOVERY boundary (anonymous-or-authenticated): turns already-known
+    coordinates into a human-readable identity for display. Enrichment
+    ONLY — it never establishes, moves, or re-sources a location:
+    callers keep their coordinates, source, and method untouched.
+
+    Contract:
+        GET /geo/api/reverse?lat=<lat>&lon=<lon>
+        - lat/lon: required finite numbers in range (bool/str rejected,
+          never coerced), else 400 INVALID_COORDINATES.
+        - 200: {success, provider, latitude, longitude, display_name,
+          presentable, attribution}. ``provider`` names who ANSWERED;
+          ``display_name`` is the provider label ONLY when
+          ``presentable`` is true, else None (unknown stays unknown —
+          callers fall back to their generic method label). ``attribution``
+          mirrors the geocode endpoint; None when nothing answered.
+        - Provider outage degrades to presentable=false with success=true
+          (coordinates stay valid; never fabricated identity).
+    Quota protection mirrors the geocode endpoint (shared 60/min budget
+    under a separate key, bounded provider timeouts, no credential
+    exposure anywhere in the path).
+    """
+    from flask import request
+
+    from app.core.validators import validate_coordinates
+    from app.geo.config import load_geo_config
+    from app.geo.interfaces import GeoPoint
+    from app.geo.services import (build_geocoding_service,
+                                  reverse_identity_presentable)
+
+    def _number(value):
+        if value is None or isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            number = float(value)
+        elif isinstance(value, str) and value.strip():
+            try:
+                number = float(value.strip())
+            except (TypeError, ValueError):
+                return None
+        else:
+            return None
+        if number != number or number in (float("inf"), float("-inf")):
+            return None
+        return number
+
+    latitude = _number(request.args.get("lat"))
+    longitude = _number(request.args.get("lon"))
+    if latitude is None or longitude is None:
+        return jsonify({
+            "success": False,
+            "error": "lat and lon must be finite numbers",
+            "code": "INVALID_COORDINATES",
+        }), 400
+    try:
+        validate_coordinates(latitude, longitude)
+    except Exception:
+        return jsonify({
+            "success": False,
+            "error": "lat must be within [-90, 90] and lon within "
+                     "[-180, 180]",
+            "code": "INVALID_COORDINATES",
+        }), 400
+
+    service = build_geocoding_service(load_geo_config())
+    result = service.reverse(GeoPoint(latitude, longitude))
+
+    resolved = result is not None and bool(
+        getattr(result, "resolved", False))
+    if resolved and reverse_identity_presentable(result):
+        provider = getattr(result, "provider", None) or "unresolved"
+        display_name = getattr(result, "display_name", "") or ""
+        presentable = True
+    else:
+        provider = "unresolved"
+        display_name = None
+        presentable = False
+
+    return jsonify({
+        "success": True,
+        "provider": provider,
+        "latitude": latitude,
+        "longitude": longitude,
+        "display_name": display_name,
+        "presentable": presentable,
+        "attribution": _provider_attribution(provider),
+    }), 200
 
 
 def _resolve_location_subject(entity_type: str, public_ref: str):

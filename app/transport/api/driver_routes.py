@@ -507,6 +507,8 @@ def _execute_driver_trip_action(booking, profile, action, actor):
         AssignmentService,
         DispatchClaimError,
     )
+    from app.transport.models import LocationLifecycleEvent
+    from app.geo.models import LocationObservation
 
     if action not in _DRIVER_TRIP_ACTIONS:
         return {
@@ -518,7 +520,65 @@ def _execute_driver_trip_action(booking, profile, action, actor):
     now = datetime.now(timezone.utc)
     booking_id = booking.id
 
+    # Helper to capture actual start lifecycle event
+    def _capture_actual_start(booking, profile, transition_at):
+        """Capture ACTUAL_START lifecycle event referencing closest GEO observation."""
+        if not booking.assigned_driver_id:
+            return
+        # Find the closest existing GEO observation for this driver
+        driver_code = profile.driver_code
+        if not driver_code:
+            return
+        obs = LocationObservation.query.filter(
+            LocationObservation.entity_type == 'driver',
+            LocationObservation.public_ref == driver_code,
+            LocationObservation.is_deleted == False,
+            LocationObservation.observed_at <= transition_at
+        ).order_by(LocationObservation.observed_at.desc()).first()
+        
+        freshness = "missing"
+        age_at_transition = None
+        geo_obs_id = None
+        reason = "no_observation"
+        
+        if obs:
+            age_at_transition = (transition_at - obs.observed_at).total_seconds()
+            geo_obs_id = obs.public_id
+            # Freshness threshold - configurable, default 120s
+            threshold = 120  # seconds
+            if age_at_transition <= threshold:
+                freshness = "fresh"
+                reason = None
+            else:
+                freshness = "stale"
+                reason = "stale_beyond_threshold"
+        
+        event = LocationLifecycleEvent(
+            booking_id=booking.id,
+            endpoint="pickup",
+            event_type="ACTUAL_START",
+            snapshot=None,  # actual events don't carry snapshot
+            geo_observation_public_id=geo_obs_id,
+            actor_user_id=booking.assigned_driver_id,
+            transition_at=transition_at,
+            event_metadata={
+                "freshness": freshness,
+                "age_at_transition": age_at_transition,
+                "reason": reason,
+                "captured_by": "driver_trip_action_start"
+            } if (age_at_transition is not None or freshness == "missing") else {
+                "freshness": freshness,
+                "reason": reason,
+                "captured_by": "driver_trip_action_start"
+            }
+        )
+        db.session.add(event)
+
     try:
+        if action == "start" and target == BookingStatus.IN_PROGRESS:
+            # Capture ACTUAL_START at IN_PROGRESS transition
+            _capture_actual_start(booking, profile, now)
+        
         if target == BookingStatus.COMPLETED:
             booking.completed_at = now
             result = AssignmentService.release(

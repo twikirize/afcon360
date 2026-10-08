@@ -121,11 +121,62 @@ and never exposes internal database IDs.
 | Capability | Primary | Later | Status |
 |---|---|---|---|
 | Routing | Valhalla | OSRM | adapter (live when operator configures `GEO_VALHALLA_URL` + enables it; truthful miss otherwise) |
-| Geocoding | Photon | — | adapter (live when operator configures `GEO_PHOTON_URL` + enables it; truthful miss otherwise; `[lon,lat]` converted at the boundary) |
+| Geocoding | Geoapify | Photon (best-effort fallback) | chain: Geoapify when operator configures `GEOAPIFY_API_KEY` + enables it; Photon when it answers after a Geoapify miss (`GEO_PHOTON_URL` + enabled); honest `unresolved` on double failure; `[lon,lat]` converted at the boundary |
 | Tiles | PMTiles → Martin | external | config seam + shared Leaflet renderer (`map_renderer.py`, `static/js/geo/geo-map.js`, proven on `/geo/`) |
 
 Paid/external providers: disabled by default, server-side credentials only,
 quota + fallback explicit. OSM attribution is never stripped.
+
+### Geocoding provider order + secrets
+
+`GET /geo/api/geocode` resolves through `GeocodingService` under a locked
+policy (`geoapify_needs_secondary()` + chain in `services.py`):
+
+* A. operational failure (timeout, network, 429/5xx/any HTTP error,
+  unusable shape, unavailable) -> next provider (Photon ROLE A fallback);
+* B. valid success with useful candidates -> returned verbatim (no ranking
+  fusion, no merged lists, no double query);
+* C. valid success with zero useful candidates -> honest no-result, NO
+  automatic Photon call (explicit Map / known-place recovery instead);
+* D. valid but weak single candidate (non-`full_match` or confidence < 0.5,
+  v1 pending bake-off calibration) -> conditional Photon supplement
+  appended AFTER the Geoapify hits, each provider-labelled (ROLE B).
+
+The response `provider` names who ANSWERED (`geoapify` / `photon` /
+`unresolved`), and `attribution` carries the display credit for that
+provider (`Powered by Geoapify | © OpenStreetMap contributors` for
+Geoapify; `© OpenStreetMap contributors` for Photon) — consuming UIs must
+render it wherever provider labels are shown.
+
+Quota protection: 60 req/min shared endpoint budget (house `rate_limit`
+helper; blueprint-scoped 429 `RATE_LIMITED` JSON), client-side debounce
+retained, single-character queries answered without provider calls,
+per-adapter timeouts. No search-result cache is built: no compatible
+bounded store exists without shared-fixture or ToS risk (see BACKLOG
+follow-up); the canonical booking snapshot stays the only authority.
+
+`GEOAPIFY_API_KEY` is server-side only: read by `load_geo_config()`, sent as
+a request parameter over HTTPS, never logged (provider exception text may
+embed the URL), never rendered, never returned in any payload. Health and
+config surfaces report only `enabled` / `configured` booleans. Env:
+`GEOAPIFY_BASE_URL` (default `https://api.geoapify.com`), `GEOAPIFY_API_KEY`,
+`GEOAPIFY_ENABLED` (default false), `GEOAPIFY_TIMEOUT_S` (default 10.0),
+`GEOAPIFY_LANG` (default `en`), `GEOAPIFY_BIAS` / `GEOAPIFY_FILTER`
+(optional operator passthrough, unset by default).
+
+### Reverse lookup (`GET /geo/api/reverse`)
+
+Provider-neutral enrichment bridge for accepted GPS/map coordinates:
+`?lat=&lon=` (validated finite in-range numbers, else 400) resolves
+through `GeocodingService.reverse()` (Geoapify, then Photon where
+configured) and returns `{provider, latitude, longitude, display_name,
+presentable, attribution}`. `display_name` is set ONLY when
+`reverse_identity_presentable()` holds (non-empty identity, no
+`unknown` result type, no water-body feature — provider-supplied
+semantics, never a distance threshold); otherwise `display_name` is
+null and callers keep their generic method label. Anonymous-allowed
+(Discovery) under the shared 60/min budget. Enrichment never changes
+coordinates, source, method, or canonical state.
 
 ## Shared map renderer (map renderer node)
 

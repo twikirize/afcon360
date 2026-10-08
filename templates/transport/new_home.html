@@ -204,6 +204,50 @@
 }
 .bolt-swap:active{transform:scale(.94)}
 
+/* ---------- UI-01: pickup typed search (anchored listbox) ---------- */
+.bolt-pickup-wrap{position:relative}
+.pickup-search{
+  position:absolute;
+  top:100%;left:0;right:0;
+  z-index:30;
+  display:none;
+}
+.pickup-search.is-open{display:block}
+.pickup-search-list{
+  background:#fff;
+  border:1.5px solid var(--line);
+  border-radius:14px;
+  box-shadow:0 14px 30px rgba(12,21,18,.18);
+  max-height:min(46vh,264px);
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+}
+.pickup-search-option{
+  display:flex;align-items:center;gap:10px;
+  min-height:44px;
+  padding:11px 14px;
+  font-size:14px;font-weight:600;color:#1E293B;
+  cursor:pointer;
+  border-bottom:1px solid #F1F5F9;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.pickup-search-option:last-child{border-bottom:0}
+.pickup-search-option:hover,
+.pickup-search-option.is-active{background:var(--brand-soft);color:var(--brand-dark)}
+.pickup-search-option.is-empty{
+  cursor:default;color:var(--muted);background:#F8FAFC;
+}
+.pickup-search-option.is-empty:hover{background:#F8FAFC}
+.pickup-search-note{
+  margin-top:6px;
+  padding:9px 12px;
+  min-height:36px;
+  font-size:12px;font-weight:600;color:#B91C1C;
+  background:#FEF2F2;
+  border:1.5px solid #FECACA;
+  border-radius:12px;
+}
+
 /* ---------- Destination chips ---------- */
 .bolt-chips{
   display:flex;gap:8px;
@@ -731,6 +775,12 @@
   .bolt-progress-line{background:#2A3531}
   .bolt-sched-toggle{background:#2A3531}
   .bolt-sched-opt.is-active{background:#1A221E;color:#E8EDE9}
+  .pickup-search-list{background:#1A221E;border-color:#2A3531}
+  .pickup-search-option{color:#E8EDE9;border-bottom-color:#2A3531}
+  .pickup-search-option.is-active{background:#22302B;color:#E8EDE9}
+  .pickup-search-option.is-empty{background:#151C19;color:#94A3A0}
+  .pickup-search-option.is-empty:hover{background:#151C19}
+  .pickup-search-note{background:#2A1A1A;border-color:#7F1D1D;color:#FCA5A5}
 }
 </style>
 {% endblock %}
@@ -757,8 +807,18 @@
   <input type="hidden" name="pickup_location"   id="hPickup"         value="{{ pickup_value }}">
   <input type="hidden" id="pickup_latitude"     name="pickup_latitude"  value="">
   <input type="hidden" id="pickup_longitude"    name="pickup_longitude" value="">
-  <input type="hidden" id="dropoff_latitude"    name="dropoff_latitude" value="">
-  <input type="hidden" id="dropoff_longitude"   name="dropoff_longitude" value="">
+  <input type="hidden" id="dropoff_latitude"   name="dropoff_latitude" value="">
+  <input type="hidden" id="dropoff_longitude"  name="dropoff_longitude" value="">
+  {# Node 3 (D3): how each endpoint was resolved — 'gps' or 'map'.
+     Carried to the backend so the canonical snapshot records truthful
+     provenance instead of inferring it from coordinates. #}
+  <input type="hidden" id="pickup_source"      name="pickup_source"     value="">
+  <input type="hidden" id="dropoff_source"     name="dropoff_source"    value="">
+  {# UI-01: the provider result the rider actually selected, echoed back
+     verbatim so the server can rehydrate a GeocodeResult and justify
+     source='search' (H2). Empty = no search evidence on that side. #}
+  <input type="hidden" id="pickup_geocode"     name="pickup_geocode"    value="">
+  <input type="hidden" id="dropoff_geocode"    name="dropoff_geocode"   value="">
   <input type="hidden" name="service_type"      id="hServiceType"    value="{{ default_service }}">
 
   {# ========================================================
@@ -863,25 +923,48 @@
       <div class="bolt-card">
         <div class="bolt-route-box">
           <div class="bolt-route-fields">
-            <label class="bolt-field bolt-field-pickup">
-              <span class="dot dot-pickup"><i class="bi bi-geo-alt"></i></span>
-              <input id="inputPickup" type="text"
-                     placeholder="Current Location"
-                     autocomplete="off" enterkeyhint="go">
-              <span class="bolt-field-hint" id="pickupHint">Use my location</span>
-              <span class="field-icon" id="btnLocate"
-                    title="Use my current location" role="button"
-                    aria-label="Use my current location">
-                <i class="bi bi-crosshair"></i>
-              </span>
-              <span class="gps-status" id="gpsStatus" aria-live="polite" aria-atomic="true"></span>
-            </label>
+            <div class="bolt-pickup-wrap">
+              <label class="bolt-field bolt-field-pickup">
+                <span class="dot dot-pickup"><i class="bi bi-geo-alt"></i></span>
+                <input id="inputPickup" type="text"
+                       placeholder="Current Location"
+                       autocomplete="off" enterkeyhint="go">
+                <span class="bolt-field-hint" id="pickupHint">Use my location</span>
+                <span class="field-icon" id="btnLocate"
+                      title="Use my current location" role="button"
+                      aria-label="Use my current location">
+                  <i class="bi bi-crosshair"></i>
+                </span>
+                <span class="gps-status" id="gpsStatus" aria-live="polite" aria-atomic="true"></span>
+              </label>
+              {# UI-01: typed pickup search results — populated exclusively by
+                 static/js/modules/transport/pickup-search.js from the
+                 /geo/api/geocode contract. Never fabricated client-side. #}
+              <div class="pickup-search" id="pickupSearch">
+                <div class="pickup-search-list" id="pickupResults"
+                     role="listbox" aria-label="Pickup search results"
+                     hidden></div>
+                <div class="pickup-search-note" id="pickupSearchNote"
+                     role="status" aria-live="polite" hidden></div>
+              </div>
+            </div>
             <label class="bolt-field bolt-field-dest">
               <span class="dot dot-dest"><i class="bi bi-flag"></i></span>
               <input id="inputDest" type="text"
                      placeholder="Enter Destination"
                      autocomplete="off" enterkeyhint="next">
             </label>
+            {# Destination typed search results — populated exclusively by
+               static/js/modules/transport/dropoff-search.js from the
+               /geo/api/geocode contract (same shape as pickup search).
+               Never fabricated client-side. #}
+            <div class="pickup-search" id="dropoffSearch">
+              <div class="pickup-search-list" id="dropoffResults"
+                   role="listbox" aria-label="Destination search results"
+                   hidden></div>
+              <div class="pickup-search-note" id="dropoffSearchNote"
+                   role="status" aria-live="polite" hidden></div>
+            </div>
           </div>
           <button type="button" class="bolt-swap" id="btnSwap"
                   aria-label="Swap pickup and destination">
@@ -1208,6 +1291,9 @@
       href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
 <script nonce="{{ csp_nonce }}" src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/geo/geo-map.js') }}"></script>
+  <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/pickup-search.js') }}"></script>
+  <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/dropoff-search.js') }}"></script>
+  <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/reverse-label.js') }}"></script>
 {% endblock %}
 
 {% block scripts %}
@@ -1261,6 +1347,9 @@
   var svcBtns      = document.querySelectorAll('.bolt-svc');
   var pickupHint   = document.getElementById('pickupHint');
   var token        = '{{ raw_csrf_token }}';
+  /* Discovery/commitment boundary: anonymous riders browse the whole
+     pre-booking flow; Confirm requires authentication (stash + login). */
+  var IS_AUTHENTICATED = {% if is_authenticated %}true{% else %}false{% endif %};
   var gpsStatus    = document.getElementById('gpsStatus');
   var mapTargetIndicator = document.getElementById('mapTargetIndicator');
   var continueDisabledReason = document.getElementById('continueDisabledReason');
@@ -1409,6 +1498,8 @@
     updateMapTarget();
     updateContinueReason();
   }
+  // UI-01: bridge — external pickup-search revalidates after a selection.
+  window.__boltValidateA = validateA;
   inputDest.addEventListener('input', function(){
     if (window.__mapClearSide) window.__mapClearSide('dest');
     validateA();
@@ -1438,7 +1529,16 @@
     invalidateGpsRequest();
     inputDest.value = p; inputPickup.value = d;
     state.dest = p.trim(); state.pickup = d.trim();
+    // UI-01: provider evidence travels with its side across a swap.
+    // Capture BEFORE __mapSwapSides: its intermediate pin-less state
+    // clears non-search echoes via syncCoords, so the exchange must be
+    // written only after the pins (and their sources) have settled.
+    var pg = document.getElementById('pickup_geocode');
+    var dg = document.getElementById('dropoff_geocode');
+    var swapGeoP = pg ? pg.value : '', swapGeoD = dg ? dg.value : '';
     if (window.__mapSwapSides) window.__mapSwapSides();
+    if (pg) pg.value = swapGeoD;
+    if (dg) dg.value = swapGeoP;
     validateA();
   });
 
@@ -1447,6 +1547,7 @@
     var prevText = inputPickup.value;
     var prevLat = document.getElementById('pickup_latitude').value;
     var prevLng = document.getElementById('pickup_longitude').value;
+    var prevSrc = document.getElementById('pickup_source').value;
     var mySeq = bumpGpsSeq();
     if (!navigator.geolocation) {
       updateGpsStatus('unavailable', 'Geolocation not supported by this device.');
@@ -1462,11 +1563,15 @@
         inputPickup.value = 'Current location';
         document.getElementById('pickup_latitude').value  = pos.coords.latitude;
         document.getElementById('pickup_longitude').value = pos.coords.longitude;
+        document.getElementById('pickup_source').value    = 'gps';
+        /* Method integrity: a GPS fix carries no search evidence. */
+        document.getElementById('pickup_geocode').value   = '';
         validateA();
         btnLocate.innerHTML = '<i class="bi bi-crosshair"></i>';
         updateGpsStatus('success', 'Current location acquired.');
         if (window.__mapPinPickup) {
-          window.__mapPinPickup(pos.coords.latitude, pos.coords.longitude, 'Current location');
+          window.__mapPinPickup(pos.coords.latitude, pos.coords.longitude,
+                                'Current location', 'gps');
         }
       },
       function(){
@@ -1476,10 +1581,12 @@
           inputPickup.value = prevText;
           document.getElementById('pickup_latitude').value = prevLat;
           document.getElementById('pickup_longitude').value = prevLng;
+          document.getElementById('pickup_source').value = prevSrc;
           validateA();
           updateGpsStatus('error', 'Location attempt failed – previous pickup kept.');
         } else {
           inputPickup.value = '';
+          document.getElementById('pickup_source').value = '';
           if (window.__mapClearSide) window.__mapClearSide('pickup');
           validateA();
           updateGpsStatus('error', 'Unable to get location – choose pickup on the map.');
@@ -1736,6 +1843,17 @@
       if (!state.dest || !state.pickup) return goTo('a');
       return goTo('b');
     }
+    if (!IS_AUTHENTICATED) {
+      /* Discovery/commitment boundary: an anonymous Confirm must never
+         POST (the 302 would drop the trip body). Stash the complete trip
+         client-side (no secrets, same-tab sessionStorage), then take the
+         explicit login transition with a safe same-origin return. */
+      e.preventDefault();
+      stashTrip();
+      window.location.href = LOGIN_URL + '?next='
+        + encodeURIComponent(window.location.pathname);
+      return;
+    }
     hDropoff.value = state.dest;
     hPickup.value = state.pickup;
     finalizePickupTime();
@@ -1777,6 +1895,16 @@
       document.getElementById('pickup_longitude').value  = pins.pickup  ? pins.pickup.lng : '';
       document.getElementById('dropoff_latitude').value  = pins.dropoff ? pins.dropoff.lat : '';
       document.getElementById('dropoff_longitude').value = pins.dropoff ? pins.dropoff.lng : '';
+      document.getElementById('pickup_source').value     = (pins.pickup  && pins.pickup.src)  || '';
+      document.getElementById('dropoff_source').value    = (pins.dropoff && pins.dropoff.src) || '';
+      /* Method integrity: a pin placed by map/GPS carries no search
+         evidence — a stale provider echo must not survive the switch. */
+      if (!pins.pickup || pins.pickup.src !== 'search') {
+        document.getElementById('pickup_geocode').value = '';
+      }
+      if (!pins.dropoff || pins.dropoff.src !== 'search') {
+        document.getElementById('dropoff_geocode').value = '';
+      }
     }
     function refreshRoute(){
       if (!handle || !handle.map) return;
@@ -1796,12 +1924,27 @@
     function pinnedLabel(ll){
       return 'Pinned · ' + Number(ll.lat).toFixed(5) + ', ' + Number(ll.lng).toFixed(5);
     }
+    function requestPinLabel(kind, lat, lng){
+      /* Reverse-enrich a map/GPS pin label. Enrichment ONLY: coordinates,
+         source and search evidence are owned by the pin path and never
+         touched here. The newest pin wins — a late answer for replaced
+         coordinates is dropped, as is any answer once the side holds a
+         search selection. Search pins (src 'search') never reverse. */
+      if (!window.__reverseLabel) return;
+      window.__reverseLabel(lat, lng, function(name){
+        var pin = pins[kind];
+        if (!name || !pin || pin.src === 'search') return;
+        if (pin.lat !== lat || pin.lng !== lng) return;
+        setFieldSync(kind === 'pickup' ? inputPickup : inputDest, name);
+        validateA();
+      });
+    }
     function setFieldSync(el, value){
       window.__mapSyncing = true;
       el.value = value;
       window.__mapSyncing = false;
     }
-    function placePin(kind, latlng, labelOverride){
+    function placePin(kind, latlng, labelOverride, src){
       if (!handle || !handle.map) return;
       if (pins[kind]) { pins[kind].marker.setLatLng(latlng); }
       else {
@@ -1809,15 +1952,22 @@
         pins[kind].marker.on('dragend', function(){
           var ll = pins[kind].marker.getLatLng();
           pins[kind].lat = ll.lat; pins[kind].lng = ll.lng;
+          // A dragged marker is the rider's own placement, not a GPS fix.
+          pins[kind].src = 'map';
           if (kind === 'pickup') invalidateGpsRequest();
           setFieldSync(kind === 'pickup' ? inputPickup : inputDest, pinnedLabel(ll));
           writeFields(); validateA();
+          requestPinLabel(kind, ll.lat, ll.lng);
         });
       }
       pins[kind].lat = latlng.lat; pins[kind].lng = latlng.lng;
+      pins[kind].src = src || 'map';
       setFieldSync(kind === 'pickup' ? inputPickup : inputDest,
                    labelOverride || pinnedLabel(latlng));
       writeFields(); validateA();
+      if ((src || 'map') !== 'search') {
+        requestPinLabel(kind, latlng.lat, latlng.lng);
+      }
     }
     function clearSide(kind){
       if (pins[kind]) {
@@ -1846,9 +1996,13 @@
       }
     });
 
-    window.__mapPinPickup = function(lat, lng, label){
+    window.__mapPinPickup = function(lat, lng, label, src){
       placePin('pickup', L.latLng(lat, lng),
-               label || pinnedLabel(L.latLng(lat, lng)));
+               label || pinnedLabel(L.latLng(lat, lng)), src || 'map');
+    };
+    window.__mapPinDropoff = function(lat, lng, label, src){
+      placePin('dropoff', L.latLng(lat, lng),
+               label || pinnedLabel(L.latLng(lat, lng)), src || 'map');
     };
     window.__boltMapInvalidate = function(){
       if (handle && handle.map) {
@@ -1863,14 +2017,114 @@
       var pk = pins.pickup, df = pins.dropoff;
       var pkLat = pk ? pk.lat : null, pkLng = pk ? pk.lng : null;
       var dfLat = df ? df.lat : null, dfLng = df ? df.lng : null;
+      // Provenance travels with the location across a swap.
+      var pkSrc = pk ? pk.src : null, dfSrc = df ? df.src : null;
       Object.keys(pins).forEach(function(k){
         if (pins[k]) { handle.map.removeLayer(pins[k].marker); pins[k] = null; }
       });
-      if (dfLat != null) placePin('pickup',  L.latLng(dfLat, dfLng), inputPickup.value);
-      if (pkLat != null) placePin('dropoff', L.latLng(pkLat, pkLng), inputDest.value);
+      if (dfLat != null) placePin('pickup',  L.latLng(dfLat, dfLng), inputPickup.value, dfSrc || 'map');
+      if (pkLat != null) placePin('dropoff', L.latLng(pkLat, pkLng), inputDest.value, pkSrc || 'map');
       writeFields(); validateA();
     };
   })();
+
+  // ---------- Anonymous trip stash (Discovery -> Commitment) ----------
+  var LOGIN_URL = '{{ url_for('auth.login') }}';
+  var TRIP_STASH_KEY = 'afcon360_trip_draft_v1';
+  var TRIP_STASH_TTL_MS = 30 * 60 * 1000;
+
+  function stashVal(id){
+    var el = document.getElementById(id);
+    return el ? el.value : '';
+  }
+  function stashTrip(){
+    /* Complete trip only (the submit guard above enforces this). Labels,
+       coordinates, sources, evidence echoes, selection and fare inputs.
+       No secrets, no user identity, no provider keys. */
+    try {
+      var draft = {
+        v: 1,
+        savedAt: Date.now(),
+        pickup: {
+          label: inputPickup.value,
+          lat: stashVal('pickup_latitude'), lng: stashVal('pickup_longitude'),
+          source: stashVal('pickup_source'), geocode: stashVal('pickup_geocode')
+        },
+        dropoff: {
+          label: inputDest.value,
+          lat: stashVal('dropoff_latitude'), lng: stashVal('dropoff_longitude'),
+          source: stashVal('dropoff_source'), geocode: stashVal('dropoff_geocode')
+        },
+        svcType: state.svcType, vip: !!state.vip,
+        selectedClass: state.selectedClass, selectedFare: state.selectedFare,
+        selectedName: state.selectedName, fareBreakdown: state.fareBreakdown,
+        distanceKm: state.distanceKm, currency: state.currency || null,
+        schedule: state.schedule, schedAt: schedAt ? schedAt.value : ''
+      };
+      sessionStorage.setItem(TRIP_STASH_KEY, JSON.stringify(draft));
+    } catch (err) {
+      /* Storage unavailable: the login transition still proceeds, the
+         trip simply cannot be restored. Never block Confirm. */
+    }
+  }
+  function clearStash(){
+    try { sessionStorage.removeItem(TRIP_STASH_KEY); } catch (err) {}
+  }
+  function restoreTrip(){
+    var raw = null;
+    try { raw = sessionStorage.getItem(TRIP_STASH_KEY); } catch (err) { return false; }
+    if (!raw) return false;
+    var draft = null;
+    try { draft = JSON.parse(raw); } catch (err) { return false; }
+    if (!draft || draft.v !== 1) return false;
+    if (Date.now() - (draft.savedAt || 0) > TRIP_STASH_TTL_MS) { clearStash(); return false; }
+    if (!draft.pickup || !draft.dropoff) return false;
+    /* Only restore onto a fresh form — never overwrite rider input. */
+    if (inputPickup.value.trim() || inputDest.value.trim()) return false;
+    function setVal(id, value){
+      var el = document.getElementById(id);
+      if (el) el.value = (value === undefined || value === null) ? '' : String(value);
+    }
+    inputPickup.value = draft.pickup.label || '';
+    inputDest.value = draft.dropoff.label || '';
+    /* Re-pin the map from the restored coordinates FIRST: every placePin
+     * rewrites coords+source from the pins and clears a non-search echo,
+     * so evidence echoes must be written AFTER the pins settle. */
+    try {
+      var pLat = parseFloat(draft.pickup.lat), pLng = parseFloat(draft.pickup.lng);
+      var dLat = parseFloat(draft.dropoff.lat), dLng = parseFloat(draft.dropoff.lng);
+      if (window.__mapPinPickup && isFinite(pLat) && isFinite(pLng)) {
+        window.__mapPinPickup(pLat, pLng, draft.pickup.label, draft.pickup.source);
+      }
+      if (window.__mapPinDropoff && isFinite(dLat) && isFinite(dLng)) {
+        window.__mapPinDropoff(dLat, dLng, draft.dropoff.label, draft.dropoff.source);
+      }
+    } catch (err) {}
+    setVal('pickup_latitude', draft.pickup.lat);
+    setVal('pickup_longitude', draft.pickup.lng);
+    setVal('pickup_source', draft.pickup.source);
+    setVal('pickup_geocode', draft.pickup.geocode);
+    setVal('dropoff_latitude', draft.dropoff.lat);
+    setVal('dropoff_longitude', draft.dropoff.lng);
+    setVal('dropoff_source', draft.dropoff.source);
+    setVal('dropoff_geocode', draft.dropoff.geocode);
+    state.svcType = draft.svcType || state.svcType;
+    state.vip = !!draft.vip;
+    state.selectedClass = draft.selectedClass || null;
+    state.selectedFare = (draft.selectedFare === undefined) ? null : draft.selectedFare;
+    state.selectedName = draft.selectedName || null;
+    state.fareBreakdown = draft.fareBreakdown || null;
+    state.distanceKm = (draft.distanceKm === undefined) ? null : draft.distanceKm;
+    if (draft.currency) state.currency = draft.currency;
+    if (draft.schedule && typeof setSchedule === 'function'
+        && (draft.schedule === 'now' || draft.schedule === 'later')) {
+      setSchedule(draft.schedule);
+    }
+    if (draft.schedAt && schedAt) schedAt.value = draft.schedAt;
+    validateA();
+    clearStash();
+    return true;
+  }
 
   // ---------- Prefill from context ----------
   var prefillDest   = '{{ dropoff_value }}'.trim();
@@ -1878,6 +2132,10 @@
   if (prefillDest)   inputDest.value   = prefillDest;
   if (prefillPickup) inputPickup.value = prefillPickup;
   validateA();
+  /* Post-login return: a stashed anonymous trip restores onto the fresh
+     form and returns straight to review — then Confirm books as the now
+     authenticated rider. */
+  if (restoreTrip()) { goTo('c'); }
 
   {% if selected_service %}
   (function(){

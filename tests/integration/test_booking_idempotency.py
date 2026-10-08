@@ -48,9 +48,16 @@ def _get_user_id(app, test_user):
 
 
 def _base_payload():
+    # C1 (Node 3): UI-LOC-02A requires resolved coordinates at creation.
+    # The string fields remain the rider labels; the coordinates are the
+    # resolved endpoints the contract now demands.
     return {
         "pickup_location": "Test Pickup",
         "dropoff_location": "Test Dropoff",
+        "pickup_latitude": 0.3136,
+        "pickup_longitude": 32.5811,
+        "dropoff_latitude": 0.3476,
+        "dropoff_longitude": 32.5825,
         "service_type": "on_demand",
         "pickup_time": "2026-12-31T10:00:00",
         "passenger_count": 1,

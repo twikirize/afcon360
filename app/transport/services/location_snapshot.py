@@ -1,83 +1,114 @@
-"""
-AFCON360 Transport - Canonical Location Snapshot (Node 2).
+"""AFCON360 Transport - Canonical Resolved-Location Snapshot.
 
-Builds the ratified Node 1 canonical location snapshot for storage at
-booking acceptance time. The snapshot preserves the complete semantic
-information available at that moment, per the Node 1 contract
-(docs/transport/nodes/NODE-1-canonical-location-contract.md).
+Single product-layer authority that translates inbound location evidence
+(device GPS, map pin, provider search, curated registry) into the ratified
+13-key canonical snapshot persisted on Booking.pickup_location /
+Booking.dropoff_location.
 
-This module is the single authority for translating inbound location data
-(GeoPoint, GeocodeResult, raw JSONB) into the canonical JSONB structure
-stored on Booking.pickup_location and Booking.dropoff_location.
+Design principles
+-----------------
 
-Node 1 invariants enforced here:
-- raw lat/lng are validated BEFORE float() conversion (02A coordinate
-  safety: bool/NaN/Inf must never launder into coordinates);
-- identity_status vocabulary is exactly none | unverified | enriched |
-  verified (no `synthetic`);
-- the sole external reference field is provenance.reference (no
-  top-level `place_ref`);
-- source/method must form one of the ratified pairs
-  (gps->browser_geolocation, map->map_pin, search->forward_geocode,
-  curated->registry_lookup);
-- source vocabulary is closed (gps | map | search | curated);
-- label is required and non-null; display_name is nullable with empty
-  strings normalized to None;
-- unresolved typed text never becomes a search snapshot;
-- no presentation-only `address` key is written into new snapshots
-  (legacy rows remain readable via legacy_location_text()).
+Coordinates are the resolution invariant.  A snapshot exists only when a
+trusted pair of latitude/longitude has been validated.  Every other field
+is descriptive and none of them can silently override the coordinates.
+
+Human identity (``display_name``) and input text (``label``) are advisory.
+They describe how the location was chosen or what it looks like to a
+human, but they never authorize a change of position, and a provider's
+display name is never copied into ``label``.
+
+Provenance (``provenance.authority`` and ``provenance.reference``) is audit
+metadata.  The reference is display/audit-only; it must never be used as a
+database key, cache key, or deduplication key.  Provider raw payloads are
+never copied wholesale into a snapshot.
+
+The source/method pair is the *evidence* claim of how the location
+entered AFCON360 and how it was resolved.  It is a closed vocabulary with
+exactly four permitted pairs.  Direct-coordinate builders may only claim
+``gps`` or ``map``: ``search`` and ``curated`` require a resolved
+``GeocodeResult`` whose provider matches.
+
+Snapshot Hardening invariants
+-----------------------------
+
+* H1 -- When both the payload and a resolved ``GeocodeResult`` carry
+  coordinates, the two pairs must agree exactly.  Refusing to combine
+  coordinates from one source with identity/provenance from another.
+* H2 -- Direct-coordinate builders may not fabricate provider evidence.
+  ``search`` and ``curated`` require a resolved ``GeocodeResult``.
+  ``identity_status='verified'`` may only be produced by a
+  ``curated-registry`` provider.
+* H3 -- ``accuracy_m`` and ``confidence`` must be finite when supplied.
+  ``NaN`` and +/-Infinity are rejected rather than persisted.
+
+Invariants carried forward from the ratified Node 1/2 contract
+--------------------------------------------------------------
+
+* Raw-before-float coordinate safety (UI-LOC-02A).  Bool, ``NaN`` and
+  infinity never reach the numeric range check by way of ``float()``
+  coercion.
+* Exactly 13 persisted keys -- no ``address``, no ``place_ref``, no
+  ``synthetic``, no ``coordinates_resolved``, no ``identity_resolved``.
+* ``label`` is required and non-null; ``display_name`` is nullable with
+  empty strings normalized to ``None``.
+* Unresolved typed text never becomes a ``search`` snapshot.  Explicit
+  selection or resolution is required.
+* Legacy read compatibility is provided by explicit helpers only; new
+  writes always go through the canonical builders.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional, Tuple
 
 from app.core.validators import validate_coordinates
-from app.geo.interfaces import GeocodeResult, GeoPoint
+from app.geo.interfaces import GeocodeResult
 from app.utils.exceptions import ValidationError
 
 
-@dataclass(frozen=True)
-class ProvenanceRecord:
-    """Structured provenance per Node 1 contract (not a DB model)."""
-    authority: str
-    reference: Optional[str] = None
+# ---------------------------------------------------------------------------
+# Persisted shape and closed vocabularies
+# ---------------------------------------------------------------------------
 
-    def to_json(self) -> Optional[Dict[str, Any]]:
-        if self.authority is None:
-            return None
-        return {"authority": self.authority, "reference": self.reference}
+PERSISTED_KEYS = (
+    "latitude",
+    "longitude",
+    "source",
+    "resolution_method",
+    "provenance",
+    "label",
+    "display_name",
+    "identity_status",
+    "area",
+    "accuracy_m",
+    "confidence",
+    "observed_at",
+    "resolved_at",
+)
 
-
-# Identity status vocabulary per Node 1 contract - exactly these four.
-# There is no `synthetic` state (removed at Node 1 ratification).
 IDENTITY_NONE = "none"
 IDENTITY_UNVERIFIED = "unverified"
 IDENTITY_ENRICHED = "enriched"
 IDENTITY_VERIFIED = "verified"
 
-VALID_IDENTITY_STATUSES = frozenset([
+VALID_IDENTITY_STATUSES = frozenset({
     IDENTITY_NONE,
     IDENTITY_UNVERIFIED,
     IDENTITY_ENRICHED,
     IDENTITY_VERIFIED,
-])
+})
 
-# Closed source vocabulary per Node 1. No `manual`, no `typing`,
-# no fifth source.
-VALID_SOURCES = frozenset(["gps", "map", "search", "curated"])
+VALID_SOURCES = frozenset({"gps", "map", "search", "curated"})
 
-# Closed resolution-method vocabulary per Node 1.
-VALID_RESOLUTION_METHODS = frozenset([
+VALID_RESOLUTION_METHODS = frozenset({
     "browser_geolocation",
     "map_pin",
     "forward_geocode",
     "registry_lookup",
-])
+})
 
-# Required source/method pairings per Node 1. Invalid combinations
-# (e.g. gps + map_pin) are rejected, never silently coerced.
 SOURCE_METHOD_PAIRS = {
     "gps": "browser_geolocation",
     "map": "map_pin",
@@ -85,10 +116,11 @@ SOURCE_METHOD_PAIRS = {
     "curated": "registry_lookup",
 }
 
-# Honest input-associated default labels per source (Node 1 lists
-# "Current location" and "Pinned ..." as label examples). These describe
-# the input path, never geographic identity, and are used only when no
-# rider/provider text exists so that `label` stays required and non-null.
+# H2 -- sources that may be claimed from direct coordinates with no
+# provider/registry evidence.  Everything else requires a resolved
+# GeocodeResult whose provider matches.
+DIRECT_SOURCES = frozenset({"gps", "map"})
+
 SOURCE_DEFAULT_LABELS = {
     "gps": "Current location",
     "map": "Pinned location",
@@ -96,69 +128,212 @@ SOURCE_DEFAULT_LABELS = {
     "curated": "Registry place",
 }
 
+# Exact allowlist of provider identities that justify ``curated`` (H2).
+# The curated registry node has not shipped, so exactly one authority is
+# trusted today.  ``verified`` is a trust statement, and trust is never
+# derived from naming conventions (``registry:*``, ``*-registry``, bare
+# ``registry``): those are strings anyone can supply, not credentials.
+_CURATED_REGISTRY_AUTHORITIES = frozenset({"curated-registry"})
 
-def _now_utc() -> datetime:
+# Area keys from provider raw data, in the order the ratified Node 2
+# implementation used.  Changing this order is a semantic change.
+_AREA_KEYS = ("city", "locality", "district", "county", "state")
+
+
+# ---------------------------------------------------------------------------
+# Value types
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class ProvenanceRecord:
+    """Structured provenance -- a small explicit record, never raw payload."""
+
+    authority: str
+    reference: Optional[str] = None
+
+    def to_json(self) -> Optional[Dict[str, Any]]:
+        if not self.authority:
+            return None
+        return {"authority": self.authority, "reference": self.reference}
+
+
+# ---------------------------------------------------------------------------
+# Small utilities
+# ---------------------------------------------------------------------------
+
+def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def validate_source_method(source: str, resolution_method: str) -> None:
-    """Enforce the closed source set and the required source/method pairing.
+def _isoformat_or_none(value: Optional[datetime]) -> Optional[str]:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        raise ValueError("timestamp must be timezone-aware")
+    return value.isoformat()
 
-    Raises ValueError on unknown source, unknown method, or an invalid
-    combination. Never coerces.
+
+def _require_aware(
+    value: Optional[datetime],
+    field_name: str,
+) -> Optional[datetime]:
+    if value is None:
+        return None
+    if not isinstance(value, datetime):
+        raise ValueError(f"{field_name} must be a datetime or None")
+    if value.tzinfo is None:
+        raise ValueError(f"{field_name} must be timezone-aware")
+    return value
+
+
+# ---------------------------------------------------------------------------
+# Source/method validation (syntactic + H2 semantic)
+# ---------------------------------------------------------------------------
+
+def validate_source_method(source: str, resolution_method: str) -> None:
+    """Enforce the closed vocabulary and the exact source/method pairing.
+
+    This is the *syntactic* check.  H2 (evidence justification) is
+    enforced separately by the builders, where the full call context is
+    available.  Raises ``ValueError``; never coerces.
     """
     if source not in VALID_SOURCES:
-        raise ValueError(
-            f"Invalid source {source!r}: must be one of {sorted(VALID_SOURCES)}"
-        )
+        raise ValueError(f"unsupported location source: {source!r}")
     if resolution_method not in VALID_RESOLUTION_METHODS:
         raise ValueError(
-            f"Invalid resolution_method {resolution_method!r}: must be one of "
-            f"{sorted(VALID_RESOLUTION_METHODS)}"
+            f"unsupported location resolution method: {resolution_method!r}"
         )
-    expected = SOURCE_METHOD_PAIRS[source]
-    if resolution_method != expected:
+    expected = SOURCE_METHOD_PAIRS.get(source)
+    if expected != resolution_method:
         raise ValueError(
-            f"Invalid source/method pairing: source={source!r} requires "
-            f"resolution_method={expected!r}, got {resolution_method!r}"
+            f"invalid source/method pairing: {source!r} requires "
+            f"{expected!r}, got {resolution_method!r}"
         )
 
+
+def _assert_direct_source_allowed(source: str) -> None:
+    """H2 -- direct-coordinate builders may only claim ``gps`` or ``map``."""
+    if source not in DIRECT_SOURCES:
+        raise ValueError(
+            f"source {source!r} requires a resolved GeocodeResult; only "
+            f"'gps' and 'map' are permitted for direct coordinates"
+        )
+
+
+def _provider_name(geocode_result: Any) -> Optional[str]:
+    """Read the provider identity without copying any raw provider payload."""
+    if geocode_result is None:
+        return None
+    for attr in ("provider", "authority"):
+        value = getattr(geocode_result, attr, None)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    provenance = getattr(geocode_result, "provenance", None)
+    if provenance is not None:
+        if isinstance(provenance, Mapping):
+            authority = provenance.get("authority")
+            if authority is not None and str(authority).strip():
+                return str(authority).strip()
+        else:
+            authority = getattr(provenance, "authority", None)
+            if authority is not None and str(authority).strip():
+                return str(authority).strip()
+    return None
+
+
+def _is_curated_provider(provider: Optional[str]) -> bool:
+    """Return True only for an exact curated-registry authority (H2).
+
+    Membership is checked against :data:`_CURATED_REGISTRY_AUTHORITIES`
+    after whitespace stripping and case folding.  There is no prefix,
+    suffix, substring, or naming-convention matching.
+    """
+    if not provider:
+        return False
+    return provider.strip().lower() in _CURATED_REGISTRY_AUTHORITIES
+
+
+def _assert_provider_source_matches(source: str, geocode_result: Any) -> None:
+    """H2 -- search/curated source claims require resolved provider evidence."""
+    if source in DIRECT_SOURCES:
+        return
+
+    if geocode_result is None or not bool(
+        getattr(geocode_result, "resolved", False)
+    ):
+        raise ValueError(
+            f"source {source!r} requires a resolved GeocodeResult "
+            f"whose provider justifies the claim"
+        )
+
+    provider = _provider_name(geocode_result)
+
+    if source == "curated":
+        if not _is_curated_provider(provider):
+            raise ValueError(
+                "source 'curated' requires a curated-registry provider; "
+                f"got {provider!r}"
+            )
+    elif source == "search":
+        if not provider:
+            raise ValueError(
+                "source 'search' requires a provider identity on the "
+                "resolved GeocodeResult"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Coordinate validation (raw-before-float; 02A safety boundary)
+# ---------------------------------------------------------------------------
 
 def _validate_raw_coordinates(latitude_raw: Any, longitude_raw: Any) -> None:
-    """Validate RAW coordinate values before float() conversion.
+    """Validate RAW coordinate values before any ``float()`` coercion.
 
-    This is the 02A safety boundary: bool/NaN/Inf/non-numeric values are
-    rejected here, on the raw input, so float() can never launder them
-    into apparently-valid coordinates (float(True) == 1.0).
-    Raises ValidationError when invalid.
+    Delegates to the canonical raising validator
+    (``app.core.validators.validate_coordinates``) which rejects bool at
+    the raw level and enforces range on the numeric pair.
     """
     validate_coordinates(latitude_raw, longitude_raw)
 
 
-def _to_float_pair(latitude_raw: Any, longitude_raw: Any) -> tuple[float, float]:
+def _to_float_pair(
+    latitude_raw: Any,
+    longitude_raw: Any,
+) -> Tuple[float, float]:
     """Raw-before-float conversion: validate raw, convert, re-validate."""
     _validate_raw_coordinates(latitude_raw, longitude_raw)
+
     try:
         latitude = float(latitude_raw)
         longitude = float(longitude_raw)
     except (TypeError, ValueError) as exc:
         raise ValidationError(
-            "Invalid coordinates: must be numeric",
+            message="coordinates must be numeric",
             field="coordinates",
         ) from exc
-    # Post-conversion range validation on the canonical floats.
+
+    if not math.isfinite(latitude) or not math.isfinite(longitude):
+        raise ValidationError(
+            message="coordinates must be finite",
+            field="coordinates",
+        )
+
     validate_coordinates(latitude, longitude)
+
     return latitude, longitude
 
 
-def _normalize_display_name(value: Any) -> Optional[str]:
-    """Normalize display_name: real identity string, else None.
+# ---------------------------------------------------------------------------
+# Field extraction
+# ---------------------------------------------------------------------------
 
-    Empty/blank strings normalize to None. Never fabricated from
-    coordinates or from `label`.
-    """
-    if isinstance(value, str) and value.strip():
-        return value.strip()
+def _normalize_display_name(value: Any) -> Optional[str]:
+    """Empty / whitespace-only strings normalize to ``None``."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
     return None
 
 
@@ -169,180 +344,299 @@ def _resolve_label(
     display_name: Optional[str],
     source: str,
 ) -> str:
-    """Resolve the required non-null `label`.
+    """Resolve the required non-null ``label``.
 
-    Priority: explicit rider/system text, then payload text keys, then
-    the provider identity (the selected search text IS the label), then
-    the honest source-derived default. Never None; never a boolean
-    sentinel.
+    Priority chain (matching the ratified Node 2 behaviour):
+        explicit address text -> payload ``address``/``name``/``label``
+        -> payload raw string -> provider ``display_name`` -> source
+        default.
+
+    Never returns ``None``; never returns a boolean sentinel.
     """
     if isinstance(explicit_address, str) and explicit_address.strip():
         return explicit_address.strip()
-    if isinstance(location_payload, dict):
+
+    if isinstance(location_payload, Mapping):
         for key in ("address", "name", "label"):
-            val = location_payload.get(key)
-            if isinstance(val, str) and val.strip():
-                return val.strip()
+            value = location_payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
     if isinstance(location_payload, str) and location_payload.strip():
         return location_payload.strip()
+
     if display_name:
         return display_name
+
     return SOURCE_DEFAULT_LABELS[source]
 
 
-def _build_provenance_from_geocode_result(result: GeocodeResult) -> Optional[ProvenanceRecord]:
-    """Extract provenance from a resolved GeocodeResult.
+def _build_provenance_from_geocode_result(
+    geocode_result: Any,
+) -> Optional[ProvenanceRecord]:
+    """Extract structured provenance without copying raw provider data.
 
-    Authority is the actually-observed provider identity; nothing is
-    fabricated (an unresolved/missing provider yields None, never the
-    string "unresolved"). The provider `raw` payload is never copied
-    wholesale - only the OSM type/id reference datum is carried.
+    Only ``authority`` and (if the provider supplies one) the OSM
+    reference datum are carried.  ``raw`` is never copied wholesale.
     """
-    if not result.resolved:
+    if geocode_result is None or not bool(
+        getattr(geocode_result, "resolved", False)
+    ):
         return None
-    authority = result.provider
+
+    authority = _provider_name(geocode_result)
     if not authority or authority == "unresolved":
         return None
-    # Reference from raw provider data (e.g. Photon OSM type/id).
-    reference = None
-    if isinstance(result.raw, dict):
-        osm_type = result.raw.get("osm_type")
-        osm_id = result.raw.get("osm_id")
+
+    reference: Optional[str] = None
+    raw = getattr(geocode_result, "raw", None)
+    if isinstance(raw, Mapping):
+        osm_type = raw.get("osm_type")
+        osm_id = raw.get("osm_id")
         if osm_type and osm_id:
             reference = f"{osm_type}/{osm_id}"
+
     return ProvenanceRecord(authority=authority, reference=reference)
 
 
-def _infer_source_and_method(
-    location_payload: Any,
-    geocode_result: Optional[GeocodeResult] = None
-) -> tuple[str, str]:
-    """
-    Infer source and resolution_method from the inbound evidence.
-    Per Node 1: source and resolution_method must form a coherent pair.
-
-    A resolved GeocodeResult determines the pair (curated registry vs
-    provider search). A dict carrying coordinates without a resolved
-    result is a directly-supplied point: an explicit source hint in the
-    payload is honored (and validated); otherwise map/map_pin (a placed
-    pin is the only direct-coordinate path wired today).
-
-    Unresolved typed text (str payload, no resolved result) raises
-    ValueError: it is NOT a search snapshot until explicit selection
-    resolves it (Node 1 + Node 6 boundary). Never defaults to search.
-    """
-    if geocode_result is not None and geocode_result.resolved:
-        if geocode_result.provider == "curated-registry":
-            return "curated", "registry_lookup"
-        return "search", "forward_geocode"
-
-    if isinstance(location_payload, dict):
-        has_coords = (
-            location_payload.get("latitude") is not None
-            and location_payload.get("longitude") is not None
-        )
-        if has_coords:
-            hint_source = location_payload.get("source")
-            hint_method = location_payload.get("resolution_method")
-            if hint_source is not None or hint_method is not None:
-                if not isinstance(hint_source, str) or not isinstance(hint_method, str):
-                    raise ValueError(
-                        "Invalid source hint: source/resolution_method must be strings"
-                    )
-                validate_source_method(hint_source, hint_method)
-                return hint_source, hint_method
-            return "map", "map_pin"
-
-    # No coordinates and no resolved result: no canonical snapshot exists.
-    raise ValueError(
-        "Cannot infer source/resolution_method: unresolved typed text is "
-        "not a resolved location until explicitly selected"
-    )
-
-
 def _infer_identity_status(
-    geocode_result: Optional[GeocodeResult],
+    geocode_result: Any,
     display_name: Optional[str],
 ) -> str:
-    """
-    Determine identity_status per Node 1 contract vocabulary.
+    """Determine ``identity_status`` per the ratified Node 1 vocabulary.
 
-    - none: no human identity attached (GPS/map point, typed label only)
-    - unverified: provider/search identity exists but is not curated
-    - enriched: reverse enrichment added identity (set only by an
-      enrichment path that supplies it; never inferred here)
-    - verified: identity from the verified curated registry
+    * ``verified`` is produced **only** by a curated-registry provider.
+    * ``unverified`` is produced by any other resolved provider, or by a
+      payload that carries a non-empty provider display name.
+    * ``enriched`` is reserved for the future reverse-enrichment path; it
+      is never inferred here.
+    * ``none`` is the honest no-identity state for GPS / map points.
     """
-    if geocode_result is not None and geocode_result.resolved:
-        if geocode_result.provider == "curated-registry":
+    if geocode_result is not None and bool(
+        getattr(geocode_result, "resolved", False)
+    ):
+        provider = _provider_name(geocode_result)
+        if _is_curated_provider(provider):
             return IDENTITY_VERIFIED
-        # Forward geocode result from provider (Photon, etc.)
-        # This is unverified - provider supplied but not curated
         return IDENTITY_UNVERIFIED
-    # Coordinates and/or rider-typed label alone carry no verified human
-    # identity. `display_name` here can only be provider-derived (it is
-    # never copied from `label`), so its absence means `none`.
+
     if display_name:
         return IDENTITY_UNVERIFIED
+
     return IDENTITY_NONE
 
 
-def _extract_area_from_geocode_result(result: GeocodeResult) -> Optional[str]:
-    """Extract best available area label from provider result (Node 1)."""
-    if not isinstance(result.raw, dict):
+def _extract_area_from_geocode_result(geocode_result: Any) -> Optional[str]:
+    """Best available sub-national locality label, as supplied.
+
+    No hierarchy is guaranteed; no parsing or normalization occurs.
+    """
+    if geocode_result is None:
         return None
-    # Photon returns city, locality, district, county, state
-    # Node 1: area is "best available sub-national locality label as supplied"
-    # No hierarchy guaranteed, no parsing, no normalization
-    for key in ("city", "locality", "district", "county", "state"):
-        val = result.raw.get(key)
-        if isinstance(val, str) and val.strip():
-            return val.strip()
+    raw = getattr(geocode_result, "raw", None)
+    if not isinstance(raw, Mapping):
+        return None
+    for key in _AREA_KEYS:
+        value = raw.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
     return None
 
 
-def _extract_accuracy_from_geopoint(point: Optional[GeoPoint]) -> Optional[float]:
-    """Extract accuracy_m from GeoPoint (None = unknown, never 0.0)."""
-    if point is None:
-        return None
-    acc = getattr(point, "accuracy", None)
-    if isinstance(acc, bool) or acc is None or acc == 0.0:
+def _finite_float(
+    value: Any,
+    *,
+    minimum: Optional[float] = None,
+    maximum: Optional[float] = None,
+    strictly_positive: bool = False,
+) -> Optional[float]:
+    """Return a finite float within bounds, or ``None``.
+
+    H3 safety: rejects NaN, +/-Infinity, bool, and strings that do not
+    parse to a finite number.  Never raises on invalid input -- callers
+    treat ``None`` as "unknown".
+    """
+    if value is None or isinstance(value, bool):
         return None
     try:
-        acc_f = float(acc)
+        number = float(value)
     except (TypeError, ValueError):
         return None
-    if acc_f <= 0:
+    if not math.isfinite(number):
         return None
-    return acc_f
+    if minimum is not None and number < minimum:
+        return None
+    if maximum is not None and number > maximum:
+        return None
+    if strictly_positive and number <= 0:
+        return None
+    return number
 
 
-def _extract_confidence_from_geocode_result(result: Optional[GeocodeResult]) -> Optional[float]:
-    """Extract confidence from GeocodeResult if genuinely supplied (0..1)."""
-    if result is None:
+def _extract_accuracy_from_geopoint(point: Any) -> Optional[float]:
+    """Accuracy in metres from a GeoPoint-like value; ``None`` = unknown."""
+    if point is None:
         return None
-    # Photon doesn't supply confidence today
-    if isinstance(result.raw, dict):
-        conf = result.raw.get("confidence")
-        if isinstance(conf, bool):
-            return None
-        if isinstance(conf, (int, float)) and 0.0 <= conf <= 1.0:
-            return float(conf)
-    return None
+    value = getattr(point, "accuracy_m", None)
+    if value is None:
+        value = getattr(point, "accuracy", None)
+    if value is None:
+        return None
+    return _finite_float(value, minimum=0.0, strictly_positive=True)
 
 
 def _extract_positive_accuracy(value: Any) -> Optional[float]:
-    """Accuracy from a raw provider value: positive finite float or None."""
-    if isinstance(value, bool) or value is None:
-        return None
-    try:
-        acc = float(value)
-    except (TypeError, ValueError):
-        return None
-    if not (acc > 0):
-        return None
-    return acc
+    """Accuracy from a raw provider value: strictly positive finite or None."""
+    return _finite_float(value, minimum=0.0, strictly_positive=True)
 
+
+def _extract_confidence_from_geocode_result(
+    geocode_result: Any,
+) -> Optional[float]:
+    """Confidence / relevance when genuinely supplied (0..1, finite)."""
+    if geocode_result is None:
+        return None
+    value = getattr(geocode_result, "confidence", None)
+    if value is None:
+        raw = getattr(geocode_result, "raw", None)
+        if isinstance(raw, Mapping):
+            value = raw.get("confidence")
+    return _finite_float(value, minimum=0.0, maximum=1.0)
+
+
+# ---------------------------------------------------------------------------
+# The single canonical snapshot assembler
+# ---------------------------------------------------------------------------
+
+def _assemble_snapshot(
+    *,
+    latitude: float,
+    longitude: float,
+    source: str,
+    resolution_method: str,
+    provenance: Optional[Dict[str, Any]],
+    label: str,
+    display_name: Optional[str],
+    identity_status: str,
+    area: Optional[str],
+    accuracy_m: Optional[float],
+    confidence: Optional[float],
+    observed_at: Optional[datetime],
+    resolved_at: datetime,
+) -> Dict[str, Any]:
+    """Assemble the 13-key canonical snapshot.
+
+    All coercion of datetimes to ISO strings happens here so the
+    persisted shape is exactly what JSONB can round-trip.
+    """
+    if not isinstance(latitude, float) or not isinstance(longitude, float):
+        raise TypeError("latitude and longitude must be float")
+    if not math.isfinite(latitude) or not math.isfinite(longitude):
+        raise ValueError("latitude and longitude must be finite")
+
+    validate_source_method(source, resolution_method)
+
+    if not isinstance(label, str) or not label.strip():
+        raise ValueError("label must be a non-empty string")
+
+    if identity_status not in VALID_IDENTITY_STATUSES:
+        raise ValueError(
+            f"identity_status must be one of "
+            f"{sorted(VALID_IDENTITY_STATUSES)}"
+        )
+
+    if accuracy_m is not None:
+        if not math.isfinite(accuracy_m) or accuracy_m <= 0:
+            raise ValueError(
+                "accuracy_m must be positive and finite when present"
+            )
+
+    if confidence is not None:
+        if (
+            not math.isfinite(confidence)
+            or confidence < 0.0
+            or confidence > 1.0
+        ):
+            raise ValueError(
+                "confidence must be finite and between 0 and 1 when present"
+            )
+
+    _require_aware(observed_at, "observed_at")
+    if resolved_at is None or resolved_at.tzinfo is None:
+        raise ValueError("resolved_at must be timezone-aware")
+
+    snapshot: Dict[str, Any] = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "source": source,
+        "resolution_method": resolution_method,
+        "provenance": provenance,
+        "label": label.strip(),
+        "display_name": _normalize_display_name(display_name),
+        "identity_status": identity_status,
+        "area": _normalize_display_name(area),
+        "accuracy_m": accuracy_m,
+        "confidence": confidence,
+        "observed_at": _isoformat_or_none(observed_at),
+        "resolved_at": resolved_at.isoformat(),
+    }
+
+    if set(snapshot.keys()) != set(PERSISTED_KEYS):
+        raise AssertionError(
+            "canonical location snapshot shape drifted; expected "
+            f"{sorted(PERSISTED_KEYS)}, got {sorted(snapshot.keys())}"
+        )
+
+    return snapshot
+
+
+# ---------------------------------------------------------------------------
+# Internal: source/method inference
+# ---------------------------------------------------------------------------
+
+def _infer_source_and_method(
+    location_payload: Any,
+    geocode_result: Any,
+) -> Tuple[str, str]:
+    """Infer truthful source/method for the payload.
+
+    * A resolved ``GeocodeResult`` determines the pair based on provider
+      identity (curated registry vs everything else).
+    * A mapping with coordinates but no resolved result is a direct point
+      and may only claim ``gps`` or ``map``.
+    * Anything else (unresolved typed text) is refused.
+    """
+    if geocode_result is not None and bool(
+        getattr(geocode_result, "resolved", False)
+    ):
+        if _is_curated_provider(_provider_name(geocode_result)):
+            return "curated", "registry_lookup"
+        return "search", "forward_geocode"
+
+    if isinstance(location_payload, Mapping):
+        hint_source = location_payload.get("source")
+        hint_method = location_payload.get("resolution_method")
+        if hint_source is None and hint_method is None:
+            return "map", "map_pin"
+        if hint_source is None or hint_method is None:
+            raise ValueError(
+                "source and resolution_method must be supplied together"
+            )
+        source_str = str(hint_source).strip()
+        method_str = str(hint_method).strip()
+        validate_source_method(source_str, method_str)
+        _assert_direct_source_allowed(source_str)
+        return source_str, method_str
+
+    raise ValueError(
+        "unresolved typed text is not a canonical location until "
+        "explicitly selected or resolved"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public builders
+# ---------------------------------------------------------------------------
 
 def build_canonical_location_snapshot(
     *,
@@ -353,142 +647,171 @@ def build_canonical_location_snapshot(
     source: Optional[str] = None,
     resolution_method: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """Build the single canonical resolved-location snapshot.
+
+    This is the authority for translating inbound location evidence into
+    the 13-key canonical shape persisted on ``Booking.pickup_location`` /
+    ``Booking.dropoff_location``.
+
+    Coordination:
+
+    * Coordinates are the resolution invariant.
+    * A resolved ``GeocodeResult`` may enrich identity, provenance,
+      area, and quality metadata -- but never silently replace
+      coordinates that disagree with the payload (H1).
+    * A caller who supplies ``source``/``resolution_method`` must supply
+      both, must form a ratified pair, and must be justified by evidence
+      (H2).
+    * Unresolved typed text is not a canonical location; it raises
+      ``ValueError`` until explicit selection resolves it.
     """
-    Build the canonical location snapshot per Node 1 contract.
+    if location_payload is None:
+        raise ValueError("location_payload is required")
 
-    This is the single function that creates the JSONB structure stored
-    on Booking.pickup_location / dropoff_location at acceptance time.
-
-    Args:
-        location_payload: The raw inbound payload (dict with lat/lng, or string)
-        geocode_result: Optional GeocodeResult from forward/reverse geocoding
-        explicit_address: Explicit address text from booking form
-            (pickup_address/dropoff_address). Becomes `label` only - never
-            `display_name`, never identity.
-        observed_at: When the underlying observation occurred (GPS fix, pin event)
-        source: Optional explicit source (gps | map | search | curated).
-            When omitted it is inferred from the evidence. When supplied
-            it must form a valid pairing with resolution_method and must
-            not contradict a resolved GeocodeResult.
-        resolution_method: Optional explicit method (browser_geolocation |
-            map_pin | forward_geocode | registry_lookup). Same rules.
-
-    Returns:
-        Dict with all Node 1 canonical fields, suitable for JSONB storage.
-        Never contains `place_ref`, `address`, `synthetic`, or
-        coordinates_resolved/identity_resolved keys.
-
-    Raises:
-        ValueError: when no canonical snapshot can be built (missing
-            coordinates, unresolved typed text, invalid source pairing).
-        ValidationError: when raw coordinates fail the 02A safety check.
-    """
-    resolved_at = _now_utc()
-
-    inferred_source, inferred_method = _infer_source_and_method(
-        location_payload, geocode_result
+    geocode_resolved = bool(
+        geocode_result is not None
+        and getattr(geocode_result, "resolved", False)
     )
-    if source is None and resolution_method is None:
-        source, resolution_method = inferred_source, inferred_method
+
+    payload_mapping = (
+        location_payload if isinstance(location_payload, Mapping) else None
+    )
+
+    payload_has_lat = (
+        payload_mapping is not None
+        and payload_mapping.get("latitude") is not None
+    )
+    payload_has_lng = (
+        payload_mapping is not None
+        and payload_mapping.get("longitude") is not None
+    )
+
+    if payload_has_lat and payload_has_lng:
+        latitude, longitude = _to_float_pair(
+            payload_mapping.get("latitude"),
+            payload_mapping.get("longitude"),
+        )
+    elif payload_has_lat or payload_has_lng:
+        raise ValueError(
+            "location_payload must include both latitude and longitude"
+        )
+    elif geocode_resolved:
+        latitude, longitude = _to_float_pair(
+            getattr(geocode_result, "latitude", None),
+            getattr(geocode_result, "longitude", None),
+        )
     else:
-        if source is None or resolution_method is None:
+        raise ValueError("canonical location requires resolved coordinates")
+
+    # H1 -- when both sources carry coordinates, they must agree exactly.
+    if (payload_has_lat and payload_has_lng) and geocode_resolved:
+        geo_lat, geo_lng = _to_float_pair(
+            getattr(geocode_result, "latitude", None),
+            getattr(geocode_result, "longitude", None),
+        )
+        if latitude != geo_lat or longitude != geo_lng:
             raise ValueError(
-                "source and resolution_method must be supplied together"
+                "location coordinates conflict with the resolved "
+                "GeocodeResult; refusing to combine coordinate truth "
+                "from one source with identity/provenance from another"
             )
-        validate_source_method(source, resolution_method)
-        if geocode_result is not None and geocode_result.resolved:
-            # A resolved provider result cannot be claimed as a GPS fix
-            # or a map pin: the provenance path must stay truthful.
-            if (source, resolution_method) != (inferred_source, inferred_method):
+
+    if source is None and resolution_method is None:
+        final_source, final_method = _infer_source_and_method(
+            location_payload, geocode_result
+        )
+    elif source is None or resolution_method is None:
+        raise ValueError(
+            "source and resolution_method must be supplied together"
+        )
+    else:
+        final_source = str(source).strip()
+        final_method = str(resolution_method).strip()
+        validate_source_method(final_source, final_method)
+
+        if geocode_resolved:
+            inferred_source, inferred_method = _infer_source_and_method(
+                location_payload, geocode_result
+            )
+            if (final_source, final_method) != (
+                inferred_source,
+                inferred_method,
+            ):
                 raise ValueError(
-                    f"Explicit source/method {(source, resolution_method)} "
-                    f"contradicts the resolved GeocodeResult "
+                    f"explicit source/method "
+                    f"{(final_source, final_method)} contradicts the "
+                    f"resolved GeocodeResult evidence "
                     f"{(inferred_source, inferred_method)}"
                 )
 
-    # Extract coordinates: raw validated BEFORE float conversion (02A).
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    if isinstance(location_payload, dict) and (
-        location_payload.get("latitude") is not None
-        or location_payload.get("longitude") is not None
-    ):
-        if (location_payload.get("latitude") is None
-                or location_payload.get("longitude") is None):
-            raise ValueError("Cannot build canonical snapshot without coordinates")
-        latitude, longitude = _to_float_pair(
-            location_payload.get("latitude"), location_payload.get("longitude")
-        )
-    elif geocode_result is not None and geocode_result.resolved:
-        if geocode_result.latitude is None or geocode_result.longitude is None:
-            raise ValueError("Cannot build canonical snapshot without coordinates")
-        latitude, longitude = _to_float_pair(
-            geocode_result.latitude, geocode_result.longitude
+    if final_source in DIRECT_SOURCES:
+        _assert_direct_source_allowed(final_source)
+    else:
+        _assert_provider_source_matches(final_source, geocode_result)
+
+    if geocode_resolved:
+        display_name = _normalize_display_name(
+            getattr(geocode_result, "display_name", None)
         )
     else:
-        raise ValueError("Cannot build canonical snapshot without coordinates")
+        display_name = _normalize_display_name(
+            payload_mapping.get("display_name") if payload_mapping else None
+        )
 
-    # Provenance: observed provider identity only, else None.
-    provenance = None
-    if geocode_result is not None and geocode_result.resolved:
-        prov_record = _build_provenance_from_geocode_result(geocode_result)
-        if prov_record:
-            provenance = prov_record.to_json()
-
-    # Human identity: display_name comes ONLY from a resolved provider
-    # result (never copied from label/coordinates). Empty normalizes
-    # to None.
-    display_name: Optional[str] = None
-    if geocode_result is not None and geocode_result.resolved:
-        display_name = _normalize_display_name(geocode_result.display_name)
-
-    # Label is required and non-null (may be an input-associated default).
     label = _resolve_label(
         explicit_address=explicit_address,
         location_payload=location_payload,
         display_name=display_name,
-        source=source,
+        source=final_source,
     )
 
-    # identity_status per evidence.
+    provenance_record = _build_provenance_from_geocode_result(geocode_result)
+    provenance = (
+        provenance_record.to_json() if provenance_record is not None else None
+    )
+
     identity_status = _infer_identity_status(geocode_result, display_name)
+    area = _extract_area_from_geocode_result(geocode_result)
 
-    # area
-    area = None
-    if geocode_result is not None and geocode_result.resolved:
-        area = _extract_area_from_geocode_result(geocode_result)
-
-    # quality (nullable; never fabricated)
-    accuracy_m = None
-    confidence = None
-    if geocode_result is not None and geocode_result.resolved:
-        if isinstance(geocode_result.raw, dict):
-            accuracy_m = _extract_positive_accuracy(
-                geocode_result.raw.get("accuracy")
-            )
+    accuracy_m: Optional[float] = None
+    confidence: Optional[float] = None
+    if geocode_resolved:
+        raw = getattr(geocode_result, "raw", None)
+        if isinstance(raw, Mapping):
+            accuracy_m = _extract_positive_accuracy(raw.get("accuracy"))
         confidence = _extract_confidence_from_geocode_result(geocode_result)
 
-    return {
-        # Geographic truth (authoritative)
-        "latitude": latitude,
-        "longitude": longitude,
-        # Input path (authoritative routing)
-        "source": source,
-        "resolution_method": resolution_method,
-        # Provenance (authoritative record, nullable, structured)
-        "provenance": provenance,
-        # Human identity (advisory)
-        "label": label,
-        "display_name": display_name,
-        "identity_status": identity_status,
-        "area": area,
-        # Quality (both nullable; never fabricated)
-        "accuracy_m": accuracy_m,
-        "confidence": confidence,
-        # Time (distinct fields)
-        "observed_at": observed_at.isoformat() if observed_at else None,
-        "resolved_at": resolved_at.isoformat(),
-    }
+    if accuracy_m is None and payload_mapping is not None:
+        accuracy_m = _extract_positive_accuracy(
+            payload_mapping.get("accuracy_m")
+        )
+    if confidence is None and payload_mapping is not None:
+        confidence = _finite_float(
+            payload_mapping.get("confidence"),
+            minimum=0.0,
+            maximum=1.0,
+        )
+
+    observed = observed_at
+    if observed is None and payload_mapping is not None:
+        observed = payload_mapping.get("observed_at")
+    observed = _require_aware(observed, "observed_at")
+
+    return _assemble_snapshot(
+        latitude=latitude,
+        longitude=longitude,
+        source=final_source,
+        resolution_method=final_method,
+        provenance=provenance,
+        label=label,
+        display_name=display_name,
+        identity_status=identity_status,
+        area=area,
+        accuracy_m=accuracy_m,
+        confidence=confidence,
+        observed_at=observed,
+        resolved_at=_utc_now(),
+    )
 
 
 def build_canonical_snapshot_from_geocode_result(
@@ -499,219 +822,238 @@ def build_canonical_snapshot_from_geocode_result(
     source: Optional[str] = None,
     resolution_method: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """
-    Build canonical snapshot directly from a resolved GeocodeResult.
+    """Build a canonical snapshot from an already-resolved GeocodeResult.
 
-    Used when the booking flow has already performed geocoding and has
-    a GeocodeResult with all provider data. Source/method default from
-    the provider (curated-registry -> curated/registry_lookup, anything
-    else -> search/forward_geocode); explicit values must be valid and
-    must not contradict the provider evidence.
+    Source/method default from the provider identity
+    (``curated-registry`` -> ``curated``/``registry_lookup``; anything
+    else -> ``search``/``forward_geocode``).  Explicit values must be
+    valid and must not contradict the provider evidence.
     """
-    if not geocode_result.resolved:
-        raise ValueError("GeocodeResult must be resolved")
+    if geocode_result is None or not bool(
+        getattr(geocode_result, "resolved", False)
+    ):
+        raise ValueError("a resolved GeocodeResult is required")
 
-    if geocode_result.provider == "curated-registry":
+    provider = _provider_name(geocode_result)
+    if _is_curated_provider(provider):
         inferred = ("curated", "registry_lookup")
     else:
         inferred = ("search", "forward_geocode")
+
     if source is None and resolution_method is None:
-        source, resolution_method = inferred
+        final_source, final_method = inferred
+    elif source is None or resolution_method is None:
+        raise ValueError(
+            "source and resolution_method must be supplied together"
+        )
     else:
-        if source is None or resolution_method is None:
+        final_source = str(source).strip()
+        final_method = str(resolution_method).strip()
+        validate_source_method(final_source, final_method)
+        if (final_source, final_method) != inferred:
             raise ValueError(
-                "source and resolution_method must be supplied together"
-            )
-        validate_source_method(source, resolution_method)
-        if (source, resolution_method) != inferred:
-            raise ValueError(
-                f"Explicit source/method {(source, resolution_method)} "
-                f"contradicts the GeocodeResult provider evidence {inferred}"
+                f"explicit source/method {(final_source, final_method)} "
+                f"contradicts the GeocodeResult provider evidence "
+                f"{inferred}"
             )
 
-    provenance_record = _build_provenance_from_geocode_result(geocode_result)
-    provenance = provenance_record.to_json() if provenance_record else None
+    _assert_provider_source_matches(final_source, geocode_result)
 
-    display_name = _normalize_display_name(geocode_result.display_name)
+    latitude, longitude = _to_float_pair(
+        getattr(geocode_result, "latitude", None),
+        getattr(geocode_result, "longitude", None),
+    )
+
+    display_name = _normalize_display_name(
+        getattr(geocode_result, "display_name", None)
+    )
     label = _resolve_label(
         explicit_address=explicit_address,
         location_payload=None,
         display_name=display_name,
-        source=source,
+        source=final_source,
     )
 
-    # For forward geocode, identity is unverified (provider result, not curated)
-    identity_status = IDENTITY_VERIFIED if geocode_result.provider == "curated-registry" else IDENTITY_UNVERIFIED
+    provenance_record = _build_provenance_from_geocode_result(geocode_result)
+    provenance = (
+        provenance_record.to_json() if provenance_record is not None else None
+    )
 
+    identity_status = _infer_identity_status(geocode_result, display_name)
     area = _extract_area_from_geocode_result(geocode_result)
-    accuracy_m = None
-    if isinstance(geocode_result.raw, dict):
-        accuracy_m = _extract_positive_accuracy(geocode_result.raw.get("accuracy"))
+
+    raw = getattr(geocode_result, "raw", None)
+    accuracy_m = (
+        _extract_positive_accuracy(raw.get("accuracy"))
+        if isinstance(raw, Mapping)
+        else None
+    )
     confidence = _extract_confidence_from_geocode_result(geocode_result)
 
-    if geocode_result.latitude is None or geocode_result.longitude is None:
-        raise ValueError("GeocodeResult must carry coordinates")
-    latitude, longitude = _to_float_pair(
-        geocode_result.latitude, geocode_result.longitude
+    observed = _require_aware(observed_at, "observed_at")
+
+    return _assemble_snapshot(
+        latitude=latitude,
+        longitude=longitude,
+        source=final_source,
+        resolution_method=final_method,
+        provenance=provenance,
+        label=label,
+        display_name=display_name,
+        identity_status=identity_status,
+        area=area,
+        accuracy_m=accuracy_m,
+        confidence=confidence,
+        observed_at=observed,
+        resolved_at=_utc_now(),
     )
-
-    resolved_at = _now_utc()
-
-    return {
-        "latitude": latitude,
-        "longitude": longitude,
-        "source": source,
-        "resolution_method": resolution_method,
-        "provenance": provenance,
-        "label": label,
-        "display_name": display_name,
-        "identity_status": identity_status,
-        "area": area,
-        "accuracy_m": accuracy_m,
-        "confidence": confidence,
-        "observed_at": observed_at.isoformat() if observed_at else None,
-        "resolved_at": resolved_at.isoformat(),
-    }
 
 
 def build_canonical_snapshot_from_coordinates(
-    latitude: float,
-    longitude: float,
+    latitude: Any,
+    longitude: Any,
     *,
     source: str = "map",
     resolution_method: str = "map_pin",
     explicit_address: Optional[str] = None,
     observed_at: Optional[datetime] = None,
-    accuracy_m: Optional[float] = None,
+    accuracy_m: Any = None,
 ) -> Dict[str, Any]:
-    """
-    Build canonical snapshot from raw coordinates (GPS fix or map pin).
+    """Build a canonical snapshot from raw coordinates (GPS fix or pin).
 
-    No provider involved, so provenance is None and there is no human
-    identity: display_name is None and identity_status is `none`, even
-    when a rider-typed label exists (the label is input text, not
-    identity). Raw coordinates are validated BEFORE float conversion
-    (02A safety boundary).
+    No provider is involved: ``provenance`` is ``None``,
+    ``display_name`` is ``None``, and ``identity_status`` is ``none``.
+    H2 restricts the source to ``gps`` or ``map``; search and curated
+    require a resolved ``GeocodeResult``.
+
+    Raw coordinates are validated BEFORE ``float()`` coercion (02A).
     """
-    validate_source_method(source, resolution_method)
+    source_str = str(source).strip()
+    method_str = str(resolution_method).strip()
+    validate_source_method(source_str, method_str)
+    _assert_direct_source_allowed(source_str)
+
     latitude_f, longitude_f = _to_float_pair(latitude, longitude)
 
     label = _resolve_label(
         explicit_address=explicit_address,
         location_payload=None,
         display_name=None,
-        source=source,
+        source=source_str,
     )
 
-    resolved_at = _now_utc()
+    observed = _require_aware(observed_at, "observed_at")
 
-    return {
-        "latitude": latitude_f,
-        "longitude": longitude_f,
-        "source": source,
-        "resolution_method": resolution_method,
-        "provenance": None,
-        "label": label,
-        "display_name": None,
-        "identity_status": IDENTITY_NONE,
-        "area": None,
-        "accuracy_m": _extract_positive_accuracy(accuracy_m),
-        "confidence": None,
-        "observed_at": observed_at.isoformat() if observed_at else None,
-        "resolved_at": resolved_at.isoformat(),
-    }
+    return _assemble_snapshot(
+        latitude=latitude_f,
+        longitude=longitude_f,
+        source=source_str,
+        resolution_method=method_str,
+        provenance=None,
+        label=label,
+        display_name=None,
+        identity_status=IDENTITY_NONE,
+        area=None,
+        accuracy_m=_extract_positive_accuracy(accuracy_m),
+        confidence=None,
+        observed_at=observed,
+        resolved_at=_utc_now(),
+    )
 
 
-def get_display_text(snapshot: Dict[str, Any]) -> Optional[str]:
+# ---------------------------------------------------------------------------
+# Read helpers
+# ---------------------------------------------------------------------------
+
+def get_display_text(snapshot: Any) -> Optional[str]:
+    """Presentation text for a canonical snapshot.
+
+    Preference order: ``display_name`` -> ``label`` -> honest
+    ``identity_status``-aware fallback.  Returns ``None`` only when the
+    input is neither a canonical nor a legacy shape.
     """
-    Get presentation text for a canonical location snapshot.
+    if isinstance(snapshot, Mapping):
+        for key in ("display_name", "label"):
+            value = snapshot.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
 
-    Per Node 1: display_name is advisory and nullable.
-    - Show display_name when available;
-    - otherwise show the input-associated label when one exists;
-    - otherwise render an honest fallback based on identity_status.
-    Presentation fallbacks are never canonical display_name.
-    """
-    display_name = snapshot.get("display_name")
-    if isinstance(display_name, str) and display_name.strip():
-        return display_name.strip()
+        identity_status = snapshot.get("identity_status")
+        if identity_status == IDENTITY_NONE:
+            return "Location to be confirmed"
+        if identity_status == IDENTITY_UNVERIFIED:
+            return "Unverified location"
+        if identity_status == IDENTITY_ENRICHED:
+            return "Enriched location"
+        if identity_status == IDENTITY_VERIFIED:
+            return "Verified location"
+        return None
 
-    label = snapshot.get("label")
-    if isinstance(label, str) and label.strip():
-        return label.strip()
+    if isinstance(snapshot, str) and snapshot.strip():
+        return snapshot.strip()
 
-    # Honest fallback based on identity_status
-    identity_status = snapshot.get("identity_status")
-
-    if identity_status == IDENTITY_NONE:
-        return "Location to be confirmed"
-
-    if identity_status == IDENTITY_UNVERIFIED:
-        return "Unverified location"
-
-    if identity_status == IDENTITY_ENRICHED:
-        return "Enriched location"
-
-    if identity_status == IDENTITY_VERIFIED:
-        return "Verified location"
-
-    return "Location to be confirmed"
+    return None
 
 
-def get_coordinates(snapshot: Dict[str, Any]) -> tuple[Optional[float], Optional[float]]:
-    """Extract authoritative coordinates from snapshot."""
-    lat = snapshot.get("latitude")
-    lng = snapshot.get("longitude")
-    if lat is not None and lng is not None:
-        if isinstance(lat, bool) or isinstance(lng, bool):
-            return None, None
-        try:
-            return float(lat), float(lng)
-        except (TypeError, ValueError):
-            return None, None
-    return None, None
+def get_coordinates(
+    snapshot: Any,
+) -> Tuple[Optional[float], Optional[float]]:
+    """Extract authoritative coordinates from a snapshot, or ``(None, None)``."""
+    if not isinstance(snapshot, Mapping):
+        return None, None
+    latitude = snapshot.get("latitude")
+    longitude = snapshot.get("longitude")
+    if latitude is None or longitude is None:
+        return None, None
+    if isinstance(latitude, bool) or isinstance(longitude, bool):
+        return None, None
+    try:
+        latitude_f = float(latitude)
+        longitude_f = float(longitude)
+    except (TypeError, ValueError):
+        return None, None
+    if not math.isfinite(latitude_f) or not math.isfinite(longitude_f):
+        return None, None
+    return latitude_f, longitude_f
 
 
 def is_resolved_snapshot(snapshot: Any) -> bool:
-    """Check if a stored value is a canonical resolved snapshot (has coordinates)."""
-    if not isinstance(snapshot, dict):
-        return False
-    return snapshot.get("latitude") is not None and snapshot.get("longitude") is not None
+    """True when readable coordinates exist."""
+    latitude, longitude = get_coordinates(snapshot)
+    return latitude is not None and longitude is not None
 
 
 def legacy_location_text(snapshot: Any) -> Optional[str]:
-    """
-    Legacy compatibility: extract text from old string-only or partial dict rows.
+    """Read path for pre-Node-2 rows (bare string or old dict shape).
 
     Per Node 1: legacy string-only rows remain readable as unresolved.
-    This is the READ path for pre-Node-2 rows only; new canonical snapshots
-    are rendered via get_display_text().
+    New canonical snapshots are rendered via ``get_display_text()``.
+    Returns ``None`` for empty/unknown input so templates can use
+    ``|default``.
     """
     if snapshot is None:
         return None
+
     if isinstance(snapshot, str):
-        return snapshot.strip() if snapshot.strip() else None
-    if isinstance(snapshot, dict):
-        # Old dict shape: address/name/label
-        for key in ("address", "name", "label"):
-            val = snapshot.get(key)
-            if isinstance(val, str) and val.strip():
-                return val.strip()
-        # Coordinates fallback
-        lat = snapshot.get("latitude")
-        lng = snapshot.get("longitude")
-        if lat is not None and lng is not None:
-            if isinstance(lat, bool) or isinstance(lng, bool):
-                return None
-            try:
-                return f"{float(lat):.4f}, {float(lng):.4f}"
-            except (TypeError, ValueError):
-                return None
+        return snapshot.strip() or None
+
+    if isinstance(snapshot, Mapping):
+        for key in ("address", "name", "label", "text", "location_text"):
+            value = snapshot.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+        latitude, longitude = get_coordinates(snapshot)
+        if latitude is not None and longitude is not None:
+            return f"{latitude:.4f}, {longitude:.4f}"
+
+        return None
+
     return None
 
 
 __all__ = [
-    "ProvenanceRecord",
+    "PERSISTED_KEYS",
     "IDENTITY_NONE",
     "IDENTITY_UNVERIFIED",
     "IDENTITY_ENRICHED",
@@ -720,6 +1062,9 @@ __all__ = [
     "VALID_SOURCES",
     "VALID_RESOLUTION_METHODS",
     "SOURCE_METHOD_PAIRS",
+    "DIRECT_SOURCES",
+    "SOURCE_DEFAULT_LABELS",
+    "ProvenanceRecord",
     "validate_source_method",
     "build_canonical_location_snapshot",
     "build_canonical_snapshot_from_geocode_result",

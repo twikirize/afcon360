@@ -24,7 +24,9 @@ from app.transport.models import (
     Vehicle,
     BookingStatus,
     ComplianceStatus,
+    LocationLifecycleEvent,
 )
+from app.geo.models import LocationObservation
 from app.utils.audit import audit_log
 
 logger = logging.getLogger(__name__)
@@ -320,6 +322,63 @@ class AssignmentService:
                 exc_info=True,
             )
 
+    @staticmethod
+    def _capture_actual_end(booking_id: int, driver_id: Optional[int], vehicle_id: Optional[int]) -> None:
+        """Capture ACTUAL_END lifecycle event referencing closest GEO observation."""
+        if not driver_id:
+            return
+        driver = db.session.get(DriverProfile, driver_id)
+        if not driver or not driver.driver_code:
+            return
+        
+        transition_at = datetime.now(timezone.utc)
+        
+        # Find the closest existing GEO observation for this driver
+        obs = LocationObservation.query.filter(
+            LocationObservation.entity_type == 'driver',
+            LocationObservation.public_ref == driver.driver_code,
+            LocationObservation.is_deleted == False,
+            LocationObservation.observed_at <= transition_at
+        ).order_by(LocationObservation.observed_at.desc()).first()
+        
+        freshness = "missing"
+        age_at_transition = None
+        geo_obs_id = None
+        reason = "no_observation"
+        
+        if obs:
+            age_at_transition = (transition_at - obs.observed_at).total_seconds()
+            geo_obs_id = obs.public_id
+            # Freshness threshold - configurable, default 120s
+            threshold = 120  # seconds
+            if age_at_transition <= threshold:
+                freshness = "fresh"
+                reason = None
+            else:
+                freshness = "stale"
+                reason = "stale_beyond_threshold"
+        
+        event = LocationLifecycleEvent(
+            booking_id=booking_id,
+            endpoint="dropoff",
+            event_type="ACTUAL_END",
+            snapshot=None,  # actual events don't carry snapshot
+            geo_observation_public_id=geo_obs_id,
+            actor_user_id=driver_id,
+            transition_at=transition_at,
+            event_metadata={
+                "freshness": freshness,
+                "age_at_transition": age_at_transition,
+                "reason": reason,
+                "captured_by": "assignment_service_release"
+            } if (age_at_transition is not None or freshness == "missing") else {
+                "freshness": freshness,
+                "reason": reason,
+                "captured_by": "assignment_service_release"
+            }
+        )
+        db.session.add(event)
+
     # ------------------------------------------------------------------ #
     # Release
     # ------------------------------------------------------------------ #
@@ -350,6 +409,10 @@ class AssignmentService:
             raise DispatchClaimError(
                 "invalid_state", f"{terminal} is not a terminal release status"
             )
+
+        # Capture ACTUAL_END lifecycle event if transitioning to COMPLETED
+        if terminal == BookingStatus.COMPLETED.value:
+            _capture_actual_end(booking_id, row.assigned_driver_id, row.assigned_vehicle_id)
 
         row = db.session.execute(
             sa.select(
