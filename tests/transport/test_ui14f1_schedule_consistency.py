@@ -37,7 +37,19 @@ def test_schedule_validity_helper_exists():
     assert "function isScheduleValid(){" in text
     assert "if (state.schedule !== 'later') return true;" in text
     assert "if (!v) return false;" in text
-    assert "return !isNaN(new Date(v).getTime());" in text
+    assert "if (isNaN(d.getTime())) return false;" in text
+
+
+def test_schedule_validity_rejects_past_times():
+    """UI-14-F2: a parseable but already-past scheduled time is not
+    committable. No minimum advance interval — any future time passes."""
+    text = _template()
+    assert "if (d.getTime() <= Date.now()) return false;" in text
+
+
+def test_disabled_reason_directs_past_selection_to_future_time():
+    text = _template()
+    assert ("'Choose a pickup time in the future to continue.'") in text
 
 
 def test_find_a_ride_gate_requires_valid_schedule():
@@ -48,8 +60,8 @@ def test_find_a_ride_gate_requires_valid_schedule():
 
 def test_disabled_reason_explains_missing_schedule():
     text = _template()
-    assert ("else if (!isScheduleValid()) msg = "
-            "'Select a scheduled time to continue.';") in text
+    assert "else if (!isScheduleValid()) msg = " in text
+    assert "'Select a scheduled time to continue.';" in text
 
 
 def test_schedule_and_time_changes_revalidate_both_gates():
@@ -88,6 +100,7 @@ def test_finalize_reports_instead_of_substituting_now():
     body = text[start:end]
     assert "if (!schedAt.value) return false;" in body
     assert "if (isNaN(d.getTime())) return false;" in body
+    assert "if (d.getTime() <= Date.now()) return false;" in body
     assert "setPickupTimeNow();" in body
     assert "return true;" in body
 

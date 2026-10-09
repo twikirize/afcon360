@@ -1415,11 +1415,18 @@
   // UI-14-F1: Later requires a non-empty, parseable scheduled time.
   // Validity mirrors the server contract (pickup_time must be valid
   // ISO-8601); no new lead-time or timezone policy is introduced here.
+  // UI-14-F2: the time must also still lie in the future — a scheduled
+  // pickup that is already in the past cannot be honored. Any future
+  // time is accepted; there is no minimum advance-booking interval.
+  // Client-side only: server-side rejection of past pickup_time values
+  // remains deferred to a separate workstream.
   function isScheduleValid(){
     if (state.schedule !== 'later') return true;
     var v = schedAt ? schedAt.value : '';
     if (!v) return false;
-    return !isNaN(new Date(v).getTime());
+    var d = new Date(v);
+    if (isNaN(d.getTime())) return false;
+    return d.getTime() > Date.now();
   }
   function syncReviewGate(){
     // Review may only be reachable with a committable schedule. Never
@@ -1460,7 +1467,9 @@
     else if (!isPickupResolved() && !isDropoffResolved()) msg = 'Select pickup and destination on the map to continue.';
     else if (!isPickupResolved()) msg = 'Select a pickup to continue – use GPS or tap the map.';
     else if (!isDropoffResolved()) msg = 'Select destination on the map to continue – chips set text only.';
-    else if (!isScheduleValid()) msg = 'Select a scheduled time to continue.';
+    else if (!isScheduleValid()) msg = (state.schedule === 'later' && schedAt && schedAt.value)
+      ? 'Choose a pickup time in the future to continue.'
+      : 'Select a scheduled time to continue.';
     continueDisabledReason.textContent = msg;
     btnContinue.setAttribute('title', msg);
   }
@@ -1842,6 +1851,8 @@
       if (!schedAt.value) return false;
       var d = new Date(schedAt.value);
       if (isNaN(d.getTime())) return false;
+      // UI-14-F2: a past scheduled time is not committable either.
+      if (d.getTime() <= Date.now()) return false;
       d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
       hPickupTime.value = d.toISOString().slice(0, 16);
       return true;
