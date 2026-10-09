@@ -1995,6 +1995,13 @@
         if (pin.lat !== lat || pin.lng !== lng) return;
         setFieldSync(kind === 'pickup' ? inputPickup : inputDest, name);
         validateA();
+        // UI-14-D2b: a slow answer may land after Review already
+        // rendered (the summary reads state at render time only).
+        // Refresh the visible summary in that case. renderConfirm is a
+        // pure re-render of live state: no navigation, no network.
+        if (document.querySelector('section[data-state="c"].is-active')) {
+          renderConfirm();
+        }
       });
     }
     function setFieldSync(el, value){
