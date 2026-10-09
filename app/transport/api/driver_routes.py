@@ -559,7 +559,9 @@ def _execute_driver_trip_action(booking, profile, action, actor):
             event_type="ACTUAL_START",
             snapshot=None,  # actual events don't carry snapshot
             geo_observation_public_id=geo_obs_id,
-            actor_user_id=booking.assigned_driver_id,
+            # Actor is the DRIVER'S USER id (users.id FK) — never the
+            # driver-profile id stored on booking.assigned_driver_id.
+            actor_user_id=profile.user_id,
             transition_at=transition_at,
             event_metadata={
                 "freshness": freshness,
