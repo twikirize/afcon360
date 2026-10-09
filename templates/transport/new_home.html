@@ -1412,6 +1412,21 @@
     var lng = document.getElementById('dropoff_longitude').value;
     return !!(lat && lng);
   }
+  // UI-14-F1: Later requires a non-empty, parseable scheduled time.
+  // Validity mirrors the server contract (pickup_time must be valid
+  // ISO-8601); no new lead-time or timezone policy is introduced here.
+  function isScheduleValid(){
+    if (state.schedule !== 'later') return true;
+    var v = schedAt ? schedAt.value : '';
+    if (!v) return false;
+    return !isNaN(new Date(v).getTime());
+  }
+  function syncReviewGate(){
+    // Review may only be reachable with a committable schedule. Never
+    // enables the button on its own: without a selected class it stays off.
+    if (!state.selectedClass) { btnReview.disabled = true; return; }
+    btnReview.disabled = !isScheduleValid();
+  }
   function updateGpsStatus(st, msg){
     if (!gpsStatus) return;
     gpsStatus.textContent = msg || '';
@@ -1445,6 +1460,7 @@
     else if (!isPickupResolved() && !isDropoffResolved()) msg = 'Select pickup and destination on the map to continue.';
     else if (!isPickupResolved()) msg = 'Select a pickup to continue – use GPS or tap the map.';
     else if (!isDropoffResolved()) msg = 'Select destination on the map to continue – chips set text only.';
+    else if (!isScheduleValid()) msg = 'Select a scheduled time to continue.';
     continueDisabledReason.textContent = msg;
     btnContinue.setAttribute('title', msg);
   }
@@ -1458,9 +1474,16 @@
     schedLaterBtn.setAttribute('aria-pressed', mode === 'later');
     schedAt.classList.toggle('is-visible', mode === 'later');
     if (mode === 'later') schedAt.focus();
+    // UI-14-F1: a mode change can invalidate the schedule — both the
+    // Find a Ride gate and the Review gate must follow immediately.
+    validateA();
+    syncReviewGate();
   }
   schedNowBtn.addEventListener('click', function(){ setSchedule('now'); });
   schedLaterBtn.addEventListener('click', function(){ setSchedule('later'); });
+  // UI-14-F1: revalidate whenever the scheduled time itself changes.
+  schedAt.addEventListener('input', function(){ validateA(); syncReviewGate(); });
+  schedAt.addEventListener('change', function(){ validateA(); syncReviewGate(); });
 
   // ---------- Navigation ----------
   function goTo(stage){
@@ -1493,7 +1516,8 @@
     var dropoffLat = document.getElementById('dropoff_latitude').value;
     var dropoffLng = document.getElementById('dropoff_longitude').value;
     var coordsPresent = pickupLat && pickupLng && dropoffLat && dropoffLng;
-    btnContinue.disabled = !state.dest || !state.pickup || !coordsPresent;
+    // UI-14-F1: Later without a valid scheduled time cannot proceed.
+    btnContinue.disabled = !state.dest || !state.pickup || !coordsPresent || !isScheduleValid();
     if (pickupHint) pickupHint.style.display = state.pickup ? 'none' : '';
     updateMapTarget();
     updateContinueReason();
@@ -1751,7 +1775,8 @@
     catch (e) { state.fareBreakdown = null; }
     if (el.dataset.distance) state.distanceKm = Number(el.dataset.distance);
     hVehicleCls.value = state.selectedClass;
-    btnReview.disabled = false;
+    // UI-14-F1: Review is only reachable with a committable schedule.
+    btnReview.disabled = !isScheduleValid();
     reviewAmt.textContent = currency + ' ' + state.selectedFare.toFixed(2);
     showFarePanel(currency);
   }
@@ -1795,7 +1820,10 @@
       fareRows.innerHTML = fareRow('Total', fmtCur(state.selectedFare, state.currency || 'USD'), true);
     }
     confirmTimeSub.textContent = state.schedule === 'later'
-      ? 'Scheduled for ' + (schedAt.value ? fmtSched(schedAt.value) : 'later today')
+      // UI-14-F1: never imply a schedule exists when the time is
+      // missing or invalid (defensive: the gates above should already
+      // have blocked this path).
+      ? (isScheduleValid() ? 'Scheduled for ' + fmtSched(schedAt.value) : 'Select a scheduled time.')
       : 'Leaving now.';
   }
   function fareRow(label, value, strong){
@@ -1806,15 +1834,20 @@
   }
 
   function finalizePickupTime(){
-    if (state.schedule === 'later' && schedAt.value) {
+    // UI-14-F1: returns false when a Later selection has no valid time.
+    // The commitment boundary must block in that case — silently
+    // substituting the current time would book an immediate ride the
+    // rider did not ask for. Now keeps its existing behavior.
+    if (state.schedule === 'later') {
+      if (!schedAt.value) return false;
       var d = new Date(schedAt.value);
-      if (!isNaN(d.getTime())) {
-        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-        hPickupTime.value = d.toISOString().slice(0, 16);
-        return;
-      }
+      if (isNaN(d.getTime())) return false;
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+      hPickupTime.value = d.toISOString().slice(0, 16);
+      return true;
     }
     setPickupTimeNow();
+    return true;
   }
 
   // ---------- State D ----------
@@ -1838,9 +1871,12 @@
 
   // ---------- Submit ----------
   form.addEventListener('submit', function(e){
-    if (!state.dest || !state.pickup || !state.selectedClass) {
+    // UI-14-F1: revalidate the schedule at the commitment boundary so
+    // stale or restored Later state cannot bypass the gate. Recovery
+    // returns to the form where the time can be chosen.
+    if (!state.dest || !state.pickup || !state.selectedClass || !isScheduleValid()) {
       e.preventDefault();
-      if (!state.dest || !state.pickup) return goTo('a');
+      if (!state.dest || !state.pickup || !isScheduleValid()) return goTo('a');
       return goTo('b');
     }
     if (!IS_AUTHENTICATED) {
@@ -1856,7 +1892,10 @@
     }
     hDropoff.value = state.dest;
     hPickup.value = state.pickup;
-    finalizePickupTime();
+    // UI-14-F1: finalizePickupTime reports whether the schedule could
+    // be honored; a false return blocks the POST (unreachable when the
+    // gate above held, kept as an explicit second lock).
+    if (!finalizePickupTime()) { e.preventDefault(); return goTo('a'); }
     hVehicleCls.value = state.selectedClass;
     goTo('d');
     // Do NOT preventDefault — browser POSTs to transport.book_transport.

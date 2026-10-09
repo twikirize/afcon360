@@ -97,10 +97,14 @@ def test_swap_handler_swaps_geocode_evidence_fields():
     swap_block = text[swap_start:text.index("});", swap_start)]
     assert "getElementById('pickup_geocode')" in swap_block
     assert "getElementById('dropoff_geocode')" in swap_block
-    assert (
-        "var swapGeo = pg.value; pg.value = dg.value; dg.value = swapGeo;"
+    # UI-01: capture both echoes before __mapSwapSides, which clears
+    # non-search echoes while pins are transiently absent.
+    assert "var swapGeoP = pg ? pg.value : '', swapGeoD = dg ? dg.value : '';" \
         in swap_block
-    )
+    assert "if (pg) pg.value = swapGeoD;" in swap_block
+    assert "if (dg) dg.value = swapGeoP;" in swap_block
+    assert swap_block.index("__mapSwapSides") < swap_block.index(
+        "dg.value = swapGeoP;")
     # provenance swap (D3) must still be wired alongside it
     assert "__mapSwapSides" in swap_block
 
