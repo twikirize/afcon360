@@ -222,6 +222,11 @@ class Config:
     TRANSPORT_DISPATCH_RECOVERY_BATCH = int(os.getenv("TRANSPORT_DISPATCH_RECOVERY_BATCH", "50"))
     # MATCH-01-owned: matching window per attempt in seconds (pre-approved: 3 min).
     TRANSPORT_MATCHING_WINDOW_SECONDS = int(os.getenv("TRANSPORT_MATCHING_WINDOW_SECONDS", "180"))
+    # Schema-adoption rollout gate (docs/transport/SCHEMA-ADOPTION-PLAN.md §5.5).
+    # Default False everywhere: shadow mode. Enforcement is opt-in per env.
+    TRANSPORT_BOOKING_SCHEMA_ENFORCE = (
+        os.environ.get("TRANSPORT_BOOKING_SCHEMA_ENFORCE", "false").lower() == "true"
+    )
 
     # ---- Email --------------------------------------------------------------
     MAIL_SERVER         = os.getenv("MAIL_SERVER",    "smtp.gmail.com")

@@ -50,7 +50,7 @@ class NotificationService:
 
             if notification_type == 'booking_created':
                 recipients = [booking.user_id]
-                message_template = "Your booking #{booking_reference} has been confirmed. Pickup at {pickup_time}."
+                message_template = "We received your ride request #{booking_reference} and are finding your driver. Pickup at {pickup_time}."
 
             elif notification_type == 'driver_assigned':
                 if booking.assigned_driver_id:

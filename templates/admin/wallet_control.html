@@ -25,7 +25,7 @@
     </div>
 </div>
 
-<style>
+<style nonce="{{ csp_nonce }}">
 .switch {
     position: relative;
     display: inline-block;
@@ -71,7 +71,7 @@ input:checked + .slider:before {
 }
 </style>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // Load current status on page load
 fetch('/api/admin/wallet/status')
     .then(res => res.json())

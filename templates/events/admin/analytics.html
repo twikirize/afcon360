@@ -14,7 +14,7 @@
 
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/base_events.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/events/dashboard.css') }}">
-  <style>
+  <style nonce="{{ csp_nonce }}">
     .summary { display:flex; gap:14px; flex-wrap:wrap; margin-top:18px; }
     .stat-card {
       flex:1; min-width:170px; background:var(--brand-surface); border:1px solid var(--brand-border);

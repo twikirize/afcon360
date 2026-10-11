@@ -89,7 +89,7 @@ def test_review_button_requires_committable_schedule():
 def test_review_never_implies_schedule_without_valid_time():
     text = _template()
     assert "later today" not in text
-    assert ("? (isScheduleValid() ? 'Scheduled for ' + fmtSched(schedAt.value)"
+    assert ("? (isScheduleValid() ? 'Pickup scheduled for ' + fmtSched(schedAt.value)"
             " : 'Select a scheduled time.')" in text)
 
 
@@ -108,7 +108,7 @@ def test_finalize_reports_instead_of_substituting_now():
 def test_submit_guard_revalidates_schedule_with_recovery():
     text = _template()
     start = text.index("form.addEventListener('submit', function(e){")
-    block = text[start:start + 1500]
+    block = text[start:start + 3000]
     assert ("if (!state.dest || !state.pickup || !state.selectedClass "
             "|| !isScheduleValid()) {") in block
     assert "if (!finalizePickupTime()) { e.preventDefault(); return goTo('a'); }" in block

@@ -23,9 +23,11 @@
     /* While status is one of these, the rider is still being matched. */
     var MATCHING = { pending_payment: true, confirmed: true };
     /* Bounded search budget (FS-6b): max MATCHING status polls before the
-       panel truthfully admits no driver is coming. At the 3.5s cadence
-       below, 60 polls ≈ 3.5 minutes. Named and adjustable; never tied to
-       fake availability and never a backend state change. */
+       panel tells the rider the search is taking longer than expected.
+       At the 3.5s cadence below, 60 polls = ~3.5 minutes. Named and
+       adjustable; never tied to fake availability and never a backend
+       state change. UI-16-A: budget exhaustion is NOT a terminal
+       verdict — the backend booking may still be genuinely matching. */
     var SEARCH_BUDGET_POLLS = 60;
     var polls = 0;
     var finished = false;
@@ -171,32 +173,37 @@
     }
 
     function enterNoSupply() {
-        /* Truthful terminal state: budget exhausted while the booking is
-           still genuinely matching. No backend change, no fake driver,
-           no new booking — rider-facing polling ends here. */
+        /* UI-16-A: in-progress pause, NOT a terminal verdict. The client
+           polling budget is exhausted while the backend booking is still
+           genuinely matching, so the copy must keep describing an ongoing
+           search — never "no drivers available". No backend change, no
+           fake driver, no new booking; rider-facing polling pauses here
+           until the rider resumes it. (Internal names kept; only the
+           rider-visible copy and this comment changed.) */
         finished = true;
         noSupply = true;
         if (optTimer) { clearInterval(optTimer); optTimer = null; }
         if (pingEl) pingEl.className = 'rm-step done';
         if (availEl) availEl.textContent =
-            'No drivers available right now. ' +
-            'Try again later or choose another transport option.';
+            'Still checking for drivers. ' +
+            'This is taking longer than expected.';
         if (optsEl) {
             optsEl.innerHTML = '';
             var btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'btn btn-secondary rm-retry';
-            btn.textContent = 'Try Again';
+            btn.textContent = 'Keep checking';
             btn.addEventListener('click', retrySearch);
             optsEl.appendChild(btn);
         }
     }
 
     function retrySearch() {
-        /* Explicit rider retry against the SAME booking: reset the
-           frontend budget and restart the existing pollers. statusUrl
-           and optionsUrl are unchanged, so no second booking can result
-           and no backend dispatch state is touched. */
+        /* Explicit rider resume of status polling against the SAME
+           booking: reset the frontend budget and restart the existing
+           pollers. statusUrl and optionsUrl are unchanged, no POST to
+           the server-side retry endpoint happens here, so no second
+           booking can result and no backend dispatch state is touched. */
         if (!noSupply) return;
         noSupply = false;
         finished = false;

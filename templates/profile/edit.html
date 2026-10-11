@@ -2,7 +2,7 @@
 {% block title %}Edit profile — AFCON360{% endblock %}
 
 {% block styles %}
-<style>
+<style nonce="{{ csp_nonce }}">
 *, *::before, *::after { box-sizing: border-box; }
 body { background: var(--bg); color: var(--text); font-family: var(--font-body); min-height: 100vh; }
 
@@ -466,7 +466,7 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
 function previewAvatar(url) {
   const circle = document.getElementById('avatar-preview');
   const initials = document.getElementById('avatar-initials');

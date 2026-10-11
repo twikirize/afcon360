@@ -3,7 +3,7 @@
 {% block title %}Role Users - {{ role.name|replace('_', ' ')|title }} - AFCON360 Admin{% endblock %}
 
 {% block styles %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .roles-header {
         background: linear-gradient(135deg, #6f42c1 0%, #5a32a3 100%);
         color: white;

@@ -98,7 +98,7 @@
 <!-- Pagination -->
 <nav id="pagination-container" style="margin-top:16px;display:flex;justify-content:center;gap:6px;flex-wrap:wrap;"></nav>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 let currentPage = 1;
 let perPage = 20;
 let totalPages = 1;
@@ -272,7 +272,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<style>
+<style nonce="{{ csp_nonce }}">
 .status-badge {
     display: inline-block;
     padding: 2px 10px;

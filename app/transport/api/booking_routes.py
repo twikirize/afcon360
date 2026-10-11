@@ -58,8 +58,15 @@ def _current_user_is_admin():
         and hasattr(current_user, "has_global_role")
         and current_user.has_global_role("admin", "super_admin", "owner")
     )
-    # DEBUG
-    print(f"[DEBUG _current_user_is_admin] user_id={getattr(current_user,'id',None)} auth={current_user.is_authenticated} has_glob_role={hasattr(current_user,'has_global_role')} active_role={session.get('active_global_role')} result={result}")
+    logger.debug(
+        "_current_user_is_admin user_id=%s auth=%s has_global_role=%s "
+        "active_role=%s result=%s",
+        getattr(current_user, "id", None),
+        current_user.is_authenticated,
+        hasattr(current_user, "has_global_role"),
+        session.get("active_global_role"),
+        result,
+    )
     return result
 
 

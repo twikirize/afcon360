@@ -359,7 +359,7 @@
   {% endif %}
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function switchView(viewType) {
   const currentUrl = new URL(window.location.href);
   currentUrl.searchParams.set('view_type', viewType);

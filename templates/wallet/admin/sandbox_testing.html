@@ -3,7 +3,7 @@
 {% block title %}Sandbox Testing - Payment Gateways{% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
 .sandbox-dashboard {
     display: grid;
     grid-template-columns: 1fr 2fr;
@@ -581,7 +581,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 let currentGateway = 'paypal';
 let currentEnvironment = 'sandbox';
 let testResults = [];

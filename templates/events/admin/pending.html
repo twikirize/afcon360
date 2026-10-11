@@ -46,7 +46,7 @@
     {% endif %}
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function rejectEvent(eventSlug) {
     const reason = prompt('Please enter rejection reason:');
     if (reason) {

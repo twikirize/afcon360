@@ -45,6 +45,54 @@
   var DEBOUNCE_MS = 300;    // implementation constant, not a contract value
   var BLUR_HIDE_MS = 150;   // keeps an option mousedown/click reachable
 
+  /* Geo session cache (client layer): stores provider responses under a
+   * normalised query key. Independent per-file copy so a bug in one
+   * search module cannot affect the other. sessionStorage only. */
+  var GEO_CACHE_KEY = 'geo:cached:v1';
+  var GEO_CACHE_MAX = 30;
+  var GEO_POS_TTL_MS = 24 * 60 * 60 * 1000;   // 24h
+  var GEO_NEG_TTL_MS = 5 * 60 * 1000;         // 5min
+
+  function geoNorm(s) {
+    return (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  function geoCacheGet(q) {
+    try {
+      var raw = sessionStorage.getItem(GEO_CACHE_KEY);
+      if (!raw) return null;
+      var store = JSON.parse(raw);
+      var entry = store[geoNorm(q)];
+      if (!entry) return null;
+      var age = Date.now() - entry.ts;
+      var ttl = entry.empty ? GEO_NEG_TTL_MS : GEO_POS_TTL_MS;
+      if (age > ttl) {
+        delete store[geoNorm(q)];
+        sessionStorage.setItem(GEO_CACHE_KEY, JSON.stringify(store));
+        return null;
+      }
+      return entry.results;
+    } catch (e) { return null; }
+  }
+
+  function geoCacheSet(q, results) {
+    try {
+      var raw = sessionStorage.getItem(GEO_CACHE_KEY);
+      var store = raw ? JSON.parse(raw) : {};
+      store[geoNorm(q)] = {
+        ts: Date.now(),
+        empty: !results || results.length === 0,
+        results: results || []
+      };
+      var keys = Object.keys(store);
+      if (keys.length > GEO_CACHE_MAX) {
+        keys.sort(function(a, b) { return store[a].ts - store[b].ts; });
+        for (var i = 0; i < keys.length - GEO_CACHE_MAX; i++) delete store[keys[i]];
+      }
+      sessionStorage.setItem(GEO_CACHE_KEY, JSON.stringify(store));
+    } catch (e) { /* quota or private mode — silently skip */ }
+  }
+
   var input    = document.getElementById('inputDest');
   var wrap     = document.getElementById('dropoffSearch');
   var list     = document.getElementById('dropoffResults');
@@ -229,6 +277,8 @@
 
   function runSearch(text, mySeq) {
     if (mySeq !== searchSeq) return;
+    var cached = geoCacheGet(text);
+    if (cached) { render(cached); return; }
     var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
     inflight = ctrl;
     fetch(ENDPOINT + '?q=' + encodeURIComponent(text), {
@@ -246,6 +296,7 @@
         showUnavailable();
         return;
       }
+      if (Array.isArray(data.results)) geoCacheSet(text, data.results);
       render(data.results);
     }).catch(function () {
       if (mySeq !== searchSeq) return;        /* aborted/stale — silent */

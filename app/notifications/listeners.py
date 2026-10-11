@@ -67,8 +67,22 @@ def register_notification_listeners():
     @kyc_submitted.connect
     def _on_kyc_submitted(sender, **kwargs):
         try:
-            NotificationService.notify_kyc_submitted(
-                user_id=kwargs.get('user_id'), kyc_record=kwargs.get('record')
+            # Admin/notification fan-out is slow (one SMTP call per reviewer);
+            # dispatch it off the request thread. Only primitive ids cross the
+            # boundary — the ORM instance belongs to the caller's session.
+            from app.notifications.dispatch import dispatch_notification
+            from app.notifications.delivery import deliver_kyc_submitted
+            from app.notifications.tasks import notify_kyc_submitted_task
+            record = kwargs.get('record')
+            user_id = kwargs.get('user_id') or (record.user_id if record else None)
+            record_id = record.id if record else None
+            if user_id is None:
+                return
+            dispatch_notification(
+                deliver_kyc_submitted,
+                celery_task=notify_kyc_submitted_task,
+                user_id=user_id,
+                kyc_record_id=record_id,
             )
         except Exception as e:
             logger.error(f"kyc submitted notification failed: {e}")
@@ -76,8 +90,19 @@ def register_notification_listeners():
     @kyc_approved.connect
     def _on_kyc_approved(sender, **kwargs):
         try:
-            NotificationService.notify_kyc_approved(
-                user_id=kwargs.get('user_id'), kyc_record=kwargs.get('record')
+            from app.notifications.dispatch import dispatch_notification
+            from app.notifications.delivery import deliver_kyc_approved
+            from app.notifications.tasks import notify_kyc_approved_task
+            record = kwargs.get('record')
+            user_id = kwargs.get('user_id') or (record.user_id if record else None)
+            record_id = record.id if record else None
+            if user_id is None:
+                return
+            dispatch_notification(
+                deliver_kyc_approved,
+                celery_task=notify_kyc_approved_task,
+                user_id=user_id,
+                kyc_record_id=record_id,
             )
         except Exception as e:
             logger.error(f"kyc approved notification failed: {e}")
@@ -257,7 +282,10 @@ def register_notification_listeners():
         try:
             booking = kwargs.get('booking')
             if booking:
-                NotificationService.notify_booking_confirmed(booking)
+                # Truthful lifecycle: the booking is committed CONFIRMED for
+                # assignment purposes but no driver has accepted yet, so the
+                # rider is told the request was received (never "confirmed").
+                NotificationService.notify_transport_ride_requested(booking)
         except Exception as e:
             logger.error(f"transport booking notification failed: {e}")
 

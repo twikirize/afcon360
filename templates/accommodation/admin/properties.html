@@ -4,7 +4,7 @@
 {% block module_styles %}  
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
 
-<style>
+<style nonce="{{ csp_nonce }}">
 .acc-admin { padding: 2rem 1.5rem; }
 
 /* ── Header ── */
@@ -571,7 +571,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // ── Bulk Actions ──
 function toggleAll() {
   const checked = document.getElementById('selectAll').checked;

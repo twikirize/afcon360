@@ -20,7 +20,7 @@
   <!-- Theme System CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/dark-mode.css') }}">
-  <style>
+  <style nonce="{{ csp_nonce }}">
     /* ── DESIGN TOKENS ── */
     :root {
       --bg:         var(--bg-body, #f5f4f1);
@@ -761,7 +761,7 @@
 {% endif %}
 
 {% if is_pane %}
-    <style>
+    <style nonce="{{ csp_nonce }}">
         /* Inline styles for pane mode */
         .wallet-pane-content { padding: 20px; }
         .panel { margin-bottom: 24px; border-radius: 8px; padding: 20px; }
@@ -916,7 +916,7 @@
     </div>
   </main>
 
-  <script>
+  <script nonce="{{ csp_nonce }}">
     // Sidebar toggle for mobile
     const sidebar = document.getElementById('sidebar');
     const toggle = document.getElementById('sidebarToggle');
@@ -938,7 +938,7 @@
 
     {% block extra_script %}{% endblock %}
   </script>
-  <script src="{{ url_for('static', filename='js/global/theme-manager.js') }}" defer></script>
+  <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/global/theme-manager.js') }}" defer></script>
 </body>
 </html>
 {% else %}

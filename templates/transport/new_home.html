@@ -3,7 +3,7 @@
 
 {% block styles %}
 {{ super() }}
-<style>
+<style nonce="{{ csp_nonce }}">
 /* ============================================================
    AFCON360 Transport — Rider Booking Flow
    Design decisions applied:
@@ -375,6 +375,25 @@
   box-shadow:none;cursor:not-allowed;
 }
 .bolt-cta-hint{opacity:.85;display:inline-flex}
+
+/* ---------- UI-14-D1: secondary edit control (Review stage) ---------- */
+#btnEditTrip{
+  width:100%;
+  display:flex;align-items:center;justify-content:center;
+  gap:10px;
+  margin-top:10px;
+  padding:14px 20px;
+  background:transparent;
+  color:#0B522B;
+  border:2px solid #E2E8F0;
+  border-radius:16px;
+  font-size:.95rem;font-weight:700;
+  cursor:pointer;
+  min-height:52px;
+}
+#btnEditTrip:hover{border-color:#0B522B}
+#btnEditTrip:active{transform:translateY(1px)}
+#btnEditTrip:focus-visible{outline:3px solid #BFE6C9;outline-offset:2px}
 
 /* ---------- Sticky CTA wrap (mobile only) ---------- */
 .bolt-cta-wrap{
@@ -1214,11 +1233,20 @@
         </div>
       </div>
 
+      {# UI-14-D5: the action submits a ride request (booking creation
+         followed by a driver-matching attempt) — it does not mean a
+         driver is already secured. Keep ID, type, badge and behavior. #}
       <button type="submit" class="bolt-cta" id="btnConfirm">
-        <span>Confirm</span>
+        <span>Request ride</span>
         <span class="bolt-cta-pay">
           <i class="bi bi-cash-coin"></i><span>Cash</span>
         </span>
+      </button>
+      {# UI-14-D1: state-preserving edit path. type="button" so it can
+         never submit the form; goTo('a') keeps every in-memory and
+         hidden-field value intact (forward flow re-renders/refreshes). #}
+      <button type="button" id="btnEditTrip" aria-label="Edit trip details">
+        <i class="bi bi-pencil-square" aria-hidden="true"></i><span>Edit trip</span>
       </button>
     </div>
   </section>
@@ -1248,13 +1276,13 @@
     <div class="bolt-panel">
       <div class="bolt-matching">
         <div class="bolt-spinner"></div>
-        <h3>Finding your driver</h3>
-        <p>Connecting you with the nearest available driver.</p>
+        <h3>Sending your ride request…</h3>
+        <p>Please wait while we send your request.</p>
 
         <div class="bolt-match-progress" id="matchSteps">
           <div class="bolt-step is-active" data-step="0">
             <span class="dot"><i class="bi bi-search"></i></span>
-            <span>Finding your driver</span>
+            <span>Sending your ride request…</span>
           </div>
           <div class="bolt-step" data-step="1">
             <span class="dot"><i class="bi bi-person-badge"></i></span>
@@ -1307,6 +1335,10 @@
     svcType: '{{ default_service }}', vip: false,
     selectedClass: null, selectedFare: null, selectedName: null,
     fareBreakdown: null, distanceKm: null,
+    // UI-14-D1-followup: the rider's chosen class, kept as a preference
+    // across Edit-trip navigation. Only ever honored against freshly
+    // returned options; fare/details always come from the fresh response.
+    preferredClass: null,
     schedule: 'now'
   };
 
@@ -1776,7 +1808,18 @@
       el.addEventListener('click', function(){ selectOption(el, currency); });
     });
     var first = optionsBox.querySelector('.bolt-veh');
-    if (first) first.click();
+    // UI-14-D1-followup: when the rider already chose a class (e.g. via
+    // Edit trip), restore that choice if the fresh response still offers
+    // it. Fare, currency, breakdown and details are read from the freshly
+    // rendered option by selectOption — stale pricing is never restored.
+    // Otherwise the existing first-option behavior applies.
+    var target = null;
+    if (state.preferredClass) {
+      target = optionsBox.querySelector(
+        '.bolt-veh[data-class="' + state.preferredClass + '"]');
+    }
+    if (!target) target = first;
+    if (target) target.click();
   }
 
   function selectOption(el, currency){
@@ -1785,6 +1828,9 @@
     });
     el.classList.add('is-selected');
     state.selectedClass = el.dataset.class;
+    // UI-14-D1-followup: remember the choice as the cross-navigation
+    // preference. It is only honored against fresh options on reload.
+    state.preferredClass = el.dataset.class;
     state.selectedFare = Number(el.dataset.fare);
     state.selectedName = el.dataset.name;
     state.currency = currency;
@@ -1816,6 +1862,14 @@
     if (!btnReview.disabled) goTo('c');
   });
 
+  // UI-14-D1: backward navigation preserves the whole trip (inputs,
+  // pins, coords, sources, schedule, selection). Nothing is cleared
+  // here; continuing forward re-runs the existing options/fare flow.
+  var btnEditTrip = document.getElementById('btnEditTrip');
+  if (btnEditTrip) btnEditTrip.addEventListener('click', function(){
+    goTo('a');
+  });
+
   // ---------- State C ----------
   function renderConfirm(){
     sumPickup.textContent = state.pickup || '—';
@@ -1840,7 +1894,9 @@
       // UI-14-F1: never imply a schedule exists when the time is
       // missing or invalid (defensive: the gates above should already
       // have blocked this path).
-      ? (isScheduleValid() ? 'Scheduled for ' + fmtSched(schedAt.value) : 'Select a scheduled time.')
+      // UI-14 Review clarity: 'Pickup scheduled for' makes it clear
+      // this is the pickup time; matching starts immediately.
+      ? (isScheduleValid() ? 'Pickup scheduled for ' + fmtSched(schedAt.value) : 'Select a scheduled time.')
       : 'Leaving now.';
   }
   function fareRow(label, value, strong){
@@ -1916,6 +1972,17 @@
     // gate above held, kept as an explicit second lock).
     if (!finalizePickupTime()) { e.preventDefault(); return goTo('a'); }
     hVehicleCls.value = state.selectedClass;
+    // UI-15: pending guard runs last — only a committable submission
+    // reaches it, so the button is never disabled on a blocked path.
+    var btnConfirm = document.getElementById('btnConfirm');
+    if (btnConfirm) {
+      btnConfirm.disabled = true;
+      btnConfirm.setAttribute('aria-busy', 'true');
+      btnConfirm.innerHTML = '<span>Sending your ride request…</span>' +
+        '<span class="bolt-cta-pay"><i class="bi bi-cash-coin"></i><span>Cash</span></span>';
+    }
+    var boltForm = document.getElementById('boltForm');
+    if (boltForm) boltForm.setAttribute('aria-busy', 'true');
     goTo('d');
     // Do NOT preventDefault — browser POSTs to transport.book_transport.
   });

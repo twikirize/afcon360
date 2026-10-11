@@ -105,9 +105,10 @@ class KycRecord(ProtectedModel):
                 risk_score += 0.3
                 risk_factors.append('under_21')
         
-        # Country risk
+        # Country risk - kyc_records.country is ISO 3166-1 alpha-2 (matching
+        # the rest of the platform), so the high-risk list must be alpha-2 too.
         if self.country:
-            high_risk_countries = ['AFG', 'IRN', 'PRK', 'SYR', 'MMR', 'SSD', 'VEN', 'YEM']
+            high_risk_countries = ['AF', 'IR', 'KP', 'SY', 'MM', 'SS', 'VE', 'YE']
             if self.country in high_risk_countries:
                 risk_score += 0.6
                 risk_factors.append('high_risk_country')

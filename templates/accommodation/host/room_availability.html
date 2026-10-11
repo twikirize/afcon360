@@ -4,7 +4,7 @@
 {% block module_styles %}  
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
 
-<style>
+<style nonce="{{ csp_nonce }}">
   .ra-shell { padding: 1.5rem 0; }
   .ra-header {
     background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;

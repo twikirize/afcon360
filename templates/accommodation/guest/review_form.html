@@ -106,7 +106,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 const ratingLabels = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'];
 function setRating(value) {
     document.getElementById('overall_rating').value = value;
@@ -124,7 +124,7 @@ function setRating(value) {
 }
 </script>
 
-<style>
+<style nonce="{{ csp_nonce }}">
 .star-btn {
     background: none;
     border: none;

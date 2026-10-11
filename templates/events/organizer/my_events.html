@@ -7,7 +7,7 @@
 {% block title %}My Events - AFCON360{% endblock %}
 
 {% block content %}
-<style>
+<style nonce="{{ csp_nonce }}">
 /* ───── root colors ───── */
 :root {
     --primary-green: #0b3d2e;
@@ -423,7 +423,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function shareEvent(url, name) {
     if (navigator.share) {
         navigator.share({

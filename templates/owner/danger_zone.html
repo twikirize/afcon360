@@ -3,7 +3,7 @@
 {% block title %}⚠️ Danger Zone - AFCON360 Owner{% endblock %}
 
 {% block styles %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .danger-zone {
         background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
         min-height: 100vh;
@@ -237,7 +237,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
     // Confirm dangerous actions
     document.addEventListener('DOMContentLoaded', function() {
         const dangerButtons = document.querySelectorAll('.danger-btn');

@@ -631,7 +631,7 @@ class TestOfferService:
         monkeypatch.setattr("app.transport.services.offer_service.redis_client", fake)
         ref = f"REF-SWP-{uuid.uuid4().hex[:8]}"
         OfferService.create_offer(ref, driver_id=50, vehicle_id=60, ttl=300)
-        fake.delete(OfferService._offer_key(ref))
+        fake.delete(OfferService._offer_key(ref, 50))
         cleared = OfferService.sweep_expired()
         assert cleared >= 1
 
@@ -875,7 +875,7 @@ class TestCleanupOfferNoneSafe:
             assert fake.smembers(
                 OfferService._driver_key(123)) == set()
             assert fake.hgetall(
-                OfferService._offer_key("REF-CLEANUP")) == {}
+                OfferService._offer_key("REF-CLEANUP", 123)) == {}
 
 
 # =====================================================================

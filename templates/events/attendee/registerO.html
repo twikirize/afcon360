@@ -10,7 +10,7 @@ RELATED: events.register route
 {% block title %}Register for {{ event.name }} - AFCON360{% endblock %}
 
 {% block content %}
-<style>
+<style nonce="{{ csp_nonce }}">
     /* Modern Event Registration Form Styles */
     .event-registration-wrapper {
         min-height: 100vh;
@@ -1036,12 +1036,12 @@ RELATED: events.register route
 
 <div id="event-context" data-user-registered="{{ 'true' if event_data.user_registered else 'false' }}"
      style="display:none"></div>
-<script type="application/json" id="ticket-types-json">{{
+<script nonce="{{ csp_nonce }}" type="application/json" id="ticket-types-json">{{
     (event.ticket_types
     or []) | tojson | safe
 }
 }</script>
-<script type="application/json" id="event-currency-json">{{
+<script nonce="{{ csp_nonce }}" type="application/json" id="event-currency-json">{{
     (event.currency
     or
     ''
@@ -1051,8 +1051,8 @@ RELATED: events.register route
     |
     safe
 }}</script>
-<script src="{{ url_for('static', filename='js/modules/events/event-register.js') }}"></script>
-<script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/events/event-register.js') }}"></script>
+<script nonce="{{ csp_nonce }}">
     document.addEventListener('DOMContentLoaded', function () {
         const bookingTypeSelect = document.getElementById('booking_type');
         const thirdPartyFields = document.getElementById('third_party_fields');

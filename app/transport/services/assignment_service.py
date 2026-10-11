@@ -288,6 +288,23 @@ class AssignmentService:
         if passenger_user_id:
             AssignmentService._notify_assigned(passenger_user_id, booking_id, booking_ref)
 
+        # Offer-scoped cleanup: the winning driver's per-driver offer is
+        # consumed by a claim. Remove just that transient hash (the 
+        # offer-collision fix makes each driver's offer independent, so
+        # losers keep theirs until they decline/expire). Best-effort —
+        # never fatal, mirrors release() below; an accepted hash simply
+        # TTLs out if Redis is unavailable.
+        try:
+            from app.transport.services.offer_service import OfferService
+
+            OfferService.cleanup_offer(booking_ref, driver_id)
+        except Exception:
+            current_app.logger.warning(
+                "offer cleanup after claim failed (non-fatal) for booking %s",
+                booking_ref,
+                exc_info=True,
+            )
+
         logger.info("Dispatch claim committed for booking %s (driver=%s, vehicle=%s)",
                     booking_ref, driver_id, vehicle_id)
 
@@ -364,7 +381,10 @@ class AssignmentService:
             event_type="ACTUAL_END",
             snapshot=None,  # actual events don't carry snapshot
             geo_observation_public_id=geo_obs_id,
-            actor_user_id=driver_id,
+            # Actor is the DRIVER'S USER id (users.id FK) — driver_id here
+            # is the DriverProfile id (see row.assigned_driver_id), so it
+            # must be resolved through the profile, never stored directly.
+            actor_user_id=driver.user_id,
             transition_at=transition_at,
             event_metadata={
                 "freshness": freshness,
@@ -410,10 +430,6 @@ class AssignmentService:
                 "invalid_state", f"{terminal} is not a terminal release status"
             )
 
-        # Capture ACTUAL_END lifecycle event if transitioning to COMPLETED
-        if terminal == BookingStatus.COMPLETED.value:
-            _capture_actual_end(booking_id, row.assigned_driver_id, row.assigned_vehicle_id)
-
         row = db.session.execute(
             sa.select(
                 Booking.__table__.c.id,
@@ -450,6 +466,15 @@ class AssignmentService:
                     "booking is not in an active assignment state",
                     booking_id=booking_id,
                 )
+
+            # Capture ACTUAL_END lifecycle event when transitioning to
+            # COMPLETED. Placed after the guarded transition so the event
+            # exists only when the transition actually occurs; it commits
+            # in the same transaction below (atomic with the release).
+            if terminal == BookingStatus.COMPLETED.value:
+                AssignmentService._capture_actual_end(
+                    booking_id, row.assigned_driver_id,
+                    row.assigned_vehicle_id)
 
             # SUPPLY-00a: release no longer writes is_available. Under the
             # corrected model, is_available means "qualified" and is not

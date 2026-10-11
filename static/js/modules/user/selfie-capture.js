@@ -13,7 +13,7 @@
  *   capture.init();
  */
 class SelfieCapture {
-  constructor({ containerId, onCapture, onError }) {
+  constructor({ containerId, onCapture, onError, idleTimeoutMs }) {
     this.container = document.getElementById(containerId);
     this.onCapture = onCapture || function () {};
     this.onError = onError || function (err) { console.error('SelfieCapture:', err); };
@@ -26,6 +26,10 @@ class SelfieCapture {
     this.isCapturing = false;
     this.facingMode = 'user';
     this.qualityCheckRAF = null;
+    // Camera opens only on demand and closes itself after this many ms with no
+    // camera action (default 30s), returning to the idle "take selfie" button.
+    this.idleTimeoutMs = typeof idleTimeoutMs === 'number' ? idleTimeoutMs : 30000;
+    this.idleTimer = null;
   }
 
   async init() {
@@ -34,6 +38,12 @@ class SelfieCapture {
     this.videoEl = this.container.querySelector('.sc-preview-video');
     this.canvasEl = this.container.querySelector('.sc-canvas');
     this.ctx = this.canvasEl.getContext('2d', { willReadFrequently: true });
+
+    const startBtn = this.container.querySelector('.sc-btn-start');
+    if (startBtn) startBtn.addEventListener('click', () => this._startCamera());
+
+    const cancelBtn = this.container.querySelector('.sc-btn-cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', () => this._idleStop());
 
     this.container.querySelector('.sc-btn-capture').addEventListener('click', () => this._capture());
     this.container.querySelector('.sc-btn-retake').addEventListener('click', () => this._retake());
@@ -50,12 +60,45 @@ class SelfieCapture {
       fallbackInput.addEventListener('change', (e) => this._onFallbackFile(e));
     }
 
-    await this._startCamera();
+    // Do not open the camera on page load — wait for the user to ask for it.
+    this._setState('idle');
   }
 
   destroy() {
+    this._clearIdleTimer();
     this._stopCamera();
     if (this.qualityCheckRAF) cancelAnimationFrame(this.qualityCheckRAF);
+  }
+
+  /* ── Idle auto-stop ───────────────────────────────────── */
+
+  _armIdleTimer() {
+    this._clearIdleTimer();
+    if (!this.idleTimeoutMs) return;
+    this.idleTimer = setTimeout(() => this._idleStop(), this.idleTimeoutMs);
+  }
+
+  _clearIdleTimer() {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+  }
+
+  _idleStop() {
+    this._clearIdleTimer();
+    this._stopCamera();
+    if (this.qualityCheckRAF) {
+      cancelAnimationFrame(this.qualityCheckRAF);
+      this.qualityCheckRAF = null;
+    }
+    this._setState('idle');
+    this._setIdleNote('Camera closed after inactivity. Tap to try again.');
+  }
+
+  _setIdleNote(text) {
+    const note = this.container.querySelector('.sc-idle-note');
+    if (note) note.textContent = text;
   }
 
   /* ── Camera lifecycle ─────────────────────────────────── */
@@ -71,6 +114,7 @@ class SelfieCapture {
       await this.videoEl.play();
       this._setState('preview');
       this._startQualityCheck();
+      this._armIdleTimer();
     } catch (err) {
       this._onCameraError(err);
     }
@@ -91,6 +135,7 @@ class SelfieCapture {
   }
 
   _onCameraError(err) {
+    this._clearIdleTimer();
     const name = err.name || err.constructor.name;
     let msg = 'Camera access is required for selfie verification.';
     if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
@@ -108,6 +153,7 @@ class SelfieCapture {
 
   _capture() {
     if (!this.stream || !this.videoEl.videoWidth) return;
+    this._clearIdleTimer();
 
     const vw = this.videoEl.videoWidth;
     const vh = this.videoEl.videoHeight;
@@ -139,6 +185,7 @@ class SelfieCapture {
 
   _confirm() {
     if (!this.capturedDataUrl) return;
+    this._clearIdleTimer();
     this._setState('confirmed');
     this.onCapture(this.capturedDataUrl);
   }
@@ -246,8 +293,17 @@ class SelfieCapture {
 
   _render() {
     this.container.innerHTML = `
-      <div class="sc-wrapper" data-state="preview">
-        <div class="sc-camera-section">
+      <div class="sc-wrapper" data-state="idle">
+        <div class="sc-idle-section">
+          <div class="sc-idle-icon"><i class="bi bi-camera"></i></div>
+          <p class="sc-idle-text">Tap to open the camera and take your selfie.</p>
+          <button type="button" class="sc-btn sc-btn-start">
+            <i class="bi bi-camera"></i> Take selfie
+          </button>
+          <p class="sc-idle-note" role="status"></p>
+        </div>
+
+        <div class="sc-camera-section" style="display:none;">
           <div class="sc-preview-container">
             <video class="sc-preview-video" autoplay playsinline muted></video>
             <canvas class="sc-canvas" style="display:none;"></canvas>
@@ -272,18 +328,21 @@ class SelfieCapture {
               <span class="sc-quality-dot"></span>
               <span class="sc-quality-text">Checking...</span>
             </div>
-          </div>
 
-          <div class="sc-preview-actions">
-            <button type="button" class="sc-btn sc-btn-switch" title="Switch camera">
-              <i class="bi bi-camera-reverse"></i>
-            </button>
-            <button type="button" class="sc-btn sc-btn-capture" title="Take selfie">
-              <span class="sc-btn-capture-ring"></span>
-            </button>
-            <button type="button" class="sc-btn sc-btn-retake" title="Retake" style="display:none;">
-              <i class="bi bi-arrow-counterclockwise"></i>
-            </button>
+            <div class="sc-preview-actions">
+              <button type="button" class="sc-btn sc-btn-switch" title="Switch camera">
+                <i class="bi bi-camera-reverse"></i>
+              </button>
+              <button type="button" class="sc-btn sc-btn-capture" title="Take selfie">
+                <span class="sc-btn-capture-ring"></span>
+              </button>
+              <button type="button" class="sc-btn sc-btn-cancel" title="Cancel">
+                <i class="bi bi-x-lg"></i>
+              </button>
+              <button type="button" class="sc-btn sc-btn-retake" title="Retake" style="display:none;">
+                <i class="bi bi-arrow-counterclockwise"></i>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -330,6 +389,7 @@ class SelfieCapture {
     wrapper.setAttribute('data-state', state);
 
     const sections = {
+      idle: '.sc-idle-section',
       preview: '.sc-camera-section',
       review: '.sc-review-section',
       confirmed: '.sc-confirmed-section',
@@ -415,6 +475,8 @@ class SelfieCapture {
       this.onError(new Error('Please select an image file'));
       return;
     }
+    this._clearIdleTimer();
+    this._stopCamera();
     const reader = new FileReader();
     reader.onload = (ev) => {
       this.capturedDataUrl = ev.target.result;

@@ -3,7 +3,7 @@
 {% block title %}Payment Aggregator - Admin{% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
 .aggregator-dashboard {
     display: grid;
     grid-template-columns: 1fr 2fr;
@@ -539,7 +539,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // Initialize charts
 function initializeCharts() {
     // Gateway distribution chart

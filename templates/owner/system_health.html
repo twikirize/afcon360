@@ -3,7 +3,7 @@
 {% block title %}📊 System Health - AFCON360 Owner{% endblock %}
 
 {% block styles %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .health-dashboard {
         background: #f8f9fa;
         min-height: 100vh;
@@ -225,7 +225,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
     // Auto-refresh health data every 30 seconds
     setTimeout(function() {
         window.location.reload();

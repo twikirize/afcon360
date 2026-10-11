@@ -64,12 +64,12 @@
     </div>
 </div>
 
-<script src="https://unpkg.com/html5-qrcode"></script>
+<script nonce="{{ csp_nonce }}" src="https://unpkg.com/html5-qrcode"></script>
 {% endblock %}
 
 {% block scripts %}
 {{ super() }}
-<script>
+<script nonce="{{ csp_nonce }}">
     const html5QrCode = new Html5Qrcode("reader");
     const resultDiv = document.getElementById('result');
     const restartBtn = document.getElementById('restart-btn');

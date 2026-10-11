@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <style>
+  <style nonce="{{ csp_nonce }}">
     .filter-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
     .filter-tab {
       padding:7px 16px; border-radius:6px; font-family:var(--font-mono);
@@ -556,7 +556,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
 /* ═══════════════════════════════════════════════════════════════
    STATE — which event is the current modal targeting
 ═══════════════════════════════════════════════════════════════ */
@@ -791,5 +791,5 @@ const style = document.createElement('style');
 style.textContent = '@keyframes shake { 0%,100%{transform:none} 20%,60%{transform:translateX(-6px)} 40%,80%{transform:translateX(6px)} }';
 document.head.appendChild(style);
 </script>
-<script src="{{ url_for('static', filename='js/modules/admin/admin_moderation.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/admin/admin_moderation.js') }}"></script>
 {% endblock %}

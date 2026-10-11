@@ -3,7 +3,7 @@
 {% block title %}Authentication Settings - AFCON360{% endblock %}
 
 {% block styles %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .auth-settings-container {
         max-width: 1200px;
         margin: 0 auto;
@@ -476,7 +476,7 @@
     </form>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function testService(service) {
     fetch(`{{ url_for('admin.owner.test_auth_service', service='SERVICE') }}`.replace('SERVICE', service), {
         method: 'POST',

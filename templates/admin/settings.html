@@ -8,7 +8,7 @@
     <link href="{{ url_for('static', filename='css/admin.css') }}" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
-    <style>
+    <style nonce="{{ csp_nonce }}">
         :root {
             --primary-color: #4299e1;
             --success-color: #48bb78;
@@ -1317,8 +1317,8 @@
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
-    <script>
+    <script nonce="{{ csp_nonce }}" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+    <script nonce="{{ csp_nonce }}">
         // Initialize toastr
         toastr.options = {
             "closeButton": true,
@@ -2132,6 +2132,6 @@
             window.open('{{ safe_url('transport.audit_log') }}', '_blank');
         }
     </script>
-    <script src="{{ url_for('static', filename='js/global/theme-manager.js') }}" defer></script>
+    <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/global/theme-manager.js') }}" defer></script>
 </body>
 </html>

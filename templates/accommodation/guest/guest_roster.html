@@ -143,5 +143,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/modules/accommodation/guest_roster.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/accommodation/guest_roster.js') }}"></script>
 {% endblock %}

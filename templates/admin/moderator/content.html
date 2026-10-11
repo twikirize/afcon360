@@ -156,7 +156,7 @@
 {% endblock %}
 
 {% block extra_style %}
-<style>
+<style nonce="{{ csp_nonce }}">
 .bulk-action-bar {
   display: none;
   padding: 12px 18px;
@@ -174,7 +174,7 @@
 {% endblock %}
 
 {% block extra_script %}
-<script>
+<script nonce="{{ csp_nonce }}">
 function toggleSelectAll() {
   const selectAll = document.getElementById('selectAll');
   const checkboxes = document.querySelectorAll('.row-checkbox');

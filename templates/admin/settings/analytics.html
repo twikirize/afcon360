@@ -127,7 +127,7 @@
     </div>
 </div>
 
-<style>
+<style nonce="{{ csp_nonce }}">
 .metric-box {
     background: white;
     border-radius: 10px;
@@ -155,7 +155,7 @@
 .metric-box-warning { border-left: 4px solid #ffc107; }
 </style>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function exportAnalytics() {
     // Export analytics data
     const data = {

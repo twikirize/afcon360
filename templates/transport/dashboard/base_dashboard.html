@@ -12,14 +12,14 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 
   <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script nonce="{{ csp_nonce }}" src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
   <!-- Leaflet Maps -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script nonce="{{ csp_nonce }}" src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <!-- Socket.IO -->
-  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script nonce="{{ csp_nonce }}" src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 
   <!-- Theme System CSS -->
   <meta name="user-authenticated" content="true">
@@ -30,7 +30,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/base.css') }}">
 
   <!-- Submenu styles injected here so they work without extra CSS file -->
-  <style>
+  <style nonce="{{ csp_nonce }}">
     /* ── Submenu ── */
     .nav-item.has-submenu > .submenu-toggle {
       display: flex;
@@ -468,12 +468,12 @@
 <div id="modalContainer"></div>
 
 <!-- Scripts -->
-<script src="{{ url_for('static', filename='js/modules/transport/utils.js') }}"></script>
-<script src="{{ url_for('static', filename='js/modules/transport/base.js') }}"></script>
-<script src="{{ url_for('static', filename='js/modules/transport/charts.js') }}"></script>
-<script src="{{ url_for('static', filename='js/modules/transport/realtime.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/utils.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/base.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/charts.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/realtime.js') }}"></script>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // ── Sidebar toggle ──
 function toggleSidebar() {
   const s = document.getElementById('sidebar');
@@ -538,8 +538,8 @@ const AFCON_CONFIG = {
 </script>
 
 <!-- Theme Manager -->
-<script src="{{ url_for('static', filename='js/global/theme-manager.js') }}"></script>
-<script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/global/theme-manager.js') }}"></script>
+<script nonce="{{ csp_nonce }}">
   document.addEventListener('DOMContentLoaded', function() {
     if (typeof ThemeManager !== 'undefined') {
       window.themeManager = new ThemeManager();

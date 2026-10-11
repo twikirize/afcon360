@@ -121,7 +121,7 @@
     </div>
 </div>
 
-<style>
+<style nonce="{{ csp_nonce }}">
 .host-card {
     transition: all 0.2s;
 }
@@ -157,7 +157,7 @@
 }
 </style>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 let currentEventSlug = '{{ event.slug }}';
 let hosts = [];
 let selectedHostId = null;

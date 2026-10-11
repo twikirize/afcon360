@@ -271,7 +271,7 @@
   </div>
 </div>
 
-<style>
+<style nonce="{{ csp_nonce }}">
   .training-module {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -343,7 +343,7 @@
   }
 </style>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function startModule(moduleId) {
   window.location.href = `/moderator/training/module/${moduleId}/start`;
 }

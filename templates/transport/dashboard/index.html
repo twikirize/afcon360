@@ -8,8 +8,8 @@
 {% endblock %}
 
 {% block extra_css %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<style>
+<script nonce="{{ csp_nonce }}" src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style nonce="{{ csp_nonce }}">
   .dashboard-grid {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
@@ -345,7 +345,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 const chartDefaults = {
   responsive: true,
   maintainAspectRatio: false,

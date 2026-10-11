@@ -6,8 +6,8 @@
 {% endblock %}
 
 {% block extra_css %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<style>
+<script nonce="{{ csp_nonce }}" src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style nonce="{{ csp_nonce }}">
 .driver-detail-grid { display:grid; grid-template-columns:300px 1fr; gap:16px; }
 @media(max-width:900px) { .driver-detail-grid { grid-template-columns:1fr; } }
 .rating-bar { display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:0.75rem; }
@@ -158,7 +158,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 const ctx = document.getElementById('perfChart').getContext('2d');
 new Chart(ctx, {
   type: 'radar',

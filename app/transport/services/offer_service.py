@@ -10,11 +10,15 @@ Redis is unavailable -- a lost/expired offer must never corrupt, stall, or
 bypass assignment state.
 
 Keys:
-  transport:offer:{booking_ref}                 -> HASH (offer metadata + status)
+  transport:offer:{booking_ref}:{driver_id}     -> HASH (per-driver offer metadata + status)
   transport:driver:{driver_id}:offers           -> SET  (booking refs offered to the driver)
   transport:offer:index:booking:{booking_ref}   -> SET  (driver ids offered on the booking)
 
-Offer status values: ``offered`` -> ``accepted`` (via atomic Lua CAS only).
+One offer hash per (booking, driver). The previous single shared hash
+``transport:offer:{booking_ref}`` let one driver's accept/decline overwrite
+another driver's offer on the same booking (offer-collision); it is still
+*read* as a legacy fallback but never written. Offer status values:
+``offered`` -> ``accepted`` (via atomic Lua CAS only).
 """
 import logging
 import time
@@ -144,8 +148,19 @@ class OfferService:
     # Keys
     # ------------------------------------------------------------------ #
     @classmethod
-    def _offer_key(cls, booking_ref: str) -> str:
-        return f"{cls.PREFIX_OFFER}:{booking_ref}"
+    def _offer_key(cls, booking_ref: str, driver_id: Optional[int] = None) -> str:
+        """Per-driver offer hash key.
+
+        The old layout used ONE shared hash ``transport:offer:{booking_ref}``,
+        so driver A's accept/decline overwrote the offer being shown to
+        driver B on the same booking. Every write is now scoped to the
+        driver; ``driver_id`` omitted addresses the legacy unnamed fallback
+        key for backward-compatible reads only.
+        """
+        base = f"{cls.PREFIX_OFFER}:{booking_ref}"
+        if driver_id is None:
+            return base
+        return f"{base}:{driver_id}"
 
     @classmethod
     def _driver_key(cls, driver_id: int) -> str:
@@ -154,6 +169,14 @@ class OfferService:
     @classmethod
     def _index_key(cls, booking_ref: str) -> str:
         return f"{cls.PREFIX_INDEX}:booking:{booking_ref}"
+
+    @classmethod
+    def _driver_id_from_key(cls, driver_key: str) -> Optional[int]:
+        """Parse the driver id out of ``transport:driver:{id}:offers``."""
+        try:
+            return int(_to_str(driver_key).split(":")[-2])
+        except (IndexError, ValueError, TypeError):
+            return None
 
     @classmethod
     def _ttl(cls) -> int:
@@ -181,7 +204,7 @@ class OfferService:
         """
         ttl = ttl or cls._ttl()
         expires_at = int(time.time()) + ttl
-        key = cls._offer_key(booking_ref)
+        key = cls._offer_key(booking_ref, driver_id)
         dkey = cls._driver_key(driver_id)
         ikey = cls._index_key(booking_ref)
         try:
@@ -301,24 +324,70 @@ class OfferService:
     def get_offer(
         cls, booking_ref: str, driver_id: Optional[int] = None
     ) -> Optional[Dict[str, Any]]:
-        """Read the current offer for a booking (optionally filtered to a
-        driver). Returns None when missing/expired/Redis unavailable."""
+        """Read the current offer for a booking.
+
+        With ``driver_id``: the independent per-driver offer hash for exactly
+        that driver, any status. Without it: the booking-wide live offer —
+        the first index member still holding an OFFERED hash (an accepted
+        winner was removed from the index, so a consumed offer is never
+        reported as still available); the legacy unnamed hash is consulted
+        last. Returns None when missing/expired/Redis unavailable.
+        """
+        if driver_id is not None:
+            return cls._read_offer(booking_ref, int(driver_id))
+        return cls._booking_offer(booking_ref)
+
+    @classmethod
+    def _read_offer(
+        cls, booking_ref: str, driver_id: int
+    ) -> Optional[Dict[str, Any]]:
+        try:
+            data = redis_client.hgetall(cls._offer_key(booking_ref, driver_id))
+        except Exception:
+            return None
+        if not data:
+            return None
+        offer: Dict[str, Any] = {_to_str(k): _to_str(v) for k, v in data.items()}
+        if offer.get("driver_id") and offer.get("driver_id") != _to_str(driver_id):
+            return None
+        return cls._coerce_offer(offer)
+
+    @classmethod
+    def _booking_offer(cls, booking_ref: str) -> Optional[Dict[str, Any]]:
+        """First index member that still holds an independent OFFERED hash."""
+        try:
+            members = redis_client.smembers(cls._index_key(booking_ref)) or []
+        except Exception:
+            members = []
+        for raw in members:
+            try:
+                member_driver = int(_to_str(raw))
+            except (TypeError, ValueError):
+                continue
+            offer = cls._read_offer(booking_ref, member_driver)
+            if offer and offer.get("status") == OFFER_STATUS_OFFERED:
+                return offer
         try:
             data = redis_client.hgetall(cls._offer_key(booking_ref))
         except Exception:
             return None
         if not data:
             return None
-        offer: Dict[str, Any] = {_to_str(k): _to_str(v) for k, v in data.items()}
-        if driver_id is not None and offer.get("driver_id") != _to_str(driver_id):
+        legacy = {_to_str(k): _to_str(v) for k, v in data.items()}
+        if legacy.get("status") != OFFER_STATUS_OFFERED:
             return None
-        offer["driver_id"] = int(offer.get("driver_id") or 0) or None
-        offer["vehicle_id"] = int(offer.get("vehicle_id") or 0) or None
+        return cls._coerce_offer(legacy)
+
+    @staticmethod
+    def _coerce_offer(offer: Dict[str, Any]) -> Dict[str, Any]:
+        out = dict(offer)
+        out["driver_id"] = int(out.get("driver_id") or 0) or None
+        out["vehicle_id"] = int(out.get("vehicle_id") or 0) or None
         try:
-            offer["expires_at"] = int(offer.get("expires_at") or 0)
+            out["expires_at"] = int(out.get("expires_at") or 0)
         except (TypeError, ValueError):
-            offer["expires_at"] = 0
-        return offer
+            out["expires_at"] = 0
+        return out
 
     @classmethod
     def list_driver_offers(cls, driver_id: int) -> List[Dict[str, Any]]:
@@ -691,7 +760,7 @@ class OfferService:
         ``offer_conflict`` when the offer is gone or already accepted, and
         ``OfferUnavailableError`` when Redis fails.
         """
-        key = cls._offer_key(booking_ref)
+        key = cls._offer_key(booking_ref, driver_id)
         dkey = cls._driver_key(driver_id)
         ikey = cls._index_key(booking_ref)
         try:
@@ -725,7 +794,7 @@ class OfferService:
         except Exception:
             status = None
 
-        if status is None:
+        if status is None and cls._booking_offer(booking_ref) is None:
             raise DispatchClaimError(
                 "offer_expired",
                 "offer has expired or no longer exists",
@@ -733,7 +802,8 @@ class OfferService:
             )
         raise DispatchClaimError(
             "offer_conflict",
-            "offer is not in an acceptable state (already accepted or withdrawn)",
+            "offer is not in an acceptable state (already accepted or withdrawn "
+            "for another driver on this booking)",
             booking_ref=booking_ref,
         )
 
@@ -748,7 +818,7 @@ class OfferService:
         cancellation_rate/acceptance_rate (verified by
         tests/transport/test_match01_retry.py).
         """
-        key = cls._offer_key(booking_ref)
+        key = cls._offer_key(booking_ref, driver_id)
         dkey = cls._driver_key(driver_id)
         ikey = cls._index_key(booking_ref)
         try:
@@ -791,23 +861,37 @@ class OfferService:
     @classmethod
     def cleanup_offer(cls, booking_ref: str, driver_id: Optional[int] = None) -> None:
         """Best-effort removal of an offer from all transient structures.
-        Used after a failed claim or on cancellation/release."""
+        Used after a failed claim, on the winning driver's successful claim,
+        or on cancellation/release.
+
+        Scoped call (``driver_id``): removes exactly that driver's per-driver
+        hash plus its references in the driver SET and the booking index.
+        Booking-wide call (``driver_id=None``): iterates the booking index,
+        removes every per-driver hash and driver-SET reference, then the
+        legacy unnamed hash and the index key itself. Never raises (D-15);
+        Redis failures are logged and swallowed.
+        """
         try:
-            key = cls._offer_key(booking_ref)
-            data = redis_client.hgetall(key)
-            owner_driver = (
-                _to_str(data.get("driver_id")) if data and data.get("driver_id") else None
-            )
-            actual_driver = (
-                _to_str(driver_id) if driver_id is not None else owner_driver
-            )
-            # D-15-guard: when the offer hash already expired there is no
-            # owner left; SREM with None would raise a Redis TypeError for
-            # nothing left to clean — silent no-op instead.
-            if actual_driver is not None:
-                redis_client.srem(cls._index_key(booking_ref), actual_driver)
-                redis_client.srem(cls._driver_key(int(actual_driver)), booking_ref)
-            redis_client.delete(key)
+            index_key = cls._index_key(booking_ref)
+            if driver_id is not None:
+                target = _to_str(driver_id)
+                redis_client.delete(cls._offer_key(booking_ref, driver_id))
+                redis_client.srem(index_key, target)
+                redis_client.srem(cls._driver_key(int(driver_id)), booking_ref)
+                return
+            try:
+                members = redis_client.smembers(index_key) or []
+            except Exception:
+                members = []
+            for raw in members:
+                try:
+                    member_driver = int(_to_str(raw))
+                except (TypeError, ValueError):
+                    continue
+                redis_client.delete(cls._offer_key(booking_ref, member_driver))
+                redis_client.srem(cls._driver_key(member_driver), booking_ref)
+            redis_client.delete(cls._offer_key(booking_ref))
+            redis_client.delete(index_key)
         except Exception as exc:
             logger.warning("offer cleanup failed (Redis) for %s: %s", booking_ref, exc)
 
@@ -833,9 +917,13 @@ class OfferService:
                 except Exception:
                     continue
 
+                driver_id = cls._driver_id_from_key(dkey)
+                if driver_id is None:
+                    continue
+
                 stale = [
                     m for m in (members or [])
-                    if cls.get_offer(_to_str(m)) is None
+                    if cls.get_offer(_to_str(m), driver_id) is None
                 ]
 
                 if stale:

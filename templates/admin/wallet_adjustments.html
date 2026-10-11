@@ -69,7 +69,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 async function loadRequests(status = 'pending') {
     // Update button states
     document.querySelectorAll('.btn-group .btn').forEach(btn => {

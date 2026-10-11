@@ -52,6 +52,15 @@
         no_match: 'pay-pill-fail'
     };
 
+    /* show.html server badge labels (`sc` map, lines ~215-266): confirmed is
+       never shown as "Confirmed" (no driver has accepted yet) and no_match
+       is "No match found", not a title-cased "No Match". titleCase is the
+       fallback for every status NOT enumerated here. */
+    var BADGE_LABEL = {
+        confirmed: 'Finding your driver',
+        no_match: 'No match found'
+    };
+
     /* Bounded polling contract (repo patterns: 3.5s-30s intervals,
      * AbortController timeout in show.html cancelRide). */
     var POLL_MS = 5000;
@@ -155,7 +164,7 @@
         if (!badgeEl) return;
         badgeEl.className = 'badge ' +
             (BADGE_CLASS[status] || 'pay-pill-pending');
-        badgeEl.textContent = titleCase(status);
+        badgeEl.textContent = BADGE_LABEL[status] || titleCase(status);
         badgeEl.setAttribute('data-status', status);
     }
 

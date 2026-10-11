@@ -7,7 +7,7 @@
 
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <style>
+  <style nonce="{{ csp_nonce }}">
     :root {
       --bk-radius: clamp(10px, 2vw, 16px);
       --bk-gap: clamp(12px, 2.5vw, 20px);
@@ -253,7 +253,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
   function openRestore(publicId) {
     document.getElementById('restoreForm').action =
       "{{ url_for('admin.owner.owner_backup.restore_backup', public_id='__PID__') }}".replace('__PID__', publicId);

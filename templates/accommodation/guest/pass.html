@@ -4,7 +4,7 @@
 
 {% block head %}
 {{ super() }}
-<style>
+<style nonce="{{ csp_nonce }}">
     /* ---- Single-page printable pass -------------------------------------- */
     @page {
         size: A4 portrait;

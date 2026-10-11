@@ -228,6 +228,48 @@ def test_upload_selfie_required_for_identity_doc_and_optional_for_evidence(app, 
     assert captured_ev.get("selfie_url") is None
 
 
+def test_upload_post_normalizes_country_name_to_iso2(app, client, test_user, monkeypatch):
+    """A free-text profile country (e.g. "Uganda") must be coerced to an
+    ISO 3166-1 alpha-2 code before persisting: kyc_records.country is
+    varchar(2), so submitting a full country name previously raised
+    StringDataRightTruncation and 500'd the upload."""
+    _pair_complete_profile(app, test_user, country="Uganda")
+    _login_client(client, test_user)
+
+    captured = {}
+    _stub_upload_submit(monkeypatch, captured)
+
+    resp = client.post(
+        "/kyc/verify/upload",
+        data={
+            "kyc_type": "individual",
+            "id_type": "national_id",
+            "id_number": "CANON-999",
+            "city": "Kampala",
+            "country": "Uganda",
+            "kyc_doc_file": (io.BytesIO(b"doc"), "doc.png", "image/png"),
+            "selfie_file": (io.BytesIO(b"selfie"), "selfie.png", "image/png"),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert captured.get("country") == "UG"
+
+
+def test_upload_form_prefills_country_as_iso2_when_profile_has_a_name(app, client, test_user):
+    """The upload form must prefill a 2-char ISO code even when the profile
+    holds a full country name, so the submitted value fits kyc_records.country."""
+    _pair_complete_profile(app, test_user, country="Uganda")
+    _login_client(client, test_user)
+
+    resp = _upload_page(client, preselect="national_id")
+    assert resp.status_code == 200
+    body = resp.data.decode("utf-8")
+    assert 'id="country" name="country" value="UG"' in body
+    assert 'value="Uganda"' not in body
+
+
 def test_upload_html_has_canonical_marker_and_no_identity_reentry_inputs():
     """Template-level guard: verify_upload.html carries the canonical markers
     the single-entry prefill/lock rely on and no duplicate identity inputs."""

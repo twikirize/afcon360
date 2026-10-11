@@ -6,7 +6,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
 
 {{ super() }}
-<style>
+<style nonce="{{ csp_nonce }}">
     .risk-indicator {
         width: 20px;
         height: 20px;

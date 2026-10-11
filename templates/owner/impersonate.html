@@ -3,7 +3,7 @@
 {% block title %}👑 Owner Master Key - Impersonation Portal{% endblock %}
 
 {% block styles %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .impersonate-container {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         min-height: 100vh;
@@ -235,7 +235,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
     const searchInput = document.getElementById('userSearch');
     const roleBtns = document.querySelectorAll('.role-btn');
     const userCards = document.querySelectorAll('.user-card');

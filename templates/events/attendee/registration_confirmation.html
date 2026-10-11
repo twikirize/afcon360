@@ -9,7 +9,7 @@
 {% block title %}Registration Confirmed - {{ event.name }}{% endblock %}
 
 {% block content %}
-<style>
+<style nonce="{{ csp_nonce }}">
 /* Modern Registration Confirmation Styles */
 .confirmation-wrapper {
     min-height: 100vh;
@@ -954,7 +954,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script>
+<script nonce="{{ csp_nonce }}">
 function cancelRegistration() {
     var eventName = "{{ event.name|e }}";
     if (confirm('Cancel your registration for ' + eventName + '? This cannot be undone.')) {

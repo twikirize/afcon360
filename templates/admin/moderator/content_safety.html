@@ -306,7 +306,7 @@
   </div>
 </div>
 
-<style>
+<style nonce="{{ csp_nonce }}">
   .policy-category {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -384,7 +384,7 @@
   }
 </style>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function viewPolicyDetails(policyId) {
   window.location.href = `/moderator/content-safety/policy/${policyId}`;
 }

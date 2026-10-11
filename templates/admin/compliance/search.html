@@ -6,7 +6,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
 
 {{ super() }}
-<style>
+<style nonce="{{ csp_nonce }}">
     .timeline-event {
         border-left: 4px solid #dee2e6;
         padding-left: 15px;
@@ -242,7 +242,7 @@
     {% endif %}
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function approveEvent(auditId) {
     if (confirm('Approve this audit event?')) {
         fetch(`/owner/api/compliance/review/${auditId}`, {

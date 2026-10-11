@@ -3,7 +3,7 @@
 {% block title %}Financial Controller - Admin{% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
 .financial-controller {
     display: grid;
     grid-template-columns: 1fr 2fr;
@@ -621,7 +621,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // Toggle gateway activation
 function toggleGateway(gateway) {
     const toggle = event.target;

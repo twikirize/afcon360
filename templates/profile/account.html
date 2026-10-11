@@ -4,7 +4,7 @@
 {% block styles %}  
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
 
-<style>
+<style nonce="{{ csp_nonce }}">
 *, *::before, *::after { box-sizing: border-box; }
 body { background: var(--bg); color: var(--text); font-family: var(--font-body); min-height: 100vh; }
 
@@ -678,7 +678,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
 function revokeSession(sessionId, btn) {
   if (!confirm('Revoke this session? The device will be signed out.')) return;
   btn.textContent = '…';

@@ -3,7 +3,7 @@
 {% block title %}Moderate Property — {{ property.title }}{% endblock %}
 
 {% block module_styles %}
-<style>
+<style nonce="{{ csp_nonce }}">
 .moderation-container { padding: 2rem; max-width: 1400px; margin: 0 auto; }
 
 /* ── Header ── */
@@ -500,7 +500,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function openChangeModal(publicId, propertyId) {
   // Routes still use internal property_id; public_id is reserved for display/audit only.
   document.getElementById('changeModal').style.display = 'flex';

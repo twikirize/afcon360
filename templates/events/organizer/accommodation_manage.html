@@ -318,7 +318,7 @@ jane@example.com,456,community_host</pre>
     </div>
 </div>
 
-<style>
+<style nonce="{{ csp_nonce }}">
 .list-group-item {
     cursor: pointer;
     transition: all 0.2s;
@@ -359,7 +359,7 @@ jane@example.com,456,community_host</pre>
 }
 </style>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 let currentEventSlug = '{{ event.slug }}';
 let attendees = [];
 let unassignedAttendees = [];

@@ -3,7 +3,7 @@
 {% block title %}My Preferences - Accessibility Settings{% endblock %}
 
 {% block styles %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .preference-card {
         background: var(--bg-surface);
         border-radius: var(--radius-lg);
@@ -374,7 +374,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
     // Font size demo logic
     const fontSizeSlider = document.getElementById('fontSizeSlider');

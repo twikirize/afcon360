@@ -169,7 +169,11 @@ class MatchingService:
         Offer creation degrades safely: any Redis failure leaves the booking
         CONFIRMED/unassigned for rediscovery on the next recovery beat.
         """
-        from app.transport.services.offer_service import OfferService, OfferUnavailableError
+        from app.transport.services.offer_service import (
+                    OfferService,
+                    OfferUnavailableError,
+                    OFFER_STATUS_ACCEPTED,
+                )
 
         try:
             booking = db.session.get(Booking, booking_id)
@@ -203,13 +207,20 @@ class MatchingService:
                     # Freshness gate: notify only when this driver had no
                     # live offer before this create, so the recovery beat
                     # re-offering the same trip never spams the inbox.
-                    fresh = (
-                        OfferService.get_offer(
-                            booking.booking_reference, driver_id=driver_id
-                        )
-                        is None
+                    existing = OfferService.get_offer(
+                        booking.booking_reference, driver_id=driver_id
                     )
-                    OfferService.create_offer(booking.booking_reference, driver_id, vehicle_id)
+                    if existing is not None and (
+                        existing.get("status") == OFFER_STATUS_ACCEPTED
+                    ):
+                        # The driver already accepted this trip and is
+                        # mid-claim (or the claim finished and cleanup owned
+                        # it). Never reset an accepted CAS state to offered.
+                        continue
+                    fresh = existing is None
+                    OfferService.create_offer(
+                        booking.booking_reference, driver_id, vehicle_id
+                    )
                     created.append(driver_id)
                     if fresh:
                         _notify_driver_new_offer(booking, driver_id)

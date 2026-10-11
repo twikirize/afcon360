@@ -267,6 +267,6 @@
 </div>
 
 {% block module_scripts %}
-<script src="{{ url_for('static', filename='js/modules/accommodation/checkout.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/accommodation/checkout.js') }}"></script>
 {% endblock %}
 {% endblock %}

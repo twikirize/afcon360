@@ -22,8 +22,10 @@ AFCON360 GEO - HTTP surface (control-plane integration slice).
 Full location/routing/geocoding endpoints arrive with their service nodes.
 """
 
-from flask import abort, jsonify, render_template
+from flask import abort, current_app, jsonify, render_template
 from flask_login import login_required
+import hashlib
+import json
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
@@ -32,6 +34,29 @@ from app.geo import geo_bp
 from app.utils.exceptions import RateLimitError
 from app.utils.module_guard import require_module_enabled
 from app.utils.rate_limiting import rate_limit
+
+
+def _geo_cache_key(q: str) -> str:
+    norm = " ".join((q or "").strip().lower().split())
+    return "geo:geocode:v1:" + hashlib.sha1(norm.encode("utf-8")).hexdigest()
+
+
+def _geo_cache_get(key: str):
+    try:
+        from app.extensions import redis_client
+        raw = redis_client.get(key)
+        return json.loads(raw) if raw else None
+    except Exception:
+        return None
+
+
+def _geo_cache_set(key: str, value, empty: bool = False) -> None:
+    try:
+        from app.extensions import redis_client
+        ttl = 300 if empty else 86400
+        redis_client.setex(key, ttl, json.dumps(value))
+    except Exception:
+        pass
 
 
 @geo_bp.errorhandler(RateLimitError)
@@ -213,6 +238,12 @@ def geocode_search():
             }), 400
     limit = min(limit, 5)
 
+    key = _geo_cache_key(query)
+    cached = _geo_cache_get(key)
+    if cached is not None:
+        current_app.logger.debug("geo cache hit q=%s", query)
+        return jsonify(cached)
+
     # Per-request service from the existing env/config surface: no global
     # wiring change, and the existing get_geocoding_service() singleton
     # (provider-less default) stays untouched for its current callers.
@@ -249,7 +280,7 @@ def geocode_search():
                 item["osm_id"] = raw["osm_id"]
         items.append(item)
 
-    return jsonify({
+    payload = {
         "success": True,
         "query": query,
         # Answer-based provider identity: who actually resolved the
@@ -258,7 +289,9 @@ def geocode_search():
         "results": items,
         "attribution": _provider_attribution(
             items[0]["provider"] if items else "unresolved"),
-    }), 200
+    }
+    _geo_cache_set(key, payload, empty=not payload.get("results"))
+    return jsonify(payload), 200
 
 
 @geo_bp.get("/api/reverse")

@@ -5,7 +5,7 @@
 {% block module_styles %}
   {{ super() }}
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <style>
+  <style nonce="{{ csp_nonce }}">
     /* ── Role badges (kept on-brand, toned down to match the SAD shell) ── */
     .role-badge {
       display: inline-flex;
@@ -465,7 +465,7 @@
 
 {% block module_scripts %}
 {{ super() }}
-<script>
+<script nonce="{{ csp_nonce }}">
 (function() {
   /* ── Select all / deselect all ── */
   var selectAllCheckbox = document.getElementById('selectAllCheckbox');

@@ -10,7 +10,7 @@
 {% block title %}Register for {{ event.name }} - AFCON360{% endblock %}
 
 {% block content %}
-<style>
+<style nonce="{{ csp_nonce }}">
     #main {
         padding: 0 !important;
         margin: 0 !important;

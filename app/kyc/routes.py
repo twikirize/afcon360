@@ -69,6 +69,44 @@ _KYC_ID_TYPE_OPTIONS = [
 _IDENTITY_ID_TYPES = frozenset({"national_id", "passport", "driver_license", "voter_card"})
 
 
+# ── Country normalization (ISO 3166-1 alpha-2) ────────────────────────────────
+# The user profile stores a free-text country (String(64)) while
+# kyc_records.country is a 2-char ISO 3166-1 alpha-2 code and the rest of the
+# platform (organisation, licence, payment gateways) uses alpha-2. Coerce the
+# value so a profile name such as "Uganda" can never overflow the column.
+_COUNTRY_NAME_TO_ISO2 = {
+    "uganda": "UG", "kenya": "KE", "tanzania": "TZ", "rwanda": "RW",
+    "burundi": "BI", "south sudan": "SS", "sudan": "SD", "ethiopia": "ET",
+    "somalia": "SO", "nigeria": "NG", "ghana": "GH", "south africa": "ZA",
+    "egypt": "EG", "morocco": "MA", "algeria": "DZ", "tunisia": "TN",
+    "democratic republic of the congo": "CD", "dr congo": "CD",
+    "republic of the congo": "CG", "congo": "CG",
+    "united kingdom": "GB", "great britain": "GB", "england": "GB",
+    "united states": "US", "united states of america": "US", "usa": "US",
+    "canada": "CA", "india": "IN", "china": "CN",
+    "france": "FR", "germany": "DE", "netherlands": "NL",
+    "united arab emirates": "AE", "saudi arabia": "SA", "qatar": "QA",
+    "australia": "AU", "brazil": "BR", "japan": "JP",
+}
+
+
+def _normalize_country_iso2(value):
+    """Coerce a free-text country into a 2-char ISO 3166-1 alpha-2 code.
+
+    Accepts an existing alpha-2 code as-is; maps a known country name to its
+    code; otherwise returns ``None`` so the nullable column stays valid rather
+    than raising a truncation error. Never invents a code for unknown input.
+    """
+    if not value:
+        return None
+    v = value.strip()
+    if not v:
+        return None
+    if len(v) == 2 and v.isalpha():
+        return v.upper()
+    return _COUNTRY_NAME_TO_ISO2.get(v.lower())
+
+
 # ── Tier metadata (used by upgrade + limits pages) ────────────────────────────
 TIER_INFO = {
     TIER_0_UNREGISTERED: {
@@ -531,6 +569,21 @@ def submit_national_id():
         flash_form_error("All fields are required.")
         return redirect(url_for("kyc.verify_national_id_page"))
 
+    # Server-side re-submission guard: the GET form is hidden once a National ID
+    # submission is under review or verified, but that is UI-only. Enforce the
+    # rule here so a direct POST cannot create a duplicate record.
+    existing_national = KycRecord.query.filter_by(
+        user_id=current_user.id, record_type="nira_national_id"
+    ).order_by(KycRecord.created_at.desc()).first()
+    if existing_national and (existing_national.status or "").lower() in {
+        "pending", "manual_review", "under_review", "verified", "approved"
+    }:
+        flash_form_error(
+            "Your National ID verification has already been submitted and is "
+            "under review. You will be notified once a review decision is made."
+        )
+        return redirect(url_for("kyc.verify_national_id_page"))
+
     # ── 1. Run NIRA verification (format + manual review queue) ──────────────
     result = verify_national_id(
         id_number=id_number,
@@ -839,6 +892,25 @@ def _get_verified_id_types(user_id):
         if (record.status or "pending").lower() in VERIFIED and record.id_type:
             verified.add(record.id_type.lower())
     return verified
+
+
+def _get_open_id_types(user_id):
+    """
+    Return the set of ``id_type`` values with a submission still under review.
+
+    Used to gate the individual upload form so a document type that is already
+    queued for review is not submitted a second time while the first is pending.
+    Compliance-requested replacements bypass this gate via the dedicated
+    reupload token flow (handled before this branch).
+    """
+    from app.kyc.models import KycRecord
+
+    OPEN = {"pending", "manual_review", "under_review"}
+    open_types = set()
+    for record in KycRecord.query.filter_by(user_id=user_id).all():
+        if (record.status or "").lower() in OPEN and record.id_type:
+            open_types.add(record.id_type.lower())
+    return open_types
 
 
 def _get_user_organisations():
@@ -1231,6 +1303,17 @@ def verify_upload():
                 )
                 return redirect(url_for('kyc.upload'))
 
+            # Per-type gate: do not accept a duplicate submission while a
+            # document type of the same kind is already queued for review. The
+            # first submission stands; the user is told to wait for the outcome.
+            if id_type and id_type.lower() in _get_open_id_types(current_user.id):
+                flash_form_error(
+                    f'Your {id_type} document is already submitted and under '
+                    'review. You will be notified once the review is complete — '
+                    'please do not submit it again.'
+                )
+                return redirect(url_for('kyc.upload'))
+
             # Prefer an uploaded file; fall back to a pasted URL. A file is
             # uploaded server-side in this same request (no client polling).
             document_url = None
@@ -1305,7 +1388,7 @@ def verify_upload():
                     city=request.form.get('city'),
                     state=request.form.get('state'),
                     postal_code=request.form.get('postal_code'),
-                    country=request.form.get('country'),
+                    country=_normalize_country_iso2(request.form.get('country')),
                 )
                 flash('Documents uploaded successfully! They will be reviewed shortly.', 'success')
                 return redirect(url_for('kyc.status'))
@@ -1398,7 +1481,7 @@ def verify_upload():
         profile = getattr(canonical_identity, 'profile', None)
         canonical_id_type = canonical_identity.id_type
         canonical_id_number = canonical_identity.id_number
-        canonical_country = getattr(profile, 'country', None) if profile is not None else None
+        canonical_country = _normalize_country_iso2(getattr(profile, 'country', None)) if profile is not None else None
         canonical_city = getattr(profile, 'city', None) if profile is not None else None
         canonical_full_name = (canonical_identity.full_name or '').strip()
 

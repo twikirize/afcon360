@@ -548,5 +548,5 @@ document.getElementById('confirmTransportBtn').addEventListener('click', async f
     }
 });
 }</script>
-<script src="{{ url_for('static', filename='js/modules/events/guest-coordination.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/events/guest-coordination.js') }}"></script>
 {% endblock %}

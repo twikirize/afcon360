@@ -7,7 +7,7 @@
 {% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
 .vf-step { display:flex; gap:14px; padding:14px 16px; border-bottom:1px solid var(--border); align-items:flex-start; }
 .vf-step:last-child { border-bottom:none; }
 .vf-icon { width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:0.85rem; }

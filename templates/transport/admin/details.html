@@ -14,7 +14,7 @@
 {%- endmacro %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
 .booking-layout { display:grid; grid-template-columns:1fr 380px; gap:16px; }
 @media(max-width:1000px) { .booking-layout { grid-template-columns:1fr; } }
 .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:0; }

@@ -49,9 +49,10 @@ The app also returns modern hardening headers:
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 - `Referrer-Policy: strict-origin-when-cross-origin`
-- `Permissions-Policy: geolocation=(self), microphone=(), camera=(), payment=()`
+- `Permissions-Policy: geolocation=(self), microphone=(), camera=(), payment=()` by default.
   - `geolocation=(self)`: same-origin pages may use the browser Geolocation API. Required by the Driver Workspace (`/transport/driver-dashboard`) so location pings can read device position.
-  - `microphone=()`, `camera=()`, `payment=()`: explicitly denied for all origins (including same-origin). The Driver Workspace does not need them; enable individually only with an approved need.
+  - `camera=(self)` on `/kyc/*` routes only: the KYC selfie capture flow (`/kyc/verify/upload`, `/kyc/selfie/companion/*`) needs the live front camera. Every other path keeps `camera=()`. Scoped in `app/__init__.py::after_request_pipeline` by `request.path.startswith("/kyc/")`.
+  - `microphone=()`, `payment=()`: explicitly denied for all origins (including same-origin); enable individually only with an approved need.
 - `Cross-Origin-Opener-Policy: same-origin`
 - `Cross-Origin-Resource-Policy: same-origin`
 - `X-Permitted-Cross-Domain-Policies: none`
@@ -224,4 +225,82 @@ Validation steps:
 ### Rollback
 If a critical UI regression is observed:
 - Temporarily re-add `'unsafe-inline'` to `style-src` in the enforced header while fixing the offending template. Do NOT re-add `'unsafe-inline'` to `script-src`.
+
+---
+
+### Strict-mode migration (CSP_STRICT_ENFORCE — accepted endpoint)
+
+**Accepted endpoint.** Element-level inline (`<script>` and `<style>`
+blocks) requires a valid per-request nonce when the owner enables strict
+mode. Attribute-level inline — event-handler attributes (`onclick`,
+`onsubmit`, `onchange`, …) and `style="..."` attributes — is deliberately
+allowed in BOTH modes via `script-src-attr 'unsafe-inline'` and
+`style-src-attr 'unsafe-inline'`. This is the CSP specification, not a
+project choice: nonces do not apply to `on*=` or `style=` attributes, so
+the only alternatives would be `'unsafe-inline'` on the element directives
+(rejected) or converting every handler (rejected for this workstream).
+Inline handlers are NOT converted to `addEventListener` under this
+workstream; they stay as-is and keep running in both modes.
+
+**The two enforced shapes** (built in
+`app/__init__.py::after_request_pipeline`):
+
+- Permissive (flag OFF — today's behaviour): `script-src 'self'
+  'nonce-<n>' https://cdn.jsdelivr.net`, `script-src-attr 'unsafe-inline'`,
+  `style-src 'self' 'unsafe-inline' <font/CDN hosts>`, `style-src-attr
+  'unsafe-inline'`, plus the unchanged tail directives.
+- Strict (flag ON): same `script-src` and both `*-src-attr 'unsafe-inline'`
+  entries; `style-src` is replaced by `style-src-elem 'self' 'nonce-<n>'
+  <font/CDN hosts>`. No `style-src`, no `'unsafe-inline'` in `script-src`
+  or `style-src-elem`.
+
+The `Content-Security-Policy-Report-Only` header always carries the strict
+policy (plus `report-to`/`report-uri`), so violations are logged regardless
+of the flag. `upgrade-insecure-requests` stays conditional on
+`SystemConfig.CSP_UPGRADE_INSECURE` and identical across both headers. All
+other hardening headers are unchanged.
+
+**The flag.** `CSP_STRICT_ENFORCE` is a `SystemConfig` row (category
+`security`), default `false` (missing row fails closed). It is read once
+per worker into memory (`is_csp_strict_enforce` /
+`refresh_csp_strict_cache` in `app/__init__.py`); flipping it publishes to
+the Redis channel `csp:config:changed`, which every worker subscribes to at
+startup (`_subscribe_csp_strict_changes`, daemon thread, best effort —
+tests and Redis-less dev are unaffected). If Redis is unavailable,
+propagation falls back to the next worker restart. There is no env
+override; the owner toggle is the mechanism. No polling, no per-request DB
+hit.
+
+**Toggle path.** Owner dashboard settings page (`templates/owner/settings.html`,
+“Content Security Policy (CSP)” card) → `POST /owner/csp/strict-toggle`
+(`app/admin/owner/csp_routes.py`), audited via
+`@audit_owner_action('toggled_csp_strict_enforce', 'security')` with actor
+identity. Current state at `GET /owner/csp/strict-status`. Label and
+warning text are fixed by the design: confirm the CSP violation log shows
+zero R2 violations before enabling.
+
+**New-template rule.** Any new inline `<script>` or `<style>` block MUST
+carry `nonce="{{ csp_nonce }}"` (external `<script src>` too, for
+consistency). `on*=` handlers and `style="..."` attributes stay as-is.
+
+**Migration record.** Nonce-only pass over `templates/auth/`,
+`templates/transport/`, `templates/admin/` (+ `templates/owner/`),
+`templates/user/`, `templates/profile/`, `templates/events/`,
+`templates/accommodation/`, `templates/wallet/`: 340 `nonce="{{ csp_nonce
+}}"` insertions (auth 3, transport 65, admin 94, owner 36 + 1 hand-added
+with the new strict-toggle card, user 9,
+profile 7, events 60, accommodation 39, wallet 26), verified by diff to be
+insertion-only — zero `on*=` and zero `style="..."` lines modified.
+`templates/base.html` and any template outside those domains were not
+touched by this pass.
+
+**Known test interaction.** `tests/test_ui_20_csp.py` is unchanged. Two
+of its assumptions now describe the pre-strict world and are recorded here,
+not silently edited: `test_report_only_policy_is_present_and_stricter_on_style_src`
+indexes `ro["style-src"]`, but the report-only header now carries
+`style-src-elem` (no `style-src`) by design; and the `base.html` xfail
+tripwire's reason text still says handlers are “blocked (browser-proven)”
+whereas the accepted endpoint deliberately allows them via
+`script-src-attr`. The guard for the new design lives in
+`tests/test_csp_strict_flag.py`.
 

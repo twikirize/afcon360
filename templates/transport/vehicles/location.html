@@ -8,7 +8,7 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<style>#vehicleMap { height:480px; border-radius:var(--radius-lg); border:1px solid var(--border); }</style>
+<style nonce="{{ csp_nonce }}">#vehicleMap { height:480px; border-radius:var(--radius-lg); border:1px solid var(--border); }</style>
 {% endblock %}
 
 {% block content %}
@@ -31,8 +31,8 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
+<script nonce="{{ csp_nonce }}" src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script nonce="{{ csp_nonce }}">
 (function() {
   const map = L.map('vehicleMap').setView([-1.2921, 36.8219], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);

@@ -7,7 +7,7 @@
 {% block title %}Events - AFCON360{% endblock %}
 
 {% block content %}
-<style>
+<style nonce="{{ csp_nonce }}">
 /* AFCON 360 Professional Events Page - Facebook/Event.com Style */
 :root {
     /* Use the real AFCON green theme from theme-variables.css */
@@ -869,7 +869,7 @@ body {
 </section>
 {% endif %}
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // Favorite functionality
 async function toggleFavorite(button, eventId) {
     console.log('Heart clicked - Event ID:', eventId);

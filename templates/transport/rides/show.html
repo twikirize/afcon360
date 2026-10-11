@@ -16,7 +16,7 @@
 {# Leaflet CSS loads unconditionally: the tracking map may be mounted
    client-side after assignment (F-NEW-E) on a page rendered earlier. #}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
-<style>
+<style nonce="{{ csp_nonce }}">
 /* === RIDER-FACING SYSTEM STANDARD (styling only, no logic change) ===
    Tokens from css/global/theme-variables.css (loaded via user dashboard shell).
    Cards #FFFFFF on #F8FAFC · Green primary/success · Orange alerts · Slate text. */
@@ -174,7 +174,7 @@
      data-initial-status="{{ status_value }}"></div>
 
 {% set steps = ['draft','pending_payment','confirmed','assigned','driver_en_route','pickup_arrived','in_progress','completed'] %}
-{% set step_labels = {'draft':'Draft','pending_payment':'Awaiting Payment','confirmed':'Confirmed','assigned':'Driver Assigned','driver_en_route':'Driver En Route','pickup_arrived':'Driver Arrived','in_progress':'In Progress','completed':'Completed'} %}
+{% set step_labels = {'draft':'Draft','pending_payment':'Awaiting Payment','confirmed':'Finding Driver','assigned':'Driver Assigned','driver_en_route':'Driver En Route','pickup_arrived':'Driver Arrived','in_progress':'In Progress','completed':'Completed'} %}
 {% set current_status = status_value %}
 {% set current_idx = steps.index(current_status) if current_status in steps else 0 %}
 {% set rp_stage = 0 if current_status in ['draft','pending_payment'] else 1 if current_status in ['confirmed','assigned'] else 2 if current_status in ['driver_en_route','pickup_arrived'] else 3 if current_status in ['in_progress','completed'] else 0 %}
@@ -374,7 +374,7 @@
       <div class="card-body">
         <div id="riderTimeline" class="timeline">
           <div class="tl-step {{ 'done' if booking.created_at }}" data-tl="created"><div class="tl-label">Booking Created</div><div class="tl-time">{{ booking.created_at|datetimeformat|default('—') }}</div></div>
-          <div class="tl-step {{ 'done' if booking.confirmed_at else 'skip' }}" data-tl="confirmed"><div class="tl-label">Confirmed</div><div class="tl-time">{{ booking.confirmed_at|datetimeformat|default('—') }}</div></div>
+          <div class="tl-step {{ 'done' if booking.confirmed_at else 'skip' }}" data-tl="confirmed"><div class="tl-label">Request received</div><div class="tl-time">{{ booking.confirmed_at|datetimeformat|default('—') }}</div></div>
           <div class="tl-step {{ 'done' if booking.driver_assigned_at else 'skip' }}" data-tl="assigned"><div class="tl-label">Driver Assigned</div><div class="tl-time">{{ booking.driver_assigned_at|datetimeformat|default('—') }}</div></div>
           <div class="tl-step {{ 'done' if booking.driver_en_route_at else 'skip' }}" data-tl="en_route"><div class="tl-label">Driver En Route</div><div class="tl-time">{{ booking.driver_en_route_at|datetimeformat|default('—') }}</div></div>
           <div class="tl-step {{ 'done' if booking.driver_arrived_at else 'skip' }}" data-tl="arrived"><div class="tl-label">Driver Arrived</div><div class="tl-time">{{ booking.driver_arrived_at|datetimeformat|default('—') }}</div></div>
@@ -470,8 +470,8 @@
 {% endblock %}
 
 {% block module_scripts %}
-<script src="{{ url_for('static', filename='js/modules/transport/rider_status_sync.js') }}"></script>
-{% if is_matching %}<script src="{{ url_for('static', filename='js/modules/transport/rider_matching.js') }}"></script>{% endif %}
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/rider_status_sync.js') }}"></script>
+{% if is_matching %}<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/rider_matching.js') }}"></script>{% endif %}
 <script nonce="{{ csp_nonce }}">
 /* Cancel flow: reason selection → consequence preview → confirm */
 (function () {
@@ -504,7 +504,7 @@
       safety: 'Cancelling for a safety or mismatch reason will not incur a fee.'
     },
     'confirmed': {
-      normal: 'Your booking is confirmed but no driver has been assigned yet. Cancelling now will not incur a fee.',
+      normal: 'Your request is still being matched and no driver has been assigned yet. Cancelling now will not incur a fee.',
       safety: 'Cancelling for a safety or mismatch reason will not incur a fee.'
     },
     'assigned': {
@@ -624,9 +624,9 @@
   });
 })();
 </script>
-<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="{{ url_for('static', filename='js/geo/geo-map.js') }}"></script>
-<script src="{{ url_for('static', filename='js/geo/geo-realtime.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/geo/geo-map.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/geo/geo-realtime.js') }}"></script>
 <script nonce="{{ csp_nonce }}">
 /* Shared live-tracking bootstrap (F-NEW-E): defined unconditionally so it
    remains available for post-handoff invocation by rider_status_sync.js

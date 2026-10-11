@@ -4,7 +4,7 @@
 {% block title %}Booking Management — AFCON360{% endblock %}
 
 {% block module_styles %}
-<style>
+<style nonce="{{ csp_nonce }}">
 .acc-admin { padding: 2rem 1.5rem; max-width: 1400px; margin: 0 auto; }
 
 /* ── header ── */
@@ -444,7 +444,7 @@
 </div>
 
 {% block module_scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
 (function () {
   var table = document.getElementById('bookingsTable');
 

@@ -6,7 +6,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
 
 {{ super() }}
-<style>
+<style nonce="{{ csp_nonce }}">
     .kyc-container {
         max-width: 1200px;
         margin: 0 auto;
@@ -341,7 +341,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
     let currentDocId = null;
 
     function showApproveModal(docId, docName) {

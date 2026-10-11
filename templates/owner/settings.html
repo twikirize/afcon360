@@ -3,7 +3,7 @@
 {% block title %}Owner Settings - AFCON360{% endblock %}
 
 {% block styles %}
-<style>
+<style nonce="{{ csp_nonce }}">
   .owner-settings-container {
     max-width: 1400px;
     margin: 0 auto;
@@ -118,17 +118,37 @@
                 When disabled: HTTP requests work normally
             </p>
         </div>
-        
+
         <div id="cspMessage" class="mt-3"></div>
+
+        <hr>
+
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="cspStrictToggle">
+            <label class="form-check-label" for="cspStrictToggle">
+                <strong>Enforce strict CSP (element-level inline requires nonce)</strong>
+            </label>
+            <div class="alert alert-warning mt-2">
+                <strong>Warning:</strong> Turning this on makes every inline &lt;script&gt; and &lt;style&gt; block require a valid nonce. Inline event handlers (onclick) and inline style attributes continue to work as before. Confirm the CSP violation log shows zero R2 violations before enabling.
+            </div>
+        </div>
+
+        <div id="cspStrictMessage" class="mt-3"></div>
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
     fetch('/owner/csp/status')
         .then(r => r.json())
         .then(data => {
             document.getElementById('cspToggle').checked = data.enabled;
+        });
+
+    fetch('/owner/csp/strict-status')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('cspStrictToggle').checked = data.enabled;
         });
     
     document.getElementById('cspToggle').addEventListener('change', function(e) {
@@ -645,7 +665,7 @@ document.addEventListener('DOMContentLoaded', function() {
   </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function showOrgRegistrationDetails() {
     const modal = document.createElement('div');
     modal.style.cssText = `

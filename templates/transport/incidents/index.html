@@ -201,7 +201,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 function resolveIncident() {
   document.querySelector('[id="resolveCard"]')?.scrollIntoView({ behavior:'smooth' });
 }

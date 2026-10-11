@@ -33,7 +33,7 @@
 {% endif %}
 
 {% if is_pane %}
-    <style>
+    <style nonce="{{ csp_nonce }}">
         /* Inline styles for pane mode */
         .t-content { padding: 20px; }
         .alert { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }

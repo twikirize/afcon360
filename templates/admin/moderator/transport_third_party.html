@@ -242,7 +242,7 @@
   </div>
 </div>
 
-<style>
+<style nonce="{{ csp_nonce }}">
 .applications-list {
   display: flex;
   flex-direction: column;
@@ -535,7 +535,7 @@
 .badge-gray { background: rgba(107,107,128,0.15); color: var(--muted); border: 1px solid rgba(107,107,128,0.25); }
 </style>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function viewApplication(appId) {
   // In a real implementation, this would open a modal or navigate to detail view
   alert('View application details for ID: ' + appId);

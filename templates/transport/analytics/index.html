@@ -3,8 +3,8 @@
 {% block breadcrumb %}<span class="sep">/</span><span class="current">Analytics</span>{% endblock %}
 
 {% block extra_css %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<style>
+<script nonce="{{ csp_nonce }}" src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style nonce="{{ csp_nonce }}">
 .date-range-bar { display:flex; align-items:center; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
 .chart-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 @media(max-width:768px) { .chart-grid { grid-template-columns:1fr; } }
@@ -145,7 +145,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 const chartOpts = {
   responsive:true, maintainAspectRatio:false,
   plugins:{ legend:{ display:false }, tooltip:{ backgroundColor:'#161929', titleColor:'#f59e0b', bodyColor:'#94a3b8', borderColor:'#ffffff14', borderWidth:1, padding:10 }},

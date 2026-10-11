@@ -7,9 +7,9 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/explore.css') }}">
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script nonce="{{ csp_nonce }}" src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/search.css') }}">
-<style>
+<style nonce="{{ csp_nonce }}">
 :root {
     --primary: #2d5a2d;
     --primary-dark: #1a3a1a;
@@ -596,7 +596,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // Configuration
 let map;
 let markers = [];
@@ -1068,5 +1068,5 @@ document.addEventListener('DOMContentLoaded', function() {
     initMap();
 });
 </script>
-<script src="{{ url_for('static', filename='js/modules/accommodation/search.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/accommodation/search.js') }}"></script>
 {% endblock %}

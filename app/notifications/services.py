@@ -571,6 +571,11 @@ class NotificationService:
         """
         type_map = {
             'confirmed': NotificationType.BOOKING_CONFIRMED,
+            # 'ride_requested' must NOT map to a confirmation type: a transport
+            # booking is committed CONFIRMED before any driver has accepted, so
+            # BOOKING_UPDATE is the most honest existing type (no new type, no
+            # schema/CHECK change).
+            'ride_requested': NotificationType.BOOKING_UPDATE,
             'driver_assigned': NotificationType.DRIVER_ASSIGNED,
             'cancelled': NotificationType.BOOKING_CANCELLED,
         }
@@ -582,12 +587,29 @@ class NotificationService:
             raw_pickup = getattr(booking, 'pickup_location', None)
             pickup_text = raw_pickup if isinstance(raw_pickup, str) else str(raw_pickup or '')
 
+        message_map = {
+            'ride_requested': (
+                "We received your ride request and are finding your driver. "
+                f"Pickup: {pickup_text or 'TBD'}"
+            ),
+            # Truthful: a driver EXISTS at this point (the assignment path is
+            # the only caller) but they may still be on their way.
+            'driver_assigned': (
+                "A driver has been assigned to your ride. "
+                f"Pickup: {pickup_text or 'TBD'}"
+            ),
+        }
+        message = message_map.get(
+            notification_type,
+            f"Your transport booking has been {human_type}. "
+            f"Pickup: {pickup_text or 'TBD'}",
+        )
+
         return cls.send(
             user_id=user_id,
             notification_type=nt,
             title=f"Transport {notification_type.replace('_', ' ').title()}",
-            message=f"Your transport booking has been {human_type}. "
-                    f"Pickup: {pickup_text or 'TBD'}",
+            message=message,
             data={
                 'booking_id': ref,
                 'pickup_location': pickup_text,
@@ -1495,6 +1517,34 @@ class NotificationService:
                 link=f"/wallet/transactions/{transaction.public_id}",
                 priority='high',
             )
+
+    @classmethod
+    def notify_transport_ride_requested(cls, booking):
+        """Transport ride request received → notify the rider + module admins.
+
+        A transport booking is committed CONFIRMED before any driver has
+        accepted, so this method must NEVER claim confirmation: the wording
+        states that the request was received and matching is in progress.
+        (Kept transport-specific so notify_booking_confirmed stays intact for
+        the accommodation/tourism paths.)
+        """
+        module = cls.module_for_booking(booking)
+        ref = getattr(booking, 'booking_reference', getattr(booking, 'booking_code', 'N/A'))
+        guest_id = getattr(booking, 'user_id', None)
+        if guest_id:
+            cls.send_transport_notification(
+                guest_id, booking, 'ride_requested', channel='email'
+            )
+        cls._notify_admins(
+            notification_type=NotificationType.BOOKING_UPDATE,
+            title=f"{MODULE_LABELS.get(module, 'Ride')} Ride Requested",
+            message=f"Ride request {ref} received; finding a driver.",
+            data={'booking_id': ref},
+            link=cls.MODULE_ADMIN_LINKS.get(module, '/admin'),
+            channels=['in_app'],
+            domain=module,
+            module=module,
+        )
 
     @classmethod
     def notify_booking_confirmed(cls, booking):

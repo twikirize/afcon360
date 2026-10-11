@@ -56,7 +56,7 @@
     {% endif %}
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function markAsRead(messageId) {
     fetch(`/events/messages/${messageId}/read`, {
         method: 'POST',

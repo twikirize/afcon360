@@ -1144,7 +1144,11 @@ Do not reopen or redesign unrelated cancellation behaviour merely because A12 ex
 - **Raised:** 2026-09-02
 - **Context:** Stage 4 organisation onboarding (Organisation Type + optional Provider Capabilities) commits the creator as org_owner via pp/auth/roles.py:assign_org_role (per the work-state contract). Evidence shows that function cannot persist org-owner in the current schema, and that this is a **pre-existing** defect, not introduced by Stage 4:
   - OrgUserRole.role_id is a FK to org_roles.id (pp/identity/models/organisation_member.py:185), and OrgUserRole.role relationship targets OrgRole (organisation_member.py:190).
-  - But ssign_org_role resolves ole = _get_role(role_name, scope='org') from the global oles table and stores ole.id (a oles.id) into org_user_roles.role_id (pp/auth/roles.py:265,288).
+  - But ssign_org_role resolves 
+ole = _get_role(role_name, scope='org') from the global 
+oles table and stores 
+ole.id (a 
+oles.id) into org_user_roles.role_id (pp/auth/roles.py:265,288).
   - The org_roles table (OrgRole model) is **never provisioned anywhere** in pp/ (no OrgRole(...) instantiation found), so there is no row whose id satisfies the FK.
   - Resulting runtime error during commit: ForeignKeyViolation: org_user_roles.role_id -> org_roles.id. Confirmed in the legacy registration service too (OrganizationRegistrationService.add_org_member at organization_registration.py:243-263 uses a *different* legacy OrgRole/org_role_id path in pp/identity/models/organisation.py).
   - Observation: there are at least two divergent org-role designs in the codebase (legacy organisation.py OrgRole/org_role_id on membership vs. organisation_member.py OrgRole/OrgUserRole), and pp/auth/roles.py:assign_org_role reconciles with neither.
@@ -3599,3 +3603,75 @@ matching / realtime / maps / routing
 - Related but separate: `static/favicon.ico` does not exist and no route serves it, so every page load logs a 404. Needs an asset/branding decision, so it was never a plausible CSP-node fix. Track it with this item or separately, at the human's election.
 - Owner/area: security / platform (policy owner) + per-domain template owners (rider/transport, admin, owner, wallet, events, accommodation)
 - Links: `app/__init__.py::after_request_pipeline`, `app/Documentation/CSP_POLICY.md` (see "Enforcement semantics" and "Known debt"), `tests/test_ui_20_csp.py`, `docs/transport/nodes/UI-20-evidence.md`, `docs/transport/nodes/UI-20-record.md`, this file's `CSP-ENFORCEMENT-01` entry (the header-assembly predecessor — resolved, and its regression class is now covered by `tests/test_ui_20_csp.py`)
+
+## Lifecycle Ledger Immutability Benchmark (Option A/B/C)
+
+- **Status:** Not started — future architecture review item
+- **Raised:** 2026-10-10
+- **Context:** Option B (database-enforced append-only lifecycle ledger) is the SELECTED implementation direction; database enforcement is PENDING implementation and verification under Item 6. A future architecture review will compare Option A (application-level append-only convention), Option B (database-enforced), and Option C (full event-sourced architecture) across defined criteria. That future review must not delay the current approved Option B work.
+- **What needs to happen:** Schedule a future architecture-review node to evaluate the three approaches using the comparison criteria below. Do not delay the current Option B implementation.
+- **Comparison criteria:**
+  * Audit integrity and tamper resistance.
+  * Concurrency and transaction consistency.
+  * Security, privileged access and operational recovery.
+  * Data retention, privacy, redaction and deletion behavior.
+  * Performance, storage growth and maintenance.
+  * Scalability and future integration requirements.
+  * Implementation cost and long-term operating complexity.
+- **Owner/area:** architecture + platform/database operations
+- **Links:** AGENTS.md §39, AGENTS.md §20, AGENTS.md §29, PostgreSQL documentation, OWASP Logging Cheat Sheet, AWS Prescriptive Guidance on event sourcing.
+- **Reconciliation (2026-10-10):** Item recorded for future review; Option B implementation continues under current scope.
+
+## KYC Country Code Inconsistencies (ISO-2 vs ISO-3 vs free text)
+
+- **Status:** Resolved for KYC + profile decisions (owner-authorised 2026-10-10); one compliance-owned item remains open
+- **Raised:** 2026-10-10
+- **Context:** Individual KYC document upload 500'd with `psycopg2.errors.StringDataRightTruncation: value too long for type character varying(2)` on `INSERT INTO kyc_records`. Root cause chain: `app/profile/models.py:77` stores `country = Column(String(64))` (free text, e.g. `"Uganda"`); `app/kyc/routes.py` passed that value as `canonical_country` into a `maxlength=2` input (maxlength does not truncate a rendered value) and then into `KycService.submit_kyc(country=...)`; `app/kyc/models.py:39` declares `country = Column(String(2))`. Fixed at the write boundary with `_normalize_country_iso2()` in `app/kyc/routes.py` (accepts existing alpha-2 codes, maps known country names to alpha-2, else `None`), applied to both the GET prefill and the POST submit. No schema change.
+- **Decision (2026-10-10, owner-authorised):**
+  * Canonical code standard is ISO 3166-1 **alpha-2** (shorter, already the codebase convention, fits the existing `String(2)` — no migration needed, no truncation risk).
+  * `app/profile/models.py` `country` **stays free text** (a human name such as `"Uganda"`); it is deliberately NOT changed to a code. The KYC boundary normalizes profile names/codes to alpha-2 before persisting.
+  * `app/kyc/models.py::calculate_enhanced_risk` high-risk list updated from alpha-3 to alpha-2 (`['AF','IR','KP','SY','MM','SS','VE','YE']`) so the factor can match `kyc_records.country`. Proven by `tests/test_identity_bank_refinements.py::test_kyc_record_enhanced_risk_flags_alpha2_high_risk_country`.
+- **Still open (separate, needs compliance review per AGENTS.md §29):**
+  * `app/compliance/aml_service.py:117-120` `self.high_risk_countries` is still alpha-**3** (14 codes: `AFG,IRN,PRK,SYR,MMR,SSD,VEN,YEM,CUB,LBY,SOM,SDN,IRQ,ERI`) and is compared against country values at `:206` and `:392`. If the platform standard is alpha-2, this list must be aligned too — but AML screening behaviour changes require a compliance-authorised node, so it was NOT touched here.
+- **Not done / not authorized:** no schema/migration change to `kyc_records.country` or `profile.country` (HIGH RISK; requires explicit authorization per AGENTS.md §20). The name-to-code map in `_normalize_country_iso2` is a bounded lookup, not a business rule; unknown free-text values are stored as `NULL` (column is nullable) rather than guessed.
+- **Owner/area:** identity / KYC + profile + data modeling (compliance/AML item: compliance owner)
+- **Links:** `app/kyc/routes.py::_normalize_country_iso2`, `app/kyc/models.py:39`, `app/kyc/models.py:110`, `app/profile/models.py:77`, `app/compliance/aml_service.py:117`, `app/identity/services/organization_registration.py:387`, `tests/test_kyc_single_entry_upload.py`, `tests/test_identity_bank_refinements.py`
+---
+
+## KYC media direct-upload presign endpoint returns 501 (DEFERRED)
+- **Status:** Not started (identified 2026-10-11 during the KYC upload latency investigation)
+- **Raised:** 2026-10-11
+- **Context:** Real-device upload logs showed `POST /api/media/presign/kyc → 501 Not Implemented`. The KYC upload page falls back to a direct (server-side) upload, so submissions still succeed; the presign path is unused. It is a latent gap, not the cause of the observed slowness (that was the synchronous admin notification fan-out — fixed separately by routing KYC submit/approve notifications off the request thread).
+- **What needs to happen:** Decide whether to implement the presign endpoint or remove the client's presign attempt and keep direct upload as the single path. No schema change anticipated.
+- **Owner/area:** KYC / media
+- **Links:** `POST /api/media/presign/kyc`, `templates/kyc/verify_upload.html`, `static/js/modules/user/kyc-draft.js`
+
+## Async notification delivery — worker-detection hardening (FOLLOW-UP, non-blocking)
+- **Status:** Partial (hybrid dispatch landed; detection is best-effort)
+- **Raised:** 2026-10-11
+- **Context:** `app/notifications/dispatch.py` selects Celery when a worker answers a broker ping (0.5s, cached 15s), else delivers on a daemon thread; tests run inline. When a Celery worker is running, KYC submit/approve fan-outs are enqueued. `app/notifications/routes.py::_celery_available()` still only checks that the `celery_app` object exists (does not verify a live worker) — a pre-existing weakness unrelated to the KYC path.
+- **What needs to happen:** Consider centralising worker-liveness detection (reuse `dispatch.celery_worker_available`) for the resend-failed route; do not change behaviour without review.
+- **Owner/area:** notifications
+- **Links:** `app/notifications/dispatch.py`, `app/notifications/delivery.py`, `app/notifications/tasks.py`, `app/notifications/listeners.py`, `app/notifications/routes.py:532`
+---
+---
+
+## Schema adoption — extend beyond transport (FOLLOW-UP, planned)
+- **Status:** Partial — transport `BookingSchema` landed in shadow mode (`app/schemas/transport.py`); other domains not started.
+- **Raised:** 2026-10-11
+- **Context:** `app/schemas/` is Pydantic-native with a marshmallow-shaped adapter (`app/schemas/common.py`). Transport booking is the first domain; the rollout gate `TRANSPORT_BOOKING_SCHEMA_ENFORCE` is `False` everywhere (shadow mode). Service-layer validators remain the enforced path until each domain passes the adoption plan's six-step rollout.
+- **What needs to happen:** Extend schema adoption to accommodation, events, wallet, identity, tourism, and feed, per `docs/transport/SCHEMA-ADOPTION-PLAN.md`.
+- **Owner/area:** platform + per-domain owners
+- **Links:** `docs/transport/SCHEMA-ADOPTION-PLAN.md`, `app/schemas/`, `app/schemas/transport.py`, `app/config.py::Config.TRANSPORT_BOOKING_SCHEMA_ENFORCE`
+---
+---
+
+## Test sessions silently disable `app.*` loggers (ENVIRONMENT FACT, harness)
+- **Status:** Known; worked around in `tests/transport/test_booking_schema_shadow.py`, not fixed project-wide.
+- **Raised:** 2026-10-11 (found while adding the shadow-mode observability test)
+- **Context:** `tests/conftest.py:261 setup_database` calls `flask_migrate.stamp`, which runs `migrations/env.py`; `migrations/env.py` calls `logging.config.fileConfig(...)`, and `fileConfig`'s default `disable_existing_loggers=True` sets `.disabled = True` on every already-created logger (`app`, `app.transport.routes`, …) for the remainder of the pytest session. `logging.root.manager.disable` stays `0` (global logging is NOT disabled), so the suppression is per-logger and silent. Production is unaffected: `migrations/env.py` only runs for `flask db` commands, not `python app.py`, so app INFO logging is normal at runtime.
+- **Consequence:** any test that asserts on `app.*` log records (e.g. via `caplog`) will see zero records unless it explicitly re-enables the logger (`logger.disabled = False`) for the duration.
+- **What needs to happen:** Decide the canonical test-logging convention — e.g. after Alembic `stamp`/`create_all` in `tests/conftest.py`, re-enable app loggers (or pass `disable_existing_loggers=False`), or document the per-test re-enable pattern. Do not change logging behaviour without review.
+- **Links:** `tests/conftest.py:261`, `migrations/env.py` (`fileConfig`), `tests/transport/test_booking_schema_shadow.py::test_shadow_mode_logs_discrepancy_and_does_not_reject`
+---
+---

@@ -145,7 +145,7 @@
 </div>
 
 <!-- JavaScript for Auto-Persistence / AJAX submission -->
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('trustSettingsForm');
     const statusBox = document.getElementById('saveStatus');

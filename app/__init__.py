@@ -138,6 +138,85 @@ def should_upgrade_insecure():
         return False
 
 
+# CSP_STRICT_ENFORCE — owner-controlled flag (element-level inline requires
+# a nonce). Same storage pattern as CSP_UPGRADE_INSECURE: a SystemConfig row
+# that fails closed to False. Read once per worker into memory; invalidated
+# across workers via the Redis channel below. No env override: the owner
+# toggle is the mechanism. If Redis is unavailable, propagation falls back
+# to the next worker restart.
+_CSP_STRICT_CACHE = {"value": False, "loaded": False}
+CSP_STRICT_CHANNEL = "csp:config:changed"
+_CSP_APP = None  # set in create_app; lets refresh work without ambient context
+
+
+def is_csp_strict_enforce():
+    """Effective value of CSP_STRICT_ENFORCE. Never raises; fails closed."""
+    if _CSP_STRICT_CACHE.get("loaded"):
+        return bool(_CSP_STRICT_CACHE.get("value"))
+    return refresh_csp_strict_cache()
+
+
+def refresh_csp_strict_cache():
+    """Re-read CSP_STRICT_ENFORCE from SystemConfig into the worker cache."""
+    try:
+        from flask import current_app, has_app_context
+        from app.models.system_config import SystemConfig
+        if has_app_context():
+            setting = SystemConfig.query.filter_by(key='CSP_STRICT_ENFORCE').first()
+            value = bool(setting and setting.value == 'true')
+        elif _CSP_APP is not None:
+            with _CSP_APP.app_context():
+                setting = SystemConfig.query.filter_by(key='CSP_STRICT_ENFORCE').first()
+                value = bool(setting and setting.value == 'true')
+        else:
+            value = False
+    except Exception:
+        value = False
+    _CSP_STRICT_CACHE["value"] = value
+    _CSP_STRICT_CACHE["loaded"] = True
+    return value
+
+
+def publish_csp_strict_changed():
+    """Notify all workers to re-read the flag. Silent no-op, never raises."""
+    try:
+        from app.extensions import redis_client
+        redis_client.publish(CSP_STRICT_CHANNEL, "CSP_STRICT_ENFORCE")
+    except Exception:
+        pass
+
+
+def _subscribe_csp_strict_changes(app):
+    """Background watcher: refresh the cached flag when a flip is published.
+
+    Daemon thread, best effort only. Skipped when Redis is disabled and dies
+    silently when Redis is unreachable, so tests and Redis-less dev are
+    unaffected (the flag then simply reads from the DB on first access)."""
+    try:
+        if os.getenv("DISABLE_REDIS", "false").lower() in ("1", "true", "yes"):
+            return
+        from app.extensions import redis_client
+        pubsub = redis_client.pubsub()
+        pubsub.subscribe(CSP_STRICT_CHANNEL)
+
+        def _listen():
+            try:
+                with app.app_context():
+                    for message in pubsub.listen():
+                        try:
+                            if isinstance(message, dict) and message.get("type") == "message":
+                                refresh_csp_strict_cache()
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+        import threading
+        thread = threading.Thread(target=_listen, daemon=True, name="csp-config-watcher")
+        thread.start()
+    except Exception:
+        pass
+
+
 def require_redis(url: str, purpose: str, existing_client=None):
     """
     Ensure Redis is available before starting the app.
@@ -456,10 +535,13 @@ def create_app(config_object=None) -> Flask:
         from flask import g
         nonce = getattr(g, "csp_nonce", "")
         upgrade_directive = "upgrade-insecure-requests;" if should_upgrade_insecure() else ""
-        csp_enforce = (
-            "default-src 'self'; "
-            f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://use.fontawesome.com; "
+        # Element-level inline requires a nonce only when the owner has
+        # flipped CSP_STRICT_ENFORCE. Attribute-level inline (onclick,
+        # style="...") always runs via *-src-attr 'unsafe-inline'.
+        # The report-only header always carries the strict policy so
+        # violations are logged regardless of the flag.
+        strict = is_csp_strict_enforce()
+        csp_common_tail = (
             "img-src 'self' data: https:; "
             "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com https://use.fontawesome.com https://cdn.jsdelivr.net; "
             "connect-src 'self' https://cdn.jsdelivr.net; "
@@ -469,20 +551,34 @@ def create_app(config_object=None) -> Flask:
             "base-uri 'self'; "
             + upgrade_directive
         )
+        csp_script = f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
+        if strict:
+            csp_enforce = (
+                "default-src 'self'; "
+                + csp_script +
+                "script-src-attr 'unsafe-inline'; "
+                f"style-src-elem 'self' 'nonce-{nonce}' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://use.fontawesome.com; "
+                "style-src-attr 'unsafe-inline'; "
+                + csp_common_tail
+            )
+        else:
+            csp_enforce = (
+                "default-src 'self'; "
+                + csp_script +
+                "script-src-attr 'unsafe-inline'; "
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://use.fontawesome.com; "
+                "style-src-attr 'unsafe-inline'; "
+                + csp_common_tail
+            )
         response.headers["Content-Security-Policy"] = csp_enforce
 
         csp_report_only = (
             "default-src 'self'; "
-            f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
-            "style-src 'self' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://use.fontawesome.com; "
-            "img-src 'self' data: https:; "
-            "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com https://use.fontawesome.com https://cdn.jsdelivr.net; "
-            "connect-src 'self' https://cdn.jsdelivr.net; "
-            "object-src 'none'; "
-            "frame-ancestors 'none'; "
-            "form-action 'self'; "
-            "base-uri 'self'; "
-            + upgrade_directive
+            + csp_script +
+            "script-src-attr 'unsafe-inline'; "
+            f"style-src-elem 'self' 'nonce-{nonce}' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://use.fontawesome.com; "
+            "style-src-attr 'unsafe-inline'; "
+            + csp_common_tail
             + "report-to csp-endpoint; report-uri /csp-report"
         )
         response.headers["Content-Security-Policy-Report-Only"] = csp_report_only
@@ -498,7 +594,12 @@ def create_app(config_object=None) -> Flask:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = "geolocation=(self), microphone=(), camera=(), payment=()"
+        # Camera is enabled only for the KYC selfie capture flow (same-origin);
+        # every other page keeps camera denied. See BACKLOG.md Permissions-Policy.
+        if request.path.startswith("/kyc/"):
+            response.headers["Permissions-Policy"] = "geolocation=(self), microphone=(), camera=(self), payment=()"
+        else:
+            response.headers["Permissions-Policy"] = "geolocation=(self), microphone=(), camera=(), payment=()"
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
         response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
@@ -2098,14 +2199,34 @@ def create_app(config_object=None) -> Flask:
         return {"csp_nonce": nonce}
 
     @app.route('/csp-report', methods=['POST'])
+    @csrf.exempt
     def csp_report():
-        """Endpoint to receive CSP violation reports. Logs payload for analysis."""
+        """Endpoint to receive CSP violation reports. Logs payload for analysis.
+
+        Browsers POST CSP reports without a CSRF token (the request is generated
+        by the user agent, not a form), so this endpoint must be CSRF-exempt.
+        It performs no state change — it only logs the report.
+        """
         try:
             report = request.get_json(force=True, silent=True) or {}
         except Exception:
             report = {}
         try:
-            current_app.logger.warning(f"CSP REPORT: {report}")
+            # Browsers nest the payload under "csp-report"; be tolerant and
+            # log one informative line per violation so the source template
+            # can be located from the log alone. Endpoint path, 204
+            # response, non-DB and header architecture are unchanged.
+            body = report.get("csp-report", report) if isinstance(report, dict) else {}
+            if not isinstance(body, dict):
+                body = {}
+            directive = body.get("effective-directive") or body.get("violated-directive") or "unknown"
+            blocked = body.get("blocked-uri") or body.get("blocked-URI") or "unknown"
+            source = body.get("source-file") or "unknown"
+            document = body.get("document-uri") or body.get("document-URL") or "unknown"
+            current_app.logger.info(
+                "CSP violation: directive=%s blocked=%s source=%s document=%s",
+                directive, blocked, source, document,
+            )
         except Exception:
             pass
         return ("", 204)
@@ -2268,6 +2389,13 @@ def create_app(config_object=None) -> Flask:
     # Run in background thread to avoid blocking startup
     import threading
     threading.Thread(target=_validate_endpoint_references, daemon=True).start()
+
+    # CSP strict-flag watcher: refresh the cached flag when the owner flips
+    # it (Redis pub/sub). Best effort; silent when Redis is unavailable.
+    global _CSP_APP
+    _CSP_APP = app
+    refresh_csp_strict_cache()  # once per worker at startup; fails closed
+    _subscribe_csp_strict_changes(app)
 
     logger.info(f"✅ App factory completed in {time.time() - start_time:.2f} seconds")
     return app

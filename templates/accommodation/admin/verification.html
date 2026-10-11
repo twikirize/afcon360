@@ -2,7 +2,7 @@
 {% block title %}Property Verification — AFCON360{% endblock %}
 
 {% block module_styles %}
-<style>
+<style nonce="{{ csp_nonce }}">
 .acc-admin { padding: 2rem 1.5rem; }
 .acc-admin-header {
   background: linear-gradient(135deg, var(--brand-primary-dark,#065f46) 0%, var(--brand-primary,#047857) 100%);
@@ -282,7 +282,7 @@
 {% endblock %}
 
 {% block module_scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
 function openRejectModal(propId, propTitle) {
   document.getElementById('rejectForm').action =
     '/accommodation/admin/verification/' + propId + '/reject';

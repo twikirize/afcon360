@@ -6,7 +6,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
 
 {{ super() }}
-<style>
+<style nonce="{{ csp_nonce }}">
 .webhook-detail-container {
     padding: 1.5rem;
 }
@@ -411,7 +411,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function copyPayload() {
     const payload = document.getElementById('payloadDisplay').textContent;
     navigator.clipboard.writeText(payload).then(() => {

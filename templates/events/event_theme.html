@@ -3,7 +3,7 @@
 {% block title %}Event Theme - {{ event.title }}{% endblock %}
 
 {% block styles %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .event-preview {
         background: var(--bg-surface);
         border-radius: var(--radius-lg);
@@ -116,7 +116,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
     const useGlobalBranding = document.getElementById('useGlobalBranding');
     const customFields = document.getElementById('customThemeFields');

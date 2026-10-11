@@ -9,7 +9,7 @@
 
 {% block extra_css %}
 {#<link rel="stylesheet" href="{{ url_for('static', filename='transport/css/dashboard.css') }}">#}
-<style>
+<style nonce="{{ csp_nonce }}">
   .admin-badge {
     background: var(--amber);
     color: #000;
@@ -306,7 +306,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
   setInterval(() => {
     fetch('{{ url_for("transport_admin.dashboard") }}', {
       headers: { 'X-Requested-With': 'XMLHttpRequest' }

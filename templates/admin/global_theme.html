@@ -3,7 +3,7 @@
 {% block title %}Global Theme Settings - Admin{% endblock %}
 
 {% block styles %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .theme-preview {
         position: sticky;
         top: 20px;
@@ -241,7 +241,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // Load current theme settings
 async function loadThemeSettings() {
     try {

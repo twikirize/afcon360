@@ -5,7 +5,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/global/kyc-ribbon.css') }}">
 {# Global KYC ribbon — scoped to the user dashboard only (not site-wide) #}
 {% include 'components/kyc_ribbon.html' %}
-<script src="{{ url_for('static', filename='js/modules/user/kyc-ribbon.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/user/kyc-ribbon.js') }}"></script>
 
 {# ── BECOME A PARTNER CARD ──────────────────────────────────────────── #}
 <div class="dash-card" style="background: linear-gradient(135deg, #1D9E75, #0F5C4A); color: white; border: none; margin-bottom: 20px;">
@@ -66,7 +66,7 @@
                 {% endif %}
             {% endfor %}
 
-            <script type="application/json" id="eventCalendarData">{{ ns.cal_events|tojson }}</script>
+            <script nonce="{{ csp_nonce }}" type="application/json" id="eventCalendarData">{{ ns.cal_events|tojson }}</script>
 
             <div class="dash-card afc-calendar-card" id="eventCalendar">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -410,6 +410,6 @@
 
 </div>
 
-<script src="{{ url_for('static', filename='js/modules/user/events-calendar.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/user/events-calendar.js') }}"></script>
 
 {% endblock %}

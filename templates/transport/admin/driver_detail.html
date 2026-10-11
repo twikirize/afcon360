@@ -8,7 +8,7 @@
 {% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
 .dd-grid { display:grid; grid-template-columns:1fr 380px; gap:16px; }
 @media(max-width:1000px) { .dd-grid { grid-template-columns:1fr; } }
 .dd-row { padding:9px 14px; border-bottom:1px solid var(--border); font-size:0.83rem; display:flex; justify-content:space-between; gap:16px; }

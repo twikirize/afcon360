@@ -134,12 +134,21 @@
 }
 
 /* ── Capture buttons ─────────────────────────────────────── */
+/* Overlaid on the bottom of the live video: the shutter is white by design,
+   so it must sit on the dark preview — on the page's light background it was
+   invisible (white-on-white). */
 .sc-preview-actions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: clamp(16px, 5vw, 32px);
-  padding-bottom: 8px;
+  padding: 16px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0));
 }
 
 .sc-btn {
@@ -185,9 +194,62 @@
 .sc-btn-capture:hover .sc-btn-capture-ring::after { background: #f0f0f0; }
 .sc-btn-capture:active .sc-btn-capture-ring::after { background: #ddd; width: 56px; height: 56px; inset: 6px; }
 
+/* ── Idle (camera closed) ────────────────────────────────── */
+.sc-idle-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: clamp(10px, 3vw, 16px);
+  padding: clamp(20px, 6vw, 36px) 16px;
+  background: #f1f5f9;
+  border: 1px dashed #cbd5e1;
+  border-radius: 16px;
+}
+
+.sc-idle-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+}
+
+.sc-idle-text {
+  margin: 0;
+  color: #475569;
+  font-size: clamp(13px, 3vw, 15px);
+  line-height: 1.4;
+}
+
+.sc-idle-note {
+  margin: 0;
+  min-height: 1em;
+  color: #94a3b8;
+  font-size: clamp(11px, 2.5vw, 13px);
+}
+
+.sc-btn-start {
+  min-height: 48px;
+  padding: clamp(10px, 2.5vw, 14px) clamp(20px, 5vw, 32px);
+  border-radius: 10px;
+  background: #2563eb;
+  color: #fff;
+  font-size: clamp(14px, 3vw, 16px);
+  font-weight: 600;
+  gap: 8px;
+}
+
+.sc-btn-start:hover { background: #1d4ed8; }
+
 /* Switch / retake icon buttons */
 .sc-btn-switch,
-.sc-btn-retake {
+.sc-btn-retake,
+.sc-btn-cancel {
   width: 48px;
   height: 48px;
   border-radius: 50%;
@@ -198,7 +260,8 @@
 }
 
 .sc-btn-switch:hover,
-.sc-btn-retake:hover {
+.sc-btn-retake:hover,
+.sc-btn-cancel:hover {
   background: rgba(255, 255, 255, 0.25);
 }
 

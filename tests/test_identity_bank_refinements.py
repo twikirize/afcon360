@@ -246,6 +246,43 @@ def test_kyc_record_enhanced_risk_survives_missing_profile(app):
         assert "risk_factors" in result
 
 
+def test_kyc_record_enhanced_risk_flags_alpha2_high_risk_country(app):
+    """kyc_records.country is ISO 3166-1 alpha-2; the high-risk country factor
+    must match the alpha-2 code (e.g. 'AF'), not the alpha-3 form ('AFG')."""
+    from app.identity.models.user import User
+    from app.kyc.models import KycRecord
+
+    uid = uuid.uuid4().hex[:8]
+    with app.app_context():
+        user = User(
+            public_id=str(uuid.uuid4()),
+            username=f"krhc_{uid}",
+            email=f"krhc_{uid}@test.example.com",
+            is_verified=True,
+            is_active=True,
+        )
+        user.set_password("TestPassword123!")
+        db.session.add(user)
+        db.session.flush()
+        db.session.add(
+            KycRecord(
+                user_id=user.id,
+                record_type="passport_verification",
+                id_type="passport",
+                id_number="P-HRC-001",
+                status="pending",
+                country="AF",
+            )
+        )
+        db.session.commit()
+
+        record = KycRecord.query.filter_by(
+            record_type="passport_verification", id_number="P-HRC-001"
+        ).first()
+        result = record.calculate_enhanced_risk()
+        assert "high_risk_country" in result["risk_factors"]
+
+
 def test_canonical_identity_surfaces_profile_nationality(app):
     """The canonical read the events/wallet consumers now use must surface
     profile nationality/full name - the data the User row cannot provide."""

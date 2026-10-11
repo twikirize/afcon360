@@ -6,7 +6,7 @@
 
 {% block head %}
 {{ super() }}
-<style>
+<style nonce="{{ csp_nonce }}">
     /* Mobile-first polish for the host booking detail page */
     .bd-title { font-size: clamp(1.25rem, 5vw, 1.6rem); }
     .bd-card .card-header {

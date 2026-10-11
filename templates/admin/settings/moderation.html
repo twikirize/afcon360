@@ -107,7 +107,7 @@
     </div>
 </div>
 
-<style>
+<style nonce="{{ csp_nonce }}">
 .queue-box {
     background: white;
     border-radius: 10px;
@@ -151,7 +151,7 @@
 }
 </style>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function bulkApprove() {
     if (!confirm('Approve all pending items? This action cannot be undone.')) return;
     

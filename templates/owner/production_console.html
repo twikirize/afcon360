@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/search.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/admin.css') }}">
 
-<style>
+<style nonce="{{ csp_nonce }}">
     :root {
         --bg: var(--bg-body);
         --panel: var(--bg-surface);
@@ -782,7 +782,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<script nonce="{{ csp_nonce }}" src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
 <script nonce="{{ csp_nonce }}">
     // SocketIO connection
     var socket = null;

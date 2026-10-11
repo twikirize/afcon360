@@ -64,6 +64,8 @@ from app.transport.services.marketplace_service import get_marketplace_service
 from app.identity.services.organization_permissions import OrganizationPermissionService
 from app.identity.models.user import User
 from app.identity.models.organisation import Organisation
+from app.schemas.transport import BookingSchema
+from app.schemas.common import ValidationError as SchemaValidationError
 
 logger = logging.getLogger(__name__)   # noqa: E402
 
@@ -933,17 +935,26 @@ def book_transport():
         _capture_return_to("transport_book_return_to")
         return render_template("transport/book.html")
 
+    schema = BookingSchema()
     try:
-        from app.schemas.transport import BookingSchema
-        data = BookingSchema().load(request.form)
-    except ImportError:
-        logger.warning("BookingSchema not found - using raw form data")
+        validated = schema.load(request.form)
+    except SchemaValidationError as err:
+        if current_app.config.get("TRANSPORT_BOOKING_SCHEMA_ENFORCE", False):
+            logger.warning(
+                "Booking schema rejected user_id=%s errors=%s", _uid(), err.messages
+            )
+            for messages in err.messages.values():
+                if messages:
+                    flash(messages[0], "danger")
+            return redirect(url_for("transport.home"))
+        logger.info("SCHEMA-SHADOW transport/booking errors=%s", err.messages)
         data = request.form.to_dict()
-    except ValidationError as err:
-        logger.warning(f"Booking validation failed for user_id={_uid()}: {err.messages}")
-        for error in err.messages.values():
-            flash(error[0], "danger")
-        return redirect(url_for("transport.book_transport"))
+    else:
+        # In shadow mode, keep the exact fallback behaviour for parity.
+        if current_app.config.get("TRANSPORT_BOOKING_SCHEMA_ENFORCE", False):
+            data = validated
+        else:
+            data = request.form.to_dict()
 
     try:
         booking = get_booking_service().create_booking(current_user.id, data)
@@ -995,7 +1006,7 @@ def book_transport():
         db.session.rollback()
         logger.error(f"Booking error for user_id={_uid()}: {e}")
         flash(f"Booking error: {str(e)}", "danger")
-        return redirect(url_for("transport.book_transport"))
+        return redirect(url_for("transport.home"))
 
 
 def _capture_return_to(session_key: str):

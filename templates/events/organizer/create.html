@@ -3,7 +3,7 @@
 {% block title %}Create Event — AFCON360{% endblock %}
 
 {% block content %}
-<style>
+<style nonce="{{ csp_nonce }}">
 /* Modern Event Creation Form Styles */
 .event-create-wrapper {
     min-height: 100vh;
@@ -921,5 +921,5 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 {% block scripts %}
 {{ super() }}
-<script src="{{ url_for('static', filename='js/event-create.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/event-create.js') }}"></script>
 {% endblock %}

@@ -4,7 +4,7 @@
 {% block module_styles %}  
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
 
-<style>
+<style nonce="{{ csp_nonce }}">
 .host-dashboard-modern {
   background: #f8fafc;
   min-height: 100vh;
@@ -907,7 +907,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function showHelp() {
   alert('📖 Host Help Center\n\n1. Need to publish? → Click "Publish Now" on approved listings\n2. Need to edit? → Click "Edit" on any listing\n3. Need to manage rooms? → Click "Rooms" on any listing\n4. Need to check bookings? → Click "Bookings" in Quick Actions\n5. Need to see earnings? → Click "Earnings" in Quick Actions');
 }

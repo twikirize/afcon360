@@ -188,7 +188,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function showPeriod(period) {
   // Simple toggle for demo - in production, you'd fetch new data
   document.querySelectorAll('.tab-link').forEach(btn => btn.classList.remove('active'));

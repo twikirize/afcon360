@@ -532,7 +532,7 @@
     {% endif %}
 {% endif %}
 
-<script src="{{ url_for('static', filename='js/modules/accommodation/detail.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/accommodation/detail.js') }}"></script>
 {# Date and availability behavior lives in the CSP-approved external module above. #}
 {% endblock %}
 {% endif %}

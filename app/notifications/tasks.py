@@ -119,6 +119,44 @@ def send_bulk_task(notification_ids: list) -> dict:
 
 
 @shared_task(
+    name="notifications.notify_kyc_submitted",
+)
+def notify_kyc_submitted_task(user_id: int, kyc_record_id: int) -> dict:
+    """
+    Fan out KYC *submission* notifications (submitter + review team) off the
+    request thread. Enqueued by dispatch_notification when a worker is present.
+    """
+    app = create_app()
+    with app.app_context():
+        try:
+            from app.notifications.delivery import deliver_kyc_submitted
+            deliver_kyc_submitted(user_id=user_id, kyc_record_id=kyc_record_id)
+            return {"status": "delivered", "kyc_record_id": kyc_record_id}
+        except Exception as e:
+            logger.error(f"KYC submitted notification failed: {e}", exc_info=True)
+            return {"status": "error", "error": str(e)}
+
+
+@shared_task(
+    name="notifications.notify_kyc_approved",
+)
+def notify_kyc_approved_task(user_id: int, kyc_record_id: int) -> dict:
+    """
+    Fan out KYC *approval* notifications (submitter + review team) off the
+    request thread. Enqueued by dispatch_notification when a worker is present.
+    """
+    app = create_app()
+    with app.app_context():
+        try:
+            from app.notifications.delivery import deliver_kyc_approved
+            deliver_kyc_approved(user_id=user_id, kyc_record_id=kyc_record_id)
+            return {"status": "delivered", "kyc_record_id": kyc_record_id}
+        except Exception as e:
+            logger.error(f"KYC approved notification failed: {e}", exc_info=True)
+            return {"status": "error", "error": str(e)}
+
+
+@shared_task(
     name="notifications.schedule_reminders",
     bind=True,
     max_retries=3,

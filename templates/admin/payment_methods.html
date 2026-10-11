@@ -3,7 +3,7 @@
 {% block title %}Payment Methods - AFCON360 Admin{% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .payment-methods-container {
         max-width: 1200px;
         margin: 0 auto;
@@ -471,7 +471,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 let currentMethodId = null;
 
 function initializeDefaults() {

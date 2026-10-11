@@ -4,7 +4,7 @@
 
 {% block styles %}
 {{ super() }}
-<style>
+<style nonce="{{ csp_nonce }}">
     .activity-container {
         max-width: 1200px;
         margin: 0 auto;
@@ -406,7 +406,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
     document.addEventListener('DOMContentLoaded', function() {
         const tabButtons = document.querySelectorAll('.tab-button');
         const tabContents = document.querySelectorAll('.tab-content');

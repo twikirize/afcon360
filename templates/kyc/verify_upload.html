@@ -719,12 +719,22 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/modules/user/selfie-capture.js') }}"></script>
-<script>
+<script src="{{ url_for('static', filename='js/modules/user/kyc-draft.js') }}"></script>
+<script nonce="{{ csp_nonce }}">
 /**
  * Clean Custom KYC Script (No Bootstrap Collide/Collapse JS dependencies).
  * Fully independent switching and collapsible toggles.
  */
 (function () {
+  // Shared client-only draft key: one draft per document type. Must match the
+  // key used by the KycDraft controller wired at the bottom of this script.
+  var kycDraftKey = (function () {
+    var params = new URLSearchParams(window.location.search);
+    var p = '{{ preselect_id_type|default('') }}' || params.get('preselect') || '';
+    p = (p || '').trim().toLowerCase();
+    return 'afcon_kyc_draft_' + (p || 'individual');
+  })();
+
   // Tab switching
   document.querySelectorAll('.kyc-tab-btn').forEach(btn => {
     btn.addEventListener('click', function() {
@@ -791,6 +801,7 @@
     // the form synchronously so both document and selfie reach the KYC route.
     if (isIndividual && typeof window.__individualSelfie === 'function' && window.__individualSelfie()) {
       event.preventDefault();
+      if (window.KycDraft) window.KycDraft.markSubmitted(kycDraftKey);
       form.submit();
       return;
     }
@@ -845,6 +856,7 @@
       if (presignResp.status === 501) {
         // Fallback for local storage (501 Not Implemented)
         progressText.textContent = 'Using local upload backend...';
+        if (isIndividual && window.KycDraft) window.KycDraft.markSubmitted(kycDraftKey);
         form.submit();
         return;
       }
@@ -909,6 +921,7 @@
       }
 
       progressText.textContent = 'Upload complete! Redirecting...';
+      if (isIndividual && window.KycDraft) window.KycDraft.clear(kycDraftKey);
       setTimeout(() => {
         window.location.href = "{{ url_for('kyc.index') }}";
       }, 600);
@@ -919,6 +932,7 @@
       progressContainer.querySelector('.progress').classList.add('bg-danger');
       if (submitBtn) submitBtn.disabled = false;
       alert('Upload error: ' + err.message + '\nFalling back to standard upload.');
+      if (isIndividual && window.KycDraft) window.KycDraft.markSubmitted(kycDraftKey);
       form.submit();
     }
   }
@@ -1107,64 +1121,20 @@
     orgForm.addEventListener('submit', handlePresignedUpload);
   }
 
-  /* ── KYC draft auto-save + resume ───────────────────────────────────────
-     Persists the individual upload form to localStorage (keyed per document
-     type) so a user can fill one requirement per day and resume an incomplete
-     submission later. Files cannot be serialised, so only text/URL fields are
-     saved; the user re-attaches the file on resume. Draft state never touches
-     the compliance backend until the user submits for review. */
+  /* ── KYC form: document-type prefill + single-entry lock ────────────────
+     The draft itself is handled client-only by static/js/modules/user/
+     kyc-draft.js (IndexedDB + device cookie); this block only prefills the
+     preselected document type and enforces the profile's canonical ID number. */
   (function () {
     var form = document.getElementById('individualForm');
     if (!form) return;
 
     // Prefer the server-provided value, but fall back to the URL query param so
-    // the draft key stays consistent even after a POST re-render (validation
-    // error) where the server clears preselect_id_type.
+    // the preselected type stays consistent even after a POST re-render
+    // (validation error) where the server clears preselect_id_type.
     var params = new URLSearchParams(window.location.search);
     var preselect = '{{ preselect_id_type|default('') }}' || params.get('preselect') || '';
     if (preselect) preselect = preselect.trim().toLowerCase();
-    var draftKey = 'afcon_kyc_draft_' + (preselect || 'individual');
-    var statusEl = document.getElementById('kycDraftStatus');
-    var saveBtn = document.getElementById('kycSaveDraftBtn');
-
-    // TextField ids we persist.
-    var FIELDS = ['id_number', 'document_url', 'selfie_url', 'address_line1',
-                  'address_line2', 'city', 'state', 'country', 'postal_code'];
-
-    function readDraft() {
-      try {
-        var raw = localStorage.getItem(draftKey);
-        return raw ? JSON.parse(raw) : null;
-      } catch (e) { return null; }
-    }
-
-    function writeDraft() {
-      var data = { saved_at: new Date().toISOString() };
-      FIELDS.forEach(function (id) {
-        var el = document.getElementById(id);
-        if (el) data[id] = el.value;
-      });
-      var idType = document.getElementById('id_type');
-      if (idType) data.id_type = idType.value;
-      try {
-        localStorage.setItem(draftKey, JSON.stringify(data));
-        return true;
-      } catch (e) { return false; }
-    }
-
-    function applyDraft(draft) {
-      if (!draft) return;
-      FIELDS.forEach(function (id) {
-        var el = document.getElementById(id);
-        if (el && draft[id] != null) el.value = draft[id];
-      });
-      var idType = document.getElementById('id_type');
-      if (idType && draft.id_type) idType.value = draft.id_type;
-    }
-
-    function setStatus(msg) {
-      if (statusEl) statusEl.textContent = msg || '';
-    }
 
     // Prefill + focus when arriving from a preselected requirement.
     if (preselect) {
@@ -1174,42 +1144,11 @@
         var opt = idType.querySelector('option[value="' + preselect + '"]');
         if (opt && !opt.disabled) idType.value = preselect;
       }
-      var draft = readDraft();
-      applyDraft(draft);
-      if (draft) setStatus('Resumed your saved draft for this requirement.');
       // Scroll the form into view so the user lands on the right field.
       setTimeout(function () {
         form.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 200);
     }
-
-    // Debounced auto-save on any input/change.
-    var t;
-    form.addEventListener('input', function () {
-      clearTimeout(t);
-      t = setTimeout(function () {
-        if (writeDraft()) setStatus('Draft auto-saved ' + new Date().toLocaleTimeString());
-      }, 600);
-    });
-    form.addEventListener('change', function () {
-      if (writeDraft()) setStatus('Draft auto-saved ' + new Date().toLocaleTimeString());
-    });
-
-    if (saveBtn) {
-      saveBtn.addEventListener('click', function () {
-        if (writeDraft()) {
-          setStatus('Draft saved ' + new Date().toLocaleTimeString() +
-                    ' — you can safely leave and return later.');
-        } else {
-          setStatus('Could not save draft on this device.');
-        }
-      });
-    }
-
-    // Clear the draft once a real submission succeeds (form submits away).
-    form.addEventListener('submit', function () {
-      try { localStorage.removeItem(draftKey); } catch (e) {}
-    });
 
     // ── Canonical identity single-entry lock ────────────────────────────
     // The ID number is read from UserProfile (single entry). If the selected
@@ -1245,6 +1184,24 @@
       }
       idTypeSel.addEventListener('change', syncSelfieRequirement);
       syncSelfieRequirement();
+    }
+
+    // ── Client-only draft: restore/save via IndexedDB (device-bound) ────
+    if (window.KycDraft) {
+      // A leftover "submitted" flag means the previous submit failed
+      // validation, so keep the draft and just clear the flag.
+      window.KycDraft.consumeSubmitFlag();
+      window.KycDraft.attach(form, {
+        key: kycDraftKey,
+        statusEl: document.getElementById('kycDraftStatus'),
+        saveBtn: document.getElementById('kycSaveDraftBtn'),
+        onRestored: function () {
+          // Re-apply the canonical-ID lock and selfie emphasis to the
+          // restored document type.
+          var sel = document.getElementById('id_type');
+          if (sel) sel.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
     }
   })();
 })();

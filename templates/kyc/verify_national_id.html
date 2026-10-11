@@ -60,7 +60,7 @@
   </div>
 
   <form class="kyc-form" method="POST" action="{{ url_for('kyc.submit_national_id') }}" novalidate>
-    {{ csrf_token_field() if csrf_token_field is defined }}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     {% if collect_identity %}
     {# KYC-first identity entry: the canonical bank has no full name yet. This

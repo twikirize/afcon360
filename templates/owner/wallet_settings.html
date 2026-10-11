@@ -3,7 +3,7 @@
 {% block title %}Wallet Settings - AFCON360{% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
 .wallet-settings {
     display: grid;
     grid-template-columns: 1fr 2fr;
@@ -774,7 +774,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // Show section
 function showSection(sectionId) {
     // Hide all sections

@@ -3,7 +3,7 @@
 {% block breadcrumb %}<span class="sep">/</span><span class="current">Settings</span>{% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
 .settings-layout { display:grid; grid-template-columns:200px 1fr; gap:16px; align-items:start; }
 @media(max-width:768px) { .settings-layout { grid-template-columns:1fr; } }
 .settings-nav { background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; position:sticky; top:80px; }
@@ -201,7 +201,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 function showSection(id) {
   document.querySelectorAll('.setting-section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.settings-nav-item').forEach(n => n.classList.remove('active'));

@@ -7,7 +7,7 @@
 {% block title %}Payment Gateway - AFCON360{% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
 .gateway-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -477,7 +477,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function selectGateway(gateway) {
     const amount = document.getElementById('amount').value;
     const currency = document.getElementById('currency').value;

@@ -362,7 +362,7 @@
   </div>
 </div>
 
-<style>
+<style nonce="{{ csp_nonce }}">
   .stat-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -464,7 +464,7 @@
   }
 </style>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function viewActionDetails(actionId) {
   // In a real implementation, this would fetch detailed action information
   alert(`Viewing details for action ${actionId}`);

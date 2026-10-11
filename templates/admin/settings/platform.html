@@ -194,7 +194,7 @@
     </div>
 </div>
 
-<style>
+<style nonce="{{ csp_nonce }}">
 .form-check {
     padding-left: 0;
     list-style: none;
@@ -209,7 +209,7 @@
 }
 </style>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function saveBookingConfig() {
     const form = document.getElementById('bookingConfigForm');
     const formData = new FormData(form);

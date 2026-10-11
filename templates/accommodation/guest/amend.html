@@ -71,7 +71,7 @@
 
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function toggleAmendFields() {
     var type = document.getElementById('amendmentType').value;
     document.getElementById('datesFields').classList.toggle('d-none', type !== 'dates');

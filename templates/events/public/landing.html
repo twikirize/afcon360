@@ -62,7 +62,7 @@
     </script>
     {% endif %}
 
-    <style>
+    <style nonce="{{ csp_nonce }}">
     /* Modern Hero Section Styles */
     .event-hero-modern {
         position: relative;
@@ -1228,7 +1228,7 @@
 
       <div class="ev-admin-bar__toast" id="evToast" style="display:none;"></div>
     </div>
-    <style>
+    <style nonce="{{ csp_nonce }}">
     .ev-admin-bar { position: sticky; top: 0; z-index: 9000; background: #0d1514; border-bottom: 2px solid #00e5a0; font-family: 'DM Sans', sans-serif; font-size: 13px; }
     .ev-admin-bar__inner { display: flex; align-items: center; gap: 16px; padding: 10px 20px; flex-wrap: wrap; }
     .ev-admin-bar__label { font-size: 10px; font-weight: 700; color: #00e5a0; background: rgba(0,229,160,.12); border: 1px solid rgba(0,229,160,.3); border-radius: 4px; padding: 2px 7px; }

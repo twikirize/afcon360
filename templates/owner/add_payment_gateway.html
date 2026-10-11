@@ -236,7 +236,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function selectGateway(gatewayType) {
     document.getElementById('gateway_name').value = gatewayType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
     document.getElementById('gateway_type').value = gatewayType;

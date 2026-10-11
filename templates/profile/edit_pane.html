@@ -2,7 +2,7 @@
 {# Does NOT extend base; rendered inside #shellContent or #rightPanel via ?_pane=1 #}
 
 {# Inline critical styles for edit form within dashboard pane #}
-<style>
+<style nonce="{{ csp_nonce }}">
   .edit-pane-wrap { display: grid; grid-template-columns: 1fr 280px; gap: 1.25rem; align-items: start; }
   .flash-msg { display: flex; align-items: center; gap: 10px; padding: .95rem 1.1rem; border-radius: 8px; font-size: .95rem; margin-bottom: 1.25rem; border: 1px solid; grid-column: 1 / -1; }
   .flash-msg.success { background: #d1fae5; border-color: #a7f3d0; color: #065f46; }
@@ -367,7 +367,7 @@
 
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function previewAvatar(url) {
   const circle = document.getElementById('avatar-preview');
   const initials = document.getElementById('avatar-initials');

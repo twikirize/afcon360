@@ -4,7 +4,7 @@
 {% block title %}Activate Your Wallet — AFCON360{% endblock %}
 
 {% block extra_style %}
-<style>
+<style nonce="{{ csp_nonce }}">
     .activation-container {
         max-width: 600px;
         margin: 60px auto;
@@ -202,7 +202,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
     document.addEventListener('DOMContentLoaded', function() {
         const check = document.getElementById('termsCheck');
         const btn = document.getElementById('activateBtn');

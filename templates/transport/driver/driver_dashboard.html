@@ -3,7 +3,7 @@
 {% block breadcrumb %}<span class="sep">/</span><span class="current">Driver</span>{% endblock %}
 
 {% block extra_css %}
-<style>
+<style nonce="{{ csp_nonce }}">
 /* =========================================
    DRIVER COCKPIT — presentation layer on top of transport/base.css.
    All component classes use the ck- prefix. Uses transport theme tokens only.

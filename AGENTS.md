@@ -294,6 +294,46 @@ Agents must still:
 * avoid production commands;
 * report evidence rather than assumptions.
 
+## 8. Browser Automation and Local Ports
+
+When browser verification is required, agents MUST use **both** available browser automation options:
+
+1. **Playwright MCP** — configured and available in the development environment (`.playwright-mcp/`). Use for interactive investigation, live debugging, visual inspection, exploratory journeys, and controlled browser evidence collection.
+2. **Playwright Test** — configured via `playwright.config.js` (test runner at `tests/browser/`). Use for repeatable automated regression, committed `.spec.*` tests, CI/test-suite execution, and permanent regression protection.
+
+**Never claim one was used when it was not.** Do not substitute static HTML inspection when a real browser check is materially required.
+
+### Preferred Local Ports
+
+Reuse the existing development setup rather than inventing new ports or launching duplicate servers:
+
+- **HTTPS development server: port 5443** — uses the development CA in `certs/` for TLS. Do not disable TLS verification.
+- **Local HTTP test server: port 500** — where supported by the task and repository configuration.
+- **Playwright D3 test server: port 5611** — defined in `playwright.config.js` (`D3_TEST_PORT`), serves the real app via `tests/browser/start_test_server.py` with `TestingConfig` against the isolated `*_test` database.
+
+### Verify the Target Before Acting
+
+- Establish the host, protocol, application configuration, and database target **before** performing state-changing browser actions.
+- Never assume two ports use the same database.
+- Use an **isolated test database** for test bookings and other mutations; never use production or shared real-user data for test evidence.
+
+### Preserve Security
+
+- Use the existing development CA for HTTPS (in `certs/`).
+- Do not disable TLS verification, expose credentials, or bypass authentication/authorization to make a browser test pass.
+
+### Collect Verifiable Evidence
+
+When relevant, preserve:
+- Screenshots or traces
+- Browser console/network errors
+- Server logs
+- Test commands, exit codes, and corresponding backend/database outcomes
+
+### Respect Task Scope
+
+Browser tools **supplement**—not replace—source tracing and automated tests. Do not run state-changing journeys, change code, restart services, or alter configuration unless the active task explicitly authorizes them.
+
 ---
 
 *End of Directive. Begin with UNDERSTAND.*

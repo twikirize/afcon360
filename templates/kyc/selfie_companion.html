@@ -121,7 +121,7 @@
   </main>
 
   <script src="{{ url_for('static', filename='js/modules/user/selfie-capture.js') }}"></script>
-  <script>
+  <script nonce="{{ csp_nonce }}">
   (function () {
     var token = {{ token | default(none) | tojson }};
     var submitBtn = document.getElementById('cp-submit');
