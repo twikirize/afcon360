@@ -147,6 +147,53 @@ window.addEventListener('appinstalled', () => {
         return { status: resp.status, data: data };
     }
 
+    async function refreshCsrfToken() {
+        // The dashboard captures its CSRF token once at load. That token is
+        // time-limited (WTF_CSRF_TIME_LIMIT), so a long-lived page eventually
+        // 400s. Fetch a fresh, session-bound token for the already-authenticated
+        // session — this reissues, never bypasses, CSRF protection.
+        try {
+            var resp = await fetch("/api/transport/csrf-token", {
+                method: "GET",
+                headers: { "Accept": "application/json" },
+                credentials: "same-origin",
+            });
+            if (resp.status !== 200) return false;
+            var data = await resp.json();
+            if (data && typeof data.csrf_token === "string" && data.csrf_token) {
+                csrf = data.csrf_token;
+                return true;
+            }
+        } catch (e) { /* fall through to the failure badge */ }
+        return false;
+    }
+
+    // Pure decision (node-testable): may a 400 be retried once with a fresh
+    // CSRF token? ONLY when the server explicitly says the token expired.
+    // A missing/invalid token, a validation failure, or any non-400 is handed
+    // back unchanged — never retried blindly.
+    function afconShouldRetryAfter400(status, data) {
+        if (status !== 400) return false;
+        if (!data) return false;
+        if (typeof data === "string") {
+            try { data = JSON.parse(data); } catch (e) { return false; }
+        }
+        return data.code === "csrf_expired";
+    }
+
+    // POST with at most ONE refresh+replay on an expired-CSRF 400. Bounded by
+    // construction: a single refresh, a single replay — never a loop.
+    // buildBody is a factory so the replayed request gets a fresh client_ts.
+    async function afconPostWithCsrfRetry(url, buildBody) {
+        var r = await postJSON(url, buildBody());
+        if (afconShouldRetryAfter400(r.status, r.data)) {
+            if (await refreshCsrfToken()) {
+                r = await postJSON(url, buildBody());
+            }
+        }
+        return r;
+    }
+
     function setLocBadge(msg, isErr, showRetry) {
         var el = document.getElementById("dcLocBadge");
         if (!el) return;
@@ -420,14 +467,17 @@ window.addEventListener('appinstalled', () => {
         }
         inFlight = true;
         try {
-            var r = await postJSON(
-                "/api/transport/drivers/" + driverId + "/location",
-                // D9 latency observability: client send-time (ms epoch).
-                // Server timestamp stays authoritative; client_ts only lets
-                // reads compute client→server latency. Never trusted.
-                { latitude: best.lat, longitude: best.lon, accuracy: best.acc,
-                  client_ts: Date.now() }
-            );
+            var url = "/api/transport/drivers/" + driverId + "/location";
+            // D9 latency observability: client send-time (ms epoch).
+            // Server timestamp stays authoritative; client_ts only lets
+            // reads compute client→server latency. Never trusted.
+            // A long-lived page can outlive the CSRF token's lifetime. Retry
+            // once — and ONLY for an explicitly-expired token — via a single
+            // refresh+replay (bounded; see afconPostWithCsrfRetry).
+            var r = await afconPostWithCsrfRetry(url, function () {
+                return { latitude: best.lat, longitude: best.lon, accuracy: best.acc,
+                         client_ts: Date.now() };
+            });
             if (r.status === 200 && r.data && r.data.success) {
                 setLocBadge("Published " + new Date().toLocaleTimeString() + ".", false);
             } else {
@@ -468,7 +518,9 @@ window.addEventListener('appinstalled', () => {
             afconValidObservation: afconValidObservation,
             afconShouldReplaceBest: afconShouldReplaceBest,
             AFCON_FRESHNESS_MS: FRESHNESS_MS,
-            AFCON_LOW_ACCURACY_M: LOW_ACCURACY_M
+            AFCON_LOW_ACCURACY_M: LOW_ACCURACY_M,
+            afconShouldRetryAfter400: afconShouldRetryAfter400,
+            afconPostWithCsrfRetry: afconPostWithCsrfRetry
         };
     }
 })();

@@ -217,25 +217,87 @@ def test_nonce_in_header_equals_nonce_rendered_into_body(client):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("path", PATHS)
-def test_report_only_policy_is_present_and_stricter_on_style_src(client, path):
+def test_report_only_policy_is_present_and_stricter_on_style_src(app, client, path):
     """Report-only exists to observe inline styles before 'unsafe-inline' is
     dropped from the enforced style-src. If report-only ever gains
-    'unsafe-inline' it stops measuring anything and the migration signal dies."""
-    resp = client.get(path, follow_redirects=False)
-    ro = resp.headers.get(REPORT_ONLY_HEADER)
-    assert ro is not None, f"{path}: {REPORT_ONLY_HEADER} ABSENT"
-    csp = resp.headers.get(ENFORCE_HEADER)
-    enforce_style = _directives(csp)["style-src"]
-    report_style = _directives(ro)["style-src"]
-    assert "'unsafe-inline'" in enforce_style, (
-        f"{path}: enforced style-src no longer permits inline styles; "
-        "the staged migration in app/Documentation/CSP_POLICY.md has landed "
-        "and this test needs updating with it"
-    )
-    assert "'unsafe-inline'" not in report_style, (
-        f"{path}: report-only style-src permits inline styles, so it can no "
-        "longer observe the inline-style debt it exists to measure"
-    )
+    'unsafe-inline' it stops measuring anything and the migration signal dies.
+
+    Report-only is only *stricter* than enforcement while CSP_STRICT_ENFORCE
+    is OFF: with the flag ON, enforcement already carries the strict
+    element-level style policy and the two headers are equal. The flag is
+    therefore pinned OFF here explicitly, not inherited from ambient state
+    or test ordering.
+    """
+    from app import is_csp_strict_enforce, refresh_csp_strict_cache
+    from app.extensions import db
+    from app.models.system_config import SystemConfig
+
+    with app.app_context():
+        prior = SystemConfig.query.filter_by(key="CSP_STRICT_ENFORCE").first()
+        prior_value = prior.value if prior is not None else None
+    try:
+        with app.app_context():
+            SystemConfig.set(
+                "CSP_STRICT_ENFORCE",
+                False,
+                value_type="bool",
+                category="security",
+                description="Pinned OFF for the report-only strictness proof",
+                commit=True,
+            )
+        refresh_csp_strict_cache()
+        assert is_csp_strict_enforce() is False, (
+            "could not pin CSP_STRICT_ENFORCE off; the report-only strictness "
+            "guarantee only holds while enforcement is permissive"
+        )
+
+        resp = client.get(path, follow_redirects=False)
+        ro = resp.headers.get(REPORT_ONLY_HEADER)
+        assert ro is not None, f"{path}: {REPORT_ONLY_HEADER} ABSENT"
+        csp = resp.headers.get(ENFORCE_HEADER)
+
+        enforce_d = _directives(csp)
+        report_d = _directives(ro)
+
+        # Read the element-level style directive each policy ACTUALLY carries:
+        # report-only always uses `style-src-elem` (never `style-src`); the
+        # permissive enforced policy uses `style-src`. Asserting on the real
+        # element-level rule keeps the guarantee honest instead of indexing a
+        # directive name that no longer exists.
+        enforce_elem = enforce_d.get("style-src-elem") or enforce_d.get("style-src")
+        report_elem = report_d.get("style-src-elem") or report_d.get("style-src")
+        assert enforce_elem, (
+            f"{path}: enforced policy carries no element-level style directive"
+        )
+        assert report_elem, (
+            f"{path}: report-only policy carries no element-level style directive"
+        )
+        assert "'unsafe-inline'" in enforce_elem, (
+            f"{path}: enforced element-level style directive no longer permits "
+            "inline styles; the staged migration in app/Documentation/"
+            "CSP_POLICY.md has landed and this test needs updating with it"
+        )
+        assert "'unsafe-inline'" not in report_elem, (
+            f"{path}: report-only element-level style directive permits inline "
+            "styles, so it can no longer observe the inline-style debt it "
+            "exists to measure"
+        )
+    finally:
+        with app.app_context():
+            if prior_value is None:
+                row = SystemConfig.query.filter_by(key="CSP_STRICT_ENFORCE").first()
+                if row is not None:
+                    db.session.delete(row)
+                    db.session.commit()
+            else:
+                SystemConfig.set(
+                    "CSP_STRICT_ENFORCE",
+                    prior_value,
+                    value_type="bool",
+                    category="security",
+                    commit=True,
+                )
+        refresh_csp_strict_cache()
 
 
 @pytest.mark.parametrize("path", PATHS)
