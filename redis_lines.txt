@@ -1,0 +1,61 @@
+12: #   [OPTIMIZATION] Shared Redis client and connection reuse
+28: #   local  → .env + .env.local   (your machine, localhost DB/Redis)
+29: #   docker → .env + .env.docker  (Docker Compose, service names db/redis)
+44: # REDIS AVAILABILITY CHECK
+47:     import redis
+49:     if os.getenv("DISABLE_REDIS", "false").lower() in ("1", "true", "yes"):
+50:         redis = None
+51:         REDIS_AVAILABLE = False
+52:         logging.warning("[ENV] Redis disabled via DISABLE_REDIS env var")
+54:         REDIS_AVAILABLE = True
+56:     redis = None
+57:     REDIS_AVAILABLE = False
+58:     logging.warning("[ENV] Redis not installed — some features will be limited")
+86: from app.extensions import db, migrate, login_manager, csrf, limiter, cache, redis_client, mail, socketio
+144: # across workers via the Redis channel below. No env override: the owner
+145: # toggle is the mechanism. If Redis is unavailable, propagation falls back
+183:         from app.extensions import redis_client
+184:         redis_client.publish(CSP_STRICT_CHANNEL, "CSP_STRICT_ENFORCE")
+192:     Daemon thread, best effort only. Skipped when Redis is disabled and dies
+193:     silently when Redis is unreachable, so tests and Redis-less dev are
+196:         if os.getenv("DISABLE_REDIS", "false").lower() in ("1", "true", "yes"):
+198:         from app.extensions import redis_client
+199:         pubsub = redis_client.pubsub()
+220: def require_redis(url: str, purpose: str, existing_client=None):
+222:     Ensure Redis is available before starting the app.
+232:     if not REDIS_AVAILABLE:
+233:         logging.warning(f"Redis not available for {purpose} - using fallback")
+237:         client = redis.Redis.from_url(url, decode_responses=False, socket_connect_timeout=1, socket_timeout=1)
+241:         logging.error(f"Redis not available for {purpose}. Error: {e}")
+392:     # Redis & Extensions (Shared) – resilient fallback
+394:     redis_url = app.config.get("REDIS_URL") or os.getenv("REDIS_URL")
+396:     if not redis_url:
+399:             raise RuntimeError("REDIS_URL must be set in production.")
+401:             redis_url = "redis://localhost:6379/0"
+402:             logger.warning("Using development Redis URL.")
+404:     from app.extensions import limiter, cache, redis_client
+406:     # Try to configure Redis for caching; fallback to SimpleCache
+407:     _redis_available_for_cache = False
+409:         if REDIS_AVAILABLE:
+411:                 "CACHE_TYPE": "RedisCache",
+412:                 "CACHE_REDIS_URL": redis_url,
+415:             redis_client.configure(redis_url)
+416:             _redis_available_for_cache = True
+421:         logger.warning("Redis cache configuration failed – using SimpleCache")
+426:         else (redis_url if _redis_available_for_cache else "memory://")
+430:     # Get Redis client for sessions – reuse existing connection
+431:     redis_session_client = None
+433:         if _redis_available_for_cache:
+434:             redis_session_client = redis_client.client
+438:     if not redis_session_client:
+439:         redis_session_client = require_redis(redis_url, "sessions")
+441:     if REDIS_AVAILABLE and redis_session_client and FLASK_SESSION_AVAILABLE:
+442:         app.config["SESSION_TYPE"] = "redis"
+443:         app.config["SESSION_REDIS"] = redis_session_client
+448:         logging.warning("Using filesystem sessions - Redis not available")
+450:     if _redis_available_for_cache:
+451:         cache.init_app(app, config={"CACHE_TYPE": "RedisCache", "CACHE_REDIS_URL": redis_url})
+745:     socketio.init_app(app, message_queue=app.config.get('REDIS_URL'))
+2069:         # Check Redis user cache (L2) to avoid DB queries
+2095:                 # Store in Redis cache for future requests (L2)
+2394:     # it (Redis pub/sub). Best effort; silent when Redis is unavailable.

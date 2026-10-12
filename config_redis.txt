@@ -1,0 +1,14 @@
+139:     # ---- Redis (single source of truth) -------------------------------------
+140:     # CRITICAL: @ in Redis password must be percent-encoded as %40 in URLs.
+141:     # Correct:   redis://:MyP%40ss@redis:6379/0
+142:     # Wrong:     redis://:MyP@ss@redis:6379/0   ← breaks URL parsing
+143:     REDIS_URL              = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+144:     CELERY_BROKER_URL      = os.getenv("CELERY_BROKER_URL",  REDIS_URL)
+145:     CELERY_RESULT_BACKEND  = os.getenv("CELERY_RESULT_BACKEND", REDIS_URL)
+148:     SESSION_TYPE             = "redis"
+156:     SESSION_REDIS_URL        = REDIS_URL
+160:     REDIS_HOST           = os.getenv('REDIS_HOST', 'localhost')
+161:     REDIS_PORT           = int(os.getenv('REDIS_PORT', 6379))
+162:     REDIS_ANALYTICS_DB   = int(os.getenv('REDIS_ANALYTICS_DB', 1))
+165:     RATELIMIT_STORAGE_URI   = REDIS_URL
+487:     SESSION_REDIS_URL = None
