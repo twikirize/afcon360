@@ -238,7 +238,8 @@ from app.events.guest_coordination_service import (
 )
 from app.events.attendee_accounts import find_or_create_attendee_user  # noqa: F401  # future assignment/wallet integration
 from app.accommodation.models.property import Property, AccommodationPropertyStatus
-from app.transport.models import Booking, BookingStatus, DriverProfile, Vehicle
+from app.transport.models import Booking, DriverProfile, Vehicle
+from app.utils.enums import BookingStatus
 
 assignment_bp = Blueprint('event_assignment', __name__)
 

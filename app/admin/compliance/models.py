@@ -2,87 +2,52 @@
 Compliance models for regulatory compliance, case management, and data subject requests
 """
 from datetime import datetime, timezone
-from enum import Enum
 from app.extensions import db
+from sqlalchemy import Column, BigInteger, String, Text, DateTime, Index, CheckConstraint, ForeignKey
+from sqlalchemy.orm import relationship, validates
+from app.utils.enums import (
+    ComplianceCaseStatus,
+    ComplianceCasePriority,
+    ComplianceCaseType,
+    DataSubjectRequestType,
+    DataSubjectRequestStatus,
+    ComplianceReportType,
+)
+from app.models.base import BaseModel
+from sqlalchemy import Column, BigInteger, String, Text, DateTime, Index, CheckConstraint, ForeignKey
+from sqlalchemy.orm import relationship
+from app.utils.enums import (
+    ComplianceCaseStatus,
+    ComplianceCasePriority,
+    ComplianceCaseType,
+    DataSubjectRequestType,
+    DataSubjectRequestStatus,
+    ComplianceReportType,
+)
+from app.models.base import BaseModel
 
 
-class ComplianceCaseStatus(str, Enum):
-    """Compliance case status enumeration"""
-    OPEN = 'open'
-    IN_REVIEW = 'in_review'
-    PENDING_INFO = 'pending_info'
-    APPROVED = 'approved'
-    REJECTED = 'rejected'
-    ESCALATED = 'escalated'
-    CLOSED = 'closed'
-
-
-class ComplianceCasePriority(str, Enum):
-    """Compliance case priority enumeration"""
-    CRITICAL = 'critical'
-    HIGH = 'high'
-    MEDIUM = 'medium'
-    LOW = 'low'
-
-
-class ComplianceCaseType(str, Enum):
-    """Compliance case type enumeration"""
-    KYC_REVIEW = 'kyc_review'
-    KYB_REVIEW = 'kyb_review'
-    AML_ALERT = 'aml_alert'
-    PAYOUT_REVIEW = 'payout_review'
-    DATA_REQUEST = 'data_request'
-    FLAG_ESCALATION = 'flag_escalation'
-    LICENSE_REVIEW = 'license_review'
-    OTHER = 'other'
-
-
-class DataSubjectRequestType(str, Enum):
-    """Data subject request type enumeration (GDPR)"""
-    ACCESS = 'access'
-    DELETION = 'deletion'
-    RECTIFICATION = 'rectification'
-    PORTABILITY = 'portability'
-    OBJECTION = 'objection'
-
-
-class DataSubjectRequestStatus(str, Enum):
-    """Data subject request status enumeration"""
-    PENDING = 'pending'
-    VERIFIED = 'verified'
-    PROCESSING = 'processing'
-    COMPLETED = 'completed'
-    REJECTED = 'rejected'
-    EXPIRED = 'expired'
-
-
-class ComplianceReportType(str, Enum):
-    """Compliance report type enumeration"""
-    KYC_SUMMARY = 'kyc_summary'
-    AML_SUMMARY = 'aml_summary'
-    PAYOUT_SUMMARY = 'payout_summary'
-    CASE_HISTORY = 'case_history'
-    AUDIT_TRAIL = 'audit_trail'
-    RISK_ASSESSMENT = 'risk_assessment'
-    REGULATORY_FILING = 'regulatory_filing'
-
-
-class ComplianceCase(db.Model):
+class ComplianceCase(BaseModel):
     """Compliance case for tracking regulatory compliance issues"""
     __tablename__ = 'compliance_cases'
+    __table_args__ = (
+        CheckConstraint(ComplianceCaseType.check_constraint(), name="ck_compliance_case_type"),
+        CheckConstraint(ComplianceCaseStatus.check_constraint(), name="ck_compliance_case_status"),
+        CheckConstraint(ComplianceCasePriority.check_constraint(), name="ck_compliance_case_priority"),
+    )
 
     id = db.Column(db.BigInteger, primary_key=True)
     public_id = db.Column(db.String(36), unique=True, nullable=False, index=True)
     
-    # Case identification
-    case_type = db.Column(db.Enum(ComplianceCaseType), nullable=False, index=True)
+    # Case identification - Use String + CHECK constraint instead of PostgreSQL ENUM
+    case_type = Column(String(30), nullable=False, index=True)
     case_number = db.Column(db.String(50), unique=True, nullable=False, index=True)
     title = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
     
-    # Status and priority
-    status = db.Column(db.Enum(ComplianceCaseStatus), default=ComplianceCaseStatus.OPEN, nullable=False, index=True)
-    priority = db.Column(db.Enum(ComplianceCasePriority), default=ComplianceCasePriority.MEDIUM, nullable=False, index=True)
+    # Status and priority - Use String + CHECK constraint instead of PostgreSQL ENUM
+    status = Column(String(20), default=ComplianceCaseStatus.OPEN.value, nullable=False, index=True)
+    priority = Column(String(16), default=ComplianceCasePriority.MEDIUM.value, nullable=False, index=True)
     
     # Entity references
     user_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=True, index=True)
@@ -98,201 +63,27 @@ class ComplianceCase(db.Model):
     # Escalation
     escalated_from = db.Column(db.BigInteger, nullable=True)  # User ID who escalated
     escalated_at = db.Column(db.DateTime, nullable=True)
-    escalation_reason = db.Column(db.Text)
-    
-    # SLA tracking
-    sla_due_at = db.Column(db.DateTime, nullable=True, index=True)
-    sla_priority = db.Column(db.Enum(ComplianceCasePriority), nullable=True)
-    
-    # Resolution
-    resolution = db.Column(db.Text)
-    resolved_at = db.Column(db.DateTime, nullable=True)
-    resolved_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=True)
-    
-    # Audit
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
-    created_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
-    
-    # Relationships - Fixed to specify foreign_keys to avoid ambiguity
-    user = db.relationship('User', foreign_keys=[user_id], backref='compliance_cases_user')
-    organisation = db.relationship('Organisation', foreign_keys=[organisation_id], backref='compliance_cases_org')
-    assignee = db.relationship('User', foreign_keys=[assigned_to], backref='assigned_compliance_cases')
-    creator = db.relationship('User', foreign_keys=[created_by], backref='created_compliance_cases')
-    resolver = db.relationship('User', foreign_keys=[resolved_by], backref='resolved_compliance_cases')
-    
-    # Allow table to be redefined if already exists
-    __table_args__ = {'extend_existing': True}
-    
-    def __repr__(self):
-        return f'<ComplianceCase {self.case_number}: {self.title}>'
-
-
-class ComplianceCaseNote(db.Model):
-    """
-    Notes and system activity entries attached to a compliance case.
-
-    Follows the module convention (db.Model + explicit BigInteger id + UUID
-    public_id + soft delete) and is fully described in model metadata, so a
-    fresh `db.create_all()` (no migrations) reproduces the table identically.
-
-    kind='note'   -> free-text note added by an officer (shown in the Notes list)
-    kind='system' -> automatic activity entry (assignment, escalation, status
-                     change, resolution) shown in the Case History timeline.
-    """
-    __tablename__ = 'compliance_case_notes'
-
-    id = db.Column(db.BigInteger, primary_key=True)
-    public_id = db.Column(db.String(36), unique=True, nullable=False, index=True)
-
-    case_id = db.Column(db.BigInteger, db.ForeignKey('compliance_cases.id'), nullable=False, index=True)
-    author_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False, index=True)
-
-    # Short machine-readable label for system entries (e.g. 'assigned',
-    # 'escalated'). Free-text notes default to 'note_added'.
-    action = db.Column(db.String(64), nullable=False, default='note_added')
-    kind = db.Column(db.String(16), nullable=False, default='note')  # 'note' | 'system'  (enum rule: String + CHECK)
-    content = db.Column(db.Text, nullable=False)
-
-    # Timestamps + soft delete (BigInteger/UUID/soft-delete conventions)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
-    is_deleted = db.Column(db.Boolean, default=False, nullable=False)
-    deleted_at = db.Column(db.DateTime, nullable=True)
-
-    case = db.relationship('ComplianceCase', foreign_keys=[case_id], backref='case_notes')
-    author = db.relationship('User', foreign_keys=[author_id], backref='compliance_case_notes_author')
 
     __table_args__ = (
-        db.CheckConstraint("kind IN ('note', 'system')", name='ck_compliance_case_note_kind'),
-        {'extend_existing': True},
+        CheckConstraint(ComplianceCaseType.check_constraint(), name="ck_compliance_case_type"),
+        CheckConstraint(ComplianceCaseStatus.check_constraint(), name="ck_compliance_case_status"),
+        CheckConstraint(ComplianceCasePriority.check_constraint(), name="ck_compliance_case_priority"),
     )
 
-    def __repr__(self):
-        return f'<ComplianceCaseNote {self.id}: case={self.case_id} {self.kind}>'
+    @validates("case_type")
+    def validate_case_type(self, key, value):
+        if value and value not in ComplianceCaseType.values():
+            raise ValueError(f"Invalid case_type. Must be one of: {ComplianceCaseType.values()}")
+        return value
 
+    @validates("status")
+    def validate_status(self, key, value):
+        if value and value not in ComplianceCaseStatus.values():
+            raise ValueError(f"Invalid status. Must be one of: {ComplianceCaseStatus.values()}")
+        return value
 
-class DataSubjectRequest(db.Model):
-    """Data subject request for GDPR compliance (access, deletion, etc.)"""
-    __tablename__ = 'data_subject_requests'
-
-    id = db.Column(db.BigInteger, primary_key=True)
-    public_id = db.Column(db.String(36), unique=True, nullable=False, index=True)
-    request_number = db.Column(db.String(50), unique=True, nullable=False, index=True)
-    
-    # Request details
-    request_type = db.Column(db.Enum(DataSubjectRequestType), nullable=False, index=True)
-    status = db.Column(db.Enum(DataSubjectRequestStatus), default=DataSubjectRequestStatus.PENDING, nullable=False, index=True)
-    
-    # Requester information
-    user_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False, index=True)
-    requester_email = db.Column(db.String(255), nullable=False)
-    requester_name = db.Column(db.String(255), nullable=False)
-    
-    # Request details
-    request_details = db.Column(db.Text, nullable=False)
-    data_categories = db.Column(db.Text)  # JSON string of requested data categories
-    scope = db.Column(db.Text)  # Description of data scope
-    
-    # Verification
-    identity_verified = db.Column(db.Boolean, default=False, nullable=False)
-    verification_method = db.Column(db.String(100))
-    verified_at = db.Column(db.DateTime, nullable=True)
-    verified_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=True)
-    
-    # Processing
-    assigned_to = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=True, index=True)
-    assigned_at = db.Column(db.DateTime, nullable=True)
-    
-    # Response
-    response = db.Column(db.Text)
-    response_data = db.Column(db.Text)  # JSON string of response data
-    completed_at = db.Column(db.DateTime, nullable=True)
-    rejection_reason = db.Column(db.Text)
-    
-    # Legal basis
-    legal_basis = db.Column(db.String(255))
-    exemption_applied = db.Column(db.Boolean, default=False)
-    exemption_reason = db.Column(db.Text)
-    
-    # SLA
-    sla_due_at = db.Column(db.DateTime, nullable=True, index=True)
-    
-    # Audit
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
-    created_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
-    
-    # Relationships
-    user = db.relationship('User', foreign_keys=[user_id], backref='data_subject_requests')
-    assignee = db.relationship('User', foreign_keys=[assigned_to], backref='assigned_data_requests')
-    verifier = db.relationship('User', foreign_keys=[verified_by], backref='verified_data_requests')
-    creator = db.relationship('User', foreign_keys=[created_by], backref='created_data_requests')
-    
-    # Allow table to be redefined if already exists
-    __table_args__ = {'extend_existing': True}
-    
-    def __repr__(self):
-        return f'<DataSubjectRequest {self.request_number}: {self.request_type.value}>'
-
-
-class ComplianceReport(db.Model):
-    """Compliance reports for regulatory filings and internal audits"""
-    __tablename__ = 'compliance_reports'
-
-    id = db.Column(db.BigInteger, primary_key=True)
-    public_id = db.Column(db.String(36), unique=True, nullable=False, index=True)
-    report_number = db.Column(db.String(50), unique=True, nullable=False, index=True)
-    
-    # Report details
-    report_type = db.Column(db.Enum(ComplianceReportType), nullable=False, index=True)
-    title = db.Column(db.String(255), nullable=False)
-    description = db.Column(db.Text)
-    
-    # Report parameters
-    parameters = db.Column(db.Text)  # JSON string of report parameters
-    date_range_start = db.Column(db.DateTime, nullable=True)
-    date_range_end = db.Column(db.DateTime, nullable=True)
-    
-    # Report content
-    report_data = db.Column(db.Text)  # JSON string of report data
-    summary = db.Column(db.Text)
-    findings = db.Column(db.Text)
-    recommendations = db.Column(db.Text)
-    
-    # Status
-    status = db.Column(db.String(50), default='draft', nullable=False, index=True)
-    
-    # File storage
-    file_path = db.Column(db.String(500))
-    file_format = db.Column(db.String(20))  # pdf, csv, json, etc.
-    file_size = db.Column(db.Integer)
-    
-    # Review and approval
-    reviewed_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=True)
-    reviewed_at = db.Column(db.DateTime, nullable=True)
-    approved_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=True)
-    approved_at = db.Column(db.DateTime, nullable=True)
-    
-    # Distribution
-    distributed_to = db.Column(db.Text)  # JSON string of recipient list
-    distributed_at = db.Column(db.DateTime, nullable=True)
-    
-    # Audit
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
-    created_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
-    
-    # Relationships
-    reviewer = db.relationship('User', foreign_keys=[reviewed_by], backref='reviewed_compliance_reports')
-    approver = db.relationship('User', foreign_keys=[approved_by], backref='approved_compliance_reports')
-    creator = db.relationship('User', foreign_keys=[created_by], backref='created_compliance_reports')
-    
-    # Allow table to be redefined if already exists
-    __table_args__ = {'extend_existing': True}
-    
-    def __repr__(self):
-        return f'<ComplianceReport {self.report_number}: {self.title}>'
-
-
-
+    @validates("priority")
+    def validate_priority(self, key, value):
+        if value and value not in ComplianceCasePriority.values():
+            raise ValueError(f"Invalid priority. Must be one of: {ComplianceCasePriority.values()}")
+        return value

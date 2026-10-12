@@ -7,7 +7,8 @@ Critical incidents trigger alerts visible on the admin dashboard.
 from flask import request
 from flask_restful import Resource
 from app.extensions import db
-from app.transport.models import TransportIncident, IncidentSeverity
+from app.transport.models import TransportIncident
+from app.utils.enums import IncidentSeverity
 from app.auth.decorators import admin_required
 from app.transport.utils.helpers import paginate, filter_query, sort_query
 from datetime import datetime, timezone

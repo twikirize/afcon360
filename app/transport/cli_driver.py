@@ -170,7 +170,7 @@ def trip(booking_id, action):
     transition the admin status endpoint and moderation flows share.
     """
     _ensure_dev()
-    from app.transport.models import BookingStatus
+    from app.utils.enums import BookingStatus
     from app.transport.services.assignment_service import DispatchClaimError
     from app.transport.services.booking_service import BookingService
     from app.utils.exceptions import NotFoundError, ValidationError

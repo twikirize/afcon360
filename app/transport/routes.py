@@ -54,10 +54,11 @@ from app.transport.services import get_booking_service, get_provider_service, ge
 from app.transport.services.go_live_service import can_go_live
 from app.transport.services.assignment_service import ACTIVE_ASSIGNMENT_STATUSES
 from app.transport.services.passenger_service import get_passenger_service
-from app.transport.models import Booking, DriverProfile, Vehicle, TransportPassenger, ServiceType, BookingStatus
+from app.transport.models import Booking, DriverProfile, Vehicle, TransportPassenger
+from app.utils.enums import ServiceType, BookingStatus, ComplianceStatus, CompensationModel
 from app.transport.models import (
-    ComplianceStatus, VehicleMarketplaceListing, DriverVehicleApplication,
-    MarketplaceListingStatus, CompensationModel, get_setting,
+    VehicleMarketplaceListing, DriverVehicleApplication,
+    MarketplaceListingStatus, get_setting,
 )
 from app.extensions import db
 from app.transport.services.marketplace_service import get_marketplace_service

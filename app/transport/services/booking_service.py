@@ -16,7 +16,9 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from app.extensions import db, cache
 from app.transport.models import (
     Booking,
-    BookingStatus,
+    BookingStatus as BookingStatusPy,
+)
+from app.utils.enums import (
     ServiceType,
     ProviderType,
     VehicleClass,
@@ -172,44 +174,44 @@ def _measured_distance_km(pickup_location: Any,
 # Single source of truth (moved here from api/booking_routes.py so the
 # admin status endpoint and moderation flows share one contract).
 STATUS_TRANSITIONS = {
-    BookingStatus.DRAFT:           [BookingStatus.PENDING_PAYMENT, BookingStatus.CANCELLED],
-    BookingStatus.PENDING_PAYMENT: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
+    BookingStatusPy.DRAFT:           [BookingStatusPy.PENDING_PAYMENT, BookingStatusPy.CANCELLED],
+    BookingStatusPy.PENDING_PAYMENT: [BookingStatusPy.CONFIRMED, BookingStatusPy.CANCELLED],
     # MATCH-01-owned: CONFIRMED gains the NO_MATCH terminal edge (additive;
     # the pre-existing ASSIGNED and CANCELLED edges are unchanged).
-    BookingStatus.CONFIRMED:       [BookingStatus.ASSIGNED, BookingStatus.NO_MATCH, BookingStatus.CANCELLED],
-    BookingStatus.ASSIGNED:        [BookingStatus.DRIVER_EN_ROUTE, BookingStatus.CANCELLED],
-    BookingStatus.DRIVER_EN_ROUTE: [BookingStatus.PICKUP_ARRIVED, BookingStatus.CANCELLED],
-    BookingStatus.PICKUP_ARRIVED:  [BookingStatus.IN_PROGRESS, BookingStatus.NO_SHOW],
-    BookingStatus.IN_PROGRESS:     [BookingStatus.COMPLETED, BookingStatus.DISPUTED],
-    BookingStatus.COMPLETED:       [],
-    BookingStatus.CANCELLED:       [],
-    BookingStatus.NO_SHOW:         [],
-    BookingStatus.DISPUTED:        [BookingStatus.COMPLETED, BookingStatus.CANCELLED],
+    BookingStatusPy.CONFIRMED:       [BookingStatusPy.ASSIGNED, BookingStatusPy.NO_MATCH, BookingStatusPy.CANCELLED],
+    BookingStatusPy.ASSIGNED:        [BookingStatusPy.DRIVER_EN_ROUTE, BookingStatusPy.CANCELLED],
+    BookingStatusPy.DRIVER_EN_ROUTE: [BookingStatusPy.PICKUP_ARRIVED, BookingStatusPy.CANCELLED],
+    BookingStatusPy.PICKUP_ARRIVED:  [BookingStatusPy.IN_PROGRESS, BookingStatusPy.NO_SHOW],
+    BookingStatusPy.IN_PROGRESS:     [BookingStatusPy.COMPLETED, BookingStatusPy.DISPUTED],
+    BookingStatusPy.COMPLETED:       [],
+    BookingStatusPy.CANCELLED:       [],
+    BookingStatusPy.NO_SHOW:         [],
+    BookingStatusPy.DISPUTED:        [BookingStatusPy.COMPLETED, BookingStatusPy.CANCELLED],
     # MATCH-01-owned: terminal matching-failure state (additive).
     # The single outbound edge NO_MATCH -> CONFIRMED is the manual rider
     # "Try again" reopen (retry_matching only); nothing fires it automatically.
-    BookingStatus.NO_MATCH:        [BookingStatus.CONFIRMED],
+    BookingStatusPy.NO_MATCH:        [BookingStatusPy.CONFIRMED],
 }
 
 
-def _can_transition(current: BookingStatus, target: BookingStatus) -> bool:
+def _can_transition(current: BookingStatusPy, target: BookingStatusPy) -> bool:
     member = _status_member(current)
     if member is None:
         return False
     return target in STATUS_TRANSITIONS.get(member, [])
 
 
-def _status_member(value: Any) -> Optional[BookingStatus]:
+def _status_member(value: Any) -> Optional[BookingStatusPy]:
     """Normalize a stored status (plain str) or member to a member.
 
     Permanent-convention helper: storage is VARCHAR, so ORM attributes
     arrive as strings; the transition map stays member-keyed as the
     single source of truth. Unknown strings map to None (closed world).
     """
-    if isinstance(value, BookingStatus):
+    if isinstance(value, BookingStatusPy):
         return value
     try:
-        return BookingStatus(value)
+        return BookingStatusPy(value)
     except (ValueError, TypeError):
         return None
 
@@ -550,7 +552,7 @@ class BookingService:
                 estimated_duration_minutes=sanitized_data.get("estimated_duration"),
                 payment_method=sanitized_data.get("payment_method", "cash"),
                 payment_status=PaymentStatus.PENDING,
-                status=BookingStatus.PENDING_PAYMENT,
+                status=BookingStatusPy.PENDING_PAYMENT,
                 currency=Currency(sanitized_data.get("currency") or "USD"),
                 service_subtype=chosen_class,
                 idempotency_key=key,
@@ -726,13 +728,13 @@ class BookingService:
 
         # Stage definitions
         PRE_ASSIGNMENT_STATUSES = {
-            BookingStatus.PENDING_PAYMENT.value,
-            BookingStatus.CONFIRMED.value,
+            BookingStatusPy.PENDING_PAYMENT.value,
+            BookingStatusPy.CONFIRMED.value,
         }
         POST_ASSIGNMENT_CANCELLABLE_STATUSES = {
-            BookingStatus.ASSIGNED.value,
-            BookingStatus.DRIVER_EN_ROUTE.value,
-            BookingStatus.PICKUP_ARRIVED.value,
+            BookingStatusPy.ASSIGNED.value,
+            BookingStatusPy.DRIVER_EN_ROUTE.value,
+            BookingStatusPy.PICKUP_ARRIVED.value,
         }
         ALL_CANCELLABLE_STATUSES = PRE_ASSIGNMENT_STATUSES | POST_ASSIGNMENT_CANCELLABLE_STATUSES
         SAFETY_CATEGORIES = {
@@ -785,7 +787,7 @@ class BookingService:
                         Booking.__table__.c.is_deleted.is_(False),
                     )
                     .values(
-                        status=BookingStatus.CANCELLED.value,
+                        status=BookingStatusPy.CANCELLED.value,
                         cancelled_at=now,
                         cancellation_reason=reason,
                         cancellation_reason_category=reason_category,
@@ -808,7 +810,7 @@ class BookingService:
                 try:
                     release_result = AssignmentService.release(
                         booking_id,
-                        BookingStatus.CANCELLED,
+                        BookingStatusPy.CANCELLED,
                         actor=None,
                         reason=reason,
                         audit_extra={
@@ -937,9 +939,9 @@ class BookingService:
             booking.assigned_driver_id is not None
             or booking.assigned_vehicle_id is not None
         ):
-            if new_status == BookingStatus.COMPLETED:
+            if new_status == BookingStatusPy.COMPLETED:
                 booking.completed_at = now
-            elif new_status == BookingStatus.CANCELLED:
+            elif new_status == BookingStatusPy.CANCELLED:
                 booking.cancelled_at = now
                 booking.cancellation_reason = (
                     reason if reason is not None else "admin_action"
@@ -966,7 +968,7 @@ class BookingService:
         booking.status = new_status
 
         # Set lifecycle timestamps automatically
-        if new_status == BookingStatus.CONFIRMED:
+        if new_status == BookingStatusPy.CONFIRMED:
             booking.confirmed_at = now
             # MATCH-01-owned: (re)start the matching window cursor. Kept in
             # booking_metadata (transient matching cursor, not audit history)
@@ -974,9 +976,9 @@ class BookingService:
             # rider timeline and admin reports (review Condition 1, option
             # chosen: dedicated cursor, zero-column variant).
             _stamp_matching_window_start(booking, now)
-        elif new_status == BookingStatus.COMPLETED:
+        elif new_status == BookingStatusPy.COMPLETED:
             booking.completed_at = now
-        elif new_status == BookingStatus.CANCELLED:
+        elif new_status == BookingStatusPy.CANCELLED:
             booking.cancelled_at = now
             booking.cancellation_reason = (
                 reason if reason is not None else "admin_action"
@@ -1041,10 +1043,10 @@ class BookingService:
             raise NotFoundError("Booking not found",
                                 resource_type="booking",
                                 resource_id=booking_id)
-        if booking.status == BookingStatus.NO_MATCH:
+        if booking.status == BookingStatusPy.NO_MATCH:
             return {"booking": booking, "replayed": True,
                     "reason": booking.no_match_reason}
-        if booking.status != BookingStatus.CONFIRMED:
+        if booking.status != BookingStatusPy.CONFIRMED:
             raise ValidationError(
                 message=f"Cannot mark no_match from {booking.status}",
                 field="status",
@@ -1061,13 +1063,13 @@ class BookingService:
             sa.update(Booking.__table__)
             .where(
                 Booking.__table__.c.id == booking_id,
-                Booking.__table__.c.status == BookingStatus.CONFIRMED.value,
+                Booking.__table__.c.status == BookingStatusPy.CONFIRMED.value,
                 Booking.__table__.c.assigned_driver_id.is_(None),
                 Booking.__table__.c.assigned_vehicle_id.is_(None),
                 Booking.__table__.c.is_deleted.is_(False),
             )
             .values(
-                status=BookingStatus.NO_MATCH.value,
+                status=BookingStatusPy.NO_MATCH.value,
                 no_match_reason=reason,
             )
             .execution_options(synchronize_session=False)
@@ -1075,7 +1077,7 @@ class BookingService:
         if result.rowcount != 1:
             db.session.rollback()
             refreshed = db.session.get(Booking, booking_id)
-            if refreshed is not None and refreshed.status == BookingStatus.NO_MATCH:
+            if refreshed is not None and refreshed.status == BookingStatusPy.NO_MATCH:
                 return {"booking": refreshed, "replayed": True,
                         "reason": refreshed.no_match_reason}
             raise ValidationError(
@@ -1087,7 +1089,7 @@ class BookingService:
         refreshed.audit_log = (refreshed.audit_log or []) + [{
             "action": "marked_no_match",
             "from": old_status,
-            "to": BookingStatus.NO_MATCH.value,
+            "to": BookingStatusPy.NO_MATCH.value,
             "at": now.isoformat(),
             "reason": reason,
             "initiated_by": initiated_by,
@@ -1120,7 +1122,7 @@ class BookingService:
                                 resource_id=booking_id)
         if booking.user_id != user_id:
             raise PermissionError("Cannot retry another user's ride")
-        if booking.status != BookingStatus.NO_MATCH:
+        if booking.status != BookingStatusPy.NO_MATCH:
             raise ValidationError(
                 message=f"Retry is only available from no_match "
                         f"(current: {booking.status})",
@@ -1131,11 +1133,11 @@ class BookingService:
             sa.update(Booking.__table__)
             .where(
                 Booking.__table__.c.id == booking_id,
-                Booking.__table__.c.status == BookingStatus.NO_MATCH.value,
+                Booking.__table__.c.status == BookingStatusPy.NO_MATCH.value,
                 Booking.__table__.c.is_deleted.is_(False),
             )
             .values(
-                status=BookingStatus.CONFIRMED.value,
+                status=BookingStatusPy.CONFIRMED.value,
                 no_match_reason=None,
                 confirmed_at=now,
             )
@@ -1154,8 +1156,8 @@ class BookingService:
         _stamp_matching_window_start(refreshed, now)
         refreshed.audit_log = (refreshed.audit_log or []) + [{
             "action": "retry_matching",
-            "from": BookingStatus.NO_MATCH.value,
-            "to": BookingStatus.CONFIRMED.value,
+            "from": BookingStatusPy.NO_MATCH.value,
+            "to": BookingStatusPy.CONFIRMED.value,
             "at": now.isoformat(),
             "reason": "rider_retry",
             "initiated_by": "rider",
@@ -1198,7 +1200,7 @@ class BookingService:
         try:
             # Map input string to BookingStatus enum
             status_upper = status.upper()
-            # If status is something like 'pending', we need to map to BookingStatus.PENDING
+            # If status is something like 'pending', we need to map to BookingStatusPy.PENDING
             # Using getattr to safely get enum member
             status_enum = getattr(BookingStatus, status_upper, None)
             if status_enum is None:
@@ -1262,9 +1264,9 @@ class BookingService:
 
             excluded: List[BookingStatus] = []
             if not include_cancelled:
-                excluded.append(BookingStatus.CANCELLED)
+                excluded.append(BookingStatusPy.CANCELLED)
             if not include_draft:
-                excluded.append(BookingStatus.DRAFT)
+                excluded.append(BookingStatusPy.DRAFT)
             if excluded:
                 query = query.filter(~Booking.status.in_(excluded))
 
@@ -1353,7 +1355,7 @@ class BookingService:
             # Use final_price as the actual paid amount
             revenue = db.session.query(func.sum(Booking.final_price)).filter(
                 Booking.created_at >= today_start,
-                Booking.status == BookingStatus.COMPLETED,
+                Booking.status == BookingStatusPy.COMPLETED,
                 Booking.is_deleted == False
             ).scalar() or 0
             return float(revenue)
@@ -1367,9 +1369,9 @@ class BookingService:
         try:
             return Booking.query.filter(
                 Booking.status.in_([
-                    BookingStatus.CONFIRMED,
-                    BookingStatus.ASSIGNED,
-                    BookingStatus.IN_PROGRESS
+                    BookingStatusPy.CONFIRMED,
+                    BookingStatusPy.ASSIGNED,
+                    BookingStatusPy.IN_PROGRESS
                 ]),
                 Booking.is_deleted == False
             ).count()
@@ -1402,7 +1404,7 @@ class BookingService:
             # Revenue metrics - using final_price for completed/confirmed
             revenue = db.session.query(func.sum(Booking.final_price)).filter(
                 Booking.created_at >= cutoff,
-                Booking.status.in_([BookingStatus.COMPLETED, BookingStatus.CONFIRMED]),
+                Booking.status.in_([BookingStatusPy.COMPLETED, BookingStatusPy.CONFIRMED]),
                 Booking.is_deleted == False
             ).scalar() or 0
 
@@ -1569,7 +1571,7 @@ class BookingService:
             now = datetime.now(timezone.utc)
             bookings = Booking.query.filter(
                 Booking.assigned_driver_id == profile.id,
-                Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.ASSIGNED, BookingStatus.DRIVER_EN_ROUTE]),
+                Booking.status.in_([BookingStatusPy.CONFIRMED, BookingStatusPy.ASSIGNED, BookingStatusPy.DRIVER_EN_ROUTE]),
                 Booking.pickup_time > now,
                 Booking.is_deleted == False,  # noqa: E712
             ).order_by(Booking.pickup_time.asc()).limit(limit).all()
@@ -1603,7 +1605,7 @@ class BookingService:
                 db.session.query(func.sum(Booking.final_price))
                 .filter(
                     Booking.assigned_driver_id == profile.id,
-                    Booking.status == BookingStatus.COMPLETED,
+                    Booking.status == BookingStatusPy.COMPLETED,
                     Booking.payment_status == PaymentStatus.CAPTURED,
                     Booking.is_deleted == False,  # noqa: E712
                 )
@@ -1666,7 +1668,7 @@ class BookingService:
             now = datetime.now(timezone.utc)
             booking = Booking.query.filter(
                 Booking.assigned_driver_id == profile.id,
-                Booking.status.in_([BookingStatus.ASSIGNED, BookingStatus.DRIVER_EN_ROUTE]),
+                Booking.status.in_([BookingStatusPy.ASSIGNED, BookingStatusPy.DRIVER_EN_ROUTE]),
                 Booking.pickup_time > now,
                 Booking.is_deleted == False,  # noqa: E712
             ).order_by(Booking.pickup_time.asc()).first()
@@ -1707,7 +1709,7 @@ class BookingService:
         try:
             revenue = db.session.query(func.sum(Booking.final_price)).filter(
                 Booking.provider_id == org_id,
-                Booking.status == BookingStatus.COMPLETED,
+                Booking.status == BookingStatusPy.COMPLETED,
                 Booking.is_deleted == False,  # noqa: E712
             ).scalar() or 0
             return float(revenue)
@@ -1796,7 +1798,7 @@ class BookingService:
 # cancellations (withdrawn). no_show/disputed stay: a request
 # demonstrably existed. Transport-owned rule: GEO aggregates the
 # points but never decides which bookings count.
-DEMAND_EXCLUDED_STATUSES = (BookingStatus.DRAFT, BookingStatus.CANCELLED)
+DEMAND_EXCLUDED_STATUSES = (BookingStatusPy.DRAFT, BookingStatusPy.CANCELLED)
 
 
 def booking_request_points(since, until):

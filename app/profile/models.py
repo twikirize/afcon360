@@ -1,7 +1,6 @@
 from datetime import datetime, timezone, date, timezone
 import re
 from sqlalchemy import (
-    Enum as SAEnum,
     CheckConstraint,
     UniqueConstraint,
     Index,
@@ -21,21 +20,14 @@ from sqlalchemy.orm import validates, relationship
 from app.extensions import db
 from app.models.base import BaseModel
 from app.utils.id_kinds import IDKind
-from app.utils.id_kinds import IDKind
 
-# ---------------------------
-# Enumerations
-# ---------------------------
-VERIFICATION_STATUS = ("pending", "verified", "rejected", "suspended")
-KYC_LEVELS = ("basic", "enhanced", "government")
-GENDERS = ("male", "female", "other", "unspecified")
-ID_TYPES = ("passport", "national_id", "driver_license", "other")
-
-# Immutable fields after verification
-IMMUTABLE_AFTER_VERIFICATION = {
-    "full_name", "date_of_birth", "gender", "nationality",
-    "id_type", "id_number", "id_document_url", "id_document_mime", "id_document_size",
-}
+# Import application-level enum constants for validation
+from app.utils.enums import (
+    Gender,
+    IDType,
+    VerificationStatus,
+    KYCLevel,
+)
 
 # ---------------------------
 # UserProfile Table
@@ -56,6 +48,11 @@ class UserProfile(BaseModel):
         UniqueConstraint("email", name="uq_userprofile_email"),  # global email uniqueness
         UniqueConstraint("phone_number", name="uq_userprofile_phone"),  # global phone uniqueness
         CheckConstraint("length(full_name) > 0", name="ck_full_name_not_empty"),
+        # CHECK constraints for enum-like columns
+        CheckConstraint(Gender.check_constraint(), name="ck_gender"),
+        CheckConstraint(IDType.check_constraint(), name="ck_id_type"),
+        CheckConstraint(VerificationStatus.check_constraint(), name="ck_verification_status"),
+        CheckConstraint(KYCLevel.check_constraint(), name="ck_kyc_level"),
         Index("ix_userprofile_verification_kyc", "verification_status", "kyc_level"),
         Index("ix_userprofile_is_deleted", "is_deleted"),
         Index("ix_userprofile_email_phone", "email", "phone_number"),
@@ -70,7 +67,8 @@ class UserProfile(BaseModel):
     # Personal info
     full_name = Column(String(128), nullable=False)
     date_of_birth = Column(Date, nullable=True)
-    gender = Column(SAEnum(*GENDERS, name="gender_enum"), nullable=True)
+    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    gender = Column(String(16), nullable=True)
     nationality = Column(String(64), nullable=True)
     address = Column(String(256), nullable=True)
     city = Column(String(128), nullable=True)
@@ -93,26 +91,29 @@ class UserProfile(BaseModel):
     # Short personal description shown on public profile. Max 500 chars.
 
     # Identity documents
-    id_type = Column(SAEnum(*ID_TYPES, name="id_type_enum"), nullable=True)
+    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    id_type = Column(String(20), nullable=True)
     id_number = Column(String(64), nullable=True, index=True)
     id_document_url = Column(String(512), nullable=True)
     id_document_mime = Column(String(64), nullable=True)
     id_document_size = Column(Integer, nullable=True)
 
     # Verification & workflow
+    # Use String + CHECK constraint instead of PostgreSQL ENUM
     verification_status = Column(
-        SAEnum(*VERIFICATION_STATUS, name="verification_status_enum"),
+        String(16),
         nullable=False,
-        default="pending",
+        default=VerificationStatus.PENDING.value,
         index=True,
     )
     rejected_reason = Column(String(256), nullable=True)
     verified_by = Column(String(64), nullable=True)
     last_reviewed_at = Column(DateTime, nullable=True)
+    # Use String + CHECK constraint instead of PostgreSQL ENUM
     kyc_level = Column(
-        SAEnum(*KYC_LEVELS, name="kyc_level_enum"),
+        String(16),
         nullable=False,
-        default="basic",
+        default=KYCLevel.BASIC.value,
         index=True,
     )
 
@@ -242,7 +243,7 @@ class UserProfile(BaseModel):
     # Verification / Admin
     # ---------------------------
     def mark_verified(self, reviewer: str):
-        self.verification_status = "verified"
+        self.verification_status = VerificationStatus.VERIFIED.value
         self.rejected_reason = None
         self.verified_by = reviewer
         self.last_reviewed_at = datetime.now(timezone.utc)
@@ -250,24 +251,24 @@ class UserProfile(BaseModel):
     def mark_rejected(self, reviewer: str, reason: str):
         if not reason:
             raise ValueError("Rejection reason is required.")
-        self.verification_status = "rejected"
+        self.verification_status = VerificationStatus.REJECTED.value
         self.rejected_reason = reason
         self.verified_by = reviewer
         self.last_reviewed_at = datetime.now(timezone.utc)
 
     def suspend_account(self):
-        self.verification_status = "suspended"
+        self.verification_status = VerificationStatus.SUSPENDED.value
         self.suspended_at = datetime.now(timezone.utc)
 
     def reactivate_account(self):
-        self.verification_status = "pending"
+        self.verification_status = VerificationStatus.PENDING.value
         self.suspended_at = None
 
     def request_reverification(self, fields: list):
         allowed_fields = {"address", "phone_number", "email"}
         if any(f not in allowed_fields for f in fields):
             raise ValueError("Only address, phone, or email can trigger re-verification.")
-        self.verification_status = "pending"
+        self.verification_status = VerificationStatus.PENDING.value
         self.last_reviewed_at = None
 
     # ---------------------------
@@ -286,6 +287,18 @@ class UserProfile(BaseModel):
                 raise ValueError("date_of_birth is unrealistic.")
         return dob
 
+    @validates("gender")
+    def validate_gender(self, key, gender):
+        if gender and gender not in Gender.values():
+            raise ValueError(f"Invalid gender. Must be one of: {Gender.values()}")
+        return gender
+
+    @validates("id_type")
+    def validate_id_type(self, key, id_type):
+        if id_type and id_type not in IDType.values():
+            raise ValueError(f"Invalid id_type. Must be one of: {IDType.values()}")
+        return id_type
+
     @validates("email")
     def validate_email(self, key, email):
         if email and not re.match(r"[^@]+@[^@]+\.[^@]+", email):
@@ -297,6 +310,19 @@ class UserProfile(BaseModel):
         if phone and not re.match(r"^\+?\d{7,15}$", phone):
             raise ValueError("Invalid phone number format.")
         return phone.strip().replace(" ", "") if phone else phone
+
+    @validates("verification_status")
+    def validate_verification_status(self, key, status):
+        if status and status not in VerificationStatus.values():
+            raise ValueError(f"Invalid verification_status. Must be one of: {VerificationStatus.values()}")
+        return status
+
+    @validates("kyc_level")
+    def validate_kyc_level(self, key, level):
+        if level and level not in KYCLevel.values():
+            raise ValueError(f"Invalid kyc_level. Must be one of: {KYCLevel.values()}")
+        return level
+
 
 # ---------------------------
 # Immutable change audit
@@ -462,7 +488,7 @@ def enforce_immutable_after_verification(mapper, connection, target):
             if hist.has_changes():
                 # Log audit attempt
                 connection.execute(
-                    UserProfileAudit.__table__.insert().values(
+                    UserProfileAudit.__table__.insert().values(  # type: ignore[attr-defined]
                         user_profile_id=target.id,
                         field_name=field,
                         old_value=str(hist.deleted[0]) if hist.deleted else None,
@@ -479,7 +505,7 @@ def enforce_immutable_after_verification(mapper, connection, target):
                     entity_id=str(target.id),
                     action=f"update_{field}",
                     user_id=getattr(target, "_current_user_id", None),
-                    reason=f"{field} cannot be changed after verification",
+                    reason=f"{field} cannot be changed after verification.",
                     attempted_value=str(hist.added[0]) if hist.added else None,
                     old_value=str(hist.deleted[0]) if hist.deleted else None
                 )
@@ -509,6 +535,7 @@ def get_profile_by_user(user_or_public_id):
     )
     return UserProfile.query.filter_by(user_id=public_id).first()
 
+
 def calculate_profile_completion(profile):
     """
     Calculate profile completion percentage.
@@ -536,6 +563,13 @@ def calculate_profile_completion(profile):
 
     return int((completed_fields / len(important_fields)) * 100)
 
+
+# Immutable fields after verification
+IMMUTABLE_AFTER_VERIFICATION = {
+    "full_name", "date_of_birth", "gender", "nationality",
+    "id_type", "id_number", "id_document_url", "id_document_mime", "id_document_size",
+}
+
 if __name__ == '__main__':
     # Test that integer input is rejected
     try:
@@ -543,4 +577,3 @@ if __name__ == '__main__':
         print("❌ FAILED - integer should have been rejected")
     except ValueError as e:
         print(f"✅ PASSED - integer correctly rejected: {e}")
-

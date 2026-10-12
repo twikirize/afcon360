@@ -14,7 +14,7 @@ from flask_login import current_user
 from flask_restful import Resource
 
 from app.extensions import limiter
-from app.transport.models import Currency, VehicleClass
+from app.utils.enums import Currency, VehicleClass
 from app.transport.services import fare_service
 from app.transport.services.availability_service import (
     available_by_class,

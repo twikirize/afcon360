@@ -58,7 +58,7 @@ class FareEstimateResource(Resource):
         # Currency is echoed, never converted: the engine computes in
         # base-table units and performs no FX. Unknown codes are
         # rejected rather than silently priced.
-        from app.transport.models import Currency
+        from app.utils.enums import Currency
         currency = str(data.get("currency") or "USD").upper()
         try:
             Currency(currency)

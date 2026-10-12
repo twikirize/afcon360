@@ -13,7 +13,8 @@ from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
-from app.transport.models import Booking, BookingStatus, PaymentStatus
+from app.transport.models import Booking
+from app.utils.enums import BookingStatus, PaymentStatus
 from app.wallet.services.wallet_service import WalletService
 from app.utils.exceptions import ValidationError, NotFoundError, ServiceUnavailableError
 from app.utils.monitoring import monitor_endpoint, record_metric

@@ -340,7 +340,8 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> Any:
     transport provider intention is declared resource-free (PP row only). A
     Vehicle is a SEPARATE, later operation — never created here (stage 4B-5).
     """
-    from app.transport.models import DriverProfile, VerificationTier, ComplianceStatus
+    from app.transport.models import DriverProfile
+    from app.utils.enums import VerificationTier, ComplianceStatus
     from app.extensions import db
     from app.utils.transactions import db_transaction
 

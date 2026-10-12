@@ -39,7 +39,8 @@ from sqlalchemy import or_
 
 from app.celery_app import celery_app
 from app.extensions import db
-from app.transport.models import Booking, BookingStatus, ScheduledRoute
+from app.transport.models import Booking, ScheduledRoute
+from app.utils.enums import BookingStatus
 
 logger = logging.getLogger(__name__)
 

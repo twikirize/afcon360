@@ -22,8 +22,11 @@ from app.extensions import db, redis_client, cache
 from app.admin.models import ContentFlag
 from app.transport.models import (
     DriverProfile, OrganisationTransportProfile, Vehicle, ScheduledRoute,
-    VerificationTier, ComplianceStatus, TransportSetting, Booking, BookingStatus,
-    Rating, organisation_drivers, VehicleClass, ProviderType, ServiceType
+    TransportSetting, Booking, Rating, organisation_drivers
+)
+from app.utils.enums import (
+    VerificationTier, ComplianceStatus, BookingStatus,
+    VehicleClass, ProviderType, ServiceType
 )
 from app.identity.models.user import User
 from app.transport.services.settings_service import (

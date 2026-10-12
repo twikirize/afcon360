@@ -81,7 +81,7 @@ def service_requires_own_vehicle(driver: Any) -> bool:
     All other service types (shuttle, hire, charter, etc.) may operate
     without one, so the vehicle check is not a hard requirement there.
     """
-    from app.transport.models import ServiceType
+    from app.utils.enums import ServiceType
 
     try:
         service_types = list(driver.service_types or [])

@@ -14,7 +14,8 @@ from app.core.validators import validate_coordinates
 from app.extensions import db, redis_client
 from app.geo.interfaces import GeoPoint
 from app.geo.services import straight_line_distance_m
-from app.transport.models import Booking, DriverProfile, Vehicle, BookingStatus
+from app.transport.models import Booking, DriverProfile, Vehicle
+from app.utils.enums import BookingStatus
 from app.utils.exceptions import ValidationError, NotFoundError
 from app.utils.monitoring import monitor_endpoint, record_metric
 

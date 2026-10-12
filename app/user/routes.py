@@ -102,7 +102,8 @@ def _get_driver_profile(user):
     if not user:
         return None
     try:
-        from app.transport.models import DriverProfile, VerificationTier
+        from app.transport.models import DriverProfile
+        from app.utils.enums import VerificationTier
         driver = DriverProfile.query.filter_by(user_id=user.id, is_deleted=False).first()
         if not driver:
             return None

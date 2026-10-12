@@ -200,7 +200,8 @@ def transport_admin_delete_vehicle(vehicle_id):
 def transport_admin_drivers():
     """List and manage all drivers."""
     try:
-        from app.transport.models import DriverProfile, ComplianceStatus
+        from app.transport.models import DriverProfile
+        from app.utils.enums import ComplianceStatus
         
         page = request.args.get('page', 1, type=int)
         status = request.args.get('status', 'all')

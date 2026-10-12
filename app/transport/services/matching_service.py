@@ -11,7 +11,8 @@ from flask import current_app
 from app.extensions import db, cache
 from app.geo.interfaces import GeoPoint
 from app.geo.services import straight_line_distance_m
-from app.transport.models import Booking, DriverProfile, BookingStatus, ProviderType
+from app.transport.models import Booking, DriverProfile
+from app.utils.enums import BookingStatus, ProviderType
 from app.transport.services import get_provider_service
 from app.transport.services.tracking_service import TrackingService
 from app.utils.exceptions import ValidationError, NotFoundError

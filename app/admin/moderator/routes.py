@@ -3490,7 +3490,7 @@ def transport_moderate_action(entity_type, entity_id, action):
         elif entity_type == 'booking':
             # BL-26: booking approval goes through the canonical guarded
             # transition (sets confirmed_at; refuses non-awaiting states).
-            from app.transport.models import BookingStatus
+            from app.utils.enums import BookingStatus
             from app.transport.services.assignment_service import DispatchClaimError
             from app.transport.services.booking_service import BookingService
             from app.utils.exceptions import NotFoundError, ValidationError
@@ -3545,7 +3545,7 @@ def transport_moderate_action(entity_type, entity_id, action):
             # BL-26: booking rejection goes through the canonical guarded
             # transition (STATUS_TRANSITIONS gate + AssignmentService
             # release + timestamps). Refuses terminal/operational states.
-            from app.transport.models import BookingStatus
+            from app.utils.enums import BookingStatus
             from app.transport.services.assignment_service import DispatchClaimError
             from app.transport.services.booking_service import BookingService
             from app.utils.exceptions import NotFoundError, ValidationError

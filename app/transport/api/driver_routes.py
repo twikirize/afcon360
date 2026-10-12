@@ -1,9 +1,10 @@
 # app/transport/api/driver_routes.py
-from flask import request
+from flask import request, jsonify
 from flask_restful import Resource
 from flask_login import current_user, login_required
 from app.extensions import db
-from app.transport.models import DriverProfile, DriverVehicleHistory, Booking, BookingStatus
+from app.transport.models import DriverProfile, DriverVehicleHistory, Booking
+from app.utils.enums import BookingStatus
 from app.auth.decorators import admin_required
 from app.transport.decorator import transport_admin_required
 from app.transport.utils.helpers import paginate, filter_query, sort_query
@@ -336,6 +337,29 @@ class DriverLocationResource(Resource):
             db.session.rollback()
             logger.error(f"Error updating location for driver {driver_id}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}, 500
+
+
+class DriverCsrfTokenResource(Resource):
+    """GET /api/transport/csrf-token
+
+    Reissues a fresh, session-bound CSRF token for the current authenticated
+    session. Long-lived pages (e.g. the driver dashboard location pinger)
+    capture the CSRF token once at load; once that token exceeds
+    ``WTF_CSRF_TIME_LIMIT`` every write is rejected with a 400. This endpoint
+    lets the client refresh instead of failing forever.
+
+    It only returns a token for the caller's own session and grants no new
+    authority, so it does not weaken CSRF protection.
+    """
+
+    @login_required
+    def get(self):
+        from flask_wtf.csrf import generate_csrf
+
+        # Session-bound, time-limited token: never cache it anywhere.
+        resp = jsonify({"success": True, "csrf_token": generate_csrf()})
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
 
 
 class DriverHistoryResource(Resource):

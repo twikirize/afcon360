@@ -259,7 +259,8 @@ def _dashboard_for_user(user) -> str:
 
     # STEP 7: Check for driver profile
     try:
-        from app.transport.models import DriverProfile, VerificationTier
+        from app.transport.models import DriverProfile
+        from app.utils.enums import VerificationTier
         driver = DriverProfile.query.filter_by(user_id=user.id).first()
         if driver and driver.verification_tier == VerificationTier.PLATFORM_VERIFIED:
             # P1 context recovery: the dashboard requires an active

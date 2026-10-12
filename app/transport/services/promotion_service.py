@@ -12,7 +12,8 @@ from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
-from app.transport.models import Booking, BookingStatus
+from app.transport.models import Booking
+from app.utils.enums import BookingStatus
 from app.utils.exceptions import ValidationError, NotFoundError
 from app.utils.monitoring import monitor_endpoint, record_metric
 from app.utils.security import sanitize_input

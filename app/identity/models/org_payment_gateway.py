@@ -6,31 +6,14 @@ refunds, fines, etc.
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from sqlalchemy import Column, BigInteger, String, Boolean, DateTime, Text, JSON, ForeignKey, Numeric, Enum, UniqueConstraint, Index
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, BigInteger, String, Boolean, DateTime, Text, JSON, ForeignKey, Numeric, UniqueConstraint, Index, CheckConstraint
+from sqlalchemy.orm import relationship, validates
 from app.extensions import db
 from app.models.base import BaseModel
-import enum
-
-
-class PaymentGatewayProvider(enum.Enum):
-    FLUTTERWAVE = "flutterwave"
-    PAYSTACK = "paystack"
-    MTN_MOMO = "mtn_momo"
-    AIRTEL_MONEY = "airtel_money"
-    VISA = "visa"
-    MASTERCARD = "mastercard"
-    PAYPAL = "paypal"
-    ALIPAY = "alipay"
-    WECHAT_PAY = "wechat_pay"
-    BANK_TRANSFER = "bank_transfer"
-    STRIPE = "stripe"
-    MPESA = "mpesa"
-
-
-class PaymentGatewayEnvironment(enum.Enum):
-    SANDBOX = "sandbox"
-    PRODUCTION = "production"
+from app.utils.enums import (
+    PaymentGatewayProvider,
+    PaymentGatewayEnvironment,
+)
 
 
 class OrganisationPaymentGateway(BaseModel):
@@ -42,13 +25,16 @@ class OrganisationPaymentGateway(BaseModel):
     __table_args__ = (
         UniqueConstraint('organisation_id', 'provider', name='uq_org_gateway_provider'),
         Index('ix_org_gateway_org_active', 'organisation_id', 'is_active'),
+        # CHECK constraints for enum-like columns
+        CheckConstraint(PaymentGatewayProvider.check_constraint(), name="ck_payment_gateway_provider"),
+        CheckConstraint(PaymentGatewayEnvironment.check_constraint(), name="ck_gateway_environment"),
     )
 
     organisation_id = Column(BigInteger, ForeignKey('organisations.id', ondelete='CASCADE'), nullable=False, index=True)
     
-    # Gateway identification
-    provider = Column(Enum(PaymentGatewayProvider, name='payment_gateway_provider'), nullable=False)
-    environment = Column(Enum(PaymentGatewayEnvironment, name='gateway_environment'), default=PaymentGatewayEnvironment.SANDBOX, nullable=False)
+    # Gateway identification - Use String + CHECK constraint instead of PostgreSQL ENUM
+    provider = Column(String(20), nullable=False)
+    environment = Column(String(16), default=PaymentGatewayEnvironment.SANDBOX.value, nullable=False)
     
     # Display
     display_name = Column(String(100), nullable=True)
@@ -94,16 +80,28 @@ class OrganisationPaymentGateway(BaseModel):
             if hasattr(self, key):
                 setattr(self, key, value)
     
+    @validates("provider")
+    def validate_provider(self, key, value):
+        if value and value not in PaymentGatewayProvider.values():
+            raise ValueError(f"Invalid provider. Must be one of: {PaymentGatewayProvider.values()}")
+        return value
+
+    @validates("environment")
+    def validate_environment(self, key, value):
+        if value and value not in PaymentGatewayEnvironment.values():
+            raise ValueError(f"Invalid environment. Must be one of: {PaymentGatewayEnvironment.values()}")
+        return value
+
     @property
     def is_configured(self):
         """Check if gateway has required credentials"""
-        if self.provider in [PaymentGatewayProvider.FLUTTERWAVE, PaymentGatewayProvider.PAYSTACK]:
+        if self.provider in [PaymentGatewayProvider.FLUTTERWAVE.value, PaymentGatewayProvider.PAYSTACK.value]:
             return bool(self.api_key and self.api_secret)
-        elif self.provider in [PaymentGatewayProvider.VISA, PaymentGatewayProvider.MASTERCARD]:
+        elif self.provider in [PaymentGatewayProvider.VISA.value, PaymentGatewayProvider.MASTERCARD.value]:
             return bool(self.merchant_id and self.api_secret)
-        elif self.provider == PaymentGatewayProvider.PAYPAL:
+        elif self.provider == PaymentGatewayProvider.PAYPAL.value:
             return bool(self.api_key and self.api_secret)
-        elif self.provider in [PaymentGatewayProvider.MTN_MOMO, PaymentGatewayProvider.AIRTEL_MONEY, PaymentGatewayProvider.MPESA]:
+        elif self.provider in [PaymentGatewayProvider.MTN_MOMO.value, PaymentGatewayProvider.AIRTEL_MONEY.value, PaymentGatewayProvider.MPESA.value]:
             return bool(self.api_key and self.api_secret)
         return bool(self.api_key)
     
@@ -111,7 +109,7 @@ class OrganisationPaymentGateway(BaseModel):
     def provider_config(self):
         """Get provider-specific configuration schema"""
         configs = {
-            PaymentGatewayProvider.FLUTTERWAVE: {
+            PaymentGatewayProvider.FLUTTERWAVE.value: {
                 'fields': [
                     {'name': 'api_key', 'label': 'Public Key', 'type': 'text', 'required': True},
                     {'name': 'api_secret', 'label': 'Secret Key', 'type': 'password', 'required': True},
@@ -121,7 +119,7 @@ class OrganisationPaymentGateway(BaseModel):
                 'currencies': ['UGX', 'KES', 'NGN', 'GHS', 'ZAR', 'USD', 'EUR', 'GBP'],
                 'description': 'Flutterwave payment gateway for Africa - supports cards, mobile money, bank transfers'
             },
-            PaymentGatewayProvider.PAYSTACK: {
+            PaymentGatewayProvider.PAYSTACK.value: {
                 'fields': [
                     {'name': 'api_key', 'label': 'Public Key', 'type': 'text', 'required': True},
                     {'name': 'api_secret', 'label': 'Secret Key', 'type': 'password', 'required': True},
@@ -130,7 +128,7 @@ class OrganisationPaymentGateway(BaseModel):
                 'currencies': ['NGN', 'GHS', 'ZAR', 'USD', 'KES'],
                 'description': 'Paystack payment gateway for Nigeria/Ghana - supports cards, bank transfers, mobile money'
             },
-            PaymentGatewayProvider.MTN_MOMO: {
+            PaymentGatewayProvider.MTN_MOMO.value: {
                 'fields': [
                     {'name': 'api_key', 'label': 'API Key / Subscription Key', 'type': 'text', 'required': True},
                     {'name': 'api_secret', 'label': 'API Secret / Target Environment', 'type': 'password', 'required': True},
@@ -139,7 +137,7 @@ class OrganisationPaymentGateway(BaseModel):
                 'currencies': ['UGX', 'RWF', 'ZMW', 'XOF', 'XAF'],
                 'description': 'MTN Mobile Money for collecting payments via mobile money'
             },
-            PaymentGatewayProvider.AIRTEL_MONEY: {
+            PaymentGatewayProvider.AIRTEL_MONEY.value: {
                 'fields': [
                     {'name': 'api_key', 'label': 'Client ID', 'type': 'text', 'required': True},
                     {'name': 'api_secret', 'label': 'Client Secret', 'type': 'password', 'required': True},
@@ -148,7 +146,7 @@ class OrganisationPaymentGateway(BaseModel):
                 'currencies': ['UGX', 'KES', 'TZS', 'RWF', 'XOF', 'XAF'],
                 'description': 'Airtel Money for collecting payments via mobile money across Africa'
             },
-            PaymentGatewayProvider.MPESA: {
+            PaymentGatewayProvider.MPESA.value: {
                 'fields': [
                     {'name': 'api_key', 'label': 'Consumer Key', 'type': 'text', 'required': True},
                     {'name': 'api_secret', 'label': 'Consumer Secret', 'type': 'password', 'required': True},
@@ -158,7 +156,7 @@ class OrganisationPaymentGateway(BaseModel):
                 'currencies': ['KES'],
                 'description': 'M-PESA (Safaricom) for Kenya - STK Push, B2C, C2B'
             },
-            PaymentGatewayProvider.PAYPAL: {
+            PaymentGatewayProvider.PAYPAL.value: {
                 'fields': [
                     {'name': 'api_key', 'label': 'Client ID', 'type': 'text', 'required': True},
                     {'name': 'api_secret', 'label': 'Client Secret', 'type': 'password', 'required': True},
@@ -167,16 +165,16 @@ class OrganisationPaymentGateway(BaseModel):
                 'currencies': ['USD', 'EUR', 'GBP', 'KES', 'NGN', 'ZAR'],
                 'description': 'PayPal for international payments'
             },
-            PaymentGatewayProvider.STRIPE: {
+            PaymentGatewayProvider.STRIPE.value: {
                 'fields': [
                     {'name': 'api_key', 'label': 'Publishable Key', 'type': 'text', 'required': True},
                     {'name': 'api_secret', 'label': 'Secret Key', 'type': 'password', 'required': True},
                     {'name': 'config_json', 'label': 'Webhook Secret', 'type': 'password', 'required': False},
                 ],
-                'currencies': ['USD', 'EUR', 'GBP', 'KES', 'NGN', 'ZAR', 'UGX'],
+                'currencies': ['USD', 'EUR', 'GBP', 'KES', 'NGN', 'ZAR'],
                 'description': 'Stripe for international card payments'
             },
-            PaymentGatewayProvider.BANK_TRANSFER: {
+            PaymentGatewayProvider.BANK_TRANSFER.value: {
                 'fields': [
                     {'name': 'display_name', 'label': 'Bank Name', 'type': 'text', 'required': True},
                     {'name': 'config_json', 'label': 'Account Name', 'type': 'text', 'required': True},

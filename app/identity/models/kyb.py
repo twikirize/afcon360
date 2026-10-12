@@ -1,9 +1,16 @@
 # app/identity/models/kyb.py
-from sqlalchemy import Column, BigInteger, String, Text, DateTime, Enum, ForeignKey, JSON
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, BigInteger, String, Text, DateTime, ForeignKey, JSON, CheckConstraint
+from sqlalchemy.orm import relationship, validates
 from datetime import datetime
 from app.extensions import db
 from app.models.base import BaseModel
+from app.utils.enums import (
+    OrgVerificationStatus,
+    OrgKybCheckType,
+    OrgKybCheckStatus,
+    UboType,
+    KybDocStatus,
+)
 
 
 # -------------------------------
@@ -15,9 +22,12 @@ class OrganisationVerification(BaseModel):
     organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False)
     reviewer_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
 
+    # Use String + CHECK constraint instead of PostgreSQL ENUM
     status = Column(
-        Enum("pending", "verified", "rejected", "expired", "suspended", name="org_verification_status"),
-        default="pending", nullable=False, index=True
+        String(20),
+        default=OrgVerificationStatus.PENDING.value,
+        nullable=False,
+        index=True
     )
     scope = Column(JSON, default=dict)
     provider_id = Column(String(128))
@@ -25,6 +35,10 @@ class OrganisationVerification(BaseModel):
 
     decided_at = Column(DateTime)
     expires_at = Column(DateTime)
+
+    __table_args__ = (
+        CheckConstraint(OrgVerificationStatus.check_constraint(), name="ck_org_verification_status"),
+    )
 
     organisation = relationship(
         "Organisation",
@@ -45,19 +59,41 @@ class OrganisationKYBCheck(BaseModel):
 
     organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False)
 
-    check_type = Column(Enum("identity", "tax", "license", "ubo", "sanctions", name="org_kyb_check_type"),
-                        nullable=False)
-    status = Column(Enum("pending", "passed", "failed", "manual_review", name="org_kyb_check_status"),
-                    default="pending")
+    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    check_type = Column(
+        String(20),
+        nullable=False
+    )
+    status = Column(
+        String(20),
+        default=OrgKybCheckStatus.PENDING.value
+    )
     provider_id = Column(String(128))
     evidence = Column(JSON)
     notes = Column(Text)
+
+    __table_args__ = (
+        CheckConstraint(OrgKybCheckType.check_constraint(), name="ck_org_kyb_check_type"),
+        CheckConstraint(OrgKybCheckStatus.check_constraint(), name="ck_org_kyb_check_status"),
+    )
 
     organisation = relationship(
         "Organisation",
         back_populates="kyb_checks",
         foreign_keys=[organisation_id]
     )
+
+    @validates("check_type")
+    def validate_check_type(self, key, value):
+        if value and value not in OrgKybCheckType.values():
+            raise ValueError(f"Invalid check_type. Must be one of: {OrgKybCheckType.values()}")
+        return value
+
+    @validates("status")
+    def validate_status(self, key, value):
+        if value and value not in OrgKybCheckStatus.values():
+            raise ValueError(f"Invalid status. Must be one of: {OrgKybCheckStatus.values()}")
+        return value
 
 
 # -------------------------------
@@ -70,12 +106,20 @@ class OrganisationUBO(BaseModel):
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     verified_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
 
-    ubo_type = Column(Enum("individual", "corporate", name="ubo_type"), default="individual")
+    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    ubo_type = Column(
+        String(16),
+        default=UboType.INDIVIDUAL.value
+    )
     ownership_percentage = Column(BigInteger)
     effective_from = Column(DateTime)
     effective_to = Column(DateTime)
 
     verified_at = Column(DateTime)
+
+    __table_args__ = (
+        CheckConstraint(UboType.check_constraint(), name="ck_ubo_type"),
+    )
 
     organisation = relationship(
         "Organisation",
@@ -91,6 +135,12 @@ class OrganisationUBO(BaseModel):
         foreign_keys=[verified_by]
     )
 
+    @validates("ubo_type")
+    def validate_ubo_type(self, key, value):
+        if value and value not in UboType.values():
+            raise ValueError(f"Invalid ubo_type. Must be one of: {UboType.values()}")
+        return value
+
 
 # -------------------------------
 # Organisation KYB Document
@@ -103,9 +153,14 @@ class OrganisationKYBDocument(BaseModel):
     document_type = Column(String(64), nullable=False)
     storage_key = Column(String(255), nullable=False)
     checksum = Column(String(128), nullable=False)
+    # Use String + CHECK constraint instead of PostgreSQL ENUM
     verification_status = Column(
-        Enum("pending", "verified", "rejected", name="kyb_doc_status"),
-        default="pending"
+        String(16),
+        default=KybDocStatus.PENDING.value
+    )
+
+    __table_args__ = (
+        CheckConstraint(KybDocStatus.check_constraint(), name="ck_kyb_doc_status"),
     )
 
     organisation = relationship(
@@ -113,3 +168,9 @@ class OrganisationKYBDocument(BaseModel):
         back_populates="kyb_documents",
         foreign_keys=[organisation_id]
     )
+
+    @validates("verification_status")
+    def validate_verification_status(self, key, value):
+        if value and value not in KybDocStatus.values():
+            raise ValueError(f"Invalid verification_status. Must be one of: {KybDocStatus.values()}")
+        return value
