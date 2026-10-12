@@ -29,6 +29,7 @@ def register_api_resources(api):
         DriverDetailResource,
         DriverVerificationResource,
         DriverLocationResource,
+        DriverCsrfTokenResource,
         DriverHistoryResource,
         DriverOfferListResource,
         DriverOfferAcceptResource,
@@ -93,6 +94,9 @@ def register_api_resources(api):
     )
     from .fare_routes import FareConfigResource, FareEstimateResource
     from .ride_options_routes import RideOptionsResource
+    # BOOKING-LIFECYCLE-REQUEST-CREATE (Stage 3B, Phase 2A): pre-Booking
+    # request creation (authenticated + commitment-gated; zero Bookings).
+    from .ride_request_routes import RideRequestCreateResource
 
     # -------------------------------------------------------------------
     # Resource registration with EXPLICIT endpoint names
@@ -104,6 +108,8 @@ def register_api_resources(api):
     safe_add_resource(DriverVerificationResource, "/drivers/<int:driver_id>/verification",
                      endpoint="driver_verification")
     safe_add_resource(DriverLocationResource, "/drivers/<int:driver_id>/location", endpoint="driver_location")
+    # CSRF token refresh for long-lived authenticated pages (token expiry recovery)
+    safe_add_resource(DriverCsrfTokenResource, "/csrf-token", endpoint="transport_csrf_token")
     safe_add_resource(DriverHistoryResource, "/drivers/<int:driver_id>/history", endpoint="driver_history")
 
     # TH-3-D2 driver offer surface + trip lifecycle
@@ -167,6 +173,11 @@ def register_api_resources(api):
     # Ride options (hailing node: per-class availability priced by the
     # canonical engine; anonymous-allowed, booking stays gated)
     safe_add_resource(RideOptionsResource, "/ride-options", endpoint="ride_options")
+
+    # BOOKING-LIFECYCLE-REQUEST-CREATE (Stage 3B, Phase 2A): pre-Booking
+    # ride-request creation (authenticated + commitment-gated).
+    safe_add_resource(RideRequestCreateResource, "/ride-requests",
+                      endpoint="ride_request_create")
 
     # Fare configuration governance (fare node: owner/delegated writes only)
     safe_add_resource(FareConfigResource, "/fare/config", endpoint="fare_config")

@@ -299,6 +299,67 @@ secrets, production passwords, or private keys in source control.
 - `BACKLOG.md` — identified deferred, blocked and review-required work
 - `Readme's/` and `docs/` — implementation reports and supporting documentation
 
+## Adding or activating a database enum
+
+All PostgreSQL enum types are defined in **`app/utils/enums.py`** — this is the
+single source of truth. Models import from there; nothing else defines enums.
+
+### Three categories
+
+1. **Category A — Real PG enum types** (managed here)
+   - Defined as `PgEnum(..., name='pg_type_name', create_type=False)`
+   - Corresponds to a real `CREATE TYPE` in PostgreSQL
+   - **Action**: add to `app/utils/enums.py` ACTIVE section, import in model
+
+2. **Category B — Python-only enums with CHECK constraints** (catalogued only)
+   - Defined as `class Foo(str, Enum)` + `db.Column(String) + CheckConstraint`
+   - **NO PG type exists** — converting requires schema migration
+   - **Action**: leave in model; catalogue in `app/utils/enums.py` PLANNED section
+
+3. **Category C — SQLEnum(PyEnum) with implicit PG name** (managed here)
+   - `sqlalchemy.Enum(SomePyEnum)` without explicit `name=`
+   - SQLAlchemy auto-creates PG type named after Python class (lowercased)
+   - **Action**: verify actual PG name via `SELECT typname FROM pg_type...`,
+     then add to ACTIVE section with explicit `name='...'`
+
+### Workflow to add a NEW enum
+
+1. Decide category (A, B, or C — see above).
+2. If Category A/C: add `PgEnum(...)` to ACTIVE section in `app/utils/enums.py`
+   with `create_type=False` and exact PG type name.
+3. Import in model: `from app.utils.enums import MyEnum`
+4. Use as column type: `db.Column(MyEnum, nullable=False)`
+5. Restart app — `ensure_all_enums()` creates/syncs on next boot.
+6. Run `flask db migrate` if new tables/columns added — migration will NOT
+   contain `CREATE TYPE` (by design).
+
+### Workflow to ACTIVATE a catalogued enum (DB hardening)
+
+Enums marked `[PLANNED]` in `app/utils/enums.py` are catalogued but not yet
+managed. To activate one:
+
+1. Verify current PG type name via psql:
+   ```sql
+   SELECT typname FROM pg_type WHERE typname = 'your_enum_name';
+   ```
+2. Move definition from PLANNED section to its module's ACTIVE section.
+   Preserve `name=` exactly.
+3. Refactor model to import from `app.utils.enums`.
+4. Restart app — `ensure_all_enums()` no-ops if type exists.
+5. Run `flask db migrate` — verify no `CREATE/DROP TYPE` in diff.
+6. Commit module-by-module. Never batch-activate more than one module at a time.
+
+### Current activation status (2026-10-11)
+
+- **ACTIVE (Phase 0 — Transport)**: `ServiceType`, `BookingStatus`,
+  `ComplianceStatus`, `PaymentStatus`, `VehicleClass`, `IncidentSeverity`,
+  `Currency`, `ProviderType`, `VerificationTier`, `CompensationModel`,
+  `ContractStatus`
+- **PLANNED Category A/C**: Profile (4), Wallet (4), Events (1), Identity (16),
+  Admin Compliance (6), Accommodation (12+), Audit (4)
+- **CATALOGUED Category B**: Notifications (4), Audit (4), Events (4),
+  Accommodation (20+), Profile (if any), Wallet (if any)
+
 ## Known limitations
 
 This is an active codebase, not a claim of production readiness. In particular,

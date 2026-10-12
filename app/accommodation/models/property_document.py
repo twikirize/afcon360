@@ -6,28 +6,15 @@ Property Document models - Documents uploaded for property verification.
 from datetime import datetime, timezone
 from sqlalchemy import (
     Column, BigInteger, String, Boolean, DateTime,
-    ForeignKey, Text, Enum, Index
+    ForeignKey, Text, Index, CheckConstraint
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from app.extensions import db
 from app.models.base import BaseModel
-import enum
-
-
-class PropertyDocumentType(enum.Enum):
-    ID_DOCUMENT = "id_document"
-    BUSINESS_LICENSE = "business_license"
-    TAX_CERTIFICATE = "tax_certificate"
-    PROPERTY_DEED = "property_deed"
-    INSURANCE_CERTIFICATE = "insurance_certificate"
-    OTHER = "other"
-
-
-class PropertyDocumentStatus(enum.Enum):
-    PENDING = "pending"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-    EXPIRED = "expired"
+from app.utils.enums import (
+    PropertyDocumentType,
+    PropertyDocumentStatus,
+)
 
 
 class PropertyDocument(BaseModel):
@@ -40,6 +27,9 @@ class PropertyDocument(BaseModel):
         Index("idx_property_document_property", "property_id"),
         Index("idx_property_document_host", "host_user_id"),
         Index("idx_property_document_status", "status"),
+        # CHECK constraints for enum-like columns
+        CheckConstraint(PropertyDocumentType.check_constraint(), name="ck_property_document_type"),
+        CheckConstraint(PropertyDocumentStatus.check_constraint(), name="ck_property_document_status"),
     )
 
     # ── Attachments ──
@@ -60,8 +50,9 @@ class PropertyDocument(BaseModel):
     host_user = relationship("User", foreign_keys=[host_user_id], backref="property_documents")
 
     # ── Document info ──
+    # Use String + CHECK constraint instead of PostgreSQL ENUM
     document_type = Column(
-        Enum(PropertyDocumentType),
+        String(30),
         nullable=False,
         index=True
     )
@@ -71,9 +62,10 @@ class PropertyDocument(BaseModel):
     mime_type = Column(String(100), nullable=True)
 
     # ── Verification ──
+    # Use String + CHECK constraint instead of PostgreSQL ENUM
     status = Column(
-        Enum(PropertyDocumentStatus),
-        default=PropertyDocumentStatus.PENDING,
+        String(16),
+        default=PropertyDocumentStatus.PENDING.value,
         nullable=False,
         index=True
     )
@@ -86,4 +78,16 @@ class PropertyDocument(BaseModel):
     extra_data = Column(db.JSON, default=dict)
 
     def __repr__(self):
-        return f"<PropertyDocument {self.document_type.value} status={self.status.value}>"
+        return f"<PropertyDocument {self.document_type} status={self.status}>"
+
+    @validates("document_type")
+    def validate_document_type(self, key, value):
+        if value and value not in PropertyDocumentType.values():
+            raise ValueError(f"Invalid document_type. Must be one of: {PropertyDocumentType.values()}")
+        return value
+
+    @validates("status")
+    def validate_status(self, key, value):
+        if value and value not in PropertyDocumentStatus.values():
+            raise ValueError(f"Invalid status. Must be one of: {PropertyDocumentStatus.values()}")
+        return value

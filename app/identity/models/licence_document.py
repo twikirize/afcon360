@@ -1,9 +1,14 @@
 # app/identity/models/licence_document.py
-from sqlalchemy import Column, BigInteger, String, Text, Boolean, DateTime, Date, ForeignKey, Enum, UniqueConstraint, JSON
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, BigInteger, String, Text, Boolean, DateTime, Date, ForeignKey, UniqueConstraint, JSON, CheckConstraint
+from sqlalchemy.orm import relationship, validates
 from datetime import datetime, timezone
 from app.extensions import db
 from app.models.base import BaseModel
+from app.utils.enums import (
+    DocVerificationStatus,
+    OrgChangeType,
+    OrgChangeSource,
+)
 
 # -------------------------------
 # Organisation License
@@ -43,9 +48,10 @@ class OrganisationDocument(BaseModel):
     version = Column(BigInteger, default=1, nullable=False)
     uploaded_by = Column(BigInteger, ForeignKey("users.id"))
 
+    # Use String + CHECK constraint instead of PostgreSQL ENUM
     verification_status = Column(
-        Enum("pending", "verified", "rejected", name="doc_verification_status"),
-        default="pending",
+        String(16),
+        default=DocVerificationStatus.PENDING.value,
         nullable=False
     )
 
@@ -53,7 +59,17 @@ class OrganisationDocument(BaseModel):
     verified_at = Column(DateTime)
     expires_at = Column(Date)
 
+    __table_args__ = (
+        CheckConstraint(DocVerificationStatus.check_constraint(), name="ck_doc_verification_status"),
+    )
+
     organisation = relationship("Organisation", back_populates="documents")
+
+    @validates("verification_status")
+    def validate_verification_status(self, key, value):
+        if value and value not in DocVerificationStatus.values():
+            raise ValueError(f"Invalid verification_status. Must be one of: {DocVerificationStatus.values()}")
+        return value
 
 
 # -------------------------------
@@ -68,16 +84,17 @@ class OrganisationAuditLog(BaseModel):
     old_value = Column(Text)
     new_value = Column(Text)
 
+    # Use String + CHECK constraint instead of PostgreSQL ENUM
     change_type = Column(
-        Enum("create", "update", "delete", "verify", "suspend", name="org_change_type"),
-        default="update",
+        String(16),
+        default=OrgChangeType.UPDATE.value,
         nullable=False,
         index=True
     )
 
     source = Column(
-        Enum("system", "user", "admin", name="org_change_source"),
-        default="user",
+        String(16),
+        default=OrgChangeSource.USER.value,
         nullable=False,
         index=True
     )
@@ -87,5 +104,21 @@ class OrganisationAuditLog(BaseModel):
     changed_by = Column(BigInteger, ForeignKey("users.id"))
     changed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
+    __table_args__ = (
+        CheckConstraint(OrgChangeType.check_constraint(), name="ck_org_change_type"),
+        CheckConstraint(OrgChangeSource.check_constraint(), name="ck_org_change_source"),
+    )
+
     organisation = relationship("Organisation", back_populates="audit_logs")
 
+    @validates("change_type")
+    def validate_change_type(self, key, value):
+        if value and value not in OrgChangeType.values():
+            raise ValueError(f"Invalid change_type. Must be one of: {OrgChangeType.values()}")
+        return value
+
+    @validates("source")
+    def validate_source(self, key, value):
+        if value and value not in OrgChangeSource.values():
+            raise ValueError(f"Invalid source. Must be one of: {OrgChangeSource.values()}")
+        return value

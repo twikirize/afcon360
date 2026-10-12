@@ -113,6 +113,11 @@ def register_all_models():
             ScheduledRoute,
             ContingencyPlan,
             TransportPassenger,
+            # BOOKING-LIFECYCLE-PERSISTENCE (Stage 3B, Phase 1): pre-Booking
+            # lifecycle persistence foundation (additive; no behavior change).
+            RideRequest,
+            SearchCycle,
+            OfferAttempt,
         )
     except ImportError:
         pass

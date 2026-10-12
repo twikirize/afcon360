@@ -1,10 +1,12 @@
 # app/identity/models/individual_verification.py
 
-from sqlalchemy import Column, BigInteger, String, Text, DateTime, Enum, ForeignKey, JSON, Index
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, BigInteger, String, Text, DateTime, ForeignKey, JSON, Index, CheckConstraint
+from sqlalchemy.orm import relationship, validates
 from datetime import datetime, timezone
 from app.extensions import db
 from app.models.base import BaseModel
+from app.utils.enums import IndVerificationStatus
+
 
 # ─────────────────────────────────────────────────────────────────
 # ARCHITECTURAL BOUNDARY - identity module
@@ -32,6 +34,7 @@ class IndividualVerification(BaseModel):
     __table_args__ = (
         Index("ix_ind_verification_user_id", "user_id"),
         Index("ix_ind_verification_status", "status"),
+        CheckConstraint(IndVerificationStatus.check_constraint(), name="ck_ind_verification_status"),
     )
 
     # Foreign keys
@@ -46,9 +49,10 @@ class IndividualVerification(BaseModel):
         nullable=True
     )
 
+    # Use String + CHECK constraint instead of PostgreSQL ENUM
     status = Column(
-        Enum("pending", "verified", "rejected", "expired", "suspended", name="ind_verification_status"),
-        default="pending",
+        String(16),
+        default=IndVerificationStatus.PENDING.value,
         nullable=False,
         index=True
     )
@@ -72,3 +76,8 @@ class IndividualVerification(BaseModel):
         foreign_keys=[reviewer_id]
     )
 
+    @validates("status")
+    def validate_status(self, key, value):
+        if value and value not in IndVerificationStatus.values():
+            raise ValueError(f"Invalid status. Must be one of: {IndVerificationStatus.values()}")
+        return value

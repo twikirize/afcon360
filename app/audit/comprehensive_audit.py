@@ -10,71 +10,42 @@ Meets requirements for:
 - GDPR/data protection
 - Financial transaction auditing
 - Third-party API integration tracking
-
-Architecture:
-1. AuditLog - General user/system actions
-2. ComplianceAuditLog - Regulatory decisions (KYC, AML, transaction limits)
-3. FinancialAuditLog - All money movements (NEW)
-4. APIAuditLog - Third-party integrations (NEW)
-5. DataAccessLog - GDPR/privacy compliance (NEW)
 """
 
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from decimal import Decimal
-from enum import Enum
 import uuid
-from sqlalchemy import Column, BigInteger, String,Integer, DateTime, JSON, Numeric, Enum as SQLEnum, Index, Boolean, Text
+from sqlalchemy import Column, BigInteger, String, Integer, DateTime, JSON, Numeric, Index, Boolean, Text, CheckConstraint
 from sqlalchemy.orm import Session
 from app.extensions import db
 from app.models.base import BaseModel
 import logging
 from typing import Any
 import json
+from flask import request
+
+# Import application-level enum constants from central location
+from app.utils.enums import (
+    AuditSeverity,
+    AuditTransactionType,
+    APICallStatus,
+    DataAccessType,
+)
+
+# Public re-export: callers and app/audit/__init__.py import this enum under its
+# historical public name `TransactionType`. The enum centralization brings it in
+# as `AuditTransactionType`; rebind the public name here so the module's public
+# import surface is preserved. Same object (no divergence).
+TransactionType = AuditTransactionType
+
+# Import AuditLog for role management logging
+try:
+    from app.models.audit import AuditLog
+except ImportError:
+    AuditLog = None  # type: ignore
 
 logger = logging.getLogger(__name__)
-
-
-# ============================================================================
-# Enums for Audit Types
-# ============================================================================
-
-class AuditSeverity(str, Enum):
-    """Audit event severity levels"""
-    INFO = "info"
-    WARNING = "warning"
-    CRITICAL = "critical"
-    SECURITY = "security"
-
-
-class TransactionType(str, Enum):
-    """Financial transaction types"""
-    DEPOSIT = "deposit"
-    WITHDRAWAL = "withdrawal"
-    TRANSFER = "transfer"
-    REFUND = "refund"
-    FEE = "fee"
-    REVERSAL = "reversal"
-    CURRENCY_EXCHANGE = "currency_exchange"
-    COMMISSION = "commission"
-    PAYOUT = "payout"
-    EXCHANGE = "exchange"
-
-
-class APICallStatus(str, Enum):
-    """Third-party API call status"""
-    SUCCESS = "success"
-    FAILURE = "failure"
-    TIMEOUT = "timeout"
-    RATE_LIMITED = "rate_limited"
-
-
-class DataAccessType(str, Enum):
-    """GDPR data access types"""
-    READ = "read"
-    EXPORT = "export"
-    DELETE = "delete"
-    MODIFY = "modify"
 
 
 # ============================================================================
@@ -96,10 +67,10 @@ class FinancialAuditLog(BaseModel):
     """
     __tablename__ = "financial_audit_logs"
 
-
     # Transaction identification
     transaction_id = Column(String(128), nullable=False, unique=True, index=True)
-    transaction_type = Column(SQLEnum(TransactionType), nullable=False)
+    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    transaction_type = Column(String(32), nullable=False)
 
     # Parties involved
     from_user_id = Column(BigInteger)  # Sender
@@ -153,8 +124,12 @@ class FinancialAuditLog(BaseModel):
 
     completed_at = Column(DateTime)
 
-    # Indexes for common queries
+    # CHECK constraints for enum-like columns
     __table_args__ = (
+        CheckConstraint(
+            AuditTransactionType.check_constraint(),
+            name='ck_fin_transaction_type'
+        ),
         Index('idx_fin_user_date', 'from_user_id', 'created_at'),
         Index('idx_fin_org_date', 'organisation_id', 'created_at'),
         Index('idx_fin_status_date', 'status', 'created_at'),
@@ -165,7 +140,7 @@ class FinancialAuditLog(BaseModel):
     @staticmethod
     def log_transaction(
             transaction_id: str,
-            transaction_type: TransactionType,
+            transaction_type: AuditTransactionType,
             amount: Decimal,
             currency: str,
             status: str,
@@ -181,9 +156,12 @@ class FinancialAuditLog(BaseModel):
     ) -> 'FinancialAuditLog':
         """Create immutable financial audit record"""
 
+        # Convert enum to string value for storage
+        tx_type_value = transaction_type.value if isinstance(transaction_type, AuditTransactionType) else transaction_type
+
         log_entry = FinancialAuditLog(
             transaction_id=transaction_id,
-            transaction_type=transaction_type,
+            transaction_type=tx_type_value,
             from_user_id=from_user_id,
             to_user_id=to_user_id,
             organisation_id=organisation_id,
@@ -201,7 +179,7 @@ class FinancialAuditLog(BaseModel):
         db.session.add(log_entry)
         db.session.commit()
 
-        logger.info(f"Financial audit: {transaction_type} {amount} {currency} - {transaction_id}")
+        logger.info(f"Financial audit: {tx_type_value} {amount} {currency} - {transaction_id}")
         return log_entry
 
 
@@ -242,8 +220,8 @@ class APIAuditLog(BaseModel):
     response_body = Column(JSON)
     response_time_ms = Column(Integer)  # Latency tracking
 
-    # Status
-    status = Column(SQLEnum(APICallStatus), nullable=False)
+    # Status - String + CHECK constraint
+    status = Column(String(16), nullable=False)
     error_message = Column(Text)
     retry_count = Column(Integer, default=0)
 
@@ -255,6 +233,10 @@ class APIAuditLog(BaseModel):
     initiated_by = Column(BigInteger)  # User or system
 
     __table_args__ = (
+        CheckConstraint(
+            APICallStatus.check_constraint(),
+            name='ck_api_status'
+        ),
         Index('idx_api_service_date', 'service_name', 'created_at'),
         Index('idx_api_status_date', 'status', 'created_at'),
     )
@@ -274,13 +256,15 @@ class APIAuditLog(BaseModel):
     ) -> 'APIAuditLog':
         """Log third-party API call"""
 
+        status_value = status.value if isinstance(status, APICallStatus) else status
+
         log_entry = APIAuditLog(
             service_name=service_name,
             endpoint=endpoint,
             method=method,
             request_id=request_id,
             correlation_id=correlation_id,
-            status=status,
+            status=status_value,
             response_status=response_status,
             response_time_ms=response_time_ms,
             error_message=error_message,
@@ -316,7 +300,8 @@ class DataAccessLog(BaseModel):
     accessed_by = Column(BigInteger, nullable=False)  # Who accessed
     subject_user_id = Column(BigInteger, nullable=False)  # Whose data
 
-    access_type = Column(SQLEnum(DataAccessType), nullable=False)
+    # String + CHECK constraint instead of PostgreSQL ENUM
+    access_type = Column(String(16), nullable=False)
     data_category = Column(String(64), nullable=False)  # "kyc_documents", "financial_records"
 
     # What was accessed
@@ -333,6 +318,10 @@ class DataAccessLog(BaseModel):
     user_agent = Column(String(512))
 
     __table_args__ = (
+        CheckConstraint(
+            DataAccessType.check_constraint(),
+            name='ck_data_access_type'
+        ),
         Index('idx_data_subject_date', 'subject_user_id', 'created_at'),
         Index('idx_data_accessor_date', 'accessed_by', 'created_at'),
     )
@@ -349,10 +338,12 @@ class DataAccessLog(BaseModel):
     ) -> 'DataAccessLog':
         """Log sensitive data access"""
 
+        access_value = access_type.value if isinstance(access_type, DataAccessType) else access_type
+
         log_entry = DataAccessLog(
             accessed_by=accessed_by,
             subject_user_id=subject_user_id,
-            access_type=access_type,
+            access_type=access_value,
             data_category=data_category,
             purpose=purpose,
             legal_basis=legal_basis,
@@ -384,7 +375,8 @@ class SecurityEventLog(BaseModel):
 
 
     event_type = Column(String(64), nullable=False, index=True)
-    severity = Column(SQLEnum(AuditSeverity), nullable=False, index=True)
+    # String + CHECK constraint
+    severity = Column(String(16), nullable=False, index=True)
 
     user_id = Column(BigInteger, index=True)
     ip_address = Column(String(64), index=True)
@@ -399,6 +391,12 @@ class SecurityEventLog(BaseModel):
     handled_by = Column(BigInteger)
     handled_at = Column(DateTime)
 
+    __table_args__ = (
+        CheckConstraint(
+            AuditSeverity.check_constraint(),
+            name='ck_security_severity'
+        ),
+    )
 
     @staticmethod
     def log_event(
@@ -428,9 +426,9 @@ class SecurityEventLog(BaseModel):
         # Direct INSERT bypasses the ORM session and does not trigger autoflush.
         connection = db.session.connection()
         connection.execute(
-            SecurityEventLog.__table__.insert().values(
+            SecurityEventLog.__table__.insert().values(  # type: ignore[attr-defined]
                 event_type=event_type,
-                severity=severity.value if isinstance(severity, AuditSeverity) else str(severity),
+                severity=severity.value,
                 description=description,
                 user_id=user_id,
                 ip_address=ip_address,
@@ -527,7 +525,7 @@ class DataChangeLog(BaseModel):
         # Direct INSERT bypasses the ORM session and does not trigger autoflush.
         connection = db.session.connection()
         connection.execute(
-            DataChangeLog.__table__.insert().values(
+            DataChangeLog.__table__.insert().values(  # type: ignore[attr-defined]
                 public_id=str(uuid.uuid4()),
                 entity_type=entity_type,
                 entity_id=str(entity_id) if entity_id is not None else None,
@@ -608,6 +606,11 @@ class AuditService:
         # Map 'metadata' parameter to 'extra_data' for compatibility
         if 'metadata' in kwargs:
             kwargs['extra_data'] = kwargs.pop('metadata')
+
+        # Convert enum to string value if needed
+        if 'transaction_type' in kwargs and hasattr(kwargs['transaction_type'], 'value'):
+            kwargs['transaction_type'] = kwargs['transaction_type'].value
+
         return FinancialAuditLog.log_transaction(**kwargs)
 
     @staticmethod
@@ -616,46 +619,61 @@ class AuditService:
         # Map 'metadata' parameter to 'extra_data' for compatibility
         if 'metadata' in kwargs:
             kwargs['extra_data'] = kwargs.pop('metadata')
+
+        # Convert enum to string value if needed
+        if 'status' in kwargs and hasattr(kwargs['status'], 'value'):
+            kwargs['status'] = kwargs['status'].value
+
         return APIAuditLog.log_api_call(**kwargs)
 
     @staticmethod
     def data_access(**kwargs) -> DataAccessLog:
         """Log sensitive data access"""
+        # Convert enum to string value if needed
+        if 'access_type' in kwargs and hasattr(kwargs['access_type'], 'value'):
+            kwargs['access_type'] = kwargs['access_type'].value
+
         return DataAccessLog.log_access(**kwargs)
 
     @staticmethod
-    def security(**kwargs) -> SecurityEventLog:
+    def security(**kwargs) -> None:
         """Log security event"""
         # Map 'metadata' parameter to 'extra_data' for compatibility
         if 'metadata' in kwargs:
             kwargs['extra_data'] = kwargs.pop('metadata')
-        return SecurityEventLog.log_event(**kwargs)
+        SecurityEventLog.log_event(**kwargs)
 
     @staticmethod
-    def data_change(**kwargs) -> DataChangeLog:
+    def data_change(**kwargs) -> None:
         """Log data change event (wallet creation, freezing, payouts, etc.)"""
         # Map 'metadata' parameter to 'extra_data' for compatibility
         if 'metadata' in kwargs:
             kwargs['extra_data'] = kwargs.pop('metadata')
-        return DataChangeLog.log_change(**kwargs)
+        DataChangeLog.log_change(**kwargs)
 
     @staticmethod
-    def compliance(**kwargs):
+    def compliance(**kwargs) -> None:
         """
         Log compliance decision using the ComplianceLogger.
         This avoids duplicate table definitions by using the existing logger.
         """
-        from app.compliance.logger import ComplianceLogger
-        return ComplianceLogger.log_decision(**kwargs)
+        try:
+            from app.compliance.logger import ComplianceLogger
+            ComplianceLogger.log_decision(**kwargs)
+        except ImportError:
+            logger.warning("ComplianceLogger not available, skipping compliance log")
 
     @staticmethod
     def log_role_change(user_id: int, old_role: str, new_role: str, changed_by: int, reason: str = None):
         """Log role change action"""
+        if AuditLog is None:
+            logger.warning("AuditLog not available, skipping role change log")
+            return None
         try:
             from app.models.user import User
             target_user = db.session.get(User, user_id)
             performed_by_user = db.session.get(User, changed_by)
-            
+
             audit_log = AuditLog(
                 user_id=changed_by,
                 action='role_change',
@@ -682,10 +700,13 @@ class AuditService:
     @staticmethod
     def log_role_management_action(user_id: int, action: str, details: dict = None):
         """Log role management action (toggle permissions, etc.)"""
+        if AuditLog is None:
+            logger.warning("AuditLog not available, skipping role management log")
+            return None
         try:
             from app.models.user import User
             performed_by_user = db.session.get(User, user_id)
-            
+
             audit_log = AuditLog(
                 user_id=user_id,
                 action=action,
@@ -706,17 +727,17 @@ class AuditService:
         """Get recent role change audit logs"""
         try:
             from app.models.user import User
-            
+
             # Get role change logs
             logs = AuditLog.query.filter(
                 AuditLog.action.in_(['role_change', 'assign_role', 'revoke_role'])
             ).order_by(AuditLog.created_at.desc()).limit(limit).all()
-            
+
             result = []
             for log in logs:
                 target_user = db.session.get(User, log.details.get('target_user_id')) if log.details else None
                 performed_by_user = db.session.get(User, log.user_id) if log.user_id else None
-                
+
                 result.append({
                     'timestamp': log.created_at,
                     'action': log.action,
@@ -726,7 +747,7 @@ class AuditService:
                     'new_role': log.details.get('new_role') if log.details else None,
                     'reason': log.details.get('reason') if log.details else None
                 })
-            
+
             return result
         except Exception as e:
             logger.error(f"Error getting recent role changes: {e}")
@@ -738,16 +759,16 @@ class AuditService:
         try:
             from app.models.user import User
             from flask_sqlalchemy.pagination import Pagination
-            
+
             # Get role management logs
             query = AuditLog.query.filter(
                 AuditLog.action.in_(['role_change', 'assign_role', 'revoke_role', 'toggle_admin_role_management', 'toggle_super_admin_role_management'])
             ).order_by(AuditLog.created_at.desc())
-            
+
             # Paginate
             items = query.limit(per_page).offset((page - 1) * per_page).all()
             total = query.count()
-            
+
             # Create pagination object
             pagination = Pagination(
                 query=query,
@@ -756,12 +777,12 @@ class AuditService:
                 total=total,
                 items=items
             )
-            
+
             result = []
             for log in items:
                 target_user = db.session.get(User, log.details.get('target_user_id')) if log.details else None
                 performed_by_user = db.session.get(User, log.user_id) if log.user_id else None
-                
+
                 result.append({
                     'timestamp': log.created_at,
                     'action': log.action,
@@ -772,7 +793,7 @@ class AuditService:
                     'reason': log.details.get('reason') if log.details else None,
                     'details': log.details
                 })
-            
+
             return pagination, result
         except Exception as e:
             logger.error(f"Error getting role management audit log: {e}")
@@ -785,10 +806,9 @@ class AuditService:
         """
         return AuditService.security(
             event_type=f"moderator_view_{entity_type}",
-            severity="info",
+            severity=AuditSeverity.INFO,
             description=f"Moderator {user_id} viewed {entity_type}",
             user_id=user_id,
             ip_address=ip_address,
             **kwargs
         )
-

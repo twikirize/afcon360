@@ -2176,7 +2176,21 @@ def create_app(config_object=None) -> Flask:
     @app.errorhandler(CSRFError)
     def handle_csrf_error(e):
         if request.is_json:
-            return jsonify({"status": "error", "message": "CSRF token missing or invalid"}), 400
+            # Distinguish the failure so the client can react correctly: only
+            # an *expired* token is worth a single refresh+replay. Missing or
+            # invalid tokens must never be retried blindly.
+            desc = (getattr(e, "description", "") or "").lower()
+            if "expired" in desc:
+                code = "csrf_expired"
+            elif "missing" in desc:
+                code = "csrf_missing"
+            else:
+                code = "csrf_invalid"
+            return jsonify({
+                "status": "error",
+                "code": code,
+                "message": "CSRF token missing or invalid",
+            }), 400
         session.clear()
         flash("Your session has expired. Please log in again.", "warning")
         return redirect(url_for("auth.login"))

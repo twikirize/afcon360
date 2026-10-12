@@ -1,496 +1,267 @@
+#!/usr/bin/env python3
 """
-scripts/migrate_enums_to_strings.py
+Expand-Contract Migration Script for PostgreSQL ENUM to String Migration
 
-Automated helper to migrate PostgreSQL ENUM columns to String columns
-using the expand-contract pattern. This script:
-
-1. Scans models for ENUM columns
-2. Generates migration scripts
-3. Creates backfill scripts
-4. Adds CHECK constraints
+This script generates the SQL statements needed to migrate all PostgreSQL ENUM
+columns to String columns with CHECK constraints, following the expand-contract pattern.
 
 Usage:
-    python scripts/migrate_enums_to_strings.py --dry-run    # Show what would be done
-    python scripts/migrate_enums_to_strings.py --module wallet  # Migrate specific module
-    python scripts/migrate_enums_to_strings.py --all       # Migrate all modules
+    python scripts/migrate_enums_to_strings.py --dry-run    # Preview changes
+    python scripts/migrate_enums_to_strings.py --execute    # Execute migration
+
+The migration follows the expand-contract pattern:
+    PHASE 1 (EXPAND): Add new String columns alongside existing ENUM columns
+    PHASE 2 (MIGRATE): Backfill data from ENUM columns to String columns
+    PHASE 3 (SWITCH): Add CHECK constraints, update application code
+    PHASE 4 (CONTRACT): Drop old ENUM columns and types
 """
 
 import argparse
-import ast
-import os
 import sys
-from dataclasses import dataclass
-from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Dict, Any
+
+# All enum columns to migrate - discovered from codebase
+ENUM_COLUMNS = [
+    # Audit module
+    {"table": "financial_audit_logs", "column": "transaction_type", "enum_type": "audittransactiontype", "values": ["deposit", "withdrawal", "transfer", "refund", "fee", "reversal", "currency_exchange", "commission", "payout", "exchange"]},
+    {"table": "api_audit_logs", "column": "status", "enum_type": "apicallstatus", "values": ["success", "failure", "timeout", "rate_limited"]},
+    {"table": "data_access_logs", "column": "access_type", "enum_type": "dataaccesstype", "values": ["read", "export", "delete", "modify"]},
+    {"table": "security_event_logs", "column": "severity", "enum_type": "auditseverity", "values": ["info", "warning", "critical", "security"]},
+    
+    # Profile module
+    {"table": "user_profiles", "column": "gender", "enum_type": "gender_enum", "values": ["male", "female", "other", "unspecified"]},
+    {"table": "user_profiles", "column": "id_type", "enum_type": "id_type_enum", "values": ["passport", "national_id", "driver_license", "other"]},
+    {"table": "user_profiles", "column": "verification_status", "enum_type": "verification_status_enum", "values": ["pending", "verified", "rejected", "suspended"]},
+    {"table": "user_profiles", "column": "kyc_level", "enum_type": "kyc_level_enum", "values": ["basic", "enhanced", "government"]},
+    
+    # Identity module
+    {"table": "organisations", "column": "verification_status", "enum_type": "org_verification_status", "values": ["unverified", "pending", "verified", "rejected", "suspended", "expired"]},
+    {"table": "organisations", "column": "lifecycle_state", "enum_type": "org_lifecycle_state", "values": ["draft", "registered", "approved", "suspended", "closed"]},
+    {"table": "organisations", "column": "business_category", "enum_type": "org_business_category", "values": []},  # Uses OrganizationType enum
+    
+    {"table": "organisation_verifications", "column": "status", "enum_type": "org_verification_status", "values": ["unverified", "pending", "verified", "rejected", "suspended", "expired"]},
+    {"table": "organisation_kyb_checks", "column": "check_type", "enum_type": "org_kyb_check_type", "values": ["identity", "tax", "license", "ubo", "sanctions"]},
+    {"table": "organisation_kyb_checks", "column": "status", "enum_type": "org_kyb_check_status", "values": ["pending", "passed", "failed", "manual_review"]},
+    {"table": "organisation_ubos", "column": "ubo_type", "enum_type": "ubo_type", "values": ["individual", "corporate"]},
+    {"table": "organisation_kyb_documents", "column": "verification_status", "enum_type": "kyb_doc_status", "values": ["pending", "verified", "rejected"]},
+    {"table": "individual_verifications", "column": "status", "enum_type": "ind_verification_status", "values": ["pending", "verified", "rejected", "expired", "suspended"]},
+    {"table": "individual_documents", "column": "document_type", "enum_type": "ind_document_type", "values": ["id_card", "passport", "driver_license", "proof_of_address"]},
+    {"table": "organisation_licenses", "column": "verification_status", "enum_type": "doc_verification_status", "values": ["pending", "verified", "rejected"]},
+    {"table": "organisation_audit_logs", "column": "change_type", "enum_type": "org_change_type", "values": ["create", "update", "delete", "verify", "suspend"]},
+    {"table": "organisation_audit_logs", "column": "source", "enum_type": "org_change_source", "values": ["system", "user", "admin"]},
+    {"table": "organisation_documents", "column": "verification_status", "enum_type": "doc_verification_status", "values": ["pending", "verified", "rejected"]},
+    {"table": "compliance_audit_logs", "column": "entity_type", "enum_type": "entity_type", "values": ["organisation", "individual"]},
+    {"table": "compliance_audit_logs", "column": "decision", "enum_type": "compliance_decision", "values": ["allowed", "blocked", "conditional"]},
+    {"table": "compliance_audit_logs", "column": "risk_tier", "enum_type": "risk_tier", "values": ["low", "medium", "high"]},
+    {"table": "compliance_settings", "column": "enforcement_level", "enum_type": "compliance_enforcement_level", "values": ["optional", "conditional", "mandatory"]},
+    {"table": "organisation_payment_gateways", "column": "provider", "enum_type": "payment_gateway_provider", "values": ["flutterwave", "paystack", "mtn_momo", "airtel_money", "visa", "mastercard", "paypal", "alipay", "wechat_pay", "bank_transfer", "stripe", "mpesa"]},
+    {"table": "organisation_payment_gateways", "column": "environment", "enum_type": "gateway_environment", "values": ["sandbox", "production"]},
+    
+    # Wallet module
+    {"table": "transactions", "column": "tx_type", "enum_type": "transaction_type_enum", "values": ["deposit", "withdraw", "transfer", "fee", "refund", "adjustment"]},
+    {"table": "transactions", "column": "status", "enum_type": "transaction_status_enum", "values": ["pending", "completed", "failed", "cancelled"]},
+    {"table": "regulatory_volume_policies", "column": "daily_window_mode", "enum_type": "window_mode_enum", "values": ["calendar", "rolling"]},
+    {"table": "regulatory_volume_policies", "column": "monthly_window_mode", "enum_type": "window_mode_enum", "values": ["calendar", "rolling"]},
+    {"table": "regulatory_volume_policy_changes", "column": "proposed_daily_mode", "enum_type": "window_mode_enum", "values": ["calendar", "rolling"]},
+    {"table": "regulatory_volume_policy_changes", "column": "proposed_monthly_mode", "enum_type": "window_mode_enum", "values": ["calendar", "rolling"]},
+    {"table": "regulatory_volume_policy_changes", "column": "status", "enum_type": "rvpcr_status_enum", "values": ["pending", "approved", "rejected", "cancelled", "expired"]},
+    
+    # Transport module
+    {"table": "transport_ride_requests", "column": "service_type", "enum_type": "servicetype", "values": ["airport_arrival", "airport_departure", "stadium_shuttle", "hotel_transfer", "city_tour", "on_demand", "scheduled_route", "custom_tour"]},
+    {"table": "transport_vehicles", "column": "vehicle_class", "enum_type": "vehicleclass", "values": ["economy", "comfort", "premium", "luxury", "van", "bus"]},
+    {"table": "transport_offerings", "column": "provider_type", "enum_type": "providertype", "values": ["individual_driver", "hotel_fleet", "tour_operator", "transport_company", "external_platform"]},
+    {"table": "transport_offerings", "column": "service_type", "enum_type": "servicetype", "values": ["airport_arrival", "airport_departure", "stadium_shuttle", "hotel_transfer", "city_tour", "on_demand", "scheduled_route", "custom_tour"]},
+    {"table": "transport_offerings", "column": "currency", "enum_type": "currency", "values": ["USD", "EUR", "GBP", "XOF", "XAF", "NGN", "KES", "GHS", "ZAR", "UGX"]},
+    {"table": "transport_offerings", "column": "payment_status", "enum_type": "paymentstatus", "values": ["pending", "authorized", "captured", "partially_captured", "refunded", "partially_refunded", "failed", "cancelled"]},
+    {"table": "transport_bookings", "column": "service_type", "enum_type": "servicetype", "values": ["airport_arrival", "airport_departure", "stadium_shuttle", "hotel_transfer", "city_tour", "on_demand", "scheduled_route", "custom_tour"]},
+    {"table": "transport_bookings", "column": "currency", "enum_type": "currency", "values": ["USD", "EUR", "GBP", "XOF", "XAF", "NGN", "KES", "GHS", "ZAR", "UGX"]},
+    {"table": "transport_bookings", "column": "payment_status", "enum_type": "paymentstatus", "values": ["pending", "authorized", "captured", "partially_captured", "refunded", "partially_refunded", "failed", "cancelled"]},
+    {"table": "transport_incidents", "column": "severity", "enum_type": "incidentseverity", "values": ["info", "low", "medium", "high", "critical"]},
+    {"table": "vehicle_marketplace_listings", "column": "listing_status", "enum_type": "marketplacelistingstatus", "values": ["draft", "active", "paused", "filled", "expired", "closed"]},
+    {"table": "driver_vehicle_applications", "column": "status", "enum_type": "applicationstatus", "values": ["pending", "under_review", "approved", "rejected", "withdrawn", "expired"]},
+    {"table": "vehicle_contracts", "column": "compensation_model", "enum_type": "compensationmodel", "values": ["fixed_fee", "percentage", "per_km", "per_hour", "daily_rate", "weekly_rate", "monthly_rate", "revenue_share"]},
+    {"table": "vehicle_contracts", "column": "status", "enum_type": "contractstatus", "values": ["draft", "active", "suspended", "terminated", "expired", "pending_signature"]},
+    
+    # Admin compliance
+    {"table": "compliance_cases", "column": "case_type", "enum_type": "compliancecasetype", "values": ["kyc_review", "kyb_review", "aml_alert", "payout_review", "data_request", "flag_escalation", "license_review", "other"]},
+    {"table": "compliance_cases", "column": "status", "enum_type": "compliancecasestatus", "values": ["open", "in_review", "pending_info", "approved", "rejected", "escalated", "closed"]},
+    {"table": "compliance_cases", "column": "priority", "enum_type": "compliancecasepriority", "values": ["critical", "high", "medium", "low"]},
+    {"table": "data_subject_requests", "column": "request_type", "enum_type": "datasubjectrequesttype", "values": ["access", "deletion", "rectification", "portability", "objection"]},
+    {"table": "data_subject_requests", "column": "status", "enum_type": "datasubjectrequeststatus", "values": ["pending", "verified", "processing", "completed", "rejected", "expired"]},
+    {"table": "compliance_reports", "column": "report_type", "enum_type": "compliancereporttype", "values": ["kyc_summary", "aml_summary", "payout_summary", "case_history", "audit_trail", "risk_assessment", "regulatory_filing"]},
+    
+    # Accommodation
+    {"table": "accommodation_properties", "column": "property_type", "enum_type": "accommodationpropertytype", "values": ["hotel", "apartment", "villa", "hostel", "guesthouse"]},
+    {"table": "accommodation_properties", "column": "listing_type", "enum_type": "accommodationlistingtype", "values": ["entire_place", "private_room", "shared_room"]},
+    {"table": "accommodation_properties", "column": "cancellation_policy", "enum_type": "accommodationcancellationpolicy", "values": ["flexible", "moderate", "strict", "non_refundable"]},
+    {"table": "accommodation_properties", "column": "status", "enum_type": "accommodationpropertystatus", "values": ["draft", "pending", "approved", "rejected", "suspended"]},
+    {"table": "accommodation_properties", "column": "verification_status", "enum_type": "accommodationverificationstatus", "values": ["unverified", "pending", "verified", "rejected"]},
+    {"table": "accommodation_bookings", "column": "status", "enum_type": "accommodationbookingstatus", "values": ["draft", "pending", "confirmed", "checked_in", "checked_out", "cancelled"]},
+    {"table": "accommodation_bookings", "column": "payment_status", "enum_type": "accommodationpaymentstatus", "values": ["pending", "processing", "completed", "failed", "refunded"]},
+    {"table": "accommodation_bookings", "column": "payment_method", "enum_type": "accommodationpaymentmethod", "values": ["card", "wallet", "bank_transfer", "cash", "mobile_money"]},
+    {"table": "accommodation_reviews", "column": "status", "enum_type": "accommodationreviewstatus", "values": ["pending", "approved", "rejected", "flagged"]},
+    {"table": "accommodation_property_documents", "column": "document_type", "enum_type": "propertydocumenttype", "values": ["id_document", "business_license", "tax_certificate", "property_deed", "insurance_certificate", "other"]},
+    {"table": "accommodation_property_documents", "column": "status", "enum_type": "propertydocumentstatus", "values": ["pending", "approved", "rejected", "expired"]},
+    {"table": "accommodation_availability_rules", "column": "reason", "enum_type": "accommodationblockedreason", "values": ["maintenance", "blocked", "seasonal", "owner_use"]},
+]
 
 
-@dataclass
-class EnumColumn:
-    """Represents an ENUM column that needs migration"""
-    file_path: str
-    model_name: str
-    column_name: str
-    enum_class: str
-    values: List[str]
-    nullable: bool
-    default: Optional[str]
-    line_number: int
+def generate_expand_phase(enum_cols: List[Dict]) -> List[str]:
+    """Generate SQL for Phase 1: Add new String columns alongside existing ENUM columns."""
+    statements = []
+    statements.append("-- ============================================================================")
+    statements.append("-- PHASE 1: EXPAND - Add new String columns alongside existing ENUM columns")
+    statements.append("-- ============================================================================")
+    statements.append("")
+    
+    for col in enum_cols:
+        table = col["table"]
+        column = col["column"]
+        new_column = f"{column}_new"
+        max_len = max(len(v) for v in col["values"]) if col["values"] else 50
+        max_len = max(max_len, 20)  # minimum 20 chars
+        max_len = min(max_len, 100)  # cap at 100
+        
+        # Add new column
+        stmt = f"ALTER TABLE {table} ADD COLUMN {new_column} VARCHAR({max_len});"
+        statements.append(stmt)
+    
+    return statements
 
 
-class EnumScanner(ast.NodeVisitor):
-    """Scans Python files for SQLAlchemy ENUM usage"""
-
-    def __init__(self, file_path: str):
-        self.file_path = file_path
-        self.enum_columns: List[EnumColumn] = []
-        self.current_class: Optional[str] = None
-        self.imports: dict = {}
-
-    def visit_Import(self, node: ast.Import):
-        for alias in node.names:
-            self.imports[alias.name] = alias.asname or alias.name
-        self.generic_visit(node)
-
-    def visit_ImportFrom(self, node: ast.ImportFrom):
-        if node.module:
-            for alias in node.names:
-                self.imports[f"{node.module}.{alias.name}"] = alias.asname or alias.name
-        self.generic_visit(node)
-
-    def visit_ClassDef(self, node: ast.ClassDef):
-        old_class = self.current_class
-        self.current_class = node.name
-        self.generic_visit(node)
-        self.current_class = old_class
-
-    def visit_Call(self, node: ast.Call):
-        # Check for Column(Enum(...)) or Column(SQLEnum(...))
-        if isinstance(node.func, ast.Name) and node.func.id == 'Column':
-            self._check_enum_in_column(node)
-        elif isinstance(node.func, ast.Attribute) and node.func.attr == 'Column':
-            self._check_enum_in_column(node)
-        self.generic_visit(node)
-
-    def _check_enum_in_column(self, node: ast.Call):
-        """Check if a Column call contains an Enum"""
-        for keyword in node.keywords:
-            if keyword.arg == 'nullable':
-                continue
-            if self._is_enum_call(keyword.value):
-                enum_info = self._extract_enum_info(keyword.value)
-                if enum_info:
-                    self.enum_columns.append(EnumColumn(
-                        file_path=self.file_path,
-                        model_name=self.current_class or "Unknown",
-                        column_name=self._get_column_name(node),
-                        enum_class=enum_info[0],
-                        values=enum_info[1],
-                        nullable=self._get_nullable(node),
-                        default=self._get_default(node),
-                        line_number=node.lineno,
-                    ))
-
-    def _is_enum_call(self, node) -> bool:
-        """Check if a node is an Enum(...) call"""
-        if isinstance(node, ast.Call):
-            if isinstance(node.func, ast.Name) and node.func.id in ('Enum', 'SQLEnum', 'SAEnum'):
-                return True
-            if isinstance(node.func, ast.Attribute) and node.func.attr in ('Enum', 'SQLEnum', 'SAEnum'):
-                return True
-        return False
-
-    def _extract_enum_info(self, node) -> Optional[Tuple[str, List[str]]]:
-        """Extract enum class name and values"""
-        if not isinstance(node, ast.Call):
-            return None
-
-        # Get enum class name
-        if isinstance(node.func, ast.Name):
-            enum_name = node.func.id
-        elif isinstance(node.func, ast.Attribute):
-            enum_name = node.func.attr
-        else:
-            return None
-
-        # Get values
-        values = []
-        for arg in node.args:
-            if isinstance(arg, ast.Constant):
-                values.append(arg.value)
-            elif isinstance(arg, ast.Str):  # Python 3.7 compat
-                values.append(arg.s)
-
-        return enum_name, values
-
-    def _get_column_name(self, node) -> str:
-        """Extract column name from Column(...) call"""
-        for keyword in node.keywords:
-            if keyword.arg == 'name':
-                if isinstance(keyword.value, ast.Constant):
-                    return keyword.value.value
-                elif isinstance(keyword.value, ast.Str):
-                    return keyword.value.s
-        # Try to find from positional args
-        if node.args and isinstance(node.args[0], ast.Constant):
-            return node.args[0].value
-        return "unknown"
-
-    def _get_nullable(self, node) -> bool:
-        """Extract nullable from Column(...) call"""
-        for keyword in node.keywords:
-            if keyword.arg == 'nullable':
-                if isinstance(keyword.value, ast.Constant):
-                    return keyword.value.value
-        return True
-
-    def _get_default(self, node) -> Optional[str]:
-        """Extract default from Column(...) call"""
-        for keyword in node.keywords:
-            if keyword.arg == 'default':
-                if isinstance(keyword.value, ast.Constant):
-                    return keyword.value.value
-                elif isinstance(keyword.value, ast.Attribute):
-                    return f"{keyword.value.attr}"
-        return None
+def generate_migrate_phase(enum_cols: List[Dict]) -> List[str]:
+    """Generate SQL for Phase 2: Backfill data from ENUM columns to String columns."""
+    statements = []
+    statements.append("")
+    statements.append("-- ============================================================================")
+    statements.append("-- PHASE 2: MIGRATE - Backfill data from ENUM columns to String columns")
+    statements.append("-- ============================================================================")
+    statements.append("")
+    
+    for col in enum_cols:
+        table = col["table"]
+        column = col["column"]
+        new_column = f"{column}_new"
+        
+        # Backfill data
+        stmt = f"UPDATE {table} SET {new_column} = {column}::text WHERE {column} IS NOT NULL;"
+        statements.append(stmt)
+    
+    return statements
 
 
-def scan_directory(base_path: str, modules: Optional[List[str]] = None) -> List[EnumColumn]:
-    """Scan directory for ENUM usage"""
-    all_enums: List[EnumColumn] = []
+def generate_switch_phase(enum_cols: List[Dict]) -> List[str]:
+    """Generate SQL for Phase 3: Add CHECK constraints and switch application."""
+    statements = []
+    statements.append("")
+    statements.append("-- ============================================================================")
+    statements.append("-- PHASE 3: SWITCH - Add CHECK constraints and prepare for switch")
+    statements.append("-- ============================================================================")
+    statements.append("")
+    
+    for col in enum_cols:
+        table = col["table"]
+        column = col["column"]
+        new_column = f"{column}_new"
+        constraint_name = f"ck_{table}_{column}"
+        
+        if col["values"]:
+            values_str = ", ".join(f"'{v}'" for v in col["values"])
+            # Add CHECK constraint on new column
+            stmt = f"ALTER TABLE {table} ADD CONSTRAINT {constraint_name} CHECK ({new_column} IN ({values_str}));"
+            statements.append(stmt)
+    
+    statements.append("")
+    statements.append("-- After this phase, update application code to use the _new columns")
+    statements.append("-- Then rename columns: ALTER TABLE ... RENAME COLUMN old TO old_backup; RENAME new TO original;")
+    
+    return statements
 
-    if modules:
-        paths_to_scan = []
-        for module in modules:
-            module_path = Path(base_path) / "app" / module
-            if module_path.exists():
-                paths_to_scan.append(module_path)
+
+def generate_contract_phase(enum_cols: List[Dict]) -> List[str]:
+    """Generate SQL for Phase 4: Drop old ENUM columns and types."""
+    statements = []
+    statements.append("")
+    statements.append("-- ============================================================================")
+    statements.append("-- PHASE 4: CONTRACT - Drop old ENUM columns and types")
+    statements.append("-- ============================================================================")
+    statements.append("")
+    statements.append("-- WARNING: Only run after application code has been switched to new columns!")
+    statements.append("")
+    
+    for col in enum_cols:
+        table = col["table"]
+        column = col["column"]
+        new_column = f"{column}_new"
+        enum_type = col["enum_type"]
+        
+        # Drop old column
+        statements.append(f"ALTER TABLE {table} DROP COLUMN {column};")
+        # Rename new column to original name
+        statements.append(f"ALTER TABLE {table} RENAME COLUMN {new_column} TO {column};")
+        statements.append("")
+    
+    # Drop ENUM types (only after all columns using them are dropped)
+    enum_types = set(col["enum_type"] for col in enum_cols if col["enum_type"])
+    statements.append("-- Drop ENUM types (only after all columns using them are dropped)")
+    for enum_type in sorted(enum_types):
+        statements.append(f"DROP TYPE IF EXISTS {enum_type};")
+    
+    return statements
+
+
+def generate_full_migration(dry_run: bool = True) -> str:
+    """Generate the complete migration SQL."""
+    output = []
+    output.append("-- ============================================================================")
+    output.append("-- PostgreSQL ENUM to String Migration - Expand-Contract Pattern")
+    output.append("-- Generated by migrate_enums_to_strings.py")
+    output.append("-- ============================================================================")
+    output.append("")
+    
+    if dry_run:
+        output.append("-- DRY RUN MODE - No changes will be made")
+        output.append("")
+    
+    output.extend(generate_expand_phase(ENUM_COLUMNS))
+    output.extend(generate_migrate_phase(ENUM_COLUMNS))
+    output.extend(generate_switch_phase(ENUM_COLUMNS))
+    output.extend(generate_contract_phase(ENUM_COLUMNS))
+    
+    output.append("")
+    output.append("-- ============================================================================")
+    output.append("-- Migration complete")
+    output.append("-- ============================================================================")
+    
+    return "\n".join(output)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Generate ENUM to String migration SQL")
+    parser.add_argument("--dry-run", action="store_true", help="Preview migration without executing")
+    parser.add_argument("--execute", action="store_true", help="Execute migration (requires database connection)")
+    parser.add_argument("--output", help="Output file for generated SQL")
+    
+    args = parser.parse_args()
+    
+    if not args.dry_run and not args.execute:
+        args.dry_run = True  # Default to dry run
+    
+    sql = generate_full_migration(dry_run=args.dry_run)
+    
+    if args.output:
+        with open(args.output, 'w') as f:
+            f.write(sql)
+        print(f"Migration SQL written to {args.output}")
     else:
-        paths_to_scan = [Path(base_path) / "app"]
-
-    for path in paths_to_scan:
-        for py_file in path.rglob("*.py"):
-            if "__pycache__" in str(py_file):
-                continue
-            scanner = EnumScanner(str(py_file))
-            try:
-                with open(py_file, 'r', encoding='utf-8') as f:
-                    tree = ast.parse(f.read())
-                scanner.visit(tree)
-                all_enums.extend(scanner.enum_columns)
-            except Exception as e:
-                print(f"Error scanning {py_file}: {e}")
-
-    return all_enums
-
-
-def generate_migration_script(enums: List[EnumColumn], output_path: str):
-    """Generate Alembic migration script for ENUM to String conversion"""
-    migration_template = '''"""
-Auto-generated migration: ENUM to String conversion
-
-Revision: {revision}
-DownRevision: {down_revision}
-"""
-
-from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
-
-# revision identifiers
-revision = '{revision}'
-down_revision = '{down_revision}'
-branch_labels = None
-depends_on = None
-
-
-def upgrade():
-{upgrade_ops}
-
-
-def downgrade():
-{downgrade_ops}
-'''
-
-    upgrade_ops = []
-    downgrade_ops = []
-
-    for enum_col in enums:
-        table_name = enum_col.model_name.lower() + 's'  # Simple pluralization
-        new_column = f"{enum_col.column_name}_new"
-        values_list = ", ".join([f"'{v}'" for v in enum_col.values])
-
-        # Expand phase: Add new column
-        upgrade_ops.append(f"    # Expand: Add new String column for {enum_col.column_name}")
-        upgrade_ops.append(f"    op.add_column('{table_name}', sa.Column('{new_column}', sa.String(50), nullable={enum_col.nullable}, default='{enum_col.default or enum_col.values[0]}'))")
-        upgrade_ops.append(f"    op.create_index('ix_{table_name}_{new_column}', '{table_name}', ['{new_column}'])")
-        upgrade_ops.append("")
-
-        # Backfill would be done via separate script
-        upgrade_ops.append(f"    # Backfill: UPDATE {table_name} SET {new_column} = {enum_col.column_name}::text;")
-        upgrade_ops.append("")
-
-        # Contract phase: Drop old column, rename new
-        upgrade_ops.append(f"    # Contract: Drop old ENUM column, rename new")
-        upgrade_ops.append(f"    op.drop_column('{table_name}', '{enum_col.column_name}')")
-        upgrade_ops.append(f"    op.alter_column('{table_name}', '{new_column}', new_column_name='{enum_col.column_name}')")
-        upgrade_ops.append("")
-
-        # Add CHECK constraint
-        upgrade_ops.append(f"    # Add CHECK constraint")
-        upgrade_ops.append(f"    op.create_check_constraint('chk_{table_name}_{enum_col.column_name}', '{table_name}', \"{enum_col.column_name} IN ({values_list})\")")
-        upgrade_ops.append("")
-
-        # Downgrade operations (reverse)
-        downgrade_ops.append(f"    # Reverse: Drop CHECK constraint")
-        downgrade_ops.append(f"    op.drop_constraint('chk_{table_name}_{enum_col.column_name}', '{table_name}', type_='check')")
-        downgrade_ops.append("")
-        downgrade_ops.append(f"    # Reverse: Rename column back")
-        downgrade_ops.append(f"    op.alter_column('{table_name}', '{enum_col.column_name}', new_column_name='{new_column}')")
-        downgrade_ops.append("")
-        downgrade_ops.append(f"    # Reverse: Recreate ENUM column")
-        downgrade_ops.append(f"    op.add_column('{table_name}', sa.Column('{enum_col.column_name}', postgresql.ENUM({values_list}, name='{enum_col.enum_class.lower()}'), nullable={enum_col.nullable}))")
-        downgrade_ops.append(f"    op.create_index('ix_{table_name}_{enum_col.column_name}', '{table_name}', ['{enum_col.column_name}'])")
-        downgrade_ops.append("")
-        downgrade_ops.append(f"    # Reverse: Backfill ENUM from String")
-        downgrade_ops.append(f"    # UPDATE {table_name} SET {enum_col.column_name} = {new_column}::{enum_col.enum_class.lower()};")
-        downgrade_ops.append("")
-        downgrade_ops.append(f"    # Reverse: Drop new column")
-        downgrade_ops.append(f"    op.drop_column('{table_name}', '{new_column}')")
-        downgrade_ops.append("")
-
-    migration_content = migration_template.format(
-        revision="auto_generated_enum_to_string",
-        down_revision="head",
-        upgrade_ops="\n".join(upgrade_ops),
-        downgrade_ops="\n".join(downgrade_ops),
-    )
-
-    with open(output_path, 'w') as f:
-        f.write(migration_content)
-
-    print(f"Migration script written to: {output_path}")
-
-
-def generate_backfill_script(enums: List[EnumColumn], output_path: str):
-    """Generate backfill script for data migration"""
-    script_template = '''"""
-Backfill script for ENUM to String migration
-
-This script migrates data from old ENUM columns to new String columns.
-Run this AFTER deploying the schema changes (expand phase).
-
-Usage:
-    python scripts/backfill_enums.py --batch-size 10000
-"""
-
-import argparse
-from sqlalchemy import create_engine, text
-from app.config import Config
-
-
-def backfill_table(table_name: str, old_column: str, new_column: str, batch_size: int):
-    """Backfill data in batches"""
-    engine = create_engine(Config.SQLALCHEMY_DATABASE_URI)
+        print(sql)
     
-    with engine.connect() as conn:
-        # Get total rows to migrate
-        result = conn.execute(text(f"SELECT COUNT(*) FROM {table_name} WHERE {new_column} IS NULL"))
-        total = result.scalar()
-        
-        print(f"Migrating {total} rows in {table_name}...")
-        
-        # Process in batches
-        offset = 0
-        while offset < total:
-            conn.execute(text(f"""
-                UPDATE {table_name}
-                SET {new_column} = {old_column}::text
-                WHERE {new_column} IS NULL
-                AND {old_column} IS NOT NULL
-                LIMIT {batch_size}
-            """))
-            conn.commit()
-            offset += batch_size
-            print(f"  Migrated {min(offset, total)}/{total} rows")
-        
-        print(f"Backfill complete for {table_name}")
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Backfill ENUM to String columns")
-    parser.add_argument('--batch-size', type=int, default=10000, help='Rows per batch')
-    parser.add_argument('--table', type=str, help='Specific table to backfill')
-    args = parser.parse_args()
-
-{backfill_calls}
-
-
-if __name__ == '__main__':
-    main()
-'''
-
-    backfill_calls = []
-    for enum_col in enums:
-        table_name = enum_col.model_name.lower() + 's'
-        new_column = f"{enum_col.column_name}_new"
-        backfill_calls.append(f"    # Backfill {enum_col.model_name}.{enum_col.column_name}")
-        backfill_calls.append(f"    if not args.table or args.table == '{table_name}':")
-        backfill_calls.append(f"        backfill_table('{table_name}', '{enum_col.column_name}', '{new_column}', args.batch_size)")
-        backfill_calls.append("")
-
-    script_content = script_template.format(backfill_calls="\n".join(backfill_calls))
-
-    with open(output_path, 'w') as f:
-        f.write(script_content)
-
-    print(f"Backfill script written to: {output_path}")
-
-
-def generate_check_constraints(enums: List[EnumColumn], output_path: str):
-    """Generate CHECK constraint migration script"""
-    script_template = '''"""
-Add CHECK constraints to String columns that replaced ENUMs
-
-This script adds CHECK constraints for defense-in-depth validation.
-Run this AFTER the expand-contract migration is complete.
-
-Usage:
-    python scripts/add_check_constraints.py --dry-run
-"""
-
-import argparse
-from sqlalchemy import create_engine, text
-from app.config import Config
-
-
-CHECK_CONSTRAINTS = {check_constraints}
-
-
-def add_constraint(table_name: str, column_name: str, valid_values: list):
-    """Add CHECK constraint to a column"""
-    values_list = ", ".join([f"'{v}'" for v in valid_values])
-    constraint_name = f"chk_{table_name}_{column_name}"
+    if args.execute:
+        print("ERROR: Execute mode not implemented. Use --dry-run and apply manually.")
+        sys.exit(1)
     
-    engine = create_engine(Config.SQLALCHEMY_DATABASE_URI)
-    
-    with engine.connect() as conn:
-        # Check if constraint already exists
-        result = conn.execute(text(f"""
-            SELECT COUNT(*) FROM information_schema.check_constraints
-            WHERE constraint_name = '{constraint_name}'
-        """))
-        
-        if result.scalar() > 0:
-            print(f"Constraint {constraint_name} already exists, skipping")
-            return
-        
-        # Add constraint
-        conn.execute(text(f"""
-            ALTER TABLE {table_name}
-            ADD CONSTRAINT {constraint_name}
-            CHECK ({column_name} IN ({values_list}))
-        """))
-        conn.commit()
-        print(f"Added constraint {constraint_name} to {table_name}.{column_name}")
+    print(f"\nTotal enum columns to migrate: {len(ENUM_COLUMNS)}")
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Add CHECK constraints")
-    parser.add_argument('--dry-run', action='store_true', help='Show what would be done')
-    parser.add_argument('--table', type=str, help='Specific table')
-    args = parser.parse_args()
-
-{constraint_calls}
-
-
-if __name__ == '__main__':
-    main()
-'''
-
-    check_constraints = {}
-    constraint_calls = []
-
-    for enum_col in enums:
-        table_name = enum_col.model_name.lower() + 's'
-        key = f"{table_name}.{enum_col.column_name}"
-        check_constraints[key] = enum_col.values
-
-        constraint_calls.append(f"    # Add constraint for {enum_col.model_name}.{enum_col.column_name}")
-        constraint_calls.append(f"    if not args.table or args.table == '{table_name}':")
-        constraint_calls.append(f"        if args.dry_run:")
-        constraint_calls.append(f"            print(f\"Would add CHECK constraint to {table_name}.{enum_col.column_name}: {enum_col.values}\")")
-        constraint_calls.append(f"        else:")
-        constraint_calls.append(f"            add_constraint('{table_name}', '{enum_col.column_name}', {enum_col.values})")
-        constraint_calls.append("")
-
-    script_content = script_template.format(
-        check_constraints=check_constraints,
-        constraint_calls="\n".join(constraint_calls),
-    )
-
-    with open(output_path, 'w') as f:
-        f.write(script_content)
-
-    print(f"CHECK constraint script written to: {output_path}")
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Scan and migrate ENUM columns to String")
-    parser.add_argument('--dry-run', action='store_true', help='Show what would be done')
-    parser.add_argument('--module', type=str, help='Specific module to scan (e.g., wallet, transport)')
-    parser.add_argument('--all', action='store_true', help='Scan all modules')
-    parser.add_argument('--output-dir', type=str, default='scripts', help='Output directory for scripts')
-    args = parser.parse_args()
-
-    base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-    if args.module:
-        modules = [args.module]
-    elif args.all:
-        modules = None  # Scan all
-    else:
-        modules = ['wallet', 'transport', 'accommodation', 'events', 'identity', 'audit', 'admin']
-
-    print(f"Scanning for ENUM usage in: {modules or 'all modules'}")
-    enums = scan_directory(base_path, modules)
-
-    if not enums:
-        print("No ENUM columns found.")
-        return
-
-    print(f"\nFound {len(enums)} ENUM columns:")
-    for enum_col in enums:
-        print(f"  - {enum_col.file_path}:{enum_col.line_number}")
-        print(f"    {enum_col.model_name}.{enum_col.column_name} ({enum_col.enum_class})")
-        print(f"    Values: {enum_col.values}")
-        print()
-
-    if args.dry_run:
-        print("\nDry run complete. No files written.")
-        return
-
-    # Generate scripts
-    output_dir = Path(base_path) / args.output_dir
-    output_dir.mkdir(exist_ok=True)
-
-    migration_path = output_dir / "migrate_enums_to_strings.py"
-    backfill_path = output_dir / "backfill_enums.py"
-    constraints_path = output_dir / "add_check_constraints.py"
-
-    generate_migration_script(enums, str(migration_path))
-    generate_backfill_script(enums, str(backfill_path))
-    generate_check_constraints(enums, str(constraints_path))
-
-    print("\n" + "="*60)
-    print("NEXT STEPS:")
-    print("="*60)
-    print("1. Review generated migration scripts in scripts/")
-    print("2. Run: python scripts/backfill_enums.py --batch-size 10000")
-    print("3. Run: python scripts/add_check_constraints.py")
-    print("4. Update model files to use String columns instead of ENUMs")
-    print("5. Run tests to verify everything works")
-    print("="*60)
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

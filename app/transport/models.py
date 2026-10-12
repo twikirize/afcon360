@@ -40,7 +40,7 @@ from sqlalchemy import (
     Index, UniqueConstraint, CheckConstraint, Enum as SQLEnum,
     ForeignKeyConstraint, event, and_,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID, ENUM as PgEnum
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import validates, relationship, backref
 from sqlalchemy.sql import column, expression
@@ -52,10 +52,89 @@ from app.models.base import BaseModel
 # from geoalchemy2 import Geometry
 from app.utils.id_kinds import IDKind
 from app.utils.security import encrypt_field, decrypt_field
+from app.utils.enums import (
+    ServiceType as ServiceTypeEnum,
+    BookingStatus as BookingStatusEnum,
+    ComplianceStatus as ComplianceStatusEnum,
+    PaymentStatus as PaymentStatusEnum,
+    VehicleClass as VehicleClassEnum,
+    IncidentSeverity as IncidentSeverityEnum,
+    Currency as CurrencyEnum,
+    ProviderType as ProviderTypeEnum,
+    VerificationTier as VerificationTierEnum,
+    CompensationModel as CompensationModelEnum,
+    ContractStatus as ContractStatusEnum,
+)
+
+# Public re-exports: callers and tests import these enum names FROM this module
+# (e.g. ``from app.transport.models import ServiceType``). The enum
+# centralization imports them under ``*Enum`` aliases, which removes the public
+# names from this module's namespace; rebind them here so the public import
+# surface is preserved. These bind the same objects, so no divergence with the
+# columns above.
+ServiceType = ServiceTypeEnum
+BookingStatus = BookingStatusEnum
+ComplianceStatus = ComplianceStatusEnum
+PaymentStatus = PaymentStatusEnum
+VehicleClass = VehicleClassEnum
+IncidentSeverity = IncidentSeverityEnum
+Currency = CurrencyEnum
+ProviderType = ProviderTypeEnum
+VerificationTier = VerificationTierEnum
+CompensationModel = CompensationModelEnum
+ContractStatus = ContractStatusEnum
+
+
+# ===========================================================================
+# COLUMN TYPE HELPER (fixes bare-enum-as-column-type)
+# ===========================================================================
+def _enum_col(enum_cls):
+    """Wrap a Python enum class as a SQLAlchemy column type.
+
+    Storage is VARCHAR (native_enum=False). values_callable preserves
+    lowercase .value persistence. The ORM still returns enum members
+    on load, so `.value` call sites keep working. No PostgreSQL ENUM
+    type is created.
+    """
+    return SQLEnum(
+        enum_cls,
+        native_enum=False,
+        create_constraint=False,
+        validate_strings=True,
+        values_callable=lambda cls: [e.value for e in cls],
+        length=max(len(v) for v in enum_cls.values()),
+    )
 
 
 # ===========================================================================
 # ENUMS (Production with proper string values)
+# ===========================================================================
+# PG ENUM TYPES ARE NOW DEFINED IN app/utils/enums.py
+# This module imports them to ensure single source of truth.
+#
+# PassengerStatus remains a Python-only enum (Category B) —
+# stored as VARCHAR with CHECK constraint, not a PG enum.
+# ===========================================================================
+
+class PassengerStatus(str, Enum):
+    """Transport passenger lifecycle.
+
+    Distinguishes a Transport participant that is still linked to a System
+    User Account (LINKED) from one that exists accountless pending a secure
+    claim (PENDING / CLAIMED).
+    """
+    PENDING = 'pending'
+    CONFIRMED = 'confirmed'
+    ASSIGNED = 'assigned'
+    CLAIMED = 'claimed'
+    LINKED = 'linked'
+    CANCELLED = 'cancelled'
+
+
+# ===========================================================================
+# PYTHON ENUM CLASSES (for defaults and code references)
+# These mirror the PgEnum definitions in app/utils/enums.py.
+# Keep values in sync with app/utils/enums.py.
 # ===========================================================================
 
 class VerificationTier(str, Enum):
@@ -89,7 +168,6 @@ class BookingStatus(str, Enum):
     CANCELLED = 'cancelled'
     NO_SHOW = 'no_show'
     DISPUTED = 'disputed'
-    # --- MATCH-01-owned: terminal matching-failure state (additive) ---
     NO_MATCH = 'no_match'
 
 
@@ -103,42 +181,6 @@ class PaymentStatus(str, Enum):
     PARTIALLY_REFUNDED = 'partially_refunded'
     FAILED = 'failed'
     CANCELLED = 'cancelled'
-
-
-class PassengerStatus(str, Enum):
-    """Transport passenger lifecycle.
-
-    Distinguishes a Transport participant that is still linked to a System
-    User Account (LINKED) from one that exists accountless pending a secure
-    claim (PENDING / CLAIMED).
-    """
-    PENDING = 'pending'
-    CONFIRMED = 'confirmed'
-    ASSIGNED = 'assigned'
-    CLAIMED = 'claimed'
-    LINKED = 'linked'
-    CANCELLED = 'cancelled'
-
-
-class ServiceType(str, Enum):
-    """Service types with proper codes"""
-    AIRPORT_ARRIVAL = 'airport_arrival'
-    AIRPORT_DEPARTURE = 'airport_departure'
-    STADIUM_SHUTTLE = 'stadium_shuttle'
-    HOTEL_TRANSFER = 'hotel_transfer'
-    CITY_TOUR = 'city_tour'
-    ON_DEMAND = 'on_demand'
-    SCHEDULED_ROUTE = 'scheduled_route'
-    CUSTOM_TOUR = 'custom_tour'
-
-
-class ProviderType(str, Enum):
-    """Provider types"""
-    INDIVIDUAL_DRIVER = 'individual_driver'
-    HOTEL_FLEET = 'hotel_fleet'
-    TOUR_OPERATOR = 'tour_operator'
-    TRANSPORT_COMPANY = 'transport_company'
-    EXTERNAL_PLATFORM = 'external_platform'
 
 
 class VehicleClass(str, Enum):
@@ -172,6 +214,15 @@ class Currency(str, Enum):
     GHS = 'GHS'
     ZAR = 'ZAR'
     UGX = 'UGX'
+
+
+class ProviderType(str, Enum):
+    """Provider types"""
+    INDIVIDUAL_DRIVER = 'individual_driver'
+    HOTEL_FLEET = 'hotel_fleet'
+    TOUR_OPERATOR = 'tour_operator'
+    TRANSPORT_COMPANY = 'transport_company'
+    EXTERNAL_PLATFORM = 'external_platform'
 
 
 # ===========================================================================
@@ -276,13 +327,13 @@ class DriverProfile(TransportBase, AuditMixin):
 
     # Verification tracking
     verification_tier = db.Column(
-        SQLEnum(VerificationTier),
+        _enum_col(VerificationTierEnum),
         default=VerificationTier.PENDING,
         nullable=False,
         index=True
     )
     compliance_status = db.Column(
-        SQLEnum(ComplianceStatus),
+        _enum_col(ComplianceStatusEnum),
         default=ComplianceStatus.PENDING_REVIEW,
         nullable=False,
         index=True
@@ -556,7 +607,7 @@ class OrganisationTransportProfile(TransportBase, AuditMixin):
 
     # Verification
     compliance_status = db.Column(
-        SQLEnum(ComplianceStatus),
+        _enum_col(ComplianceStatusEnum),
         default=ComplianceStatus.PENDING_REVIEW,
         nullable=False,
         index=True
@@ -678,7 +729,7 @@ class Vehicle(TransportBase):
     year = db.Column(db.Integer, nullable=False)
     color = db.Column(db.String(30))
     vehicle_type = db.Column(db.String(30), nullable=False)
-    vehicle_class = db.Column(SQLEnum(VehicleClass), nullable=False)
+    vehicle_class = db.Column(_enum_col(VehicleClassEnum), nullable=False)
 
     # Capacity
     passenger_capacity = db.Column(db.Integer, nullable=False)
@@ -1029,6 +1080,13 @@ class Booking(TransportBase):
             " OR (status != 'no_match' AND no_match_reason IS NULL)",
             name="chk_no_match_reason",
         ),
+        # --- BOOKING-LIFECYCLE-PERSISTENCE (Stage 3B, additive only) ---
+        # Nullable-safe uniqueness: at most one converted Booking per
+        # request and per cycle; NULLs (every pre-3B row) never conflict.
+        Index('ix_booking_ride_request', 'ride_request_id', unique=True,
+              postgresql_where=db.text("ride_request_id IS NOT NULL")),
+        Index('ix_booking_search_cycle', 'search_cycle_id', unique=True,
+              postgresql_where=db.text("search_cycle_id IS NOT NULL")),
     )
 
     # Identification
@@ -1040,7 +1098,7 @@ class Booking(TransportBase):
     user_type = db.Column(db.String(20), default='fan')  # fan, vip, staff
 
     # Provider
-    provider_type = db.Column(SQLEnum(ProviderType), nullable=False)
+    provider_type = db.Column(_enum_col(ProviderTypeEnum), nullable=False)
     provider_id = db.Column(db.BigInteger, nullable=True)
 
     # External platform integration
@@ -1049,7 +1107,7 @@ class Booking(TransportBase):
     external_confirmation_code = db.Column(db.String(100))
 
     # Service details
-    service_type = db.Column(SQLEnum(ServiceType), nullable=False)
+    service_type = db.Column(_enum_col(ServiceTypeEnum), nullable=False)
     service_subtype = db.Column(db.String(50))
 
     # Trip details
@@ -1115,11 +1173,11 @@ class Booking(TransportBase):
     final_price = db.Column(db.Numeric(10, 2), nullable=False)
 
     # Currency
-    currency = db.Column(SQLEnum(Currency), default=Currency.USD, nullable=False)
+    currency = db.Column(_enum_col(CurrencyEnum), default=Currency.USD, nullable=False)
     exchange_rate = db.Column(db.Numeric(10, 6), default=1.000000)
 
     # Payment tracking
-    payment_status = db.Column(SQLEnum(PaymentStatus), default=PaymentStatus.PENDING, nullable=False)
+    payment_status = db.Column(_enum_col(PaymentStatusEnum), default=PaymentStatus.PENDING, nullable=False)
     payment_method = db.Column(db.String(50))
     payment_gateway = db.Column(db.String(50))
     payment_gateway_reference = db.Column(db.String(100))
@@ -1157,6 +1215,12 @@ class Booking(TransportBase):
     assigned_route_id = db.Column(db.BigInteger,db.ForeignKey("transport_scheduled_routes.id", ondelete='SET NULL'))
 
     assigned_route = relationship("ScheduledRoute", back_populates="bookings")
+
+    # --- BOOKING-LIFECYCLE-PERSISTENCE (Stage 3B, additive only) ---
+    # Conversion linkage: set exactly once when a RideRequest converts.
+    # Nullable so every existing Booking row stays valid with both NULL.
+    ride_request_id = db.Column(db.BigInteger, db.ForeignKey("transport_ride_requests.id"), nullable=True)
+    search_cycle_id = db.Column(db.BigInteger, db.ForeignKey("transport_search_cycles.id"), nullable=True)
 
     # Driver tracking
     driver_assigned_at = db.Column(db.DateTime(timezone=True))
@@ -1208,6 +1272,10 @@ class Booking(TransportBase):
         foreign_keys=[assigned_vehicle_id],
         backref="assigned_bookings"
     )
+    # --- BOOKING-LIFECYCLE-PERSISTENCE (Stage 3B, additive only) ---
+    # Back-link from a converted Booking to its originating request/cycle.
+    ride_request = relationship("RideRequest", foreign_keys=[ride_request_id])
+    search_cycle = relationship("SearchCycle", foreign_keys=[search_cycle_id])
     rating = relationship("Rating", back_populates="booking", uselist=False)
     incidents = relationship("TransportIncident", back_populates="booking")
     payments = relationship("BookingPayment", back_populates="booking")
@@ -1325,6 +1393,221 @@ class Booking(TransportBase):
             return self.final_price * Decimal('0.25')  # 25% fee
         else:
             return self.final_price * Decimal('0.50')  # 50% fee
+
+
+# ===========================================================================
+# BOOKING LIFECYCLE INTEGRITY — Stage 3B persistence foundation
+# (node BOOKING-LIFECYCLE-PERSISTENCE, Phase 1)
+#
+# A rider on-demand hailing request is a RideRequest, NOT a Booking. No
+# Booking row or reference exists until successful driver acceptance and
+# assignment; the canonical Booking created at conversion links back via
+# Booking.ride_request_id / Booking.search_cycle_id.
+#
+# Persistence only: status transitions, dispatch, acceptance, conversion
+# and recovery are owned by later lifecycle services, NOT by CHECK
+# constraints here (no new PostgreSQL CHECK or ENUM types in this node).
+# An exhausted SearchCycle never makes the parent RideRequest terminal; an
+# explicit rider retry creates exactly one new cycle (no automatic retry).
+# ===========================================================================
+
+# --- Stage 3B lifecycle vocabularies (Python-only documentation of the
+# intended values; enforced by later services, never by the database) ---
+RIDE_REQUEST_STATUSES = frozenset({"searching", "converting", "converted", "cancelled"})
+SEARCH_CYCLE_STATUSES = frozenset({"searching", "converting", "completed", "expired", "cancelled"})
+# MATCH-01-owned public reasons live on the cycle, not the request.
+# No third public reason may be added here.
+SEARCH_CYCLE_TERMINAL_REASONS = frozenset({"no_supply", "all_rejected"})
+OFFER_ATTEMPT_STATUSES = frozenset({
+    "queued", "offered", "accepting", "declined", "timed_out",
+    "skipped", "claim_failed", "won", "withdrawn",
+})
+# Predicates backing the partial unique indexes below.
+ACTIVE_CYCLE_STATUSES = frozenset({"searching", "converting"})
+ACTIONABLE_OFFER_STATUSES = frozenset({"offered", "accepting"})
+
+
+class RideRequest(TransportBase):
+    """Durable pre-Booking lifecycle entity for rider on-demand hailing.
+
+    This row exists from commitment (authenticated owner; profile/KYC gate
+    enforced by later services) through matching. A canonical Booking is
+    created only on successful driver acceptance and assignment.
+    """
+    __tablename__ = "transport_ride_requests"
+    __table_args__ = (
+        Index("ix_riderequest_owner", "user_id", "created_at"),
+        Index("ix_riderequest_status", "status", "is_deleted"),
+        UniqueConstraint("user_id", "idempotency_key", name="uq_ride_request_owner_key"),
+        ForeignKeyConstraint(
+            ["user_id"], ["users.id"],
+            ondelete="RESTRICT",
+            name="fk_riderequest_user"
+        ),
+    )
+
+    # Opaque external identifier (never the internal BIGINT id).
+    public_id = db.Column(
+        db.String(64), unique=True, nullable=False, index=True,
+        default=lambda: str(uuid_lib.uuid4())
+    )
+
+    # Authenticated owner (System User Account).
+    user_id = db.Column(db.BigInteger, nullable=False)
+
+    # Idempotent creation: client-supplied key, unique per owner.
+    idempotency_key = db.Column(db.String(128), nullable=False)
+
+    # Canonical pickup/destination snapshots (same builder as Booking).
+    pickup_location = db.Column(JSONB, nullable=False)
+    dropoff_location = db.Column(JSONB, nullable=False)
+
+    # Trip requirements.
+    requested_pickup_time = db.Column(db.DateTime(timezone=True), nullable=True)
+    # Reference existing PG enum type by name (create_type=False prevents CREATE TYPE in migrations)
+    service_type = db.Column(
+        PgEnum(name='servicetype', create_type=False, validate_strings=False),
+        nullable=False
+    )
+    vehicle_class = db.Column(db.String(30), nullable=False, default="comfort")
+    passenger_count = db.Column(db.Integer, nullable=False, default=1)
+
+    # Fare estimate + payment selection carried for later integration.
+    fare_estimate_amount = db.Column(db.Numeric(10, 2), nullable=True)
+    currency_code = db.Column(db.String(3), nullable=True)
+    payment_method = db.Column(db.String(50), nullable=True)
+
+    # Lifecycle state (string storage; later services own transitions).
+    # searching | converting | converted | cancelled. An exhausted cycle
+    # does NOT terminally close the request; retry opens a new cycle.
+    status = db.Column(db.String(30), nullable=False, default="searching")
+    cancelled_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    converted_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    # Minimal lifecycle metadata.
+    request_metadata = db.Column(JSONB, default=lambda: {})
+
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+    cycles = relationship(
+        "SearchCycle",
+        back_populates="ride_request",
+        cascade="all, delete-orphan",
+        order_by="SearchCycle.cycle_number",
+    )
+
+
+class SearchCycle(TransportBase):
+    """One matching window of a parent RideRequest.
+
+    Cycles are never silently reopened: a completed/expired/cancelled cycle
+    stays terminal and an explicit rider retry creates exactly one new
+    cycle (new cycle_number + new cycle_key).
+    """
+    __tablename__ = "transport_search_cycles"
+    __table_args__ = (
+        Index("ix_searchcycle_request", "ride_request_id", "status"),
+        UniqueConstraint("ride_request_id", "cycle_number", name="uq_search_cycle_number"),
+        UniqueConstraint("ride_request_id", "cycle_key", name="uq_search_cycle_key"),
+        # One request cannot have competing active cycles. Partial unique
+        # index (SQLAlchemy Index with a PostgreSQL predicate — never
+        # conditional table-level UNIQUE syntax).
+        Index(
+            "uq_search_cycle_active",
+            "ride_request_id",
+            unique=True,
+            postgresql_where=column("status").in_(["searching", "converting"]),
+        ),
+        ForeignKeyConstraint(
+            ["ride_request_id"], ["transport_ride_requests.id"],
+            ondelete="CASCADE",
+            name="fk_searchcycle_request"
+        ),
+    )
+
+    ride_request_id = db.Column(db.BigInteger, nullable=False)
+    cycle_number = db.Column(db.Integer, nullable=False)
+    cycle_key = db.Column(db.String(128), nullable=False)
+
+    # searching | converting | completed | expired | cancelled.
+    status = db.Column(db.String(30), nullable=False, default="searching")
+    started_at = db.Column(db.DateTime(timezone=True), nullable=False,
+                           default=lambda: datetime.now(timezone.utc))
+    deadline = db.Column(db.DateTime(timezone=True), nullable=True)
+    completed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    # Terminal MATCH-01 reason (cycle-scoped): no_supply | all_rejected.
+    terminal_reason = db.Column(db.String(30), nullable=True)
+
+    cycle_metadata = db.Column(JSONB, default=lambda: {})
+
+    # Relationships
+    ride_request = relationship("RideRequest", foreign_keys=[ride_request_id], back_populates="cycles")
+    attempts = relationship(
+        "OfferAttempt",
+        back_populates="cycle",
+        cascade="all, delete-orphan",
+        order_by="OfferAttempt.attempt_number",
+    )
+
+
+class OfferAttempt(TransportBase):
+    """Normalized per-driver attempt within one SearchCycle.
+
+    Candidate/driver attempts are rows here, never an unbounded JSONB
+    queue. Timeouts are recorded as timeouts, never rewritten as declines.
+    """
+    __tablename__ = "transport_offer_attempts"
+    __table_args__ = (
+        Index("ix_offerattempt_cycle", "cycle_id", "status"),
+        Index("ix_offerattempt_driver", "driver_id", "status"),
+        UniqueConstraint("cycle_id", "attempt_number", name="uq_offer_attempt_number"),
+        # At most one actionable attempt per cycle (offered | accepting).
+        # Terminal attempts keep their rows; a new attempt uses the next
+        # attempt_number, so nothing is ever resurrected.
+        Index(
+            "uq_offer_attempt_actionable",
+            "cycle_id",
+            unique=True,
+            postgresql_where=column("status").in_(["offered", "accepting"]),
+        ),
+        ForeignKeyConstraint(
+            ["cycle_id"], ["transport_search_cycles.id"],
+            ondelete="CASCADE",
+            name="fk_offerattempt_cycle"
+        ),
+        ForeignKeyConstraint(
+            ["driver_id"], ["driver_profiles.id"],
+            ondelete="RESTRICT",
+            name="fk_offerattempt_driver"
+        ),
+        ForeignKeyConstraint(
+            ["vehicle_id"], ["transport_vehicles.id"],
+            ondelete="RESTRICT",
+            name="fk_offerattempt_vehicle"
+        ),
+    )
+
+    cycle_id = db.Column(db.BigInteger, nullable=False)
+    driver_id = db.Column(db.BigInteger, nullable=False)
+    vehicle_id = db.Column(db.BigInteger, nullable=False)
+
+    attempt_number = db.Column(db.Integer, nullable=False)
+    candidate_rank = db.Column(db.Integer, nullable=True)
+
+    # queued | offered | accepting | declined | timed_out | skipped |
+    # claim_failed | won | withdrawn.
+    status = db.Column(db.String(30), nullable=False, default="queued")
+    offered_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    response_deadline = db.Column(db.DateTime(timezone=True), nullable=True)
+    responded_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    # Bounded diagnostic facts (never an unbounded candidate queue).
+    outcome_detail = db.Column(JSONB, default=lambda: {})
+
+    # Relationships
+    cycle = relationship("SearchCycle", foreign_keys=[cycle_id], back_populates="attempts")
+    driver = relationship("DriverProfile", foreign_keys=[driver_id])
+    vehicle = relationship("Vehicle", foreign_keys=[vehicle_id])
 
 
 # ===========================================================================
@@ -1466,7 +1749,7 @@ class BookingPayment(TransportBase):
 
     # Amounts
     amount = db.Column(db.Numeric(10, 2), nullable=False)
-    currency = db.Column(SQLEnum(Currency), nullable=False)
+    currency = db.Column(_enum_col(CurrencyEnum), nullable=False)
     exchange_rate = db.Column(db.Numeric(10, 6), default=1.000000)
 
     # Payment method
@@ -1482,7 +1765,7 @@ class BookingPayment(TransportBase):
     gateway_response = db.Column(JSONB)
 
     # Status
-    payment_status = db.Column(SQLEnum(PaymentStatus), nullable=False)
+    payment_status = db.Column(_enum_col(PaymentStatusEnum), nullable=False)
     failure_reason = db.Column(db.Text)
     retry_count = db.Column(db.Integer, default=0)
 
@@ -1860,7 +2143,7 @@ class TransportIncident(TransportBase):
     # Classification
     incident_type = db.Column(db.String(50), nullable=False)
     incident_category = db.Column(db.String(50))  # safety, service, vehicle, payment
-    severity = db.Column(SQLEnum(IncidentSeverity), nullable=False)
+    severity = db.Column(_enum_col(IncidentSeverityEnum), nullable=False)
 
     # Reporting
     reported_by = db.Column(db.String(20), nullable=False)  # user, driver, system, admin
@@ -2945,22 +3228,6 @@ class ApplicationStatus(str, Enum):
     EXPIRED = 'expired'
 
 
-class ContractStatus(str, Enum):
-    """Active driver-vehicle contract status"""
-    ACTIVE = 'active'
-    SUSPENDED = 'suspended'
-    TERMINATED = 'terminated'
-    EXPIRED = 'expired'
-    PENDING_SIGNATURE = 'pending_signature'
-
-
-class CompensationModel(str, Enum):
-    """How driver earnings are calculated"""
-    REVENUE_SPLIT = 'revenue_split'
-    FIXED_RENTAL = 'fixed_rental'
-    HYBRID = 'hybrid'
-
-
 class VehicleMarketplaceListing(TransportBase):
     """Vehicle listed on marketplace seeking drivers"""
     __tablename__ = "vehicle_marketplace_listings"
@@ -2991,7 +3258,7 @@ class VehicleMarketplaceListing(TransportBase):
 
     # Driver requirements
     required_verification_tier = db.Column(
-        SQLEnum(VerificationTier),
+        _enum_col(VerificationTierEnum),
         default=VerificationTier.BASIC_VERIFIED,
         nullable=False
     )
@@ -3002,7 +3269,7 @@ class VehicleMarketplaceListing(TransportBase):
 
     # Compensation terms
     compensation_model = db.Column(
-        SQLEnum(CompensationModel),
+        _enum_col(CompensationModelEnum),
         default=CompensationModel.REVENUE_SPLIT,
         nullable=False
     )
@@ -3128,7 +3395,7 @@ class VehicleContract(TransportBase):
 
     # Contract terms
     contract_type = db.Column(
-        SQLEnum(CompensationModel),
+        _enum_col(CompensationModelEnum),
         default=CompensationModel.REVENUE_SPLIT,
         nullable=False
     )
@@ -3152,7 +3419,7 @@ class VehicleContract(TransportBase):
 
     # Status
     status = db.Column(
-        SQLEnum(ContractStatus),
+        _enum_col(ContractStatusEnum),
         default=ContractStatus.PENDING_SIGNATURE,
         nullable=False,
         index=True
@@ -3301,7 +3568,6 @@ def init_transport_module():
     except Exception as e:
         print(f"⚠️  Transport module settings initialization warning: {e}")
         # Continue — settings will be created on first access
-
 
 # Initialize on import if in development
 if __name__ != "__main__":

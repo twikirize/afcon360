@@ -3,17 +3,30 @@ app/wallet/models/regulatory_volume.py
 Regulatory Volume Policy Configuration and Audit Models
 """
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, BigInteger, DateTime, Text, Enum as SQLEnum, Index, Boolean, ForeignKey
+from sqlalchemy import Column, String, BigInteger, DateTime, Text, Index, Boolean, ForeignKey, CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.extensions import db
 from app.models.base import BaseModel
-import enum
+from app.utils.enums import (
+    WindowMode,
+    RegulatoryVolumeStatus,
+)
+from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB as PGJSONB
+import uuid
 
 
-class WindowMode(str, enum.Enum):
+class WindowMode(str):
     """Window calculation mode for regulatory volume."""
     CALENDAR = 'calendar'
     ROLLING = 'rolling'
+
+    @classmethod
+    def values(cls) -> list:
+        return ['calendar', 'rolling']
+
+    @classmethod
+    def check_constraint(cls) -> str:
+        return "window_mode IN ('calendar', 'rolling')"
 
 
 class RegulatoryVolumePolicy(BaseModel):
@@ -26,20 +39,21 @@ class RegulatoryVolumePolicy(BaseModel):
     __table_args__ = (
         Index('ix_rvp_active', 'is_active', unique=True, postgresql_where=(Column('is_active') == True)),
         Index('ix_rvp_effective_from', 'effective_from'),
+        CheckConstraint(WindowMode.check_constraint(), name="ck_window_mode"),
     )
 
     id = Column(BigInteger, primary_key=True)
 
-    # Policy configuration
+    # Policy configuration - Use String + CHECK constraint instead of PostgreSQL ENUM
     daily_window_mode = Column(
-        SQLEnum(WindowMode, name='window_mode_enum', create_constraint=True),
+        String(16),
         nullable=False,
-        default=WindowMode.CALENDAR
+        default='calendar'
     )
     monthly_window_mode = Column(
-        SQLEnum(WindowMode, name='window_mode_enum', create_constraint=True),
+        String(16),
         nullable=False,
-        default=WindowMode.CALENDAR
+        default='calendar'
     )
     timezone = Column(String(50), nullable=False, default='Africa/Kampala')
 
@@ -64,14 +78,21 @@ class RegulatoryVolumePolicy(BaseModel):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
+    __table_args__ = (
+        Index('ix_rvp_active', 'is_active', unique=True, postgresql_where=(Column('is_active') == True)),
+        Index('ix_rvp_effective_from', 'effective_from'),
+        CheckConstraint(WindowMode.check_constraint(), name="ck_daily_window_mode"),
+        CheckConstraint(WindowMode.check_constraint(), name="ck_monthly_window_mode"),
+    )
+
     def __repr__(self):
-        return f"<RegulatoryVolumePolicy id={self.id} daily={self.daily_window_mode.value} monthly={self.monthly_window_mode.value} active={self.is_active}>"
+        return f"<RegulatoryVolumePolicy id={self.id} daily={self.daily_window_mode} monthly={self.monthly_window_mode} active={self.is_active}>"
 
     def to_dict(self):
         return {
             "id": self.id,
-            "daily_window_mode": self.daily_window_mode.value,
-            "monthly_window_mode": self.monthly_window_mode.value,
+            "daily_window_mode": self.daily_window_mode,
+            "monthly_window_mode": self.monthly_window_mode,
             "timezone": self.timezone,
             "is_active": self.is_active,
             "effective_from": self.effective_from.isoformat() if self.effective_from else None,
@@ -103,8 +124,8 @@ class RegulatoryVolumePolicy(BaseModel):
         
         if not policy:
             policy = cls(
-                daily_window_mode=WindowMode.CALENDAR,
-                monthly_window_mode=WindowMode.CALENDAR,
+                daily_window_mode='calendar',
+                monthly_window_mode='calendar',
                 timezone='Africa/Kampala',
                 is_active=True,
                 effective_from=datetime.now(timezone.utc),
@@ -132,24 +153,35 @@ class RegulatoryVolumePolicyChangeRequest(BaseModel):
     __table_args__ = (
         Index('ix_rvpcr_status', 'status'),
         Index('ix_rvpcr_requested_at', 'requested_at'),
+        CheckConstraint(WindowMode.check_constraint(), name="ck_proposed_daily_mode"),
+        CheckConstraint(WindowMode.check_constraint(), name="ck_proposed_monthly_mode"),
+        CheckConstraint(RegulatoryVolumeStatus.check_constraint(), name="ck_rvpcr_status"),
     )
 
-    class Status(str, enum.Enum):
+    class Status(str):
         PENDING = 'pending'
         APPROVED = 'approved'
         REJECTED = 'rejected'
         CANCELLED = 'cancelled'
         EXPIRED = 'expired'
 
+        @classmethod
+        def values(cls) -> list:
+            return ['pending', 'approved', 'rejected', 'cancelled', 'expired']
+
+        @classmethod
+        def check_constraint(cls) -> str:
+            return "status IN ('pending', 'approved', 'rejected', 'cancelled', 'expired')"
+
     id = Column(BigInteger, primary_key=True)
 
     # Proposed configuration
     proposed_daily_mode = Column(
-        SQLEnum(WindowMode, name='window_mode_enum', create_constraint=True),
+        String(16),
         nullable=False
     )
     proposed_monthly_mode = Column(
-        SQLEnum(WindowMode, name='window_mode_enum', create_constraint=True),
+        String(16),
         nullable=False
     )
     proposed_timezone = Column(String(50), nullable=False, default='Africa/Kampala')
@@ -164,7 +196,7 @@ class RegulatoryVolumePolicyChangeRequest(BaseModel):
     rejected_at = Column(DateTime(timezone=True), nullable=True)
 
     # Status
-    status = Column(SQLEnum(Status, name='rvpcr_status_enum', create_constraint=True), nullable=False, default=Status.PENDING)
+    status = Column(String(16), nullable=False, default='pending')
     reason = Column(Text, nullable=True)
     rejection_reason = Column(Text, nullable=True)
 
@@ -179,14 +211,22 @@ class RegulatoryVolumePolicyChangeRequest(BaseModel):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
+    __table_args__ = (
+        Index('ix_rvpcr_status', 'status'),
+        Index('ix_rvpcr_requested_at', 'requested_at'),
+        CheckConstraint(WindowMode.check_constraint(), name="ck_proposed_daily_mode"),
+        CheckConstraint(WindowMode.check_constraint(), name="ck_proposed_monthly_mode"),
+        CheckConstraint(RegulatoryVolumeStatus.check_constraint(), name="ck_rvpcr_status"),
+    )
+
     def __repr__(self):
-        return f"<RegulatoryVolumePolicyChangeRequest id={self.id} status={self.status.value} daily={self.proposed_daily_mode.value}>"
+        return f"<RegulatoryVolumePolicyChangeRequest id={self.id} status={self.status} daily={self.proposed_daily_mode}>"
 
     def to_dict(self):
         return {
             "id": self.id,
-            "proposed_daily_mode": self.proposed_daily_mode.value,
-            "proposed_monthly_mode": self.proposed_monthly_mode.value,
+            "proposed_daily_mode": self.proposed_daily_mode,
+            "proposed_monthly_mode": self.proposed_monthly_mode,
             "proposed_timezone": self.proposed_timezone,
             "proposed_effective_from": self.proposed_effective_from.isoformat() if self.proposed_effective_from else None,
             "requested_by": self.requested_by,
@@ -195,7 +235,7 @@ class RegulatoryVolumePolicyChangeRequest(BaseModel):
             "approved_at": self.approved_at.isoformat() if self.approved_at else None,
             "rejected_by": self.rejected_by,
             "rejected_at": self.rejected_at.isoformat() if self.rejected_at else None,
-            "status": self.status.value,
+            "status": self.status,
             "reason": self.reason,
             "rejection_reason": self.rejection_reason,
             "resulting_policy_id": self.resulting_policy_id,
@@ -206,11 +246,11 @@ class RegulatoryVolumePolicyChangeRequest(BaseModel):
 
     def can_approve(self, user_id: int) -> bool:
         """Check if user can approve this request (must not be requester)."""
-        return self.status == self.Status.PENDING and self.requested_by != user_id
+        return self.status == 'pending' and self.requested_by != user_id
 
     def can_reject(self, user_id: int) -> bool:
         """Check if user can reject this request (must not be requester)."""
-        return self.status == self.Status.PENDING and self.requested_by != user_id
+        return self.status == 'pending' and self.requested_by != user_id
 
 
 class LedgerReversalReference(BaseModel):
@@ -231,14 +271,14 @@ class LedgerReversalReference(BaseModel):
 
     # The original ledger entry that is being reversed
     original_entry_id = Column(
-        UUID(as_uuid=True),
+        PGUUID(as_uuid=True),
         ForeignKey('ledger_entries.id', ondelete='CASCADE'),
         nullable=False
     )
 
     # The reversal ledger entry
     reversal_entry_id = Column(
-        UUID(as_uuid=True),
+        PGUUID(as_uuid=True),
         ForeignKey('ledger_entries.id', ondelete='CASCADE'),
         nullable=False,
         unique=True  # One reversal per original entry
@@ -246,7 +286,7 @@ class LedgerReversalReference(BaseModel):
 
     # Original transaction for context
     original_transaction_id = Column(
-        UUID(as_uuid=True),
+        PGUUID(as_uuid=True),
         ForeignKey('transactions.id', ondelete='CASCADE'),
         nullable=True
     )
@@ -260,7 +300,7 @@ class LedgerReversalReference(BaseModel):
 
     # Context
     reason = Column(Text, nullable=True)
-    reversal_metadata = Column(JSONB, nullable=True, default=dict)
+    reversal_metadata = Column(PGJSONB, nullable=True, default=dict)
 
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
