@@ -1,5 +1,6 @@
 # app/identity/models/compliance_audit_log.py
-from sqlalchemy import Column, BigInteger, String, DateTime, ForeignKey, JSON, Integer, CheckConstraint
+from sqlalchemy import Column, BigInteger, String, DateTime, ForeignKey, JSON, Integer
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.orm import relationship, validates
 from datetime import datetime, timezone
 from app.extensions import db
@@ -22,22 +23,22 @@ class ComplianceAuditLog(BaseModel):
 
     # Works for both organisations and individuals
     entity_id = Column(BigInteger, nullable=False)
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
-    entity_type = Column(String(16), nullable=False)
+    # Native PostgreSQL ENUM (entity_type)
+    entity_type = Column(PgEnum(EntityType, name="entity_type", create_type=False, values_callable=lambda c: [e.value for e in c]), nullable=False)
 
     # Operation being checked (e.g. "wallet_payouts", "list_offers")
     operation = Column(String(64), nullable=False)
 
-    # Decision outcome - Use String + CHECK constraint instead of PostgreSQL ENUM
-    decision = Column(String(16), nullable=False)
+    # Decision outcome - native PostgreSQL ENUM (compliance_decision)
+    decision = Column(PgEnum(ComplianceDecision, name="compliance_decision", create_type=False, values_callable=lambda c: [e.value for e in c]), nullable=False)
 
     # Requirement key from ComplianceSettings
     requirement_key = Column(String(64))
 
     # Snapshot of compliance state at the time of decision
     compliance_level = Column(Integer)  # 0-3
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
-    risk_tier = Column(String(8))
+    # Native PostgreSQL ENUM (risk_tier)
+    risk_tier = Column(PgEnum(RiskTier, name="risk_tier", create_type=False, values_callable=lambda c: [e.value for e in c]))
 
     # Extra context (e.g. expired doc, missing license)
     context = Column(JSON)
@@ -45,12 +46,6 @@ class ComplianceAuditLog(BaseModel):
     # Who made the decision (system, admin, user)
     decided_by = Column(BigInteger, ForeignKey("users.id"))
     decided_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
-
-    __table_args__ = (
-        CheckConstraint(EntityType.check_constraint(), name="ck_entity_type"),
-        CheckConstraint(ComplianceDecision.check_constraint(), name="ck_compliance_decision"),
-        CheckConstraint(RiskTier.check_constraint(), name="ck_risk_tier"),
-    )
 
     reviewer = relationship("User", foreign_keys=[decided_by])
 

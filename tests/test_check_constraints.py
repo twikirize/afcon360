@@ -1,24 +1,31 @@
-"""Regression proof for Phase 1C: enum CHECK-constraint helper audit.
+"""Regression proof for Phase 1C, updated for Phase 4 restoration.
 
-Verifies the generated SQL expressions directly against the real mapped
-column names. No migration runs, no constraint is created in any database,
-and no database connection is opened (table metadata only).
+The enum CHECK helpers were audited in Phase 1; Phase 4 restores the
+columns to native PostgreSQL ENUM references and removes the 28
+model-only enum-domain CHECK declarations (none was ever installed in
+either database). These tests now pin the restored contract:
+
+- helper expressions still target the real columns;
+- model columns use the intended native PG enum types;
+- no stale enum-domain CHECK remains on the converted tables.
+
+No migration runs and no database connection is opened (metadata only).
 """
 
 import re
 
 from app.utils.enums import OrgChangeSource, OrgVerificationStatus, get_all_enum_classes
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 
 
-def _table_check_sql(model_cls, constraint_name):
-    table = model_cls.__table__
-    for constraint in table.constraints:
-        if getattr(constraint, "name", None) == constraint_name:
-            return str(constraint.sqltext)
-    raise AssertionError(
-        f"{constraint_name} not found on {table.name}: "
-        f"{sorted(str(getattr(c, 'name', None)) for c in table.constraints)}"
+def _table_check_names(model_cls):
+    return sorted(
+        str(getattr(c, "name", None)) for c in model_cls.__table__.constraints
     )
+
+
+def _column_enum_type(model_cls, column_name):
+    return model_cls.__table__.c[column_name].type
 
 
 def test_org_change_source_targets_source_column():
@@ -31,8 +38,10 @@ def test_org_change_source_targets_source_column():
     expr = OrgChangeSource.check_constraint()
     assert expr == "source IN ('system', 'user', 'admin')"
     assert "change_source" not in expr
-    table_sql = _table_check_sql(OrganisationAuditLog, "ck_org_change_source")
-    assert table_sql.startswith("source IN (")
+    col_type = _column_enum_type(OrganisationAuditLog, "source")
+    assert isinstance(col_type, PgEnum)
+    assert col_type.name == "org_change_source"
+    assert "ck_org_change_source" not in _table_check_names(OrganisationAuditLog)
 
 
 def test_organisation_verification_status_targets_status_column():
@@ -41,12 +50,14 @@ def test_organisation_verification_status_targets_status_column():
     columns = {c.name for c in OrganisationVerification.__table__.columns}
     assert "status" in columns
     assert "verification_status" not in columns
-    table_sql = _table_check_sql(
-        OrganisationVerification, "ck_org_verification_status"
+    col_type = _column_enum_type(OrganisationVerification, "status")
+    assert isinstance(col_type, PgEnum)
+    assert col_type.name == "org_verification_status"
+    assert "ck_org_verification_status" not in _table_check_names(
+        OrganisationVerification
     )
-    assert table_sql.startswith("status IN ("), table_sql
     for value in OrgVerificationStatus.values():
-        assert f"'{value}'" in table_sql
+        assert value in (col_type.enums or [])
 
 
 def test_organisation_helpers_match_organisation_columns():
@@ -55,12 +66,15 @@ def test_organisation_helpers_match_organisation_columns():
     columns = {c.name for c in Organisation.__table__.columns}
     assert "verification_status" in columns
     assert "lifecycle_state" in columns
-    verification_sql = _table_check_sql(
-        Organisation, "ck_org_verification_status"
-    )
-    assert verification_sql.startswith("verification_status IN ("), verification_sql
-    lifecycle_sql = _table_check_sql(Organisation, "ck_org_lifecycle_state")
-    assert lifecycle_sql.startswith("lifecycle_state IN ("), lifecycle_sql
+    verification_type = _column_enum_type(Organisation, "verification_status")
+    assert isinstance(verification_type, PgEnum)
+    assert verification_type.name == "org_verification_status"
+    lifecycle_type = _column_enum_type(Organisation, "lifecycle_state")
+    assert isinstance(lifecycle_type, PgEnum)
+    assert lifecycle_type.name == "org_lifecycle_state"
+    names = _table_check_names(Organisation)
+    assert "ck_org_verification_status" not in names
+    assert "ck_org_lifecycle_state" not in names
 
 
 def test_all_helpers_emit_sane_single_column_in_expressions():

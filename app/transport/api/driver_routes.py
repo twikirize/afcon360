@@ -4,7 +4,7 @@ from flask_restful import Resource
 from flask_login import current_user, login_required
 from app.extensions import db
 from app.transport.models import DriverProfile, DriverVehicleHistory, Booking
-from app.utils.enums import BookingStatus
+from app.utils.enums import BookingStatus, PaymentStatus
 from app.auth.decorators import admin_required
 from app.transport.decorator import transport_admin_required
 from app.transport.utils.helpers import paginate, filter_query, sort_query
@@ -140,7 +140,7 @@ class DriverDetailResource(Resource):
             db.session.query(func.sum(Booking.final_price))
             .filter(
                 Booking.assigned_driver_id == driver_id,
-                Booking.payment_status == "captured",
+                Booking.payment_status == PaymentStatus.CAPTURED,
                 Booking.is_deleted == False,
             )
             .scalar() or 0

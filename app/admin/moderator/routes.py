@@ -343,9 +343,10 @@ def dashboard():
     # Add transport statistics
     try:
         from app.transport.models import DriverProfile, Vehicle, Booking
+        from app.utils.enums import VerificationTier
         transport_stats = {
             'pending_drivers': DriverProfile.query.filter_by(
-                verification_tier='pending', is_deleted=False
+                verification_tier=VerificationTier.PENDING, is_deleted=False
             ).count(),
             'pending_vehicles': Vehicle.query.filter_by(
                 status='pending', is_deleted=False
@@ -354,7 +355,7 @@ def dashboard():
                 status='disputed', is_deleted=False
             ).count(),
             'total_active_drivers': DriverProfile.query.filter_by(
-                verification_tier='platform_verified', is_active=True, is_deleted=False
+                verification_tier=VerificationTier.PLATFORM_VERIFIED, is_active=True, is_deleted=False
             ).count(),
             'total_verified_vehicles': Vehicle.query.filter_by(
                 status='active', is_deleted=False
@@ -3164,16 +3165,17 @@ def cross_platform():
 def transport_moderation():
     """Transport moderation dashboard with drivers, vehicles, and bookings"""
     from app.transport.models import DriverProfile, Vehicle, Booking
+    from app.utils.enums import VerificationTier
     from app.admin.models import ContentFlag
     
     # Get transport statistics
     transport_stats = {
         'total_drivers': DriverProfile.query.filter_by(is_deleted=False).count(),
         'pending_drivers': DriverProfile.query.filter_by(
-            verification_tier='pending', is_deleted=False
+            verification_tier=VerificationTier.PENDING, is_deleted=False
         ).count(),
         'verified_drivers': DriverProfile.query.filter_by(
-            verification_tier='platform_verified', is_deleted=False
+            verification_tier=VerificationTier.PLATFORM_VERIFIED, is_deleted=False
         ).count(),
         'total_vehicles': Vehicle.query.filter_by(is_deleted=False).count(),
         'pending_vehicles': Vehicle.query.filter_by(
@@ -3199,7 +3201,7 @@ def transport_moderation():
     
     # Get pending items for review
     pending_drivers = DriverProfile.query.filter_by(
-        verification_tier='pending', is_deleted=False
+        verification_tier=VerificationTier.PENDING, is_deleted=False
     ).order_by(DriverProfile.created_at.desc()).limit(5).all()
     
     pending_vehicles = Vehicle.query.filter_by(
@@ -3456,6 +3458,7 @@ def _audit_moderation_reason(entity_type, entity_id, reason, action="rejected"):
 def transport_moderate_action(entity_type, entity_id, action):
     """Perform moderation actions on transport entities"""
     from app.transport.models import DriverProfile, Vehicle, Booking
+    from app.utils.enums import VerificationTier
 
     # Get the appropriate entity
     if entity_type == 'driver':
@@ -3474,7 +3477,7 @@ def transport_moderate_action(entity_type, entity_id, action):
     # Perform the action
     if action == 'approve':
         if entity_type == 'driver':
-            entity.verification_tier = 'platform_verified'
+            entity.verification_tier = VerificationTier.PLATFORM_VERIFIED
             # Merged transport-surface semantics: approval must also
             # set compliance APPROVED (dispatch claims require it).
             from app.transport import get_provider_service
@@ -3526,7 +3529,7 @@ def transport_moderate_action(entity_type, entity_id, action):
             return redirect(redirect_url)
 
         if entity_type == 'driver':
-            entity.verification_tier = 'pending'
+            entity.verification_tier = VerificationTier.PENDING
             # Merged transport-surface semantics: rejection sets
             # compliance REVOKED via the service.
             from app.transport import get_provider_service

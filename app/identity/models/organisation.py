@@ -2,8 +2,9 @@
 from datetime import datetime, timezone, date
 from sqlalchemy import (
     Column, String, Text, Boolean, DateTime, Date, BigInteger, ForeignKey,
-    UniqueConstraint, Index, JSON, select, event, CheckConstraint
+    UniqueConstraint, Index, JSON, select, event
 )
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.orm import relationship, validates
 from app.extensions import db
 from app.models.base import BaseModel
@@ -48,9 +49,6 @@ class Organisation(BaseModel):
         Index("ix_org_is_operational", "is_operational"),
         Index("ix_org_verification_status_country", "verification_status", "country"),
         Index("ix_org_slug_unique", "slug", unique=True),
-        # CHECK constraints for enum-like columns
-        CheckConstraint(OrgVerificationStatus.check_constraint(), name="ck_org_verification_status"),
-        CheckConstraint(OrgLifecycleState.check_constraint(), name="ck_org_lifecycle_state"),
     )
 
     # -------------------
@@ -85,9 +83,9 @@ class Organisation(BaseModel):
     # -------------------
     # Verification
     # -------------------
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    # Native PostgreSQL ENUM (org_verification_status)
     verification_status = Column(
-        String(20),
+        PgEnum(OrgVerificationStatus, name="org_verification_status", create_type=False, values_callable=lambda c: [e.value for e in c]),
         default=OrgVerificationStatus.UNVERIFIED.value,
         nullable=False,
         index=True
@@ -130,9 +128,9 @@ class Organisation(BaseModel):
     # -------------------
     # Lifecycle
     # -------------------
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    # Native PostgreSQL ENUM (org_lifecycle_state)
     lifecycle_state = Column(
-        String(20),
+        PgEnum(OrgLifecycleState, name="org_lifecycle_state", create_type=False, values_callable=lambda c: [e.value for e in c]),
         default=OrgLifecycleState.REGISTERED.value,
         nullable=False,
         index=True

@@ -1,5 +1,6 @@
 # app/identity/models/licence_document.py
-from sqlalchemy import Column, BigInteger, String, Text, Boolean, DateTime, Date, ForeignKey, UniqueConstraint, JSON, CheckConstraint
+from sqlalchemy import Column, BigInteger, String, Text, Boolean, DateTime, Date, ForeignKey, UniqueConstraint, JSON
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.orm import relationship, validates
 from datetime import datetime, timezone
 from app.extensions import db
@@ -48,9 +49,9 @@ class OrganisationDocument(BaseModel):
     version = Column(BigInteger, default=1, nullable=False)
     uploaded_by = Column(BigInteger, ForeignKey("users.id"))
 
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    # Native PostgreSQL ENUM (doc_verification_status)
     verification_status = Column(
-        String(16),
+        PgEnum(DocVerificationStatus, name="doc_verification_status", create_type=False, values_callable=lambda c: [e.value for e in c]),
         default=DocVerificationStatus.PENDING.value,
         nullable=False
     )
@@ -58,10 +59,6 @@ class OrganisationDocument(BaseModel):
     uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     verified_at = Column(DateTime)
     expires_at = Column(Date)
-
-    __table_args__ = (
-        CheckConstraint(DocVerificationStatus.check_constraint(), name="ck_doc_verification_status"),
-    )
 
     organisation = relationship("Organisation", back_populates="documents")
 
@@ -84,16 +81,16 @@ class OrganisationAuditLog(BaseModel):
     old_value = Column(Text)
     new_value = Column(Text)
 
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    # Native PostgreSQL ENUM (org_change_type)
     change_type = Column(
-        String(16),
+        PgEnum(OrgChangeType, name="org_change_type", create_type=False, values_callable=lambda c: [e.value for e in c]),
         default=OrgChangeType.UPDATE.value,
         nullable=False,
         index=True
     )
 
     source = Column(
-        String(16),
+        PgEnum(OrgChangeSource, name="org_change_source", create_type=False, values_callable=lambda c: [e.value for e in c]),
         default=OrgChangeSource.USER.value,
         nullable=False,
         index=True
@@ -103,11 +100,6 @@ class OrganisationAuditLog(BaseModel):
 
     changed_by = Column(BigInteger, ForeignKey("users.id"))
     changed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
-
-    __table_args__ = (
-        CheckConstraint(OrgChangeType.check_constraint(), name="ck_org_change_type"),
-        CheckConstraint(OrgChangeSource.check_constraint(), name="ck_org_change_source"),
-    )
 
     organisation = relationship("Organisation", back_populates="audit_logs")
 

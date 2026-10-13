@@ -86,27 +86,6 @@ ContractStatus = ContractStatusEnum
 
 
 # ===========================================================================
-# COLUMN TYPE HELPER (fixes bare-enum-as-column-type)
-# ===========================================================================
-def _enum_col(enum_cls):
-    """Wrap a Python enum class as a SQLAlchemy column type.
-
-    Storage is VARCHAR (native_enum=False). values_callable preserves
-    lowercase .value persistence. The ORM still returns enum members
-    on load, so `.value` call sites keep working. No PostgreSQL ENUM
-    type is created.
-    """
-    return SQLEnum(
-        enum_cls,
-        native_enum=False,
-        create_constraint=False,
-        validate_strings=True,
-        values_callable=lambda cls: [e.value for e in cls],
-        length=max(len(v) for v in enum_cls.values()),
-    )
-
-
-# ===========================================================================
 # ENUMS (Production with proper string values)
 # ===========================================================================
 # PG ENUM TYPES ARE NOW DEFINED IN app/utils/enums.py
@@ -327,14 +306,14 @@ class DriverProfile(TransportBase, AuditMixin):
 
     # Verification tracking
     verification_tier = db.Column(
-        _enum_col(VerificationTierEnum),
-        default=VerificationTier.PENDING,
+        PgEnum(VerificationTierEnum, name="verificationtier", create_type=False),
+        default=VerificationTierEnum.PENDING,
         nullable=False,
         index=True
     )
     compliance_status = db.Column(
-        _enum_col(ComplianceStatusEnum),
-        default=ComplianceStatus.PENDING_REVIEW,
+        PgEnum(ComplianceStatusEnum, name="compliancestatus", create_type=False),
+        default=ComplianceStatusEnum.PENDING_REVIEW,
         nullable=False,
         index=True
     )
@@ -607,8 +586,8 @@ class OrganisationTransportProfile(TransportBase, AuditMixin):
 
     # Verification
     compliance_status = db.Column(
-        _enum_col(ComplianceStatusEnum),
-        default=ComplianceStatus.PENDING_REVIEW,
+        PgEnum(ComplianceStatusEnum, name="compliancestatus", create_type=False),
+        default=ComplianceStatusEnum.PENDING_REVIEW,
         nullable=False,
         index=True
     )
@@ -729,7 +708,7 @@ class Vehicle(TransportBase):
     year = db.Column(db.Integer, nullable=False)
     color = db.Column(db.String(30))
     vehicle_type = db.Column(db.String(30), nullable=False)
-    vehicle_class = db.Column(_enum_col(VehicleClassEnum), nullable=False)
+    vehicle_class = db.Column(PgEnum(VehicleClassEnum, name="vehicleclass", create_type=False), nullable=False)
 
     # Capacity
     passenger_capacity = db.Column(db.Integer, nullable=False)
@@ -1098,7 +1077,7 @@ class Booking(TransportBase):
     user_type = db.Column(db.String(20), default='fan')  # fan, vip, staff
 
     # Provider
-    provider_type = db.Column(_enum_col(ProviderTypeEnum), nullable=False)
+    provider_type = db.Column(PgEnum(ProviderTypeEnum, name="providertype", create_type=False), nullable=False)
     provider_id = db.Column(db.BigInteger, nullable=True)
 
     # External platform integration
@@ -1107,7 +1086,7 @@ class Booking(TransportBase):
     external_confirmation_code = db.Column(db.String(100))
 
     # Service details
-    service_type = db.Column(_enum_col(ServiceTypeEnum), nullable=False)
+    service_type = db.Column(PgEnum(ServiceTypeEnum, name="servicetype", create_type=False), nullable=False)
     service_subtype = db.Column(db.String(50))
 
     # Trip details
@@ -1173,11 +1152,11 @@ class Booking(TransportBase):
     final_price = db.Column(db.Numeric(10, 2), nullable=False)
 
     # Currency
-    currency = db.Column(_enum_col(CurrencyEnum), default=Currency.USD, nullable=False)
+    currency = db.Column(PgEnum(CurrencyEnum, name="currency", create_type=False), default=CurrencyEnum.USD, nullable=False)
     exchange_rate = db.Column(db.Numeric(10, 6), default=1.000000)
 
     # Payment tracking
-    payment_status = db.Column(_enum_col(PaymentStatusEnum), default=PaymentStatus.PENDING, nullable=False)
+    payment_status = db.Column(PgEnum(PaymentStatusEnum, name="paymentstatus", create_type=False), default=PaymentStatusEnum.PENDING, nullable=False)
     payment_method = db.Column(db.String(50))
     payment_gateway = db.Column(db.String(50))
     payment_gateway_reference = db.Column(db.String(100))
@@ -1749,7 +1728,7 @@ class BookingPayment(TransportBase):
 
     # Amounts
     amount = db.Column(db.Numeric(10, 2), nullable=False)
-    currency = db.Column(_enum_col(CurrencyEnum), nullable=False)
+    currency = db.Column(PgEnum(CurrencyEnum, name="currency", create_type=False), nullable=False)
     exchange_rate = db.Column(db.Numeric(10, 6), default=1.000000)
 
     # Payment method
@@ -1765,7 +1744,7 @@ class BookingPayment(TransportBase):
     gateway_response = db.Column(JSONB)
 
     # Status
-    payment_status = db.Column(_enum_col(PaymentStatusEnum), nullable=False)
+    payment_status = db.Column(PgEnum(PaymentStatusEnum, name="paymentstatus", create_type=False), nullable=False)
     failure_reason = db.Column(db.Text)
     retry_count = db.Column(db.Integer, default=0)
 
@@ -2143,7 +2122,7 @@ class TransportIncident(TransportBase):
     # Classification
     incident_type = db.Column(db.String(50), nullable=False)
     incident_category = db.Column(db.String(50))  # safety, service, vehicle, payment
-    severity = db.Column(_enum_col(IncidentSeverityEnum), nullable=False)
+    severity = db.Column(PgEnum(IncidentSeverityEnum, name="incidentseverity", create_type=False), nullable=False)
 
     # Reporting
     reported_by = db.Column(db.String(20), nullable=False)  # user, driver, system, admin
@@ -3258,8 +3237,8 @@ class VehicleMarketplaceListing(TransportBase):
 
     # Driver requirements
     required_verification_tier = db.Column(
-        _enum_col(VerificationTierEnum),
-        default=VerificationTier.BASIC_VERIFIED,
+        PgEnum(VerificationTierEnum, name="verificationtier", create_type=False),
+        default=VerificationTierEnum.BASIC_VERIFIED,
         nullable=False
     )
     required_service_types = db.Column(JSONB, default=lambda: [])
@@ -3269,7 +3248,7 @@ class VehicleMarketplaceListing(TransportBase):
 
     # Compensation terms
     compensation_model = db.Column(
-        _enum_col(CompensationModelEnum),
+        PgEnum(CompensationModelEnum, name="compensationmodel", create_type=False),
         default=CompensationModel.REVENUE_SPLIT,
         nullable=False
     )
@@ -3395,7 +3374,7 @@ class VehicleContract(TransportBase):
 
     # Contract terms
     contract_type = db.Column(
-        _enum_col(CompensationModelEnum),
+        PgEnum(CompensationModelEnum, name="compensationmodel", create_type=False),
         default=CompensationModel.REVENUE_SPLIT,
         nullable=False
     )
@@ -3419,7 +3398,7 @@ class VehicleContract(TransportBase):
 
     # Status
     status = db.Column(
-        _enum_col(ContractStatusEnum),
+        PgEnum(ContractStatusEnum, name="contractstatus", create_type=False),
         default=ContractStatus.PENDING_SIGNATURE,
         nullable=False,
         index=True

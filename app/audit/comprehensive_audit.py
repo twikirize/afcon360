@@ -16,7 +16,8 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 from decimal import Decimal
 import uuid
-from sqlalchemy import Column, BigInteger, String, Integer, DateTime, JSON, Numeric, Index, Boolean, Text, CheckConstraint
+from sqlalchemy import Column, BigInteger, String, Integer, DateTime, JSON, Numeric, Index, Boolean, Text
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.orm import Session
 from app.extensions import db
 from app.models.base import BaseModel
@@ -69,8 +70,8 @@ class FinancialAuditLog(BaseModel):
 
     # Transaction identification
     transaction_id = Column(String(128), nullable=False, unique=True, index=True)
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
-    transaction_type = Column(String(32), nullable=False)
+    # Native PostgreSQL ENUM (transactiontype)
+    transaction_type = Column(PgEnum(AuditTransactionType, name="transactiontype", create_type=False), nullable=False)
 
     # Parties involved
     from_user_id = Column(BigInteger)  # Sender
@@ -124,12 +125,8 @@ class FinancialAuditLog(BaseModel):
 
     completed_at = Column(DateTime)
 
-    # CHECK constraints for enum-like columns
+    # Indexes
     __table_args__ = (
-        CheckConstraint(
-            AuditTransactionType.check_constraint(),
-            name='ck_fin_transaction_type'
-        ),
         Index('idx_fin_user_date', 'from_user_id', 'created_at'),
         Index('idx_fin_org_date', 'organisation_id', 'created_at'),
         Index('idx_fin_status_date', 'status', 'created_at'),
@@ -156,12 +153,9 @@ class FinancialAuditLog(BaseModel):
     ) -> 'FinancialAuditLog':
         """Create immutable financial audit record"""
 
-        # Convert enum to string value for storage
-        tx_type_value = transaction_type.value if isinstance(transaction_type, AuditTransactionType) else transaction_type
-
         log_entry = FinancialAuditLog(
             transaction_id=transaction_id,
-            transaction_type=tx_type_value,
+            transaction_type=transaction_type,
             from_user_id=from_user_id,
             to_user_id=to_user_id,
             organisation_id=organisation_id,
@@ -179,7 +173,7 @@ class FinancialAuditLog(BaseModel):
         db.session.add(log_entry)
         db.session.commit()
 
-        logger.info(f"Financial audit: {tx_type_value} {amount} {currency} - {transaction_id}")
+        logger.info(f"Financial audit: {transaction_type} {amount} {currency} - {transaction_id}")
         return log_entry
 
 
@@ -220,8 +214,8 @@ class APIAuditLog(BaseModel):
     response_body = Column(JSON)
     response_time_ms = Column(Integer)  # Latency tracking
 
-    # Status - String + CHECK constraint
-    status = Column(String(16), nullable=False)
+    # Status - native PostgreSQL ENUM (apicallstatus)
+    status = Column(PgEnum(APICallStatus, name="apicallstatus", create_type=False), nullable=False)
     error_message = Column(Text)
     retry_count = Column(Integer, default=0)
 
@@ -233,10 +227,6 @@ class APIAuditLog(BaseModel):
     initiated_by = Column(BigInteger)  # User or system
 
     __table_args__ = (
-        CheckConstraint(
-            APICallStatus.check_constraint(),
-            name='ck_api_status'
-        ),
         Index('idx_api_service_date', 'service_name', 'created_at'),
         Index('idx_api_status_date', 'status', 'created_at'),
     )
@@ -256,15 +246,13 @@ class APIAuditLog(BaseModel):
     ) -> 'APIAuditLog':
         """Log third-party API call"""
 
-        status_value = status.value if isinstance(status, APICallStatus) else status
-
         log_entry = APIAuditLog(
             service_name=service_name,
             endpoint=endpoint,
             method=method,
             request_id=request_id,
             correlation_id=correlation_id,
-            status=status_value,
+            status=status,
             response_status=response_status,
             response_time_ms=response_time_ms,
             error_message=error_message,
@@ -300,8 +288,8 @@ class DataAccessLog(BaseModel):
     accessed_by = Column(BigInteger, nullable=False)  # Who accessed
     subject_user_id = Column(BigInteger, nullable=False)  # Whose data
 
-    # String + CHECK constraint instead of PostgreSQL ENUM
-    access_type = Column(String(16), nullable=False)
+    # Native PostgreSQL ENUM (dataaccesstype)
+    access_type = Column(PgEnum(DataAccessType, name="dataaccesstype", create_type=False), nullable=False)
     data_category = Column(String(64), nullable=False)  # "kyc_documents", "financial_records"
 
     # What was accessed
@@ -318,10 +306,6 @@ class DataAccessLog(BaseModel):
     user_agent = Column(String(512))
 
     __table_args__ = (
-        CheckConstraint(
-            DataAccessType.check_constraint(),
-            name='ck_data_access_type'
-        ),
         Index('idx_data_subject_date', 'subject_user_id', 'created_at'),
         Index('idx_data_accessor_date', 'accessed_by', 'created_at'),
     )
@@ -338,12 +322,10 @@ class DataAccessLog(BaseModel):
     ) -> 'DataAccessLog':
         """Log sensitive data access"""
 
-        access_value = access_type.value if isinstance(access_type, DataAccessType) else access_type
-
         log_entry = DataAccessLog(
             accessed_by=accessed_by,
             subject_user_id=subject_user_id,
-            access_type=access_value,
+            access_type=access_type,
             data_category=data_category,
             purpose=purpose,
             legal_basis=legal_basis,
@@ -375,8 +357,8 @@ class SecurityEventLog(BaseModel):
 
 
     event_type = Column(String(64), nullable=False, index=True)
-    # String + CHECK constraint
-    severity = Column(String(16), nullable=False, index=True)
+    # Native PostgreSQL ENUM (auditseverity)
+    severity = Column(PgEnum(AuditSeverity, name="auditseverity", create_type=False), nullable=False, index=True)
 
     user_id = Column(BigInteger, index=True)
     ip_address = Column(String(64), index=True)
@@ -390,13 +372,6 @@ class SecurityEventLog(BaseModel):
     action_taken = Column(String(128))  # "account_locked", "ip_blocked"
     handled_by = Column(BigInteger)
     handled_at = Column(DateTime)
-
-    __table_args__ = (
-        CheckConstraint(
-            AuditSeverity.check_constraint(),
-            name='ck_security_severity'
-        ),
-    )
 
     @staticmethod
     def log_event(
@@ -428,7 +403,7 @@ class SecurityEventLog(BaseModel):
         connection.execute(
             SecurityEventLog.__table__.insert().values(  # type: ignore[attr-defined]
                 event_type=event_type,
-                severity=severity.value,
+                severity=severity,
                 description=description,
                 user_id=user_id,
                 ip_address=ip_address,

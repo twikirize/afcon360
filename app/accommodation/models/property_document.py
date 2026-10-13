@@ -6,8 +6,9 @@ Property Document models - Documents uploaded for property verification.
 from datetime import datetime, timezone
 from sqlalchemy import (
     Column, BigInteger, String, Boolean, DateTime,
-    ForeignKey, Text, Index, CheckConstraint
+    ForeignKey, Text, Index
 )
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.orm import relationship, validates
 from app.extensions import db
 from app.models.base import BaseModel
@@ -27,9 +28,6 @@ class PropertyDocument(BaseModel):
         Index("idx_property_document_property", "property_id"),
         Index("idx_property_document_host", "host_user_id"),
         Index("idx_property_document_status", "status"),
-        # CHECK constraints for enum-like columns
-        CheckConstraint(PropertyDocumentType.check_constraint(), name="ck_property_document_type"),
-        CheckConstraint(PropertyDocumentStatus.check_constraint(), name="ck_property_document_status"),
     )
 
     # ── Attachments ──
@@ -50,9 +48,9 @@ class PropertyDocument(BaseModel):
     host_user = relationship("User", foreign_keys=[host_user_id], backref="property_documents")
 
     # ── Document info ──
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    # Native PostgreSQL ENUM (propertydocumenttype)
     document_type = Column(
-        String(30),
+        PgEnum(PropertyDocumentType, name="propertydocumenttype", create_type=False),
         nullable=False,
         index=True
     )
@@ -62,10 +60,10 @@ class PropertyDocument(BaseModel):
     mime_type = Column(String(100), nullable=True)
 
     # ── Verification ──
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    # Native PostgreSQL ENUM (propertydocumentstatus)
     status = Column(
-        String(16),
-        default=PropertyDocumentStatus.PENDING.value,
+        PgEnum(PropertyDocumentStatus, name="propertydocumentstatus", create_type=False),
+        default=PropertyDocumentStatus.PENDING,
         nullable=False,
         index=True
     )

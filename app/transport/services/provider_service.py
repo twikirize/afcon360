@@ -26,6 +26,7 @@ from app.transport.models import (
     Rating, organisation_drivers, VehicleClass, ProviderType, ServiceType
 )
 from app.identity.models.user import User
+from app.utils.enums import VerificationTier as CentralVerificationTier
 from app.transport.services.settings_service import (
     SettingsService, feature_enabled, development_only
 )
@@ -336,7 +337,7 @@ class ProviderService:
         """Count drivers pending approval"""
         try:
             return DriverProfile.query.filter_by(
-                verification_tier='pending',
+                verification_tier=CentralVerificationTier.PENDING,
                 is_deleted=False
             ).count()
         except Exception as e:

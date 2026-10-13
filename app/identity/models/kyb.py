@@ -1,5 +1,6 @@
 # app/identity/models/kyb.py
-from sqlalchemy import Column, BigInteger, String, Text, DateTime, ForeignKey, JSON, CheckConstraint
+from sqlalchemy import Column, BigInteger, String, Text, DateTime, ForeignKey, JSON
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.orm import relationship, validates
 from datetime import datetime
 from app.extensions import db
@@ -22,9 +23,9 @@ class OrganisationVerification(BaseModel):
     organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False)
     reviewer_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
 
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    # Native PostgreSQL ENUM (org_verification_status)
     status = Column(
-        String(20),
+        PgEnum(OrgVerificationStatus, name="org_verification_status", create_type=False, values_callable=lambda c: [e.value for e in c]),
         default=OrgVerificationStatus.PENDING.value,
         nullable=False,
         index=True
@@ -35,18 +36,6 @@ class OrganisationVerification(BaseModel):
 
     decided_at = Column(DateTime)
     expires_at = Column(DateTime)
-
-    __table_args__ = (
-        # NOTE: this table's column is `status`, while Organisation.verification_status
-        # uses OrgVerificationStatus.check_constraint() directly (that helper emits
-        # `verification_status IN (...)`). Build the same allowed values against `status`.
-        CheckConstraint(
-            "status IN ({})".format(
-                ", ".join(f"'{v}'" for v in OrgVerificationStatus.values())
-            ),
-            name="ck_org_verification_status",
-        ),
-    )
 
     organisation = relationship(
         "Organisation",
@@ -67,23 +56,18 @@ class OrganisationKYBCheck(BaseModel):
 
     organisation_id = Column(BigInteger, ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False)
 
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    # Native PostgreSQL ENUM (org_kyb_check_type)
     check_type = Column(
-        String(20),
+        PgEnum(OrgKybCheckType, name="org_kyb_check_type", create_type=False, values_callable=lambda c: [e.value for e in c]),
         nullable=False
     )
     status = Column(
-        String(20),
+        PgEnum(OrgKybCheckStatus, name="org_kyb_check_status", create_type=False, values_callable=lambda c: [e.value for e in c]),
         default=OrgKybCheckStatus.PENDING.value
     )
     provider_id = Column(String(128))
     evidence = Column(JSON)
     notes = Column(Text)
-
-    __table_args__ = (
-        CheckConstraint(OrgKybCheckType.check_constraint(), name="ck_org_kyb_check_type"),
-        CheckConstraint(OrgKybCheckStatus.check_constraint(), name="ck_org_kyb_check_status"),
-    )
 
     organisation = relationship(
         "Organisation",
@@ -114,9 +98,9 @@ class OrganisationUBO(BaseModel):
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     verified_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
 
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    # Native PostgreSQL ENUM (ubo_type)
     ubo_type = Column(
-        String(16),
+        PgEnum(UboType, name="ubo_type", create_type=False, values_callable=lambda c: [e.value for e in c]),
         default=UboType.INDIVIDUAL.value
     )
     ownership_percentage = Column(BigInteger)
@@ -124,10 +108,6 @@ class OrganisationUBO(BaseModel):
     effective_to = Column(DateTime)
 
     verified_at = Column(DateTime)
-
-    __table_args__ = (
-        CheckConstraint(UboType.check_constraint(), name="ck_ubo_type"),
-    )
 
     organisation = relationship(
         "Organisation",
@@ -161,14 +141,10 @@ class OrganisationKYBDocument(BaseModel):
     document_type = Column(String(64), nullable=False)
     storage_key = Column(String(255), nullable=False)
     checksum = Column(String(128), nullable=False)
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    # Native PostgreSQL ENUM (kyb_doc_status)
     verification_status = Column(
-        String(16),
+        PgEnum(KybDocStatus, name="kyb_doc_status", create_type=False, values_callable=lambda c: [e.value for e in c]),
         default=KybDocStatus.PENDING.value
-    )
-
-    __table_args__ = (
-        CheckConstraint(KybDocStatus.check_constraint(), name="ck_kyb_doc_status"),
     )
 
     organisation = relationship(

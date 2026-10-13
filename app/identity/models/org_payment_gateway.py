@@ -6,7 +6,8 @@ refunds, fines, etc.
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from sqlalchemy import Column, BigInteger, String, Boolean, DateTime, Text, JSON, ForeignKey, Numeric, UniqueConstraint, Index, CheckConstraint
+from sqlalchemy import Column, BigInteger, String, Boolean, DateTime, Text, JSON, ForeignKey, Numeric, UniqueConstraint, Index
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.orm import relationship, validates
 from app.extensions import db
 from app.models.base import BaseModel
@@ -25,16 +26,13 @@ class OrganisationPaymentGateway(BaseModel):
     __table_args__ = (
         UniqueConstraint('organisation_id', 'provider', name='uq_org_gateway_provider'),
         Index('ix_org_gateway_org_active', 'organisation_id', 'is_active'),
-        # CHECK constraints for enum-like columns
-        CheckConstraint(PaymentGatewayProvider.check_constraint(), name="ck_payment_gateway_provider"),
-        CheckConstraint(PaymentGatewayEnvironment.check_constraint(), name="ck_gateway_environment"),
     )
 
     organisation_id = Column(BigInteger, ForeignKey('organisations.id', ondelete='CASCADE'), nullable=False, index=True)
     
-    # Gateway identification - Use String + CHECK constraint instead of PostgreSQL ENUM
-    provider = Column(String(20), nullable=False)
-    environment = Column(String(16), default=PaymentGatewayEnvironment.SANDBOX.value, nullable=False)
+    # Gateway identification - native PostgreSQL ENUMs
+    provider = Column(PgEnum(PaymentGatewayProvider, name="payment_gateway_provider", create_type=False), nullable=False)
+    environment = Column(PgEnum(PaymentGatewayEnvironment, name="gateway_environment", create_type=False), default=PaymentGatewayEnvironment.SANDBOX, nullable=False)
     
     # Display
     display_name = Column(String(100), nullable=True)

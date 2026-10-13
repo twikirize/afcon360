@@ -1,6 +1,7 @@
 # app/identity/models/individual_verification.py
 
-from sqlalchemy import Column, BigInteger, String, Text, DateTime, ForeignKey, JSON, Index, CheckConstraint
+from sqlalchemy import Column, BigInteger, String, Text, DateTime, ForeignKey, JSON, Index
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.orm import relationship, validates
 from datetime import datetime, timezone
 from app.extensions import db
@@ -34,7 +35,6 @@ class IndividualVerification(BaseModel):
     __table_args__ = (
         Index("ix_ind_verification_user_id", "user_id"),
         Index("ix_ind_verification_status", "status"),
-        CheckConstraint(IndVerificationStatus.check_constraint(), name="ck_ind_verification_status"),
     )
 
     # Foreign keys
@@ -49,9 +49,9 @@ class IndividualVerification(BaseModel):
         nullable=True
     )
 
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    # Native PostgreSQL ENUM (ind_verification_status)
     status = Column(
-        String(16),
+        PgEnum(IndVerificationStatus, name="ind_verification_status", create_type=False, values_callable=lambda c: [e.value for e in c]),
         default=IndVerificationStatus.PENDING.value,
         nullable=False,
         index=True

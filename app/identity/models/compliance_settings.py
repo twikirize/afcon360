@@ -1,5 +1,6 @@
 # app/identity/models/compliance_settings.py
-from sqlalchemy import Column, BigInteger, String, DateTime, Boolean, ForeignKey, CheckConstraint
+from sqlalchemy import Column, BigInteger, String, DateTime, Boolean, ForeignKey
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from datetime import datetime, timezone
 from app.extensions import db
 from app.models.base import BaseModel
@@ -13,9 +14,9 @@ class ComplianceSettings(BaseModel):
     requirement = Column(String(64), unique=True, nullable=False)
     # Examples: "kyb_verification", "ubo", "license", "wallet_payouts"
 
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    # Native PostgreSQL ENUM (compliance_enforcement_level)
     enforcement_level = Column(
-        String(20),
+        PgEnum(ComplianceEnforcementLevel, name="compliance_enforcement_level", create_type=False, values_callable=lambda c: [e.value for e in c]),
         default=ComplianceEnforcementLevel.OPTIONAL.value,
         nullable=False
     )
@@ -26,7 +27,6 @@ class ComplianceSettings(BaseModel):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     __table_args__ = (
-        CheckConstraint(ComplianceEnforcementLevel.check_constraint(), name="ck_compliance_enforcement_level"),
         {'extend_existing': True}
     )
 

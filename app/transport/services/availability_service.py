@@ -33,6 +33,10 @@ from app.transport.models import (
     DriverVehicleHistory,
     Vehicle,
 )
+from app.utils.enums import (
+    ComplianceStatus as CentralComplianceStatus,
+    VehicleClass as CentralVehicleClass,
+)
 from app.transport.services.assignment_service import ACTIVE_ASSIGNMENT_STATUSES
 from app.transport.services.tracking_service import TrackingService
 
@@ -98,7 +102,7 @@ def _available_vehicle_ids() -> List[int]:
             DriverProfile.is_deleted.is_(False),
             DriverProfile.is_online.is_(True),
             DriverProfile.is_available.is_(True),
-            DriverProfile.compliance_status == ComplianceStatus.APPROVED.value,
+            DriverProfile.compliance_status == CentralComplianceStatus.APPROVED,
             DriverProfile.location_updated_at.isnot(None),
             DriverProfile.location_updated_at >= fresh,
             ~_driver_engaged_elsewhere(),
@@ -144,7 +148,7 @@ def available_by_class() -> List[Dict[str, Any]]:
             DriverProfile.is_deleted.is_(False),
             DriverProfile.is_online.is_(True),
             DriverProfile.is_available.is_(True),
-            DriverProfile.compliance_status == ComplianceStatus.APPROVED.value,
+            DriverProfile.compliance_status == CentralComplianceStatus.APPROVED,
             DriverProfile.location_updated_at.isnot(None),
             DriverProfile.location_updated_at >= fresh,
             ~_driver_engaged_elsewhere(),
@@ -187,6 +191,10 @@ def nearest_eta_minutes_for_class(
     if pickup is None:
         return None
     try:
+        vehicle_class_enum = CentralVehicleClass(vehicle_class)
+    except ValueError:
+        return None
+    try:
         from app.geo.interfaces import GeoPoint
         from app.geo.services import straight_line_distance_m
     except Exception:
@@ -211,11 +219,11 @@ def nearest_eta_minutes_for_class(
         .where(
             Vehicle.is_deleted.is_(False),
             Vehicle.status == "active",
-            Vehicle.vehicle_class == vehicle_class,
+            Vehicle.vehicle_class == vehicle_class_enum,
             DriverProfile.is_deleted.is_(False),
             DriverProfile.is_online.is_(True),
             DriverProfile.is_available.is_(True),
-            DriverProfile.compliance_status == ComplianceStatus.APPROVED.value,
+            DriverProfile.compliance_status == CentralComplianceStatus.APPROVED,
             DriverProfile.location_updated_at.isnot(None),
             DriverProfile.location_updated_at >= fresh,
             DriverProfile.last_location.isnot(None),

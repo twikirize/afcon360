@@ -1,6 +1,7 @@
 # app/identity/models/individual_document.py
 
-from sqlalchemy import Column, BigInteger, String, DateTime, ForeignKey, CheckConstraint
+from sqlalchemy import Column, BigInteger, String, DateTime, ForeignKey
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.orm import relationship, validates
 from datetime import datetime
 from app.extensions import db
@@ -10,15 +11,12 @@ from app.utils.enums import IndDocumentType
 
 class IndividualKYCDocument(BaseModel):
     __tablename__ = "individual_documents"
-    __table_args__ = (
-        CheckConstraint(IndDocumentType.check_constraint(), name="ck_ind_document_type"),
-    )
 
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    # Native PostgreSQL ENUM (ind_document_type)
     document_type = Column(
-        String(20),
+        PgEnum(IndDocumentType, name="ind_document_type", create_type=False, values_callable=lambda c: [e.value for e in c]),
         nullable=False
     )
     file_path = Column(String(256), nullable=False)

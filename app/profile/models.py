@@ -16,6 +16,7 @@ from sqlalchemy import (
     Text,
     JSON,
 )
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.orm import validates, relationship
 from app.extensions import db
 from app.models.base import BaseModel
@@ -48,11 +49,6 @@ class UserProfile(BaseModel):
         UniqueConstraint("email", name="uq_userprofile_email"),  # global email uniqueness
         UniqueConstraint("phone_number", name="uq_userprofile_phone"),  # global phone uniqueness
         CheckConstraint("length(full_name) > 0", name="ck_full_name_not_empty"),
-        # CHECK constraints for enum-like columns
-        CheckConstraint(Gender.check_constraint(), name="ck_gender"),
-        CheckConstraint(IDType.check_constraint(), name="ck_id_type"),
-        CheckConstraint(VerificationStatus.check_constraint(), name="ck_verification_status"),
-        CheckConstraint(KYCLevel.check_constraint(), name="ck_kyc_level"),
         Index("ix_userprofile_verification_kyc", "verification_status", "kyc_level"),
         Index("ix_userprofile_is_deleted", "is_deleted"),
         Index("ix_userprofile_email_phone", "email", "phone_number"),
@@ -67,8 +63,8 @@ class UserProfile(BaseModel):
     # Personal info
     full_name = Column(String(128), nullable=False)
     date_of_birth = Column(Date, nullable=True)
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
-    gender = Column(String(16), nullable=True)
+    # Native PostgreSQL ENUM (gender_enum)
+    gender = Column(PgEnum(Gender, name="gender_enum", create_type=False, values_callable=lambda c: [e.value for e in c]), nullable=True)
     nationality = Column(String(64), nullable=True)
     address = Column(String(256), nullable=True)
     city = Column(String(128), nullable=True)
@@ -91,17 +87,17 @@ class UserProfile(BaseModel):
     # Short personal description shown on public profile. Max 500 chars.
 
     # Identity documents
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
-    id_type = Column(String(20), nullable=True)
+    # Native PostgreSQL ENUM (id_type_enum)
+    id_type = Column(PgEnum(IDType, name="id_type_enum", create_type=False, values_callable=lambda c: [e.value for e in c]), nullable=True)
     id_number = Column(String(64), nullable=True, index=True)
     id_document_url = Column(String(512), nullable=True)
     id_document_mime = Column(String(64), nullable=True)
     id_document_size = Column(Integer, nullable=True)
 
     # Verification & workflow
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    # Native PostgreSQL ENUM (verification_status_enum)
     verification_status = Column(
-        String(16),
+        PgEnum(VerificationStatus, name="verification_status_enum", create_type=False, values_callable=lambda c: [e.value for e in c]),
         nullable=False,
         default=VerificationStatus.PENDING.value,
         index=True,
@@ -109,9 +105,9 @@ class UserProfile(BaseModel):
     rejected_reason = Column(String(256), nullable=True)
     verified_by = Column(String(64), nullable=True)
     last_reviewed_at = Column(DateTime, nullable=True)
-    # Use String + CHECK constraint instead of PostgreSQL ENUM
+    # Native PostgreSQL ENUM (kyc_level_enum)
     kyc_level = Column(
-        String(16),
+        PgEnum(KYCLevel, name="kyc_level_enum", create_type=False, values_callable=lambda c: [e.value for e in c]),
         nullable=False,
         default=KYCLevel.BASIC.value,
         index=True,
