@@ -6,13 +6,14 @@ reversal/refund exclusion, transaction status filtering, and authorization.
 """
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
+from typing import cast
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
+from app.utils.enums import WindowMode, RegulatoryVolumeStatus
 from app.wallet.models.regulatory_volume import (
-    WindowMode,
     RegulatoryVolumePolicy,
     RegulatoryVolumePolicyChangeRequest,
     LedgerReversalReference,
@@ -306,17 +307,17 @@ class TestRegulatoryVolumePolicyService:
                         def mock_add(obj):
                             # Simulate the object being persisted with an ID
                             obj.id = 1
-                            obj.status = RegulatoryVolumePolicyChangeRequest.Status.PENDING
+                            obj.status = RegulatoryVolumeStatus.PENDING
                         mock_session.add.side_effect = mock_add
                         
                         change_request = RegulatoryVolumePolicyService.request_policy_change(
                             WindowMode.ROLLING, WindowMode.CALENDAR, 'Africa/Kampala', reason='Switch to rolling daily'
                         )
                         
-                        assert change_request.proposed_daily_mode == WindowMode.ROLLING
-                        assert change_request.proposed_monthly_mode == WindowMode.CALENDAR
-                        assert change_request.requested_by == self.requester_id
-                        assert change_request.status == RegulatoryVolumePolicyChangeRequest.Status.PENDING
+                        assert change_request.proposed_daily_mode is WindowMode.ROLLING
+                        assert change_request.proposed_monthly_mode is WindowMode.CALENDAR
+                        assert cast(int, change_request.requested_by) == self.requester_id
+                        assert change_request.status is RegulatoryVolumeStatus.PENDING
     
     def test_approve_own_request_fails(self, app):
         """Requester cannot approve their own change request."""
@@ -338,7 +339,7 @@ class TestRegulatoryVolumePolicyService:
                             proposed_timezone='Africa/Kampala',
                             proposed_effective_from=datetime.now(timezone.utc),
                             requested_by=self.requester_id,
-                            status=RegulatoryVolumePolicyChangeRequest.Status.PENDING
+                            status=RegulatoryVolumeStatus.PENDING
                         )
                         mock_session.get.return_value = change_request
                         
@@ -365,7 +366,7 @@ class TestRegulatoryVolumePolicyService:
                             proposed_timezone='Africa/Kampala',
                             proposed_effective_from=datetime.now(timezone.utc),
                             requested_by=self.requester_id,
-                            status=RegulatoryVolumePolicyChangeRequest.Status.PENDING
+                            status=RegulatoryVolumeStatus.PENDING
                         )
                         mock_session.get.return_value = change_request
                         
@@ -379,11 +380,11 @@ class TestRegulatoryVolumePolicyService:
                             
                             new_policy = RegulatoryVolumePolicyService.approve_policy_change(1, 'Approved for compliance')
                             
-                            assert new_policy.daily_window_mode == WindowMode.ROLLING
-                            assert new_policy.monthly_window_mode == WindowMode.CALENDAR
-                            assert new_policy.approved_by == self.approver_id
-                            assert change_request.status == RegulatoryVolumePolicyChangeRequest.Status.APPROVED
-                            assert change_request.approved_by == self.approver_id
+                            assert new_policy.daily_window_mode is WindowMode.ROLLING
+                            assert new_policy.monthly_window_mode is WindowMode.CALENDAR
+                            assert cast(int, new_policy.approved_by) == self.approver_id
+                            assert change_request.status is RegulatoryVolumeStatus.APPROVED
+                            assert cast(int, change_request.approved_by) == self.approver_id
 
 
 class TestLedgerReversalReference:
@@ -404,9 +405,9 @@ class TestLedgerReversalReference:
                 reason='Customer requested refund'
             )
             
-            assert ref.original_entry_id == original_entry_id
-            assert ref.reversal_entry_id == reversal_entry_id
-            assert ref.reversal_type == 'refund'
+            assert ref.original_entry_id is original_entry_id
+            assert ref.reversal_entry_id is reversal_entry_id
+            assert cast(str, ref.reversal_type) == 'refund'
     
     def test_reversal_type_enum_values(self, app):
         """Common reversal types should be supported."""
@@ -418,7 +419,7 @@ class TestLedgerReversalReference:
                     reversal_entry_id=uuid4(),
                     reversal_type=rtype
                 )
-                assert ref.reversal_type == rtype
+                assert cast(str, ref.reversal_type) == rtype
 
 
 class TestCalendarBoundaryEdgeCases:
@@ -565,7 +566,7 @@ class TestPolicyChangeAudit:
                                 proposed_timezone='Africa/Kampala',
                                 proposed_effective_from=datetime.now(timezone.utc),
                                 requested_by=1,
-                                status=RegulatoryVolumePolicyChangeRequest.Status.PENDING
+                                status=RegulatoryVolumeStatus.PENDING
                             )
                             mock_session.get.return_value = change_request
                             
@@ -612,6 +613,112 @@ def test_all_mode_combinations(mock_db, daily_mode, monthly_mode):
     assert daily_volume == Decimal('100000')
     assert monthly_volume == Decimal('100000')
     assert mock_session.execute.call_count == 2
+
+
+class TestWindowModePersistenceRoundTrip:
+    """Phase 4W: PostgreSQL reload must yield central members (not shadows).
+
+    Uses the real dedicated test database through the ``db_session``
+    fixture (flush + expire + reload; fixture rollback cleans up, no
+    commit). ``is_active=False`` avoids the partial unique active-policy
+    index.
+    """
+
+    AS_OF = datetime(2026, 1, 15, 7, 0, 0, tzinfo=timezone.utc)
+
+    @pytest.mark.parametrize("daily_mode,monthly_mode", [
+        (WindowMode.CALENDAR, WindowMode.CALENDAR),
+        (WindowMode.ROLLING, WindowMode.ROLLING),
+        (WindowMode.CALENDAR, WindowMode.ROLLING),
+        (WindowMode.ROLLING, WindowMode.CALENDAR),
+    ])
+    def test_modes_reload_as_central_members_with_correct_bounds(
+        self, db_session, daily_mode, monthly_mode
+    ):
+        policy = RegulatoryVolumePolicy(
+            daily_window_mode=daily_mode,
+            monthly_window_mode=monthly_mode,
+            timezone='Africa/Kampala',
+            is_active=False,
+            effective_from=self.AS_OF,
+        )
+        db_session.add(policy)
+        db_session.flush()
+        policy_id = policy.id
+        assert policy_id is not None
+        db_session.expire(policy)
+
+        loaded = db_session.get(RegulatoryVolumePolicy, policy_id)
+        assert loaded.daily_window_mode is daily_mode
+        assert loaded.monthly_window_mode is monthly_mode
+        assert isinstance(loaded.daily_window_mode, WindowMode)
+        assert isinstance(loaded.monthly_window_mode, WindowMode)
+
+        calc = VolumeWindowCalculator(loaded)
+        daily_start, daily_end = calc.get_daily_window_bounds(self.AS_OF)
+        monthly_start, monthly_end = calc.get_monthly_window_bounds(self.AS_OF)
+        assert daily_end == self.AS_OF
+        assert monthly_end == self.AS_OF
+        if daily_mode is WindowMode.CALENDAR:
+            assert daily_start == TimezoneEngine.get_day_start_utc(self.AS_OF)
+        else:
+            assert daily_start == self.AS_OF - timedelta(days=1)
+        if monthly_mode is WindowMode.CALENDAR:
+            assert monthly_start == TimezoneEngine.get_month_start_utc(self.AS_OF)
+        else:
+            assert monthly_start == self.AS_OF - timedelta(days=30)
+
+
+class TestStatusRoundTrip:
+    """Phase 4W: change-request status default + reload identity."""
+
+    def test_status_default_and_reload_identity(self, db_session, test_user):
+        user_id = db_session.merge(test_user).id
+        change_request = RegulatoryVolumePolicyChangeRequest(
+            proposed_daily_mode=WindowMode.CALENDAR,
+            proposed_monthly_mode=WindowMode.CALENDAR,
+            proposed_timezone='Africa/Kampala',
+            proposed_effective_from=datetime(2026, 1, 15, 7, 0, 0, tzinfo=timezone.utc),
+            requested_by=user_id,
+        )
+        # Python-side default applies on flush without supplying status.
+        assert change_request.status is None
+        db_session.add(change_request)
+        db_session.flush()
+        assert change_request.status is RegulatoryVolumeStatus.PENDING
+        request_id = change_request.id
+        assert request_id is not None
+        db_session.expire(change_request)
+
+        loaded = db_session.get(RegulatoryVolumePolicyChangeRequest, request_id)
+        assert loaded.status is RegulatoryVolumeStatus.PENDING
+        assert loaded.status.value == 'pending'
+
+    def test_non_pending_error_path_reports_typed_status(
+        self, app, db_session, test_user
+    ):
+        """Non-pending approve/reject must raise naming the typed status."""
+        with app.test_request_context():
+            with patch('app.wallet.services.regulatory_volume_policy_service.RegulatoryVolumePolicyService._require_authorization', return_value=True):
+                user_id = db_session.merge(test_user).id
+                change_request = RegulatoryVolumePolicyChangeRequest(
+                    proposed_daily_mode=WindowMode.CALENDAR,
+                    proposed_monthly_mode=WindowMode.CALENDAR,
+                    proposed_timezone='Africa/Kampala',
+                    proposed_effective_from=datetime(2026, 1, 15, 7, 0, 0, tzinfo=timezone.utc),
+                    requested_by=user_id,
+                    status=RegulatoryVolumeStatus.APPROVED,
+                )
+                db_session.add(change_request)
+                db_session.flush()
+                request_id = cast(int, change_request.id)
+                db_session.expire(change_request)
+                # Typed member formats to its value; no AttributeError, and the
+                # message names the offending status.
+                with pytest.raises(ValueError, match="approved"):
+                    RegulatoryVolumePolicyService.approve_policy_change(
+                        request_id, 'late approval'
+                    )
 
 
 if __name__ == '__main__':

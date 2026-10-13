@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 from app.extensions import db
 from app.wallet.models.ledger import LedgerEntryModel, AccountModel, EntryType
 from app.wallet.models.transaction import TransactionModel, TransactionStatus
+from app.utils.enums import WindowMode
 from app.wallet.models.regulatory_volume import (
-    WindowMode,
     RegulatoryVolumePolicy,
     LedgerReversalReference,
 )

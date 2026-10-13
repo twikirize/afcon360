@@ -11,10 +11,10 @@ from flask_login import current_user
 from sqlalchemy import select
 
 from app.extensions import db
+from app.utils.enums import WindowMode, RegulatoryVolumeStatus
 from app.wallet.models.regulatory_volume import (
     RegulatoryVolumePolicy,
     RegulatoryVolumePolicyChangeRequest,
-    WindowMode,
 )
 from app.audit.forensic_audit import ForensicAuditService
 
@@ -49,7 +49,7 @@ class RegulatoryVolumePolicyService:
         """Get comprehensive policy status for display."""
         policy = cls.get_current_policy()
         pending_request = RegulatoryVolumePolicyChangeRequest.query.filter_by(
-            status=RegulatoryVolumePolicyChangeRequest.Status.PENDING
+            status=RegulatoryVolumeStatus.PENDING
         ).order_by(RegulatoryVolumePolicyChangeRequest.requested_at.desc()).first()
         
         return {
@@ -137,7 +137,7 @@ class RegulatoryVolumePolicyService:
         if not change_request:
             raise ValueError(f"Change request {change_request_id} not found")
         
-        if change_request.status != RegulatoryVolumePolicyChangeRequest.Status.PENDING:
+        if change_request.status != RegulatoryVolumeStatus.PENDING:
             raise ValueError(f"Change request is not pending (status: {change_request.status.value})")
         
         if not change_request.can_approve(current_user.id):
@@ -170,7 +170,7 @@ class RegulatoryVolumePolicyService:
                 current_policy.is_active = False
         
         # Update change request
-        change_request.status = RegulatoryVolumePolicyChangeRequest.Status.APPROVED
+        change_request.status = RegulatoryVolumeStatus.APPROVED
         change_request.approved_by = current_user.id
         change_request.approved_at = datetime.now(timezone.utc)
         change_request.resulting_policy_id = new_policy.id
@@ -216,13 +216,13 @@ class RegulatoryVolumePolicyService:
         if not change_request:
             raise ValueError(f"Change request {change_request_id} not found")
         
-        if change_request.status != RegulatoryVolumePolicyChangeRequest.Status.PENDING:
+        if change_request.status != RegulatoryVolumeStatus.PENDING:
             raise ValueError(f"Change request is not pending (status: {change_request.status.value})")
         
         if not change_request.can_reject(current_user.id):
             raise PermissionError("Requester cannot reject their own policy change")
         
-        change_request.status = RegulatoryVolumePolicyChangeRequest.Status.REJECTED
+        change_request.status = RegulatoryVolumeStatus.REJECTED
         change_request.rejected_by = current_user.id
         change_request.rejected_at = datetime.now(timezone.utc)
         change_request.rejection_reason = rejection_reason
