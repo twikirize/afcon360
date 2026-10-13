@@ -39,11 +39,11 @@ from app.utils.enums import (
 # import surface is preserved. Same object (no divergence).
 TransactionType = AuditTransactionType
 
-# Import AuditLog for role management logging
-try:
-    from app.models.audit import AuditLog
-except ImportError:
-    AuditLog = None  # type: ignore
+# Import AuditLog for role management logging.
+# Canonical declaration: app/audit/models.py (table audit_logs).
+# app/models/audit.py only declares ActivityLog (table activity_logs) and
+# must NOT be used for AuditLog imports.
+from app.audit.models import AuditLog
 
 logger = logging.getLogger(__name__)
 
@@ -666,11 +666,8 @@ class AuditService:
     @staticmethod
     def log_role_change(user_id: int, old_role: str, new_role: str, changed_by: int, reason: str = None):
         """Log role change action"""
-        if AuditLog is None:
-            logger.warning("AuditLog not available, skipping role change log")
-            return None
         try:
-            from app.models.user import User
+            from app.identity.models.user import User
             target_user = db.session.get(User, user_id)
             performed_by_user = db.session.get(User, changed_by)
 
@@ -678,8 +675,8 @@ class AuditService:
                 user_id=changed_by,
                 action='role_change',
                 resource_type='user_role',
-                resource_id=user_id,
-                details={
+                resource_id=str(user_id),
+                meta={
                     'target_user_id': user_id,
                     'target_username': target_user.username if target_user else None,
                     'old_role': old_role,
@@ -700,18 +697,15 @@ class AuditService:
     @staticmethod
     def log_role_management_action(user_id: int, action: str, details: dict = None):
         """Log role management action (toggle permissions, etc.)"""
-        if AuditLog is None:
-            logger.warning("AuditLog not available, skipping role management log")
-            return None
         try:
-            from app.models.user import User
+            from app.identity.models.user import User
             performed_by_user = db.session.get(User, user_id)
 
             audit_log = AuditLog(
                 user_id=user_id,
                 action=action,
                 resource_type='role_management',
-                details=details or {},
+                meta=details or {},
                 ip_address=getattr(request, 'remote_addr', None) if 'request' in globals() else None
             )
             db.session.add(audit_log)
@@ -726,7 +720,7 @@ class AuditService:
     def get_recent_role_changes(limit: int = 10):
         """Get recent role change audit logs"""
         try:
-            from app.models.user import User
+            from app.identity.models.user import User
 
             # Get role change logs
             logs = AuditLog.query.filter(
@@ -735,7 +729,8 @@ class AuditService:
 
             result = []
             for log in logs:
-                target_user = db.session.get(User, log.details.get('target_user_id')) if log.details else None
+                meta = log.meta or {}
+                target_user = db.session.get(User, meta.get('target_user_id')) if meta else None
                 performed_by_user = db.session.get(User, log.user_id) if log.user_id else None
 
                 result.append({
@@ -743,9 +738,9 @@ class AuditService:
                     'action': log.action,
                     'target_user': target_user,
                     'performed_by_user': performed_by_user,
-                    'old_role': log.details.get('old_role') if log.details else None,
-                    'new_role': log.details.get('new_role') if log.details else None,
-                    'reason': log.details.get('reason') if log.details else None
+                    'old_role': meta.get('old_role'),
+                    'new_role': meta.get('new_role'),
+                    'reason': meta.get('reason')
                 })
 
             return result
@@ -757,7 +752,7 @@ class AuditService:
     def get_role_management_audit_log(page: int = 1, per_page: int = 50):
         """Get paginated role management audit logs"""
         try:
-            from app.models.user import User
+            from app.identity.models.user import User
             from flask_sqlalchemy.pagination import Pagination
 
             # Get role management logs
@@ -780,7 +775,8 @@ class AuditService:
 
             result = []
             for log in items:
-                target_user = db.session.get(User, log.details.get('target_user_id')) if log.details else None
+                meta = log.meta or {}
+                target_user = db.session.get(User, meta.get('target_user_id')) if meta else None
                 performed_by_user = db.session.get(User, log.user_id) if log.user_id else None
 
                 result.append({
@@ -788,10 +784,10 @@ class AuditService:
                     'action': log.action,
                     'target_user': target_user,
                     'performed_by_user': performed_by_user,
-                    'old_role': log.details.get('old_role') if log.details else None,
-                    'new_role': log.details.get('new_role') if log.details else None,
-                    'reason': log.details.get('reason') if log.details else None,
-                    'details': log.details
+                    'old_role': meta.get('old_role'),
+                    'new_role': meta.get('new_role'),
+                    'reason': meta.get('reason'),
+                    'details': meta
                 })
 
             return pagination, result

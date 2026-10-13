@@ -220,6 +220,21 @@ class Organisation(BaseModel):
     ubos = relationship("OrganisationUBO", back_populates="organisation", cascade="all, delete-orphan")
     kyb_documents = relationship("OrganisationKYBDocument", back_populates="organisation", cascade="all, delete-orphan",
                                  foreign_keys="[OrganisationKYBDocument.organisation_id]")
+    # Inverse of User.default_org (User.default_org_id -> organisations.id).
+    # Restored from 1847e67: User.default_org declares back_populates="default_users".
+    controllers = relationship("OrganisationController", back_populates="organisation", cascade="all, delete-orphan")
+    default_users = relationship("User", foreign_keys="User.default_org_id", back_populates="default_org")
+    custom_roles = relationship("OrgRole", back_populates="organisation", cascade="all, delete-orphan")
+    # LEGACY / RETIRE AFTER COMPATIBILITY VERIFICATION (Stage 4B-3):
+    # OPC-backed relationship. Production writes/reads now target
+    # ProviderParticipation; this relationship is referenced only by legacy
+    # OPC tests and awaits the ADR-4A-010 retirement step.
+    provider_capabilities = relationship(
+        "OrganisationProviderCapability",
+        back_populates="organisation",
+        cascade="all, delete-orphan",
+        lazy="select",
+    )
 
     @validates("verification_status")
     def validate_verification_status(self, key, status):

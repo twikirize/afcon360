@@ -596,8 +596,10 @@ class OrgChangeSource(str, Enum):
 
     @classmethod
     def check_constraint(cls) -> str:
+        # Column on OrganisationAuditLog is `source` (see
+        # app/identity/models/licence_document.py), not `change_source`.
         vals = ", ".join(f"'{v}'" for v in cls.values())
-        return f"change_source IN ({vals})"
+        return f"source IN ({vals})"
 
 
 class EntityType(str, Enum):

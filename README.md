@@ -324,14 +324,29 @@ single source of truth. Models import from there; nothing else defines enums.
 
 ### Workflow to add a NEW enum
 
+There are two separate schema paths. Neither path is run as part of
+Phase 1 source corrections.
+
+**Path A — Alembic** (`flask db migrate -m "..."`) covers applicable
+schema changes such as columns, types, indexes and foreign keys. Do not
+assume Alembic autogenerate creates the CHECK constraints managed by the
+sync tool (it does not reliably render them).
+
+**Path B — CHECK synchronization**
+(`python scripts/sync_check_constraints.py --accept-model-truth`)
+synchronizes model-declared CHECK constraints. Only constraints whose name
+begins with the tool's `MANAGED_PREFIX = "ck_"` are managed: unnamed
+constraints and names with any other prefix are ignored by the tool. Every
+model-declared CHECK constraint must therefore carry an explicit `ck_*`
+name. The tool generates a migration file; it never applies one.
+
 1. Decide category (A, B, or C — see above).
-2. If Category A/C: add `PgEnum(...)` to ACTIVE section in `app/utils/enums.py`
-   with `create_type=False` and exact PG type name.
-3. Import in model: `from app.utils.enums import MyEnum`
-4. Use as column type: `db.Column(MyEnum, nullable=False)`
-5. Restart app — `ensure_all_enums()` creates/syncs on next boot.
-6. Run `flask db migrate` if new tables/columns added — migration will NOT
-   contain `CREATE TYPE` (by design).
+2. For new enum-like columns, use `String` + a named (`ck_*`) CHECK
+   constraint by default (see `app/utils/enums.py` helpers).
+3. For Path A changes, run `flask db migrate`, inspect the generated
+   migration, then upgrade only after review.
+4. For Path B changes, run the sync tool to generate the migration,
+   review it, then upgrade only after review.
 
 ### Workflow to ACTIVATE a catalogued enum (DB hardening)
 
@@ -345,9 +360,22 @@ managed. To activate one:
 2. Move definition from PLANNED section to its module's ACTIVE section.
    Preserve `name=` exactly.
 3. Refactor model to import from `app.utils.enums`.
-4. Restart app — `ensure_all_enums()` no-ops if type exists.
-5. Run `flask db migrate` — verify no `CREATE/DROP TYPE` in diff.
-6. Commit module-by-module. Never batch-activate more than one module at a time.
+4. If new tables/columns were added, follow Path A; if CHECK constraints
+   were added or changed, follow Path B. Review every generated migration
+   before upgrading.
+5. Commit module-by-module. Never batch-activate more than one module at a time.
+
+### Enum policy
+
+- Use String + named CHECK constraints for new enum-like columns by
+  default.
+- Preserve verified existing native PostgreSQL ENUM mappings as explicit
+  legacy exceptions. Existing native PG ENUM columns do not need CHECK
+  constraints merely because they represent enum-like values, and the CHECK
+  sync tool applies to the String + CHECK pattern, not automatically to
+  every enum-like column.
+- Any legacy conversion is deferred to the separately authorized
+enum-reconciliation roadmap.
 
 ### Current activation status (2026-10-11)
 

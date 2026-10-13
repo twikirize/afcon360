@@ -37,7 +37,15 @@ class OrganisationVerification(BaseModel):
     expires_at = Column(DateTime)
 
     __table_args__ = (
-        CheckConstraint(OrgVerificationStatus.check_constraint(), name="ck_org_verification_status"),
+        # NOTE: this table's column is `status`, while Organisation.verification_status
+        # uses OrgVerificationStatus.check_constraint() directly (that helper emits
+        # `verification_status IN (...)`). Build the same allowed values against `status`.
+        CheckConstraint(
+            "status IN ({})".format(
+                ", ".join(f"'{v}'" for v in OrgVerificationStatus.values())
+            ),
+            name="ck_org_verification_status",
+        ),
     )
 
     organisation = relationship(
