@@ -27,7 +27,7 @@ def test_log_transaction_persists_member():
             currency="UGX",
             status="completed",
         )
-        assert result.transaction_type == AuditTransactionType.DEPOSIT
+        assert result.transaction_type is AuditTransactionType.DEPOSIT
         assert isinstance(result.transaction_type, AuditTransactionType)
         mock_db.session.add.assert_called_once_with(result)
         mock_db.session.commit.assert_called_once_with()
@@ -42,7 +42,7 @@ def test_log_api_call_persists_member():
             request_id=str(uuid4()),
             status=APICallStatus.SUCCESS,
         )
-        assert result.status == APICallStatus.SUCCESS
+        assert result.status is APICallStatus.SUCCESS
         assert isinstance(result.status, APICallStatus)
         mock_db.session.add.assert_called_once_with(result)
         mock_db.session.commit.assert_called_once_with()
@@ -57,7 +57,7 @@ def test_log_access_persists_member():
             data_category="kyc_documents",
             purpose="support",
         )
-        assert result.access_type == DataAccessType.READ
+        assert result.access_type is DataAccessType.READ
         mock_db.session.add.assert_called_once_with(result)
         mock_db.session.commit.assert_called_once_with()
 
@@ -73,9 +73,11 @@ def test_log_event_persists_member_and_keeps_string_input():
         assert insert.compile().params["severity"] is AuditSeverity.CRITICAL
     with mock.patch.object(ca, "db") as mock_db:
         # String input contract is preserved: normalised to the member.
+        # The Literal below is intentional: it exercises the string-accepting
+        # branch of log_event, which the typed signature does not advertise.
         ca.SecurityEventLog.log_event(
             event_type="probe",
-            severity="critical",
+            severity="critical",  # pyright: ignore[reportArgumentType]
             description="string input",
         )
         insert = mock_db.session.connection.return_value.execute.call_args[0][0]

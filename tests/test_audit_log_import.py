@@ -17,6 +17,7 @@ All mocks use context managers and are restored afterwards.
 """
 
 from unittest import mock
+from typing import cast
 
 import app.audit.comprehensive_audit as ca
 from app.audit.models import AuditLog as CanonicalAuditLog
@@ -49,16 +50,16 @@ def test_log_role_change_constructs_entry_without_database():
         )
         assert result is not None
         assert isinstance(result, CanonicalAuditLog)
-        assert result.action == "role_change"
-        assert result.resource_type == "user_role"
-        assert result.resource_id == "1"
-        assert result.user_id == 1
-        assert result.meta["old_role"] == "user"
-        assert result.meta["new_role"] == "admin"
-        assert result.meta["reason"] == "test"
-        assert result.meta["target_user_id"] == 1
-        assert result.meta["target_username"] == "target-user"
-        assert result.meta["performed_by_username"] == "actor-user"
+        assert cast(str, result.action) == "role_change"
+        assert cast(str, result.resource_type) == "user_role"
+        assert cast(str, result.resource_id) == "1"
+        assert cast(int, result.user_id) == 1
+        assert cast(str, result.meta["old_role"]) == "user"
+        assert cast(str, result.meta["new_role"]) == "admin"
+        assert cast(str, result.meta["reason"]) == "test"
+        assert cast(int, result.meta["target_user_id"]) == 1
+        assert cast(str, result.meta["target_username"]) == "target-user"
+        assert cast(str, result.meta["performed_by_username"]) == "actor-user"
         mock_db.session.add.assert_called_once_with(result)
         mock_db.session.commit.assert_called_once_with()
         mock_db.session.rollback.assert_not_called()

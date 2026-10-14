@@ -3675,3 +3675,67 @@ matching / realtime / maps / routing
 - **Links:** `tests/conftest.py:261`, `migrations/env.py` (`fileConfig`), `tests/transport/test_booking_schema_shadow.py::test_shadow_mode_logs_discrepancy_and_does_not_reject`
 ---
 ---
+
+## TRANSPORT-WALLET-PAYMENT-INTEGRATION — Deferred multi-currency fare, rider currency, driver settlement, FX and payment contract
+- **Status:** DEFERRED — NOT BLOCKING CURRENT BOOKING LIFECYCLE IMPLEMENTATION; REQUIRED BEFORE AFFECTED PAYMENT CUTOVER
+- **Raised:** 2026-10-12
+- **Context:** Stage 3B separates the pre-Booking `RideRequest` lifecycle from the canonical `Booking`. `fare_service.calculate_estimate` is currency-agnostic and always USD-denominated (`CURRENCY_DEFAULT`); the rider-supplied `currency` code is a payment preference, preserved distinctly (`request_metadata["requested_currency"]`, fingerprinted) and never converted. Transport must never implement wallet functions or reproduce Wallet financial logic; the Wallet–Transport integration comes later through its own approved node. This item does not block RideRequest creation, matching, driver acceptance, or any Booking lifecycle work that does not execute payment.
+- **Ownership boundary:**
+  - Transport owns ride lifecycle and truthful base-fare denomination (requirements, base-fare calculation, matching, booking lifecycle; `fare_estimate_amount` always in `currency_code` from the estimate).
+  - Wallet/Finance owns FX, payment execution, balances, ledger, refunds, escrow and settlement.
+  - Transport must never implement wallet functions or perform currency conversion.
+- **What needs to happen:** In a dedicated approved node: consolidate/approve the Wallet FX contract; define the cross-module payment interface (Transport→Wallet handoff); stable idempotency across the payment boundary; canonical wallet transaction identifier; truthful payment / funds-held / settlement states. Non-cash payment cutover for converted Bookings stays blocked until that node passes.
+- **Owner/area:** transport (lifecycle/denomination) + wallet/finance (FX/execution/settlement)
+- **Links:** `app/transport/services/ride_request_service.py`, `app/transport/services/fare_service.py`, `app/transport/services/payment_service.py`, `app/transport/models.py` (`RideRequest`, `SearchCycle`), `docs/transport/nodes/BOOKING-LIFECYCLE-REQUEST-CREATE-contract.md`
+---
+---
+
+## ENUM-PHASE-4W — Wallet enum repair (deferred workstream)
+- **Status:** Not started (filed at enum-workstream closeout)
+- **Raised:** 2026-10-13
+- **Context:** `app/wallet/models/regulatory_volume.py` defines a local `WindowMode(str)` class (plain-`str`, not an Enum subclass) that shadows the `WindowMode` import from `app/utils/enums.py` (module lines 10-13 vs 18-29). All eight `WindowMode.check_constraint()` call sites in the file therefore emit `window_mode IN (...)` against tables that have no `window_mode` column (actual columns: `daily_window_mode`, `monthly_window_mode`, `proposed_daily_mode`, `proposed_monthly_mode`). `RegulatoryVolumePolicyChangeRequest` additionally declares two duplicate `__table_args__` blocks, and its inner `Status(str)` class plus the shared helper hardcode identifiers the same way. Wallet code was explicitly out of scope for Phase 1/Phase 4.
+- **What needs to happen:** In a dedicated authorized wallet node: resolve the shadow class, restore the five wallet columns (`daily_window_mode`, `monthly_window_mode`, `proposed_daily_mode`, `proposed_monthly_mode`, `status`) to their proven native types (`window_mode_enum`, `rvpcr_status_enum` — labels verified identical in both databases), repair the four mis-targeted CHECK expressions, and address the nested `Status` class. Do not touch wallet code without that authorization.
+- **Owner/area:** wallet/finance
+- **Links:** `app/wallet/models/regulatory_volume.py`, `docs/enum-workstream-closeout.md`
+---
+---
+
+## RIDEREQUEST-MIGRATION — RideRequest feature tables and booking columns
+- **Status:** Not started (filed at enum-workstream closeout)
+- **Raised:** 2026-10-13
+- **Context:** `flask db check` against `afcon360_prod` reports 26 additive operations for the committed RideRequest feature that the development database predates: 3 tables (`transport_ride_requests`, `transport_search_cycles`, `transport_offer_attempts`), 2 columns (`transport_bookings.ride_request_id`, `transport_bookings.search_cycle_id`), 19 indexes, 2 foreign keys. Unrelated to the enum restoration; no enum `modify_type` is involved.
+- **What needs to happen:** Generate exactly one migration via the approved `flask db migrate` workflow, inspect it, and apply it under a separately authorized node. Do not hand-write or hand-edit the migration.
+- **Owner/area:** transport
+- **Links:** `app/transport/models.py` (`RideRequest`, `SearchCycle`, `OfferAttempt`), `docs/enum-workstream-closeout.md`
+---
+---
+
+## BUSINESS-CATEGORY-DRIFT — organisations.business_category label divergence
+- **Status:** Not started (filed at enum-workstream closeout)
+- **Raised:** 2026-10-13
+- **Context:** Direct catalog inspection proved `public.org_business_category` carries 4 lowercase labels in `afcon360_prod` (`merchant`, `service_provider`, `marketplace_seller`, `non_profit`) versus 39 uppercase labels in `afcon360_test`. The column model is `String(40)` and was explicitly excluded from Phase 4. The `flask db check` `modify_type` for this column reflects that drift.
+- **What needs to happen:** Decide exactly one: converge the environments on an explicitly approved contract, convert the column to String with a suitable constraint strategy, or retain the discrepancy if an evidenced and approved requirement justifies it. Investigation only until authorized; implement nothing here.
+- **Owner/area:** identity/platform
+- **Links:** `app/identity/models/organisation.py`, `docs/enum-workstream-closeout.md`
+---
+---
+
+## ENUM-R2 — Auditor template-less routes use string filters on name-based enums
+- **Status:** Not started (filed at enum-workstream closeout)
+- **Raised:** 2026-10-13
+- **Context:** `app/admin/auditor/routes.py` (reported lines 93-94, 121-122, 176) passes raw request strings into `filter_by` on name-based native-enum columns (`transaction_type`, `severity`, `status`). No corresponding templates exist under `templates/admin/auditor/`, so the routes are currently unreachable via UI.
+- **What needs to happen:** Restore the routes with a validated enum contract (normalize request strings to members) or remove them. Confirm locations by read-only inspection before acting.
+- **Owner/area:** admin/audit
+- **Links:** `app/admin/auditor/routes.py`, `docs/enum-workstream-closeout.md`
+---
+---
+
+## ENUM-R3 — Marketplace boundary filters assume lowercase input
+- **Status:** Not started (filed at enum-workstream closeout)
+- **Raised:** 2026-10-13
+- **Context:** `app/transport/services/marketplace_service.py` (reported lines 637, 650, 764) filters `VehicleContract.status` and `VehicleMarketplaceListing.compensation_model` (both restored to native name-based PG enums) against caller-supplied values. No in-application callers establish the boundary contract, so the expected input casing is unproven.
+- **What needs to happen:** Define and document the boundary contract, or normalize input at the appropriate entry point. Do not implement either option without authorization.
+- **Owner/area:** transport/marketplace
+- **Links:** `app/transport/services/marketplace_service.py`, `docs/enum-workstream-closeout.md`
+---
+---

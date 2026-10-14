@@ -63,11 +63,6 @@ class RegulatoryVolumePolicy(BaseModel):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-    __table_args__ = (
-        Index('ix_rvp_active', 'is_active', unique=True, postgresql_where=(Column('is_active') == True)),
-        Index('ix_rvp_effective_from', 'effective_from'),
-    )
-
     def __repr__(self):
         return f"<RegulatoryVolumePolicy id={self.id} daily={self.daily_window_mode} monthly={self.monthly_window_mode} active={self.is_active}>"
 

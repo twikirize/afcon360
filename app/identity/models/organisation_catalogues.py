@@ -49,7 +49,7 @@ class OrganisationCategory(BaseModel):
     types = relationship(
         "OrganisationTypeCatalogue",
         back_populates="category",
-        cascade="all, delete-orphan",
+        passive_deletes="all",
     )
 
     def __repr__(self):
@@ -68,7 +68,7 @@ class OrganisationTypeCatalogue(BaseModel):
     label = Column(String(120), nullable=False)
     category_code = Column(
         String(50),
-        ForeignKey("organisation_categories.code", ondelete="CASCADE"),
+        ForeignKey("organisation_categories.code", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
