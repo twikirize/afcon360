@@ -196,8 +196,13 @@ class PaymentProviderConfig(BaseModel):
         return cls.query.all()
     
     @classmethod
-    def initialize_defaults(cls):
-        """Initialize default provider configurations"""
+    def initialize_defaults(cls, commit=True):
+        """Initialize default provider configurations.
+
+        Returns the number of configurations created. When ``commit`` is
+        ``False`` the caller owns transaction control (used by
+        ``flask init-wallet-config`` so both initializers commit together).
+        """
         defaults = [
             {
                 "provider_name": "flutterwave",
@@ -239,15 +244,19 @@ class PaymentProviderConfig(BaseModel):
                 }
             }
         ]
-        
+
+        created = 0
         for config_data in defaults:
             existing = cls.query.filter_by(provider_name=config_data["provider_name"]).first()
             if not existing:
                 config = cls(config_data["provider_name"], config_data["display_name"], config_data.get("is_sandbox", True))
                 config.config_json = config_data["config_json"]
                 db.session.add(config)
-        
-        db.session.commit()
+                created += 1
+
+        if commit:
+            db.session.commit()
+        return created
 
 
 class WalletSystemConfig(BaseModel):

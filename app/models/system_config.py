@@ -101,8 +101,13 @@ class SystemConfig(BaseModel):
         return setting
 
     @classmethod
-    def initialize_defaults(cls):
-        """Initialize default system settings"""
+    def initialize_defaults(cls, commit=True):
+        """Initialize default system settings.
+
+        Returns the number of settings created. When ``commit`` is ``False``
+        the caller owns transaction control (used by ``flask
+        init-wallet-config`` so both initializers commit together).
+        """
         defaults = [
             {'key': 'SITE_NAME', 'value': 'AFCON 360', 'value_type': 'str', 'category': 'branding', 'description': 'Site display name'},
             {'key': 'MAINTENANCE_MODE', 'value': 'false', 'value_type': 'bool', 'category': 'system', 'description': 'Enable maintenance mode'},
@@ -146,6 +151,7 @@ class SystemConfig(BaseModel):
             if not cls.query.filter_by(key=item['key']).first():
                 db.session.add(cls(**item))
                 created += 1
-        db.session.commit()
+        if commit:
+            db.session.commit()
         return created
 

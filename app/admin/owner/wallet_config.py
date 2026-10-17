@@ -425,20 +425,53 @@ RATE_LIMIT_TRANSFER_PER_MINUTE=10
 
 # Register this blueprint in app/__init__.py
 def init_wallet_config(app):
-    """Initialize wallet config blueprint"""
+    """Register the owner wallet-config blueprint.
+
+    Registration only. Database default seeding was deliberately removed from
+    the application-factory path: it previously ran before Alembic had created
+    the schema, issued a failing query against ``payment_provider_configs``,
+    and left the shared SQLAlchemy session in an aborted transaction that then
+    obstructed startup and migration. Seeding now happens explicitly, after a
+    successful schema migration, via ``flask init-wallet-config``.
+    """
     app.register_blueprint(wallet_config_bp)
-    
-    # Initialize default configs
-    with app.app_context():
-        try:
-            PaymentProviderConfig.initialize_defaults()
-        except Exception as e:
-            app.logger.warning(f"Could not initialize payment provider defaults: {e}")
-        try:
-            from app.models.system_config import SystemConfig
-            SystemConfig.initialize_defaults()
-        except Exception as e:
-            app.logger.warning(f"Could not initialize system config defaults: {e}")
 
 
-__all__ = ['wallet_config_bp', 'init_wallet_config']
+def initialize_wallet_and_system_defaults():
+    """Seed wallet payment-provider and system-config defaults together.
+
+    Both initializers share ONE deliberate transaction. This is intended to
+    run after a successful schema migration (``flask init-wallet-config``),
+    NEVER from the application factory:
+
+      * both initializers run without committing;
+      * a single commit is issued only when both succeed;
+      * any failure rolls the whole transaction back and re-raises, so the
+        caller can report a non-zero exit instead of claiming success.
+
+    Idempotent: each initializer skips rows that already exist, so re-running
+    this function never duplicates defaults.
+
+    Returns ``{"payment_providers": <created>, "system_configs": <created>}``.
+    """
+    from app.models.system_config import SystemConfig
+
+    try:
+        provider_count = PaymentProviderConfig.initialize_defaults(commit=False)
+        system_count = SystemConfig.initialize_defaults(commit=False)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
+    return {
+        "payment_providers": provider_count,
+        "system_configs": system_count,
+    }
+
+
+__all__ = [
+    'wallet_config_bp',
+    'init_wallet_config',
+    'initialize_wallet_and_system_defaults',
+]

@@ -156,8 +156,28 @@ def is_csp_strict_enforce():
     return refresh_csp_strict_cache()
 
 
+def _rollback_session_quietly():
+    """Roll back the scoped SQLAlchemy session, ignoring any failure.
+
+    Used by best-effort startup reads (e.g. the CSP flag cache refresh) so a
+    missing pre-migration table cannot leave the shared session in an aborted
+    transaction that would obstruct Alembic or later startup work.
+    """
+    try:
+        from app.extensions import db
+        db.session.rollback()
+    except Exception:
+        pass
+
+
 def refresh_csp_strict_cache():
-    """Re-read CSP_STRICT_ENFORCE from SystemConfig into the worker cache."""
+    """Re-read CSP_STRICT_ENFORCE from SystemConfig into the worker cache.
+
+    Never raises and fails closed to False (unchanged policy default). When
+    the ``system_configs`` table is absent — e.g. before the baseline
+    migration has created it — the failed query is rolled back so the shared
+    SQLAlchemy session is not left in an aborted transaction.
+    """
     try:
         from flask import current_app, has_app_context
         from app.models.system_config import SystemConfig
@@ -171,6 +191,7 @@ def refresh_csp_strict_cache():
         else:
             value = False
     except Exception:
+        _rollback_session_quietly()
         value = False
     _CSP_STRICT_CACHE["value"] = value
     _CSP_STRICT_CACHE["loaded"] = True
@@ -1395,6 +1416,9 @@ def create_app(config_object=None) -> Flask:
     # ------------------------------------------------------------------
     from app.cli.owner import register_owner_commands
     register_owner_commands(app)
+
+    from app.cli.wallet import register_wallet_commands
+    register_wallet_commands(app)
 
     try:
         from app.transport.cli_driver import driver_group
