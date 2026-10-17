@@ -109,6 +109,18 @@ except Exception as e:
     logger.error(f"❌ Role-based admin modules error: {e}")
     logger.error(f"Full traceback: {traceback.format_exc()}")
 
+# 8. Classification manager
+try:
+    from app.admin.classification import init_classification
+    init_classification(admin_bp)
+    logger.info("✅ Registered classification manager blueprint")
+except ImportError as e:
+    logger.error(f"❌ Classification manager import failed: {e}")
+    logger.error(f"Full traceback: {traceback.format_exc()}")
+except Exception as e:
+    logger.error(f"❌ Classification manager error: {e}")
+    logger.error(f"Full traceback: {traceback.format_exc()}")
+
 # ============================================
 # IMPORT MODELS FOR ALEMBIC
 # ============================================

@@ -1198,8 +1198,8 @@ class Booking(TransportBase):
     # --- BOOKING-LIFECYCLE-PERSISTENCE (Stage 3B, additive only) ---
     # Conversion linkage: set exactly once when a RideRequest converts.
     # Nullable so every existing Booking row stays valid with both NULL.
-    ride_request_id = db.Column(db.BigInteger, db.ForeignKey("transport_ride_requests.id"), nullable=True)
-    search_cycle_id = db.Column(db.BigInteger, db.ForeignKey("transport_search_cycles.id"), nullable=True)
+    ride_request_id = db.Column(db.BigInteger, db.ForeignKey("transport_ride_requests.id", name="fk_transport_bookings_ride_request"), nullable=True)
+    search_cycle_id = db.Column(db.BigInteger, db.ForeignKey("transport_search_cycles.id", name="fk_transport_bookings_search_cycle"), nullable=True)
 
     # Driver tracking
     driver_assigned_at = db.Column(db.DateTime(timezone=True))
@@ -1445,7 +1445,7 @@ class RideRequest(TransportBase):
     requested_pickup_time = db.Column(db.DateTime(timezone=True), nullable=True)
     # Reference existing PG enum type by name (create_type=False prevents CREATE TYPE in migrations)
     service_type = db.Column(
-        PgEnum(name='servicetype', create_type=False, validate_strings=False),
+        PgEnum(ServiceTypeEnum, name="servicetype", create_type=False),
         nullable=False
     )
     vehicle_class = db.Column(db.String(30), nullable=False, default="comfort")

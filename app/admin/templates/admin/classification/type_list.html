@@ -1,0 +1,56 @@
+{% extends "admin/base.html" %}
+{% block title %}Organisation Types{% endblock %}
+{% set active_page %}types{% endset %}
+
+{% block content %}
+{% include "admin/base_sidebar.html" %}
+
+<section class="panel panel-info">
+    <header>
+        <h2><i class="fas fa-tags"></i> Organisation Types</h2>
+        <div class="actions">
+            <a class="btn btn-primary" href="{{ url_for('admin.classification.type_create') }}">Create Type</a>
+        </div>
+    </header>
+
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Code</th>
+                <th>Label</th>
+                <th>Category</th>
+                <th>Organisations</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in types %}
+            <tr class="{% if t.is_active %}active{% else %}inactive{% %}">
+                <td>{{ t.code|upper }}</td>
+                <td>{{ t.label }}</td>
+                <td>{{ t.category_code|default('—')|upper }}</td>
+                <td>{{ t.organisation_count }}</td>
+                <td>
+                    {% if t.is_active %}
+                        <span class="status-badge status-active">Active</span>
+                    {% else %}
+                        <span class="status-badge status-inactive">Inactive</span>
+                    {% %}
+                </td>
+                <td>
+                    <a class="btn btn-sm btn-default" href="{{ url_for('admin.classification.type_edit', type_id=t.id) }}">Edit</a>
+                    <form action="{{ url_for('admin.classification.type_deactivate', type_id=t.id) }}" method="POST" style="display:inline">
+                        <button class="btn btn-sm btn-link text-danger" onclick="return confirm('Deactivate this type? Organisations will still reference it but it will be hidden from new selections.');">Deactivate</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <footer>
+        <p>Total types: {{ types|length }}</p>
+    </footer>
+</section>
+{% endblock %}

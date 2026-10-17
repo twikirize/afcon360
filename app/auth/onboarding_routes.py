@@ -479,10 +479,16 @@ def _capability_options() -> List[Dict[str, str]]:
 def _validate_organisation_type(value: str):
     """
     Return the canonical ``OrganizationType`` member for *value* or raise
-    ValueError. ``business_category`` is a native PostgreSQL enum whose member
-    names (e.g. ``HOTEL``) are derived from the enum *names*, so the existing
-    canonical mechanism persists the ``OrganizationType`` member (not the
-    lowercase ``.value`` string).
+    ``ValueError``.
+
+    Onboarding persists the lowercase ``.value`` (e.g. ``hotel``) in
+    ``organisation_type_code``. Legacy registration passes the member to
+    ``business_category``, whose current validator stores the uppercase
+    ``.name`` (e.g. ``HOTEL``). ``business_category`` is a plain
+    ``String(40)`` column and no longer uses the ``org_business_category``
+    PostgreSQL enum (the enum type itself may still exist in the
+    database). ``_parse_org_type`` normalizes supported inputs when
+    resolving the legacy fallback.
     """
     from app.identity.models.organization_types import OrganizationType
     try:

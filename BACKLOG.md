@@ -3739,3 +3739,13 @@ matching / realtime / maps / routing
 - **Links:** `app/transport/services/marketplace_service.py`, `docs/enum-workstream-closeout.md`
 ---
 ---
+
+
+## AGENT-ONBOARDING
+
+- **Status:** Not started (filed at onboarding-clarification closeout)
+- **Raised:** 2026-10-14
+- **Context:** Wallet-agent application flow clarified and implemented via dashboard entry points.
+- **What needs to happen:** Future refinement: add agent type selection; implement country eligibility checks.
+- **Owner/area:** onboarding/wallet
+- **Links:** pp/wallet/services/agent_onboarding_service.py, 	emplates/wallet/wallet_dashboard.html

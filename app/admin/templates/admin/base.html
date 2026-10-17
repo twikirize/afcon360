@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>{% block title %}AFCON360{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/static/css/admin.css">
+    {% csrf_meta %}
+</head>
+<body class="admin-body">
+    <%- include("admin/base_sidebar.html") -%>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="admin-flashes">
+        {% for category, message in messages %}
+        <p class="flash flash-{{ category }}">{{ message }}</p>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <section class="panel panel-info">
+        {% block content %}{% endblock %}
+    </section>
+
+    <footer class="admin-footer">
+        <p>AFCON360 Administration &copy; 2026</p>
+    </footer>
+</body>
+</html>

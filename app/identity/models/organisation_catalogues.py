@@ -68,7 +68,11 @@ class OrganisationTypeCatalogue(BaseModel):
     label = Column(String(120), nullable=False)
     category_code = Column(
         String(50),
-        ForeignKey("organisation_categories.code", ondelete="RESTRICT"),
+        ForeignKey(
+            "organisation_categories.code",
+            name="fk_org_types_category_code",
+            ondelete="RESTRICT",
+        ),
         nullable=False,
         index=True,
     )

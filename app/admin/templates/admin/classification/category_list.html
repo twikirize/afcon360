@@ -1,0 +1,65 @@
+{% extends "admin/base.html" %}
+{% block title %}Organisation Categories{% endblock %}
+{% set active_page %}categories{% endset %}
+
+{% block content %}
+{% include "admin/base_sidebar.html" %}
+
+<section class="panel panel-info">
+    <header>
+        <h2><i class="fas fa-folder"></i> Organisation Categories</h2>
+        <div class="actions">
+            <a class="btn btn-primary" href="{{ url_for('admin.classification.category_create') }}">Create Category</a>
+        </div>
+    </header>
+
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Code</th>
+                <th>Label</th>
+                <th>Types</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cat in categories %}
+            <tr class="{% if cat.is_active %}active{% else %}inactive{% %}">
+                <td>{{ cat.code|upper }}</td>
+                <td>{{ cat.label }}</td>
+                <td>{{ cat.type_count }}</td>
+                <td>
+                    {% if cat.is_active %}
+                        <span class="status-badge status-active">Active</span>
+                    {% else %}
+                        <span class="status-badge status-inactive">Inactive</span>
+                    {% %}
+                </td>
+                <td>
+                    <a class="btn btn-sm btn-default" href="{{ url_for('admin.classification.category_edit', category_id=cat.id) }}">Edit</a>
+                    <form action="{{ url_for('admin.classification.category_deactivate', category_id=cat.id) }}" method="POST" style="display:inline">
+                        <button class="btn btn-sm btn-link text-danger" onclick="return confirm('Deactivate this category? Types will remain but it will be hidden from new onboarding.');">Deactivate</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            {% for cat in inactive_categories %}
+            <tr class="inactive">
+                <td>{{ cat.code|upper }}</td>
+                <td>{{ cat.label }}</td>
+                <td>{{ cat.type_count }}</td>
+                <td><span class="status-badge status-inactive">Inactive</span></td>
+                <td>
+                    <a class="btn btn-sm btn-default" href="{{ url_for('admin.classification.category_activate', category_id=cat.id) }}">Activate</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <footer>
+        <p>Total categories: {{ categories.total|default(0) + inactive_categories|length }}</p>
+    </footer>
+</section>
+{% endblock %}

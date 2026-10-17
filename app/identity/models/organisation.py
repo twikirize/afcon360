@@ -500,7 +500,9 @@ class Organisation(BaseModel):
     @validates("business_category")
     def validate_business_category(self, key, category):
         # Legacy field: normalize OrganizationType members to their .name
-        # (which matches the PostgreSQL enum label case); leave plain strings
+        # (current application behavior for this column — distinct from the
+        # lowercase .value stored in organisation_type_code and from the
+        # former PostgreSQL enum's lowercase label set); leave plain strings
         # and None unchanged.
         if category is None:
             return None

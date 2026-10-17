@@ -282,12 +282,12 @@ class RideRequestService:
         # (Legacy Booking stores payload currency beside an estimate amount;
         # this service does not repeat that relabeling.)
         currency_code = str(estimate.get("currency") or "USD").upper()
-        if currency_code not in Currency.enums:
+        if currency_code not in {m.value for m in Currency}:
             raise ServiceUnavailableError("Fare service returned an unknown currency")
         requested_currency = (str(data.get("currency")).upper()
                               if data.get("currency") else None)
         if (requested_currency is not None
-                and requested_currency not in Currency.enums):
+                and requested_currency not in {m.value for m in Currency}):
             raise ValidationError(message="Invalid currency code",
                                   field="currency")
 

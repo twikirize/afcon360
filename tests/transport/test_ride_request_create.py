@@ -74,13 +74,22 @@ def _promote_to_tier2(app, user_id):
 
 
 def _login_as(app, client, user_id):
+    """Session login following tests/conftest.py::_login_client exactly.
+
+    The public id is read while the instance is attached and committed
+    state is rolled back BEFORE opening session_transaction: reading
+    expired ORM attributes afterwards trips the app's request-teardown
+    session lifecycle (DetachedInstanceError).
+    """
     from app.identity.models.user import User
 
     with app.app_context():
-        user = db.session.get(User, user_id)
-        with client.session_transaction() as sess:
-            sess["_user_id"] = str(user.public_id)
-            sess["_fresh"] = True
+        merged = db.session.merge(db.session.get(User, user_id))
+        uid = str(merged.public_id)
+        db.session.rollback()
+    with client.session_transaction() as sess:
+        sess["_user_id"] = uid
+        sess["_fresh"] = True
     return client
 
 
@@ -180,6 +189,69 @@ class TestRequestCreate:
         assert (requests, cycles, bookings) == (1, 1, 0)
 
 
+class TestRollbackAfterPartialFlush:
+    def test_cycle_failure_rolls_back_flushed_request(self, app, client):
+        """Fault-injection rollback proof: the RideRequest flush succeeds,
+        then the SearchCycle insert fails; the real service error path must
+        roll back so neither partial row survives and no Booking appears.
+        """
+        from sqlalchemy import event
+        from sqlalchemy.exc import SQLAlchemyError
+
+        from app.transport.models import Booking, RideRequest, SearchCycle
+
+        rider_id = _seed_rider(app)
+        _promote_to_tier2(app, rider_id)
+        _login_as(app, client, rider_id)
+
+        key = "req-%s" % uuid.uuid4().hex
+        body = _payload(idempotency_key=key)
+        expected_cycle_key = "%s:1" % key
+        seen = {"fired": False, "ride_request_id": None}
+
+        def _fail_cycle(mapper, connection, target):
+            # Strict key gate: fires only for this test's SearchCycle insert.
+            if target.cycle_key != expected_cycle_key:
+                return
+            # ride_request.id assigned here proves the L391 flush ran first.
+            seen["fired"] = True
+            seen["ride_request_id"] = target.ride_request_id
+            raise SQLAlchemyError(
+                "injected SearchCycle failure (rollback proof)")
+
+        with app.app_context():
+            bookings_before = Booking.query.count()
+        requests_before, cycles_before, _ = _counts(app, rider_id)
+
+        event.listen(SearchCycle, "before_insert", _fail_cycle)
+        try:
+            resp = client.post(URL, json=body)
+        finally:
+            event.remove(SearchCycle, "before_insert", _fail_cycle)
+
+        # Service hit its SQLAlchemyError path: generic 500, no 201/200/409.
+        assert resp.status_code == 500, resp.get_data(as_text=True)
+        # The fault fired after the RideRequest flush (id already assigned).
+        assert seen["fired"] is True
+        assert seen["ride_request_id"] is not None
+
+        # Fresh-session evidence: neither partial row survived the rollback.
+        with app.app_context():
+            assert RideRequest.query.filter_by(
+                user_id=rider_id, idempotency_key=key,
+                is_deleted=False).one_or_none() is None
+            assert SearchCycle.query.filter_by(
+                cycle_key=expected_cycle_key).one_or_none() is None
+            assert Booking.query.count() == bookings_before
+        assert _counts(app, rider_id) == (requests_before, cycles_before, 0)
+        # Pre-existing rows intact: rider still present.
+        with app.app_context():
+            from app.identity.models.user import User
+            assert db.session.get(User, rider_id) is not None
+        # Listener reliably removed even when an assertion above fails.
+        assert not event.contains(SearchCycle, "before_insert", _fail_cycle)
+
+
 class TestCommitmentGates:
     def test_anonymous_cannot_create(self, app, client):
         rider_id = _seed_rider(app)
@@ -223,7 +295,9 @@ class TestCanonicalValidation:
 
 class TestLegacyPathsUnchanged:
     def test_anonymous_discovery_still_open(self, client):
-        resp = client.get("/api/transport/availability")
+        # Registered on the transport web blueprint
+        # (app/transport/routes.py::api_availability), NOT /api/transport/*.
+        resp = client.get("/transport/api/availability")
         assert resp.status_code == 200, resp.get_data(as_text=True)
         assert resp.get_json()["success"] is True
 

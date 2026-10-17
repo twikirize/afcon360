@@ -77,6 +77,9 @@
       <a href="{{ safe_url('wallet.withdraw') }}" class="btn btn-danger">
         <i class="fas fa-arrow-up"></i> Withdraw
       </a>
+      <a href="{{ url_for('wallet.agent_apply') }}" class="btn btn-ghost">
+        <i class="bi bi-person-plus"></i> Apply as Wallet Agent
+      </a>
       <a href="{{ url_for('wallet.transactions') }}" class="btn btn-outline">
         <i class="fas fa-list"></i> History
       </a>

@@ -1,0 +1,19 @@
+<nav class="admin-sidebar">
+    <ul>
+        <li{% if active_page == 'categories' %} class="active"{% endif %}>
+            <a href="{{ url_for('admin.classification.category_list') }}">
+                <i class="fas fa-folder"></i> Categories
+            </a>
+        </li>
+        <li{% if active_page == 'types' %} class="active"{% endif %}>
+            <a href="{{ url_for('admin.classification.type_list') }}">
+                <i class="fas fa-tags"></i> Types
+            </a>
+        </li>
+        <li>
+            <a href="{{ url_for('admin.dashboard') }}">
+                <i class="fas fa-tachometer-alt"></i> Dashboard
+            </a>
+        </li>
+    </ul>
+</nav>
