@@ -18,6 +18,7 @@ Target:
 """
 
 from alembic import op
+import sqlalchemy as sa
 
 
 revision = '1788729103'
@@ -28,6 +29,14 @@ depends_on = None
 
 def upgrade():
     op.create_check_constraint('ck_listing_type_valid', 'accommodation_properties', "listing_type IN ('entire_place', 'private_room', 'shared_room')")
+    # H2' reconciliation: the frozen historical root already defines
+    # ck_property_type_valid on accommodation_properties (the 449bdcd model's
+    # 7-label set). This sync-flow migration carries the intended replacement
+    # definition, so drop the pre-existing constraint first; without this a
+    # from-scratch build failed with 'constraint ... already exists'.
+    op.execute(sa.text(
+        "ALTER TABLE accommodation_properties "
+        "DROP CONSTRAINT IF EXISTS ck_property_type_valid"))
     op.create_check_constraint('ck_property_type_valid', 'accommodation_properties', "property_type IN ('apartment', 'house', 'villa', 'lodge', 'hostel', 'hotel', 'guesthouse', 'boutique_hotel', 'resort')")
 
 
