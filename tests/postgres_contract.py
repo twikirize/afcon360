@@ -20,6 +20,11 @@ def _migration_heads():
     return tuple(ScriptDirectory.from_config(alembic_config).get_heads())
 
 
+def migration_heads():
+    """The repository's Alembic head revision(s), for Design-2 callers."""
+    return _migration_heads()
+
+
 def assert_migrated_postgres_database(engine):
     """Raise when *engine* is not the current, dedicated migrated test DB."""
     database_url = make_url(str(engine.url))
@@ -65,6 +70,18 @@ def assert_migrated_postgres_database(engine):
 
             inspector = inspect(connection)
             tables = inspector.get_table_names()
+
+            from app.core.model_bootstrap import MARKER_TABLE
+
+            if MARKER_TABLE in tables:
+                raise RuntimeError(
+                    "The configured PostgreSQL database was provisioned by the "
+                    f"model-bootstrap path (marker table '{MARKER_TABLE}'), not "
+                    "by Alembic, so it is not migration-equivalent. Point "
+                    "TEST_DATABASE_URL at a database provisioned with "
+                    "`flask db upgrade`."
+                )
+
             required_tables = {"alembic_version", "users"}
             missing_tables = required_tables.difference(tables)
             if missing_tables:

@@ -20,12 +20,5 @@ from app.events.models import Event, EventHostRegistration
 from app.accommodation.models.property import Property
 
 with app.app_context():
-    from alembic.config import Config
-    from alembic.script import ScriptDirectory
-    from alembic.runtime.migration import MigrationContext
-    
-    # This will show what Alembic thinks has changed
-    from flask_migrate import stamp
-    
     print("Import models to see what Alembic detects...")
     

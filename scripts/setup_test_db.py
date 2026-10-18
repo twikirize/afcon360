@@ -1,17 +1,23 @@
 """
-Set up the test database schema using the application's TestingConfig.
+Set up the test database schema through the Design-2 model-bootstrap path.
+
+This is a stale near-duplicate of scripts/setup_test_db_schema.py (see that
+script's docstring for the full Design-2 rationale). It is kept in sync so no
+path here can produce the old false behaviour of stamping Alembic `head` on a
+schema that was built from models rather than from migrations.
+
 This script:
-  1. Drops & recreates the test database (using psql commands).
-  2. Creates all tables from the SQLAlchemy models inside an app context.
-  3. (Optional) Stamps the Alembic head so future migrations work.
+  1. Drops & recreates the test database.
+  2. Builds the schema via app.core.model_bootstrap (marker written, Group A
+     enum types pre-created, db.create_all() owns Group B types and tables).
+  3. Verifies the marker; it NEVER stamps Alembic head.
 
 Usage:
-    python scripts/setup_test_db_schema.py
+    python scripts/setup_test_db.py
 """
 
 import os
 import sys
-import subprocess
 import psycopg2
 from pathlib import Path
 
@@ -89,36 +95,30 @@ def recreate_database(params):
     conn.close()
 
 # ---------------------------------------------------------------------------
-# 3. Create all tables using the app's models
+# 3. Create all tables using the Design-2 model-bootstrap path
 # ---------------------------------------------------------------------------
 def create_tables(params):
-    """Create all tables from SQLAlchemy models using the TestingConfig."""
+    """Build the schema via app.core.model_bootstrap (never stamped head)."""
     os.environ["APP_ENV"] = "testing"
     os.environ["FLASK_ENV"] = "testing"
     from app import create_app
     from app.config import TestingConfig
+    from app.core.model_bootstrap import bootstrap_model_schema
     from app.extensions import db
+    from tests.postgres_contract import migration_heads
 
     app = create_app(config_object=TestingConfig)
     with app.app_context():
-        db.create_all()
-        print("[OK] All test tables created from SQLAlchemy models")
-
-# ---------------------------------------------------------------------------
-# 4. (Optional) stamp the Alembic head so future migrations work
-# ---------------------------------------------------------------------------
-def stamp_alembic_head():
-    """Run 'flask db stamp head' to mark the database as up-to-date."""
-    os.environ["APP_ENV"] = "testing"
-    os.environ["FLASK_ENV"] = "testing"
-    result = subprocess.run(
-        [sys.executable, "-m", "flask", "db", "stamp", "head"],
-        capture_output=True, text=True
-    )
-    if result.returncode != 0:
-        print(f"[WARN] Could not stamp Alembic head: {result.stderr}")
-    else:
-        print("[OK] Alembic head stamped")
+        result = bootstrap_model_schema(db, migration_heads())
+        print(
+            "[OK] Model-bootstrap schema provisioned "
+            f"(tables={result.tables}, group A={result.group_a_types}, "
+            f"group B={result.group_b_types})"
+        )
+        print(
+            "[NOTE] This database is model-bootstrap, NOT migration-built, "
+            "and was never stamped Alembic head."
+        )
 
 # ---------------------------------------------------------------------------
 # Main
@@ -128,5 +128,4 @@ if __name__ == "__main__":
     print(f"[..] Using test database: {params['database']} on {params['host']}:{params['port']}")
     recreate_database(params)
     create_tables(params)
-    stamp_alembic_head()
     print("[OK] Test database schema ready!")

@@ -37,9 +37,8 @@ import sys
 import time
 from pathlib import Path
 from urllib.parse import urlparse
-from sqlalchemy import create_engine, text, inspect as sa_inspect
+from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
-from flask_migrate import stamp as alembic_stamp
 
 # Ensure project root is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
@@ -55,7 +54,10 @@ os.environ['DISABLE_REDIS'] = '1'
 from app import create_app
 from app.config import TestingConfig
 from app.extensions import db, cache
-from tests.postgres_contract import assert_migrated_postgres_database
+from tests.postgres_contract import (
+    assert_migrated_postgres_database,
+    migration_heads,
+)
 from tests.helpers.isolation import (
     build_fk_graph,
     take_snapshot,
@@ -251,15 +253,38 @@ def setup_database():
         with app.app_context():
             from app.extensions import db
 
-            inspector = sa_inspect(db.engine)
-            if "users" not in inspector.get_table_names():
-                db.create_all()
-                print("[OK] Schema built from current SQLAlchemy models (db.create_all).")
-            else:
-                print("[OK] Test database schema already present; skipping rebuild.")
+            # Design 2: pytest never provisions schema and never stamps Alembic
+            # head. The test database must already be migration-built at the
+            # repository head; anything else fails with the detected state.
+            # (The separate model-bootstrap path in app.core.model_bootstrap
+            # marks its database and is never stamped head, so it cannot
+            # satisfy migration-equivalence assertions.)
+            from app.core.model_bootstrap import (
+                STATE_MIGRATION_BUILT_AT_HEAD,
+                SqlAlchemySchemaProbe,
+                classify_database_state,
+            )
 
-            alembic_stamp(revision="head", purge=True)
-            print("[OK] Alembic head stamped.")
+            heads = migration_heads()
+            with db.engine.connect() as _conn:
+                state = classify_database_state(
+                    SqlAlchemySchemaProbe(_conn), heads
+                )
+
+            if state.code == STATE_MIGRATION_BUILT_AT_HEAD:
+                print(
+                    f"[OK] Test database is migration-built at Alembic head "
+                    f"{state.revision} (tables: {state.app_table_count}); "
+                    "no stamp applied."
+                )
+            else:
+                raise RuntimeError(
+                    "The PostgreSQL test database is not migration-built at "
+                    "the repository head, so pytest will not run against it. "
+                    f"Detected state: {state.describe()} Provision it with "
+                    "`flask db upgrade` against an empty database. Tests do "
+                    "not create, alter or repair schema."
+                )
         yield
     finally:
         # --- Release the advisory lock so the next session can proceed. ---

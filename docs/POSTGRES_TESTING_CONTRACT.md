@@ -31,6 +31,30 @@ For every pytest session:
 6. A failed connection, wrong dialect, missing schema, schema drift, or
    migration divergence fails
    the session. It must not be hidden with a skip flag or a fallback backend.
+7. The database is not a model-bootstrap database. The dedicated,
+   non-Alembic marker table `afcon360_model_bootstrap` must be absent;
+   migration-equivalence assertions reject a marked database.
+
+### Two provisioning paths
+
+The repository has two distinct ways to obtain a PostgreSQL schema. They are
+never conflated, and only one of them satisfies this contract.
+
+| Path | Entry point | Marker | Stamped Alembic head | Satisfies migration-equivalence tests |
+|---|---|---|---|---|
+| Migration (authoritative) | `flask db upgrade` | none | yes, genuinely | yes |
+| Model-bootstrap (separate) | `app.core.model_bootstrap.bootstrap_model_schema()` | `afcon360_model_bootstrap` | never | no |
+
+The model-bootstrap path is a *supported* way to build a schema from the
+SQLAlchemy models — used by `scripts/setup_test_db_schema.py`,
+`scripts/setup_test_db.py` and the D3 browser test server. It writes a marker
+row that is flipped from `building` to `complete` only after validation, so a
+failed run never looks successful, and it refuses to touch any database that
+is not empty. Because `create_all()` does not reproduce migration-only DDL
+(server defaults, guard triggers, some indexes), its output is explicitly not
+migration-equivalent and `tests/postgres_contract.py` rejects it. Never stamp
+a model-bootstrap database with `alembic_version`; doing so hides the
+difference rather than removing it.
 
 ### State transitions
 
@@ -42,6 +66,8 @@ For every pytest session:
 | Required schema is absent | Test session fails with setup instructions |
 | Database revision differs from the single migration head | Test session fails with the expected and actual revisions |
 | A test needs schema changes | Add and review a normal Alembic migration; do not mutate schema in the test |
+| Database is empty | Test session fails with `flask db upgrade` instructions |
+| Database carries the `afcon360_model_bootstrap` marker | Test session fails: a model-bootstrap database is not migration-equivalent |
 
 ### Authority boundaries
 
@@ -72,14 +98,19 @@ same `TestingConfig` and `afcon360_test` database. Review the migration plan
 and database backup policy before applying `db upgrade`; agents and tests do
 not apply migrations automatically.
 
+Pytest never provisions or repairs schema and never stamps Alembic head. If
+the configured database is empty, is model-bootstrap, or is not at the head,
+the session fails with the detected state and the instruction above.
+
 When `APP_ENV=testing` or `FLASK_ENV=testing`, the Alembic environment also
 rejects non-PostgreSQL URLs, non-`*_test` databases, and a migration target
 that differs from `TEST_DATABASE_URL`. Pytest performs the same checks and
 also requires the connected database revision to match the repository head.
 
-Do not use `sqlite://`, `db.create_all()`, `db.drop_all()`, raw SQL strings, or
-test-only schema repair scripts as substitutes for the migrated PostgreSQL
-schema.
+Do not use `sqlite://`, `db.drop_all()`, raw SQL strings, or test-only schema
+repair scripts as substitutes for the migrated PostgreSQL schema.
+`db.create_all()` is permitted only through the model-bootstrap path above,
+which is marked and is never represented as an Alembic-upgraded database.
 
 ## What “SQL tests” means here
 

@@ -1,39 +1,40 @@
 """
-Set up the test database schema using the application's TestingConfig.
+Provision the PostgreSQL *test* schema through the Design-2 model-bootstrap
+path.
 
-WHY THIS DOES NOT USE `flask db upgrade` AS THE PRIMARY PATH:
-  ab6dd422c152_initial_schema.py (down_revision=None, i.e. the first migration
-  in the chain) does NOT contain CREATE TABLE statements for `users`, `events`,
-  `accounts`, `accommodation_properties`, `transactions`, etc. It only creates
-  3 tables (idempotency_keys, event_host_registrations, ledger_entries) and
-  ALTERs columns on the rest, assuming those foundational tables already
-  exist. Running `flask db upgrade` against a genuinely empty database will
-  always fail at `event_host_registrations`'s FK to `users.id`, because there
-  is no earlier migration that ever creates `users`.
-  This is a missing-baseline-migration problem, not a fixable ordering bug
-  within this file. Writing a proper baseline migration (or a pg_dump-derived
-  one) is a separate, larger task — tracked separately, not solved here.
+Design 2 (see docs/transport/fixes/B0-FROZEN-BASELINE-ENUM-INVENTORY-AND-PLAN.md,
+Addendum B):
+  db.create_all() is a separately identified PostgreSQL model-bootstrap path.
+  Its database is marked by the dedicated, non-Alembic table
+  `afcon360_model_bootstrap` and is NEVER stamped Alembic `head`.
+  H3/Alembic remains the authoritative installation and upgrade path.
 
-WHAT THIS SCRIPT DOES INSTEAD (for TEST DB ONLY):
-  1. Drop & recreate the test database.
-  2. Build the schema from current SQLAlchemy models via db.create_all().
-     This works *for test purposes* because your models already reflect the
-     target state that 396efe6667ff's column/index changes were meant to
-     produce — create_all() builds from current model definitions, not from
-     migration history.
-  3. Stamp the DB at Alembic head, so future `flask db upgrade` calls treat
-     it as up to date.
-  4. VERIFY the result against known-fragile facts, instead of trusting
-     create_all()'s silent success:
-       - accommodation tables actually exist (model_registry.py gap)
-       - ix_user_nonces_nonce is non-unique (396efe6667ff intent)
-       - ix_content_flags_risk_score is single-column (396efe6667ff intent)
-     If any of these fail, the script raises and prints exactly what's wrong
-     instead of printing "[OK]" over a broken schema.
+Historical note: this script originally existed because the migration chain had
+no usable baseline root (ab6dd422c152 created only 3 tables and ALTERed the
+rest). B0 resolved that: `8a0deccce6f6_initial_full_schema_baseline.py` is a
+real root migration that builds the whole schema from an empty database, so
+`flask db upgrade` is now the supported migration path. The model-bootstrap
+path below remains available as a *separate, explicitly marked* alternative;
+the two must never be conflated.
 
-DO NOT reuse this create_all()-based approach for production. Production
-needs the real migration chain fixed (see docstring above) and a proper
-`flask db upgrade`, with backups, per the original remediation plan.
+What this script does:
+  1. Drop & recreate the target database (destructive; operator-invoked only).
+  2. Build the schema via app.core.model_bootstrap.bootstrap_model_schema():
+       - refuses to proceed if any model domain failed to register,
+       - pre-creates the 39 Group A enum types (create_type=False) from the
+         reviewed inventory, refusing an incompatible existing type,
+       - lets db.create_all() own the 8 Group B enum types and all tables,
+       - writes the marker row as 'building' first and flips it to 'complete'
+         only after validation, so a failed run never looks successful.
+  3. Verify the result: marker complete with a matching fingerprint, all model
+     tables and all 47 enum types present with exact labels, and
+     alembic_version absent.
+
+This is NOT the migration path. A database produced here cannot satisfy
+migration-equivalence tests: tests/postgres_contract.py rejects it. Provision
+a migration-built database with `flask db upgrade` against an empty database.
+
+DO NOT reuse this for production.
 
 Usage:
     python scripts/setup_test_db_schema.py
@@ -41,7 +42,6 @@ Usage:
 
 import os
 import sys
-import subprocess
 from pathlib import Path
 
 import psycopg2
@@ -132,39 +132,34 @@ def recreate_database(params):
 
 
 # ---------------------------------------------------------------------------
-# 3. Build schema from current models
+# 3. Build schema through the Design-2 model-bootstrap path
 # ---------------------------------------------------------------------------
 def build_schema_from_models():
     """
-    Build the schema via db.create_all(), deliberately — not as a silent
-    fallback. Requires model_registry.py to import every domain's models
-    (including accommodation) so nothing is missing from db.metadata.
+    Build the schema via app.core.model_bootstrap, deliberately — not as a
+    silent fallback. Requires model_registry.py to import every domain's
+    models so nothing is missing from db.metadata; the bootstrap path refuses
+    to proceed if any domain failed to register.
     """
     from app import create_app
     from app.config import TestingConfig
+    from app.core.model_bootstrap import bootstrap_model_schema
     from app.extensions import db
+    from tests.postgres_contract import migration_heads
 
     app = create_app(config_object=TestingConfig)
     with app.app_context():
         registered_tables = sorted(db.metadata.tables.keys())
-        print(f"[..] {len(registered_tables)} tables registered on db.metadata before create_all()")
+        print(f"[..] {len(registered_tables)} tables registered on db.metadata")
 
-        db.create_all()
-        print("[OK] Schema built from current SQLAlchemy models (db.create_all)")
-
-
-def stamp_alembic_head():
-    """Mark the DB as up-to-date so future `flask db upgrade` calls work."""
-    result = subprocess.run(
-        [sys.executable, "-m", "flask", "db", "stamp", "head"],
-        capture_output=True,
-        text=True,
-        env={**os.environ},
-    )
-    if result.returncode != 0:
-        print(f"[WARN] Could not stamp Alembic head: {result.stderr}")
-    else:
-        print("[OK] Alembic head stamped")
+        result = bootstrap_model_schema(db, migration_heads())
+        print(
+            "[OK] Model-bootstrap schema provisioned "
+            f"(state={result.state_code}, tables={result.tables}, "
+            f"group A={result.group_a_types}, group B={result.group_b_types}, "
+            f"alembic stamped={result.stamped_alembic})"
+        )
+        print(f"[OK] Marker fingerprint: {result.fingerprint}")
 
 
 # ---------------------------------------------------------------------------
@@ -179,15 +174,44 @@ EXPECTED_ACCOMMODATION_TABLES = {
 
 def verify_schema(params):
     """
-    Check the specific facts we know are fragile:
-      - accommodation tables exist (the model_registry.py gap)
-      - core tables exist (users, events, etc.)
+    Check the facts this path is responsible for:
+      - the model-bootstrap marker is present and complete
+      - alembic_version is ABSENT (a model-bootstrap DB is never stamped head)
+      - core and accommodation tables exist
     Raises with a clear message if anything is wrong, instead of printing
     "[OK]" over an incomplete schema.
     """
+    from app.core.model_bootstrap import MARKER_TABLE, MARKER_KEY
+
     conn = _pg_connect(params)
     cur = conn.cursor()
     issues = []
+
+    cur.execute(
+        "SELECT status FROM " + MARKER_TABLE + " WHERE marker = %s",
+        (MARKER_KEY,),
+    )
+    marker_row = cur.fetchone()
+    if marker_row is None:
+        issues.append(
+            "model-bootstrap marker row is missing — the bootstrap did not "
+            "complete"
+        )
+    elif marker_row[0] != "complete":
+        issues.append(
+            f"model-bootstrap marker status is '{marker_row[0]}', not "
+            "'complete' — the bootstrap did not finish"
+        )
+
+    cur.execute(
+        "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+        "AND tablename = 'alembic_version'"
+    )
+    if cur.fetchone() is not None:
+        issues.append(
+            "alembic_version exists; a model-bootstrap database must never "
+            "be stamped as an Alembic database"
+        )
 
     cur.execute(
         "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
@@ -227,7 +251,7 @@ def verify_schema(params):
         )
 
     print("[OK] Schema verification passed "
-          "(core tables present, schema built from models)")
+          "(marker complete, no alembic_version, core tables present)")
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +263,11 @@ if __name__ == "__main__":
 
     recreate_database(params)
     build_schema_from_models()
-    stamp_alembic_head()
     verify_schema(params)
 
-    print("[OK] Test database schema ready and verified!")
+    print("[OK] Model-bootstrap test database provisioned and verified!")
+    print(
+        "[NOTE] This database is model-bootstrap, NOT migration-built. It "
+        "cannot satisfy migration-equivalence tests; provision a migration "
+        "database with `flask db upgrade`."
+    )
