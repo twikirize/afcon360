@@ -210,6 +210,75 @@ def test_enum_block_quotes_labels_defensively():
     assert "'it''s'" in block
 
 
+@pytest.mark.no_database
+def test_enum_block_retains_raise_exception_placeholders():
+    """The generated block must keep % placeholders for RAISE EXCEPTION."""
+    block = build_enum_type_block("transactiontype", ("DEPOSIT", "WITHDRAWAL"))
+    # The RAISE EXCEPTION uses % placeholders that must survive to execution
+    assert "RAISE EXCEPTION" in block
+    assert "'AFCON360 enum type % already exists in schema % with incompatible labels" in block
+    # Ensure we have exactly 2 % placeholders (type name, schema name)
+    # Count % that are not part of %% (escaped)
+    import re
+    # Find % not followed by % and not preceded by %
+    placeholders = re.findall(r'(?<!%)%(?!%)', block)
+    assert len(placeholders) == 2, f"Expected 2 % placeholders, found {len(placeholders)}: {placeholders}"
+
+
+@pytest.mark.no_database
+def test_ensure_group_a_types_uses_no_parameters(monkeypatch):
+    """_ensure_group_a_types must pass execution_options=no_parameters."""
+    import app.core.model_bootstrap as mb
+    from unittest.mock import MagicMock
+
+    captured = {}
+
+    def fake_exec_driver_sql(sql, execution_options=None):
+        captured["sql"] = sql
+        captured["execution_options"] = execution_options
+        return None
+
+    conn = MagicMock()
+    conn.exec_driver_sql = fake_exec_driver_sql
+
+    mb._ensure_group_a_types(conn, {"test_enum": ("A", "B")})
+
+    assert captured.get("execution_options") == {"no_parameters": True}
+    assert "RAISE EXCEPTION" in captured.get("sql", "")
+
+
+# --------------------------------------------------------------------------
+# Schema-scope consistency (read_persisted_enum_labels vs build_enum_type_block)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.no_database
+def test_read_persisted_enum_labels_uses_current_schema():
+    """read_persisted_enum_labels must query current_schema(), not hardcoded public."""
+    import app.core.model_bootstrap as mb
+    import sqlalchemy as sa
+
+    # The query should use current_schema() function
+    source = Path(mb.__file__).read_text(encoding="utf-8")
+    assert "current_schema()" in source
+    # Verify the WHERE clause uses current_schema()
+    assert "_PG_NAMESPACE.c.nspname == sa.func.current_schema()" in source
+
+
+@pytest.mark.no_database
+def test_schema_scope_contract_consistent_in_source():
+    """read_persisted_enum_labels and build_enum_type_block use the same active schema."""
+    # Source-level contract: both the query and the DO block reference current_schema().
+    import app.core.model_bootstrap as mb
+    source = Path(mb.__file__).read_text(encoding="utf-8")
+    # The query filters by current_schema()
+    assert "_PG_NAMESPACE.c.nspname == sa.func.current_schema()" in source
+    # build_enum_type_block also uses current_schema() in its DO block
+    block = mb.build_enum_type_block("test_iso", ("X", "Y"))
+    assert block.count("current_schema()") >= 3
+    # Both use the same active schema, ensuring consistency
+
+
 # --------------------------------------------------------------------------
 # Classification of database states
 # --------------------------------------------------------------------------
@@ -308,6 +377,50 @@ def test_bootstrap_refuses_an_incomplete_model_set(monkeypatch):
         lambda: {"events": "ImportError: boom"},
     )
 
+    class _ExplodingDb:
+        @property
+        def metadata(self):
+            raise AssertionError("metadata must not be read")
+
+        @property
+        def engine(self):
+            raise AssertionError("engine must not be touched")
+
+    with pytest.raises(ModelBootstrapError, match="incomplete model set"):
+        bootstrap_model_schema(_ExplodingDb(), ("head",))
+
+
+@pytest.mark.no_database
+def test_bootstrap_refuses_real_import_failure(monkeypatch):
+    """A real import failure in the registry is recorded and blocks bootstrap."""
+    import app.core.model_registry as registry
+
+    # Force a real import failure by patching one of the lazy imports
+    original_import = __import__
+
+    def failing_import(name, *args, **kwargs):
+        if name == "app.accommodation.models":
+            raise ImportError("Simulated accommodation models import failure")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(
+        "builtins.__import__",
+        failing_import,
+    )
+
+    # Clear any previous failures via monkeypatch to avoid mutating global state
+    monkeypatch.setattr(registry, "_REGISTRATION_FAILURES", {})
+
+    # This will trigger the import failure and record it
+    registry.register_all_models()
+
+    # Verify the failure was recorded
+    failures = registry.registration_failures()
+    assert "accommodation" in failures
+    assert "ImportError" in failures["accommodation"]
+    assert "Simulated accommodation models import failure" in failures["accommodation"]
+
+    # Now verify bootstrap refuses before any database access
     class _ExplodingDb:
         @property
         def metadata(self):

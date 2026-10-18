@@ -593,7 +593,7 @@ def build_enum_type_block(name: str, labels: Sequence[str]) -> str:
 
 
 def read_persisted_enum_labels(connection) -> Dict[str, List[str]]:
-    """Read the public-schema enum labels through the expression API."""
+    """Read enum labels from the current schema through the expression API."""
     query = (
         select(_PG_TYPE.c.typname, _PG_ENUM.c.enumlabel)
         .select_from(
@@ -603,7 +603,7 @@ def read_persisted_enum_labels(connection) -> Dict[str, List[str]]:
                 _PG_NAMESPACE, _PG_NAMESPACE.c.oid == _PG_TYPE.c.typnamespace
             )
         )
-        .where(_PG_NAMESPACE.c.nspname == "public")
+        .where(_PG_NAMESPACE.c.nspname == sa.func.current_schema())
         .order_by(_PG_TYPE.c.typname, _PG_ENUM.c.enumsortorder)
     )
     labels: Dict[str, List[str]] = {}
@@ -806,7 +806,10 @@ def _assert_registration_complete() -> None:
 
 def _ensure_group_a_types(connection, group_a: Mapping[str, Tuple[str, ...]]) -> None:
     for name in sorted(group_a):
-        connection.exec_driver_sql(build_enum_type_block(name, group_a[name]))
+        connection.exec_driver_sql(
+            build_enum_type_block(name, group_a[name]),
+            execution_options={"no_parameters": True},
+        )
 
 
 def _write_marker(connection, status: str, fingerprint: str) -> None:

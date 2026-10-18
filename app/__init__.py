@@ -2435,5 +2435,10 @@ def create_app(config_object=None) -> Flask:
     refresh_csp_strict_cache()  # once per worker at startup; fails closed
     _subscribe_csp_strict_changes(app)
 
+    # Favicon fallback: serve SVG to silence 404 logs for /favicon.ico
+    @app.route('/favicon.ico')
+    def favicon():
+        return redirect(url_for('static', filename='favicon.svg'))
+
     logger.info(f"✅ App factory completed in {time.time() - start_time:.2f} seconds")
     return app
