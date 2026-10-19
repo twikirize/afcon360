@@ -134,7 +134,7 @@ Related active-chain findings:
 - `df55cbe3f516:28` references `postgresql.ENUM(name='servicetype', create_type=False)` — a **reference with no creator** (same class of defect).
 - `df55cbe3f516:124,152` references `org_business_category` as `ENUM('merchant','service_provider','marketplace_seller','non_profit')` (4 labels, lowercase) in `alter_column` (upgrade/downgrade converting to/from `String(40)`).
 - `20260930_1335_booking_status_enum_to_string.py:81,85`: downgrade-only `CREATE TYPE bookingstatus_12 AS ENUM (...)` and `DROP TYPE bookingstatus`.
-- `migrations/env.py:19-35`: the `skip_enum_create` rewriter returns `op` unchanged and `include_object` always returns `True` — **dead no-op code**; its comment ("we've converted all enums to String columns") is stale and contradicts the retention policy.
+- **Finding at the time of the original review:** `migrations/env.py` had an unused `skip_enum_create` rewriter returning `op` unchanged, an allow-all `include_object`, and a stale comment claiming all enums had been converted to String columns. **Source disposition on the 2026-10-20 harmonization branch:** the unused rewriter/imports were removed, the allow-all callback was documented accurately, and the comment no longer claims type conversion. No enum-suppression behavior was introduced; test verification remains pending.
 
 ### Retired baseline `ab6dd422c152` (in `migrations/_retired_versions/`, not in active chain)
 
