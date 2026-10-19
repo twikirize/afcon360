@@ -582,8 +582,8 @@ This section records the owner-supplied PowerShell output from the local checkou
 ### Local repository state
 
 - `HEAD`: `e3f4c4f9719f555d277b0d79b5f99601c67fd72e`, matching the source snapshot used by this register.
-- Seven tracked files were modified and nothing was staged: `.opencode/rules/afcon360-constitution.md`, `AFCON360_ID_Architecture_and_Aider_Plan.md`, `DATABASE_SCALABILITY_ROADMAP.md`, `app/transport/services/booking_service.py`, `docs/POSTGRES_TESTING_CONTRACT.md`, `docs/enum-workstream-closeout.md`, and `scripts/migrate_enums_to_strings.py`.
-- One untracked file: `enum_query.py`. Preserve these existing modifications and the untracked file; do not overwrite or silently classify them as accepted.
+- At the time of this capture, before the WIP checkpoint commit, seven tracked files were modified and nothing was staged: `.opencode/rules/afcon360-constitution.md`, `AFCON360_ID_Architecture_and_Aider_Plan.md`, `DATABASE_SCALABILITY_ROADMAP.md`, `app/transport/services/booking_service.py`, `docs/POSTGRES_TESTING_CONTRACT.md`, `docs/enum-workstream-closeout.md`, and `scripts/migrate_enums_to_strings.py`.
+- `enum_query.py` was untracked at that time. The later WIP checkpoint `decf23f149c7a6f00029ebda8dafb54cfb336b8b` committed those eight files; root `AGENTS.md` was not included and remained a local modification. That local rule diff has since been recreated on this review branch and must be reconciled before syncing the local checkout. This is chronology, not acceptance of the original utility implementation.
 - `git diff --check` returned exit code 0. Git emitted LF/CRLF conversion warnings for several modified text files; these were warnings, not reported whitespace errors.
 - The local existence check for `docs/transport/reference/CONSTITUTION-ARCHIVE.md` returned `False`. Track this separately as a documentation/governance discrepancy; do not reopen Items 20 or 29.
 
@@ -602,3 +602,33 @@ The local source search reconfirmed that `migrations/env.py` contains the stale 
 ### H3 and physical-schema boundary
 
 The local H3 plan describes the N-squash as documentation/review only; the H3 root does not exist yet. The preflight did not connect to `afcon360_prod`, `afcon360_test`, or a disposable database. Existing recorded table/enum/default discrepancies remain prior evidence and were not freshly measured. H3 remains blocked by the supported-starting-state decision, Docker census, coupled FK/model verification, and per-state physical-parity evidence.
+
+---
+
+## Phase 8 — Checkpoint source review and remote remediation (2026-10-20)
+
+This section records the additional owner-supplied read-only query output for checkpoint `decf23f149c7a6f00029ebda8dafb54cfb336b8b` and the subsequent source-only corrections prepared on `work/db-reliability-harmonization-2026-10-20`. No database connection, migration, or test execution was performed by these edits.
+
+### `enum_query.py` — hard-coded database target removed
+
+The checkpoint version contained a literal `postgresql://postgres@localhost:5432/afcon360_test` DSN and connected without explicitly setting a read-only session. Its query was SELECT-only, but the hard-coded target made the utility environment-specific and insufficiently guarded. The attempted secret scan used `Select-String -SimpleMatch` with a regex-like pattern, so its empty output did not prove the patterns were absent.
+
+The review-branch version now requires `TEST_DATABASE_URL`, refuses non-local PostgreSQL hosts and database names without the `_test` suffix, sets PostgreSQL `default_transaction_read_only=on` plus a read-only session, performs only the enum-catalog SELECT, avoids printing the DSN, and fails closed if configuration/validation/connection fails. Added pure tests cover DSN validation and execution-mode guardrails. **These tests have not yet been run.**
+
+### `booking_service.py` — change provenance and shared enum identity
+
+The diff for checkpoint `decf23f` changes a small set of remaining `BookingStatus` references to the already-imported `BookingStatusPy` alias; the rest of the `BookingStatusPy` usage was already present in its parent. The subsequent read-only inspection exposed a source inconsistency: `app/transport/models.py` assigned public shared enum aliases near the imports and then redeclared eight of those enum classes later, shadowing the shared aliases despite the file's stated re-export contract.
+
+The review branch removes those duplicate local definitions for `VerificationTier`, `ComplianceStatus`, `BookingStatus`, `PaymentStatus`, `VehicleClass`, `IncidentSeverity`, `Currency`, and `ProviderType`, leaving transport-specific `PassengerStatus` intact. The `app/utils/enums.py` header now describes the actual shared-definition contract rather than falsely claiming all database columns use String plus CHECK. A database-free identity contract test was added for the eleven shared public enum exports. This is a source-level proposed fix only; runtime compatibility and tests remain unverified.
+
+### Root migration rule and mirror
+
+The query confirmed that the local `AGENTS.md` edit was not included in checkpoint `decf23f`. The review branch now carries the permanent rule in root `AGENTS.md`, with strict autogeneration for ordinary migrations and the single bounded baseline-reconstruction exception in subsection 8. The mirrored constitution references its detailed exception in §20.3.1 rather than duplicating the entire exception at §20.1. The root/mirror diff still requires final review on the synchronized local checkout.
+
+### Alembic environment comments
+
+The read-only search found the stale claim that all enums had been converted to String and callbacks whose implemented behavior was no-op/allow-all. The review branch corrects only the misleading comments/docstring; no autogeneration filtering behavior was changed. Whether that legacy scaffold should be removed or behaviorally redesigned remains a separate decision requiring proper autogeneration tests.
+
+### Verification boundary
+
+These are source corrections and added tests, not test results. No pytest run, database access, migration replay, PostgreSQL schema query or Docker census was performed. Preserve the existing enum-representation policy and H3 readiness gates; do not infer readiness from these source edits.
