@@ -1,22 +1,21 @@
 """
 ============================================================================
-APPLICATION-LEVEL ENUM CONSTANTS (NO POSTGRESQL ENUMS)
+CANONICAL SHARED PYTHON ENUM DEFINITIONS
 ============================================================================
 
-This file provides Python enum classes for APPLICATION-LEVEL VALIDATION ONLY.
-These are used for:
-  - Type hints and IDE support
-  - Application-level validation in models (@validates)
-  - Service-layer business logic
-  - Templates and JavaScript constants
+This module is the canonical source for shared Python enum classes used by
+models and service/domain code. Import shared enum definitions from here;
+do not redefine equivalent classes inside domain model modules.
 
-THESE DO NOT CREATE POSTGRESQL ENUM TYPES.
+These Python classes do not create PostgreSQL types by themselves. A model's
+column mapping and the approved migration/bootstrap path determine whether a
+field uses an existing native PostgreSQL ENUM or String/VARCHAR storage with
+the applicable validation constraints. Preserve the established physical
+representation of existing columns; do not infer a blanket conversion policy
+from the presence of a Python Enum.
 
-Database columns use String + CHECK constraints instead.
-See DATABASE_SCALABILITY_ROADMAP.md for the migration strategy.
-
-Rule: NEVER use sqlalchemy.Enum, SQLEnum, SAEnum, or PgEnum in models.
-Use String columns with CHECK constraints for database-level validation.
+PostgreSQL enum type names, persisted labels, and creation ownership must match
+the actual database contract and the authorized schema-provisioning path.
 ============================================================================
 """
 from enum import Enum
