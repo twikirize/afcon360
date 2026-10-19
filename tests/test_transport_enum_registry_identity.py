@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import pytest
 
-from app import utils
 from app.utils import enums as shared_enums
 from app.transport import models as transport_models
 
