@@ -16,23 +16,8 @@ config = context.config
 fileConfig(config.config_file_name)
 logger = logging.getLogger('alembic.env')
 
-from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
-from alembic.autogenerate import rewriter
-from alembic.operations import ops
-
-# Historical enum-suppression scaffold. It is intentionally not treated as
-# an active enum policy: the Rewriter is not passed to context.configure(),
-# skip_enum_create() returns each operation unchanged, and include_object()
-# below is allow-all. Do not rely on this code to suppress enum DDL.
-writer = rewriter.Rewriter()
-
-@writer.rewrites(ops.CreateTableOp)
-def skip_enum_create(context, revision, op):
-    """Legacy no-op: preserve the CreateTableOp unchanged."""
-    return op
-
 def include_object(object, name, type_, reflected, compare_to):
-    """Allow all objects; this callback does not filter PostgreSQL ENUM types."""
+    """Include every object in autogeneration; no ENUM suppression is applied."""
     return True
 
 
