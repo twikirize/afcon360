@@ -617,7 +617,9 @@ Need to store a fixed set of values?
 
 **Answer is always: Use String.** *(Historical — current policy preserves existing ENUMs; new columns follow current authoritative engineering rules.)*
 
-### 8.3 Model Inheritance Checklist
+### 8.3 Model Inheritance Checklist (Historical — Nonbinding)
+
+**Historical checklist only. Do not treat it as current implementation policy.** In particular, the instruction to use `String` rather than `Enum` for status/value columns is not a binding rule for new or existing columns. Preserve established PostgreSQL ENUM versus String/VARCHAR representations and follow root `AGENTS.md` plus the active reliability register for any authorized new schema design.
 
 Before creating any new model:
 - [ ] Does it inherit from `BaseModel`? (Not `db.Model`)
@@ -627,7 +629,9 @@ Before creating any new model:
 - [ ] Does it have `is_deleted` and `deleted_at`? (From `BaseModel`)
 - [ ] Does it have `created_at` and `updated_at`? (From `TimestampMixin`)
 
-### 8.4 Migration Checklist
+### 8.4 Migration Checklist (Historical — Do Not Use as Current Instructions)
+
+The checklist below is retained as historical reference, not a current migration procedure. The former suggestion to stamp a fresh database at head is withdrawn: use the reviewed Alembic upgrade path for migration-built installation, and permit `stamp` only under an explicitly authorized transition plan after independent schema-parity verification. Follow root `AGENTS.md` and the active reliability register.
 
 Before running any migration:
 - [ ] Have you tested it on a copy of production data?
@@ -635,7 +639,7 @@ Before running any migration:
 - [ ] Is the migration reversible?
 - [ ] Will it lock any tables? If yes, for how long?
 - [ ] Have you checked for existing ENUM types that might conflict?
-- [ ] Have you run `flask db stamp head` if this is a fresh database?
+- [ ] **WITHDRAWN HISTORICAL ADVICE — do not follow:** run `flask db stamp head` on a fresh database. A fresh migration-built database must use the approved Alembic upgrade path; stamps require a separate verified transition authorization.
 
 ### 8.5 Wallet Module Special Instructions
 
