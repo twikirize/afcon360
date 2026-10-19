@@ -273,7 +273,9 @@ The source-level contract suite has been expanded to **38 tests** (5 new regress
 **[ADVANCED] 21. Repair enum creation ownership.**
 Content (identical for both architectures): one `CREATE TYPE` per USED/REFERENCED type with exact live label sets; no `bookingstatus` creation by that name; conversion path (not drop) for test's live-USED 39-label `org_business_category`; preserve-or-migrate the 3 legacy column defaults.
 Location: H2′ — frozen `8a0deccce6f6` body plus an exception or conditionalizing repair for `f91075478868`; H3 — N-squash body, where `f91075478868` retires.
-**Next action:** implement ownership at the chosen location once authorized, and resolve the remaining legacy enum/default dispositions (including the 16 dev-only orphans and prod's `org_business_category` orphan) as explicit rulings rather than silent drops.
+**Scope clarification (2026-10-20 review branch):** the separate source change in `app/transport/models.py` removes duplicate Python enum class declarations that shadowed canonical objects imported from `app/utils/enums.py`; a database-free regression test asserts the public aliases retain canonical object identity. This is Python enum-registry ownership/identity only. It does **not** implement PostgreSQL `CREATE TYPE` ownership, resolve the H2′/H3 migration-location decision, or provide live enum/schema evidence. Item 21 therefore remains **ADVANCED**, not implemented/closed.
+
+**Next action:** implement PostgreSQL type-creation ownership at the authorized migration location only after the relevant architectural/scope gates permit it, and resolve the remaining legacy enum/default dispositions (including the 16 dev-only orphans and prod's `org_business_category` orphan) as explicit rulings rather than silent drops.
 
 **[CLOSED] 22. Eliminate repeated `window_mode_enum` creation.**
 Content: a single `CREATE TYPE window_mode_enum AS ENUM ('CALENDAR', 'ROLLING')`. The H2′ chain was corrected and the empty-database replay created the type once; live databases already converge.
@@ -613,7 +615,7 @@ This section records the additional owner-supplied read-only query output for ch
 
 The checkpoint version contained a literal `postgresql://postgres@localhost:5432/afcon360_test` DSN and connected without explicitly setting a read-only session. Its query was SELECT-only, but the hard-coded target made the utility environment-specific and insufficiently guarded. The attempted secret scan used `Select-String -SimpleMatch` with a regex-like pattern, so its empty output did not prove the patterns were absent.
 
-The review-branch version now requires `TEST_DATABASE_URL`, refuses non-local PostgreSQL hosts and database names without the `_test` suffix, sets PostgreSQL `default_transaction_read_only=on` plus a read-only session, performs only the enum-catalog SELECT, avoids printing the DSN, and fails closed if configuration/validation/connection fails. Added pure tests cover DSN validation and execution-mode guardrails. **These tests have not yet been run.**
+The review-branch version now requires `TEST_DATABASE_URL`, refuses non-local PostgreSQL hosts and database names without the `_test` suffix, sets PostgreSQL `default_transaction_read_only=on` plus a read-only session, performs only the enum-catalog SELECT, avoids printing the DSN, and fails closed if configuration/validation/connection fails. Added pure tests cover DSN validation and execution-mode guardrails. Those tests were included in the owner's focused local regression selection at `aa911d07f0e22c7c5b5523d0f83f77ab71387544`; the combined nine-file selection passed 90 tests, including these guards, with exit code 0. They validate DSN strings and the disabled conversion CLI; the run made no PostgreSQL connection.
 
 ### `booking_service.py` — change provenance and shared enum identity
 
