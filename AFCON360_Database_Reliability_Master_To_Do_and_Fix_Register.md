@@ -627,7 +627,7 @@ The query confirmed that the local `AGENTS.md` edit was not included in checkpoi
 
 ### Alembic environment comments
 
-The read-only search found the stale claim that all enums had been converted to String and callbacks whose implemented behavior was no-op/allow-all. The review branch corrects only the misleading comments/docstring; no autogeneration filtering behavior was changed. Whether that legacy scaffold should be removed or behaviorally redesigned remains a separate decision requiring proper autogeneration tests.
+The read-only search found a stale claim that all enums had been converted to String plus an unused `skip_enum_create` rewriter and an allow-all `include_object`. The review branch removes the unused rewriter/imports and accurately documents the allow-all callback; no enum suppression or other autogeneration filtering behavior was introduced. The behavioral contract remains to be validated by tests before treating this path as fully verified.
 
 ### Verification boundary
 
