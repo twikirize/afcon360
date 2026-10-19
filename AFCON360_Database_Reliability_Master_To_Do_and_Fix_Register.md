@@ -185,7 +185,7 @@ Broad `create_type=False` introduced at `174b625` (2026-10-13 05:39), empty comm
 | `5ef3014` | 2026-10-14 | Reformat only |
 
 Subordinate 11a/11b/11c confirm that `ensure_all_enums()` never existed, that the README paragraph was written at `a1a490b` and deleted at `76a518b`, and that the corrected native-enum contract is `create_type` = automatic enum DDL, `checkfirst` = existence checking.
-**Next action:** record the corrected `create_type`/`checkfirst` contract in permanent engineering rules under item 29.
+**Disposition (2026-10-20):** the corrected `create_type`/`checkfirst` contract is recorded in the permanent database rules; Item 29 remains CLOSED by owner confirmation. The narrowly scoped ordinary-migration versus baseline-reconstruction wording refinement is handled as a documentation harmonization task and does not reopen Item 29.
 
 **[ADVANCED] 12. Establish deployed migration states.**
 Local census complete:
