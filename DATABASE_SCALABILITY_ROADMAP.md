@@ -592,8 +592,8 @@ Day 5: Deploy contract phase
 - Use `BigInteger` for all internal IDs and foreign keys
 - Use `user.public_id` (UUID) for external-facing APIs
 - Check for existing `backref` names before adding relationships
-- Use `sa.inspect()` before `op.create_table` in migrations
-- Run `flask db stamp head` before `flask db upgrade` after bootstrap
+- For ordinary schema changes, generate migrations through Alembic and do not hand-add `op.create_table` or other operations to repair a deficient generated migration
+- **WITHDRAWN — do not follow:** run `flask db stamp head` after bootstrap or before upgrading. The standard migration-built install uses the reviewed `flask db upgrade` path; a stamp is allowed only under a separately authorized transition plan after independent physical-schema parity verification
 
 Refer to the current authoritative engineering rules (`AGENTS.md` and active reliability register) for any genuinely new schema design.
 
