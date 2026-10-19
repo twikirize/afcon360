@@ -1,8 +1,8 @@
 # AFCON360 — Database Reliability — Master To-Do & Fix Register
 
-**Snapshot: 18 October 2026 · Statuses reflect current evidence, not deployment readiness.**
+**Snapshot: 20 October 2026 · includes the owner-supplied local read-only preflight; statuses reflect current evidence, not deployment readiness.**
 
-**Status: 18 closed · 12 advanced · 1 partial · 1 open · 0 gated · 7 not started (39 top-level items)**
+**Status: 20 closed · 10 advanced · 1 partial · 1 open · 0 gated · 7 not started (39 top-level items)**
 
 **Architecture: H2′ approved and implemented as the interim fresh-install repair · H3/N-squash selected as the durable destination, root not yet created**
 
@@ -18,8 +18,8 @@
 
 | Status | Count |
 |---|---:|
-| CLOSED | 18 |
-| ADVANCED | 12 |
+| CLOSED | 20 |
+| ADVANCED | 10 |
 | PARTIAL | 1 |
 | OPEN | 1 |
 | NOT STARTED | 7 |
@@ -49,7 +49,7 @@
 | 17 | CLOSED | Compare H2′ and H3 architectures |
 | 18 | CLOSED | Approve one architecture |
 | 19 | CLOSED | Approve and execute isolated PostgreSQL verification plan |
-| 20 | ADVANCED | Establish canonical schema-creation architecture |
+| 20 | CLOSED | Establish canonical schema-creation architecture |
 | 21 | ADVANCED | Repair enum creation ownership |
 | 22 | CLOSED | Eliminate repeated `window_mode_enum` creation (fresh-install chain scope) |
 | 23 | CLOSED | Resolve duplicate slug migrations (fresh-install chain scope) |
@@ -58,7 +58,7 @@
 | 26 | NOT STARTED | Make data-sensitive migrations safe |
 | 27 | ADVANCED | Resolve `df55cbe3f516` and coupled model changes |
 | 28 | ADVANCED | Consolidate schema-creation procedures |
-| 29 | ADVANCED | Establish permanent database engineering rules |
+| 29 | CLOSED | Establish permanent database engineering rules |
 | 30 | CLOSED | Create approved disposable PostgreSQL verification environment |
 | 31 | CLOSED | Pass clean-install migration test (scoped to the tested server) |
 | 32 | ADVANCED | Verify physical schema completeness independently |
@@ -194,23 +194,24 @@ Local census complete:
 |---|---|---:|---:|---|
 | `afcon360_prod` (local) | `df55cbe3f516` | 224 | 68 | Physically divergent from test |
 | `afcon360_test` | `df55cbe3f516` | 224 | 49 | Stale physical schema |
-| docker | unreachable | — | — | Containers down |
+| Docker CLI | command not found | — | — | Local census blocked; container state unknown |
 
 Deployment evidence (repo-only): zero tags — no release boundary. Only in-repo migration executor: `docker-entrypoint.sh:47` `flask db upgrade` (web role only). **Update 2026-10-18:** a separate disposable database passed the current H2′ empty-database replay. `afcon360_prod` and `afcon360_test` were not upgraded or modified.
-**Next action:** bring the container up and re-execute the Q1–Q4 census probe against the container's PostgreSQL (subordinate 12b); retain read-only state evidence per environment.
+**Next action:** run the Q1–Q4 census from an approved Docker-enabled host or after Docker CLI availability is restored. The local command-not-found result does not establish whether containers are running. Preserve read-only per-environment evidence.
 
 **[NEW] 12a. Deployment evidence ledger.** Recorded. Canonical for future contributors.
 
-**[OPEN] 12b. Docker census.** Re-execute Q1–Q4 probe against the container's Postgres when available. Blocks H3.
+**[OPEN] 12b. Docker census.** The 2026-10-20 local PowerShell preflight could not invoke `docker` (`CommandNotFoundException`), so no container census or container-state result was obtained. This blocks H3 until the Q1–Q4 read-only census is run from an approved Docker-enabled host. The local failure does not prove that the containers are down.
 
 **[OPEN] 13. Define supported starting revisions.**
-A human product decision. It cannot be advanced from source evidence.
+A human product decision. The 2026-10-20 local static Alembic parser confirms 27 revisions, one base (`8a0deccce6f6`) and one head (`df55cbe3f516`); this verifies graph shape only and does not decide which populated or historical states are supported.
 **Next action:** obtain the owner's ruling on which starting revisions and database states must be supported for upgrade; this gates items 15 and 35.
 
 **[ADVANCED] 14. Compare H2′ with existing database states.**
 Same-ID/different-schema hazard is field-proven: `afcon360_test` at `df55cbe3f516` carries `org_business_category` as a live-USED 39-label UPPER enum; `afcon360_prod` at the same revision carries the same column as `varchar(40) NULL`, with `org_business_category` existing as a 4-label lowercase orphan. Same revision ID, different physical schema, different repair operation required per database.
 Corrections carried: prod holds 68 types (not 69); `organisations.slug` is NOT NULL in both databases.
-**Next action:** produce separate physical-parity artifacts for production and for test; preserve their differences rather than averaging them; obtain the history-rewrite exception ruling needed for H2′.
+**Evidence boundary (2026-10-20):** the supplied local preflight made no database connection and adds no new physical-catalog evidence. The previously recorded production/test differences remain prior evidence; they were not refreshed by this capture.
+**Next action:** use existing durable evidence or approved read-only snapshots/clones to produce separate physical-parity artifacts for each supported existing state. Preserve differences instead of averaging or normalizing them; no H3 stamp/cutover is authorized.
 
 **[ADVANCED] 15. Design the H3 transition procedure.**
 Procedure defined: new root N-squash; old files retired in the same commit; merge revisions rejected; per-state commands (empty / root-stamped / intermediate / at-head / unknown); stamp only after parity; rollback via re-track + re-stamp. Under H3, `f91075478868` retires, dissolving its 4× `window_mode_enum` emit defect; under H2′ it remains and needs an in-place exception or a conditionalizing repair.
@@ -257,7 +258,7 @@ Scope of this closure: the **migration** replay. The Design 2 model-bootstrap ru
 
 # Phase 4 — Implement the approved permanent repair (items 20–29)
 
-**[ADVANCED] 20. Establish canonical schema-creation architecture.**
+**[CLOSED] 20. Establish canonical schema-creation architecture.**
 Design 2 (`app/core/model_bootstrap.py`) is committed (`ff5fe53` + `96636f2`) with a marker row, loud registration and no false Alembic stamp. The **percent-placeholder defect has been fixed** by:
 
 1. `_ensure_group_a_types()` now calls `connection.exec_driver_sql(sql, execution_options={"no_parameters": True})` so psycopg2 no longer rejects the `%` placeholders in `RAISE EXCEPTION`.
@@ -266,7 +267,8 @@ Design 2 (`app/core/model_bootstrap.py`) is committed (`ff5fe53` + `96636f2`) wi
 The source-level contract suite has been expanded to **38 tests** (5 new regression tests covering the `%` placeholders, the `no_parameters` execution option, schema-scope consistency, and a real import-failure path) and **all 38 pass in an isolated run that blocks any SQLAlchemy engine connection** (`pytest --noconftest`, exit code 0).
 
 **Live PostgreSQL runtime verification** was executed on 2026-10-18 against a fresh disposable database `afcon360_d2_bootstrap_fix_20261018_test`. The first invocation of `bootstrap_model_schema()` created 217 tables, 47 enum types, left the marker row status `complete` with a matching fingerprint, and did **not** create an `alembic_version` table. The initial verification script incorrectly reported FAIL because it expected `result.state_code == "model_bootstrap_complete"` on the first run; the implementation returns `STATE_EMPTY` on a fresh creation and records completion in the marker. A subsequent read-only call to `validate_model_bootstrap()` returns `model_bootstrap_complete` (PASS). The earlier failed database `afcon360_b0_design2_rt_20261018` (pre-fix) is retained as historical evidence of the `%`-placeholder defect.
-**Next action:** define the supported division of responsibility between the migration path and the bootstrap path; the live bootstrap gate is satisfied.
+**Owner-confirmed closure (2026-10-20):** Design 2's recorded runtime and read-only validation results satisfy this item's accepted scope. Keep the migration-built and model-bootstrap routes explicitly non-equivalent. This closure does not authorize H3 implementation or database cutover.
+**Next action:** no further item-20 work; broader integration and installation-contract verification remain under items 28 and 39.
 
 **[ADVANCED] 21. Repair enum creation ownership.**
 Content (identical for both architectures): one `CREATE TYPE` per USED/REFERENCED type with exact live label sets; no `bookingstatus` creation by that name; conversion path (not drop) for test's live-USED 39-label `org_business_category`; preserve-or-migrate the 3 legacy column defaults.
@@ -302,8 +304,8 @@ Explicit clarification: the earlier `[CLARIFIED]` entry in this register was a *
 **Next action:** compare FK names, targets, `ON DELETE`/`ON UPDATE` actions, and SQLAlchemy model coupling against the physical schema for the H2′ root and the coupled files, and record the result as evidence rather than as wording.
 
 **[NOT STARTED] 26. Make data-sensitive migrations safe.**
-`request_fingerprint` NOT NULL without a default is confirmed as data-dependent. No safe-migration design or test exists.
-**Next action:** enumerate every data-dependent operation in the chain, then test each with representative existing data in a disposable database, including the invalid-data rejection paths.
+The source audit has already identified concrete populated-state hazards: `71893e3a42a2_add_organisation_slug.py` adds `organisations.slug` as NOT NULL without a default; `5e80dc4ac345_transport_reservation_obligation_and_.py` adds `transport_reservations.request_fingerprint` as NOT NULL without a default. Unique-index, CHECK-constraint and foreign-key changes also need representative-data review. These source findings identify risk; they do not prove failure or safety. No complete operation inventory, approved safe-migration design or populated-state test is recorded.
+**Next action:** use these identified revisions in the complete operation inventory, then test applicable operations against representative populated data in approved disposable databases, including invalid-data rejection and preservation checks. Do not repeat the completed source discovery.
 
 **[ADVANCED] 27. Resolve `df55cbe3f516` and coupled model changes.**
 Advanced by evidence: the revision is now **tracked** (it ships with the H2′ repair commit) and is **reached by the current clean replay**; `flask db current` returns `df55cbe3f516 (head)` with exit code 0. Subordinate 16d's *tracking* prerequisite is therefore satisfied.
@@ -320,10 +322,10 @@ The 145 default differences comprise 132 Prod-only, 12 Test-only and one Both-di
 Principles: a physical difference is not proof that prod or test is correct; do not normalize defaults simply to make the two environments match; preserve exact observed expressions in the evidence; distinguish observed differences from corroborated explanations and unresolved intended behavior; explicitly document any intentional exception or required schema-owner decision; keep the separate organisations.business_category type conversion visible in the convergence requirements. Cross-reference items 20, 29 and 37.
 The item 28a investigation may record the observed comparison as complete, but the disposition work remains outstanding.
 
-**[ADVANCED] 29. Establish permanent database engineering rules.**
-`docs/POSTGRES_TESTING_CONTRACT.md` now documents the separate model-bootstrap path and prohibits false Alembic-head claims. Still outstanding: complete permanent rules in the relevant engineering constitution/agent instructions, the full enum ownership/autogenerate contract, parity-artifact requirements, state-divergence case study, and disposition handling for the 145 defaults.
-**Next action:** complete the incorporation of the `ensure_all_enums()` finding, the corrected `create_type`/`checkfirst` contract (item 11c), the parity-artifact requirement (item 17a condition 5), the local divergence case study, the 145-default-diff example, and the `exec_driver_sql`/`%` bootstrap defect.
-
+**[CLOSED] 29. Establish permanent database engineering rules.**
+**Owner-confirmed CLOSED (2026-10-20).** The owner confirmed this item closed. Retain the accepted permanent database rules, enum-creation contract, parity-evidence requirements and bootstrap-safety findings as the completed outcome. The newly requested clarification distinguishing strict ordinary Alembic autogeneration from a narrowly authorized H3 baseline-replacement exception is a scoped documentation refinement, not a reopening of Item 29.
+The supplied preflight snapshot shows `.opencode/rules/afcon360-constitution.md` modified but root `AGENTS.md` not listed as modified. Therefore, do not claim that the newly requested root-rule clarification was already implemented or verified by this capture.
+**Boundary:** this closure records the owner's accepted permanent-rules work; it does not authorize migration execution, H3 implementation or database cutover.
 ---
 
 # Phase 5 — Prove the result and prevent recurrence (items 30–39)
@@ -379,7 +381,7 @@ Advanced by evidence: the committed Design 2 source-level contract suite now pas
 - **11b** — README write/delete commits (`a1a490b` / `76a518b`). [CLOSED]
 - **11c** — Native-enum creation contract corrected. [CLOSED]
 - **12a** — Deployment evidence ledger recorded. [RECORDED]
-- **12b** — Docker census pending; blocks H3. [OPEN]
+- **12b** — Local 2026-10-20 preflight: Docker CLI command not found; no container-state/census result. Run from an approved Docker-enabled host; blocks H3. [OPEN]
 - **14a** — Stamp-timing distinction: a database stamped `8a0deccce6f6` before the enum regression has a different schema from one stamped after; same ID, no timestamp in `alembic_version`. [ADVANCED]
 - **14b** — Divergent-schema dispositions: test needs a `org_business_category` conversion path (39-label UPPER → `varchar(40)`); prod needs a disposition ruling for its 4-label orphan; both need rulings for the 16 dev-only orphan candidates. [ADVANCED]
 - **16a** — Root-vs-child and child-vs-child classes separated. [CLOSED]
@@ -476,12 +478,12 @@ The initial verification script incorrectly reported FAIL for the post-fix run b
 ## What is blocking us today
 
 - **Supported starting revisions** (item 13) — human product decision; gates items 15 and 35.
-- **Docker census** (subordinate 12b) — H3 remains blocked until this closes.
+- **Docker census** (subordinate 12b) — the local preflight could not find the Docker CLI, so container state is unknown; H3 remains blocked until the census completes on an approved Docker-enabled host.
 - **FK/model coupling and per-database parity** (item 27) — required before any stamp (H3) or upgrade over an old-dynamic body (H2′).
 - **28a default dispositions** and the **six model-less tables** — item 37 convergence cannot pass until both are dispositioned.
 - **Historical/intermediate-state support** — no such upgrade has been verified; items 22 and 23 do not cover it.
 
-Resolved on 2026-10-18 and no longer blocking: scratch-replay authorization (item 19), `df55cbe3f516` tracking (subordinate 16d), and Design 2 bootstrap defect (item 20).
+Resolved: scratch-replay authorization (item 19), `df55cbe3f516` tracking (subordinate 16d), and the Design 2 bootstrap defect. Items 20 and 29 are owner-confirmed CLOSED in this 2026-10-20 status reconciliation; neither closure authorizes H3 cutover.
 
 ---
 
@@ -492,10 +494,10 @@ Resolved on 2026-10-18 and no longer blocking: scratch-replay authorization (ite
 | Phase 1 — Findings established | 1–8 | 8 closed |
 | Phase 2 — Evidence for the architecture decision | 9–17 | 4 closed (9, 11, 16, 17) · 3 advanced (12, 14, 15) · 1 partial (10) · 1 open (13) |
 | Phase 3 — Decisions and authorization | 18–19 | 2 closed |
-| Phase 4 — Implement the approved permanent repair | 20–29 | 2 closed (22, 23) · 6 advanced (20, 21, 24, 27, 28, 29) · 2 not started (25, 26) |
+| Phase 4 — Implement the approved permanent repair | 20–29 | 4 closed (20, 22, 23, 29) · 4 advanced (21, 24, 27, 28) · 2 not started (25, 26) |
 | Phase 5 — Prove the result and prevent recurrence | 30–39 | 2 closed (30, 31) · 3 advanced (32, 34, 39) · 5 not started (33, 35, 36, 37, 38) |
 
-Parent totals: **18 closed + 12 advanced + 1 partial + 1 open + 0 gated + 7 not started = 39.** Subordinates (10a/10b, 11a–c, 12a/12b, 14a/14b, 16a–d, 17a/17b, 22a, 28a) are counted separately and never added to the 39.
+Parent totals: **20 closed + 10 advanced + 1 partial + 1 open + 0 gated + 7 not started = 39.** Subordinates (10a/10b, 11a–c, 12a/12b, 14a/14b, 16a–d, 17a/17b, 22a, 28a) are counted separately and never added to the 39.
 
 ---
 
@@ -513,14 +515,14 @@ All existing dirty and untracked work in the checkout is preserved. `afcon360_pr
 
 ## Next action
 
-The four immediate next actions, in order of leverage:
+The next actions, ordered by dependency:
 
-1. **Define the supported division of responsibility between the migration path and the bootstrap path** (item 20). The live bootstrap gate is satisfied; items 28 and 39 remain advanced pending broader integration gates.
-2. **Obtain the supported-starting-revisions decision** (item 13). Unblocks items 15 and 35 and the whole historical-state track.
-3. **Verify FK/model coupling and produce per-database parity artifacts** (item 27). Prerequisite to any H3 stamp or H2′ upgrade over an old-dynamic body.
-4. **Bring up the docker container and run the census probe** (subordinate 12b). Unblocks H3.
+1. **Obtain the supported-starting-revisions decision** (item 13). This owner decision gates items 15 and 35.
+2. **Complete the Docker census** (subordinate 12b) from an approved Docker-enabled host. The local preflight could not invoke the Docker CLI; it did not observe container state.
+3. **Verify FK/model coupling and obtain per-database physical-parity artifacts** (items 14, 25, 27 and 32). These are prerequisites to any H3 stamp or existing-database transition.
+4. **Complete populated-state migration-safety tests** (item 26) for the already-identified non-null additions and other data-sensitive operations once the supported-state policy is set; continue default/model-less-table disposition under items 28a/37.
 
-Items 3 and 4 are mechanical. Item 2 is a decision. Item 1 is defect remediation with the verification already authorized and its database already provisioned.
+The static graph and local whitespace check have already passed and should not be repeated absent relevant source changes. The outstanding actions now require an owner decision, Docker-capable environment, physical-schema evidence or populated-state tests.
 
 ---
 
@@ -570,3 +572,33 @@ Executed 2026-10-18 against `afcon360_d2_bootstrap_fix_20261018_test` (fresh, em
 - Legacy enum/orphan types, referenced enum/default handling, `organisations.business_category` divergence, and the coupled FK/model parity remain unresolved for existing databases.
 - The full pytest suite, fresh-clone replay, PostgreSQL 15/Docker replay, supported historical-state upgrades, current-head repeat-upgrade comparison, full schema parity, data/constraint behavior, and failure recovery have not yet been verified.
 - `afcon360_prod` and `afcon360_test` were not upgraded or modified during the work described here. Preserve the replay and investigation databases until evidence review; no automated cleanup is authorized by this register update.
+
+---
+
+## Phase 7 — Local read-only preflight reconciliation (2026-10-20)
+
+This section records the owner-supplied PowerShell output from the local checkout. The capture made no database connections, ran no migrations, did not stamp a revision, and did not execute tests. It supplements rather than replaces earlier physical-schema evidence.
+
+### Local repository state
+
+- `HEAD`: `e3f4c4f9719f555d277b0d79b5f99601c67fd72e`, matching the source snapshot used by this register.
+- Seven tracked files were modified and nothing was staged: `.opencode/rules/afcon360-constitution.md`, `AFCON360_ID_Architecture_and_Aider_Plan.md`, `DATABASE_SCALABILITY_ROADMAP.md`, `app/transport/services/booking_service.py`, `docs/POSTGRES_TESTING_CONTRACT.md`, `docs/enum-workstream-closeout.md`, and `scripts/migrate_enums_to_strings.py`.
+- One untracked file: `enum_query.py`. Preserve these existing modifications and the untracked file; do not overwrite or silently classify them as accepted.
+- `git diff --check` returned exit code 0. Git emitted LF/CRLF conversion warnings for several modified text files; these were warnings, not reported whitespace errors.
+- The local existence check for `docs/transport/reference/CONSTITUTION-ARCHIVE.md` returned `False`. Track this separately as a documentation/governance discrepancy; do not reopen Items 20 or 29.
+
+### Static migration graph
+
+The no-database Alembic parser returned 27 revisions, one base (`8a0deccce6f6`) and one head (`df55cbe3f516`). This confirms the static graph is single-base/single-head in this checkout; it does not prove fresh-clone replay, physical-schema parity, or support for any particular existing starting state.
+
+### Docker census
+
+The preflight raised `CommandNotFoundException` because `docker` was not recognized. No container census was collected and no container status was observed. Item 12b remains OPEN and H3-blocking until the read-only Q1–Q4 census is obtained from an approved Docker-enabled host. Do not translate command-not-found into a claim that containers are down.
+
+### Autogeneration hooks
+
+The local source search reconfirmed that `migrations/env.py` contains the stale comment saying enums were converted to String columns; `skip_enum_create()` returns the operation unchanged, and `include_object()` returns `True` for all objects. Record this as a source/comment/configuration review finding. Do not infer a proven runtime defect or change behavior without a separately authorized review.
+
+### H3 and physical-schema boundary
+
+The local H3 plan describes the N-squash as documentation/review only; the H3 root does not exist yet. The preflight did not connect to `afcon360_prod`, `afcon360_test`, or a disposable database. Existing recorded table/enum/default discrepancies remain prior evidence and were not freshly measured. H3 remains blocked by the supported-starting-state decision, Docker census, coupled FK/model verification, and per-state physical-parity evidence.
