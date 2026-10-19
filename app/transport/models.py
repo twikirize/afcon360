@@ -86,13 +86,17 @@ ContractStatus = ContractStatusEnum
 
 
 # ===========================================================================
-# ENUMS (Production with proper string values)
+# SHARED PYTHON ENUMS AND TRANSPORT-SPECIFIC ENUMS
 # ===========================================================================
-# PG ENUM TYPES ARE NOW DEFINED IN app/utils/enums.py
-# This module imports them to ensure single source of truth.
+# Shared Python enum classes are defined canonically in app/utils/enums.py
+# and re-exported above. Their declarations centralize member names/values;
+# they do not determine physical database storage by themselves. The column
+# mappings below preserve each field's configured native PostgreSQL ENUM or
+# String/VARCHAR representation. Verify physical schemas independently.
 #
-# PassengerStatus remains a Python-only enum (Category B) —
-# stored as VARCHAR with CHECK constraint, not a PG enum.
+# PassengerStatus remains a transport-specific Python enum. Its mapped status
+# column uses VARCHAR; this model declaration does not define a CHECK
+# constraint, so physical constraint presence must be verified separately.
 # ===========================================================================
 
 class PassengerStatus(str, Enum):
