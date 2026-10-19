@@ -23,7 +23,6 @@ The migration follows the expand-contract pattern (historical reference):
 """
 
 import argparse
-import sys
 from typing import List, Dict, Any
 
 # All enum columns to migrate - discovered from codebase
