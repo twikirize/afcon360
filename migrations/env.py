@@ -20,19 +20,19 @@ from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 from alembic.autogenerate import rewriter
 from alembic.operations import ops
 
-# Tell Alembic to never emit CREATE TYPE / DROP TYPE for enums —
-# since we've converted all enums to String columns this prevents
-# ghost ENUM diffs appearing on machines with stale pg_type entries
+# Historical enum-suppression scaffold. It is intentionally not treated as
+# an active enum policy: the Rewriter is not passed to context.configure(),
+# skip_enum_create() returns each operation unchanged, and include_object()
+# below is allow-all. Do not rely on this code to suppress enum DDL.
 writer = rewriter.Rewriter()
 
 @writer.rewrites(ops.CreateTableOp)
 def skip_enum_create(context, revision, op):
+    """Legacy no-op: preserve the CreateTableOp unchanged."""
     return op
 
 def include_object(object, name, type_, reflected, compare_to):
-    """Skip PostgreSQL ENUM types from autogenerate entirely."""
-    if type_ == 'table':
-        return True
+    """Allow all objects; this callback does not filter PostgreSQL ENUM types."""
     return True
 
 
