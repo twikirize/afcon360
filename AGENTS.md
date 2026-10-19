@@ -451,24 +451,6 @@ For every model/default/migration change, report:
 
 Classify the gate as **PASS**, **FAIL**, **BLOCKED**, or **DEFERRED** using the project governance rules. Do not mark PASS while a material compatibility or data-safety question remains unresolved.
 
-### 8. One‑time authorized baseline reconstruction (H3/N‑squash)
-A deliberately authorized, one‑time baseline reconstruction or migration‑history squash (e.g. the H3/N‑squash) is **not** an ordinary incremental schema change. The following constraints apply:
-
-* It is permitted **only** for the explicitly authorized baseline/history‑replacement operation and its defined deliverables; it does not authorize hand‑patching ordinary forward migrations and cannot become a precedent for future model changes.
-* The operation must have an explicit, owner‑approved scope, review requirements, ownership, and transition plan documented before work begins.
-* The produced baseline migration must be deterministic, version‑controlled, independently reviewable and reproducible from an empty disposable PostgreSQL database.
-* The baseline must **not** derive its schema dynamically from the current application models (e.g., it must not use `db.metadata.create_all()` or `drop_all()` as a substitute for a frozen migration definition).
-* Existing databases must have an explicit, evidence‑backed starting‑state classification and a reviewed transition/recovery plan before the baseline is applied.
-* Disposable verification databases may be created and recreated under an approved test procedure; this does not authorize resetting, dropping, stamping or modifying production or other protected databases.
-* Actual application schema transitions remain governed by the reviewed Alembic migration process (the canonical flow above). An ad‑hoc bootstrap script is **not** a substitute for the authoritative migration chain.
-* Cutover or migration of any protected/existing database requires its own explicit authorization; approval of the baseline alone does not grant that authority.
-* H3 implementation and cutover remain subject to their existing readiness gates; this exception does **not** imply that H3 cutover is approved.
-
-This exception is **narrow** and **does not** authorize:
-* manually patching ordinary forward migrations;
-* circumventing the canonical autogeneration/inspection workflow for ordinary model changes;
-* using the exception as a precedent for future routine schema work.
-
 ### 8. One-time authorized baseline reconstruction (H3/N-squash)
 
 A deliberately authorized baseline reconstruction or migration-history squash, such as the selected H3/N-squash, is not an ordinary incremental schema change. It is permitted only for a specifically named, owner-authorized operation and its defined deliverables.
