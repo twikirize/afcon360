@@ -45,10 +45,7 @@
 - The possible future review window is 2–5 years from 19 October 2026
   (review window: 19 October 2028 – 19 October 2031). This is a review
   window, not an implementation schedule or authorization.
-- A proposed forward policy for new columns (String + CHECK) appears
-  only in the unresolved `AGENTS.md` working-tree addition (§48); it is
-  recorded here as **unverified** and must not be treated as an approved
-  binding rule until its provenance/authorization is resolved.
+- The decision to preserve these 43 existing native ENUM columns does not, by itself, establish a blanket storage rule for every future column. This closeout does not independently authorize universal String + CHECK storage or blanket introduction of new native enums. For any authorized new schema design, follow the permanent rule in root `AGENTS.md` §48 and its synchronized agent-rule mirror; this closeout must not contradict that governing rule.
 
 ## Baseline state after Phase 4
 
