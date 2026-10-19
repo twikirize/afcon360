@@ -42,6 +42,9 @@
 - The source-only restoration required no migration for those columns.
 - Full ENUM-to-VARCHAR conversion remains a **separate, deferred
   project** requiring explicit authorization. It was not implemented.
+- The possible future review window is 2–5 years from 19 October 2026
+  (review window: 19 October 2028 – 19 October 2031). This is a review
+  window, not an implementation schedule or authorization.
 - A proposed forward policy for new columns (String + CHECK) appears
   only in the unresolved `AGENTS.md` working-tree addition (§48); it is
   recorded here as **unverified** and must not be treated as an approved

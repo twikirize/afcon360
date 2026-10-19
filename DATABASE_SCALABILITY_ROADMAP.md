@@ -1,12 +1,20 @@
 # AFCON360 Database Scalability Roadmap
 
+**STATUS — HISTORICAL PROPOSAL; ENUM CONVERSION DEFERRED (19 October 2026)**
+
+> The ENUM-to-String conversion proposal in this document is not part of the active AFCON360 plan. Existing PostgreSQL ENUM columns remain enums, and existing String/VARCHAR columns remain strings. No conversion or type normalization is authorized by this document.
+>
+> Reconsider this subject only through a new owner-approved review no earlier than 19 October 2028, with the longer-term review horizon ending 19 October 2031. This is a review window, not an implementation schedule or authorization.
+>
+> The conversion phases, file-by-file conversion guide, conversion-oriented testing/deployment examples, and ENUM decision tree below are retained as historical reference only. Agents must not execute or treat them as current requirements. Follow the current `AGENTS.md` and active reliability register.
+
 ## Executive Summary
 
-This document provides a complete audit of the current database state and a phased roadmap to transform AFCON360 into a system capable of handling **millions to billions of daily transactions** without breaking — following patterns used by Amazon, Meta, Google, and Oracle.
+**Historical claim (superseded):** The system is in early development with only test data. No production data exists, so there is **zero risk of data loss** from the changes outlined here.
 
-**Current Status:** The system is in early development with only test data. No production data exists, so there is **zero risk of data loss** from the changes outlined here.
+**Historical claim (superseded):** Target State: Zero PostgreSQL ENUM types, all models inheriting from `BaseModel`, schema changes deployable without locks or downtime, and application-level validation replacing database-level constraints.
 
-**Target State:** Zero PostgreSQL ENUM types, all models inheriting from `BaseModel`, schema changes deployable without locks or downtime, and application-level validation replacing database-level constraints.
+**Current policy (active):** Existing PostgreSQL ENUM columns remain enums, and existing String/VARCHAR columns remain strings. No conversion or type normalization is authorized by this document. The conversion plan below is retained as historical reference only.
 
 ---
 
@@ -175,13 +183,14 @@ This document provides a complete audit of the current database state and a phas
 
 ### 3.2 Core Principles for AFCON360
 
-1. **Never use PostgreSQL ENUM types** — Use `String` columns with application-level validation
-2. **Never lock a table for a schema change** — Use expand-contract pattern
-3. **Never deploy schema changes without a rollback plan** — Every change must be reversible in < 5 minutes
-4. **Never touch the wallet module without full ledger analysis** — HIGH RISK area
-5. **Always use `BaseModel` inheritance** — Never `db.Model` directly
-6. **Always use `BigInteger` for internal IDs** — Never `Integer`
-7. **Always use `user.public_id` (UUID) externally** — Never expose `user.id`
+**Preserve established database type representations.** Existing PostgreSQL ENUM columns remain enums, and existing String/VARCHAR columns remain strings. No conversion or type normalization is authorized. Follow the current authoritative model/database contract for any genuinely new schema design.
+
+1. **Never lock a table for a schema change** — Use expand-contract pattern
+2. **Never deploy schema changes without a rollback plan** — Every change must be reversible in < 5 minutes
+3. **Never touch the wallet module without full ledger analysis** — HIGH RISK area
+4. **Always use `BaseModel` inheritance** — Never `db.Model` directly
+5. **Always use `BigInteger` for internal IDs** — Never `Integer`
+6. **Always use `user.public_id` (UUID) externally** — Never expose `user.id`
 
 ### 3.3 The Expand-Contract Pattern
 
@@ -209,6 +218,8 @@ Phase 3: CONTRACT (Quick, low-risk)
 ---
 
 ## 4. Phased Migration Plan
+
+**NOTICE:** The entire phased ENUM-to-String conversion plan below is **deferred and non‑executable**. It is retained as historical reference only and must not be treated as current implementation instructions.
 
 ### Phase 0: Preparation (1-2 days)
 **Goal:** Create tooling and documentation before touching any models.
@@ -349,6 +360,8 @@ Phase 3: CONTRACT (Quick, low-risk)
 ---
 
 ## 5. File-by-File Change Guide
+
+**NOTICE:** The file‑by‑file conversion examples below are **historical reference only** and must not be treated as current implementation instructions.
 
 ### 5.1 Pattern for Converting ENUM to String
 
@@ -563,8 +576,9 @@ Day 5: Deploy contract phase
 
 ### 8.1 Mandatory Rules for Database Changes
 
+**Preserve existing database type representations.** Existing PostgreSQL ENUM columns remain enums, and existing String/VARCHAR columns remain strings. No conversion or type normalization is authorized.
+
 **NEVER:**
-- Add a new PostgreSQL ENUM type
 - Use `db.Model` directly — always use `BaseModel`
 - Use `Integer` for primary keys — always use `BigInteger`
 - Expose `user.id` externally — always use `user.public_id`
@@ -573,15 +587,17 @@ Day 5: Deploy contract phase
 - Patch migration files as workarounds — fix root cause in models
 
 **ALWAYS:**
-- Use `String` columns with application-level validation
-- Add CHECK constraints for defense-in-depth
+- Preserve existing database type representations (ENUMs stay enums, strings stay strings)
+- Add CHECK constraints for defense-in-depth where appropriate
 - Use `BigInteger` for all internal IDs and foreign keys
 - Use `user.public_id` (UUID) for external-facing APIs
 - Check for existing `backref` names before adding relationships
 - Use `sa.inspect()` before `op.create_table` in migrations
 - Run `flask db stamp head` before `flask db upgrade` after bootstrap
 
-### 8.2 ENUM Decision Tree
+Refer to the current authoritative engineering rules (`AGENTS.md` and active reliability register) for any genuinely new schema design.
+
+### 8.2 ENUM Decision Tree (Historical)
 
 ```
 Need to store a fixed set of values?
@@ -599,7 +615,7 @@ Need to store a fixed set of values?
    └─ NO → Still use String (future-proofing)
 ```
 
-**Answer is always: Use String.**
+**Answer is always: Use String.** *(Historical — current policy preserves existing ENUMs; new columns follow current authoritative engineering rules.)*
 
 ### 8.3 Model Inheritance Checklist
 

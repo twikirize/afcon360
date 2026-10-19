@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """
-Expand-Contract Migration Script for PostgreSQL ENUM to String Migration
+Legacy/Deferred ENUM-to-String Migration Helper (Deferred — not for current AFCON360 work)
 
-This script generates the SQL statements needed to migrate all PostgreSQL ENUM
-columns to String columns with CHECK constraints, following the expand-contract pattern.
+This script generates candidate SQL for an ENUM-to-String conversion using the
+expand-contract pattern. It is **not** part of the active AFCON360 plan.
+
+- No enum-to-string or string-to-enum conversion is currently authorized.
+- Existing database representations must be preserved (ENUMs stay enums, strings stay strings).
+- The script only generates candidate SQL; it does not apply changes.
+- The `--execute` option is not implemented and exits with a non‑zero status.
+- Reuse requires a new, explicitly approved future scope.
 
 Usage:
-    python scripts/migrate_enums_to_strings.py --dry-run    # Preview changes
-    python scripts/migrate_enums_to_strings.py --execute    # Execute migration
+    python scripts/migrate_enums_to_strings.py --dry-run    # Preview generated SQL
+    python scripts/migrate_enums_to_strings.py --execute    # Not implemented (exits non‑zero)
 
-The migration follows the expand-contract pattern:
+The migration follows the expand-contract pattern (historical reference):
     PHASE 1 (EXPAND): Add new String columns alongside existing ENUM columns
     PHASE 2 (MIGRATE): Backfill data from ENUM columns to String columns
     PHASE 3 (SWITCH): Add CHECK constraints, update application code
@@ -239,7 +245,7 @@ def generate_full_migration(dry_run: bool = True) -> str:
 def main():
     parser = argparse.ArgumentParser(description="Generate ENUM to String migration SQL")
     parser.add_argument("--dry-run", action="store_true", help="Preview migration without executing")
-    parser.add_argument("--execute", action="store_true", help="Execute migration (requires database connection)")
+    parser.add_argument("--execute", action="store_true", help="Not implemented — exits with error (use --dry-run)")
     parser.add_argument("--output", help="Output file for generated SQL")
     
     args = parser.parse_args()
