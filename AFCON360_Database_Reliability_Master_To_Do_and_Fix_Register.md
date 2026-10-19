@@ -1,8 +1,8 @@
 # AFCON360 — Database Reliability — Master To-Do & Fix Register
 
-**Snapshot: 20 October 2026 · includes the owner-supplied local read-only preflight; statuses reflect current evidence, not deployment readiness.**
+**Snapshot: 20 October 2026 · reconciled to the owner-supplied read-only preflight, the guarded 90-test run and the current review-branch evidence; statuses reflect acceptance evidence, not deployment readiness.**
 
-**Status: 20 closed · 10 advanced · 1 partial · 1 open · 0 gated · 7 not started (39 top-level items)**
+**Status: 20 closed · 11 advanced · 1 partial · 0 open · 0 gated · 7 not started (39 top-level items)**
 
 **Architecture: H2′ approved and implemented as the interim fresh-install repair · H3/N-squash selected as the durable destination, root not yet created**
 
@@ -19,58 +19,56 @@
 | Status | Count |
 |---|---:|
 | CLOSED | 20 |
-| ADVANCED | 10 |
+| ADVANCED | 11 |
 | PARTIAL | 1 |
-| OPEN | 1 |
+| OPEN | 0 |
 | NOT STARTED | 7 |
 | GATED | 0 |
 | **Total** | **39** |
 
 ### Top-level status table (IDs 1–39, each exactly once)
 
-| ID | Status | Title |
-|---:|---|---|
-| 1 | CLOSED | First observed installation failure: missing `transactiontype` |
-| 2 | CLOSED | Enum ownership investigation |
-| 3 | CLOSED | Map Alembic history and 27-revision chain |
-| 4 | CLOSED | Identify root-baseline design problem |
-| 5 | CLOSED | Identify repeated migration operations |
-| 6 | CLOSED | Investigate competing schema-creation paths |
-| 7 | CLOSED | Recover historical evidence |
-| 8 | CLOSED | Agree the engineering destination |
-| 9 | CLOSED | Reconstruct original baseline history |
-| 10 | PARTIAL | Verify the historical "182 tables from EMPTY" claim |
-| 11 | CLOSED | Trace enum declaration changes |
-| 12 | ADVANCED | Establish deployed migration states |
-| 13 | OPEN | Define supported starting revisions |
-| 14 | ADVANCED | Compare H2′ with existing databases |
-| 15 | ADVANCED | Design H3 transition procedure |
-| 16 | CLOSED | Classify architecture-specific conflicts |
-| 17 | CLOSED | Compare H2′ and H3 architectures |
-| 18 | CLOSED | Approve one architecture |
-| 19 | CLOSED | Approve and execute isolated PostgreSQL verification plan |
-| 20 | CLOSED | Establish canonical schema-creation architecture |
-| 21 | ADVANCED | Repair enum creation ownership |
-| 22 | CLOSED | Eliminate repeated `window_mode_enum` creation (fresh-install chain scope) |
-| 23 | CLOSED | Resolve duplicate slug migrations (fresh-install chain scope) |
-| 24 | ADVANCED | Resolve remaining confirmed and conditional conflicts |
-| 25 | NOT STARTED | Correct foreign-key assumptions |
-| 26 | NOT STARTED | Make data-sensitive migrations safe |
-| 27 | ADVANCED | Resolve `df55cbe3f516` and coupled model changes |
-| 28 | ADVANCED | Consolidate schema-creation procedures |
-| 29 | CLOSED | Establish permanent database engineering rules |
-| 30 | CLOSED | Create approved disposable PostgreSQL verification environment |
-| 31 | CLOSED | Pass clean-install migration test (scoped to the tested server) |
-| 32 | ADVANCED | Verify physical schema completeness independently |
-| 33 | NOT STARTED | Verify model/schema parity |
-| 34 | ADVANCED | Verify current-head behavior |
-| 35 | NOT STARTED | Test upgrades from supported historical states |
-| 36 | NOT STARTED | Verify data and constraints |
-| 37 | NOT STARTED | Compare fresh and upgraded schemas |
-| 38 | NOT STARTED | Verify failure recovery |
-| 39 | ADVANCED | Establish automated regression gates and close the work |
-
-**Subordinate entries are NOT part of the 39-item total:** 10a, 10b, 11a, 11b, 11c, 12a, 12b, 14a, 14b, 16a, 16b, 16c, 16d, 17a, 17b, 22a, 28a. They carry their own evidence and their own open/advanced state and are listed under *Subordinate findings*.
+| Item | Description | Expected test / acceptance evidence | Status |
+|---:|---|---|---|
+| 1 | First observed installation failure: missing `transactiontype` | Preserve the original failure evidence; the repaired clean replay must create the type exactly once, with no competing creator. | CLOSED |
+| 2 | Enum ownership investigation | Reconcile the USED, REFERENCED-only and orphan inventory against model declarations, migration references and catalog evidence. | CLOSED |
+| 3 | Map Alembic history and 27-revision chain | Verify every revision and edge, one base and one head; retain fresh-clone replay as a separate Item 31 acceptance check. | CLOSED |
+| 4 | Identify root-baseline design problem | Use commit-level source evidence to establish the baseline/child ownership problem, without confusing source predictions with observed runtime failures. | CLOSED |
+| 5 | Identify repeated migration operations | Retain the conflict matrix and distinguish confirmed declaration duplication from conditional/source-predicted conflicts; reconcile against replay evidence. | CLOSED |
+| 6 | Investigate competing schema-creation paths | Trace Alembic and model-bootstrap/`create_all` paths separately; verify no false Alembic-head stamp is used for bootstrap. | CLOSED |
+| 7 | Recover historical evidence | Tie historical claims to exact commits, logs or durable evidence artifacts and identify unsupported claims explicitly. | CLOSED |
+| 8 | Agree the engineering destination | Record the owner-approved position: H2′ interim fresh-install repair, H3/N-squash durable destination; no implied cutover authorization. | CLOSED |
+| 9 | Reconstruct original baseline history | Compare the historical root/declaration source at key commits and keep historical reconstruction separate from current replay proof. | CLOSED |
+| 10 | Verify the historical “182 tables from EMPTY” claim | Locate contemporaneous replay evidence or explicitly record the owner’s decision that the exact historical claim is superseded; do not substitute the 224-table H2′ replay. | PARTIAL |
+| 11 | Trace enum declaration changes | Verify the introduction/removal of enum-creation flags and related changes from Git history; preserve the corrected `create_type`/`checkfirst` contract. | CLOSED |
+| 12 | Establish deployed migration states | Use read-only, per-environment revision/catalog evidence and complete the Docker census; do not modify production or test databases. | ADVANCED |
+| 13 | Define supported starting revisions | H3 planning already names empty, root-stamped, intermediate, at-head and unknown states. Reconcile any prior owner ruling; record exact supported revision IDs and unsupported-state behavior before claiming closure. | ADVANCED |
+| 14 | Compare H2′ with existing database states | Create independent physical-schema/parity artifacts for prod and test and record each divergence; same Alembic revision must not be treated as proof of identical schema. | ADVANCED |
+| 15 | Design the H3 transition procedure | Complete the state-by-state runbook for empty, root-stamped, intermediate, at-head and unknown states, with parity-gated stamping and tested recovery/rollback. | ADVANCED |
+| 16 | Classify architecture-specific conflicts | Keep root-vs-child and child-vs-child conflicts distinct and tie classifications to source/graph evidence, not assumed runtime failures. | CLOSED |
+| 17 | Compare H2′ and H3 architectures | Retain a reasoned comparison of fresh-install behavior, old/intermediate states, enum ownership, immutability and rollback implications. | CLOSED |
+| 18 | Approve one architecture | Preserve the owner decision selecting H2′ as interim and H3 as durable target; confirm this is not permission to cut over. | CLOSED |
+| 19 | Approve and execute isolated PostgreSQL verification plan | Replay the full H2′ migration chain in an approved empty disposable PostgreSQL database and verify the final head and resulting catalog counts. | CLOSED |
+| 20 | Establish canonical schema-creation architecture | Verify Design 2 bootstrap creates its schema, completes and validates its marker/fingerprint, and does not falsely create `alembic_version`; keep it distinct from Alembic. | CLOSED |
+| 21 | Repair enum creation ownership | Demonstrate one PostgreSQL type-creation owner per USED/REFERENCED enum with exact labels and explicit legacy/default dispositions; Python enum-object identity alone is insufficient. | ADVANCED |
+| 22 | Eliminate repeated `window_mode_enum` creation | The H2′ clean-install replay must create `window_mode_enum` exactly once; test historical/intermediate paths separately after support policy is settled. | CLOSED |
+| 23 | Resolve duplicate slug migrations | The H2′ clean-install replay must create each slug object once and preserve the required constraints; historical/intermediate behavior remains a separate test. | CLOSED |
+| 24 | Resolve remaining confirmed and conditional conflicts | Reconcile the 324-row matrix against successful replay evidence and record explicit dispositions for conditional conflicts, orphan types and divergent `org_business_category` copies. | ADVANCED |
+| 25 | Correct foreign-key assumptions | Compare physical FK names, columns, targets and `ON DELETE`/`ON UPDATE` actions with migration source and SQLAlchemy relationships. | NOT STARTED |
+| 26 | Make data-sensitive migrations safe | Run populated-state tests for NOT NULL additions, backfills, unique indexes, CHECKs and FKs; prove existing data preservation and invalid-data rejection. | NOT STARTED |
+| 27 | Resolve `df55cbe3f516` and coupled model changes | The revision must remain tracked and reachable; independently verify the coupled FKs/models and create separate physical-parity evidence for prod and test. | ADVANCED |
+| 28 | Consolidate schema-creation procedures | Document the supported installation route and enforce the separation between bootstrap and migration paths; disposition the 145 default differences and six model-less tables before convergence. | ADVANCED |
+| 29 | Establish permanent database engineering rules | Verify the rules and their mirror agree: ordinary migrations are regenerated from corrected source/configuration, hand-patching is prohibited except for the narrowly authorized baseline-reconstruction exception. | CLOSED |
+| 30 | Create approved disposable PostgreSQL verification environment | Retain the authorized disposable replay/bootstrap databases and their evidence; verify that production/test databases were not used as scratch targets. | CLOSED |
+| 31 | Pass clean-install migration test | Replay from an empty database to `df55cbe3f516` and verify the resulting schema; extend separately to a genuinely fresh clone and supported/pinned PostgreSQL versions. | CLOSED |
+| 32 | Verify physical schema completeness independently | Export and compare tables, columns, ordered enum labels, defaults, indexes, constraints, FKs, sequences, triggers and functions against an independently approved expected schema. | ADVANCED |
+| 33 | Verify model/schema parity | After intentional exceptions and defaults are dispositioned, compare SQLAlchemy metadata with the physical schema and run appropriate Alembic/model parity checks. | NOT STARTED |
+| 34 | Verify current-head behavior | Run a second upgrade at head in a disposable database and prove a before/after physical-schema snapshot is unchanged. | ADVANCED |
+| 35 | Test upgrades from supported historical states | For every owner-approved supported historical revision, upgrade a separate disposable database with representative data and validate the resulting schema and data. | NOT STARTED |
+| 36 | Verify data and constraints | Prove row/value/relationship preservation, enum-label preservation and rejection of invalid data using populated disposable databases. | NOT STARTED |
+| 37 | Compare fresh and upgraded results | After dispositioning all 145 default differences and six model-less tables, compare fresh-install and upgraded physical-schema snapshots and explain every exception. | NOT STARTED |
+| 38 | Verify failure recovery | Induce a controlled migration failure in a disposable database and test/document recovery, transaction behavior and backup restoration where needed. | NOT STARTED |
+| 39 | Establish automated regression gates and close the work | Keep focused database-guarded tests green and add the full suite, PostgreSQL integration/replay, fresh-clone, schema-diff and conflict checks; see Phase 8 for exact guarded-run evidence and limits. | ADVANCED |
 
 ---
 
@@ -203,9 +201,9 @@ Deployment evidence (repo-only): zero tags — no release boundary. Only in-repo
 
 **[OPEN] 12b. Docker census.** The 2026-10-20 local PowerShell preflight could not invoke `docker` (`CommandNotFoundException`), so no container census or container-state result was obtained. This blocks H3 until the Q1–Q4 read-only census is run from an approved Docker-enabled host. The local failure does not prove that the containers are down.
 
-**[OPEN] 13. Define supported starting revisions.**
-A human product decision. The 2026-10-20 local static Alembic parser confirms 27 revisions, one base (`8a0deccce6f6`) and one head (`df55cbe3f516`); this verifies graph shape only and does not decide which populated or historical states are supported.
-**Next action:** obtain the owner's ruling on which starting revisions and database states must be supported for upgrade; this gates items 15 and 35.
+**[ADVANCED] 13. Define supported starting revisions.**
+The H3 transition procedure already defines the broad state categories: empty, root-stamped, intermediate, at-head and unknown. The local static Alembic parser also confirms 27 revisions, one base (`8a0deccce6f6`) and one head (`df55cbe3f516`). This is substantive progress, but these facts do **not** themselves prove which exact historical/intermediate revision IDs the owner approved for upgrade support.
+**Next action:** reconcile the prior owner ruling/handover evidence against the supported-state matrix before asking for anything again. If the ruling exists, record its exact revision coverage and close the remaining gap; only request the missing decision if that evidence cannot be found. This still gates final H3 transition rules and Item 35 tests.
 
 **[ADVANCED] 14. Compare H2′ with existing database states.**
 Same-ID/different-schema hazard is field-proven: `afcon360_test` at `df55cbe3f516` carries `org_business_category` as a live-USED 39-label UPPER enum; `afcon360_prod` at the same revision carries the same column as `varchar(40) NULL`, with `org_business_category` existing as a 4-label lowercase orphan. Same revision ID, different physical schema, different repair operation required per database.
@@ -370,9 +368,9 @@ No recovery procedure is documented or tested for a migration failing partway th
 **Next action:** specify and test the recovery procedure, including backup restoration where necessary; do not assume every downgrade can safely undo every change.
 
 **[ADVANCED] 39. Establish automated regression gates and close the work.**
-Advanced by evidence: the committed Design 2 source-level contract suite now passes **38 tests** (5 new regression tests added for the `%` placeholder handling, `no_parameters` execution option, schema-scope consistency, and real import-failure coverage). A standard run reports three Flask-Session deprecation warnings (33 passed + 3 warnings). An isolated contract run using `pytest --noconftest -p no:warnings` with `Engine.connect`/`Engine.raw_connection` blocked exits 0 with **38 passed** and no warnings reported. **Live PostgreSQL bootstrap verification has passed** (item 20): `bootstrap_model_schema()` succeeded on a fresh disposable database, marker `complete`, 217 tables, 47 enums, no `alembic_version`; read-only `validate_model_bootstrap()` also passes. Outstanding: the complete test suite, fresh-clone replay, PostgreSQL 15/Docker replay, and committed PostgreSQL integration gates.
-**Next action:** run the full test suite; add empty-database replay, migration-graph, conflict-detection and schema-verification checks to the ongoing review process. Close the work only when that acceptance evidence passes and the final record is approved.
-
+Latest focused regression evidence: at `4a689915d58a73c79bd5483bb51477c2821a8c4e`, the owner-reported guarded selection covering nine files passed **90 tests in 4.79s** with exit code 0. The temporary guard replaced SQLAlchemy `Engine.connect`, `Engine.raw_connection` and `psycopg2.connect` with raising functions. The focused Design 2 bootstrap contract suite separately passed 38 tests in an isolated no-connection run. `python -m py_compile migrations/env.py` and `git diff --check origin/main...HEAD` passed; the synchronized working tree is clean at `c13c5a9ad59e2d1b720725f4e7298a12ab5e59e1`. That latest commit is register-only, so the tested implementation code was unchanged.
+**Scope limit:** these are focused source/regression results, not the full suite or proof of PostgreSQL schema parity, migration safety, fresh-clone replay, Docker-pinned PostgreSQL replay or deployment readiness. Those remain outstanding, along with committed PostgreSQL integration gates.
+**Next action:** extend the regression gate to the full suite and the outstanding PostgreSQL integration/replay, migration-graph, conflict-detection and physical-schema-verification checks. Close Item 39 only when its defined acceptance evidence passes and the final record is approved.
 ---
 
 ## Subordinate findings (own evidence; NOT counted in the 39)
@@ -479,7 +477,7 @@ The initial verification script incorrectly reported FAIL for the post-fix run b
 
 ## What is blocking us today
 
-- **Supported starting revisions** (item 13) — human product decision; gates items 15 and 35.
+- **Supported starting revisions** (item 13, ADVANCED) — H3 state categories are documented, but the exact owner-approved revision list/ruling is not yet captured in the current register. Reconcile prior decision evidence before asking again; final scope gates items 15 and 35.
 - **Docker census** (subordinate 12b) — the local preflight could not find the Docker CLI, so container state is unknown; H3 remains blocked until the census completes on an approved Docker-enabled host.
 - **FK/model coupling and per-database parity** (item 27) — required before any stamp (H3) or upgrade over an old-dynamic body (H2′).
 - **28a default dispositions** and the **six model-less tables** — item 37 convergence cannot pass until both are dispositioned.
@@ -494,7 +492,7 @@ Resolved: scratch-replay authorization (item 19), `df55cbe3f516` tracking (subor
 | Phase | Items | Status mix |
 |---|---|---|
 | Phase 1 — Findings established | 1–8 | 8 closed |
-| Phase 2 — Evidence for the architecture decision | 9–17 | 4 closed (9, 11, 16, 17) · 3 advanced (12, 14, 15) · 1 partial (10) · 1 open (13) |
+| Phase 2 — Evidence for the architecture decision | 9–17 | 4 closed (9, 11, 16, 17) · 4 advanced (12–15) · 1 partial (10) · 0 open |
 | Phase 3 — Decisions and authorization | 18–19 | 2 closed |
 | Phase 4 — Implement the approved permanent repair | 20–29 | 4 closed (20, 22, 23, 29) · 4 advanced (21, 24, 27, 28) · 2 not started (25, 26) |
 | Phase 5 — Prove the result and prevent recurrence | 30–39 | 2 closed (30, 31) · 3 advanced (32, 34, 39) · 5 not started (33, 35, 36, 37, 38) |
@@ -519,7 +517,7 @@ All existing dirty and untracked work in the checkout is preserved. `afcon360_pr
 
 The next actions, ordered by dependency:
 
-1. **Obtain the supported-starting-revisions decision** (item 13). This owner decision gates items 15 and 35.
+1. **Reconcile the supported-starting-revisions ruling** (item 13) against prior owner decisions and handover evidence. Record any ruling already made; request only the specific missing revision coverage if no prior ruling exists. This gates finalization of items 15 and 35.
 2. **Complete the Docker census** (subordinate 12b) from an approved Docker-enabled host. The local preflight could not invoke the Docker CLI; it did not observe container state.
 3. **Verify FK/model coupling and obtain per-database physical-parity artifacts** (items 14, 25, 27 and 32). These are prerequisites to any H3 stamp or existing-database transition.
 4. **Complete populated-state migration-safety tests** (item 26) for the already-identified non-null additions and other data-sensitive operations once the supported-state policy is set; continue default/model-less-table disposition under items 28a/37.
@@ -651,3 +649,14 @@ At review checkpoint `e27e7b8b144723e6de7837e811032ecc0612dfe8`, the review bran
 After the initially tested commit `aa911d07f0e22c7c5b5523d0f83f77ab71387544`, the branch received documentation/comment-only follow-ups: the duplicate baseline-exception heading was consolidated in `AGENTS.md`; a stale `flask db stamp head` quick-reference command and an overbroad autogeneration claim were corrected in the historical roadmap; the enum-storage comment in `app/transport/models.py` was clarified; and this register was reconciled with the review findings. The owner then synchronized checkpoint `4a689915d58a73c79bd5483bb51477c2821a8c4e`, reran the guarded suite successfully, verified `migrations/env.py` compilation and the diff check, and reported a clean tree. No model declaration, executable Python statement, migration operation, or database schema changed in those follow-ups.
 
 Preserve the existing enum-representation policy and H3 readiness gates; do not infer database readiness from the focused test result.
+
+
+---
+
+## Phase 9 — Master-list and status reconciliation (2026-10-20)
+
+The top-level register has been restored to an actionable four-column format: **Item, Description, Expected test / acceptance evidence, Status**. Every one of the 39 top-level items is represented once. The status tally is reconciled to **20 CLOSED, 11 ADVANCED, 1 PARTIAL, 0 OPEN and 7 NOT STARTED**; subordinate entries remain outside the 39-item count.
+
+Item 13 is **ADVANCED, not CLOSED**: the H3 procedure already names the broad starting-state categories, so leaving it OPEN understated recorded progress. The remaining gap is the exact owner-approved revision/state support ruling. The next action is to recover and record any earlier ruling before asking the owner to decide again.
+
+Item 39's main entry now reflects the newer guarded 90-test run and the synchronized register-only commit. The guarded run supports focused regression confidence only; it does not replace full-suite, live PostgreSQL, fresh-clone, pinned-server, physical-schema-parity or historical-upgrade evidence. No migration, database write, H3 root creation or cutover authorization is implied by this register update.
