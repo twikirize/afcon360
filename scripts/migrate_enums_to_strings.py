@@ -249,23 +249,29 @@ def main():
     parser.add_argument("--output", help="Output file for generated SQL")
     
     args = parser.parse_args()
-    
-    if not args.dry_run and not args.execute:
-        args.dry_run = True  # Default to dry run
-    
+
+    # Fail closed before generating or writing any candidate SQL. The option
+    # exists only for backwards-compatible CLI recognition; this tool never
+    # applies schema changes.
+    if args.execute:
+        parser.error(
+            "--execute is intentionally unsupported; this script only generates candidate SQL"
+        )
+
+    # Default to dry-run when no mode is specified. There is no write/apply
+    # mode in this utility; --output only writes a review artifact.
+    if not args.dry_run:
+        args.dry_run = True
+
     sql = generate_full_migration(dry_run=args.dry_run)
-    
+
     if args.output:
-        with open(args.output, 'w') as f:
-            f.write(sql)
+        with open(args.output, 'w', encoding='utf-8') as output_file:
+            output_file.write(sql)
         print(f"Migration SQL written to {args.output}")
     else:
         print(sql)
-    
-    if args.execute:
-        print("ERROR: Execute mode not implemented. Use --dry-run and apply manually.")
-        sys.exit(1)
-    
+
     print(f"\nTotal enum columns to migrate: {len(ENUM_COLUMNS)}")
 
 
