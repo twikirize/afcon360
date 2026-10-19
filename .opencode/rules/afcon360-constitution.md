@@ -513,24 +513,9 @@ Schema changes may be implemented when the current roadmap/node explicitly autho
 
 These protections are permanent and must not be weakened by the exception below.
 
-**B. One‑time, explicitly authorized migration‑baseline replacement**
+**B. One-time, explicitly authorized migration-baseline replacement**
 
-Recognize that deliberately reconstructing or replacing a historical migration baseline is a different task from an ordinary incremental migration.
-
-A named, owner‑authorized operation such as H3/N‑squash may use a controlled process to create a frozen, explicit, version‑controlled baseline migration and transition artifacts, even where ordinary autogeneration is not the appropriate way to express the full historical schema.
-
-The exception must:
-
-- Apply only to the explicitly authorized baseline or migration‑history replacement and its defined deliverables.
-- Require an explicit scope, review, deterministic artifacts, supported starting‑state policy, and transition and recovery plan.
-- Not authorize agents to hand‑patch ordinary forward migrations or use the exception to conceal autogeneration defects.
-- Keep the authoritative baseline deterministic and independent of whatever models happen to be imported at runtime.
-- For the selected H3 architecture, prohibit runtime `db.metadata.create_all()` or `drop_all()` as a substitute for the frozen baseline migration definition.
-- Require fresh‑install replay on an approved disposable PostgreSQL database and evidence‑backed handling of each approved existing database starting state.
-- Keep production and existing‑database operations separately authorized. Preparing or reviewing a baseline does not authorize a cutover.
-- Require actual schema transitions to use the reviewed Alembic migration path. Test‑only reset scripts and model‑bootstrap tools are not interchangeable with that path.
-
-Do not state or imply that H3 implementation or cutover is approved merely because its architecture has been selected.
+A deliberately authorized baseline reconstruction or migration-history squash may follow only the narrow procedure defined in §20.3.1. That exception applies only to the named owner-approved operation and its deliverables; it does not permit patching routine forward migrations, bypassing ordinary autogeneration, or treating H3 selection as implementation/cutover approval.
 
 **C. Mandatory decision rule for agents**
 
