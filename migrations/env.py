@@ -147,9 +147,7 @@ def run_migrations_online():
             compare_type=True,
             render_as_batch=True,
             include_schemas=False,
-            # Prevents Alembic from trying to drop/recreate PostgreSQL ENUM
-            # types that already exist on another machine's DB
-            user_module_prefix='sa.',
+                        user_module_prefix='sa.',
             include_object=include_object,
             **conf_args
         )
