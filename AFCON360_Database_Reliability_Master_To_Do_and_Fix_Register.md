@@ -194,7 +194,7 @@ Local census complete:
 |---|---|---:|---:|---|
 | `afcon360_prod` (local) | `df55cbe3f516` | 224 | 68 | Physically divergent from test |
 | `afcon360_test` | `df55cbe3f516` | 224 | 49 | Stale physical schema |
-| Docker CLI | command not found | — | — | Local census blocked; container state unknown |
+| Docker / local preflight | — | — | — | `docker` command not found; census not obtained; container state unknown |
 
 Deployment evidence (repo-only): zero tags — no release boundary. Only in-repo migration executor: `docker-entrypoint.sh:47` `flask db upgrade` (web role only). **Update 2026-10-18:** a separate disposable database passed the current H2′ empty-database replay. `afcon360_prod` and `afcon360_test` were not upgraded or modified.
 **Next action:** run the Q1–Q4 census from an approved Docker-enabled host or after Docker CLI availability is restored. The local command-not-found result does not establish whether containers are running. Preserve read-only per-environment evidence.
