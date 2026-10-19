@@ -400,44 +400,29 @@ Never repair an enum mismatch by guessing, renaming labels, changing shared enum
 **A. Ordinary incremental schema changes — strict default**
 
 - Schema changes must originate from the authorized canonical source, including models, metadata registration and configuration as applicable.
-- Use Flask‑Migrate/Alembic autogeneration (`flask db migrate`) to generate ordinary migration files.
+- Use Flask-Migrate/Alembic autogeneration (`flask db migrate`) to generate ordinary migration files.
 - Inspect the generated migration for completeness and unintended operations before upgrading.
 - Agents MUST NOT manually create, patch, reorder or repair ordinary generated migration files to compensate for missing or incorrect autogeneration.
-- If changes are missing or wrong, STOP. Correct the underlying source, metadata registration or autogeneration configuration, then discard and regenerate the defective, not‑yet‑applied candidate as permitted by the repository's governance.
-- Never edit an already‑applied historical migration casually to make current code or tests pass.
+- If changes are missing or wrong, STOP. Correct the underlying source, metadata registration or autogeneration configuration, then discard and regenerate the defective, not-yet-applied candidate as permitted by the repository's governance.
+- Never edit an already-applied historical migration casually to make current code or tests pass.
 - Never use manual DDL, `stamp`, or another shortcut to conceal uncertainty about the schema or revision state.
 - A successful migration or passing test does not independently prove that the intended schema change was captured correctly.
 - Apply the reviewed migration through the authorized Alembic upgrade process.
+- Never use `db.create_all()` as a substitute for the authoritative migration path on a non-test installation.
+- No production migration, schema modification or data-changing operation without the required authorization.
 
-These protections are permanent and must not be weakened by the exception below.
+These requirements are permanent for ordinary schema changes and must not be weakened by an exception.
 
-**B. One‑time, explicitly authorized migration‑baseline replacement**
+**B. One-time baseline replacement exception**
 
-Recognize that deliberately reconstructing or replacing a historical migration baseline is a different task from an ordinary incremental migration.
+A one-time, explicitly owner-authorized migration-baseline reconstruction or history-squash operation may follow the narrow process defined in subsection 8 of this section. That exception applies only to its named scope and deliverables. It does not permit hand-patching ordinary forward migrations or bypassing autogeneration when an ordinary schema change is incompletely detected.
 
-A named, owner‑authorized operation such as H3/N‑squash may use a controlled process to create a frozen, explicit, version‑controlled baseline migration and transition artifacts, even where ordinary autogeneration is not the appropriate way to express the full historical schema.
+**C. Mandatory decision rules**
 
-The exception must:
-
-- Apply only to the explicitly authorized baseline or migration‑history replacement and its defined deliverables.
-- Require an explicit scope, review, deterministic artifacts, supported starting‑state policy, and transition and recovery plan.
-- Not authorize agents to hand‑patch ordinary forward migrations or use the exception to conceal autogeneration defects.
-- Keep the authoritative baseline deterministic and independent of whatever models happen to be imported at runtime.
-- For the selected H3 architecture, prohibit runtime `db.metadata.create_all()` or `drop_all()` as a substitute for the frozen baseline migration definition.
-- Require fresh‑install replay on an approved disposable PostgreSQL database and evidence‑backed handling of each approved existing database starting state.
-- Keep production and existing‑database operations separately authorized. Preparing or reviewing a baseline does not authorize a cutover.
-- Require actual schema transitions to use the reviewed Alembic migration path. Test‑only reset scripts and model‑bootstrap tools are not interchangeable with that path.
-
-Do not state or imply that H3 implementation or cutover is approved merely because its architecture has been selected.
-
-**C. Mandatory decision rule for agents**
-
-Make it obvious how agents must respond:
-
-- Ordinary schema change → fix canonical source, regenerate migration, inspect it, then follow the authorized upgrade process.
-- Authorized one‑time baseline reconstruction → follow its specifically approved scope and additional safety gates.
-- Incomplete autogeneration → stop and fix the source; do not patch the migration.
-- Unknown or divergent existing database state → stop and collect authorized evidence; do not stamp or alter the database to make it appear consistent.
+- Ordinary schema change → correct the canonical source, regenerate via Alembic, inspect the complete result, then follow the authorized upgrade process.
+- Authorized one-time baseline reconstruction → follow subsection 8 and its additional review and transition gates.
+- Incomplete autogeneration → STOP and fix the source/configuration; do not patch the generated migration.
+- Unknown or divergent existing database state → STOP and collect authorized evidence; do not stamp or alter the database to make it appear consistent.
 
 ### 6. Prove model and database behavior
 
@@ -483,6 +468,20 @@ This exception is **narrow** and **does not** authorize:
 * manually patching ordinary forward migrations;
 * circumventing the canonical autogeneration/inspection workflow for ordinary model changes;
 * using the exception as a precedent for future routine schema work.
+
+### 8. One-time authorized baseline reconstruction (H3/N-squash)
+
+A deliberately authorized baseline reconstruction or migration-history squash, such as the selected H3/N-squash, is not an ordinary incremental schema change. It is permitted only for a specifically named, owner-authorized operation and its defined deliverables.
+
+- The operation must have an explicit owner-approved scope, responsible owner, independent review requirements, supported starting-state policy, and transition/recovery plan before implementation.
+- The produced baseline must be deterministic, version-controlled, independently reviewable, and reproducible from an empty disposable PostgreSQL database.
+- The authoritative H3 baseline must not dynamically derive schema from whatever application models are imported at runtime. It must not use `db.metadata.create_all()` or `drop_all()` as a substitute for a frozen migration definition.
+- Existing databases must have evidence-backed starting-state classifications and reviewed transition handling. A revision identifier alone is not proof of physical schema parity.
+- Disposable verification databases may be created or recreated only under the approved test procedure. This does not authorize resetting, dropping, stamping, or modifying production or other protected databases.
+- Actual application schema transitions remain under the reviewed Alembic migration path. A model-bootstrap/reset script is not a substitute for the authoritative migration chain.
+- Production or other existing-database cutover requires separate explicit authorization. Preparing or reviewing the baseline does not authorize cutover.
+- The exception does not authorize routine migration patching, concealment of autogeneration defects, or a precedent for ordinary future model changes.
+- H3 implementation and cutover remain subject to the reliability register's open readiness gates; selecting the architecture is not cutover approval.
 
 **Governing principle:** A model declaration is not migration proof. Every new field, default, enum, and constraint must be compatible with both future writes and the database state that already exists.
 
