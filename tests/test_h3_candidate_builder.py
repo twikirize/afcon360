@@ -73,12 +73,12 @@ def test_schema_validator_requires_exact_table_and_enum_counts():
         "CREATE TABLE public.example (id BIGINT NOT NULL);\n"
         "CREATE TABLE public.example_history (id BIGINT NOT NULL);\n"
     )
-    assert builder.validate_schema_sql(sql, expected_tables=2, expected_enums=1) == {
+    assert builder.validate_schema_sql(sql, expected_tables=2, expected_enums=1, minimum_size=False) == {
         "table_ddl_count": 2,
         "enum_ddl_count": 1,
     }
     with pytest.raises(ValueError, match="table count mismatch"):
-        builder.validate_schema_sql(sql, expected_tables=3, expected_enums=1)
+        builder.validate_schema_sql(sql, expected_tables=3, expected_enums=1, minimum_size=False)
 
 
 def test_schema_validator_rejects_alembic_version_and_data_copy():
