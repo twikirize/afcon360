@@ -1,0 +1,46 @@
+name: H3 candidate source-only tests
+
+on:
+  push:
+    branches:
+      - work/db-reliability-harmonization-2026-10-20
+    paths:
+      - scripts/h3/**
+      - tests/test_h3_candidate_builder.py
+      - migrations/h3_candidate/**
+      - docs/database/H3-A-CANDIDATE-TESTING.md
+      - .github/workflows/h3-candidate-source-tests.yml
+  pull_request:
+    paths:
+      - scripts/h3/**
+      - tests/test_h3_candidate_builder.py
+      - migrations/h3_candidate/**
+      - docs/database/H3-A-CANDIDATE-TESTING.md
+      - .github/workflows/h3-candidate-source-tests.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-only-tests:
+    name: H3 builder unit tests (no database access)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Install minimal test dependencies
+        run: |
+          python -m pip install --disable-pip-version-check "SQLAlchemy>=2.0,<3" "pytest>=9,<10" "python-dotenv>=1,<2"
+
+      - name: Run H3 candidate source-only tests
+        run: |
+          python -m pytest --noconftest -q tests/test_h3_candidate_builder.py
