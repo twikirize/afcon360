@@ -108,7 +108,7 @@ def test_candidate_is_static_and_not_derived_from_runtime_models():
     )
     assert "revision = 'h3a20261020'" in rendered
     assert "down_revision = None" in rendered
-    assert "exec_driver_sql(_SCHEMA_SQL)" in rendered
+    assert String.raw`execution_options={"no_parameters": True}` in rendered
     assert "metadata.create_all" not in rendered
     assert "from app." not in rendered
     assert "a" * 64 in rendered
