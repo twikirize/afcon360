@@ -244,7 +244,7 @@ def normalize_schema_dump(raw_dump: str) -> str:
 
 
 def validate_schema_sql(
-    sql: str, *, expected_tables: int, expected_enums: int
+    sql: str, *, expected_tables: int, expected_enums: int, minimum_size: bool = True
 ) -> dict[str, int]:
     if re.search(r"\balembic_version\b", sql, re.IGNORECASE):
         raise ValueError("The candidate must not create or reference Alembic's own version table.")
@@ -260,7 +260,7 @@ def validate_schema_sql(
         raise ValueError(
             f"Schema dump enum count mismatch: expected {expected_enums}, found {enums}."
         )
-    if tables < 200 or enums < 40:
+    if minimum_size and (tables < 200 or enums < 40):
         raise ValueError("The dump is too small to represent the recorded AFCON360 schema.")
     return {"table_ddl_count": tables, "enum_ddl_count": enums}
 
