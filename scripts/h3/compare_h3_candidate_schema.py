@@ -249,7 +249,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         report = compare_candidate(args.candidate_database, args.pg_dump)
+    except (ValueError, FileExistsError, RuntimeError) as exc:
+        # Explicit validation messages contain no connection URL or credential.
+        print(f"H3 schema comparison BLOCKED: {exc} No database was modified.")
+        return 2
     except Exception as exc:
+        # Driver/subprocess exceptions may contain connection details; reveal only the class.
         print(f"H3 schema comparison BLOCKED: {type(exc).__name__}. No database was modified.")
         return 2
     print(json.dumps(report, indent=2, sort_keys=True))
