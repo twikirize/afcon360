@@ -249,7 +249,7 @@ def validate_schema_sql(
     sql: str, *, expected_tables: int, expected_enums: int, minimum_size: bool = True
 ) -> dict[str, int]:
     if re.search(r"\balembic_version\b", sql, re.IGNORECASE):
-        raise ValueError("The candidate must not create or reference Alembic's own version table.")
+        raise ValueError("The candidate must not create or reference public.alembic_version.")
     if any(_COPY_DATA.match(line) for line in sql.splitlines()):
         raise ValueError("Data-bearing COPY commands are forbidden in an H3 baseline.")
     tables = len(_CREATE_TABLE.findall(sql))
