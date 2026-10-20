@@ -147,6 +147,8 @@ def run_migrations_online():
     try:
         with engine.connect() as connection:
             _assert_empty_target(connection)
+            # Finish the read-only preflight transaction before Alembic starts its DDL transaction.
+            connection.commit()
             context.configure(
                 connection=connection,
                 target_metadata=None,
