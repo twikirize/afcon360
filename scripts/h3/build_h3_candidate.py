@@ -292,7 +292,9 @@ def render_candidate_migration(
         + sql_literal_lines
         + "\n)\n\n"
         "def upgrade():\n"
-        "    op.get_bind().exec_driver_sql(_SCHEMA_SQL)\n\n\n"
+        "    op.get_bind().exec_driver_sql(\n"
+        "        _SCHEMA_SQL, execution_options={\"no_parameters\": True}\n"
+        "    )\n"
         "def downgrade():\n"
         "    raise NotImplementedError(\n"
         "        'H3 baseline downgrade is intentionally disabled; recovery requires a verified backup restore.'\n"
