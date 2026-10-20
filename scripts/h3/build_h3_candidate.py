@@ -409,8 +409,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         report = build_candidate(replace=args.replace, pg_dump_executable=args.pg_dump)
+    except (ValueError, FileExistsError, RuntimeError) as exc:
+        # These validation/operational messages are authored here and contain no connection URL.
+        print(f"H3 candidate generation BLOCKED: {exc} No protected database was modified.")
+        return 2
     except Exception as exc:
-        # Do not emit exception details: database libraries may include connection details.
+        # Driver/subprocess exceptions may contain connection details; reveal only the class.
         print(f"H3 candidate generation BLOCKED: {type(exc).__name__}. No protected database was modified.")
         return 2
     print(json.dumps(report, indent=2, sort_keys=True))
