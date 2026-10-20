@@ -50,7 +50,7 @@
 | 18 | Approve one architecture | Preserve the owner decision selecting H2′ as interim and H3 as durable target; confirm this is not permission to cut over. | CLOSED |
 | 19 | Approve and execute isolated PostgreSQL verification plan | Replay the full H2′ migration chain in an approved empty disposable PostgreSQL database and verify the final head and resulting catalog counts. | CLOSED |
 | 20 | Establish canonical schema-creation architecture | Verify Design 2 bootstrap creates its schema, completes and validates its marker/fingerprint, and does not falsely create `alembic_version`; keep it distinct from Alembic. | CLOSED |
-| 21 | Repair enum creation ownership | Demonstrate one PostgreSQL type-creation owner per USED/REFERENCED enum with exact labels and explicit legacy/default dispositions; Python enum-object identity alone is insufficient. | ADVANCED |
+| 21 | Repair enum creation ownership | Define one creator for each enum required by the approved fresh schema, with exact labels; preserve existing database type representations and record legacy objects/defaults without conversion, dropping or relabeling. Python enum-object identity alone is insufficient. | ADVANCED |
 | 22 | Eliminate repeated `window_mode_enum` creation | The H2′ clean-install replay must create `window_mode_enum` exactly once; test historical/intermediate paths separately after support policy is settled. | CLOSED |
 | 23 | Resolve duplicate slug migrations | The H2′ clean-install replay must create each slug object once and preserve the required constraints; historical/intermediate behavior remains a separate test. | CLOSED |
 | 24 | Resolve remaining confirmed and conditional conflicts | Reconcile the 324-row matrix against successful replay evidence and record explicit dispositions for conditional conflicts, orphan types and divergent `org_business_category` copies. | ADVANCED |
@@ -212,7 +212,7 @@ This is a recovered proposal, **not an owner-approved policy**. The static singl
 **Next action:** ask the owner to confirm or amend this specific matrix only after checking any other authoritative decision record. Then record the exact supported revision IDs and test coverage; that ruling gates final H3 transition rules and Item 35.
 
 **[ADVANCED] 14. Compare H2′ with existing database states.**
-Same-ID/different-schema hazard is field-proven: `afcon360_test` at `df55cbe3f516` carries `org_business_category` as a live-USED 39-label UPPER enum; `afcon360_prod` at the same revision carries the same column as `varchar(40) NULL`, with `org_business_category` existing as a 4-label lowercase orphan. Same revision ID, different physical schema, different repair operation required per database.
+Same-ID/different-schema hazard is field-proven: `afcon360_test` at `df55cbe3f516` carries `org_business_category` as a live-USED 39-label UPPER enum; `afcon360_prod` at the same revision carries the same column as `varchar(40) NULL`, with `org_business_category` existing as a 4-label lowercase orphan. Same revision ID, different physical schema. Treat prod and test as distinct support/transition cases; no conversion or normalization is authorized by this evidence.
 Corrections carried: prod holds 68 types (not 69); `organisations.slug` is NOT NULL in both databases.
 **Evidence boundary (2026-10-20):** the supplied local preflight made no database connection and adds no new physical-catalog evidence. The previously recorded production/test differences remain prior evidence; they were not refreshed by this capture.
 **Next action:** use existing durable evidence or approved read-only snapshots/clones to produce separate physical-parity artifacts for each supported existing state. Preserve differences instead of averaging or normalizing them; no H3 stamp/cutover is authorized.
@@ -275,11 +275,11 @@ The source-level contract suite has been expanded to **38 tests** (5 new regress
 **Next action:** no further item-20 work; broader integration and installation-contract verification remain under items 28 and 39.
 
 **[ADVANCED] 21. Repair enum creation ownership.**
-Content (identical for both architectures): one `CREATE TYPE` per USED/REFERENCED type with exact live label sets; no `bookingstatus` creation by that name; conversion path (not drop) for test's live-USED 39-label `org_business_category`; preserve-or-migrate the 3 legacy column defaults.
+Content (fresh-schema ownership target, with existing-state preservation): define one `CREATE TYPE` owner per enum required by the approved fresh schema, with exact approved label sets; do not create `bookingstatus` by that name in the forward fresh-install path. Preserve existing enum and String/VARCHAR representations, including test's live-used 39-label `org_business_category`, prod's distinct observed `varchar(40)` state and 4-label orphan, and the 16 dev-only orphan types. Record the three referenced legacy defaults and their observed behavior; do not convert, drop, rename, relabel or normalize these existing objects under the current policy.
 Location: H2′ — frozen `8a0deccce6f6` body plus an exception or conditionalizing repair for `f91075478868`; H3 — N-squash body, where `f91075478868` retires.
 **Scope clarification (2026-10-20 review branch):** the separate source change in `app/transport/models.py` removes duplicate Python enum class declarations that shadowed canonical objects imported from `app/utils/enums.py`; a database-free regression test asserts the public aliases retain canonical object identity. This is Python enum-registry ownership/identity only. It does **not** implement PostgreSQL `CREATE TYPE` ownership, resolve the H2′/H3 migration-location decision, or provide live enum/schema evidence. Item 21 therefore remains **ADVANCED**, not implemented/closed.
 
-**Next action:** implement PostgreSQL type-creation ownership at the authorized migration location only after the relevant architectural/scope gates permit it, and resolve the remaining legacy enum/default dispositions (including the 16 dev-only orphans and prod's `org_business_category` orphan) as explicit rulings rather than silent drops.
+**Next action:** after H3 authoring is separately authorized, define PostgreSQL type-creation ownership for the approved fresh schema only. For existing-state evidence, record explicit preservation records for the 16 dev-only orphans, `bookingstatus`, both `org_business_category` representations and the three referenced legacy defaults. Do not plan or perform drops, conversions, renames, relabeling or normalization under the current preservation policy.
 
 **[CLOSED] 22. Eliminate repeated `window_mode_enum` creation.**
 Content: a single `CREATE TYPE window_mode_enum AS ENUM ('CALENDAR', 'ROLLING')`. The H2′ chain was corrected and the empty-database replay created the type once; live databases already converge.
@@ -297,13 +297,13 @@ The 324-row mechanical matrix is delivered: 74 CONFIRMED (declaration duplicatio
 | Category | Count | Action |
 |---|---:|---|
 | USED enum names | 48 | Create in frozen DDL, exact labels |
-| REFERENCED enums | 3 | Preserve defaults or migrate |
-| ORPHAN enums (dev-only) | 16 | Drop-candidate pending ruling |
+| REFERENCED enums | 3 | Record current default expressions and dependencies; preserve behavior unless a separately approved policy changes it. |
+| ORPHAN enums (dev-only) | 16 | Preserve existing objects; record dependency evidence. No drops under the current preservation policy. |
 | `bookingstatus` | 1 | Retain unless downgrade abandoned |
-| `org_business_category` | — | Test copy needs conversion; prod copy is a drop-candidate pending ruling |
+| `org_business_category` | — | Record test's live 39-label enum and prod's `varchar(40)` plus 4-label orphan as separate observed states; preserve both representations. No conversion or drop under the current policy. |
 | CONDITIONAL rows | 229 | Await reconciliation against replay evidence |
 
-**Next action:** reclassify the 229 CONDITIONAL rows against the now-successful fresh replay — do not treat source predictions as observed failures — and obtain explicit rulings for the 16 orphans, `bookingstatus` and both `org_business_category` copies.
+**Next action:** reclassify the 229 CONDITIONAL rows against the successful fresh replay — do not treat source predictions as observed failures. For legacy objects, record explicit preservation evidence for the 16 orphans, `bookingstatus` and each `org_business_category` state; no drop, conversion or relabeling is authorized under the current preservation policy.
 
 **[NOT STARTED] 25. Correct foreign-key assumptions.**
 Explicit clarification: the earlier `[CLARIFIED]` entry in this register was a **wording clarification only** — it restated that `e6f319ffc8c8` is a name mismatch rather than a duplication and that `df55cbe3f516` FK names match the dirty working tree rather than committed HEAD. **No substantive verification work has been performed.** Nothing has been compared against the physical schema.
@@ -325,7 +325,7 @@ Consequence: no fresh-vs-upgraded convergence test (item 37) can pass until thos
 
 **[ADVANCED] 28a. Classify and disposition the 145 server-default differences.**
 The 145 default differences comprise 132 Prod-only, 12 Test-only and one Both-differ case. Each must be classified against evidence and assigned an intended disposition before the fresh-versus-upgraded convergence requirement under item 37 can pass.
-Principles: a physical difference is not proof that prod or test is correct; do not normalize defaults simply to make the two environments match; preserve exact observed expressions in the evidence; distinguish observed differences from corroborated explanations and unresolved intended behavior; explicitly document any intentional exception or required schema-owner decision; keep the separate organisations.business_category type conversion visible in the convergence requirements. Cross-reference items 20, 29 and 37.
+Principles: a physical difference is not proof that prod or test is correct; do not normalize defaults simply to make the two environments match; preserve exact observed expressions in the evidence; distinguish observations from corroborated explanations and unresolved intent; document exceptions or required schema-owner decisions. Keep the `organisations.business_category` physical type divergence visible in the convergence evidence without planning a conversion. Cross-reference items 20, 29 and 37.
 The item 28a investigation may record the observed comparison as complete, but the disposition work remains outstanding.
 
 **[CLOSED] 29. Establish permanent database engineering rules.**
@@ -389,7 +389,7 @@ Latest focused regression evidence: at `4a689915d58a73c79bd5483bb51477c2821a8c4e
 - **12a** — Deployment evidence ledger recorded. [RECORDED]
 - **12b** — Local 2026-10-20 preflight: Docker CLI command not found; no container-state/census result. Run from an approved Docker-enabled host; blocks H3. [OPEN]
 - **14a** — Stamp-timing distinction: a database stamped `8a0deccce6f6` before the enum regression has a different schema from one stamped after; same ID, no timestamp in `alembic_version`. [ADVANCED]
-- **14b** — Divergent-schema dispositions: test needs a `org_business_category` conversion path (39-label UPPER → `varchar(40)`); prod needs a disposition ruling for its 4-label orphan; both need rulings for the 16 dev-only orphan candidates. [ADVANCED]
+- **14b** — Divergent-schema preservation evidence: retain the recorded test 39-label UPPER enum and the distinct prod `varchar(40)` column plus 4-label orphan as separate states; document dependencies for the 16 dev-only orphan candidates. No conversion, drop or relabeling under the current preservation policy. [ADVANCED]
 - **16a** — Root-vs-child and child-vs-child classes separated. [CLOSED]
 - **16b** — 324-row mechanical conflict matrix delivered (74 / 229 / 21 / 0). [DELIVERED]
 - **16c** — `df55cbe3f516` vs committed HEAD FK coupling proven via `git diff`. [CLOSED]
@@ -609,6 +609,14 @@ The local source search reconfirmed that `migrations/env.py` contains the stale 
 
 The local H3 plan describes the N-squash as documentation/review only; the H3 root does not exist yet. The preflight did not connect to `afcon360_prod`, `afcon360_test`, or a disposable database. Existing recorded table/enum/default discrepancies remain prior evidence and were not freshly measured. H3 remains blocked by the supported-starting-state decision, Docker census, coupled FK/model verification, and per-state physical-parity evidence.
 
+### Follow-up review of governance and branch updates (2026-10-20)
+
+- **`4a7af1130d57c8047aa6297c53ee604ac3f65edc` — AGENTS.md §8 consolidation:** the reviewed 18-line deletion removed the older duplicate rendition of “One-time authorized baseline reconstruction (H3/N-squash)”; the newer single §8 remains. The surviving section still restricts the exception to an explicitly owner-authorized baseline/history-replacement operation and does not relax the ordinary-migration autogeneration rule. This is a verified deduplication, not unexplained policy loss.
+- **`9a8d19b0ac611feeabd053ff803b4bebe8552d53` — Item 13 register-only update:** records the recovered starting-state proposal and explicitly says approval was not found. It changed no application code, migrations or databases.
+- **Guarded 90-test evidence:** retain the “owner-reported” label. The result and exact test selection/guard are recorded in Phase 8, but no separate raw terminal transcript artifact was added to the repository. Do not represent the concise result record as an independently archived raw log.
+- **Shared WIP commit history:** `decf23f` and `d8ce306` remain in the already-pushed branch. They are deliberately not reworded in place here: doing so would rewrite shared ancestry and require a force update. If a clean commit narrative is a merge requirement, prepare and review a separate integration branch from the approved base; do not rewrite this shared branch without explicit authorization.
+- **Preservation-policy wording:** active Item 21/24 and subordinate 14b/28a guidance has been corrected in this update to describe preservation records and separate physical states, not conversion/drop plans. Older dated findings remain historical evidence, not current authorization to alter database types.
+
 ---
 
 ## Phase 8 — Checkpoint source review and remote remediation (2026-10-20)
@@ -665,9 +673,15 @@ The top-level register has been restored to an actionable four-column format: **
 
 Item 13 is **ADVANCED, not CLOSED**. The updated 2026-10-20 readiness tree supplies a concrete proposed support matrix, but explicitly says owner approval remains outstanding. The proposal is recorded under Item 13; confirm/amend it before treating the policy as decided or running historical-state tests.
 
-Item 39's main entry now reflects the newer guarded 90-test run and the synchronized register-only commit. The guarded run supports focused regression confidence only; it does not replace full-suite, live PostgreSQL, fresh-clone, pinned-server, physical-schema-parity or historical-upgrade evidence. No migration, database write, H3 root creation or cutover authorization is implied by this register update.
+Item 39's main entry reflects the guarded 90-test run and its evidence limits. The follow-up governance review also verified the duplicate §8 consolidation and the Item 13 commit, retained the owner-reported evidence boundary, and corrected active Item 21/24/14b/28a guidance to match the no-conversion/no-drop preservation policy. WIP commit messages were not rewritten on the shared branch. No migration, database write, H3 root creation or cutover authorization is implied by this register update.
 
 
 ### Item 13 recovery outcome
 
 The earlier readiness-tree artifact was recovered and read. It contains a proposed state-support policy—not evidence of owner approval. The policy is now reproduced in Item 13 with each case and its acceptance condition. No approval is inferred, and no migration or database action followed from this review.
+
+---
+
+## Phase 10 — Preservation wording and branch review closeout (2026-10-20)
+
+This consolidated documentation update records the inspected `4a7af11` §8 deduplication and register-only `9a8d19b` Item 13 change, preserves the honest owner-reported label on the guarded 90-test result, and removes active conversion/drop recommendations that conflicted with the locked preservation policy. The existing WIP commits remain unchanged because this branch is already pushed; any cleaned integration narrative must be produced on a separate integration branch, not by rewriting shared history. This documentation update does not unblock H3 or satisfy the missing constitution-archive reference, Docker census, per-database parity, FK/model, populated-state or failure-recovery gates.
