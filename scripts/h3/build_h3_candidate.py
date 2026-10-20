@@ -275,28 +275,28 @@ def render_candidate_migration(
     if not sql_literal_lines:
         raise ValueError("Refusing to render an empty baseline.")
     return (
-        '"""Candidate H3/N-squash static baseline; generated from the approved H2-prime replay.\\n'
-        f"Source database: {APPROVED_SOURCE_DATABASE}\\n"
-        f"Source Alembic revision: {APPROVED_SOURCE_REVISION}\\n"
-        f"Source PostgreSQL version: {server_version}\\n"
-        f"pg_dump client version: {pg_dump_version}\\n"
-        f"Normalized schema SQL SHA-256: {source_sha256}\\n"
-        "This file is isolated under migrations/h3_candidate and is not the active application migration chain.\\n"
-        'Review and disposable replay are required before any activation.\\n"""\\n'
-        "from alembic import op\\n\\n"
-        "revision = " + repr(CANDIDATE_REVISION) + "\\n"
-        "down_revision = None\\n"
-        "branch_labels = None\\n"
-        "depends_on = None\\n\\n"
-        "_SCHEMA_SQL = (\\n"
+        '"""Candidate H3/N-squash static baseline; generated from the approved H2-prime replay.\n'
+        f"Source database: {APPROVED_SOURCE_DATABASE}\n"
+        f"Source Alembic revision: {APPROVED_SOURCE_REVISION}\n"
+        f"Source PostgreSQL version: {server_version}\n"
+        f"pg_dump client version: {pg_dump_version}\n"
+        f"Normalized schema SQL SHA-256: {source_sha256}\n"
+        "This file is isolated under migrations/h3_candidate and is not the active application migration chain.\n"
+        'Review and disposable replay are required before any activation.\n"""\n'
+        "from alembic import op\n\n"
+        "revision = " + repr(CANDIDATE_REVISION) + "\n"
+        "down_revision = None\n"
+        "branch_labels = None\n"
+        "depends_on = None\n\n"
+        "_SCHEMA_SQL = (\n"
         + sql_literal_lines
-        + "\\n)\\n\\n"
-        "def upgrade():\\n"
-        "    op.get_bind().exec_driver_sql(_SCHEMA_SQL)\\n\\n\\n"
-        "def downgrade():\\n"
-        "    raise NotImplementedError(\\n"
-        "        'H3 baseline downgrade is intentionally disabled; recovery requires a verified backup restore.'\\n"
-        "    )\\n"
+        + "\n)\n\n"
+        "def upgrade():\n"
+        "    op.get_bind().exec_driver_sql(_SCHEMA_SQL)\n\n\n"
+        "def downgrade():\n"
+        "    raise NotImplementedError(\n"
+        "        'H3 baseline downgrade is intentionally disabled; recovery requires a verified backup restore.'\n"
+        "    )\n"
     )
 
 
