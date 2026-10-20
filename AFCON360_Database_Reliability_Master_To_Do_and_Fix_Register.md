@@ -42,7 +42,7 @@
 | 10 | Verify the historical “182 tables from EMPTY” claim | Locate contemporaneous replay evidence or explicitly record the owner’s decision that the exact historical claim is superseded; do not substitute the 224-table H2′ replay. | PARTIAL |
 | 11 | Trace enum declaration changes | Verify the introduction/removal of enum-creation flags and related changes from Git history; preserve the corrected `create_type`/`checkfirst` contract. | CLOSED |
 | 12 | Establish deployed migration states | Use read-only, per-environment revision/catalog evidence and complete the Docker census; do not modify production or test databases. | ADVANCED |
-| 13 | Define supported starting revisions | H3 planning already names empty, root-stamped, intermediate, at-head and unknown states. Reconcile any prior owner ruling; record exact supported revision IDs and unsupported-state behavior before claiming closure. | ADVANCED |
+| 13 | Define supported starting revisions | Approve and record the proposed support matrix: empty DB only after replay validation; `df55cbe3f516` only after per-database physical parity; older revisions only when individually enumerated and tested; unknown/divergent states fail closed. Verify the prior owner ruling first. | ADVANCED |
 | 14 | Compare H2′ with existing database states | Create independent physical-schema/parity artifacts for prod and test and record each divergence; same Alembic revision must not be treated as proof of identical schema. | ADVANCED |
 | 15 | Design the H3 transition procedure | Complete the state-by-state runbook for empty, root-stamped, intermediate, at-head and unknown states, with parity-gated stamping and tested recovery/rollback. | ADVANCED |
 | 16 | Classify architecture-specific conflicts | Keep root-vs-child and child-vs-child conflicts distinct and tie classifications to source/graph evidence, not assumed runtime failures. | CLOSED |
@@ -202,8 +202,14 @@ Deployment evidence (repo-only): zero tags — no release boundary. Only in-repo
 **[OPEN] 12b. Docker census.** The 2026-10-20 local PowerShell preflight could not invoke `docker` (`CommandNotFoundException`), so no container census or container-state result was obtained. This blocks H3 until the Q1–Q4 read-only census is run from an approved Docker-enabled host. The local failure does not prove that the containers are down.
 
 **[ADVANCED] 13. Define supported starting revisions.**
-The H3 transition procedure already defines the broad state categories: empty, root-stamped, intermediate, at-head and unknown. The local static Alembic parser also confirms 27 revisions, one base (`8a0deccce6f6`) and one head (`df55cbe3f516`). This is substantive progress, but these facts do **not** themselves prove which exact historical/intermediate revision IDs the owner approved for upgrade support.
-**Next action:** reconcile the prior owner ruling/handover evidence against the supported-state matrix before asking for anything again. If the ruling exists, record its exact revision coverage and close the remaining gap; only request the missing decision if that evidence cannot be found. This still gates final H3 transition rules and Item 35 tests.
+The H3 transition procedure already defines the broad state categories: empty, root-stamped, intermediate, at-head and unknown. The local static Alembic parser confirms 27 revisions, one base (`8a0deccce6f6`) and one head (`df55cbe3f516`).
+**Recovered prior planning evidence (2026-10-20):** `AFCON360_DB_Migration_Readiness_Tree_Updated_2026-10-20.md` proposes the following support matrix but explicitly leaves it awaiting the owner's approval; no approval of the exact matrix was found in the retrieved handover material:
+- **Empty database:** support only after clean replay succeeds on each approved PostgreSQL environment/version.
+- **Existing DB at `df55cbe3f516`:** support only after read-only physical parity is proven; treat prod and test as distinct states until parity proves otherwise.
+- **Older/intermediate revision:** support only if each revision is explicitly listed and covered by a disposable upgrade test.
+- **Unknown revision, conflicting Alembic state or unrecognized/divergent physical schema:** fail closed and require manual assessment; no automatic stamp or upgrade.
+This is a recovered proposal, **not an owner-approved policy**. The static single-base/single-head graph does not itself define support for populated databases or exact historical revisions.
+**Next action:** ask the owner to confirm or amend this specific matrix only after checking any other authoritative decision record. Then record the exact supported revision IDs and test coverage; that ruling gates final H3 transition rules and Item 35.
 
 **[ADVANCED] 14. Compare H2′ with existing database states.**
 Same-ID/different-schema hazard is field-proven: `afcon360_test` at `df55cbe3f516` carries `org_business_category` as a live-USED 39-label UPPER enum; `afcon360_prod` at the same revision carries the same column as `varchar(40) NULL`, with `org_business_category` existing as a 4-label lowercase orphan. Same revision ID, different physical schema, different repair operation required per database.
@@ -477,7 +483,7 @@ The initial verification script incorrectly reported FAIL for the post-fix run b
 
 ## What is blocking us today
 
-- **Supported starting revisions** (item 13, ADVANCED) — H3 state categories are documented, but the exact owner-approved revision list/ruling is not yet captured in the current register. Reconcile prior decision evidence before asking again; final scope gates items 15 and 35.
+- **Supported starting revisions** (item 13, ADVANCED) — a concrete four-case proposal has been recovered, but the source explicitly leaves it pending owner approval. Confirm/amend that proposal, then enumerate any exact historical revision IDs; this gates items 15 and 35.
 - **Docker census** (subordinate 12b) — the local preflight could not find the Docker CLI, so container state is unknown; H3 remains blocked until the census completes on an approved Docker-enabled host.
 - **FK/model coupling and per-database parity** (item 27) — required before any stamp (H3) or upgrade over an old-dynamic body (H2′).
 - **28a default dispositions** and the **six model-less tables** — item 37 convergence cannot pass until both are dispositioned.
@@ -517,7 +523,7 @@ All existing dirty and untracked work in the checkout is preserved. `afcon360_pr
 
 The next actions, ordered by dependency:
 
-1. **Reconcile the supported-starting-revisions ruling** (item 13) against prior owner decisions and handover evidence. Record any ruling already made; request only the specific missing revision coverage if no prior ruling exists. This gates finalization of items 15 and 35.
+1. **Confirm or amend the recovered Item 13 support-matrix proposal** after checking the authoritative owner decision record; then record exact historical revision IDs and their test coverage if any are to be supported.
 2. **Complete the Docker census** (subordinate 12b) from an approved Docker-enabled host. The local preflight could not invoke the Docker CLI; it did not observe container state.
 3. **Verify FK/model coupling and obtain per-database physical-parity artifacts** (items 14, 25, 27 and 32). These are prerequisites to any H3 stamp or existing-database transition.
 4. **Complete populated-state migration-safety tests** (item 26) for the already-identified non-null additions and other data-sensitive operations once the supported-state policy is set; continue default/model-less-table disposition under items 28a/37.
@@ -657,6 +663,11 @@ Preserve the existing enum-representation policy and H3 readiness gates; do not 
 
 The top-level register has been restored to an actionable four-column format: **Item, Description, Expected test / acceptance evidence, Status**. Every one of the 39 top-level items is represented once. The status tally is reconciled to **20 CLOSED, 11 ADVANCED, 1 PARTIAL, 0 OPEN and 7 NOT STARTED**; subordinate entries remain outside the 39-item count.
 
-Item 13 is **ADVANCED, not CLOSED**: the H3 procedure already names the broad starting-state categories, so leaving it OPEN understated recorded progress. The remaining gap is the exact owner-approved revision/state support ruling. The next action is to recover and record any earlier ruling before asking the owner to decide again.
+Item 13 is **ADVANCED, not CLOSED**. The updated 2026-10-20 readiness tree supplies a concrete proposed support matrix, but explicitly says owner approval remains outstanding. The proposal is recorded under Item 13; confirm/amend it before treating the policy as decided or running historical-state tests.
 
 Item 39's main entry now reflects the newer guarded 90-test run and the synchronized register-only commit. The guarded run supports focused regression confidence only; it does not replace full-suite, live PostgreSQL, fresh-clone, pinned-server, physical-schema-parity or historical-upgrade evidence. No migration, database write, H3 root creation or cutover authorization is implied by this register update.
+
+
+### Item 13 recovery outcome
+
+The earlier readiness-tree artifact was recovered and read. It contains a proposed state-support policy—not evidence of owner approval. The policy is now reproduced in Item 13 with each case and its acceptance condition. No approval is inferred, and no migration or database action followed from this review.
