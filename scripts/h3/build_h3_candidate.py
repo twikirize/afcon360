@@ -222,6 +222,8 @@ def normalize_schema_dump(raw_dump: str) -> str:
     for line in raw_dump.replace("\r\n", "\n").replace("\r", "\n").splitlines():
         if any(pattern.match(line) for pattern in _HEADER_LINES):
             continue
+        if line.lstrip().startswith("-- Name:"):
+            line = re.sub(r"; Owner: .*?$", "; Owner: <normalized>", line)
         if re.match(r"^\s*\\(?:restrict|unrestrict)\b", line):
             # These psql client commands are not SQL and are not accepted by DBAPI execution.
             continue

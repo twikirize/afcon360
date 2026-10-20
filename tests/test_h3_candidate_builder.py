@@ -16,6 +16,17 @@ assert SPEC is not None and SPEC.loader is not None
 builder = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(builder)
 
+COMPARE_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "scripts"
+    / "h3"
+    / "compare_h3_candidate_schema.py"
+)
+COMPARE_SPEC = importlib.util.spec_from_file_location("h3_candidate_schema_compare", COMPARE_PATH)
+assert COMPARE_SPEC is not None and COMPARE_SPEC.loader is not None
+comparer = importlib.util.module_from_spec(COMPARE_SPEC)
+COMPARE_SPEC.loader.exec_module(comparer)
+
 
 def test_source_identity_accepts_only_approved_disposable_h2_prime_state():
     builder.validate_source_identity(
@@ -45,6 +56,7 @@ def test_dump_normalization_removes_psql_wrappers_and_default_public_schema_setu
 -- Dumped from database version 18.4
 -- Dumped by pg_dump version 18.4
 \restrict abc123
+-- Name: example; Type: TABLE; Schema: public; Owner: first_owner
 SET statement_timeout = 0;
 CREATE SCHEMA public;
 ALTER SCHEMA public OWNER TO pg_database_owner;
@@ -58,6 +70,7 @@ CREATE TABLE public.example (id BIGINT NOT NULL);
     assert "\\unrestrict" not in sql
     assert "CREATE SCHEMA public" not in sql
     assert "ALTER SCHEMA public OWNER" not in sql
+    assert "Owner: <normalized>" in sql
     assert "CREATE TYPE public.example_status AS ENUM" in sql
     assert "CREATE TABLE public.example" in sql
 
@@ -113,3 +126,14 @@ def test_candidate_is_static_and_not_derived_from_runtime_models():
     assert "from app." not in rendered
     assert "a" * 64 in rendered
     compile(rendered, "<candidate-migration>", "exec")
+
+
+def test_schema_comparison_passes_only_identical_normalized_sql():
+    source = "CREATE TYPE public.example_status AS ENUM ('OPEN');\nCREATE TABLE public.example (id BIGINT);\n"
+    same = comparer.compare_schema_texts(source, source)
+    assert same["match"] is True
+    assert same["difference_line_count"] == 0
+    changed = comparer.compare_schema_texts(source, source.replace("id BIGINT", "id INTEGER"))
+    assert changed["match"] is False
+    assert changed["difference_line_count"] > 0
+    assert any("INTEGER" in line for line in changed["diff_lines"])

@@ -6,19 +6,23 @@ H3-A authoring is authorized. This procedure builds an isolated candidate from t
 
 The source is fixed to the approved local disposable database afcon360_h2p_replay_20261018_test at Alembic revision df55cbe3f516 on PostgreSQL 18.4. Source connections and pg_dump are read-only. The builder stops on an unexpected revision, server version, public table count, enum count, or dump contents.
 
-## 1. Fetch and verify the authoring checkpoint
+## 1. Fetch and run the source-only tests
 
-Fetch the review branch normally. Confirm the application migration directory remains unchanged by this authoring commit. The new path is migrations/h3_candidate; it is not migrations/versions.
+From the repository root, in the existing virtual environment, run:
+
+    python -m pytest --noconftest -q tests/test_h3_candidate_builder.py
+
+A GitHub Actions workflow also runs these database-free tests. They do not connect to PostgreSQL.
 
 ## 2. Generate the candidate from the current chain output
 
-From the repository root, in the existing virtual environment, run:
+Run:
 
     python scripts/h3/build_h3_candidate.py
 
 The builder takes credentials from H3_BASELINE_SOURCE_DATABASE_URL when set. Otherwise it reuses local test connection settings from the existing environment or .env, but retargets the database name to afcon360_h2p_replay_20261018_test. It will only connect to localhost/127.0.0.1/::1 and rejects every database except that approved disposable source.
 
-The builder requires PostgreSQL 18 pg_dump. It creates migrations/h3_candidate/versions/h3a20261020_static_baseline.py. It does not print the connection URL and does not put credentials into the generated artifact. If a candidate already exists, generation stops unless --replace is deliberately specified; preserve the prior candidate before regenerating it.
+The builder requires a PostgreSQL 18 pg_dump client. It creates migrations/h3_candidate/versions/h3a20261020_static_baseline.py. It does not print the connection URL and does not put credentials into the generated artifact. If a candidate already exists, generation stops unless --replace is deliberately specified; preserve the prior candidate before regenerating it.
 
 Review the generated source hash, the reported table/type counts, the complete SQL diff, and any extension/function/trigger/constraint statements before testing.
 
@@ -34,15 +38,15 @@ Run:
 
 The candidate environment checks that the target has no application relations, custom types, routines, extensions or extra schemas before Alembic starts. It refuses a non-empty target and never drops or resets one. If a candidate run fails after creating any objects, preserve that database as evidence and use a separately approved fresh disposable database for a retry; do not clean it automatically.
 
-## 4. Verify schema equivalence
+## 4. Compare the resulting physical schemas
 
-A successful upgrade is not sufficient. Capture schema-only dumps from:
-- the approved H2-prime source at df55cbe3f516; and
-- the fresh H3 candidate at h3a20261020.
+After the candidate reaches head, run:
 
-Use the same PostgreSQL 18.4 pg_dump client and the same schema-only options for both; exclude public.alembic_version and omit owner/privilege statements from both snapshots. Normalize only expected dump headers and the default public-schema creation/owner statement. Do not normalize object definitions.
+    python scripts/h3/compare_h3_candidate_schema.py --candidate-database afcon360_h3_candidate_test
 
-Compare tables, columns, nullability, defaults, enum labels and order, constraints, indexes, sequences, routines, triggers, extensions, and schemas. Every difference must be explained or fixed in the candidate. Do not treat counts alone as a parity pass.
+The comparator connects read-only to only the approved H2-prime source and the specifically named local H3 candidate database. It verifies both revision IDs, PostgreSQL 18.4, the recorded table/enum counts and the same pg_dump client before comparing schema-only dumps. It excludes public.alembic_version and owner/privilege statements. If the definitions differ, it returns FAIL and writes a unified diff under the local temp directory; it never changes either database.
+
+A PASS requires exact normalized schema text equality. The comparison preserves object definitions, defaults, enum labels/order, constraints, indexes, sequences, functions, triggers and extension/schema statements. A table count by itself is not parity proof.
 
 ## 5. Acceptance gate
 
