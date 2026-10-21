@@ -205,13 +205,16 @@ Deployment evidence (repo-only): zero tags — no release boundary. Only in-repo
 
 **[ADVANCED] 13. Define supported starting revisions.**
 The H3 transition procedure already defines the broad state categories: empty, root-stamped, intermediate, at-head and unknown. The local static Alembic parser confirms 27 revisions, one base (`8a0deccce6f6`) and one head (`df55cbe3f516`).
-**Recovered prior planning evidence (2026-10-20):** `AFCON360_DB_Migration_Readiness_Tree_Updated_2026-10-20.md` proposes the following support matrix but explicitly leaves it awaiting the owner's approval; no approval of the exact matrix was found in the retrieved handover material:
+**Owner-approved support policy (2026-10-21):**
 - **Empty database:** support only after clean replay succeeds on each approved PostgreSQL environment/version.
-- **Existing DB at `df55cbe3f516`:** support only after read-only physical parity is proven; treat prod and test as distinct states until parity proves otherwise.
-- **Older/intermediate revision:** support only if each revision is explicitly listed and covered by a disposable upgrade test.
-- **Unknown revision, conflicting Alembic state or unrecognized/divergent physical schema:** fail closed and require manual assessment; no automatic stamp or upgrade.
-This is a recovered proposal, **not an owner-approved policy**. The static single-base/single-head graph does not itself define support for populated databases or exact historical revisions.
-**Next action:** ask the owner to confirm or amend this specific matrix only after checking any other authoritative decision record. Then record the exact supported revision IDs and test coverage; that ruling gates final H3 transition rules and Item 35.
+- **Existing DB at `df55cbe3f516`:** support only after independent, per-database physical-schema parity and a reviewed transition plan. Treat prod and test as distinct states until parity proves otherwise.
+- **Older/intermediate revision:** support only when exact revisions are explicitly listed and each has a disposable upgrade test.
+- **Unknown revision, conflicting Alembic state or unrecognized/divergent physical schema:** fail closed and require manual assessment; no automatic stamping or upgrading.
+This supersedes the recovered draft that incorrectly described the matrix as awaiting approval. The static single-base/single-head graph still does not prove support for populated databases or historical revisions.
+
+**Case 2 extension-preservation requirement — production-only `pgcrypto`:** The saved catalog records `pgcrypto` in production only. A transition plan must explicitly state whether the existing database is reused or a replacement is created. An in-place transition must not assume extension loss merely because the H3-A baseline omits it. If the database is rebuilt, assess whether to recreate the extension and document the approved action. Do not add production-only `pgcrypto` to the shared H3-A baseline by default. This requirement does not authorize H3-B or any database change.
+
+**Next action:** complete state-specific transition rules once the Docker census (12b), per-database parity, FK/model verification (27), and associated evidence gates are resolved.
 
 **[ADVANCED] 14. Compare H2′ with existing database states.**
 Same-ID/different-schema hazard is field-proven: `afcon360_test` at `df55cbe3f516` carries `org_business_category` as a live-USED 39-label UPPER enum; `afcon360_prod` at the same revision carries the same column as `varchar(40) NULL`, with `org_business_category` existing as a 4-label lowercase orphan. Same revision ID, different physical schema. Treat prod and test as distinct support/transition cases; no conversion or normalization is authorized by this evidence.
@@ -393,6 +396,7 @@ Latest focused regression evidence: at `4a689915d58a73c79bd5483bb51477c2821a8c4e
 - **14a** — Stamp-timing distinction: a database stamped `8a0deccce6f6` before the enum regression has a different schema from one stamped after; same ID, no timestamp in `alembic_version`. [ADVANCED]
 - **14b** — Divergent-schema preservation evidence: retain the recorded test 39-label UPPER enum and the distinct prod `varchar(40)` column plus 4-label orphan as separate states; document dependencies for the 16 dev-only orphan candidates. No conversion, drop or relabeling under the current preservation policy. [ADVANCED]
 - **14c** — `org_business_category` preservation ruling (2026-10-21): production remains documented as `varchar(40)` with the separate four-label lowercase orphan enum; test remains documented as a live-used 39-label uppercase enum. Preserve each physical state independently. No conversion, drop, rename, relabel, normalization, or forced convergence is authorized. Existing-database alignment requires a separate explicit decision after per-database parity evidence. [POLICY DECIDED; PARITY OPEN]
+- **14d** — Production-only `pgcrypto` extension: the saved catalog records the extension only in production, with 37 extension-backed routines (two additional production routines are deletion guards). The clean tracked-source search at `main` / `0e52802` found no direct application/migration call sites for the searched pgcrypto functions, but this is not proof that dynamic SQL, operational flows, or all database-side dependencies are absent. Preserve the existing production state while disposition remains open; do not drop it or add it to the common H3-A baseline by default. Any approved rebuild plan must explicitly assess and record whether to recreate the extension. [RECORDED; DEPENDENCY/DISPOSITION REVIEW OPEN]
 - **16a** — Root-vs-child and child-vs-child classes separated. [CLOSED]
 - **16b** — 324-row mechanical conflict matrix delivered (74 / 229 / 21 / 0). [DELIVERED]
 - **16c** — `df55cbe3f516` vs committed HEAD FK coupling proven via `git diff`. [CLOSED]
@@ -653,12 +657,22 @@ Confirmed divergences (all three databases at df55cbe3f516):
                 RESTRICT vs CASCADE)
   - 145 server-default differences (per Item 28a)
 
-New finding requiring disposition:
-  pgcrypto extension exists only in prod (37 routines). The H3-A verified
-  baseline does not include pgcrypto. If prod is transitioned to H3, pgcrypto
-  disappears unless explicitly preserved. Need to determine whether the app
-  uses any pgcrypto function (pgp_sym_encrypt, crypt, gen_salt, etc.).
-  Belongs under Item 14 or Item 28a.
+pgcrypto follow-up — now recorded under subordinate finding 14d:
+  The saved catalog records pgcrypto only in production. The production
+  routine definitions identify 37 routines backed by $libdir/pgcrypto, plus
+  two deletion-guard routines (39 production routines total). The tracked
+  repository search on clean main at 0e52802 found no direct application or
+  migration call sites for the searched pgcrypto SQL functions. Search hits
+  included this investigation note, an unrelated btree_gist backlog item,
+  H3 guard-tool queries of pg_catalog.pg_extension, and pg_depend inventory
+  field names; these are not direct pgcrypto application calls.
+  This is evidence that direct tracked-source use was not found, not proof
+  that all dynamic-SQL, operational, or database-side dependencies are absent.
+  The H3-A baseline omits pgcrypto. That does not by itself mean an in-place
+  transition will remove the extension. If a new/rebuilt target is selected,
+  the transition plan must explicitly assess and decide whether to recreate it.
+  Do not add it to the canonical H3-A baseline or drop/align it without a
+  separate reviewed and authorized decision. No database change is authorized.
 
 Report methodology note (record for future reference):
   "Empty console output" from a redirected `diff` command is NOT evidence of
@@ -668,10 +682,15 @@ Report methodology note (record for future reference):
   exit code (must be 0), and first 10 lines of the diff file (must be blank).
 
 Implications for Item 13 Case 2:
-  The 2,273-line reference-vs-prod diff confirms Case 2 (existing DB at
-  df55cbe3f516) requires a substantial transition plan — not a narrow
-  single-column fix. Owner may wish to reconsider whether Case 2 should
-  be narrowed to "fresh rebuild only" and treat prod/test as Case 4.
+  The 2,273-line reference-vs-prod diff confirms that an existing database at
+  df55cbe3f516 requires independent physical parity and a reviewed transition
+  plan; the approved support policy remains in force.
+  The plan must explicitly disposition production-only pgcrypto. For an
+  in-place path, verify preservation rather than assuming the H3-A baseline
+  implicitly removes or recreates the extension. For a rebuilt target, decide
+  explicitly whether it must be recreated after reviewing dependency and
+  operational evidence. Do not add it to the shared H3-A baseline by default.
+  This clarification does not authorize H3-B, a rebuild, or database changes.
 
 Artifacts: %TEMP%\afcon360_physical_schema_investigation\manual_inspection\
   (regenerable; SHAs above are the durable evidence).
