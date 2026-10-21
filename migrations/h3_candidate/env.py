@@ -16,6 +16,7 @@ except ImportError:  # pragma: no cover
 
 config = context.config
 _CANDIDATE_DATABASE = re.compile(r"^afcon360_h3_candidate(?:_[a-z0-9][a-z0-9-]*)?_test$")
+_POSTGRESQL_18_4 = re.compile(r"^18\\.4(?:\\D|$)")
 
 
 def _candidate_url():
@@ -52,10 +53,18 @@ def _candidate_url():
         raise RuntimeError(
             "Refusing to run the H3 candidate outside a database named afcon360_h3_candidate*_test."
         )
+    expected_database = os.environ.get("H3_CANDIDATE_DATABASE_NAME")
+    if expected_database and expected_database != url.database:
+        raise RuntimeError("The candidate URL database does not match the explicitly selected candidate database.")
     return url
 
 
 def _assert_empty_target(connection):
+    server_version = str(connection.execute(text("SHOW server_version")).scalar_one())
+    if not _POSTGRESQL_18_4.match(server_version):
+        raise RuntimeError(
+            f"H3-A replay is pinned to PostgreSQL 18.4 for this verification stage; observed {server_version!r}."
+        )
     relation_count = int(
         connection.execute(
             text(
@@ -79,7 +88,8 @@ def _assert_empty_target(connection):
                 JOIN pg_catalog.pg_namespace AS n ON n.oid = t.typnamespace
                 WHERE n.nspname !~ '^pg_'
                   AND n.nspname <> 'information_schema'
-                  AND t.typtype IN ('e', 'c', 'd', 'r')
+                  AND t.typrelid = 0
+                  AND t.typtype IN ('b', 'c', 'd', 'e', 'p', 'r')
                 """
             )
         ).scalar_one()
