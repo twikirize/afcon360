@@ -1,6 +1,6 @@
 # AFCON360 — Database Reliability — Master To-Do & Fix Register
 
-**Snapshot: 20 October 2026 · reconciled to the owner-supplied read-only preflight, the guarded 90-test run and the current review-branch evidence; statuses reflect acceptance evidence, not deployment readiness.**
+**Snapshot: 21 October 2026 · reconciled to owner approval of the H3-A scope, the H3 candidate tooling additions and the prior read-only/guarded evidence; statuses reflect acceptance evidence, not deployment readiness.**
 
 **Status: 20 closed · 11 advanced · 1 partial · 0 open · 0 gated · 7 not started (39 top-level items)**
 
@@ -10,7 +10,7 @@
 
 **Clean-install verification completed: 2 (H2′ empty-database migration replay to `df55cbe3f516`; Design 2 live bootstrap PASS on `afcon360_d2_bootstrap_fix_20261018_test`)**
 
-**Not verified: full test suite · fresh-clone replay · PostgreSQL 15 / Docker-pinned replay · historical/intermediate-state upgrades · full-schema parity**
+**Not verified: new H3 apply-tool tests on the local checkout · H3 candidate replay and full-schema parity · full test suite · fresh-clone replay · PostgreSQL 15 / Docker-pinned replay · historical/intermediate-state upgrades**
 
 ---
 
@@ -42,7 +42,7 @@
 | 10 | Verify the historical “182 tables from EMPTY” claim | Locate contemporaneous replay evidence or explicitly record the owner’s decision that the exact historical claim is superseded; do not substitute the 224-table H2′ replay. | PARTIAL |
 | 11 | Trace enum declaration changes | Verify the introduction/removal of enum-creation flags and related changes from Git history; preserve the corrected `create_type`/`checkfirst` contract. | CLOSED |
 | 12 | Establish deployed migration states | Use read-only, per-environment revision/catalog evidence and complete the Docker census; do not modify production or test databases. | ADVANCED |
-| 13 | Define supported starting revisions | Approve and record the proposed support matrix: empty DB only after replay validation; `df55cbe3f516` only after per-database physical parity; older revisions only when individually enumerated and tested; unknown/divergent states fail closed. Verify the prior owner ruling first. | ADVANCED |
+| 13 | Define supported starting revisions | Owner approved 2026-10-21: clean DB only after successful replay; existing `df55cbe3f516` only after independent per-database physical parity plus a reviewed transition plan; older revisions only when explicitly enumerated and tested; unknown/divergent states fail closed. H3-A replay remains unverified; this does not authorize H3-B. | ADVANCED |
 | 14 | Compare H2′ with existing database states | Create independent physical-schema/parity artifacts for prod and test and record each divergence; same Alembic revision must not be treated as proof of identical schema. | ADVANCED |
 | 15 | Design the H3 transition procedure | Complete the state-by-state runbook for empty, root-stamped, intermediate, at-head and unknown states, with parity-gated stamping and tested recovery/rollback. | ADVANCED |
 | 16 | Classify architecture-specific conflicts | Keep root-vs-child and child-vs-child conflicts distinct and tie classifications to source/graph evidence, not assumed runtime failures. | CLOSED |
@@ -279,7 +279,7 @@ Content (fresh-schema ownership target, with existing-state preservation): defin
 Location: H2′ — frozen `8a0deccce6f6` body plus an exception or conditionalizing repair for `f91075478868`; H3 — N-squash body, where `f91075478868` retires.
 **Scope clarification (2026-10-20 review branch):** the separate source change in `app/transport/models.py` removes duplicate Python enum class declarations that shadowed canonical objects imported from `app/utils/enums.py`; a database-free regression test asserts the public aliases retain canonical object identity. This is Python enum-registry ownership/identity only. It does **not** implement PostgreSQL `CREATE TYPE` ownership, resolve the H2′/H3 migration-location decision, or provide live enum/schema evidence. Item 21 therefore remains **ADVANCED**, not implemented/closed.
 
-**Next action:** after H3 authoring is separately authorized, define PostgreSQL type-creation ownership for the approved fresh schema only. For existing-state evidence, record explicit preservation records for the 16 dev-only orphans, `bookingstatus`, both `org_business_category` representations and the three referenced legacy defaults. Do not plan or perform drops, conversions, renames, relabeling or normalization under the current preservation policy.
+**Next action:** H3-A authoring is now owner-authorized, but Item 21 remains ADVANCED until its schema ownership and parity evidence are reviewed. Keep PostgreSQL type-creation decisions scoped to the approved fresh schema. For existing-state evidence, preserve the 16 dev-only orphans, `bookingstatus`, both `org_business_category` representations and the three referenced legacy defaults. Do not plan or perform drops, conversions, renames, relabeling or normalization under the current preservation policy.
 
 **[CLOSED] 22. Eliminate repeated `window_mode_enum` creation.**
 Content: a single `CREATE TYPE window_mode_enum AS ENUM ('CALENDAR', 'ROLLING')`. The H2′ chain was corrected and the empty-database replay created the type once; live databases already converge.
@@ -390,6 +390,7 @@ Latest focused regression evidence: at `4a689915d58a73c79bd5483bb51477c2821a8c4e
 - **12b** — Local 2026-10-20 preflight: Docker CLI command not found; no container-state/census result. Run from an approved Docker-enabled host; blocks H3. [OPEN]
 - **14a** — Stamp-timing distinction: a database stamped `8a0deccce6f6` before the enum regression has a different schema from one stamped after; same ID, no timestamp in `alembic_version`. [ADVANCED]
 - **14b** — Divergent-schema preservation evidence: retain the recorded test 39-label UPPER enum and the distinct prod `varchar(40)` column plus 4-label orphan as separate states; document dependencies for the 16 dev-only orphan candidates. No conversion, drop or relabeling under the current preservation policy. [ADVANCED]
+- **14c** — `org_business_category` preservation ruling (2026-10-21): production remains documented as `varchar(40)` with the separate four-label lowercase orphan enum; test remains documented as a live-used 39-label uppercase enum. Preserve each physical state independently. No conversion, drop, rename, relabel, normalization, or forced convergence is authorized. Existing-database alignment requires a separate explicit decision after per-database parity evidence. [POLICY DECIDED; PARITY OPEN]
 - **16a** — Root-vs-child and child-vs-child classes separated. [CLOSED]
 - **16b** — 324-row mechanical conflict matrix delivered (74 / 229 / 21 / 0). [DELIVERED]
 - **16c** — `df55cbe3f516` vs committed HEAD FK coupling proven via `git diff`. [CLOSED]
@@ -503,7 +504,7 @@ Resolved: scratch-replay authorization (item 19), `df55cbe3f516` tracking (subor
 | Phase 4 — Implement the approved permanent repair | 20–29 | 4 closed (20, 22, 23, 29) · 4 advanced (21, 24, 27, 28) · 2 not started (25, 26) |
 | Phase 5 — Prove the result and prevent recurrence | 30–39 | 2 closed (30, 31) · 3 advanced (32, 34, 39) · 5 not started (33, 35, 36, 37, 38) |
 
-Parent totals: **20 closed + 11 advanced + 1 partial + 0 open + 0 gated + 7 not started = 39.** Subordinates (10a/10b, 11a–c, 12a/12b, 14a/14b, 16a–d, 17a/17b, 22a, 28a) are counted separately and never added to the 39.
+Parent totals: **20 closed + 11 advanced + 1 partial + 0 open + 0 gated + 7 not started = 39.** Subordinates (10a/10b, 11a–c, 12a/12b, 14a–c, 16a–d, 17a/17b, 22a, 28a) are counted separately and never added to the 39.
 
 ---
 
@@ -685,3 +686,22 @@ The earlier readiness-tree artifact was recovered and read. It contains a propos
 ## Phase 10 — Preservation wording and branch review closeout (2026-10-20)
 
 This consolidated documentation update records the inspected `4a7af11` §8 deduplication and register-only `9a8d19b` Item 13 change, preserves the honest owner-reported label on the guarded 90-test result, and removes active conversion/drop recommendations that conflicted with the locked preservation policy. The existing WIP commits remain unchanged because this branch is already pushed; any cleaned integration narrative must be produced on a separate integration branch, not by rewriting shared history. This documentation update does not unblock H3 or satisfy the missing constitution-archive reference, Docker census, per-database parity, FK/model, populated-state or failure-recovery gates.
+
+---
+
+## Phase 11 — H3-A authorization, version choice and isolated apply tooling (2026-10-21)
+
+The owner explicitly authorized H3-A authoring and disposable verification. The approved Item 13 policy is now recorded in the top-level row: support a clean database only after a successful replay; consider an existing database at `df55cbe3f516` only after independent per-database physical-schema parity and a reviewed transition plan; support older revisions only if exact revisions are explicitly enumerated and tested; fail closed for unknown/divergent states. This is not H3-B authorization.
+
+**Version decision:** PostgreSQL 18.4 is the H3-A reproducibility target because it is the working environment used for the approved H2-prime replay. The H3 tooling now requires 18.4 and UTF8 for this first replay. The later move to the current 18.x minor is deferred to a separate compatibility/security step; it must not be confused with baseline correctness.
+
+**H3-A tooling changes on the review branch (through `74eb1ecc4ec29dbc1f8f0523a354c01ec3776e09`):**
+- Added `scripts/h3/apply_h3_candidate.py`: default read-only preflight; explicit `--create-database` and `--apply` actions; strict candidate database-name allowlist; no auto-drop/reset; candidate SQL provenance-hash validation; isolated Alembic registration check; read-only post-apply revision/table/enum checks; and sanitized failure output.
+- Pinned the builder to the recorded normalized source-schema hash `514b392f9b8a812b95c9e9681f713cfde86c726ee8a9eff36db2750123068825`. A different source dump or edited candidate now fails closed pending review.
+- Extended the candidate Alembic environment to require loopback PostgreSQL, the approved disposable name pattern, an empty target, and PostgreSQL 18.4. Candidate creation additionally checks source/target server version and encoding before creating the disposable database.
+- Added source-only tests for database-name protection, candidate hash/revision validation and CLI import paths; updated the workflow to install Alembic and include those tests.
+- Updated the runbook to use both package/module and direct-script-safe CLI invocations and to document the separate `org_business_category` preservation ruling.
+
+**Evidence boundary at this snapshot:** the owner-reported builder run generated a local untracked candidate at `migrations/h3_candidate/versions/h3a20261020_static_baseline.py` with source hash `514b392f9b8a812b95c9e9681f713cfde86c726ee8a9eff36db2750123068825`; its eight builder tests passed, and `py_compile` passed. The newly added apply tests and wrapper have **not yet been reported as executed on the owner's synchronized local checkout**. The candidate has not yet been applied and compared on a fresh disposable database, so H3-A is not PASS and its candidate file must not be committed/promoted yet.
+
+`org_business_category` is recorded separately as subordinate 14c, not as a rule that permits conversion. Neither `afcon360_prod` nor `afcon360_test` was accessed or modified by these repository source changes. H3-B remains unauthorized; per-database parity, populated-state safety, backup/recovery evidence and an explicit later cutover decision are still required. The missing `CONSTITUTION-ARCHIVE.md` reference remains a separate governance discrepancy and was not fabricated or silently resolved in this phase.
