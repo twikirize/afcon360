@@ -377,7 +377,7 @@ def run(candidate_database: str, action: str) -> dict[str, Any]:
             raise ValueError(
                 "Candidate database already exists. Nothing was dropped or modified; inspect it or choose a new approved disposable name."
             )
-        source_encoding = "UTF8"
+        source_encoding = str(source["server_encoding"])
         _create_candidate_database(candidate_url, source_encoding)
         state = _state(candidate_url)
         if not POSTGRESQL_18_4_PATTERN.match(state["server_version"]):
