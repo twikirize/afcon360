@@ -8,12 +8,15 @@ import re
 import shutil
 import subprocess
 import tempfile
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 from sqlalchemy.pool import NullPool
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.h3 import build_h3_candidate as builder
 
