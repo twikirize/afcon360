@@ -119,6 +119,7 @@ def _source_preflight(url: URL) -> dict[str, Any]:
     try:
         with engine.connect() as connection:
             server_version = str(connection.execute(text("SHOW server_version")).scalar_one())
+            server_encoding = str(connection.execute(text("SHOW server_encoding")).scalar_one())
             revisions = list(
                 connection.execute(text("SELECT version_num FROM public.alembic_version")).scalars()
             )
@@ -180,6 +181,8 @@ def _source_preflight(url: URL) -> dict[str, Any]:
         revision=revisions[0] if len(revisions) == 1 else "",
         server_version=server_version,
     )
+    if server_encoding.upper() != "UTF8":
+        raise ValueError("The approved H2-prime source must use UTF8 encoding for reproducible disposable replay.")
     if public_tables != EXPECTED_PUBLIC_TABLES:
         raise ValueError(
             f"Expected {EXPECTED_PUBLIC_TABLES} public tables including alembic_version; observed {public_tables}."
@@ -192,6 +195,7 @@ def _source_preflight(url: URL) -> dict[str, Any]:
         "source_database": APPROVED_SOURCE_DATABASE,
         "source_revision": APPROVED_SOURCE_REVISION,
         "server_version": server_version,
+        "server_encoding": server_encoding,
         "public_table_count_including_alembic_version": public_tables,
         "public_enum_count": public_enums,
         "all_user_schema_table_count_including_alembic_version": all_user_tables,
