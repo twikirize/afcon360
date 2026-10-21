@@ -6,10 +6,16 @@ import hashlib
 import json
 import re
 import shutil
+import sys
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
