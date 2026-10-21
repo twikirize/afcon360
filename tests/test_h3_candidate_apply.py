@@ -114,6 +114,48 @@ def test_h3a_replay_version_gate_is_18_4_for_this_checkpoint():
     assert not applier.POSTGRESQL_18_4_PATTERN.match("15.8")
 
 
+def test_dry_run_passes_the_selected_candidate_name_to_url_resolver(monkeypatch):
+    selected_database = "afcon360_h3_candidate_test"
+    resolved_names = []
+
+    monkeypatch.setattr(
+        applier,
+        "load_and_validate_candidate",
+        lambda: {
+            "revision": builder.CANDIDATE_REVISION,
+            "schema_sql_sha256": builder.APPROVED_SOURCE_SCHEMA_SHA256,
+            "schema_sql_bytes": 123,
+        },
+    )
+    monkeypatch.setattr(
+        applier,
+        "_validate_alembic_registration",
+        lambda: {"registered_head": builder.CANDIDATE_REVISION, "revision_count": 1},
+    )
+    monkeypatch.setattr(
+        applier,
+        "_source_preflight",
+        lambda: {
+            "server_version": "18.4",
+            "server_encoding": "UTF8",
+        },
+    )
+
+    def resolve_candidate_url(candidate_database):
+        resolved_names.append(candidate_database)
+        from sqlalchemy.engine import make_url
+        return make_url(f"postgresql://localhost/{candidate_database}")
+
+    monkeypatch.setattr(applier, "_resolve_candidate_url", resolve_candidate_url)
+    monkeypatch.setattr(applier, "_database_exists", lambda candidate_url: False)
+
+    report = applier.run(selected_database, "dry-run")
+
+    assert resolved_names == [selected_database]
+    assert report["gate"] == "DRY_RUN_READY"
+    assert report["candidate_database"] == selected_database
+
+
 def test_h3a_application_module_import_uses_supported_package_entrypoint():
     assert callable(applier.main)
     assert applier.CANDIDATE_DATABASE_PATTERN.fullmatch("afcon360_h3_candidate_test")
