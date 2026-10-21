@@ -10,7 +10,9 @@
 
 **Clean-install verification completed: 2 (H2′ empty-database migration replay to `df55cbe3f516`; Design 2 live bootstrap PASS on `afcon360_d2_bootstrap_fix_20261018_test`)**
 
-**Not verified: new H3 apply-tool tests on the local checkout · H3 candidate replay and full-schema parity · full test suite · fresh-clone replay · PostgreSQL 15 / Docker-pinned replay · historical/intermediate-state upgrades**
+**H3-A fresh-install verification completed: 1 (H3-A candidate baseline authored and verified on PostgreSQL 18.4; schema parity confirmed against H2-prime replay)**
+
+**Not verified: full test suite · fresh-clone replay · PostgreSQL 15 / Docker-pinned replay · historical/intermediate-state upgrades**
 
 ---
 
@@ -42,7 +44,7 @@
 | 10 | Verify the historical “182 tables from EMPTY” claim | Locate contemporaneous replay evidence or explicitly record the owner’s decision that the exact historical claim is superseded; do not substitute the 224-table H2′ replay. | PARTIAL |
 | 11 | Trace enum declaration changes | Verify the introduction/removal of enum-creation flags and related changes from Git history; preserve the corrected `create_type`/`checkfirst` contract. | CLOSED |
 | 12 | Establish deployed migration states | Use read-only, per-environment revision/catalog evidence and complete the Docker census; do not modify production or test databases. | ADVANCED |
-| 13 | Define supported starting revisions | Owner approved 2026-10-21: clean DB only after successful replay; existing `df55cbe3f516` only after independent per-database physical parity plus a reviewed transition plan; older revisions only when explicitly enumerated and tested; unknown/divergent states fail closed. H3-A replay remains unverified; this does not authorize H3-B. | ADVANCED |
+| 13 | Define supported starting revisions | Owner approved 2026-10-21: clean DB only after successful replay; existing `df55cbe3f516` only after independent per-database physical parity plus a reviewed transition plan; older revisions only when explicitly enumerated and tested; unknown/divergent states fail closed. **H3-A clean-install replay verified on PostgreSQL 18.4 (fresh `afcon360_h3_candidate_test`); does not authorize H3-B.** | ADVANCED |
 | 14 | Compare H2′ with existing database states | Create independent physical-schema/parity artifacts for prod and test and record each divergence; same Alembic revision must not be treated as proof of identical schema. | ADVANCED |
 | 15 | Design the H3 transition procedure | Complete the state-by-state runbook for empty, root-stamped, intermediate, at-head and unknown states, with parity-gated stamping and tested recovery/rollback. | ADVANCED |
 | 16 | Classify architecture-specific conflicts | Keep root-vs-child and child-vs-child conflicts distinct and tie classifications to source/graph evidence, not assumed runtime failures. | CLOSED |
@@ -617,6 +619,62 @@ The local H3 plan describes the N-squash as documentation/review only; the H3 ro
 - **Guarded 90-test evidence:** retain the “owner-reported” label. The result and exact test selection/guard are recorded in Phase 8, but no separate raw terminal transcript artifact was added to the repository. Do not represent the concise result record as an independently archived raw log.
 - **Shared WIP commit history:** `decf23f` and `d8ce306` remain in the already-pushed branch. They are deliberately not reworded in place here: doing so would rewrite shared ancestry and require a force update. If a clean commit narrative is a merge requirement, prepare and review a separate integration branch from the approved base; do not rewrite this shared branch without explicit authorization.
 - **Preservation-policy wording:** active Item 21/24 and subordinate 14b/28a guidance has been corrected in this update to describe preservation records and separate physical states, not conversion/drop plans. Older dated findings remain historical evidence, not current authorization to alter database types.
+
+---
+
+## Phase 7 — Physical-schema investigation resolved (2026-10-21)
+
+Three independent investigations produced contradictory claims. Two (Reports
+B and C) claimed "byte-identical schemas" while listing different SHA-256
+values — an internal contradiction. Report A was substantively correct.
+
+Ground truth (script `scripts/h3/extract_physical_evidence.py`):
+
+  Database    Bytes     Lines    SHA-256 (normalized)
+  Reference   919,891   28,367   0701c42dda041f3725c59d2b8081fd4534b5f8d3359f67839aad98c8d53198da
+  Prod        929,285   28,702   4485e14f910a16be1a766be355e27ed4724e744eca90faba428e522b71396c3e
+  Test        921,768   28,411   0326f5d7b8891cfa344c74d5b3805565b80f68e2e9f1f4ca44829249954d4c5b
+
+  Diff line counts (proven, not inferred):
+    Reference vs Prod: 2,273 lines (93,910 bytes)
+    Reference vs Test:   711 lines (35,664 bytes)
+    Prod vs Test:      2,311 lines (93,240 bytes)
+
+Confirmed divergences (all three databases at df55cbe3f516):
+  - Enums:    prod has 68 (19 more than ref/test's 49)
+  - Agent indexes: prod and test each have 29 (15 more than ref's 14)
+  - Triggers: ref 2, prod 2, test 0 (guard triggers missing from test)
+  - Functions (live catalog): prod 39 (2 guards + 37 pgcrypto),
+                              ref 2, test 0
+  - pgcrypto: installed only in prod
+  - Agent timestamps: 12 columns differ between ref and prod/test
+                      (ref=timestamptz, prod/test=timestamp without tz)
+  - FK actions: 4-6 FKs differ per pair (incl. organisation_types.category_code
+                RESTRICT vs CASCADE)
+  - 145 server-default differences (per Item 28a)
+
+New finding requiring disposition:
+  pgcrypto extension exists only in prod (37 routines). The H3-A verified
+  baseline does not include pgcrypto. If prod is transitioned to H3, pgcrypto
+  disappears unless explicitly preserved. Need to determine whether the app
+  uses any pgcrypto function (pgp_sym_encrypt, crypt, gen_salt, etc.).
+  Belongs under Item 14 or Item 28a.
+
+Report methodology note (record for future reference):
+  "Empty console output" from a redirected `diff` command is NOT evidence of
+  identical files. Two independent agents (B and C) made this error and
+  concluded "byte-identical" while their own SHAs proved otherwise. Going
+  forward, any identity claim must show: file size in bytes (must be 0),
+  exit code (must be 0), and first 10 lines of the diff file (must be blank).
+
+Implications for Item 13 Case 2:
+  The 2,273-line reference-vs-prod diff confirms Case 2 (existing DB at
+  df55cbe3f516) requires a substantial transition plan — not a narrow
+  single-column fix. Owner may wish to reconsider whether Case 2 should
+  be narrowed to "fresh rebuild only" and treat prod/test as Case 4.
+
+Artifacts: %TEMP%\afcon360_physical_schema_investigation\manual_inspection\
+  (regenerable; SHAs above are the durable evidence).
 
 ---
 
