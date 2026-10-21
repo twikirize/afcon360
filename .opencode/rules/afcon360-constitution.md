@@ -331,13 +331,14 @@ Verify repository conventions before treating any exception as intentional.
 
 ## §14 PostgreSQL ENUM Policy (AGENTS.md §14)
 
-Do NOT introduce new PostgreSQL ENUM types.
+**Superseded and consolidated into §48.** The earlier "Do NOT introduce new PostgreSQL ENUM types / convert existing enums to String" policy in this section is withdrawn. Existing PostgreSQL ENUM columns and existing String/VARCHAR columns are **preserved as-is**. No conversion, drop, rename, consolidation, or relabeling is authorized.
 
-Use: `String`, application-level validation, CHECK constraints where appropriate.
+For the current rule see:
 
-Existing ENUM migrations must follow approved expand-contract strategy.
+- **§48** in this document — Permanent Database Engineering Rules.
+- **`AGENTS.md` §48** — authoritative cross-cutting database rule.
 
-See: `DATABASE_SCALABILITY_ROADMAP.md`
+The historical conversion proposal lives in `DATABASE_SCALABILITY_ROADMAP.md`, which is explicitly marked as a historical proposal, deferred to a possible 2028–2031 review window. It is not active policy.
 
 ---
 

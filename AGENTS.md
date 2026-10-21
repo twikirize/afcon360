@@ -89,7 +89,7 @@ This file replaces the old AGENTS.md, a 2,626-line constitution that:
 - was read by almost nobody
 - gave agents the raw material to *hide behind* — "I can't be expected to read 2,626 lines"
 
-The constitution is NOT deleted. It is preserved verbatim as the historical reference at `docs/transport/reference/CONSTITUTION-ARCHIVE.md`.
+Historical versions of the constitution are recoverable from git. Run `git log --oneline -- .opencode/rules/afcon360-constitution.md` to see the change history; run `git show <commit>:.opencode/rules/afcon360-constitution.md` to read the exact rules in effect at that commit. Each commit message records what changed and why. No separate archive file is maintained.
 
 Why this file exists:
 - The old constitution was written for a system that did not yet have a working realization.
