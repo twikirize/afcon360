@@ -137,3 +137,61 @@ def test_schema_comparison_passes_only_identical_normalized_sql():
     assert changed["match"] is False
     assert changed["difference_line_count"] > 0
     assert any("INTEGER" in line for line in changed["diff_lines"])
+
+
+def test_array_cast_normalization_converts_outer_cast_to_per_element():
+    """Source form ((ARRAY[...])::text[]) normalizes to per-element form ANY (ARRAY[(...)::text, ...])."""
+    source_line = (
+        'CHECK (("reason")::"text" = ANY '
+        '((ARRAY[\'booked\'::character varying, \'temporary_hold\'::character varying])::"text"[]))'
+    )
+    expected = (
+        'CHECK (("reason")::"text" = ANY '
+        '(ARRAY[(\'booked\'::character varying)::"text", (\'temporary_hold\'::character varying)::"text"]))'
+    )
+    normalized = builder.normalize_schema_dump(source_line).strip()
+    assert expected == normalized
+
+
+def test_array_cast_normalization_handles_escaped_apostrophes():
+    """Values containing escaped apostrophes (SQL '' syntax) remain doubled after normalization."""
+    source_line = "CHECK (status = ANY ((ARRAY['owner''s_block'::character varying, 'booked'::character varying])::\"text\"[]))"
+    normalized = builder.normalize_schema_dump(source_line).strip()
+    expected = 'CHECK (status = ANY (ARRAY[(\'owner\'\'s_block\'::character varying)::"text", (\'booked\'::character varying)::"text"]))'
+    assert normalized == expected
+
+
+def test_array_cast_normalization_handles_varchar_alias():
+    """The varchar type alias is treated the same as character varying."""
+    source_line = 'CHECK (status = ANY ((ARRAY[\'booked\'::varchar, \'pending\'::varchar])::"text"[]))'
+    normalized = builder.normalize_schema_dump(source_line).strip()
+    expected = 'CHECK (status = ANY (ARRAY[(\'booked\'::character varying)::"text", (\'pending\'::character varying)::"text"]))'
+    assert normalized == expected
+
+
+def test_array_cast_normalization_is_idempotent():
+    """Applying normalization twice produces the same result (no double-wrapping)."""
+    source_line = 'CHECK (status = ANY ((ARRAY[\'booked\'::character varying, \'pending\'::character varying])::"text"[]))'
+    first = builder.normalize_schema_dump(source_line)
+    second = builder.normalize_schema_dump(first)
+    assert first == second, "Normalization must be idempotent"
+
+
+def test_array_cast_normalization_preserves_already_canonical_form():
+    """Lines already in per-element form are left unchanged."""
+    canonical_line = 'CHECK (("reason")::"text" = ANY (ARRAY[(\'booked\'::character varying)::"text", (\'pending\'::character varying)::"text"]))'
+    normalized = builder.normalize_schema_dump(canonical_line)
+    assert normalized.strip() == canonical_line
+
+
+def test_array_cast_normalization_does_not_affect_unrelated_expressions():
+    """Non-matching expressions (non-text arrays, different casts) remain unchanged."""
+    unrelated = [
+        'CHECK (value = ANY (ARRAY[1, 2, 3]))',  # integer array
+        'CHECK (value = ANY (ARRAY[\'a\'::text, \'b\'::text]))',  # text cast, not character varying
+        'CHECK (value IN (\'a\', \'b\'))',  # IN syntax, not = ANY(ARRAY)
+        'CREATE INDEX idx ON t (col) WHERE col = ANY (ARRAY[\'a\'::int, \'b\'::int])',  # int array in index
+    ]
+    for line in unrelated:
+        normalized = builder.normalize_schema_dump(line)
+        assert normalized.strip() == line, f"Unrelated expression changed: {line} -> {normalized}"
