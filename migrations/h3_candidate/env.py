@@ -16,7 +16,7 @@ except ImportError:  # pragma: no cover
 
 config = context.config
 _CANDIDATE_DATABASE = re.compile(r"^afcon360_h3_candidate(?:_[a-z0-9][a-z0-9-]*)?_test$")
-_POSTGRESQL_18_4 = re.compile(r"^18\\.4(?:\\D|$)")
+_POSTGRESQL_18_4 = re.compile(r"^18\.4(?:\D|$)")
 
 
 def _candidate_url():
