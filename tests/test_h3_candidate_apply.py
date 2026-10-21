@@ -40,7 +40,7 @@ def test_h3a_candidate_integrity_checks_embedded_sql_hash(tmp_path):
     candidate_path = tmp_path / "candidate.py"
     candidate_path.write_text(rendered, encoding="utf-8", newline="\n")
 
-    report = applier.load_and_validate_candidate(candidate_path)
+    report = applier.load_and_validate_candidate(candidate_path, expected_sha256=digest)
     assert report["revision"] == "h3a20261020"
     assert report["down_revision"] is None
     assert report["schema_sql_sha256"] == digest
@@ -63,7 +63,7 @@ def test_h3a_candidate_integrity_check_rejects_sql_changed_after_generation(tmp_
     candidate_path.write_text(rendered.replace("id BIGINT", "id INTEGER"), encoding="utf-8")
 
     with pytest.raises(ValueError, match="hash does not match"):
-        applier.load_and_validate_candidate(candidate_path)
+        applier.load_and_validate_candidate(candidate_path, expected_sha256=digest)
 
 
 def test_h3a_candidate_integrity_check_rejects_non_root_revision(tmp_path):
@@ -82,7 +82,7 @@ def test_h3a_candidate_integrity_check_rejects_non_root_revision(tmp_path):
     )
 
     with pytest.raises(ValueError, match="revision"):
-        applier.load_and_validate_candidate(candidate_path)
+        applier.load_and_validate_candidate(candidate_path, expected_sha256=digest)
 
 
 def test_h3a_replay_version_gate_is_18_4_for_this_checkpoint():
