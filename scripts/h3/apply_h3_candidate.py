@@ -393,7 +393,7 @@ def run(candidate_database: str, action: str) -> dict[str, Any]:
     candidate_artifact = load_and_validate_candidate()
     alembic_registration = _validate_alembic_registration()
     source = _source_preflight()
-    candidate_url = _resolve_candidate_url()
+    candidate_url = _resolve_candidate_url(candidate_database)
 
     report: dict[str, Any] = {
         "action": action,
