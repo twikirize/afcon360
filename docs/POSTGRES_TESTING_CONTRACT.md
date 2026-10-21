@@ -13,8 +13,10 @@ and migration-managed schema used by the application.
   database when no explicit test URL is supplied.
 - The pytest application fixture owns the SQLAlchemy engine used by database
   tests.
-- The database operator owns creation and migration of the test database;
-  tests do not create, alter, or repair schema.
+- The operator owns provisioning and migration of the test schema. The
+  session fixture may attempt to create the dedicated PostgreSQL test
+  database if the target-connection check fails, but it does not create,
+  alter, repair, or stamp the schema.
 
 ### Required outputs and invariants
 

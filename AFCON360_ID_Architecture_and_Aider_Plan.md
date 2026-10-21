@@ -171,15 +171,11 @@ audit split cleanly:
   treating them as an open remediation item and instead make sure each one is tagged
   `CROSS_MODULE_REF` (Phase 1) and covered by reconciliation (Phase 3)
 
-**REQUIRES A DECISION — one specific outlier:**
-- `accommodation_inventory_blocks.reason` currently uses a native Postgres ENUM
-  (`inventory_block_reason_enum`), the only column in the schema that does. Either (a)
-  convert it to match the rest of the system — `String` + `CHECK` constraint, using
-  `scripts/migrate_enums_to_strings.py` which already exists and does exactly this
-  expand-contract pattern, or (b) explicitly decide this one field's value set is closed
-  and rarely changes, and keep it native. Either is fine; leaving it undecided is the
-  only wrong answer, since it's a live inconsistency with the "Python Enums + String
-  storage" rule stated in `booking.py`'s own docstring.
+**DEFERRED — LONG-HORIZON REVIEW; NO CURRENT ACTION**
+
+> `accommodation_inventory_blocks.reason` currently uses the native PostgreSQL enum `inventory_block_reason_enum`. Preserve that existing type representation. The earlier proposal to convert this field to String plus CHECK is not an open decision for the current workstream.
+>
+> Broad ENUM-to-String conversion is deferred for a potential review in the 2–5-year horizon. No conversion, model change, migration or database modification is authorized by this entry. Any future reconsideration requires a new explicit owner-approved scope.
 
 **DANGEROUS — unchanged from the original roadmap, do last:**
 - `auth_configurations` secrets migration

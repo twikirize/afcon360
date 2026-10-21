@@ -331,13 +331,14 @@ Verify repository conventions before treating any exception as intentional.
 
 ## §14 PostgreSQL ENUM Policy (AGENTS.md §14)
 
-Do NOT introduce new PostgreSQL ENUM types.
+**Superseded and consolidated into §48.** The earlier "Do NOT introduce new PostgreSQL ENUM types / convert existing enums to String" policy in this section is withdrawn. Existing PostgreSQL ENUM columns and existing String/VARCHAR columns are **preserved as-is**. No conversion, drop, rename, consolidation, or relabeling is authorized.
 
-Use: `String`, application-level validation, CHECK constraints where appropriate.
+For the current rule see:
 
-Existing ENUM migrations must follow approved expand-contract strategy.
+- **§48** in this document — Permanent Database Engineering Rules.
+- **`AGENTS.md` §48** — authoritative cross-cutting database rule.
 
-See: `DATABASE_SCALABILITY_ROADMAP.md`
+The historical conversion proposal lives in `DATABASE_SCALABILITY_ROADMAP.md`, which is explicitly marked as a historical proposal, deferred to a possible 2028–2031 review window. It is not active policy.
 
 ---
 
@@ -499,25 +500,50 @@ Never patch generated migrations as workaround for model/source problem.
 
 Schema changes may be implemented when the current roadmap/node explicitly authorizes them. Roadmap/node authorization is explicit authorization for the authorized scope; it does not weaken any other invariant.
 
-When migration work is authorized, migration files MUST be generated automatically by Flask-Migrate/Alembic from the application's actual model metadata: do NOT manually create, edit, patch, reorder, or repair migration files; do NOT create tables/columns/indexes/constraints/enums via ad-hoc SQL as a substitute for generation. Use canonical model/metadata registration and `flask db migrate -m "description"`; inspect the generated migration before any `flask db upgrade`. If any expected change is missing: STOP, do NOT upgrade, do NOT edit the migration — fix detection at its source (models, registration, imports, config), delete the bad migration, regenerate, repeat until autogenerate captures everything. Only then run `flask db upgrade`. Same principle across dev/test/staging/prod; migrations must stay reproducible from model metadata.
+**A. Ordinary incremental schema changes — strict default**
+
+- Schema changes must originate from the authorized canonical source, including models, metadata registration and configuration as applicable.
+- Use Flask‑Migrate/Alembic autogeneration (`flask db migrate`) to generate ordinary migration files.
+- Inspect the generated migration for completeness and unintended operations before upgrading.
+- Agents MUST NOT manually create, patch, reorder or repair ordinary generated migration files to compensate for missing or incorrect autogeneration.
+- If changes are missing or wrong, STOP. Correct the underlying source, metadata registration or autogeneration configuration, then discard and regenerate the defective, not‑yet‑applied candidate as permitted by the repository's governance.
+- Never edit an already‑applied historical migration casually to make current code or tests pass.
+- Never use manual DDL, `stamp`, or another shortcut to conceal uncertainty about the schema or revision state.
+- A successful migration or passing test does not independently prove that the intended schema change was captured correctly.
+- Apply the reviewed migration through the authorized Alembic upgrade process.
+
+These protections are permanent and must not be weakened by the exception below.
+
+**B. One-time, explicitly authorized migration-baseline replacement**
+
+A deliberately authorized baseline reconstruction or migration-history squash may follow only the narrow procedure defined in §20.3.1. That exception applies only to the named owner-approved operation and its deliverables; it does not permit patching routine forward migrations, bypassing ordinary autogeneration, or treating H3 selection as implementation/cutover approval.
+
+**C. Mandatory decision rule for agents**
+
+Make it obvious how agents must respond:
+
+- Ordinary schema change → fix canonical source, regenerate migration, inspect it, then follow the authorized upgrade process.
+- Authorized one‑time baseline reconstruction → follow its specifically approved scope and additional safety gates.
+- Incomplete autogeneration → stop and fix the source; do not patch the migration.
+- Unknown or divergent existing database state → stop and collect authorized evidence; do not stamp or alter the database to make it appear consistent.
 
 Known defect — missing baseline migration (RESOLVED):
-- `ab6dd422c152_initial_schema` retired to `migrations/_retired_versions/`
-- Replaced by `migrations/versions/8a0deccce6f6_initial_full_schema_baseline.py` — single root migration (`down_revision=None`) building entire schema via `db.metadata.create_all()`
-- Verified: `flask db upgrade` from EMPTY database builds all 182 tables
+- `ab6dd422c152_initial_schema` retired to `migrations/_retired_versions/`.
+- Replaced by `migrations/versions/8a0deccce6f6_initial_full_schema_baseline.py`, the single root migration (`down_revision=None`) containing a frozen, explicit `_DDL` statement list. Its `upgrade()` function executes those statements through `bind.exec_driver_sql()`; it does not import current application models or call `metadata.create_all()`.
+- The migration header describes a captured historical core of 182 tables and 41 enum types, then separately lists the H2′ extension of four enum types and eight tables. Do not conflate the historical core count with the total schema produced by the current migration chain. See the full-chain fresh-install evidence recorded in the reliability register, Item 31.
 
 Known defect — marketplace migration `4dc568c00f86` (RESOLVED):
 - `4dc568c00f86_add_vehicle_marketplace_models.py` (down_revision `b73d33d073e1`) was a hand-written migration for vehicle marketplace models (`vehicle_marketplace_listings`, `driver_vehicle_applications`, `vehicle_contracts`). Never executed/applied; could not be applied against existing schema.
 - RETIRED (deleted from `migrations/versions/`; backup at `%TEMP%\opencode\4dc568c00f86_defective_backup.py`). Migration head is now `b73d33d073e1`. NO marketplace migration file exists; none is required.
-- Test DB gets marketplace tables via sanctioned test path: `tests/conftest.py` / `scripts/setup_test_db_schema.py` build from current models via `db.create_all()` + `stamp head`. A pre-existing test DB predating the marketplace models must be recreated with `python scripts/setup_test_db_schema.py` (conftest fast path skips rebuild when `users` exists). See §21.1.
+- The current H2′ baseline's frozen DDL includes `vehicle_marketplace_listings`, `driver_vehicle_applications`, and `vehicle_contracts`; the retired hand-written marketplace migration is not required by the current chain. For migration-contract pytest, `tests/conftest.py` may attempt database-level `CREATE DATABASE` when its target-connection check raises an exception, but it does not create or repair the application schema and does not stamp Alembic head. It classifies the database state and rejects a schema that is not migration-built at the repository head. Provision the schema for the migration-contract suite through the reviewed Alembic chain using `flask db upgrade`. `scripts/setup_test_db_schema.py` is a separate, destructive, test-only model-bootstrap route; it is not a substitute for the migration-built test database. See "Test Database Bootstrap" under §21.
 
 ### §20.3 Permanent AFCON360 Migration Rule
 
-Database schema/model changes are allowed when the active roadmap node or task explicitly authorizes the schema change. The rule is **NOT** "never use migrations." The rule is:
+Database schema/model changes are allowed only when the active roadmap node or task explicitly authorizes them. The rule is **not** "never use migrations." For **ordinary incremental schema changes**, the permanent rule is:
 
-> **Never manually author or repair migration artifacts. Generate them from the real SQLAlchemy model metadata and make Alembic's autogeneration detect the complete change.**
+> **Never manually author, patch or repair an ordinary migration artifact to compensate for incomplete or incorrect autogeneration. Correct the canonical source or detection configuration and regenerate the migration.**
 
-**Authorized migrations are allowed.** Once a roadmap node or task authorizes a schema change, the canonical flow below is mandatory across all environments (development, test, staging, production).
+The canonical flow below governs ordinary incremental schema changes across development, test, staging and production. The narrow baseline-reconstruction exception is defined only in §20.3.1; it does not weaken the ordinary rule or authorize hand-patching routine forward migrations.
 
 #### Canonical Flow
 
@@ -563,20 +589,38 @@ DOES IT CONTAIN ALL EXPECTED CHANGES?
              ↓
         flask db upgrade
 ```
+### §20.3.1 One‑time authorized baseline reconstruction (H3/N‑squash)
+A deliberately authorized, one‑time baseline reconstruction or migration‑history squash (e.g. the H3/N‑squash) is **not** an ordinary incremental schema change. The following constraints apply:
 
-### §20.4 Absolute Prohibitions
+* It is permitted **only** for the explicitly authorized baseline/history‑replacement operation and its defined deliverables; it does not authorize hand‑patching ordinary forward migrations and cannot become a precedent for future model changes.
+* The operation must have an explicit, owner‑approved scope, review requirements, ownership, and transition plan documented before work begins.
+* The produced baseline migration must be deterministic, version‑controlled, independently reviewable and reproducible from an empty disposable PostgreSQL database.
+* The baseline must **not** derive its schema dynamically from the current application models (e.g., it must not use `db.metadata.create_all()` or `drop_all()` as a substitute for a frozen migration definition).
+* Existing databases must have an explicit, evidence‑backed starting‑state classification and a reviewed transition/recovery plan before the baseline is applied.
+* Disposable verification databases may be created and recreated under an approved test procedure; this does not authorize resetting, dropping, stamping or modifying production or other protected databases.
+* Actual application schema transitions remain governed by the reviewed Alembic migration process (the canonical flow above). An ad‑hoc bootstrap script is **not** a substitute for the authoritative migration chain.
+* Cutover or migration of any protected/existing database requires its own explicit authorization; approval of the baseline alone does not grant that authority.
+* H3 implementation and cutover remain subject to their existing readiness gates; this exception does **not** imply that H3 cutover is approved.
 
-Future agents MUST NOT:
+This exception is **narrow** and **does not** authorize:
+* manually patching ordinary forward migrations;
+* circumventing the canonical autogeneration/inspection workflow for ordinary model changes;
+* using the exception as a precedent for future routine schema work.
 
-- manually create migration files;
-- manually edit generated migration files;
-- manually add missing `op.create_table(...)`, `op.add_column(...)`, etc.;
-- manually patch an autogenerated migration;
-- manually rewrite an Alembic migration to make it pass;
+### §20.4 Absolute Prohibitions for Ordinary Migrations
+
+For **ordinary incremental schema changes**, future agents MUST NOT:
+
+- manually create a routine migration file instead of using the approved autogeneration workflow;
+- manually edit generated migration files to compensate for missing or incorrect detected operations;
+- manually add missing table, column, index or constraint operations to an incomplete generated migration;
+- manually patch or rewrite a routine migration to make it pass;
 - use ad-hoc SQL as a substitute for the canonical migration workflow;
-- manually create schema objects that should have been detected from models;
-- run `flask db upgrade` when the generated migration is known to be incomplete;
+- manually create schema objects that should have been detected from authorized model/metadata changes;
+- run the Alembic upgrade when the generated migration is known to be incomplete;
 - conceal an Alembic detection failure by repairing the migration artifact.
+
+The only exception to the prohibition on authoring a migration baseline is the named, explicitly owner-authorized baseline/history replacement described in §20.3.1, and only within that approved scope. It does not permit manual repair of routine forward migrations.
 
 When autogeneration misses something, the migration artifact is the symptom. **Return to the model/metadata/detection source and fix that instead.**
 
@@ -604,9 +648,15 @@ This rule applies across **development**, **test**, **staging**, and **productio
 
 ### §20.7 Test Database Rule
 
-The test environment must be brought to the expected schema through the project's sanctioned automatic/reproducible schema process (`tests/conftest.py` → `db.create_all()` + `stamp head`, or `scripts/setup_test_db_schema.py`). Do not manually create missing test tables or columns. Prefer the canonical migration chain where appropriate. The important principle is:
+The standard PostgreSQL persistence and migration-contract test suite requires a schema built through the Alembic migration chain and at the repository's current migration head.
 
-> **The test environment must be reproducible from the application's models/metadata and sanctioned schema process.**
+`tests/conftest.py` may attempt to create the configured test database when its target-connection check raises an exception. This is database-level creation only. The fixture does not create, alter, repair, or stamp the application schema; it classifies the existing database state and fails if it is not migration-built at the repository head.
+
+For the standard migration-contract test environment, ensure the configured dedicated `*_test` database exists, apply the reviewed Alembic migrations using `flask db upgrade`, and then run `pytest`.
+
+The separate `scripts/setup_test_db_schema.py` route is for workflows that explicitly require a model-bootstrap database. It uses `app.core.model_bootstrap.bootstrap_model_schema()`, writes the `afcon360_model_bootstrap` marker, and leaves `alembic_version` absent. Its schema is not migration-equivalent and it must not be used as a substitute for the database required by the standard test contract.
+
+Do not imply that these provisioning routes are interchangeable or that matching model metadata proves physical-schema parity.
 
 ### §20.8 Pre-Upgrade Verification
 
@@ -682,29 +732,30 @@ Application and test code should use SQLAlchemy models/Core expressions rather t
 
 Direct SQL persistence tests are not supported.
 
-### Test Database Bootstrap (AGENTS.md §21.1)
+### Test Database Bootstrap
 
-PostgreSQL test database bootstrapped **automatically by `tests/conftest.py`** every time `pytest` runs. Agents/developers MUST NOT perform manual migration step before running tests; plain `pytest` is sufficient and only supported entry point.
+The standard PostgreSQL persistence test suite requires a migration-built database at the repository's current Alembic head.
 
-`tests/conftest.py` is the **single canonical pytest runner** (root `conftest.py` only filters collection to `tests/`). Legacy root `_conftest.py` removed.
+The session-scoped `setup_database` fixture in `tests/conftest.py` checks database connectivity and may attempt database-level `CREATE DATABASE` if its target-connection check raises an exception. It then classifies the schema state. It does not create the application schema, stamp Alembic head, or repair stale schema. It fails when the database is not migration-built at the repository head.
 
-Test bootstrap uses `db.create_all()` + `stamp head` because fast, idempotent, test-only. Both paths use same model metadata, so resulting schema identical. For fresh non-test database, `flask db upgrade` is correct path.
+The `app` fixture also calls `tests.postgres_contract.assert_migrated_postgres_database()`, which rejects a model-bootstrap marker, checks required migrated tables and columns, and verifies that the database revision equals the repository head.
 
-What `tests/conftest.py` does:
-1. Creates test database if not exists
-2. If schema incomplete (no `users` table), builds from current SQLAlchemy models via `db.create_all()` (reflects model changes including `use_alter` FKs, defers circular FKs)
-3. Stamps Alembic head so `tests/postgres_contract.py` check and any `flask db upgrade` treat DB as fully migrated
-4. If schema exists, reused (fast path); no rebuild
+For the standard migration-contract pytest workflow:
 
-Canonical commands:
+1. Confirm that the PostgreSQL target is the intended dedicated `*_test` database.
+2. Ensure the database exists and its connection settings are valid.
+3. Apply the reviewed migration chain with `flask db upgrade`.
+4. Run `pytest` against that already-migrated database.
+
+A distinct model-bootstrap setup is available for designated test-only workflows:
+
 ```bash
-pytest                                              # full suite (conftest auto-builds/verifies test DB)
-python scripts/setup_test_db_schema.py              # force clean rebuild (drops + recreate + create_all + stamp)
+python scripts/setup_test_db_schema.py
 ```
 
-Do NOT run `flask db upgrade` to provision test database; `pytest` does it via `db.create_all()` + stamp. If test DB stale after model/schema change, run `scripts/setup_test_db_schema.py`. For fresh non-test database, `flask db upgrade` from empty now builds full schema via `8a0deccce6f6` baseline.
+Warning: this script is destructive. It drops and recreates its target database and invokes `app.core.model_bootstrap.bootstrap_model_schema()`. That path creates its Group A enum types explicitly, delegates Group B enum types and tables to `db.create_all()`, records the `afcon360_model_bootstrap` marker, and verifies that `alembic_version` is absent. The resulting database is not migration-equivalent, is rejected by `tests/postgres_contract.py`, and must not be used as a substitute for the standard migration-built pytest database or as a production installation procedure.
 
-See: `docs/POSTGRES_TESTING_CONTRACT.md`, `scripts/setup_test_db_schema.py`, `tests/postgres_contract.py`, `tests/conftest.py`
+See `docs/POSTGRES_TESTING_CONTRACT.md`, `scripts/setup_test_db_schema.py`, `app.core.model_bootstrap.bootstrap_model_schema()`, `tests/conftest.py`, and `tests/postgres_contract.py`.
 
 ---
 
@@ -940,15 +991,15 @@ celery -A app.celery_app worker --loglevel=info
 celery -A app.celery_app beat  --loglevel=info
 ```
 
-Tests (conftest auto-bootstraps PostgreSQL test DB):
+Tests (pytest validates the migration-built PostgreSQL schema; the fixture may attempt database-level creation but does not create the schema):
 ```bash
-pytest                                              # full suite
-pytest tests/notifications                          # directory
-pytest tests/test_accommodation_checkout_processes.py  # one file
-pytest tests/test_accommodation_checkout_processes.py::TestClass::test_method  # one test
+pytest
+pytest tests/notifications
+pytest tests/test_accommodation_checkout_processes.py
+pytest tests/test_accommodation_checkout_processes.py::TestClass::test_method
 ```
 
-Force clean test-DB rebuild:
+Separate model-bootstrap setup (destructive; not a migration-equivalent test database):
 ```bash
 python scripts/setup_test_db_schema.py
 ```
@@ -1158,9 +1209,78 @@ They MUST NOT become independent architects merely because they can modify the c
 | .kiro/steering/testing.md | §21, §11.6.6 |
 | rules/agent-governance-rules.md | §3.2, §3.3, §46 |
 | DATABASE_SCALABILITY_ROADMAP.md | §14, §20, §11.6.3 |
-| docs/POSTGRES_TESTING_CONTRACT.md | §21.1 |
+| docs/POSTGRES_TESTING_CONTRACT.md | Test Database Bootstrap |
 | app/Documentation/IDENTITY_POLICIES.md | §18.2 |
 | app/accommodation/AFCON360_SEAMLESS_BOOKING_SPEC.md | §17, §11.5.6 |
 | static/MOBILE_OPTIMIZATION.md | §22 |
 | BACKLOG.md | §11 |
 | clarification-protocol.md | Separate file (referenced by agent) |
+
+---
+
+## §48 Permanent Database Engineering Rules (Item 29)
+
+### A. Separate provisioning routes, enum inventories, and creation ownership
+
+AFCON360 has two distinct schema-provisioning routes. Their inventories and creation responsibilities must not be conflated.
+
+- **Migration-built route:** `migrations/versions/8a0deccce6f6_initial_full_schema_baseline.py` contains a 45-entry `_ENUMS` inventory. The executable migration runs its frozen `_DDL` list through `bind.exec_driver_sql()` in `upgrade()`; `_ENUMS` is not the runtime loop that creates the schema. The migration header states that the captured core is frozen DDL, does not import current application models, and does not call `metadata.create_all()`. Its H2′ extension separately lists four enum types and eight tables.
+- **Model-bootstrap route:** `GROUP_A_EXPECTED` in `app/core/model_bootstrap.py` has 39 entries; `GROUP_B_EXPECTED` has 8, for 47 total. A type declared with `create_type=False` belongs to Group A and is explicitly created by the bootstrap module. Group B types and all model tables are delegated to `db.create_all()`. Each type must have one creation owner; conflicting ownership is rejected.
+- **`create_type` and `checkfirst` are not interchangeable.** `create_type` governs whether SQLAlchemy automatically emits PostgreSQL enum create/drop DDL. `checkfirst` governs existence checking during applicable create/drop operations. Existence checking does not itself assign or replace the creation owner. Any `create_type=False` declaration must have a verified creation path elsewhere, consistent with root `AGENTS.md` §48.
+- The historical `ensure_all_enums()` helper was never implemented. Do not introduce references or calls to it as though it were a runtime API.
+
+Do not copy the 45-entry migration inventory into the 47-entry model-bootstrap catalog, or infer parity from the fact that both describe PostgreSQL enum types.
+
+### B. Require reproducible physical-schema parity evidence
+
+A claim that migration-built and model-bootstrap schemas are physically equivalent must be supported by a reproducible, independently reviewable comparison covering at minimum:
+
+1. Tables
+2. Columns
+3. Physical database types
+4. PostgreSQL enum labels and their order
+5. Defaults
+6. Indexes
+7. Constraints and foreign keys, including applicable actions
+8. Sequences, triggers, and functions
+
+Matching Alembic revision identifiers alone are not proof of schema parity. Do not present an acceptance checklist as evidence that parity has already been achieved.
+
+The reliability register's Items 32 and 33 record outstanding physical-schema completeness and model/schema comparison work. Item 37 records further fresh-versus-upgraded convergence dependencies. These remain requirements for follow-up, not outcomes of this documentation rule.
+
+### C. Preserve source-backed divergence and default evidence
+
+Use the version-controlled Database Reliability register as the durable record for the established divergence case and its disposition:
+
+- **Item 14** records physically different schemas at the same Alembic revision, including the `org_business_category` enum-versus-`varchar` difference between the production and test environments.
+- **Item 17b** records the corrected architecture comparison and the related default-difference evidence.
+- **Item 28a** records 145 server-default differences: 132 production-only, 12 test-only, and one case where both environments differ.
+
+A physical difference does not prove either environment is correct. Classify each discrepancy against evidence and intended behavior; preserve observed expressions, document justified exceptions, and identify unresolved owner decisions. Do not normalize defaults merely to make databases match.
+
+Do not use temporary artifacts such as `%TEMP%\opencode\col_diff.py` or `col_diff_out.txt` as durable evidence. Item 28a's disposition remains a follow-up dependency; this rule does not close it.
+
+### D. Keep the PostgreSQL literal-percent workaround narrowly scoped
+
+`app/core/model_bootstrap.py` builds a PostgreSQL enum-type `DO` block whose `RAISE EXCEPTION` message contains two literal `%` placeholders. `_ensure_group_a_types()` executes that generated, parameterless DDL block with `execution_options={"no_parameters": True}` so the placeholders are preserved.
+
+The option is specific to that generated, parameterless enum-DDL execution. Do not generalize it to arbitrary SQL or SQL statements requiring bound parameters. Do not prescribe blanket percent escaping as a substitute.
+
+The source-contract regression tests in `tests/test_model_bootstrap_contract.py` are:
+
+- `test_enum_block_retains_raise_exception_placeholders`
+- `test_ensure_group_a_types_uses_no_parameters`
+
+Related schema-scope and import-failure contract tests include:
+
+- `test_read_persisted_enum_labels_uses_current_schema`
+- `test_schema_scope_contract_consistent_in_source`
+- `test_bootstrap_refuses_real_import_failure`
+
+These names identify existing source-level regression coverage; their existence alone does not constitute a test run for the present documentation task.
+
+### E. Apply root database governance without duplicating it
+
+Root `AGENTS.md` §48, **"Model Defaults & Migration Safety (Permanent Engineering Rule),"** remains the authoritative cross-cutting database rule. Apply its relevant subsections on inspection before model changes, Python versus database defaults, populated-table migration safety, PostgreSQL enum compatibility, migration governance, behavioral proof, and required evidence.
+
+This section supplements those requirements with the specific AFCON360 enum ownership, provisioning-route, divergence, parity-evidence and literal-percent lessons. It does not replace or duplicate the full root rule. It authorizes no migrations, database writes, enum changes, or changes to live schemas by itself.

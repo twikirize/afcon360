@@ -134,7 +134,7 @@ Related active-chain findings:
 - `df55cbe3f516:28` references `postgresql.ENUM(name='servicetype', create_type=False)` — a **reference with no creator** (same class of defect).
 - `df55cbe3f516:124,152` references `org_business_category` as `ENUM('merchant','service_provider','marketplace_seller','non_profit')` (4 labels, lowercase) in `alter_column` (upgrade/downgrade converting to/from `String(40)`).
 - `20260930_1335_booking_status_enum_to_string.py:81,85`: downgrade-only `CREATE TYPE bookingstatus_12 AS ENUM (...)` and `DROP TYPE bookingstatus`.
-- `migrations/env.py:19-35`: the `skip_enum_create` rewriter returns `op` unchanged and `include_object` always returns `True` — **dead no-op code**; its comment ("we've converted all enums to String columns") is stale and contradicts the retention policy.
+- **Finding at the time of the original review:** `migrations/env.py` had an unused `skip_enum_create` rewriter returning `op` unchanged, an allow-all `include_object`, and a stale comment claiming all enums had been converted to String columns. **Source disposition on the 2026-10-20 harmonization branch:** the unused rewriter/imports were removed, the allow-all callback was documented accurately, and the comment no longer claims type conversion. No enum-suppression behavior was introduced; test verification remains pending.
 
 ### Retired baseline `ab6dd422c152` (in `migrations/_retired_versions/`, not in active chain)
 
@@ -281,7 +281,7 @@ The 145 default-diffs (132 prod-only, 12 test-only, 1 both-differ `system_config
 
 | ID | Decision required | Why it blocks the frozen baseline |
 |---|---|---|
-| **D1** | **Architecture: H3 (N-squash reproducing final model) vs H2′ (frozen old root + downstream).** | Determines whether `org_business_category` is created at all. H3 → **not** created (model is `String(40)`); H2′ → root creates it and `df55cbe3f516` converts. Item 18 remains GATED. |
+| **D1** | **Architecture: H3 (N-squash reproducing final model) vs H2′ (frozen old root + downstream).** | Determines whether `org_business_category` is created at all. H3 → **not** created (model is `String(40)`); H2′ → root creates it and `df55cbe3f516` converts. Item 18 is CLOSED as a decision item in the owner-authorized 2026-10-20 register reconciliation; H3 implementation and cutover remain separately gated. |
 | **D2** | **`org_business_category` 39-label UPPER set source.** | Appears in **no** migration; only the 4-label lowercase set exists (in `df55cbe3f516`). 39 labels are not derivable from source. Needed only if D1 = H2′ / for existing-test conversion. |
 | **D3** | **3 REFERENCED types** (`account_owner_type_enum`, `creatortype`, `ownertype`). | No model column uses them; labels come only from a **retired** `alter_column` assert (and `creatortype`/`ownertype` show a suspicious 6-label mixed-case set → likely historical error). Preserve-or-migrate the 3 legacy column defaults (item 21) is undecided. Not needed for a fresh baseline. |
 | **D4** | **16 dev-only orphan types** disposition (retain/drop). | Drop-candidate pending ruling (item 24). Not needed for a fresh baseline. |
@@ -346,7 +346,7 @@ No migration executed or authored into the repo; no model modified; no database 
 
 The **architectural direction is H3**: establish a new squash root (`N-squash`, `down_revision=None`), retire the superseded active migration files **in the same controlled change**, and define explicit handling for every existing database state.
 
-This records a **direction**, not readiness. Implementation remains **gated** by the register items in §A.4. Decision D1 in §7 is now answered (**H3**); D2–D9 remain open. Item 18 ("Approve one architecture") is advanced but not closed by this addendum alone — the register is the owner's artifact and is not edited here.
+This records a **direction**, not readiness. Implementation remains **gated** by the register items in §A.4. Decision D1 in §7 is answered (**H3**); D2–D9 remain open. Item 18 ("Approve one architecture") is recorded as **CLOSED as a decision item** in the owner-authorized 2026-10-20 register reconciliation. That closure records the architecture decision only; it does not authorize H3 authoring, application to existing databases, stamping, or cutover.
 
 ## A.2 Why H3 is preferable to continuing H2′
 

@@ -890,7 +890,7 @@ class BookingService:
             raise ServiceUnavailableError("Could not cancel booking")
 
     @staticmethod
-    def transition_status(booking_id: int, new_status: "BookingStatus",
+    def transition_status(booking_id: int, new_status: "BookingStatusPy",
                           *, reason: Optional[str] = None,
                           initiated_by: str = "admin",
                           actor=None) -> Dict[str, Any]:
@@ -913,7 +913,7 @@ class BookingService:
             TERMINAL_RELEASE_STATUSES,
         )
 
-        if not isinstance(new_status, BookingStatus):
+        if not isinstance(new_status, BookingStatusPy):
             raise ValidationError(
                 message=f"Invalid status: {new_status}",
                 field="status",
@@ -1202,7 +1202,7 @@ class BookingService:
             status_upper = status.upper()
             # If status is something like 'pending', we need to map to BookingStatusPy.PENDING
             # Using getattr to safely get enum member
-            status_enum = getattr(BookingStatus, status_upper, None)
+            status_enum = getattr(BookingStatusPy, status_upper, None)
             if status_enum is None:
                 logger.error(f"Invalid status string: {status}")
                 return 0
@@ -1262,7 +1262,7 @@ class BookingService:
                 Booking.is_deleted == False  # noqa: E712
             )
 
-            excluded: List[BookingStatus] = []
+            excluded: List[BookingStatusPy] = []
             if not include_cancelled:
                 excluded.append(BookingStatusPy.CANCELLED)
             if not include_draft:
@@ -1393,7 +1393,7 @@ class BookingService:
 
             # Bookings by status
             by_status = {}
-            for status_enum in BookingStatus:
+            for status_enum in BookingStatusPy:
                 count = Booking.query.filter(
                     Booking.created_at >= cutoff,
                     Booking.status == status_enum,
@@ -1546,7 +1546,7 @@ class BookingService:
             ).first()
             if not profile:
                 return 0
-            status_enum = getattr(BookingStatus, status.upper(), None)
+            status_enum = getattr(BookingStatusPy, status.upper(), None)
             if status_enum is None:
                 return 0
             return Booking.query.filter(

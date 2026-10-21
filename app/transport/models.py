@@ -86,13 +86,17 @@ ContractStatus = ContractStatusEnum
 
 
 # ===========================================================================
-# ENUMS (Production with proper string values)
+# SHARED PYTHON ENUMS AND TRANSPORT-SPECIFIC ENUMS
 # ===========================================================================
-# PG ENUM TYPES ARE NOW DEFINED IN app/utils/enums.py
-# This module imports them to ensure single source of truth.
+# Shared Python enum classes are defined canonically in app/utils/enums.py
+# and re-exported above. Their declarations centralize member names/values;
+# they do not determine physical database storage by themselves. The column
+# mappings below preserve each field's configured native PostgreSQL ENUM or
+# String/VARCHAR representation. Verify physical schemas independently.
 #
-# PassengerStatus remains a Python-only enum (Category B) —
-# stored as VARCHAR with CHECK constraint, not a PG enum.
+# PassengerStatus remains a transport-specific Python enum. Its mapped status
+# column uses VARCHAR; this model declaration does not define a CHECK
+# constraint, so physical constraint presence must be verified separately.
 # ===========================================================================
 
 class PassengerStatus(str, Enum):
@@ -111,98 +115,9 @@ class PassengerStatus(str, Enum):
 
 
 # ===========================================================================
-# PYTHON ENUM CLASSES (for defaults and code references)
-# These mirror the PgEnum definitions in app/utils/enums.py.
-# Keep values in sync with app/utils/enums.py.
+# Shared enum classes above are re-exported from app.utils.enums. Keep only
+# transport-specific Python-only enums (such as PassengerStatus) defined here.
 # ===========================================================================
-
-class VerificationTier(str, Enum):
-    """Provider verification levels"""
-    PENDING = 'pending'
-    BASIC_VERIFIED = 'basic_verified'
-    PLATFORM_VERIFIED = 'platform_verified'
-    EVENT_CERTIFIED = 'event_certified'
-
-
-class ComplianceStatus(str, Enum):
-    """Compliance status"""
-    PENDING_REVIEW = 'pending_review'
-    UNDER_REVIEW = 'under_review'
-    APPROVED = 'approved'
-    SUSPENDED = 'suspended'
-    REVOKED = 'revoked'
-    BLACKLISTED = 'blacklisted'
-
-
-class BookingStatus(str, Enum):
-    """Booking lifecycle"""
-    DRAFT = 'draft'
-    PENDING_PAYMENT = 'pending_payment'
-    CONFIRMED = 'confirmed'
-    ASSIGNED = 'assigned'
-    DRIVER_EN_ROUTE = 'driver_en_route'
-    PICKUP_ARRIVED = 'pickup_arrived'
-    IN_PROGRESS = 'in_progress'
-    COMPLETED = 'completed'
-    CANCELLED = 'cancelled'
-    NO_SHOW = 'no_show'
-    DISPUTED = 'disputed'
-    NO_MATCH = 'no_match'
-
-
-class PaymentStatus(str, Enum):
-    """Payment status"""
-    PENDING = 'pending'
-    AUTHORIZED = 'authorized'
-    CAPTURED = 'captured'
-    PARTIALLY_CAPTURED = 'partially_captured'
-    REFUNDED = 'refunded'
-    PARTIALLY_REFUNDED = 'partially_refunded'
-    FAILED = 'failed'
-    CANCELLED = 'cancelled'
-
-
-class VehicleClass(str, Enum):
-    """Vehicle classification"""
-    ECONOMY = 'economy'
-    COMFORT = 'comfort'
-    PREMIUM = 'premium'
-    LUXURY = 'luxury'
-    VAN = 'van'
-    BUS = 'bus'
-
-
-class IncidentSeverity(str, Enum):
-    """Incident severity levels"""
-    INFO = 'info'
-    LOW = 'low'
-    MEDIUM = 'medium'
-    HIGH = 'high'
-    CRITICAL = 'critical'
-
-
-class Currency(str, Enum):
-    """Supported currencies"""
-    USD = 'USD'
-    EUR = 'EUR'
-    GBP = 'GBP'
-    XOF = 'XOF'
-    XAF = 'XAF'
-    NGN = 'NGN'
-    KES = 'KES'
-    GHS = 'GHS'
-    ZAR = 'ZAR'
-    UGX = 'UGX'
-
-
-class ProviderType(str, Enum):
-    """Provider types"""
-    INDIVIDUAL_DRIVER = 'individual_driver'
-    HOTEL_FLEET = 'hotel_fleet'
-    TOUR_OPERATOR = 'tour_operator'
-    TRANSPORT_COMPANY = 'transport_company'
-    EXTERNAL_PLATFORM = 'external_platform'
-
 
 # ===========================================================================
 # MIXINS (Reusable functionality)
