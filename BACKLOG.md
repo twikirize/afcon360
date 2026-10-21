@@ -3883,12 +3883,46 @@ This matches register Item 14d and Constitution §48 (no drops without explicit 
 
 ---
 
-### Evidence trail
+### Evidence trail (verified 2026-10-21)
 
-- `git grep -n -I -i -E 'pgcrypto|pgp_sym_(encrypt|decrypt)|pgp_pub_(encrypt|decrypt)|gen_salt|crypt\(|digest\(|hmac\(|CREATE EXTENSION|ALTER EXTENSION|pg_catalog\.pg_extension|pg_depend'` at main / 285db47 — zero application call sites
-- `catalog_dump.json` (physical-schema investigation, retained in `%TEMP%\afcon360_physical_schema_investigation\`) — extension inventory, routine definitions, catalog scan for call sites
-- Register Item 14d — pgcrypto finding recorded, disposition open
-- Register Item 13 Case 2 — extension-preservation requirement for transition plan
+Six independent scans confirm pgcrypto has no consumer at any layer:
+
+1. **Application code** (`git grep` at main/285db47):
+   Zero call sites for any pgcrypto function. All encryption uses Python
+   Fernet (`cryptography.fernet`); password hashing uses Werkzeug.
+
+2. **Migrations** (`git grep`):
+   Zero call sites. pgcrypto is not created, altered, or referenced in any
+   migration file.
+
+3. **Catalog dependency graph** (direct `pg_catalog.pg_depend` query,
+   afcon360_prod):
+   Zero rows. No constraint, index, trigger, column default, or
+   user-defined function depends on any pgcrypto function.
+
+4. **Function body text scan** (all public functions, `pg_get_functiondef`,
+   excluding pgcrypto's own routines):
+   Zero rows. No function contains any pgcrypto call pattern in its body,
+   including dynamic SQL references that `pg_depend` cannot detect.
+
+5. **The two non-pgcrypto routines in production**
+   (`guard_user_roles_delete`, `guard_users_delete`):
+   Inspected directly. Both use `current_setting` and `RAISE EXCEPTION`
+   to prevent unauthorized deletes. Neither performs cryptographic
+   operations. Neither calls pgcrypto.
+
+6. **Extension inventory** (catalog_dump.json from physical-schema
+   investigation):
+   - pgcrypto 1.4 installed in production only
+   - 37 routines, all extension members (auto-installed by CREATE EXTENSION)
+   - Reference and test: pgcrypto not installed
+   - Total routines: 39 in prod (37 pgcrypto + 2 app guards),
+     2 in ref, 0 in test
+
+Conclusion: pgcrypto is installed infrastructure with zero identified
+consumers. It can be preserved harmlessly (one line in transition plan)
+or dropped with owner approval. There is no functionality to preserve
+by keeping it.
 
 ---
 
