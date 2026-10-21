@@ -3749,3 +3749,153 @@ matching / realtime / maps / routing
 - **What needs to happen:** Future refinement: add agent type selection; implement country eligibility checks.
 - **Owner/area:** onboarding/wallet
 - **Links:** pp/wallet/services/agent_onboarding_service.py, 	emplates/wallet/wallet_dashboard.html
+---
+
+
+## PGCRYPTO-DISPOSITION — pgcrypto disposition: use for specific fields or drop
+
+- **Status:** OPEN — decision required before Item 13 Case 2 transition plan is finalized
+- **Owner:** Project owner (with security/compliance input if applicable)
+- **Created:** 2026-10-21
+- **Blocks:** Item 13 Case 2 transition plan's pgcrypto clause, H3-B cutover for production
+- **Blocked by:** Nothing — decision can be made now
+
+---
+
+### Context
+
+PostgreSQL's `pgcrypto` extension (version **1.4**) is installed in `afcon360_prod` only. It provides 37 cryptographic routines. It is **not installed** in `afcon360_test` or the H2-prime reference database.
+
+Two independent scans confirm the extension has **no identified consumer**:
+
+1. **Source tree** (`git grep` at main/285db47): zero application or migration call sites for any pgcrypto function. All encryption is Python Fernet (`cryptography.fernet`). Password hashing is Werkzeug.
+
+2. **Database catalog** (`catalog_dump.json`): zero references to any pgcrypto function in any schema object. Constraints, triggers, indexes, defaults, sequences, and function bodies were all scanned. The only pgcrypto-backed entries are pgcrypto's own self-installed routine definitions.
+
+Composition of production's 39 routines:
+- **37** pgcrypto functions (armor, crypt, decrypt, digest, encrypt, gen_salt, hmac, pgp_sym_*, pgp_pub_*, etc.) — auto-installed by `CREATE EXTENSION pgcrypto`
+- **2** application-defined guard functions (`guard_user_roles_delete`, `guard_users_delete`) — not pgcrypto, present in both reference and production, missing in test
+
+The 2 guard functions exist independently of pgcrypto. Dropping pgcrypto would not affect them.
+
+pgcrypto was likely installed historically for one of three reasons, none reconstructed:
+- Ops troubleshooting ("install it in case")
+- Template inherited from an old project setup
+- Someone manually ran `CREATE EXTENSION pgcrypto;` years ago
+
+---
+
+### What pgcrypto could provide
+
+The 37 routines fall into five functional groups:
+
+| Group | Example routines | What they do |
+|---|---|---|
+| Password hashing | `crypt()`, `gen_salt()` | bcrypt-style hashing inside the DB |
+| Symmetric encryption | `encrypt()`, `decrypt()`, `encrypt_iv()`, `decrypt_iv()` | AES encryption with a caller-supplied key |
+| PGP encryption | `pgp_sym_encrypt()`, `pgp_pub_encrypt()`, `pgp_sym_decrypt()`, `pgp_pub_decrypt()`, `pgp_key_id()` | PGP-style encryption with optional public/private keys |
+| Hashing | `digest()`, `hmac()` | SHA/MD5/HMAC digests |
+| Random + utilities | `gen_random_bytes()`, `gen_random_uuid()`, `armor()`, `dearmor()`, `fips_mode()` | Random generation, encoding |
+
+The five that matter for AFCON360's decision are the encryption ones.
+
+---
+
+### Two paths, both defensible
+
+**Path A — Do not use pgcrypto. Drop it.**
+
+Drop the extension during the H3-B transition for prod. Do not add it to the H3-A baseline.
+
+Advantages:
+- Single encryption system (Fernet) — one key management story, one rotation procedure, one runbook
+- No app+DB key coordination
+- No per-query decryption overhead
+- Consistency across all environments
+- Removes a production-only divergence from the transition plan
+- The evidence shows no consumer exists — no functionality is lost
+
+Disadvantages:
+- No DB-enforced encryption layer for currently-unencrypted fields
+- Backup files contain plaintext for fields that are not Fernet-encrypted (also true today)
+- Compliance frameworks that mandate DB-level encryption are not satisfied by Path A alone
+
+**Path B — Use pgcrypto for specific high-value fields.**
+
+Keep the extension in prod, extend to test. Use for a limited set of fields where DB-level encryption has genuine value.
+
+Candidate fields (subject to audit — not yet verified):
+- `wallet_payment_configs.secret_key` (currently Fernet-encrypted)
+- `wallet_payment_configs.encryption_key` (currently Fernet-encrypted)
+- `users.backup_codes` (currently Fernet-encrypted)
+- Sensitive PII stored plaintext: ID numbers, addresses, DOB
+- Retained regulator reports if compliance frameworks require DB-level encryption
+
+Advantages:
+- Defense in depth — encryption applied regardless of writing code path
+- Satisfies compliance frameworks at storage layer
+- `pg_dump` backups show ciphertext for those fields
+- Enables DB-enforced confidentiality for cross-team data sharing
+
+Disadvantages:
+- Two encryption systems — two key rotation procedures
+- App must know which fields are DB-encrypted vs app-encrypted
+- Debugging and ad-hoc queries harder (`SELECT` returns ciphertext)
+- Performance: DB does crypto work per read/write
+- Deployment: extension must be installed everywhere; version drift becomes an operational concern
+
+---
+
+### What must be verified before the decision
+
+1. **Compliance requirements.** Does AFCON360 have financial, PII, or health regulatory obligations that mandate encryption-at-rest enforced at the storage layer? If yes, Path B likely required.
+
+2. **Sensitive field inventory.** What fields are currently stored plaintext that should be encrypted? Candidates: users (ID, address, DOB, phone), KYC (document data), wallet (transaction descriptions with PII), compliance (case notes, AML reports). This determines what pgcrypto would protect.
+
+3. **Threat model.** Which threats does pgcrypto mitigate that Fernet does not?
+   - Attacker with DB read access but no app access → pgcrypto helps; Fernet helps only if the attacker lacks the Fernet key (which lives on the app server)
+   - Attacker with app server access → neither helps
+   - Backup leakage → both help (if the pgcrypto key is not in the backup)
+   - Insider DB access → pgcrypto helps if they lack the DB key
+
+4. **Operational cost.** Who rotates the pgcrypto key? How often? How does rotation coordinate with the app? What is the read failure mode during rotation?
+
+---
+
+### Decision record (to be filled when decided)
+
+- Path chosen (A — drop; B — use for specific fields)
+- If B, list fields encrypted at DB layer
+- Compliance framework cited (or "none required")
+- Key rotation procedure reference
+- Backup restoration procedure reference
+- H3-B transition impact: does the script need `CREATE EXTENSION pgcrypto;`?
+- Date decided, by whom
+- Related register items: 14d, Item 13 Case 2
+
+---
+
+### Current default until decided
+
+**Preserve in prod. Do not propagate to H3-A baseline or test/reference. Do not drop.**
+
+This matches register Item 14d and Constitution §48 (no drops without explicit decision).
+
+---
+
+### Evidence trail
+
+- `git grep -n -I -i -E 'pgcrypto|pgp_sym_(encrypt|decrypt)|pgp_pub_(encrypt|decrypt)|gen_salt|crypt\(|digest\(|hmac\(|CREATE EXTENSION|ALTER EXTENSION|pg_catalog\.pg_extension|pg_depend'` at main / 285db47 — zero application call sites
+- `catalog_dump.json` (physical-schema investigation, retained in `%TEMP%\afcon360_physical_schema_investigation\`) — extension inventory, routine definitions, catalog scan for call sites
+- Register Item 14d — pgcrypto finding recorded, disposition open
+- Register Item 13 Case 2 — extension-preservation requirement for transition plan
+
+---
+
+### Related items
+
+- Register Item 13 Case 2 (extension preservation in transition plan)
+- Register Item 14d (pgcrypto recorded, disposition open)
+- Register Item 28a (145 server-default differences — separate but related to prod/ref convergence)
+- Constitution §48 (preservation policy)
+- BACKLOG entry on `btree_gist` (line ~2035) — different extension, different purpose (transport exclusion constraints)
