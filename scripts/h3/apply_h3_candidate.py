@@ -134,6 +134,29 @@ def _database_exists(candidate_url: URL) -> bool:
         engine.dispose()
 
 
+def _maintenance_server_state(candidate_url: URL) -> dict[str, str]:
+    engine = create_engine(
+        _maintenance_url(candidate_url),
+        poolclass=NullPool,
+        connect_args={
+            "connect_timeout": 5,
+            "options": "-c default_transaction_read_only=on",
+        },
+    )
+    try:
+        with engine.connect() as connection:
+            return {
+                "server_version": str(connection.execute(text("SHOW server_version")).scalar_one()),
+                "server_encoding": str(connection.execute(text("SHOW server_encoding")).scalar_one()),
+            }
+    except Exception as exc:
+        raise RuntimeError(
+            "Could not verify the local candidate PostgreSQL server before database creation."
+        ) from exc
+    finally:
+        engine.dispose()
+
+
 def _create_candidate_database(candidate_url: URL, source_encoding: str) -> None:
     if source_encoding.upper() != "UTF8":
         raise ValueError(
@@ -385,6 +408,14 @@ def run(candidate_database: str, action: str) -> dict[str, Any]:
             raise ValueError(
                 "Candidate database already exists. Nothing was dropped or modified; inspect it or choose a new approved disposable name."
             )
+        server_state = _maintenance_server_state(candidate_url)
+        if server_state != {
+            "server_version": source["server_version"],
+            "server_encoding": source["server_encoding"],
+        }:
+            raise ValueError(
+                "Candidate PostgreSQL server version/encoding must exactly match the approved H2-prime source; no database was created."
+            )
         source_encoding = str(source["server_encoding"])
         _create_candidate_database(candidate_url, source_encoding)
         state = _state(candidate_url)
@@ -413,6 +444,10 @@ def run(candidate_database: str, action: str) -> dict[str, Any]:
 
     state = _state(candidate_url)
     report.update({"candidate_database_exists": True, "candidate_state": state})
+    if state["server_version"] != source["server_version"] or state["server_encoding"] != source["server_encoding"]:
+        raise ValueError(
+            "Candidate PostgreSQL version/encoding does not exactly match the approved H2-prime source. No candidate migration was applied."
+        )
     if not POSTGRESQL_18_4_PATTERN.match(state["server_version"]):
         raise ValueError(
             f"H3-A verification target is PostgreSQL 18.4; observed {state['server_version']!r}. No candidate migration was applied."
