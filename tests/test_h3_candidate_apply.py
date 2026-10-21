@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import hashlib
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
 from scripts.h3 import apply_h3_candidate as applier
 from scripts.h3 import build_h3_candidate as builder
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_candidate_database_allowlist_accepts_only_disposable_names():
@@ -109,6 +115,25 @@ def test_h3a_replay_version_gate_is_18_4_for_this_checkpoint():
 
 
 def test_h3a_application_module_import_uses_supported_package_entrypoint():
-    # The CLI is intended to run as a module from the repository root.
     assert callable(applier.main)
     assert applier.CANDIDATE_DATABASE_PATTERN.fullmatch("afcon360_h3_candidate_test")
+
+
+@pytest.mark.parametrize(
+    "relative_script",
+    (
+        Path("scripts/h3/apply_h3_candidate.py"),
+        Path("scripts/h3/compare_h3_candidate_schema.py"),
+    ),
+)
+def test_h3_cli_help_works_when_invoked_directly(relative_script):
+    result = subprocess.run(
+        [sys.executable, str(REPO_ROOT / relative_script), "--help"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "usage:" in result.stdout.lower()
