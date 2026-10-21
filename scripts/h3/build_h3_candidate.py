@@ -26,6 +26,7 @@ APPROVED_SOURCE_REVISION = "df55cbe3f516"
 APPROVED_SOURCE_SERVER_VERSION = "18.4"
 EXPECTED_PUBLIC_TABLES = 224  # Includes Alembic's own version table.
 EXPECTED_PUBLIC_ENUMS = 49
+APPROVED_SOURCE_SCHEMA_SHA256 = "514b392f9b8a812b95c9e9681f713cfde86c726ee8a9eff36db2750123068825"
 CANDIDATE_REVISION = "h3a20261020"
 CANDIDATE_OUTPUT = Path("migrations/h3_candidate/versions/h3a20261020_static_baseline.py")
 
@@ -368,6 +369,10 @@ def build_candidate(*, replace: bool = False, pg_dump_executable: str = "pg_dump
     expected_enums = source["all_user_schema_enum_count"]
     counts = validate_schema_sql(sql, expected_tables=expected_tables, expected_enums=expected_enums)
     digest = hashlib.sha256(sql.encode("utf-8")).hexdigest()
+    if digest != APPROVED_SOURCE_SCHEMA_SHA256:
+        raise ValueError(
+            "The approved H2-prime schema hash changed; preserve the output and review the complete schema diff before regenerating H3."
+        )
     rendered = render_candidate_migration(
         sql,
         server_version=source["server_version"],
