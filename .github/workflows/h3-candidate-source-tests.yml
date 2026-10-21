@@ -15,6 +15,7 @@ on:
     paths:
       - scripts/h3/**
       - tests/test_h3_candidate_builder.py
+      - tests/test_h3_candidate_apply.py
       - migrations/h3_candidate/**
       - docs/database/H3-A-CANDIDATE-TESTING.md
       - .github/workflows/h3-candidate-source-tests.yml
