@@ -47,6 +47,22 @@ def test_h3a_candidate_integrity_checks_embedded_sql_hash(tmp_path):
     assert report["schema_sql_bytes"] == len(sql.encode("utf-8"))
 
 
+def test_h3a_candidate_integrity_check_requires_the_pinned_source_hash_by_default(tmp_path):
+    sql = "CREATE TABLE public.example (id BIGINT NOT NULL);\n"
+    digest = hashlib.sha256(sql.encode("utf-8")).hexdigest()
+    rendered = builder.render_candidate_migration(
+        sql,
+        server_version="18.4",
+        pg_dump_version="18.4",
+        source_sha256=digest,
+    )
+    candidate_path = tmp_path / "non_approved_candidate.py"
+    candidate_path.write_text(rendered, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="pinned approved H2-prime schema hash"):
+        applier.load_and_validate_candidate(candidate_path)
+
+
 def test_h3a_candidate_integrity_check_rejects_sql_changed_after_generation(tmp_path):
     sql = (
         "CREATE TYPE public.example_status AS ENUM ('OPEN');\n"
