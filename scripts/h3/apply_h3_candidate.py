@@ -37,7 +37,11 @@ def validate_candidate_database_name(name: str) -> str:
     return name
 
 
-def load_and_validate_candidate(path: Path = CANDIDATE_PATH) -> dict[str, Any]:
+def load_and_validate_candidate(
+    path: Path = CANDIDATE_PATH,
+    *,
+    expected_sha256: str = builder.APPROVED_SOURCE_SCHEMA_SHA256,
+) -> dict[str, Any]:
     if not path.is_file():
         raise FileNotFoundError(
             f"Candidate artifact is missing at {path.as_posix()}; generate and review it first."
@@ -66,6 +70,10 @@ def load_and_validate_candidate(path: Path = CANDIDATE_PATH) -> dict[str, Any]:
     if actual_digest != expected_digest:
         raise ValueError(
             "Candidate SQL hash does not match its embedded provenance hash; preserve it and regenerate/review."
+        )
+    if actual_digest != expected_sha256:
+        raise ValueError(
+            "Candidate SQL hash differs from the pinned approved H2-prime schema hash; no database action was started."
         )
     if not callable(getattr(module, "upgrade", None)):
         raise ValueError("Candidate does not expose an Alembic upgrade() function.")
