@@ -7,6 +7,7 @@ and broadcasts live to authorized Owner/Super Admin consoles via Flask-SocketIO.
 """
 import logging
 import json
+import os
 import re
 import uuid
 from datetime import datetime, timezone
@@ -16,8 +17,14 @@ from collections import deque
 from flask import has_request_context, request
 from app.extensions import redis_client, socketio
 from app.notifications.events.context import get_correlation_id
+from app.realtime import (
+    is_bare_cli_invocation as _is_bare_cli_invocation,
+    socketio_enabled,
+    socketio_server_ready,
+)
 
 logger = logging.getLogger(__name__)
+
 
 MAX_HISTORY = 2000
 HISTORY_KEY = "prod_console:history"
@@ -119,6 +126,7 @@ class ProductionConsoleHandler(logging.Handler):
     def __init__(self, level=logging.NOTSET):
         super().__init__(level)
         self._local_history = deque(maxlen=100)
+        self._cli_mode = _is_bare_cli_invocation()
     
     def emit(self, record: logging.LogRecord) -> None:
         try:
@@ -143,7 +151,13 @@ class ProductionConsoleHandler(logging.Handler):
         
         if record.name in skip_loggers:
             return True
-        
+
+        # Socket.IO/Engine.IO child loggers (e.g. "socketio.server") would
+        # otherwise re-enter the console handler while it is broadcasting and
+        # create an unbounded error loop when Redis is unreachable.
+        if record.name.startswith(('socketio', 'engineio', 'flask_socketio')):
+            return True
+
         if record.name.startswith('urllib3') or record.name.startswith('requests'):
             return True
         
@@ -194,6 +208,8 @@ class ProductionConsoleHandler(logging.Handler):
     
     def _store_history(self, event: Dict[str, Any]) -> None:
         """Store event in Redis bounded history."""
+        if self._cli_mode:
+            return
         try:
             if not redis_client._url:
                 return
@@ -214,6 +230,8 @@ class ProductionConsoleHandler(logging.Handler):
     
     def _broadcast_live(self, event: Dict[str, Any]) -> None:
         """Broadcast event to connected SocketIO clients."""
+        if self._cli_mode or not socketio_enabled() or not socketio_server_ready():
+            return
         try:
             socketio.emit('console_event', event, namespace='/console')
         except Exception as e:
@@ -250,6 +268,8 @@ class ProductionConsoleHandler(logging.Handler):
             cls._store_history(event)
         except Exception:
             pass
+        if not socketio_enabled() or not socketio_server_ready():
+            return
         try:
             socketio.emit('console_event', event, namespace='/console')
         except Exception:
@@ -392,6 +412,12 @@ class CeleryEventCapture:
 
 def init_production_console_logging(app):
     """Initialize production console logging handler."""
+    if not app.config.get("SOCKETIO_ENABLED", True):
+        logger.info("Production console disabled because Socket.IO is disabled")
+        return None
+    if os.environ.get("PRODUCTION_CONSOLE_ENABLED", "true").lower() in ("false", "0", "no"):
+        logger.info("Production console disabled via PRODUCTION_CONSOLE_ENABLED env var")
+        return None
     handler = ProductionConsoleHandler()
     handler.setLevel(logging.DEBUG)
     handler.setFormatter(logging.Formatter(

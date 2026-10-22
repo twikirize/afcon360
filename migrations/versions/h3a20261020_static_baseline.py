@@ -28385,9 +28385,9 @@ _SCHEMA_SQL = (
 )
 
 def upgrade():
-    op.get_bind().exec_driver_sql(
-        _SCHEMA_SQL, execution_options={"no_parameters": True}
-    )
+    bind = op.get_bind()
+    bind.exec_driver_sql(_SCHEMA_SQL, execution_options={"no_parameters": True})
+    bind.exec_driver_sql('SET search_path = public', execution_options={"no_parameters": True})
 def downgrade():
     raise NotImplementedError(
         'H3 baseline downgrade is intentionally disabled; recovery requires a verified backup restore.'

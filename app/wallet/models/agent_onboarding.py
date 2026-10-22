@@ -23,13 +23,31 @@ from sqlalchemy import (
     JSON,
     Index,
     UniqueConstraint,
+    Boolean,
 )
+from sqlalchemy.sql import func
 from app.models.base import BaseModel
 from app.extensions import db
 
 
 class AgentOnboarding(BaseModel):
     __tablename__ = "agent_onboardings"
+
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     user_id = Column(
         BigInteger,
@@ -39,9 +57,9 @@ class AgentOnboarding(BaseModel):
 
     agent_type = Column(String(20), nullable=False)
 
-    reference = Column(String(64), unique=True, nullable=False, index=True)
+    reference = Column(String(64), nullable=False)
 
-    status = Column(String(30), nullable=False, default="submitted", index=True)
+    status = Column(String(30), nullable=False, default="submitted")
 
     applicant_data = Column(JSON, nullable=False, default=dict)
 
@@ -58,6 +76,7 @@ class AgentOnboarding(BaseModel):
     rejection_reason = Column(Text, nullable=True)
 
     __table_args__ = (
+        UniqueConstraint("reference", name="uq_agent_onboardings_reference"),
         Index("ix_agent_onb_user", "user_id"),
         Index("ix_agent_onb_status_stage", "status", "current_stage"),
     )
@@ -72,6 +91,22 @@ class AgentOnboardingApproval(BaseModel):
     """
 
     __tablename__ = "agent_onboarding_approvals"
+
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     onboarding_id = Column(
         BigInteger,
@@ -92,6 +127,9 @@ class AgentOnboardingApproval(BaseModel):
     decision = Column(String(20), nullable=False)
 
     comment = Column(Text, nullable=True)
+
+    # Temporary Item 15 migration-workflow verification probe.
+    h3_workflow_probe = Column(String(32), nullable=True)
 
     __table_args__ = (
         Index("ix_agent_appr_onb", "onboarding_id"),

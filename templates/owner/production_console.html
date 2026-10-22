@@ -1126,7 +1126,12 @@
     
     // Event listeners
     document.addEventListener('DOMContentLoaded', function() {
+        {% if socketio_enabled %}
         initSocket();
+        {% else %}
+        updateStatus('disconnected', 'SOCKET.IO DISABLED');
+        showBanner('Real-time streaming is disabled by the owner. Log history is still refreshed by polling.');
+        {% endif %}
         
         // Severity filter
         document.getElementById('severityFilter').addEventListener('change', function(e) {

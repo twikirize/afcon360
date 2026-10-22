@@ -144,6 +144,14 @@ class Config:
     CELERY_BROKER_URL      = os.getenv("CELERY_BROKER_URL",  REDIS_URL)
     CELERY_RESULT_BACKEND  = os.getenv("CELERY_RESULT_BACKEND", REDIS_URL)
 
+    # Socket.IO real-time transport. The owner-controlled SystemConfig row
+    # (SOCKETIO_ENABLED) is authoritative; this env value is the explicit
+    # process-level override and the default when no row exists. Alembic/Flask
+    # CLI one-shots always force this off regardless of the configured value.
+    SOCKETIO_ENABLED = os.getenv("SOCKETIO_ENABLED", "true").strip().lower() not in (
+        "false", "0", "no", "off"
+    )
+
     # ---- Sessions -----------------------------------------------------------
     SESSION_TYPE             = "redis"
     SESSION_PERMANENT        = True

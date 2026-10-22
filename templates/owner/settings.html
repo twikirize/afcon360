@@ -238,6 +238,56 @@ document.addEventListener('DOMContentLoaded', function() {
     </a>
   </div>
 
+  <!-- Real-time Services Section -->
+  <h3 class="section-title">Real-time Services</h3>
+  <div class="settings-grid">
+    <div class="settings-card" style="border-left:4px solid #0ea5e9;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
+        <div class="card-icon">📡</div>
+        <span class="card-badge badge-system">System</span>
+      </div>
+      <div class="card-title">Socket.IO Real-time Streaming</div>
+      <div class="card-description" style="margin-bottom:1rem;">
+        Controls the live WebSocket transport used by the production console,
+        mission-control monitor, and host dashboard. Disable it if Redis is
+        unreachable or real-time delivery is not needed. Alembic and Flask CLI
+        commands always run with Socket.IO off.
+      </div>
+      <form method="POST" action="{{ url_for('admin.owner.toggle_socketio') }}" style="margin-top:1rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label style="display:flex;align-items:center;gap:0.75rem;cursor:pointer;">
+          <input type="checkbox" name="enabled"
+                 {{ 'checked' if socketio_enabled_stored else '' }}
+                 style="width:20px;height:20px;cursor:pointer;">
+          <span style="font-weight:600;color:#1a1a1a;">
+            Enable Socket.IO real-time streaming
+          </span>
+        </label>
+        <button type="submit" class="btn btn-primary btn-sm" style="margin-top:1rem;">
+          Save real-time setting
+        </button>
+      </form>
+      <div style="margin-top:1rem;font-size:0.8125rem;color:#6b7280;background:#f9fafb;border-radius:8px;padding:0.75rem 1rem;">
+        <i class="bi bi-info-circle"></i>
+        Stored value:
+        <strong style="color:{{ '#065f46' if socketio_enabled_stored else '#dc2626' }};">
+          {{ 'Enabled' if socketio_enabled_stored else 'Disabled' }}
+        </strong>
+        <br>
+        This process:
+        <strong style="color:{{ '#065f46' if socketio_enabled_effective else '#dc2626' }};">
+          {{ 'Enabled' if socketio_enabled_effective else 'Disabled' }}
+        </strong>
+        {% if socketio_enabled_stored != socketio_enabled_effective %}
+          <div style="margin-top:0.5rem;color:#b45309;">
+            <i class="bi bi-exclamation-triangle"></i>
+            Restart the application to apply this change.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   <!-- Authentication Section -->
   <h3 class="section-title">Authentication & Verification</h3>
   <div class="settings-grid">

@@ -3752,11 +3752,13 @@ matching / realtime / maps / routing
 ---
 
 
-## PGCRYPTO-DISPOSITION — pgcrypto disposition: use for specific fields or drop
+## PGCRYPTO-DISPOSITION — pgcrypto disposition: preserve for future use
 
-- **Status:** OPEN — decision required before Item 13 Case 2 transition plan is finalized
+- **Status:** DECIDED 2026-10-22 — preserve for future use
 - **Owner:** Project owner (with security/compliance input if applicable)
 - **Created:** 2026-10-21
+- **Decided:** 2026-10-22
+- **Decision:** Retain pgcrypto and deploy it when specific features require it. Implementation details (fields, threat model, key custody, rotation, environment deployment, testing) are resolved per-feature, not as a reopening of the preservation decision.
 - **Blocks:** Item 13 Case 2 transition plan's pgcrypto clause, H3-B cutover for production
 - **Blocked by:** Nothing — decision can be made now
 
@@ -3801,83 +3803,93 @@ The five that matter for AFCON360's decision are the encryption ones.
 
 ---
 
-### Two paths, both defensible
+### Owner direction (2026-10-22)
 
-**Path A — Do not use pgcrypto. Drop it.**
+**Preserve pgcrypto as a planned future database-security capability and evaluate, deploy and use it when a qualifying AFCON360 feature requires it. Do not remove it. Do not introduce pgcrypto usage prematurely.**
 
-Drop the extension during the H3-B transition for prod. Do not add it to the H3-A baseline.
-
-Advantages:
-- Single encryption system (Fernet) — one key management story, one rotation procedure, one runbook
-- No app+DB key coordination
-- No per-query decryption overhead
-- Consistency across all environments
-- Removes a production-only divergence from the transition plan
-- The evidence shows no consumer exists — no functionality is lost
-
-Disadvantages:
-- No DB-enforced encryption layer for currently-unencrypted fields
-- Backup files contain plaintext for fields that are not Fernet-encrypted (also true today)
-- Compliance frameworks that mandate DB-level encryption are not satisfied by Path A alone
-
-**Path B — Use pgcrypto for specific high-value fields.**
-
-Keep the extension in prod, extend to test. Use for a limited set of fields where DB-level encryption has genuine value.
-
-Candidate fields (subject to audit — not yet verified):
-- `wallet_payment_configs.secret_key` (currently Fernet-encrypted)
-- `wallet_payment_configs.encryption_key` (currently Fernet-encrypted)
-- `users.backup_codes` (currently Fernet-encrypted)
-- Sensitive PII stored plaintext: ID numbers, addresses, DOB
-- Retained regulator reports if compliance frameworks require DB-level encryption
-
-Advantages:
-- Defense in depth — encryption applied regardless of writing code path
-- Satisfies compliance frameworks at storage layer
-- `pg_dump` backups show ciphertext for those fields
-- Enables DB-enforced confidentiality for cross-team data sharing
-
-Disadvantages:
-- Two encryption systems — two key rotation procedures
-- App must know which fields are DB-encrypted vs app-encrypted
-- Debugging and ad-hoc queries harder (`SELECT` returns ciphertext)
-- Performance: DB does crypto work per read/write
-- Deployment: extension must be installed everywhere; version drift becomes an operational concern
+Treat pgcrypto as a capability to activate at the appropriate implementation milestone, not as a task that must be implemented immediately and not as a recurring decision about whether to remove it.
 
 ---
 
-### What must be verified before the decision
+### Decision record (2026-10-22)
 
-1. **Compliance requirements.** Does AFCON360 have financial, PII, or health regulatory obligations that mandate encryption-at-rest enforced at the storage layer? If yes, Path B likely required.
-
-2. **Sensitive field inventory.** What fields are currently stored plaintext that should be encrypted? Candidates: users (ID, address, DOB, phone), KYC (document data), wallet (transaction descriptions with PII), compliance (case notes, AML reports). This determines what pgcrypto would protect.
-
-3. **Threat model.** Which threats does pgcrypto mitigate that Fernet does not?
-   - Attacker with DB read access but no app access → pgcrypto helps; Fernet helps only if the attacker lacks the Fernet key (which lives on the app server)
-   - Attacker with app server access → neither helps
-   - Backup leakage → both help (if the pgcrypto key is not in the backup)
-   - Insider DB access → pgcrypto helps if they lack the DB key
-
-4. **Operational cost.** Who rotates the pgcrypto key? How often? How does rotation coordinate with the app? What is the read failure mode during rotation?
+- **Decision:** Preserve pgcrypto; deploy when a qualifying feature requires it.
+- **Scope:** Per-feature implementation (fields, threat model, key custody, rotation, environment deployment, testing) resolved at that feature's authorization gate.
+- **Not a reopening trigger:** Future feature-specific pgcrypto assessments do not reopen the preservation decision.
+- **Related register items:** Item 14d (pgcrypto recorded), Item 13 Case 2 (extension preservation in transition plan).
+- **Decided by:** Project owner
+- **Date:** 2026-10-22
 
 ---
 
-### Decision record (to be filled when decided)
+### Future activation scenarios — review triggers
 
-- Path chosen (A — drop; B — use for specific fields)
-- If B, list fields encrypted at DB layer
-- Compliance framework cited (or "none required")
-- Key rotation procedure reference
-- Backup restoration procedure reference
-- H3-B transition impact: does the script need `CREATE EXTENSION pgcrypto;`?
-- Date decided, by whom
-- Related register items: 14d, Item 13 Case 2
+The following scenarios **must trigger a pgcrypto applicability review** when an unfinished or new feature reaches refinement and implementation planning. These are **review triggers, not automatic approvals** to encrypt every listed field with pgcrypto. Existing Fernet encryption, password hashing, application-level HMAC, transport security, and infrastructure/backup encryption must be assessed on their own merits.
+
+| Letter | Scenario | What to evaluate |
+|---|---|---|
+| A | **Sensitive personal data** — A new or unfinished feature stores particularly sensitive identity information, dates of birth, addresses, or other PII in database columns. | Does the threat model justify DB-layer protection beyond existing controls? |
+| B | **KYC and compliance records** — Features introduce identity-document data, compliance case notes, regulator reports, or other sensitive retained records requiring field-level confidentiality. | Is database-layer encryption required for regulatory or contractual reasons? |
+| C | **Wallet and payment configuration** — A feature introduces or changes storage of payment-provider secrets, encryption keys, backup codes, or similarly sensitive financial configuration. | Do the existing Fernet protections adequately cover the threat surface? |
+| D | **Database-layer cryptographic operations** — A feature requires encryption, decryption, hashing, keyed digests, or other cryptographic processing to happen inside PostgreSQL rather than exclusively in application code. | Is there a compelling reason the operation cannot be performed in application code? |
+| E | **Database access and backup exposure** — A documented threat model identifies a need to protect selected fields from database-only readers, database exports, or other exposure paths that the existing application encryption does not adequately address. | Does the threat model distinguish between application-layer and database-layer exposure? |
+| F | **Compliance or contractual requirements** — A verified requirement calls for database-layer protection of particular data fields or database-side cryptographic processing. | Is the requirement specific enough to identify exact fields and operations? |
+| G | **Cross-service or operational data access** — A feature permits multiple services, reporting processes, or authorized operators to access sensitive records and a reviewed design finds value in database-enforced field-level protection. | Does the design justify the operational complexity of dual encryption systems? |
 
 ---
 
-### Current default until decided
+### Unfinished-feature applicability checkpoint
 
-**Preserve in prod. Do not propagate to H3-A baseline or test/reference. Do not drop.**
+**When reviewing an unfinished feature or before implementing a new feature, the agent must ask:**
+
+- Does this feature create, store, retrieve, process, or export sensitive information?
+- Is database-level cryptographic protection justified by a documented threat model, compliance requirement, or data-flow analysis?
+- Would the existing application-level protection (Fernet, Werkzeug hashing, HMAC, TLS, infrastructure encryption) adequately address the identified threat?
+- Would pgcrypto materially improve protection, given where its key would be stored, who can access it, and which database roles can invoke its functions?
+- What are the consequences for key rotation, migrations, queries, performance, testing, monitoring, and recovery?
+- Must pgcrypto be made available in the relevant test, reference, staging, and production environments before the feature can be verified safely?
+
+**Record one of three outcomes against the relevant feature:**
+
+- **REQUIRED:** Evidence establishes that pgcrypto is appropriate and part of the approved design.
+- **NOT REQUIRED:** Evidence establishes that existing controls adequately address the feature's requirements.
+- **REVIEW REQUIRED:** The threat model, field inventory, compliance position, or key-management design is not yet sufficient to decide.
+
+The agent must perform this check when the relevant feature reaches refinement and implementation planning — not indiscriminately reopen it for unrelated work.
+
+---
+
+### Activation and implementation gates
+
+**When an applicable feature reaches implementation, require the following sequence:**
+
+1. **Scope identification** — Identify the exact fields, records, and cryptographic operations in scope.
+2. **Threat-model documentation** — Document the threat model, security benefit, and alternatives considered.
+3. **Key custody specification** — Specify key custody, separation from ciphertext, permissions, rotation, recovery, and incident procedures.
+4. **Environment provisioning decision** — Decide how pgcrypto will be provisioned consistently in every environment required by that feature.
+5. **Schema/migration review** — Review the required schema, migration, and deployment plan against AFCON360's existing database-reliability gates (Item 20, §20, §48).
+6. **Authorized implementation** — Implement only after the relevant authorization, preserving existing data and application contracts.
+7. **Verification** — Test encryption, decryption, access controls, failure behaviour, key rotation, backups, and recovery.
+
+**Do not assume that installing pgcrypto alone encrypts existing columns or automatically protects backups.** The feature must explicitly implement and verify the approved protection design.
+
+---
+
+### Non-negotiable production and schema rules
+
+- **Preserve the existing production pgcrypto installation.** Do not remove the extension.
+- **Do not add it to the common H3-A baseline** merely because it is installed in production.
+- **Do not install it in other databases prematurely**, before a justified and approved feature requires it.
+- **When a feature requires pgcrypto**, provision it in the relevant environments through the approved deployment and schema-management process.
+- **Item 13 Case 2** must explicitly account for preserving the existing extension in an in-place transition or recreating it when required by an approved replacement-database plan.
+- **No database changes, migrations, extension installation, or production operations are authorized by this backlog documentation update.**
+- Keep unrelated backlog items moving; pgcrypto must not become a blanket blocker for features that do not need it.
+
+---
+
+### Current standing policy
+
+**Preserve in prod. Do not propagate to H3-A baseline or test/reference unless a qualified feature requires it. Do not drop.**
 
 This matches register Item 14d and Constitution §48 (no drops without explicit decision).
 
@@ -3885,42 +3897,42 @@ This matches register Item 14d and Constitution §48 (no drops without explicit 
 
 ### Evidence trail (verified 2026-10-21)
 
-Six independent scans confirm pgcrypto has no consumer at any layer:
+The following audit results were obtained; they do not exclude every possible dynamic‑SQL path, external caller, or unexamined runtime interaction.
 
 1. **Application code** (`git grep` at main/285db47):
-   Zero call sites for any pgcrypto function. All encryption uses Python
+   Zero call sites for any pgcrypto function in the searched patterns. All encryption uses Python
    Fernet (`cryptography.fernet`); password hashing uses Werkzeug.
 
 2. **Migrations** (`git grep`):
    Zero call sites. pgcrypto is not created, altered, or referenced in any
-   migration file.
+   migration file in the searched patterns.
 
 3. **Catalog dependency graph** (direct `pg_catalog.pg_depend` query,
    afcon360_prod):
-   Zero rows. No constraint, index, trigger, column default, or
-   user-defined function depends on any pgcrypto function.
+   Zero rows returned. No constraint, index, trigger, column default, or
+   user-defined function depends on any pgcrypto function under the defined query.
 
 4. **Function body text scan** (all public functions, `pg_get_functiondef`,
    excluding pgcrypto's own routines):
-   Zero rows. No function contains any pgcrypto call pattern in its body,
-   including dynamic SQL references that `pg_depend` cannot detect.
+   Zero rows matched the searched pgcrypto call patterns in routine bodies,
+   including dynamic‑SQL references that `pg_depend` cannot detect.
 
-5. **The two non-pgcrypto routines in production**
+5. **The two non‑pgcrypto routines in production**
    (`guard_user_roles_delete`, `guard_users_delete`):
    Inspected directly. Both use `current_setting` and `RAISE EXCEPTION`
    to prevent unauthorized deletes. Neither performs cryptographic
    operations. Neither calls pgcrypto.
 
-6. **Extension inventory** (catalog_dump.json from physical-schema
+6. **Extension inventory** (catalog_dump.json from physical‑schema
    investigation):
    - pgcrypto 1.4 installed in production only
-   - 37 routines, all extension members (auto-installed by CREATE EXTENSION)
+   - 37 routines, all extension members (auto‑installed by CREATE EXTENSION)
    - Reference and test: pgcrypto not installed
    - Total routines: 39 in prod (37 pgcrypto + 2 app guards),
      2 in ref, 0 in test
 
-Conclusion: pgcrypto is installed infrastructure with zero identified
-consumers. It can be preserved harmlessly (one line in transition plan)
+Conclusion: pgcrypto is installed infrastructure with no identified
+consumers in the performed scans. It can be preserved harmlessly (one line in transition plan)
 or dropped with owner approval. There is no functionality to preserve
 by keeping it.
 
@@ -4066,3 +4078,19 @@ part of the pgcrypto closure, but as a distinct H3-B gate.
 - `.env*` file inspection (2026-10-22) — no secrets captured
 - `app/config.py:117` — confirms `APP_DB_USER` precedence over `DB_USER`
 - All queries were read-only; no changes to roles or privileges were performed
+
+---
+
+## H3-MODEL-SCHEMA-DRIFT — Agent model/schema alignment before next `flask db migrate`
+- Status: Not started (deferred follow-up; not a Stage C gate)
+- Raised: 2026-10-22
+- Context: Running `flask db migrate` against a fresh H3-A database produced the diagnostic migration `f10d3e9c7082_h3_drift_check.py`, which has been deleted (never applied, never committed). The drift source is the models, not the schema. Detected divergences: 12 timestamp type changes (`timestamptz` → timestamp without time zone) across 4 agent tables × `created_at`, `updated_at`, `deleted_at`; 15 `ix_agent_*` index additions; and replacement of `uq_agent_onboardings_reference` with `ix_agent_onboardings_reference`. The H3 baseline schema is correct and preserves timezone awareness and uniqueness.
+- What needs to happen: Align `app/wallet/models/agent_float.py` and `app/wallet/models/agent_onboarding.py` to the H3 schema before future `flask db migrate` use:
+  - Override `created_at`, `updated_at`, `deleted_at` on all four models with `DateTime(timezone=True)` (preserve nullability, Python defaults, `server_default=func.now()`, and `onupdate`).
+  - Suppress the inherited `BaseModel` indexes that generate the 15 additions without editing `app/models/base.py`: the 8 `created_at`/`updated_at` indexes disappear with the column overrides; the 4 `is_deleted` indexes require an explicit `is_deleted = Column(Boolean, default=False, nullable=False)` override (no `index=True`).
+  - Remove `index=True` from `agent_float_ledgers.reference` and `agent_onboardings.status`.
+  - Replace `agent_onboardings.reference`'s `unique=True, index=True` with a named `UniqueConstraint('reference', name='uq_agent_onboardings_reference')` in `__table_args__`.
+  - Keep the custom named indexes already present in H3 (`ix_agent_float_user`, `ix_agent_float_ledger_*`, `ix_agent_onb_*`, `ix_agent_appr_*`).
+- Verification: regenerate `flask db migrate` against a fresh H3-A database and confirm no agent-table drift remains; do not apply the generated migration.
+- Owner/area: wallet / database reliability
+- Links: `app/wallet/models/agent_float.py`, `app/wallet/models/agent_onboarding.py`, `app/models/base.py`, `migrations/versions/h3a20261020_static_baseline.py`, `AFCON360_Database_Reliability_Master_To_Do_and_Fix_Register.md` (Phase 7 addendum; human-owned register)

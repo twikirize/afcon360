@@ -58,6 +58,7 @@ def production_console():
         app_env=app_env,
         flask_env=flask_env,
         async_mode=async_mode,
+        socketio_enabled=bool(current_app.config.get('SOCKETIO_ENABLED', True)),
         initial_history=initial_history,
         health=health,
     )

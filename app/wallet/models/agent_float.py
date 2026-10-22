@@ -15,16 +15,34 @@ from sqlalchemy import (
     String,
     Numeric,
     DateTime,
+    Boolean,
     UniqueConstraint,
     Index,
     Text,
 )
+from sqlalchemy.sql import func
 from app.models.base import BaseModel
 from app.extensions import db
 
 
 class AgentFloatAccount(BaseModel):
     __tablename__ = "agent_float_accounts"
+
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     user_id = Column(
         BigInteger,
@@ -61,6 +79,22 @@ class AgentFloatLedger(BaseModel):
 
     __tablename__ = "agent_float_ledgers"
 
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+
     float_account_id = Column(
         BigInteger,
         db.ForeignKey("agent_float_accounts.id", ondelete="CASCADE"),
@@ -81,7 +115,7 @@ class AgentFloatLedger(BaseModel):
 
     entry_type = Column(String(30), nullable=False)
 
-    reference = Column(String(64), nullable=True, index=True)
+    reference = Column(String(64), nullable=True)
 
     created_by = Column(
         BigInteger,

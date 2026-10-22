@@ -104,6 +104,7 @@
         }
 
         var socket = null;
+        {% if socketio_enabled %}
         if (typeof io === 'undefined') {
             setConn('off');
             showBanner('Realtime client unavailable: /socket.io/socket.io.js did not load. '
@@ -112,6 +113,10 @@
             try { socket = io(); }
             catch (e) { setConn('error'); showBanner('Could not open realtime connection: ' + e); }
         }
+        {% else %}
+        setConn('off');
+        showBanner('Realtime streaming is disabled by the owner (SOCKETIO_ENABLED=false).');
+        {% endif %}
 
         var logEl = document.getElementById('log');
         var invEl = document.getElementById('inv');

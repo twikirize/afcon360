@@ -5,7 +5,7 @@ Provides security settings management endpoints and security dashboard
 import json
 import logging
 from datetime import datetime, timedelta
-from flask import Blueprint, request, jsonify, flash, redirect, url_for, render_template
+from flask import Blueprint, request, jsonify, flash, redirect, url_for, render_template, make_response
 from flask_login import login_required, current_user
 from app.extensions import db
 from app.admin.owner.decorators import owner_required
@@ -200,7 +200,7 @@ def add_security_routes(owner_bp):
     @owner_bp.route('/export-settings')
     @owner_login_required
     def export_settings():
-        """Export all settings as JSON"""
+        """Export all settings as JSON file download"""
         settings = SystemSetting.query.all()
         data = [{
             'key': s.key,
@@ -209,7 +209,10 @@ def add_security_routes(owner_bp):
             'category': s.category,
             'description': s.description
         } for s in settings]
-        return jsonify(data)
+        response = make_response(jsonify(data))
+        response.headers['Content-Disposition'] = 'attachment; filename=settings.json'
+        response.headers['Content-Type'] = 'application/json'
+        return response
 
     @owner_bp.route('/import-settings', methods=['POST'])
     @owner_login_required

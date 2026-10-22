@@ -111,6 +111,7 @@ class SystemConfig(BaseModel):
         defaults = [
             {'key': 'SITE_NAME', 'value': 'AFCON 360', 'value_type': 'str', 'category': 'branding', 'description': 'Site display name'},
             {'key': 'MAINTENANCE_MODE', 'value': 'false', 'value_type': 'bool', 'category': 'system', 'description': 'Enable maintenance mode'},
+            {'key': 'SOCKETIO_ENABLED', 'value': 'true', 'value_type': 'bool', 'category': 'system', 'description': 'Enable Socket.IO real-time streaming. Requires an app restart.', 'requires_restart': True},
             {'key': 'payment_cash_globally_enabled', 'value': 'true', 'value_type': 'bool', 'category': 'payments', 'description': 'Allow cash payments system-wide'},
             {'key': 'payment_cash_development_mode', 'value': 'true', 'value_type': 'bool', 'category': 'payments', 'description': 'Bypass fraud checks for cash (development/testing)'},
             {'key': 'payment_cash_requires_kyc', 'value': 'true', 'value_type': 'bool', 'category': 'payments', 'description': 'Require KYC for cash payments'},

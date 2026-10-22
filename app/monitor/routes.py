@@ -33,4 +33,5 @@ def monitor_dashboard():
         flask_env=flask_env,
         debug=bool(current_app.debug),
         async_mode=async_mode,
+        socketio_enabled=bool(current_app.config.get('SOCKETIO_ENABLED', True)),
     )

@@ -170,6 +170,35 @@ def _rollback_session_quietly():
         pass
 
 
+def _resolve_socketio_enabled(app) -> bool:
+    """Resolve the effective Socket.IO switch for this process.
+
+    One-shot Alembic/Flask CLI invocations always disable Socket.IO: they have
+    no browser clients, and initialising the Redis message queue there is what
+    caused CLI hangs when Redis was unreachable. Otherwise an explicit
+    ``SOCKETIO_ENABLED`` environment variable wins, then the persisted
+    SystemConfig row, then the default (enabled).
+    """
+    from app.realtime import is_bare_cli_invocation
+
+    if is_bare_cli_invocation():
+        return False
+
+    env_value = os.getenv("SOCKETIO_ENABLED")
+    if env_value is not None:
+        return env_value.strip().lower() not in ("false", "0", "no", "off")
+
+    try:
+        with app.app_context():
+            from app.models.system_config import SystemConfig
+            value = SystemConfig.get("SOCKETIO_ENABLED", None)
+            if value is not None:
+                return bool(value)
+    except Exception:
+        _rollback_session_quietly()
+    return True
+
+
 def refresh_csp_strict_cache():
     """Re-read CSP_STRICT_ENFORCE from SystemConfig into the worker cache.
 
@@ -763,7 +792,28 @@ def create_app(config_object=None) -> Flask:
 
     _boot_t1 = time.time()
     db.init_app(app)
-    socketio.init_app(app, message_queue=app.config.get('REDIS_URL'))
+
+    # Socket.IO is optional: never start it for Alembic/Flask CLI one-shots,
+    # and honour the persisted owner switch. Without this, the production
+    # console handler's emit tries to publish to Redis during `flask db`
+    # commands and retries forever when the Redis host is unreachable.
+    app.config['SOCKETIO_ENABLED'] = _resolve_socketio_enabled(app)
+    if app.config['SOCKETIO_ENABLED']:
+        # Only use Redis as the Socket.IO message queue when the existing
+        # startup Redis probe actually reached the server. Otherwise every
+        # emit blocks for several seconds retrying, and the production
+        # console handler can recursively log those retries. Without a
+        # message queue Flask-SocketIO still works in single-process mode.
+        socketio_message_queue = app.config.get('REDIS_URL') if redis_session_client else None
+        if not socketio_message_queue:
+            logger.warning(
+                "🔌 Socket.IO Redis message queue unavailable; "
+                "continuing in single-process mode"
+            )
+        socketio.init_app(app, message_queue=socketio_message_queue)
+    else:
+        logger.info("🔌 Socket.IO disabled for this process; skipping init_app and Redis message queue")
+
     migrate.init_app(app, db)
     login_manager.init_app(app)
     csrf.init_app(app)
@@ -773,9 +823,12 @@ def create_app(config_object=None) -> Flask:
     _boot_t2 = time.time()
     mail.init_app(app)
 
-    # Initialize socketio
-    from app.accommodation.sockets import HostDashboardNamespace
-    socketio.on_namespace(HostDashboardNamespace('/ws/host-dashboard'))
+    # Initialize socketio namespace
+    if app.config['SOCKETIO_ENABLED']:
+        from app.accommodation.sockets import HostDashboardNamespace
+        socketio.on_namespace(HostDashboardNamespace('/ws/host-dashboard'))
+    else:
+        logger.info("🔌 Socket.IO namespace registration skipped (disabled)")
     logger.info(f"⏱ mail + socketio namespace init took {time.time() - _boot_t2:.2f}s")
 
     logger.info("✅ Mail extension initialized")
@@ -1472,18 +1525,24 @@ def create_app(config_object=None) -> Flask:
     try:
         from app.production_console import production_console_bp, register_production_console_namespace
         app.register_blueprint(production_console_bp)
-        register_production_console_namespace(socketio)
-        app.logger.info("✅ Production Console blueprint and SocketIO namespace registered")
+        if app.config['SOCKETIO_ENABLED']:
+            register_production_console_namespace(socketio)
+            app.logger.info("✅ Production Console blueprint and SocketIO namespace registered")
+        else:
+            app.logger.info("✅ Production Console blueprint registered; SocketIO namespace skipped (disabled)")
     except Exception as e:
         app.logger.error(f"❌ Failed to register Production Console: {e}")
 
     # Initialize production console logging handler (after socketio is ready)
-    try:
-        from app.production_console.streaming import init_production_console_logging
-        init_production_console_logging(app)
-        app.logger.info("✅ Production Console logging handler initialized")
-    except Exception as e:
-        app.logger.error(f"❌ Failed to initialize Production Console logging: {e}")
+    if app.config['SOCKETIO_ENABLED']:
+        try:
+            from app.production_console.streaming import init_production_console_logging
+            init_production_console_logging(app)
+            app.logger.info("✅ Production Console logging handler initialized")
+        except Exception as e:
+            app.logger.error(f"❌ Failed to initialize Production Console logging: {e}")
+    else:
+        app.logger.info("Production Console logging disabled (Socket.IO disabled)")
 
     # ------------------------------------------------------------------
     # Template helpers for module isolation

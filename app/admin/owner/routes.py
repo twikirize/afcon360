@@ -1016,6 +1016,12 @@ def settings():
         wallet_adjustment_workflow = SystemConfig.get('wallet_adjustment_workflow_enabled', True)
         wallet_adjustment_threshold = SystemConfig.get('wallet_adjustment_auto_approve_threshold', 1000)
 
+        # Socket.IO is stored in SystemConfig and applied at process start.
+        # Show both the stored value and the effective value for this worker so
+        # the owner can see when a restart is still required.
+        socketio_enabled_stored = bool(SystemConfig.get('SOCKETIO_ENABLED', True))
+        socketio_enabled_effective = bool(current_app.config.get('SOCKETIO_ENABLED', True))
+
         logger.info(f"Rendering settings template with org_registration_mode={org_registration_mode}")
         return render_template('owner/settings.html',
                              settings=owner_settings,
@@ -1024,7 +1030,9 @@ def settings():
                              super_admin_can_toggle_modules=super_admin_can_toggle_modules,
                              org_registration_mode=org_registration_mode,
                              wallet_adjustment_workflow=wallet_adjustment_workflow,
-                             wallet_adjustment_threshold=wallet_adjustment_threshold)
+                             wallet_adjustment_threshold=wallet_adjustment_threshold,
+                             socketio_enabled_stored=socketio_enabled_stored,
+                             socketio_enabled_effective=socketio_enabled_effective)
     except Exception as e:
         current_app.logger.exception(
             "❌ Owner settings page crashed"
@@ -1148,6 +1156,59 @@ def toggle_super_admin_module_access():
     except Exception as e:
         logger.error(f"Error toggling super admin module access: {e}")
         flash("Failed to update permission.", "danger")
+
+    return redirect(url_for('admin.owner.settings'))
+
+
+@owner_bp.route('/settings/toggle-socketio', methods=['POST'])
+@owner_login_required
+@audit_owner_action('toggled_socketio', 'settings')
+def toggle_socketio():
+    """Persist the Socket.IO real-time transport switch.
+
+    The value is applied when the application process starts. Socket.IO is
+    never started for Alembic/Flask CLI one-shots, regardless of this setting.
+    """
+    from app.models.system_config import SystemConfig
+
+    try:
+        previous_value = bool(SystemConfig.get('SOCKETIO_ENABLED', True))
+        new_value = request.form.get('enabled') == 'on'
+
+        SystemConfig.set(
+            key='SOCKETIO_ENABLED',
+            value=new_value,
+            value_type='bool',
+            category='system',
+            description=(
+                'Enable Socket.IO real-time streaming (production console, '
+                'monitor, host dashboard). Requires an app restart.'
+            ),
+            requires_restart=True,
+            updated_by=current_user.id,
+        )
+
+        log_owner_action(
+            action='toggled_socketio',
+            category='settings',
+            details={
+                'new_value': new_value,
+                'previous_value': previous_value,
+            }
+        )
+
+        flash(
+            f"Socket.IO {'enabled' if new_value else 'disabled'}. "
+            "Restart the application for this change to take effect.",
+            'success' if new_value else 'warning'
+        )
+    except Exception as e:
+        logger.exception("Error toggling Socket.IO setting")
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        flash("Failed to update Socket.IO setting.", "danger")
 
     return redirect(url_for('admin.owner.settings'))
 
