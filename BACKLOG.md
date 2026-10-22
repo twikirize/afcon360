@@ -3933,3 +3933,136 @@ by keeping it.
 - Register Item 28a (145 server-default differences — separate but related to prod/ref convergence)
 - Constitution §48 (preservation policy)
 - BACKLOG entry on `btree_gist` (line ~2035) — different extension, different purpose (transport exclusion constraints)
+
+
+## PG-ROLE-MODEL — PostgreSQL role-model inconsistency (blocks H3-B)
+
+**Status:** OPEN — temporary workaround in place; target design undecided
+**Owner:** Project owner + DBA/infra input
+**Created:** 2026-10-22
+**Blocks:** H3-B cutover
+**Blocked by:** Nothing — decisions can be made now
+
+---
+
+### Context
+
+The pgcrypto audit (2026-10-22) surfaced a role-model inconsistency that was
+not previously recorded. The application, the tests, and the reference
+databases do not use the same PostgreSQL user, and the role the app was
+originally configured to use does not exist.
+
+**Observed state (2026-10-22):**
+
+| File | User | Database |
+|---|---|---|
+| `.env` | `DB_USER=israeli`, `APP_DB_USER=afcon_app_user` | (fallback path only) |
+| `.env.local` | `israeli` | prod, test |
+| `.env.testing` | `israeli` | test |
+| `.env.docker` | `israeli` | prod (host `db`) |
+| `.env.prod` | `israeli` | prod (host `db`) |
+| `.env.test` | **`postgres`** | test |
+| `.env.verify` | **`postgres`** | reference replay |
+
+**`app/config.py:117` reads `APP_DB_USER` before `DB_USER`.** The value
+`afcon_app_user` is not present in `pg_roles` — the app's fallback path
+(the one used when `DATABASE_URL` is absent) attempted to connect as a
+nonexistent role and failed.
+
+**`israeli` is a superuser** (`rolsuper=t`, `rolbypassrls=t`, `rolcreatedb=t`,
+`rolcreaterole=t`). It owns all 224 tables in `afcon360_prod` and all 224
+tables in `afcon360_test`. It also owns the `pgcrypto` extension in prod.
+It is used as the app user, the migration user, and the admin user — all three.
+
+**The reference database (`afcon360_h2p_replay_20261018_test`) is owned by
+`postgres`**, not `israeli`. The physical-schema comparison used
+`pg_dump --no-owner`, so ownership divergence never appeared in the diff —
+but it will matter at H3-B transition time.
+
+### Temporary workaround (2026-10-22)
+
+`.env` has been edited:
+```
+APP_DB_USER=israeli # TEMP 2026-10-22: was afcon_app_user (role didn't exist, caused dead fallback).
+#APP_DB_USER=afcon_app_user # Revert to dedicated afcon360_app role once least-privilege grants are in place.
+```
+
+This unblocks the base-`.env` fallback path. It does NOT fix the underlying
+problem. `israeli` is still a superuser; the environments are still
+divergent; `afcon_app_user` still does not exist.
+
+### Why this blocks H3-B
+
+If H3-B runs as `israeli`:
+- Tables remain owned by `israeli` (matches current prod state)
+- But the migration runs with full superuser privileges — no separation
+- The app's post-transition runtime user is still a superuser
+
+If H3-B runs as `postgres`:
+- Tables become owned by `postgres` post-transition
+- `afcon360_prod` permanently diverges from its current `israeli`-owned state
+- The app would need explicit grants afterward
+- Any comparison against the current schema would misreport ownership
+
+Either path requires an explicit decision. Nothing in the current H3-B plan
+specifies which user runs the transition, which user owns the resulting
+tables, or what privileges the app has post-transition. **H3-B cannot be
+planned without resolving this.**
+
+### Target role model (proposed, for owner approval)
+
+| Role | Purpose | Privileges | Current state |
+|---|---|---|---|
+| `postgres` | System admin only. Never used by app. | Superuser | Exists. Currently used by `.env.test` and `.env.verify`. |
+| `afcon360_migrator` (or `israeli`, demoted) | Migration user. Owns tables; applies schema changes. | `CREATEDB`, no `CREATEROLE`, no `SUPERUSER`, no `BYPASSRLS` | Does not exist as a distinct role. `israeli` currently holds this role's privileges plus superuser. |
+| `afcon360_app` | Application runtime. Reads and writes data. | `LOGIN`, no `CREATEDB`, no `CREATEROLE`, no `SUPERUSER`, no `BYPASSRLS`. Owns nothing. | Does not exist. Currently `israeli` (superuser) does this. |
+| `afcon360_readonly` (optional) | Reporting / dashboards | `pg_read_all_data` | Does not exist. Not yet needed. |
+
+**Key principle:** the app user owns nothing and has no elevated privileges.
+The migration user is separate and can create schema. The superuser is not
+used by the application.
+
+### Decisions required (before H3-B)
+
+1. **App runtime role:** Keep `israeli` but demote it (revoke `SUPERUSER`,
+   `CREATEROLE`, `CREATEDB`, `BYPASSRLS`)? Or create `afcon_app_user` /
+   `afcon360_app` with limited privileges and grant it table access?
+
+2. **Migration role:** Run H3-B as `israeli` (current superuser) or create
+   a dedicated migrator role?
+
+3. **`.env.*` unification:** Should every environment use the same
+   app-user / migrator-user pair? Or are some environments legitimately
+   different (e.g., `.env.verify` needing `postgres` for reference work)?
+
+4. **`israeli` demotion timeline:** Now, before H3-B, or after H3-B
+   migration is complete?
+
+5. **`APP_DB_USER` removal:** Once `afcon360_app` exists and is granted
+   privileges, restore `APP_DB_USER=afcon360_app` and remove the temporary
+   workaround comment.
+
+### Immediate action required
+
+None right now. The temporary workaround is in place and reversible.
+The decisions above should be made before H3-B planning begins — not as
+part of the pgcrypto closure, but as a distinct H3-B gate.
+
+### Related items
+
+- Register Phase 7 addendum (2026-10-22) — the pgcrypto audit and the role
+  model finding
+- BACKLOG entry for pgcrypto disposition — the audit that surfaced this
+- Register H3-B gates: Item 13 Case 2, Item 26 (data safety),
+  Item 38 (failure recovery), Item 12b (Docker census)
+- Constitution §48 (preservation policy — no drops, no changes without
+  owner decision)
+
+### Evidence trail
+
+- `SELECT rolname, rolsuper, rolcanlogin, rolcreatedb, rolcreaterole, rolbypassrls FROM pg_roles` at 2026-10-22 (read-only)
+- `SELECT datname, pg_get_userbyid(datdba) FROM pg_database WHERE datname LIKE 'afcon360%'` at 2026-10-22
+- `SELECT tableowner, count(*) FROM pg_tables WHERE schemaname = 'public' GROUP BY tableowner` (both prod and test)
+- `.env*` file inspection (2026-10-22) — no secrets captured
+- `app/config.py:117` — confirms `APP_DB_USER` precedence over `DB_USER`
+- All queries were read-only; no changes to roles or privileges were performed
