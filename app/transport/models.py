@@ -216,7 +216,7 @@ class DriverProfile(TransportBase, AuditMixin):
     )
 
     # Core identity
-    user_id = db.Column(db.BigInteger, db.ForeignKey("users.id"), nullable=False, unique=True)
+    user_id = db.Column(db.BigInteger, nullable=False, unique=True)
     driver_code = db.Column(db.String(20), unique=True, nullable=False, index=True)
 
     # Verification tracking
