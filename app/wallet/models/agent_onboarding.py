@@ -46,7 +46,7 @@ class AgentOnboarding(BaseModel):
         server_default=func.now(),
         onupdate=lambda: datetime.now(timezone.utc),
     )
-    is_deleted = Column(Boolean, default=False, nullable=False)
+    is_deleted = Column(Boolean, default=False, nullable=False, server_default="false")
     deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     user_id = Column(
@@ -59,7 +59,7 @@ class AgentOnboarding(BaseModel):
 
     reference = Column(String(64), nullable=False)
 
-    status = Column(String(30), nullable=False, default="submitted")
+    status = Column(String(30), nullable=False, default="submitted", server_default="submitted")
 
     applicant_data = Column(JSON, nullable=False, default=dict)
 
@@ -105,7 +105,7 @@ class AgentOnboardingApproval(BaseModel):
         server_default=func.now(),
         onupdate=lambda: datetime.now(timezone.utc),
     )
-    is_deleted = Column(Boolean, default=False, nullable=False)
+    is_deleted = Column(Boolean, default=False, nullable=False, server_default="false")
     deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     onboarding_id = Column(
