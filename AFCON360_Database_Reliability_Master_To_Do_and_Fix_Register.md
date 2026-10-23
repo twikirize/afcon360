@@ -533,7 +533,7 @@ The initial verification script incorrectly reported FAIL for the post-fix run b
 - **State-by-state H3 transition procedure** (item 15) — the H3 probe round trip passed, but root-stamped/intermediate/at-head/unknown cases and the full recovery/runbook rules remain unverified. Subordinate 13c also records the stale baseline docstring.
 - **FK/model coupling and per-database transition qualification** (items 25 and 27) — FK-action differences are now recorded, but complete name/column/target/action/model mapping and per-database transition evidence remain prerequisites before any stamp or existing-database upgrade.
 - **Default and table dispositions** (28a, 33b, 33c) — the 145 Prod/Test server-default differences remain open; H3 physical defaults are now measured, but intent must be decided. Resolve the six-table finding against actual ORM metadata and classify the three source-declared application table candidates absent from H3-A before Item 37 can pass.
-- **Populated-state safety and data/constraint preservation** (items 26 and 36), historical/intermediate-state upgrades (35), head idempotence snapshot proof (34), failure recovery (38), and full automated/integration gates (39) remain outstanding.
+- **Populated-state safety and data/constraint preservation** (items 26 and 36), historical/intermediate-state upgrades (35), failure recovery (38), and full automated/integration gates (39) remain outstanding. Item 34's current-head idempotence proof is CLOSED.
 - **Production-only `pgcrypto`** (14d) — keep the observed production extension intact; any future in-place or rebuild plan must state its extension decision explicitly. No H3-B or database change is authorized.
 
 Resolved/closed by evidence: Item 13's support-policy definition; Item 14's physical-schema comparison work; Item 32's comparison inventory; Item 19's H2′ disposable replay; `df55cbe3f516` tracking (16d tracking portion); and the Design 2 bootstrap defect. Item 13's closure is policy-only and neither it nor Items 14/32 authorizes H3 cutover.
@@ -548,9 +548,9 @@ Resolved/closed by evidence: Item 13's support-policy definition; Item 14's phys
 | Phase 2 — Evidence for the architecture decision | 9–17 | 6 closed (9, 11, 13, 14, 16, 17) · 2 advanced (12, 15) · 1 partial (10) |
 | Phase 3 — Decisions and authorization | 18–19 | 2 closed |
 | Phase 4 — Implement the approved permanent repair | 20–29 | 4 closed (20, 22, 23, 29) · 5 advanced (21, 24, 25, 27, 28) · 1 not started (26) |
-| Phase 5 — Prove the result and prevent recurrence | 30–39 | 3 closed (30, 31, 32) · 3 advanced (33, 34, 39) · 4 not started (35, 36, 37, 38) |
+| Phase 5 — Prove the result and prevent recurrence | 30–39 | 4 closed (30, 31, 32, 34) · 2 advanced (33, 39) · 4 not started (35, 36, 37, 38) |
 
-Parent totals: **23 closed + 10 advanced + 1 partial + 0 open + 0 gated + 5 not started = 39.** Subordinates (10a/10b, 11a–c, 12a–c, 13a–c, 14a–d, 15a, 16a–d, 17a/17b, 22a, 28a, 33a–c, 34a) are counted separately and never added to the 39.
+Parent totals: **24 closed + 9 advanced + 1 partial + 0 open + 0 gated + 5 not started = 39.** Subordinates (10a/10b, 11a–c, 12a–c, 13a–d, 14a–d, 15a, 16a–d, 17a/17b, 21a, 22a, 24a, 28a, 33a–d, 34a/34b) are counted separately and never added to the 39.
 
 ---
 
@@ -578,7 +578,7 @@ The next actions, ordered by dependency:
 2. **Complete FK/model coupling and transition qualification** (items 25 and 27) using the newly recorded physical comparison and state-specific evidence. Item 14/32 comparison work is closed, but the databases remain physically divergent.
 3. **Complete populated-state migration-safety tests** (item 26) and data/constraint preservation (36) in approved disposable databases; no Prod/Test writes.
 4. **Disposition the 145 Prod/Test server-default differences and reconcile table ownership against runtime ORM metadata** (28a, 33b–33d); do not treat the new regex scan as closure. Then complete fresh-vs-upgraded convergence (37).
-5. **Complete Item 15's state-by-state transition runbook, Item 34's second-upgrade/head-snapshot test, Item 35 historical-state tests, Item 38 failure recovery and Item 39 expanded regression/integration gates.** Correct the stale H3 baseline docstring recorded by subordinate 13c through the appropriate review process.
+5. **Complete Item 15's state-by-state transition runbook, Item 35 historical-state tests, Item 38 failure recovery and Item 39 expanded regression/integration gates.** Item 34's second-upgrade/head-snapshot criterion is already CLOSED on two runs; it need not be repeated unless source changes invalidate its evidence. Correct the stale H3 baseline docstring recorded by subordinate 13c through the appropriate review process.
 
 Item 13's policy definition is closed. Do not reopen it merely because operational transition gates remain. The H3-A rehearsal does not authorize H3-B, database rebuilding, stamping, or any transition to `afcon360_prod` or `afcon360_test`.
 
