@@ -128,9 +128,7 @@ class AgentOnboardingApproval(BaseModel):
 
     comment = Column(Text, nullable=True)
 
-    # Temporary Item 15 migration-workflow verification probe.
-    h3_workflow_probe = Column(String(32), nullable=True)
-
+    
     __table_args__ = (
         Index("ix_agent_appr_onb", "onboarding_id"),
         Index("ix_agent_appr_stage", "stage"),
