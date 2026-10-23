@@ -2,7 +2,7 @@
 
 **Snapshot: 23 October 2026 · reconciled to the owner-approved support policy, H3-A active-chain verification, the physical-schema investigation, and the local migration round-trip evidence; statuses reflect acceptance evidence, not deployment readiness.**
 
-**Status: 23 closed · 10 advanced · 1 partial · 0 open · 0 gated · 5 not started (39 top-level items)**
+**Status: 24 closed · 9 advanced · 1 partial · 0 open · 0 gated · 5 not started (39 top-level items)**
 
 **Architecture: H2′ approved and implemented as the interim fresh-install repair · H3/N-squash selected as the durable destination · H3-A static baseline is now the active local Alembic root/head and its PostgreSQL 18.4 fresh-install/workflow path has been verified · H3-B remains unauthorized**
 
@@ -22,8 +22,8 @@
 
 | Status | Count |
 |---|---:|
-| CLOSED | 23 |
-| ADVANCED | 10 |
+| CLOSED | 24 |
+| ADVANCED | 9 |
 | PARTIAL | 1 |
 | OPEN | 0 |
 | NOT STARTED | 5 |
@@ -67,7 +67,7 @@
 | 31 | Pass clean-install migration test | Replay from an empty database to `df55cbe3f516` and verify the resulting schema; extend separately to a genuinely fresh clone and supported/pinned PostgreSQL versions. | CLOSED |
 | 32 | Verify physical schema completeness independently | Completed normalized Reference/Prod/Test extraction and recorded hashes, diff sizes, object counts, timestamp differences, FK-action differences, triggers, functions, indexes, enums and defaults. The comparison is complete; physical divergences are not thereby resolved. | CLOSED |
 | 33 | Verify model/schema parity | `flask db check` passed with exit code 0 on the fresh H3-A workflow database after temporary-probe cleanup. Broader parity remains advanced only: server-default differences, six model-less tables and existing Prod/Test schemas still require disposition/verification. | ADVANCED |
-| 34 | Verify current-head behavior | Run a second upgrade at head in a disposable database and prove a before/after physical-schema snapshot is unchanged. | ADVANCED |
+| 34 | Verify current-head behavior | CLOSED 2026-10-23: second ordinary `flask db upgrade` at `h3a20261020` on `afcon360_chain_verify_test` exited 0; before/after normalized snapshots were both 886,434 bytes and SHA-256 `8577c2a975d5846c3b99567a2c1d59d47b3686d893dbf23531adb9dcf40753d7`; diff exit 0, 0 bytes, 0 lines, first 10 lines blank. | CLOSED |
 | 35 | Test upgrades from supported historical states | For every owner-approved supported historical revision, upgrade a separate disposable database with representative data and validate the resulting schema and data. | NOT STARTED |
 | 36 | Verify data and constraints | Prove row/value/relationship preservation, enum-label preservation and rejection of invalid data using populated disposable databases. | NOT STARTED |
 | 37 | Compare fresh and upgraded results | After dispositioning all 145 default differences and six model-less tables, compare fresh-install and upgraded physical-schema snapshots and explain every exception. | NOT STARTED |
@@ -295,6 +295,7 @@ The source-level contract suite has been expanded to **38 tests** (5 new regress
 **Next action:** no further item-20 work; broader integration and installation-contract verification remain under items 28 and 39.
 
 **[ADVANCED] 21. Repair enum creation ownership.**
+**H3-A target discrepancy (2026-10-23):** the active static baseline has 49 enum DDL statements, including `bookingstatus` and `org_business_category`; the frozen final-model inventory identifies 47 model-declared enum types and classifies those two as legacy objects not required by the fresh H3 target. The approved target semantics must be reconciled before any baseline change. Preserve the existing artifact and provenance hash pending an owner-approved decision; do not delete or convert either type as part of this review.
 Content (fresh-schema ownership target, with existing-state preservation): define one `CREATE TYPE` owner per enum required by the approved fresh schema, with exact approved label sets; do not create `bookingstatus` by that name in the forward fresh-install path. Preserve existing enum and String/VARCHAR representations, including test's live-used 39-label `org_business_category`, prod's distinct observed `varchar(40)` state and 4-label orphan, and the 16 dev-only orphan types. Record the three referenced legacy defaults and their observed behavior; do not convert, drop, rename, relabel or normalize these existing objects under the current policy.
 Location: H2′ — frozen `8a0deccce6f6` body plus an exception or conditionalizing repair for `f91075478868`; H3 — N-squash body, where `f91075478868` retires.
 **Scope clarification (2026-10-20 review branch):** the separate source change in `app/transport/models.py` removes duplicate Python enum class declarations that shadowed canonical objects imported from `app/utils/enums.py`; a database-free regression test asserts the public aliases retain canonical object identity. This is Python enum-registry ownership/identity only. It does **not** implement PostgreSQL `CREATE TYPE` ownership, resolve the H2′/H3 migration-location decision, or provide live enum/schema evidence. Item 21 therefore remains **ADVANCED**, not implemented/closed.
@@ -313,6 +314,8 @@ Confirmed child-vs-child duplication: `71893e3a42a2` and `bd9d3bb673aa` create t
 
 **[ADVANCED] 24. Resolve remaining confirmed and conditional conflicts.**
 The 324-row mechanical matrix is delivered: 74 CONFIRMED (declaration duplication), 229 CONDITIONAL, 21 NOT A CONFLICT, 0 PREDICTED.
+
+**H3-A scope reconciliation (2026-10-23):** the 324-row matrix describes the retired 27-revision chain and remains historical evidence for that chain and the H2′ repair. Do not mechanically rerun all 229 CONDITIONAL rows against H3-A's single static baseline. The H3-A successful replay establishes that the baseline executes on a fresh target; it does not alone prove every object has exactly one intended creator or that the baseline matches the approved final H3 target. The remaining Item 24 work is to record explicit preservation/dependency evidence for the 16 dev-only orphan types, `bookingstatus`, and each observed `org_business_category` state, and to review any conflict findings that still apply to H3-A. No conversion, drop, rename, relabel or normalization is authorized.
 
 | Category | Count | Action |
 |---|---:|---|
@@ -880,14 +883,14 @@ The previously recorded SHA-256 hashes and schema metrics remain under Phase 7 a
 - **33a [RECORDED; H3-A PARITY CHECK PASS]** — The agent model alignment in `agent_float.py` / `agent_onboarding.py` is supported by the clean final H3-A `flask db check`. This does not resolve every index-design decision or establish existing-database parity.
 - **33b [OPEN]** — Compare the database defaults for `is_deleted` and `agent_onboardings.status` with model `server_default` definitions; determine intended semantics and record exact expressions before disposition.
 - **33c [OPEN]** — Confirm the six migration-built tables without current SQLAlchemy models and record their explicit retention/model-mapping disposition before Item 37 convergence.
-- **34a [PASS]** — The probe migration upgrade/downgrade round trip and final clean parity check are recorded above. Item 34 remains ADVANCED until the separate second-upgrade-at-head plus before/after physical snapshot test passes.
+- **34a [PASS; ITEM 34 CLOSED 2026-10-23]** — The probe migration upgrade/downgrade round trip and final clean parity check are recorded above. The separate second-upgrade-at-head test now also passes: `afcon360_chain_verify_test` remained at `h3a20261020`; before/after normalized schema snapshots each measured 886,434 bytes with SHA-256 `8577c2a975d5846c3b99567a2c1d59d47b3686d893dbf23531adb9dcf40753d7`; diff exit `0`, bytes `0`, lines `0`, first 10 lines blank. Item 34's stated acceptance criterion is satisfied.
 - **14d remains open for dependency/disposition review** — `pgcrypto` was recorded only in Prod, with 37 extension-backed routines plus two deletion-guard functions. A clean tracked-source search found no direct call sites for the searched pgcrypto functions, but does not prove dynamic SQL, operational or all database-side dependencies absent. Preserve existing Prod state. For an in-place plan, verify extension preservation; for a rebuild, explicitly decide whether to recreate it. Do not add it to the common H3-A baseline or drop/align it by default.
 
 ### Remaining gates and prohibitions
 
 1. Complete subordinate 12b Docker census from an approved Docker-enabled host; local `docker` command-not-found is not evidence of container state.
 2. Finish FK-name/column/target/action/model mapping (25/27) and maintain separate physical-state decisions for Prod and Test. Items 14/32 compare the schemas; they do not qualify either for transition.
-3. Complete populated-state safety/data-constraint validation (26/36), historical/intermediate-state tests (35), current-head idempotence proof (34), and failure recovery (38).
+3. Complete populated-state safety/data-constraint validation (26/36), historical/intermediate-state tests (35), and failure recovery (38). Item 34's current-head idempotence criterion is CLOSED by the 2026-10-23 evidence above.
 4. Disposition the 145 server-default differences (28a), the `is_deleted` / `agent_onboardings.status` model/default findings (33b), and six model-less tables (33c) before fresh-vs-upgraded convergence (37).
 5. Extend automated and integration gates as required by Item 39; the existing guarded 90-test source selection is not the full suite or proof of database integration safety.
 
