@@ -1,8 +1,8 @@
 # AFCON360 — Database Reliability — Master To-Do & Fix Register
 
-**Snapshot: 23 October 2026 · reconciled to the owner-approved support policy, H3-A replay/current-head evidence, physical-schema divergence inventory, committed Item 25 DriverProfile FK source correction (`719f01c`), and explicit populated-state evidence gaps; statuses reflect acceptance evidence, not deployment readiness.**
+**Snapshot: 25 October 2026 · reconciled to the 23 October master, 24 October disposable-candidate migration/table decisions, pickup-time CHECK-constraint investigation, synchronizer inventory findings, and 25 October probe-test outcome. Counts reflect current evidence, not deployment readiness.**
 
-**Status: 24 closed · 9 advanced · 1 partial · 0 open · 0 gated · 5 not started (39 top-level items)**
+**Status: 24 closed · 10 advanced · 1 partial · 0 open · 0 gated · 4 not started (39 top-level items)**
 
 **Architecture: H2′ approved and implemented as the interim fresh-install repair · H3/N-squash remains the durable destination · H3-A is the active static baseline and a snapshot of `afcon360_h2p_replay_20261018_test` at `df55cbe3f516`; its replay and current-head idempotence have been verified on PostgreSQL 18.4. This reproduces the captured H2-prime physical state (49 enums, 224 tables), not yet the B0 47-enum target. The 49-vs-47 scope decision is pending · H3-B existing-database transition remains unauthorized**
 
@@ -12,9 +12,9 @@
 
 **H3-A replay verification completed: 1 (the static baseline executes and is idempotent at head on PostgreSQL 18.4 against the captured H2-prime physical state; this does not establish that the 49-enum baseline matches B0's 47-enum target)**
 
-**Not verified: full test suite · genuinely fresh-clone replay · PostgreSQL 15 / Docker-pinned replay · historical/intermediate-state upgrades · populated-state safety · existing-database transition readiness · 49-vs-47 H3-A target-scope decision · H3-A object-ownership proof against B0 final-schema inventory · source-declared application table candidate disposition**
+**Not verified: full test suite · genuinely fresh-clone replay · PostgreSQL 15 / Docker-pinned replay · historical/intermediate-state upgrades · broad populated-state migration safety · existing-database transition readiness · 49-vs-47 H3-A target-scope decision · H3-A object-ownership proof against B0 final-schema inventory · end-to-end server_sessions persistence · analytics-flush failure safety · pickup-time contract closure and clean regression-test/cleanup run**
 
-**Current-status rule:** Phases 1–11 retain dated historical evidence. Where an earlier phase describes the H3 root as not yet created/applied or Item 13 as awaiting approval, the 23 October 2026 reconciliation in Phase 12 is the current status record. Historical wording is retained for chronology, not as a live status claim.
+**Current-status rule:** Phases 1–13 retain dated historical evidence. The 25 October 2026 reconciliation in Phase 14 is the current status record where it explicitly supersedes earlier counts/statuses. Historical wording is retained for chronology, not as a live status claim.
 
 ---
 
@@ -23,10 +23,10 @@
 | Status | Count |
 |---|---:|
 | CLOSED | 24 |
-| ADVANCED | 9 |
+| ADVANCED | 10 |
 | PARTIAL | 1 |
 | OPEN | 0 |
-| NOT STARTED | 5 |
+| NOT STARTED | 4 |
 | GATED | 0 |
 | **Total** | **39** |
 
@@ -61,18 +61,18 @@
 | 25 | Correct foreign-key assumptions | Read-only physical inventory: 411 FKs in each Reference/Prod/Test/H3-A state (410 distinct relationship signatures). The `DriverProfile.user_id` duplicate model declaration is corrected and committed/pushed as `719f01c`; regression test 1/1, compilation and diff checks passed. The physical duplicate pair remains in existing states and frozen H3-A baseline. Test's `organisation_types.category_code` CASCADE-vs-RESTRICT divergence remains unresolved. Complete application-wide FK-to-model/relationship/migration mapping and state-specific qualification. | ADVANCED |
 | 26 | Make data-sensitive migrations safe | Run populated-state tests for NOT NULL additions, backfills, unique indexes, CHECKs and FKs; prove existing data preservation and invalid-data rejection. | NOT STARTED |
 | 27 | Resolve `df55cbe3f516` and coupled model changes | Revision tracking/reachability is satisfied. The model-side duplicate `DriverProfile.user_id` FK is corrected at source, but `driver_profiles_user_id_fkey` still exists in recorded physical states and the frozen H3-A baseline; database-side removal is subordinate 27c and requires H3-B parity/authorization gates. Complete remaining FK/model coupling and separate physical-parity/transition-qualification evidence for Production and Test. No database constraint repair is authorized by this source fix. | ADVANCED |
-| 28 | Consolidate schema-creation procedures | Document the supported installation route and enforce separation between bootstrap and migration paths; disposition the 145 Prod/Test server-default differences and decide the support/retirement/repair outcome for the three source-declared classes absent from H3-A (`server_sessions`, `analytics_page_views`, `activity_logs`) before convergence. Runtime H3-A metadata matches physical tables exactly, but this does not by itself make those absent feature paths safe. | ADVANCED |
+| 28 | Consolidate schema-creation procedures | Document and keep separate the supported migration and bootstrap paths. The Item 33e ownership decision is now resolved: retain server_sessions and analytics_page_views, intentionally retire activity_logs. End-to-end session persistence and analytics-flush failure-safety tests remain open; the 145 Prod/Test server-default differences and broader schema convergence remain unresolved. | ADVANCED |
 | 29 | Establish permanent database engineering rules | Verify the rules and their mirror agree: ordinary migrations are regenerated from corrected source/configuration, hand-patching is prohibited except for the narrowly authorized baseline-reconstruction exception. | CLOSED |
 | 30 | Create approved disposable PostgreSQL verification environment | Retain the authorized disposable replay/bootstrap databases and their evidence; verify that production/test databases were not used as scratch targets. | CLOSED |
 | 31 | Pass clean-install migration test | Replay from an empty database to `df55cbe3f516` and verify the resulting schema; extend separately to a genuinely fresh clone and supported/pinned PostgreSQL versions. | CLOSED |
 | 32 | Verify physical schema completeness independently | Completed normalized Reference/Prod/Test extraction and recorded hashes, diff sizes, object counts, timestamp differences, FK-action differences, triggers, functions, indexes, enums and defaults. The comparison is complete; physical divergences are not thereby resolved. | CLOSED |
-| 33 | Verify model/schema parity | H3-A runtime audit on PostgreSQL 18.4 confirms 223 physical app tables = 223 runtime ORM metadata tables, with zero mismatches in either direction and zero model-registration failures. Three selected `agent_onboarding` server defaults are aligned in source and committed/pushed in `05163de`; focused regression 4/4 passed (33b). This is not Prod/Test parity. The 49-vs-47 target decision, disposition of three source-declared classes absent from H3-A metadata and physical schema (33e), the 145 Prod/Test server-default differences, and broader schema parity remain unresolved. | ADVANCED |
+| 33 | Verify model/schema parity | H3-A runtime audit on PostgreSQL 18.4 confirmed 223 physical app tables = 223 runtime ORM metadata tables at that snapshot. Selected agent_onboarding defaults remain committed/pushed in 05163de (focused regression 4/4). The disposable candidate migration c076b257b11d subsequently added server_sessions and analytics_page_views; activity_logs is intentionally retired (33e). This does not prove session/analytics paths are reliable, establish Prod/Test parity, resolve the 49-vs-47 target decision, or settle the 145 Prod/Test default differences. | ADVANCED |
 | 34 | Verify current-head behavior | CLOSED 2026-10-23: second ordinary `flask db upgrade` at `h3a20261020` on `afcon360_chain_verify_test` exited 0; before/after normalized snapshots were both 886,434 bytes and SHA-256 `8577c2a975d5846c3b99567a2c1d59d47b3686d893dbf23531adb9dcf40753d7`; diff exit 0, 0 bytes, 0 lines, first 10 lines blank. | CLOSED |
 | 35 | Test upgrades from supported historical states | For every owner-approved supported historical revision, upgrade a separate disposable database with representative data and validate the resulting schema and data. | NOT STARTED |
-| 36 | Verify data and constraints | Prove row/value/relationship preservation, enum-label preservation and rejection of invalid data using populated disposable databases. | NOT STARTED |
-| 37 | Compare fresh and upgraded results | After dispositioning the 145 Prod/Test server-default differences and resolving the H3-A 49-vs-47 target decision and three source-declared absent-table candidates (`server_sessions`, `analytics_page_views`, `activity_logs`), independently compare a fresh-install schema with a schema upgraded from an approved populated starting state and explain every difference. H3-A runtime ORM/physical-table set parity is 223-to-223, but that is not fresh-vs-populated-upgraded convergence. | NOT STARTED |
+| 36 | Verify data and constraints | Targeted pickup-time constraint investigation is advanced: a strict DB-only CHECK was shown to reject a valid instant-booking timing relationship, and the synchronizer's prefix filter hid the legacy CHECK. Candidate dry-run and probe results are documented in Phase 14. This does not prove broad populated-state preservation, a durable source fix, or clean regression execution; all remaining acceptance gates stay open. | ADVANCED |
+| 37 | Compare fresh and upgraded results | Independently compare a fresh-install schema with one upgraded from an approved populated starting state and explain every difference. The 145 Prod/Test default differences, H3-A 49-vs-47 target decision, and unverified session/analytics behavior remain relevant; the Item 33e retain/retire decision itself is resolved. H3-A table-set parity alone is not fresh-vs-populated-upgraded convergence. | NOT STARTED |
 | 38 | Verify failure recovery | Induce a controlled migration failure in a disposable database and test/document recovery, transaction behavior and backup restoration where needed. | NOT STARTED |
-| 39 | Establish automated regression gates and close the work | Keep focused database-guarded tests green and add the full suite, PostgreSQL integration/replay, fresh-clone, schema-diff and conflict checks; see Phase 8 for exact guarded-run evidence and limits. | ADVANCED |
+| 39 | Establish automated regression gates and close the work | Keep focused database-guarded tests green and add the full suite, PostgreSQL integration/replay, fresh-clone, schema-diff and conflict checks. The 25 October pickup-time probe assertions all passed, but pytest exited 1 because six teardown operations were rejected by the deletion guard; six probe users and four probe bookings remained. This is a blocked test run, not a clean PASS; see Phase 14. | ADVANCED |
 
 ---
 
@@ -968,7 +968,7 @@ The forensic reconciliation requested in this session found no preserved record 
 
 The separate current-head idempotence result used `afcon360_chain_verify_test` already at `h3a20261020` and compared **schema-only** snapshots. The two recorded runs each produced 886,434-byte / 28,384-line normalized snapshots with identical SHA-256 `8577c2a975d5846c3b99567a2c1d59d47b3686d893dbf23531adb9dcf40753d7`; the diff was exit 0, zero bytes and zero lines. This is Item 34 current-head schema idempotence, not proof of populated row preservation or upgrade from a historical revision.
 
-Therefore Items **35, 36, 37 and 38 remain NOT STARTED**. Current evidence does not show uppercase Test `org_business_category` values surviving upgrade, any of the 145 divergent defaults being exercised by inserts, code paths for `server_sessions`, `analytics_page_views` or `activity_logs` being exercised, large row counts, every CHECK/FK/nullable/JSON column, multiple wallet currencies/organisations, or backup restoration.
+At the 23 October checkpoint, Items **35, 36, 37 and 38 were recorded NOT STARTED**. Phase 14 advances Item 36 only for the targeted constraint investigation; it does not claim populated-state migration safety. Current evidence still does not show uppercase Test `org_business_category` values surviving upgrade, the 145 divergent defaults exercised by inserts, end-to-end server_sessions persistence, safe analytics flush on failure, comprehensive populated-state invariants, or backup restoration.
 
 ### Current handoff checkpoint for Items 13–39
 
@@ -996,12 +996,61 @@ Therefore Items **35, 36, 37 and 38 remain NOT STARTED**. Current evidence does 
 | 32 | **CLOSED — comparison evidence only** | Physical-schema extraction/comparison complete within recorded scope; divergences remain unresolved elsewhere. |
 | 33 / 33b | **ADVANCED / selected defaults closed** | Three selected agent onboarding model defaults committed in `05163de`, focused tests 4/4; H3-A runtime metadata/physical table sets match 223-to-223. Broader schema parity remains open. |
 | 33c | **CLOSED for H3-A inventory scope** | Runtime metadata and H3-A physical application table sets match exactly. |
-| 33e | **OPEN** | `server_sessions`, `analytics_page_views`, `activity_logs` source-declared classes are absent from H3-A metadata and schema. Decide feature support, reachability, and retain/repair/retire outcome. |
+| 33e | **CLOSED — ownership decision only** | Retain server_sessions and analytics_page_views; intentionally retire activity_logs because live auditing uses audit_logs and no active caller was found. c076b257b11d adds the two retained tables on the disposable candidate. End-to-end session persistence and analytics-flush failure safety remain untested and do not close parent Item 33. |
 | 34 / 34a | **CLOSED** | Repeat-at-head schema-only snapshots identical; separate reversible probe migration round trip passed. |
 | 35 | **NOT STARTED** | No qualified historical/intermediate populated-state upgrade. |
-| 36 | **NOT STARTED** | No row/value/relationship/constraint-preservation artifact. |
+| 36 | **ADVANCED — targeted constraint investigation only** | Strict-vs-grace pickup-time CHECK mismatch and synchronizer prefix blind spot are reproduced; durable source correction and clean regression/cleanup gate remain open. Broad populated-state preservation remains unproven. |
 | 37 | **NOT STARTED** | No independent fresh-install vs approved populated-upgraded physical-schema diff. |
 | 38 | **NOT STARTED** | No controlled migration failure and recovery/restore proof. |
-| 39 | **ADVANCED** | Guarded focused source selection recorded 90 passed/exit 0; not the full suite or actual database integration proof. |
+| 39 | **ADVANCED — latest pickup probe blocked overall** | Six behavioral assertions passed; pytest exited 1 on six teardown errors, leaving six probe users and four bookings. Earlier 90-test guarded selection is separate evidence; neither proves full suite/integration safety. |
 
 **Persistent gates:** `afcon360_prod` and `afcon360_test` remain write-protected. No H3-B execution/stamp/rebuild, enum conversion/relabel/drop, physical constraint cleanup, or frozen baseline edit is authorized by this update. Do not stage `afcon360_h3_head_idempotence_check.py` or `scripts/h3/migrations/` without separate disposition.
+
+---
+
+## Phase 14 — 24–25 October evidence reconciliation: Item 33e disposition, pickup-time CHECK incident, and test-gate correction
+
+**Scope and provenance.** This phase records owner-supplied local PowerShell/pytest/psql evidence and the saved review reports dated 24–25 October 2026. The assistant did not independently access the Windows checkout or connect to PostgreSQL for these results. This is a register/documentation update only: no application source, migration, baseline SQL, database, test row, or constraint was changed by this register update. It supersedes earlier current-status wording for Items 33e, 36 and 39 only where noted below. Parent Item 33 and the overall schema-transition gates remain open/advanced as stated.
+
+### Status changes and current parent counts
+
+| Item | Previous recorded status | Current status | Boundary |
+|---:|---|---|---|
+| 33e (sub-item) | OPEN in the 23 October checkpoint | **CLOSED — ownership decision only** | Retain server_sessions and analytics_page_views; intentionally retire activity_logs. This closes the support/ownership decision, not end-to-end execution safety. |
+| 36 | NOT STARTED in the 23 October checkpoint | **ADVANCED — targeted investigation only** | Reproduction and root-cause evidence now exists for the pickup-time CHECK conflict and the constraint synchronizer's naming-prefix blind spot. The intended instant-booking contract, durable source/baseline reconciliation, and a clean regression run are not complete. Broad populated-state migration safety remains unproven. |
+| 39 | ADVANCED | **ADVANCED — latest targeted test run BLOCKED overall** | Six test assertions passed, but pytest exited 1 because six teardown operations were rejected by the deletion guard; residual probe rows remain. This is not a clean test pass. |
+
+The resulting **39 parent-item totals** are **24 CLOSED, 10 ADVANCED, 1 PARTIAL, 0 OPEN, 0 GATED, and 4 NOT STARTED**. Sub-items such as 33e do not change the 39-item total. Item 36's narrow advancement does not change the status of Items 26, 35, 37 or 38.
+
+### Item 33e — agreed ownership/disposition; runtime safety still pending
+
+- **server_sessions: RETAIN.** Migration c076b257b11d (h3a20261020 → c076b257b11d) was applied to the disposable afcon360_h3_candidate_cutover_test; catalog output showed the table. A full end-to-end assertion that login actually persists a session row was not included in the evidence examined here. expires_at timezone semantics remain a separate known issue.
+- **analytics_page_views: RETAIN.** The same disposable candidate migration added this table. The hourly/background analytics flush still needs a targeted failure-safety test: deletion of Redis counters must not cause data loss if the database insert/commit fails.
+- **activity_logs: INTENTIONALLY RETIRE / DO NOT CREATE.** The accepted source audit found no live caller for the dead ActivityLog parallel-audit model; normal audit writes use audit_logs. Its absence is expected and must not be “fixed” by creating an unused table.
+- The booking end-to-end run's absence of UndefinedTable exceptions only establishes that this booking path did not touch those three feature paths; it is not login/session or analytics-flush coverage.
+- Therefore **33e is closed as an ownership decision; Item 33 remains ADVANCED** due broader model/schema parity, 49-vs-47, default-difference and environment-parity gates.
+
+### Item 36 — pickup-time CHECK contract and synchronizer root-cause evidence
+
+#### Check definitions and why the hidden check matters
+
+- Model-declared constraint: transport_bookings.ck_pickup_time_sane, pickup_time > created_at - INTERVAL '5 minutes'. This admits a pickup timestamp up to five minutes earlier than row creation.
+- Legacy/database-only constraint discovered in the 24 October dry run: transport_bookings.chk_pickup_time_future, pickup_time > created_at. This requires pickup strictly later than row creation. Since instant-booking pickup_time in the exercised web path represented the rider's click/request time and created_at was recorded about 5.3 seconds later, the strict constraint can reject a valid on-demand booking. If both checks exist, the strict check is the binding predicate and the five-minute allowance is ineffective.
+- A full booking lifecycle completed on disposable afcon360_h3_candidate_roundtrip_test after the strict constraint had been manually removed from that candidate; the supplied report recorded booking reference TR261024LBN90X, one matching row, and final status completed. The submitted pickup timestamp predated created_at by roughly 5.3 seconds. This supports the behavioral diagnosis but **does not** prove that the source migration/baseline or other databases are corrected.
+- On the separate disposable afcon360_h3_candidate_cutover_test, the 24 October synchronizer dry run reported 137 model checks and 137 DB checks. Counts by name prefix were model ck_ 110 / chk_ 27, database ck_ 109 / chk_ 28, other prefixes 0. The DB-only chk_pickup_time_future was missed because scripts/sync_check_constraints.py filters both inventories with MANAGED_PREFIX = "ck_"; therefore “DB-only / ORPHANED: 0” was a false zero. The same dry run reported managed ck_transport_bookings_status ADD 1 and semantic drift REPLACE 2 (notifications.ck_notifications_type and transport_bookings.ck_pickup_time_sane); the latter pickup-time difference appears representational (INTERVAL '5 minutes' versus '00:05:00'::interval) and needs normalization verification before classifying it as real drift. The legacy chk_* checks must not be sent to the managed migration/prune path merely because discovery is widened.
+- The reviewed correction proposal is: discover all named checks; use ck_ as the eligibility/naming convention for managed operations, not an inventory filter; report legacy chk_* inventory and possible semantic conflicts separately; normalize semantically equivalent SQL representations; add defense-in-depth so legacy checks cannot enter a generated migration even with --prune-db. This remains a **proposal, not an implemented or verified source change**.
+
+#### 25 October test status and unresolved product contract
+
+- The latest six-case probe reported all six behavioral assertions passing, but pytest exited **1** after six teardown errors because the isolation cleanup attempted to delete users without the required deletion-authorization guard/GUC. Post-run counts reported **six probe users and four probe bookings** still present, with zero orphaned bookings. Do not force-delete these rows or count the run as a clean PASS; the operator's cleanup/disposition decision and the sanctioned test-helper cleanup correction remain separate gates.
+- The test named test_instant_beyond_grace_rejected observed the current five-minute CHECK rejection as expected. That assertion documents current behavior; it does not prove that rejecting an instant booking after an arbitrary processing delay is the desired product behavior. The supplied reviewer classified pickup-time fix status as **OPEN / NOT PROVEN** and the six-test execution/cleanup gate as **BLOCKED overall**.
+- A 25 October application-level design proposal would make instant pickup time server-authoritative: ignore client-supplied pickup_time for instant bookings, resolve pickup_time to confirmed_at when the order transitions to CONFIRMED, and record pickup_actual_time when the driver starts the trip; scheduled bookings would continue using the rider's explicit future time with timezone-aware validation. A constraint-specific scheduled-staleness failure should become a validation response, not a generic service-unavailable response. This proposal has **not been approved or implemented** in the evidence available for this register update.
+- The required decision/test matrix still includes instant-now, realistic processing latency, a stale client timestamp beyond five minutes, client clock/time-zone skew, scheduled future success, scheduled near-past rejection, naive scheduled time interpreted in the configured app timezone, pickup_actual_time on IN_PROGRESS, and a scheduled stale-time response that is not misreported as a 503. The active source/baseline must be reconciled after the behavior is approved; do not hand-edit the frozen H3-A baseline or touch afcon360_prod/afcon360_test.
+- No migration, synchronizer code change, constraint change, cleanup DELETE, or production/test action is authorized by this Phase 14 evidence. The next work is a reviewed decision on instant-vs-scheduled timestamp ownership, followed by a minimal source change and isolated regression run, and separately an authorized cleanup/test-isolation correction.
+
+### Current constraints and global safety gates
+
+- Items **26 and 35–38** retain their previous acceptance gates except for the narrowly stated Item 36 advancement; no complete populated-state migration/row-preservation test, fresh-vs-upgraded schema comparison, historical/intermediate-state upgrade matrix, or controlled migration recovery/restore proof is recorded here.
+- The 145 Prod/Test server-default differences, the H3-A 49-vs-47 target decision, FK-action differences, extension-dependency disposition, Docker census, full suite, fresh-clone replay and PostgreSQL version coverage remain open to their existing scopes.
+- afcon360_prod and afcon360_test remain protected. No H3-B existing-database transition, stamping, rebuild, forced convergence, enum conversion/relabel/drop, frozen baseline rewrite, or test-row deletion is authorized by this update. Preserve all scratch databases and evidence.
+
