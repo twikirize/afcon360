@@ -85,6 +85,7 @@ from typing import Dict
 from app.config import get_config  # layered config with env validation
 from app.extensions import db, migrate, login_manager, csrf, limiter, cache, redis_client, mail, socketio
 from app.utils.module_toggle_service import ModuleToggleService
+from app.utils.time import UTCISOFormatter
 
 
 # Configure logging globally at the entry point
@@ -116,7 +117,7 @@ def configure_logging():
             root.setLevel(logging.DEBUG)
 
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter(
+    handler.setFormatter(UTCISOFormatter(
         "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     ))
     root.addHandler(handler)
