@@ -18,6 +18,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from app.geo.interfaces import GeoPoint
 from app.utils.exceptions import ValidationError
+from app.utils.time import parse_datetime_to_utc
 from app.utils.validators import TransportValidators
 
 # Precision cap: ~1 cm at equator is 7 decimals; anything beyond is noise.
@@ -95,18 +96,17 @@ def normalize_location_payload(payload: Dict[str, Any]) -> GeoPoint:
         )
     ts = payload.get("timestamp")
     parsed_ts: Optional[datetime] = None
-    if ts is not None and not isinstance(ts, datetime):
+    if ts is not None:
         try:
-            parsed_ts = datetime.fromisoformat(str(ts))
-        except ValueError:
+            parsed_ts = parse_datetime_to_utc(ts, field_name="timestamp")
+        except (TypeError, ValueError) as exc:
             raise ValidationError(
-                f"Invalid timestamp: {ts!r}", field="timestamp"
-            )
+                f"Invalid timestamp: {exc}", field="timestamp"
+            ) from None
     point = normalize_point(
         payload["latitude"], payload["longitude"],
         accuracy=payload.get("accuracy", 0.0),
-        timestamp=parsed_ts if parsed_ts is not None
-        else (ts if isinstance(ts, datetime) else None),
+        timestamp=parsed_ts,
     )
     for key in ("speed", "heading"):
         if key in payload:
@@ -151,11 +151,16 @@ def is_fresh(point: GeoPoint, max_age_seconds: float,
     """Freshness check for current-state reads. Naive point = not fresh."""
     if point.timestamp is None:
         return False
+    # A timestamp without an offset is not an instant. Do not silently
+    # label it UTC: report stale/unknown until the caller supplies a zone.
+    if point.timestamp.tzinfo is None or point.timestamp.utcoffset() is None:
+        return False
     ref = now or datetime.now(timezone.utc)
-    ts = point.timestamp
-    if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
-    return (ref - ts).total_seconds() <= max_age_seconds
+    if ref.tzinfo is None or ref.utcoffset() is None:
+        return False
+    return (
+        ref.astimezone(timezone.utc) - point.timestamp.astimezone(timezone.utc)
+    ).total_seconds() <= max_age_seconds
 
 
 def location_tuple(point: GeoPoint) -> Tuple[float, float]:
