@@ -43,10 +43,21 @@ jobs:
         run: python -m pip install --disable-pip-version-check "pytest>=9,<10"
       - name: Enforce timezone-aware SQLAlchemy DateTime declarations
         run: python -m pytest --noconftest -q tests/test_timezone_model_contract.py tests/test_timezone_primitives_standalone.py tests/test_console_timezone_contract_standalone.py tests/test_timezone_runtime_contract_standalone.py
-      - name: Compile timezone modules and migration
+      - name: Compile timezone and runtime boundary modules
         run: >-
           python -m py_compile
           app/utils/time.py
+          app/geo/history.py
+          app/geo/activity.py
+          app/geo/validation.py
+          app/geo/realtime.py
+          app/production_console/streaming.py
           migrations/versions/tza20261025_global_timezone_aware_timestamps.py
           scripts/audit_naive_timestamp_columns.py
           tests/test_timezone_model_contract.py
+          tests/test_timezone_primitives_standalone.py
+          tests/test_console_timezone_contract_standalone.py
+          tests/test_timezone_runtime_contract_standalone.py
+          tests/test_geo_history.py
+          tests/test_geo_activity.py
+          tests/test_geo_realtime.py
