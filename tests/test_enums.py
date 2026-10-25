@@ -9,6 +9,15 @@ Detector status (Phase 1E):
     a model-declared ``CheckConstraint`` in ``__table_args__`` whose name is
     missing or does not begin with ``ck_`` is reported. Valid ``ck_*``
     declarations are accepted.
+
+    Scope note: in the sync tool, ``ck_`` is a NAMING and
+    RECONCILIATION scope, not an inventory filter. Discovery reads every
+    CHECK constraint regardless of prefix; only ``ck_`` rows are eligible
+    for ADD / REPLACE / prune. Existing ``chk_*`` declarations are
+    legacy transport-era naming: inventoried and reported, never
+    auto-reconciled. This detector therefore guards the convention for
+    declarations written today, and is not a licence to rename or drop
+    historical ``chk_*`` rows.
   * Repository-wide enforcement of both rules depends on the pending
     enum census / reconciliation roadmap (native PG ENUM columns and the
     deferred Transport lifecycle schema predate it), so no speculative
@@ -131,9 +140,14 @@ def find_unnamed_check_constraints(source):
     Inspects ``CheckConstraint`` calls declared inside ``__table_args__``
     (bare, ``db.``-prefixed, or aliased imports). A call is reported when its
     ``name`` is missing, is not a string literal starting with ``ck_``, or is
-    dynamic (unverifiable). Valid ``ck_*`` declarations are accepted. This
-    matches the sync tool's ``MANAGED_PREFIX`` handling: anything else is
-    ignored by the tool, so it must be surfaced here.
+    dynamic (unverifiable). Valid ``ck_*`` declarations are accepted.
+
+    This mirrors the sync tool's *reconciliation scope*, not an inventory
+    filter: the tool discovers every CHECK constraint regardless of prefix,
+    but only ``ck_`` rows are eligible for ADD / REPLACE / prune. ``chk_``
+    (and other) names are legacy: reported and compared, never reconciled
+    into a migration. Surface them here so new declarations do not keep
+    widening that legacy set.
     """
     tree = _parse(source)
     names = _check_constraint_call_names(tree)

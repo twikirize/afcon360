@@ -2,7 +2,7 @@
 from sqlalchemy import create_engine, text
 from urllib.parse import quote_plus
 
-URL = "postgresql://israeli:Israelipass@localhost:5432/afcon360_test"
+URL = "postgresql://israeli@localhost:5432/afcon360_test"
 engine = create_engine(URL)
 with engine.begin() as conn:
     n = conn.execute(text("SELECT count(*) FROM organisations")).scalar()

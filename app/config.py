@@ -111,6 +111,9 @@ class Config:
     # ---- Database -----------------------------------------------------------
     # Config reads DATABASE_URL first; falls back to individual components.
     # NEVER hardcode a URL here — always read from env.
+    # The URL is intentionally PASSWORDLESS: libpq resolves the password from
+    # pgpass.conf (%APPDATA%\postgresql\pgpass.conf on Windows,
+    # $HOME/.pgpass elsewhere), so no secret lives in env or in this file.
     DB_HOST = os.getenv("DB_HOST", "localhost")
     DB_PORT = os.getenv("DB_PORT", "5432")
     DB_NAME = os.getenv("DB_NAME", "afcon360_prod")
@@ -118,9 +121,10 @@ class Config:
     DB_PASS = os.getenv("APP_DB_PASS") or os.getenv("DB_PASS")
 
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
-    if not SQLALCHEMY_DATABASE_URI and DB_USER and DB_PASS:
+    if not SQLALCHEMY_DATABASE_URI and DB_USER:
+        creds = f"{DB_USER}:{DB_PASS}" if DB_PASS else DB_USER
         SQLALCHEMY_DATABASE_URI = (
-            f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+            f"postgresql://{creds}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
         )
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
@@ -235,6 +239,10 @@ class Config:
     TRANSPORT_BOOKING_SCHEMA_ENFORCE = (
         os.environ.get("TRANSPORT_BOOKING_SCHEMA_ENFORCE", "false").lower() == "true"
     )
+    # App wall-clock zone used when a naive datetime (e.g. the booking
+    # form's pickup_time) arrives without an offset. Interpretation
+    # contract for transport booking_service.create_booking.
+    APP_TZ = os.getenv("APP_TZ", "Africa/Nairobi")
 
     # ---- Email --------------------------------------------------------------
     MAIL_SERVER         = os.getenv("MAIL_SERVER",    "smtp.gmail.com")

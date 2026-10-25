@@ -41,6 +41,8 @@ from uuid import UUID
 
 from sqlalchemy import inspect as sa_inspect, text
 
+from app.auth.deletion_guard import authorize_deletion
+
 
 # ---------------------------------------------------------------------------
 # Topological sort for FK-safe delete ordering
@@ -569,6 +571,16 @@ def cleanup_inserted_rows(
 
     Returns {table: rows_deleted}.
     """
+    # The migration-built test schema installs BEFORE DELETE guards
+    # (trg_guard_users_delete, trg_guard_user_roles_delete) that raise
+    # 42501 unless the transaction-scoped GUC app.guard.authorized_deletion
+    # is 'true'. Reuse the sanctioned helper so the authorization is issued
+    # as SET LOCAL: it ends with this cleanup transaction (commit/rollback)
+    # and cannot leak to pooled sessions. Deletion targets are unchanged —
+    # the snapshot logic below still removes exactly the rows identified as
+    # test-created, never baseline data.
+    authorize_deletion(conn, actor="test-isolation-cleanup")
+
     # The baseline snapshot covers every table (dirty + empty), so the
     # FK-safe delete order is the same for every cleanup — use the cached one.
     delete_order = _get_delete_order(engine)

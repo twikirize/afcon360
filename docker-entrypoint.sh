@@ -6,8 +6,10 @@ echo "🚀 AFCON360 container starting (role: ${CONTAINER_ROLE:-web})"
 # ---------------------------------------------------------------------------
 # Wait for PostgreSQL
 # DB_USER defaults to 'israeli' to match base .env — prevents empty-user loop
+# pg_isready does not authenticate, so no PGPASSWORD here; real connections
+# resolve credentials from the libpq pgpass file, never from env.
 # ---------------------------------------------------------------------------
-until PGPASSWORD="${DB_PASS}" pg_isready -h "${DB_HOST:-db}" -U "${DB_USER:-israeli}" -d "${DB_NAME:-afcon360_prod}"; do
+until pg_isready -h "${DB_HOST:-db}" -U "${DB_USER:-israeli}" -d "${DB_NAME:-afcon360_prod}"; do
     echo "   Waiting for PostgreSQL at ${DB_HOST:-db}..."
     sleep 2
 done

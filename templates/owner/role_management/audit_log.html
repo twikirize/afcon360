@@ -240,6 +240,7 @@
             <th>Role Change</th>
             <th>Performed By</th>
             <th>Reason</th>
+            <th>Changes</th>
           </tr>
         </thead>
         <tbody>
@@ -325,10 +326,17 @@
               <span style="color: #6b7280;">-</span>
               {% endif %}
             </td>
+            <td>
+              {% if log.changes %}
+              <code style="font-size: 0.75rem; color: #374151;">{{ log.changes | tojson }}</code>
+              {% else %}
+              <span style="color: #6b7280;">-</span>
+              {% endif %}
+            </td>
           </tr>
           {% else %}
           <tr>
-            <td colspan="6">
+            <td colspan="7">
               <div class="empty-state">
                 <i class="bi bi-clock-history"></i>
                 <div>No audit log entries found</div>

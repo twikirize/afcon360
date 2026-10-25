@@ -3,8 +3,10 @@
 Covers:
   1. The ``AuditLog`` symbol used by ``app.audit.comprehensive_audit`` is the
      canonical model class from ``app.audit.models`` (table ``audit_logs``),
-     not ``None`` and not ``app.models.audit`` (which only declares
-     ``ActivityLog`` / table ``activity_logs``).
+     not ``None``.  The retired duplicate ``app.models.audit.ActivityLog``
+     (table ``activity_logs``) was merged into the canonical model on
+     2026-10-24 and its module deleted; a regression test asserts it stays
+     gone.
   2. ``AuditService.log_role_change`` constructs and returns the expected
      audit entry under a fully mocked database session -- no real query,
      commit, rollback, or database write occurs.
@@ -29,11 +31,22 @@ def test_auditlog_symbol_is_canonical_model():
     assert ca.AuditLog.__tablename__ == "audit_logs"
 
 
-def test_activitylog_declaration_is_preserved():
-    from app.models.audit import ActivityLog
+def test_activitylog_is_retired():
+    """app.models.audit (ActivityLog) was merged into AuditLog and deleted.
 
-    assert ActivityLog.__tablename__ == "activity_logs"
-    assert ActivityLog is not CanonicalAuditLog
+    The canonical audit model is app.audit.models.AuditLog (table
+    `audit_logs`).  The retired duplicate must not come back: importing the
+    old module has to fail, and no `activity_logs` table may appear in the
+    SQLAlchemy metadata.
+    """
+    import importlib
+    import pytest
+
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("app.models.audit")
+
+    assert "activity_logs" not in CanonicalAuditLog.metadata.tables
+    assert CanonicalAuditLog.__tablename__ == "audit_logs"
 
 
 def test_log_role_change_constructs_entry_without_database():

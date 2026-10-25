@@ -280,11 +280,22 @@ def _log_role_change(
     extra_data: Optional[dict] = None,
 ) -> None:
     """
-    Persist a role assignment/revocation to ``data_change_logs``.
+    Persist a role assignment/revocation to both audit trails:
+
+    - ``data_change_logs`` via ``DataChangeLog`` (existing forensic trail);
+    - ``audit_logs`` via the canonical ``AuditLog`` model, using the
+      instance-based ``log_instance()`` writer.  Actions ``assign_role`` /
+      ``revoke_role`` are exactly what the owner role-audit page
+      (``AuditService.get_role_management_audit_log``) reads, so this is
+      what makes that admin surface show real production entries.
 
     Imported lazily to avoid a circular import at module load time.
+    Canonical-audit failures are logged but never break the role mutation —
+    the DataChangeLog write below is the pre-existing behaviour and stays.
     """
     from app.audit.comprehensive_audit import DataChangeLog
+    from app.audit.models import AuditLog
+    from app.identity.models.user import User
 
     DataChangeLog.log_change(
         entity_type="user_role",
@@ -295,6 +306,31 @@ def _log_role_change(
         changed_by=changed_by or 0,
         extra_data=extra_data or {},
     )
+
+    try:
+        target_user = db.session.get(User, user_id)
+        actor = db.session.get(User, changed_by) if changed_by else None
+        # assign_role: role appears; revoke_role: role disappears.
+        changes = (
+            {"role": [role_name, None]}
+            if operation == "revoke_role"
+            else {"role": [None, role_name]}
+        )
+        AuditLog.log_instance(
+            action=operation,
+            target=target_user,
+            actor=actor,
+            changes=changes,
+            meta=extra_data or {},
+            db_session=db.session,
+        )
+    except Exception as exc:
+        log.warning(
+            "Canonical audit write failed for role %s (user_id=%s): %s",
+            operation,
+            user_id,
+            exc,
+        )
 
 
 # ---------------------------------------------------------------------------

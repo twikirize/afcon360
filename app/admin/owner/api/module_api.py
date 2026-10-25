@@ -1,8 +1,12 @@
 """REST API for module toggling with instant effect."""
+import logging
+
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
 from app.utils.module_toggle_service import ModuleToggleService
 from app.utils.module_guard import module_enabled
+
+logger = logging.getLogger(__name__)
 
 module_api_bp = Blueprint('module_api', __name__, url_prefix='/admin/api/modules')
 
@@ -74,8 +78,29 @@ def get_audit_log():
         return jsonify({'error': 'Unauthorized'}), 403
     
     try:
-        from app.models.system_config import SystemConfig
-        history = SystemConfig.get_history('MODULE_FLAGS', limit=50)
-        return jsonify({'history': history}), 200
+        from app.audit.models import AuditLog
+
+        # Canonical audit trail for module toggles (audit_logs table).
+        #
+        # This endpoint previously called SystemConfig.get_history(), which
+        # has never existed — every request raised AttributeError and
+        # returned 500.  The toggle writer above already records each change
+        # as an AuditLog entry (action='MODULE_TOGGLE'), so the canonical
+        # audit log is the history source.
+        audit_entries = [
+            {
+                'action': entry.action,
+                'actor': entry.actor.username if entry.actor else None,
+                'target_type': entry.target_type,
+                'target_id': entry.target_id,
+                'module': (entry.meta or {}).get('module'),
+                'enabled': (entry.meta or {}).get('enabled'),
+                'ip_address': entry.ip_address,
+                'created_at': entry.created_at.isoformat() if entry.created_at else None,
+            }
+            for entry in AuditLog.recent_audits(limit=50, action='MODULE_TOGGLE')
+        ]
+
+        return jsonify({'history': audit_entries, 'audit_entries': audit_entries}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500

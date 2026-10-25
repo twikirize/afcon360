@@ -4,7 +4,7 @@ HIGH_RISK (identity/roles). Uses the sanctioned service assign_global_role (idem
 import sys
 sys.path.insert(0, 'C:/Users/OBED/Desktop/afcon360_app')
 import os
-os.environ.setdefault('DATABASE_URL', 'postgresql://israeli:Israelipass@localhost:5432/afcon360_prod')
+os.environ.setdefault('DATABASE_URL', 'postgresql://israeli@localhost:5432/afcon360_prod')
 from app import create_app
 from app.extensions import db
 from app.auth.roles import assign_global_role
