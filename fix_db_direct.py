@@ -14,18 +14,27 @@ if not DATABASE_URL:
     print('Please set DATABASE_URL environment variable')
     sys.exit(1)
 
-# Parse connection string
-import re
-match = re.match(r'postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)', DATABASE_URL)
-if match:
-    user, password, host, port, dbname = match.groups()
-    
+# Parse connection string — passwordless DSNs (postgresql://user@host:port/db)
+# are the norm; a None password is NOT an error, libpq falls back to pgpass.conf
+# (AGENTS.md §9). Never print the URL: it may carry credentials in legacy envs.
+from sqlalchemy.engine import make_url
+
+try:
+    url = make_url(DATABASE_URL)
+except Exception:
+    print('Could not parse DATABASE_URL (value not displayed)')
+    sys.exit(1)
+
+user, password = url.username, url.password
+host, port, dbname = url.host, str(url.port or 5432), url.database
+
+if user and host and dbname:
     conn = psycopg2.connect(
         host=host,
         port=port,
         dbname=dbname,
         user=user,
-        password=password
+        password=password,
     )
     conn.autocommit = True
     cur = conn.cursor()
@@ -61,5 +70,4 @@ if match:
     cur.close()
     conn.close()
 else:
-    print('Could not parse DATABASE_URL')
-    print(f'URL format: {DATABASE_URL}')
+    print('DATABASE_URL is missing user/host/database (value not displayed)')

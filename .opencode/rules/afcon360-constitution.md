@@ -970,6 +970,8 @@ Success requires: output contains `DB_VERIFY_OK` AND exit code is `0`.
 
 This command does not authorize migrations.
 
+**Note (2026-10-25):** `verify_db.py` on disk is currently a stale `datetime.utcnow()`-fixer script — it prints "Fixed N files" and does NOT emit `DB_VERIFY_OK` (defect recorded in BACKLOG). Until it is repaired, satisfy the `DB_VERIFY_OK` contract with the app-factory form: `python -c "from app import create_app; create_app(); print('DB_VERIFY_OK')"`. For anything touching database credentials, authentication, or connection failures, follow the pgpass protocol in §49 and root `AGENTS.md` §9.
+
 ---
 
 ## §37 Common Commands (AGENTS.md §37)
@@ -1284,3 +1286,55 @@ These names identify existing source-level regression coverage; their existence 
 Root `AGENTS.md` §48, **"Model Defaults & Migration Safety (Permanent Engineering Rule),"** remains the authoritative cross-cutting database rule. Apply its relevant subsections on inspection before model changes, Python versus database defaults, populated-table migration safety, PostgreSQL enum compatibility, migration governance, behavioral proof, and required evidence.
 
 This section supplements those requirements with the specific AFCON360 enum ownership, provisioning-route, divergence, parity-evidence and literal-percent lessons. It does not replace or duplicate the full root rule. It authorizes no migrations, database writes, enum changes, or changes to live schemas by itself.
+
+---
+
+## §49 Database Credentials — pgpass Only & Password-Verification Protocol (Permanent Rule)
+
+**Cross-reference: root `AGENTS.md` §9 is the authoritative short form of this rule and is read by every agent; this section is the expanded protocol. Applies to every agent, every DB-related task.**
+
+### A. The credential model
+
+- The libpq pgpass file is the ONLY place a PostgreSQL password may exist:
+  - Windows: `%APPDATA%\postgresql\pgpass.conf`, ACL restricted to the owning account — `icacls <file> /inheritance:r /grant:r "%USERNAME%:(R,W)"`.
+  - Linux/macOS: `$HOME/.pgpass`, mode 0600, owned by the connecting user.
+- Format: `hostname:port:database:username:password`. First match wins — specific entries above `*` wildcards.
+- The hostname field must match the connection's host string exactly. `localhost`, `127.0.0.1`, `::1`, and Docker service names (`db`) are distinct keys; keep one entry per form actually used.
+- libpq applies pgpass for every consumer — SQLAlchemy/psycopg2, `psql`, `pg_dump`, `pg_restore`, `pg_isready`, Alembic/Flask-Migrate, pytest fixtures. No per-tool code is needed; only the absence of a password everywhere else.
+- Docker containers, CI runners, and remote hosts do NOT read this machine's pgpass — each needs its own file (BACKLOG DB-PGPASS-01). That is an environment gap to record, never a reason to reintroduce env passwords.
+
+### B. Red lines
+
+1. Never place a DB password in: `.env*` files, `DATABASE_URL`/`TEST_DATABASE_URL`, `DB_PASS`/`APP_DB_PASS`/`POSTGRES_PASSWORD`, `PGPASSWORD` (process/User/Machine scope), command lines, scripts, test fixtures, source code, logs, tracebacks, evidence files, screenshots, or chat.
+2. Never print or log a URL that might carry credentials. Redact first: `re.sub(r'(://[^:]+:)[^@]+(@)', r'\1***\2', url)`. On a DSN parse failure print "value not displayed" — never the value.
+3. Never "fix" an authentication failure by re-adding a password to environment/URL/config. The fix is always the pgpass entry. Reintroducing a password violates root `AGENTS.md` §5.
+4. Never write the password value yourself — not into pgpass, not anywhere. Credential creation, rotation, and pgpass secret content are HUMAN operations: agents hand the operator exact commands; the operator supplies the secret. Agents verify exit codes, never values.
+5. Never export `PGPASSWORD` in a subprocess environment. Pattern of record: `app/backup/backup_service.py:_db_env()` sets it only when a password is configured — which under this rule is never.
+
+### C. Verification protocol (mandatory before any DB-related claim)
+
+Run in order; report commands and exit codes only:
+
+1. **Scope check** — no `PGPASSWORD` in Process, User, or Machine scope.
+2. **Auth check** — `psql -w -U <user> -h <host> -d <db> -t -c "select 1"`. Exit 0 proves pgpass for that exact host:port:db:user tuple. `-w` guarantees no prompt, so no secret can reach shell history. Repeat per host form in use.
+3. **App-config check** — `python -c "from app import create_app; create_app(); print('DB_VERIFY_OK')"` (exit 0, output contains `DB_VERIFY_OK` per §36) AND assert the resolved `SQLALCHEMY_DATABASE_URI` embeds no credentials.
+4. **Test-path check** — `TEST_DATABASE_URL` passwordless; run the targeted pytest. `tests/postgres_contract.py` proves migration-built PostgreSQL; an auth failure here is a pgpass gap, not a test bug.
+5. **Tool-subprocess check** — `pg_dump`/`psql` run without `PGPASSWORD` in their environment (evidence: `pg_dump -w` against a passwordless URL exits 0).
+6. **Environment-boundary check** — for containers/CI/remote hosts, their own pgpass must be proven present. If not: status BLOCKED with the missing host recorded (DB-PGPASS-01). Never approximate with env passwords.
+
+**A DB claim without exit-0 evidence from steps 1–4 is BLOCKED, not PASS.**
+
+### D. Failure triage (authentication errors)
+
+| Symptom | Meaning | Action |
+|---|---|---|
+| `password authentication failed for user "X"` + `password retrieved from file "..."` | A matching pgpass entry holds the wrong secret, or an earlier entry shadows the correct one | Fix that entry's order/content — never the DSN |
+| `no password supplied` / `fe_sendauth` under `-w` | No entry matched host:port:db:user | Add the missing entry; check host-field spelling and user/database casing |
+| Works from shell, fails inside the app | The app resolved a different env/URI (`APP_ENV` layering decides which `.env.*` won) or a different host string | Inspect the URI the app actually resolved (redacted), not the file you intended |
+| Works on host, fails in container/CI | That environment has no pgpass | Provision one there (mounted file/secret) — DB-PGPASS-01; escalate, do not weaken |
+| `pgpass file has group or world access; permissions changed to 0600` (Unix) | File permissions too open | `chmod 600`; on Windows re-apply the owner-only ACL |
+| Intermittent success by host alias | Entries exist for some aliases only | Add one entry per alias actually used |
+
+### E. Evidence expectations for reports
+
+Include: pgpass path used, entry COUNT (never contents), ACL/permission state, each probe command with its exit code, the redacted connection form, and any environment that could not be verified (explicit BLOCKED). This section authorizes no migrations, password rotations, or schema changes by itself; rotation remains an owner decision (BACKLOG DB-PGPASS-02).

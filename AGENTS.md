@@ -336,6 +336,42 @@ Browser tools **supplement**—not replace—source tracing and automated tests.
 
 ---
 
+## 9. Database Credentials & Password Verification (pgpass — Permanent Rule)
+
+**Applies to every agent, every database-related task. The libpq pgpass file is the ONLY place a PostgreSQL password may exist.**
+
+### 9.1 The credential model
+
+- Password store: `%APPDATA%\postgresql\pgpass.conf` (Windows) / `$HOME/.pgpass` (Linux/macOS, mode 0600), ACL restricted to the owning account (`icacls <file> /inheritance:r /grant:r "%USERNAME%:(R,W)"`).
+- Format `hostname:port:database:username:password`, first match wins — specific entries go above `*` wildcards. The host field must match the connection host string exactly: `localhost`, `127.0.0.1`, `::1`, and a docker service name like `db` are different keys.
+- Every DSN in this repo is **passwordless by design**: `postgresql://user@host:port/db`. libpq falls back to pgpass. `DATABASE_URL`, `TEST_DATABASE_URL`, `DB_PASS`, `APP_DB_PASS` never carry a password.
+
+### 9.2 Never (credential red lines)
+
+- Never place a DB password in: `.env*` files, any URL, `PGPASSWORD` (any scope), a command line, a script, a test fixture, source code, logs, error messages, evidence files, or chat.
+- Never print a URL that might carry credentials. Redact: `re.sub(r'(://[^:]+:)[^@]+(@)', r'\1***\2', url)`.
+- Never "fix" a DB auth failure by putting a password back into env/URL/config — fix the pgpass entry (path, format, ACL, host field). Reintroducing a password violates §5.
+- Never write the password value yourself, not even into pgpass. Credential creation and rotation are human operations: give the operator the exact commands; they supply the secret.
+
+### 9.3 Verification protocol (run before claiming any DB-related result)
+
+Report commands and exit codes only — never values:
+
+1. **No secret in scope** — `$env:PGPASSWORD` empty; User and Machine scope `PGPASSWORD` empty.
+2. **Auth** — `psql -w -U <user> -h <host> -d <db> -t -c "select 1"` → exit 0 proves pgpass works. `-w` never prompts, so no password can reach shell history. On failure the error names the pgpass file that matched — fix that file, never the URL.
+3. **App boot** — `python -c "from app import create_app; create_app(); print('DB_VERIFY_OK')"` → exit 0, and assert `SQLALCHEMY_DATABASE_URI` contains no `user:pass@` pair.
+4. **Tests** — `TEST_DATABASE_URL` passwordless; run the targeted pytest (`tests/postgres_contract.py` enforces migration-built PostgreSQL).
+5. **Subprocess tools** (`pg_dump`/`psql`/`pg_isready`) inherit pgpass — never export `PGPASSWORD` (pattern: `app/backup/backup_service.py:_db_env` skips it when empty).
+6. **Containers/remote hosts** do NOT read this machine's pgpass — they need their own file (BACKLOG DB-PGPASS-01). There: BLOCKED + record; do not fall back to env passwords.
+
+**A DB claim without exit-0 evidence from steps 1–4 is BLOCKED, not PASS.**
+
+### 9.4 Evidence to include in reports
+
+pgpass path used, entry count (never contents), ACL, probe commands with exit codes, redacted URI. Full triage table for auth failures: `.opencode/rules/afcon360-constitution.md` §49.
+
+---
+
 ## 48. Model Defaults & Migration Safety (Permanent Engineering Rule)
 
 **Applies to every agent, every future model, and every database change in AFCON360.**
