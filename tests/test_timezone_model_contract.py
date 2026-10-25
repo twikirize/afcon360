@@ -50,7 +50,7 @@ def test_all_sqlalchemy_datetime_model_columns_are_timezone_aware():
 
     for path in sorted(APP_ROOT.rglob("*.py")):
         try:
-            source = path.read_text(encoding="utf-8")
+            source = path.read_text(encoding="utf-8-sig")
             tree = ast.parse(source, filename=str(path))
         except (OSError, UnicodeDecodeError, SyntaxError) as exc:
             violations.append(f"{path.relative_to(APP_ROOT)}: unable to parse ({exc})")
