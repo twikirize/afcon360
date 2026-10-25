@@ -20,7 +20,7 @@ class IndividualKYCDocument(BaseModel):
         nullable=False
     )
     file_path = Column(String(256), nullable=False)
-    expires_at = Column(DateTime)
+    expires_at = Column(DateTime(timezone=True))
 
     user = relationship("User", back_populates="documents")
 
