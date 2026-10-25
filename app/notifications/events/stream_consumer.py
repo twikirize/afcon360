@@ -53,6 +53,8 @@ import time
 from threading import Event as ThreadEvent
 from typing import Optional
 
+from app.utils.time import UTCISOFormatter
+
 
 logger = logging.getLogger("events.stream_consumer")
 
@@ -251,9 +253,13 @@ def _cli() -> int:
     p.add_argument("--log-level", default="INFO")
     args = p.parse_args()
 
+    handler = logging.StreamHandler()
+    handler.setFormatter(UTCISOFormatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    ))
     logging.basicConfig(
         level=getattr(logging, args.log_level.upper(), logging.INFO),
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        handlers=[handler],
     )
     return run(args.group, args.consumer, args.block_ms, args.count)
 
