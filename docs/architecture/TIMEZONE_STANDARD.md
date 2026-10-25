@@ -24,4 +24,8 @@
 
 ## Current implementation scope
 
-This branch adds the shared time primitives and pins PostgreSQL sessions to UTC. It does not claim that every existing model, migration, or call site has already been converted. Transport booking semantics, the shared timestamp mixin, schema migrations and the remaining legacy call sites require their own audited changes and regression gates.
+The working branch now adds the shared UTC/timezone primitives, pins PostgreSQL sessions to UTC, and updates the identified naive SQLAlchemy DateTime declarations to timezone-aware declarations. A static AST test scans the application source for remaining naive SQLAlchemy DateTime columns.
+
+The guarded migration `tza20261025` converts remaining PostgreSQL `timestamp without time zone` columns in the public schema by interpreting stored values as UTC. It refuses to run unless `AFCON360_LEGACY_NAIVE_TIMESTAMPS_ARE_UTC=YES` is explicitly set. That flag is an operator attestation, not proof by itself: first run `scripts/audit_naive_timestamp_columns.py` against the exact non-production target, and separately verify the historical timezone meaning of every naive column. The migration can rewrite tables and take strong locks; it is not to be run on production until its performance, populated-data behavior, backup recovery, and per-database schema parity have been reviewed.
+
+The model change and database migration are deliberately not considered closed by their presence in GitHub. Closure requires the model-contract tests to pass, the read-only schema/data audit to be reviewed for each database, the migration to be tested against a populated disposable PostgreSQL clone, and all affected consumer behavior to pass regression tests. No production database has been changed by this branch.
