@@ -24,6 +24,7 @@ from app.geo.activity import (
     cell_center,
     cell_key_for,
     get_activity,
+    parse_window,
 )
 from app.utils.exceptions import ValidationError
 
@@ -201,6 +202,17 @@ def test_activity_window_excludes_outside_observations(app):
     cell = next(c for c in payload["cells"]
                 if c["cell_key"] == "6.00,41.00")
     assert cell["observation_count"] == 1  # old row excluded
+
+
+def test_parse_window_normalizes_offsets_and_rejects_naive_values():
+    start, end = parse_window(
+        "2026-10-25T12:00:00+03:00",
+        "2026-10-25T13:00:00+03:00",
+    )
+    assert start == datetime(2026, 10, 25, 9, 0, tzinfo=timezone.utc)
+    assert end == datetime(2026, 10, 25, 10, 0, tzinfo=timezone.utc)
+    with pytest.raises(ValueError, match="timezone offset"):
+        parse_window("2026-10-25T12:00:00", "2026-10-25T13:00:00+03:00")
 
 
 def test_activity_requires_explicit_window():
