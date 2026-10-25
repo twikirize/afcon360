@@ -108,7 +108,7 @@ class FinancialAuditLog(BaseModel):
     aml_flagged = Column(Boolean, default=False)
     requires_review = Column(Boolean, default=False, index=True)
     reviewed_by = Column(BigInteger)
-    reviewed_at = Column(DateTime)
+    reviewed_at = Column(DateTime(timezone=True))
 
     # Contextual information
     ip_address = Column(String(64))
@@ -123,7 +123,7 @@ class FinancialAuditLog(BaseModel):
     # Full transaction context (renamed from 'metadata' to avoid SQLAlchemy reserved word)
     extra_data = Column(JSON)  # Additional context
 
-    completed_at = Column(DateTime)
+    completed_at = Column(DateTime(timezone=True))
 
     # Indexes
     __table_args__ = (
@@ -371,7 +371,7 @@ class SecurityEventLog(BaseModel):
     # Response
     action_taken = Column(String(128))  # "account_locked", "ip_blocked"
     handled_by = Column(BigInteger)
-    handled_at = Column(DateTime)
+    handled_at = Column(DateTime(timezone=True))
 
     @staticmethod
     def log_event(
