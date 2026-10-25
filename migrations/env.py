@@ -104,7 +104,8 @@ def run_migrations_offline():
     """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url, target_metadata=get_metadata(), literal_binds=True
+        url=url, target_metadata=get_metadata(), literal_binds=True,
+        compare_foreign_key_constraints=True,
     )
 
     with context.begin_transaction():
@@ -137,6 +138,7 @@ def run_migrations_online():
     # when they are also passed explicitly in context.configure()
     conf_args.pop('compare_type', None)
     conf_args.pop('render_as_batch', None)
+    conf_args.pop('compare_foreign_key_constraints', None)
 
     connectable = get_engine()
 
@@ -145,6 +147,7 @@ def run_migrations_online():
             connection=connection,
             target_metadata=get_metadata(),
             compare_type=True,
+            compare_foreign_key_constraints=True,
             render_as_batch=True,
             include_schemas=False,
                         user_module_prefix='sa.',
