@@ -6,11 +6,13 @@ on:
       - work/global-timezone-standard-20261025
     paths:
       - "app/**"
+      - "app.py"
       - "migrations/versions/tza20261025_global_timezone_aware_timestamps.py"
       - "scripts/audit_naive_timestamp_columns.py"
       - "scripts/audit_timezone_migration_lineage.py"
       - "docs/architecture/TIMESTAMP_SEMANTICS_REGISTER.md"
       - "tests/test_timezone_migration_policy_standalone.py"
+      - "tests/test_timezone_logging_contract_standalone.py"
       - "tests/test_timezone_model_contract.py"
       - "tests/test_timezone_primitives_standalone.py"
       - "tests/test_console_timezone_contract_standalone.py"
@@ -19,11 +21,13 @@ on:
   pull_request:
     paths:
       - "app/**"
+      - "app.py"
       - "migrations/versions/tza20261025_global_timezone_aware_timestamps.py"
       - "scripts/audit_naive_timestamp_columns.py"
       - "scripts/audit_timezone_migration_lineage.py"
       - "docs/architecture/TIMESTAMP_SEMANTICS_REGISTER.md"
       - "tests/test_timezone_migration_policy_standalone.py"
+      - "tests/test_timezone_logging_contract_standalone.py"
       - "tests/test_timezone_model_contract.py"
       - "tests/test_timezone_primitives_standalone.py"
       - "tests/test_console_timezone_contract_standalone.py"
@@ -48,7 +52,7 @@ jobs:
       - name: Install test runner
         run: python -m pip install --disable-pip-version-check "pytest>=9,<10"
       - name: Enforce timezone-aware SQLAlchemy DateTime declarations
-        run: python -m pytest --noconftest -q tests/test_timezone_model_contract.py tests/test_timezone_primitives_standalone.py tests/test_console_timezone_contract_standalone.py tests/test_timezone_runtime_contract_standalone.py tests/test_timezone_migration_policy_standalone.py
+        run: python -m pytest --noconftest -q tests/test_timezone_model_contract.py tests/test_timezone_primitives_standalone.py tests/test_console_timezone_contract_standalone.py tests/test_timezone_runtime_contract_standalone.py tests/test_timezone_migration_policy_standalone.py tests/test_timezone_logging_contract_standalone.py
       - name: Compile timezone and runtime boundary modules
         run: >-
           python -m py_compile
@@ -61,10 +65,14 @@ jobs:
           migrations/versions/tza20261025_global_timezone_aware_timestamps.py
           scripts/audit_naive_timestamp_columns.py
           scripts/audit_timezone_migration_lineage.py
+          app.py
+          app/notifications/events/stream_consumer.py
           tests/test_timezone_model_contract.py
           tests/test_timezone_primitives_standalone.py
           tests/test_console_timezone_contract_standalone.py
           tests/test_timezone_runtime_contract_standalone.py
+          tests/test_timezone_migration_policy_standalone.py
+          tests/test_timezone_logging_contract_standalone.py
           tests/test_geo_history.py
           tests/test_geo_activity.py
           tests/test_geo_realtime.py
