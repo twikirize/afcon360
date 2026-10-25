@@ -1,6 +1,7 @@
 """Runtime tests for timezone primitives without importing the full Flask app."""
 
 from datetime import datetime, timezone
+import logging
 import importlib.util
 from pathlib import Path
 import sys
@@ -73,3 +74,20 @@ def test_local_conversion_preserves_the_instant():
     local_value = time_utils.to_local(utc_value, "Africa/Kampala")
     assert local_value.hour == 12
     assert local_value.astimezone(timezone.utc) == utc_value
+
+
+
+def test_log_formatter_emits_explicit_utc_iso_timestamp():
+    formatter = time_utils.UTCISOFormatter("%(asctime)s [%(levelname)s] %(message)s")
+    record = logging.LogRecord(
+        name="test.logger",
+        level=logging.INFO,
+        pathname="test.py",
+        lineno=1,
+        msg="timezone check",
+        args=(),
+        exc_info=None,
+    )
+    record.created = datetime(2026, 10, 25, 9, 0, 0, 123000, tzinfo=timezone.utc).timestamp()
+
+    assert formatter.format(record) == "2026-10-25T09:00:00.123Z [INFO] timezone check"
