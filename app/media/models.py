@@ -335,8 +335,8 @@ class MediaProcessingJob(BaseModel):
     celery_task_id = Column(String(64), nullable=True)
     job_type = Column(String(50), nullable=False)  # optimize, thumbnail, validate
     status = Column(String(20), nullable=False, default="queued")
-    started_at = Column(DateTime, nullable=True)
-    completed_at = Column(DateTime, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
     error = Column(Text, nullable=True)
     result = Column(JSON, nullable=True)
 
