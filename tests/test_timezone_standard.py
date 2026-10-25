@@ -70,3 +70,9 @@ def test_local_display_conversion_does_not_change_instant():
 def test_require_aware_rejects_naive_value():
     with pytest.raises(ValueError, match="timezone offset"):
         require_aware(datetime(2026, 10, 25, 9, 0))
+
+def test_postgresql_sessions_are_configured_for_utc():
+    from app.config import Config
+
+    options = Config.SQLALCHEMY_ENGINE_OPTIONS["connect_args"]["options"]
+    assert "-c timezone=UTC" in options
