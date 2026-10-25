@@ -136,7 +136,7 @@ class Config:
         "pool_recycle":     int(os.getenv("DB_POOL_RECYCLE",  "1800")),
         "pool_pre_ping":    True,
         "connect_args": {
-            "options": "-c lock_timeout=5000 -c statement_timeout=60000 -c idle_in_transaction_session_timeout=60000"
+            "options": "-c timezone=UTC -c lock_timeout=5000 -c statement_timeout=60000 -c idle_in_transaction_session_timeout=60000"
         }
     }
 
