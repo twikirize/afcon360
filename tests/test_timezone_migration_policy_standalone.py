@@ -49,6 +49,17 @@ def test_active_migration_graph_connects_current_draft_but_not_retired_db_revisi
     )
 
 
+def test_lineage_cli_blocks_retired_database_revision(capsys):
+    auditor = load_lineage_auditor()
+    result = auditor.main(["--database-revision", "df55cbe3f516"])
+    output = capsys.readouterr().out
+
+    assert result == 1
+    assert "Database revision 'df55cbe3f516' is NOT in the active graph" in output
+    assert "migrations/_retired_versions/df55cbe3f516_reconcile_organisation_classification_.py" in output
+    assert "RESULT: BLOCKED" in output
+
+
 def test_timestamp_semantics_register_records_unresolved_database_gates():
     register = source("docs/architecture/TIMESTAMP_SEMANTICS_REGISTER.md")
     assert "no database columns are approved for conversion" in register
