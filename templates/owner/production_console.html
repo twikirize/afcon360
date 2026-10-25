@@ -889,7 +889,7 @@
     function formatConsoleTimestamp(timestamp) {
         if (typeof timestamp !== 'string' || !timestamp.trim()) return 'TIME?';
         var raw = timestamp.trim();
-        if (!/(?:Z|[+-]\\d{2}:?\\d{2})$/i.test(raw)) return 'TZ?';
+        if (!/(?:Z|[+-][0-9]{2}:?[0-9]{2})$/i.test(raw)) return 'TZ?';
         var parsed = new Date(raw);
         if (!Number.isFinite(parsed.getTime())) return 'INVALID';
         return parsed.toLocaleTimeString(undefined, {
