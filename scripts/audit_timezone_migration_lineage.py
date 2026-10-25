@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ACTIVE_DIR = ROOT / "migrations" / "versions"
 RETIRED_DIR = ROOT / "migrations" / "_retired_versions"
 
-ASSIGNMENT = re.compile(r"(?m)^\s*(revision|down_revision)\s*=\s*(.*?)\s*(?:#.*)?$")
+ASSIGNMENT = re.compile(r"(?m)^[ \t]*(revision|down_revision)[ \t]*=[ \t]*(.*?)[ \t]*(?:#.*)?$")
 
 
 def _literal_assignments(source: str) -> dict[str, Any]:
