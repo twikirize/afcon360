@@ -17,7 +17,7 @@ from collections import deque
 from flask import has_request_context, request
 from app.extensions import redis_client, socketio
 from app.notifications.events.context import get_correlation_id
-from app.utils.time import to_iso_utc
+from app.utils.time import UTCISOFormatter, to_iso_utc
 from app.realtime import (
     is_bare_cli_invocation as _is_bare_cli_invocation,
     socketio_enabled,
@@ -421,7 +421,7 @@ def init_production_console_logging(app):
         return None
     handler = ProductionConsoleHandler()
     handler.setLevel(logging.DEBUG)
-    handler.setFormatter(logging.Formatter(
+    handler.setFormatter(UTCISOFormatter(
         "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     ))
     
