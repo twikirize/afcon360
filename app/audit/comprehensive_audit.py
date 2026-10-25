@@ -42,8 +42,8 @@ TransactionType = AuditTransactionType
 
 # Import AuditLog for role management logging.
 # Canonical declaration: app/audit/models.py (table audit_logs).
-# app/models/audit.py only declares ActivityLog (table activity_logs) and
-# must NOT be used for AuditLog imports.
+# app/models/audit.py (ActivityLog / activity_logs) was retired and deleted;
+# app.audit.models.AuditLog is the only audit model.
 from app.audit.models import AuditLog
 
 logger = logging.getLogger(__name__)
@@ -751,18 +751,56 @@ class AuditService:
             result = []
             for log in items:
                 meta = log.meta or {}
-                target_user = db.session.get(User, meta.get('target_user_id')) if meta else None
-                performed_by_user = db.session.get(User, log.user_id) if log.user_id else None
+
+                # Target user: prefer the legacy meta key, else resolve from
+                # the canonical resource_id column (public_id first, then
+                # numeric fallback) — that is where AuditLog.log()/log_instance()
+                # store the target.
+                target_user = None
+                if meta.get('target_user_id'):
+                    target_user = db.session.get(User, meta.get('target_user_id'))
+                elif log.resource_id:
+                    target_user = (
+                        db.session.query(User)
+                        .filter(User.public_id == str(log.resource_id))
+                        .first()
+                    )
+                    if target_user is None and str(log.resource_id).isdigit():
+                        target_user = db.session.get(User, int(log.resource_id))
+
+                performed_by_user = None
+                if log.user_id:
+                    performed_by_user = db.session.get(User, log.user_id)
+                elif log.actor is not None:
+                    performed_by_user = log.actor
+
+                # Role delta: legacy meta keys first, else the merged
+                # meta["changes"]["role"] = [old, new] structure written by
+                # the changes= parameter of AuditLog.log().
+                old_role = meta.get('old_role')
+                new_role = meta.get('new_role')
+                if old_role is None and new_role is None:
+                    role_delta = meta.get('changes')
+                    if isinstance(role_delta, dict):
+                        role_delta = role_delta.get('role')
+                    if isinstance(role_delta, (list, tuple)) and len(role_delta) == 2:
+                        old_role, new_role = role_delta
 
                 result.append({
                     'timestamp': log.created_at,
                     'action': log.action,
                     'target_user': target_user,
                     'performed_by_user': performed_by_user,
-                    'old_role': meta.get('old_role'),
-                    'new_role': meta.get('new_role'),
+                    'old_role': old_role,
+                    'new_role': new_role,
                     'reason': meta.get('reason'),
-                    'details': meta
+                    'details': meta,
+                    # Read-only aliases over canonical columns / meta
+                    'actor': log.actor,
+                    'target_type': log.target_type,
+                    'target_id': log.target_id,
+                    'changes': log.changes,
+                    'correlation_id': log.correlation_id,
                 })
 
             return pagination, result

@@ -246,3 +246,24 @@ def register_all_models():
         from app.geo.models import LocationObservation
     except ImportError as e:
         _record_failure("geo", e)
+    # Shared / cross-domain models (app/models/ package).
+    #
+    # Unlike app.<domain>.models, this package has no explicit import path
+    # elsewhere in the boot sequence — importing it here is what triggers
+    # app/models/__init__.py to execute, which is what puts PageViewAggregate,
+    # SystemConfig and the theme tables onto db.metadata for Alembic and
+    # db.create_all().
+    #
+    # If this import fails, the schema will be silently missing the shared
+    # tables (analytics_page_views, system_configs, *themes*). Wrapped in the
+    # same try/except as every other domain so _REGISTRATION_FAILURES records
+    # it and model_bootstrap refuses to build an incomplete schema.
+    try:
+        from app import models as shared_models  # noqa: F401
+    except ImportError as e:
+        _record_failure("shared_models", e)
+
+    try:
+        from app.auth.sessions import ServerSession  # noqa: F401
+    except ImportError as e:
+        _record_failure("auth", e)
