@@ -585,7 +585,7 @@
          ((event.exception.exception_type or '') ~ ' ' ~ (event.exception.exception_message or '') if event.exception else '') ~
          (' ' ~ event.task_name if event.task_name else '') ~
          (' ' ~ (event.frontend.action or '') ~ ' ' ~ (event.frontend.url or '') ~ ' ' ~ (event.frontend.selector or '') if event.frontend else '') }}">
-    <span class="log-time">{{ event.timestamp_display or event.timestamp[11:19] if event.timestamp else '' }}</span>
+    <time class="log-time" datetime="{{ event.timestamp or '' }}">{{ event.timestamp_display or event.timestamp[11:19] if event.timestamp else 'TZ?' }}</time>
     <span class="log-severity {{ event.severity or 'INFO' }}">{{ event.severity or 'INFO' }}</span>
     <span class="log-category {{ event.category or 'GENERAL' }}">{{ event.category or 'GENERAL' }}</span>
     <span class="log-message">
@@ -883,6 +883,32 @@
         // Could add a toast notification here
         console.warn('Console banner:', msg);
     }
+
+    // Only convert absolute timestamps with an explicit UTC offset. Legacy
+    // naive values are labelled rather than guessed to be UTC or browser-local.
+    function formatConsoleTimestamp(timestamp) {
+        if (typeof timestamp !== 'string' || !timestamp.trim()) return 'TIME?';
+        var raw = timestamp.trim();
+        if (!/(?:Z|[+-]\\d{2}:?\\d{2})$/i.test(raw)) return 'TZ?';
+        var parsed = new Date(raw);
+        if (!Number.isFinite(parsed.getTime())) return 'INVALID';
+        return parsed.toLocaleTimeString(undefined, {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hourCycle: 'h23'
+        });
+    }
+
+    function localizeExistingTimestamps() {
+        document.querySelectorAll('#consoleOutput .log-time[datetime]').forEach(function(element) {
+            var raw = element.getAttribute('datetime') || '';
+            element.textContent = formatConsoleTimestamp(raw);
+            element.title = raw
+                ? 'Source timestamp: ' + raw + ' (displayed in browser local time)'
+                : 'Timestamp is missing; timezone cannot be determined';
+        });
+    }
     
     function renderLogLine(event) {
         var line = document.createElement('div');
@@ -897,7 +923,7 @@
             (event.task_name ? ' ' + event.task_name : '') +
             (event.frontend ? ' ' + (event.frontend.action || '') + ' ' + (event.frontend.url || '') + ' ' + (event.frontend.selector || '') : '');
         
-        var time = event.timestamp_display || new Date(event.timestamp).toLocaleTimeString();
+        var time = formatConsoleTimestamp(event.timestamp);
         var severity = event.severity || 'INFO';
         var category = event.category || 'GENERAL';
         var message = escapeHtml(event.message || '');
@@ -941,11 +967,19 @@
         }
         
         line.innerHTML = 
-            '<span class="log-time">' + time + '</span>' +
+            '<time class="log-time">' + escapeHtml(time) + '</time>' +
             '<span class="log-severity ' + severity + '">' + severity + '</span>' +
             '<span class="log-category">' + category + '</span>' +
             '<span class="log-message">' + fullMessage + '</span>';
         
+        var timeElement = line.querySelector('.log-time');
+        if (typeof event.timestamp === 'string') {
+            timeElement.setAttribute('datetime', event.timestamp);
+            timeElement.title = 'Source timestamp: ' + event.timestamp + ' (displayed in browser local time)';
+        } else {
+            timeElement.title = 'Timestamp is missing; timezone cannot be determined';
+        }
+
         // Add click handler for errors
         if (event.exception || severity === 'ERROR' || severity === 'CRITICAL') {
             line.style.cursor = 'pointer';
@@ -1126,6 +1160,7 @@
     
     // Event listeners
     document.addEventListener('DOMContentLoaded', function() {
+        localizeExistingTimestamps();
         {% if socketio_enabled %}
         initSocket();
         {% else %}
