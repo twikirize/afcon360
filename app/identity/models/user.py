@@ -83,21 +83,21 @@ class User(UserMixin, ProtectedModel):
     email = Column(String(255), unique=True, nullable=False)
     phone = Column(String(32), unique=True, nullable=True)
     password_hash = Column(String(512), nullable=False)
-    password_changed_at = Column(DateTime, nullable=True)
-    password_expires_at = Column(DateTime, nullable=True)
+    password_changed_at = Column(DateTime(timezone=True), nullable=True)
+    password_expires_at = Column(DateTime(timezone=True), nullable=True)
 
     # Lifecycle flags
     is_verified = Column(Boolean, default=False, nullable=False)
     email_verified = Column(Boolean, default=False, nullable=True, server_default='f')
     phone_verified = Column(Boolean, default=False, nullable=True, server_default='f')
-    email_verified_at = Column(DateTime, nullable=True)
-    phone_verified_at = Column(DateTime, nullable=True)
-    activated_at = Column(DateTime, nullable=True)
+    email_verified_at = Column(DateTime(timezone=True), nullable=True)
+    phone_verified_at = Column(DateTime(timezone=True), nullable=True)
+    activated_at = Column(DateTime(timezone=True), nullable=True)
     is_deleted = Column(Boolean, default=False, nullable=False, )
-    deleted_at = Column(DateTime, nullable=True, index=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     is_active = Column(Boolean, default=False, nullable=False)
-    locked_until = Column(DateTime, nullable=True)
-    last_login = Column(DateTime, nullable=True)
+    locked_until = Column(DateTime(timezone=True), nullable=True)
+    last_login = Column(DateTime(timezone=True), nullable=True)
     mfa_enabled = Column(Boolean, default=False, nullable=False)
 
     # Agent (Authorized Cash Agent) flags - agents ARE users with this flag set.
@@ -107,7 +107,7 @@ class User(UserMixin, ProtectedModel):
     # Transaction PIN (hashed) + anti-brute-force fields
     transaction_pin_hash = Column(String(512), nullable=True)
     transaction_pin_failed_attempts = Column(BigInteger, default=0, nullable=False)
-    transaction_pin_locked_until = Column(DateTime, nullable=True, index=True)
+    transaction_pin_locked_until = Column(DateTime(timezone=True), nullable=True, index=True)
 
     # KYC / login state
     kyc_level = Column(BigInteger, default=0, nullable=False)
@@ -124,10 +124,10 @@ class User(UserMixin, ProtectedModel):
     can_be_deleted_by = Column(String(50), nullable=True, default="owner_only")  # "owner_only" or "secops_approval"
 
     # Emergency Access Tracking (for break-glass procedures)
-    emergency_access_granted = Column(DateTime, nullable=True)  # When emergency access was granted
+    emergency_access_granted = Column(DateTime(timezone=True), nullable=True)  # When emergency access was granted
     emergency_access_granted_by = Column(BigInteger, ForeignKey('users.id'), nullable=True)  # Who granted it
     emergency_access_reason = Column(String(255), nullable=True)  # Why access was granted
-    emergency_access_expires = Column(DateTime, nullable=True)  # When access expires
+    emergency_access_expires = Column(DateTime(timezone=True), nullable=True)  # When access expires
 
     # Default organisation - use_alter=True prevents circular dependency on table creation
     default_org_id = Column(
@@ -1009,7 +1009,7 @@ class UserRole(ProtectedModel):
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True, index=True
     )
-    assigned_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    assigned_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     user = relationship(
         "User", foreign_keys=[user_id], back_populates="roles", lazy="joined"
@@ -1042,8 +1042,8 @@ class MFASecret(ProtectedModel):
     # Enhanced MFA fields
     backup_codes = Column(Text, nullable=True)  # Encrypted JSON backup codes
     device_name = Column(String(100), nullable=True)
-    last_used = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    last_used = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     user = relationship("User", back_populates="mfa_secrets", lazy="joined")
 
@@ -1109,8 +1109,8 @@ class Session(ProtectedModel):
     device_id = Column(String(128), index=True, info={"id_kind": IDKind.EXTERNAL_STRING_ID})
     ip = Column(String(64), index=True)
     user_agent = Column(String(512))
-    expires_at = Column(DateTime, nullable=False, index=True)
-    revoked_at = Column(DateTime, nullable=True, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
     revoked_reason = Column(String(255))
 
     user = relationship("User", back_populates="sessions", lazy="joined")
@@ -1130,7 +1130,7 @@ class APIKey(ProtectedModel):
     owner_type = Column(String(32), nullable=False)
     owner_id = Column(BigInteger, nullable=False)
     scopes = Column(JSON, nullable=False, default=dict)
-    revoked_at = Column(DateTime, nullable=True, index=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
     __table_args__ = (
         UniqueConstraint("key_id", "owner_type", name="uq_apikey_keyid_ownertype"),
