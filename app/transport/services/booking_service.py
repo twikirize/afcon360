@@ -517,17 +517,54 @@ class BookingService:
             # unexplainable. Same engine, same inputs — no price change.
             _applied_surge = _estimate["surge_multiplier"]
 
+            from zoneinfo import ZoneInfo
+
+            # Resolve the app zone once, from config. Never from the
+            # machine's local timezone, and never implicitly UTC — both
+            # are silent-bug factories.
+            _APP_TZ_NAME = current_app.config.get('APP_TZ', 'Africa/Nairobi')
+            _APP_TZ = ZoneInfo(_APP_TZ_NAME)
+
+            booking_mode = (sanitized_data.get('booking_mode') or 'instant').strip().lower()
+            if booking_mode not in ('instant', 'scheduled'):
+                raise ValidationError(
+                    message="booking_mode must be 'instant' or 'scheduled'",
+                    field="booking_mode",
+                )
+
             try:
                 raw = sanitized_data["pickup_time"]
                 pickup_time = datetime.fromisoformat(str(raw))
                 if pickup_time.tzinfo is None:
-                    # Assume deployment-local TZ; Postgres TIMESTAMPTZ would
-                    # otherwise coerce via the DB session TZ, which differs
-                    # between dev and prod for the same naive input string.
-                    local_tz = datetime.now().astimezone().tzinfo
-                    pickup_time = pickup_time.replace(tzinfo=local_tz)
+                    # Naive input is interpreted as the configured app zone —
+                    # the contract the form posts under. Never machine-local,
+                    # never UTC by accident.
+                    pickup_time = pickup_time.replace(tzinfo=_APP_TZ)
             except (ValueError, TypeError, KeyError):
+                # No pickup_time in the request.
+                if booking_mode == 'scheduled':
+                    raise ValidationError(
+                        message="Scheduled pickups require an explicit pickup_time",
+                        field="pickup_time",
+                    )
+                # Instant: default to "right now". The ck_pickup_time_sane
+                # constraint (5-min grace) absorbs any processing latency.
                 pickup_time = datetime.now(timezone.utc)
+
+            # Mode-specific validation. The scheduled lead-time rule lives
+            # here, where booking_mode is known. The DB constraint
+            # (ck_pickup_time_sane) stays universal — it catches
+            # clearly-past bookings regardless of mode.
+            if booking_mode == 'scheduled':
+                minimum_lead = datetime.now(timezone.utc) + timedelta(minutes=15)
+                if pickup_time < minimum_lead:
+                    raise ValidationError(
+                        message=(
+                            "Scheduled pickups must be at least 15 minutes from now. "
+                            "For an immediate ride, choose 'Now'."
+                        ),
+                        field="pickup_time",
+                    )
 
             special_req = sanitized_data.get("special_requirements") or {}
             if isinstance(special_req, str):
@@ -566,6 +603,7 @@ class BookingService:
                     "distance_km": float(distance_for_fare)
                     if distance_for_fare is not None else None,
                     "distance_basis": distance_basis,
+                    "booking_mode": booking_mode,  # 'instant' | 'scheduled'
                 }
             )
 

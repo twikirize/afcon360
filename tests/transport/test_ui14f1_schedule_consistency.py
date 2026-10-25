@@ -42,14 +42,17 @@ def test_schedule_validity_helper_exists():
 
 def test_schedule_validity_rejects_past_times():
     """UI-14-F2: a parseable but already-past scheduled time is not
-    committable. No minimum advance interval — any future time passes."""
+    committable. UI-14-LEAD: the same gate enforces the 15-minute
+    minimum advance mirrored from the server's scheduled branch."""
     text = _template()
     assert "if (d.getTime() <= Date.now()) return false;" in text
+    assert "return d.getTime() > Date.now() + SCHED_MIN_LEAD_MS;" in text
+    assert "var SCHED_MIN_LEAD_MS = 15 * 60 * 1000;" in text
 
 
 def test_disabled_reason_directs_past_selection_to_future_time():
     text = _template()
-    assert ("'Choose a pickup time in the future to continue.'") in text
+    assert ("'Choose a pickup time at least 15 minutes from now.'") in text
 
 
 def test_find_a_ride_gate_requires_valid_schedule():

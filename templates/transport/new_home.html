@@ -820,6 +820,7 @@
   <input type="hidden" name="passenger_count"   id="hPassengerCount" value="1">
   <input type="hidden" name="luggage_count"     id="hLuggageCount"   value="0">
   <input type="hidden" name="pickup_time"       id="hPickupTime"     value="">
+  <input type="hidden" name="booking_mode"      id="hBookingMode"    value="instant">
   <input type="hidden" name="vehicle_class"     id="hVehicleClass"   value="">
   <input type="hidden" name="payment_method"    id="hPayment"        value="cash">
   <input type="hidden" name="dropoff_location"  id="hDropoff"        value="{{ dropoff_value }}">
@@ -1360,6 +1361,7 @@
   var hPickupTime  = document.getElementById('hPickupTime');
   var hVehicleCls  = document.getElementById('hVehicleClass');
   var hServiceType = document.getElementById('hServiceType');
+  var hBookingMode = document.getElementById('hBookingMode');
   var tripMeta     = document.getElementById('tripMeta');
   var farePanel    = document.getElementById('farePanel');
   var fbBase       = document.getElementById('fbBase');
@@ -1454,19 +1456,21 @@
   }
   // UI-14-F1: Later requires a non-empty, parseable scheduled time.
   // Validity mirrors the server contract (pickup_time must be valid
-  // ISO-8601); no new lead-time or timezone policy is introduced here.
-  // UI-14-F2: the time must also still lie in the future — a scheduled
-  // pickup that is already in the past cannot be honored. Any future
-  // time is accepted; there is no minimum advance-booking interval.
-  // Client-side only: server-side rejection of past pickup_time values
-  // remains deferred to a separate workstream.
+  // ISO-8601); no timezone policy is introduced here.
+  // UI-14-F2: the time must also lie in the future — a scheduled
+  // pickup that is already in the past cannot be honored.
+  // UI-14-LEAD: a scheduled pickup must be at least 15 minutes out,
+  // mirroring the server rule in booking_service.create_booking
+  // (scheduled branch). Without this mirror, every gate passes a
+  // +5-minute selection that the backend then rejects at Confirm.
+  var SCHED_MIN_LEAD_MS = 15 * 60 * 1000;
   function isScheduleValid(){
     if (state.schedule !== 'later') return true;
     var v = schedAt ? schedAt.value : '';
     if (!v) return false;
     var d = new Date(v);
     if (isNaN(d.getTime())) return false;
-    return d.getTime() > Date.now();
+    return d.getTime() > Date.now() + SCHED_MIN_LEAD_MS;
   }
   function syncReviewGate(){
     // Review may only be reachable with a committable schedule. Never
@@ -1508,7 +1512,7 @@
     else if (!isPickupResolved()) msg = 'Select a pickup to continue – use GPS or tap the map.';
     else if (!isDropoffResolved()) msg = 'Select destination on the map to continue – chips set text only.';
     else if (!isScheduleValid()) msg = (state.schedule === 'later' && schedAt && schedAt.value)
-      ? 'Choose a pickup time in the future to continue.'
+      ? 'Choose a pickup time at least 15 minutes from now.'
       : 'Select a scheduled time to continue.';
     continueDisabledReason.textContent = msg;
     btnContinue.setAttribute('title', msg);
@@ -1523,6 +1527,11 @@
     schedLaterBtn.setAttribute('aria-pressed', mode === 'later');
     schedAt.classList.toggle('is-visible', mode === 'later');
     if (mode === 'later') schedAt.focus();
+    // Persist the mode for the backend. This is the signal the server
+    // needs to distinguish "instant with processing latency" from
+    // "scheduled pickup". Without it, only `pickup_time` reaches the
+    // server and every constraint has to guess.
+    if (hBookingMode) hBookingMode.value = (mode === 'later') ? 'scheduled' : 'instant';
     // UI-14-F1: a mode change can invalidate the schedule — both the
     // Find a Ride gate and the Review gate must follow immediately.
     validateA();

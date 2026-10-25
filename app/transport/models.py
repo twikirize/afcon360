@@ -200,7 +200,7 @@ class DriverProfile(TransportBase, AuditMixin):
         # Foreign key constraints
         ForeignKeyConstraint(
             ["user_id"], ["users.id"],
-            ondelete="CASCADE",
+            ondelete="RESTRICT",
             name="fk_driver_user"
         ),
 
