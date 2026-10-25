@@ -9,6 +9,7 @@ Contract:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -125,3 +126,13 @@ def to_iso_utc(value: datetime, *, field_name: str = "datetime") -> str:
 def to_local(value: datetime, timezone_name: str) -> datetime:
     """Convert an aware instant to a requested IANA timezone for display."""
     return to_utc(value).astimezone(_resolve_zone(timezone_name, field_name="timezone_name"))
+
+
+class UTCISOFormatter(logging.Formatter):
+    """Format application log timestamps as ISO-8601 UTC, independent of host TZ."""
+
+    def formatTime(self, record, datefmt=None):
+        moment = datetime.fromtimestamp(record.created, tz=UTC)
+        if datefmt:
+            return moment.strftime(datefmt)
+        return moment.isoformat(timespec="milliseconds").replace("+00:00", "Z")
