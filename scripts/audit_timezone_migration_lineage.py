@@ -122,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
         "--database-revision",
         help="revision value reported by a separately obtained alembic_version query",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     graph, issues = load_active_graph()
     if not graph:
