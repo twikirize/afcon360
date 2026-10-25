@@ -12,11 +12,12 @@ this module only validates scope/shape parameters.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from app.geo.models import LocationObservation
 from app.geo.realtime import ENTITY_TYPES
+from app.utils.time import parse_datetime_to_utc
 
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 500
@@ -25,18 +26,10 @@ MAX_LIMIT = 500
 def _parse_bound(value: Any, name: str) -> Optional[datetime]:
     if value is None:
         return None
-    if isinstance(value, datetime):
-        bound = value
-    elif isinstance(value, str) and value.strip():
-        try:
-            bound = datetime.fromisoformat(value.strip())
-        except ValueError:
-            raise ValueError(f"Invalid {name}: not ISO-8601") from None
-    else:
-        raise ValueError(f"Invalid {name}: must be ISO-8601 string")
-    if bound.tzinfo is None:
-        bound = bound.replace(tzinfo=timezone.utc)
-    return bound
+    try:
+        return parse_datetime_to_utc(value, field_name=name)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid {name}: {exc}") from None
 
 
 def get_observations(entity_type: str, public_ref: str, *,
