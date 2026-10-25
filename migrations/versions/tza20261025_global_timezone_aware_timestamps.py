@@ -29,6 +29,12 @@ down_revision = "1792869659"
 branch_labels = None
 depends_on = None
 
+# This list must be populated only from a reviewed read-only audit of the exact
+# target database plus evidence that every listed legacy value was stored as
+# UTC. Empty means the migration refuses to convert any existing naive column.
+# Format: (schema_name, table_name, column_name).
+APPROVED_LEGACY_UTC_COLUMNS: frozenset[tuple[str, str, str]] = frozenset()
+
 
 def _naive_timestamp_columns(connection):
     """Return application-table timestamp columns without timezone."""
@@ -79,6 +85,27 @@ def upgrade():
     op.execute("SET LOCAL TIME ZONE 'UTC'")
 
     rows = _naive_timestamp_columns(connection)
+    discovered = {
+        (row["schema_name"], row["table_name"], row["column_name"])
+        for row in rows
+    }
+
+    # A runtime boolean alone is too weak: it could approve columns discovered
+    # after the read-only audit or on a different database. Require an exact
+    # match to an inventory that reviewers have put in this migration.
+    if discovered != APPROVED_LEGACY_UTC_COLUMNS:
+        unapproved = sorted(discovered - APPROVED_LEGACY_UTC_COLUMNS)
+        missing_from_database = sorted(APPROVED_LEGACY_UTC_COLUMNS - discovered)
+        raise RuntimeError(
+            "Timezone migration refused: the target database's naive timestamp "
+            "inventory does not exactly match the reviewed migration allowlist. "
+            f"Unapproved columns: {unapproved!r}; approved columns absent from "
+            f"target: {missing_from_database!r}. Run the read-only audit against "
+            "this exact database, verify each column's historical meaning, then "
+            "update APPROVED_LEGACY_UTC_COLUMNS in a reviewed commit. Do not "
+            "populate the list from the migration's own live discovery alone."
+        )
+
     preparer = connection.dialect.identifier_preparer
 
     for row in rows:
