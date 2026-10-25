@@ -22,7 +22,7 @@ def test_console_uses_timestamp_as_source_of_truth_and_localizes_in_browser():
     assert "localizeExistingTimestamps();" in template
     assert "event.timestamp_display || new Date(event.timestamp).toLocaleTimeString()" not in template
     assert 'datetime="{{ event.timestamp or \'\' }}"' in template
-    assert "if (!/(?:Z|[+-]\\\\d{2}:?\\\\d{2})$/i.test(raw)) return 'TZ?';" in template
+    assert "if (!/(?:Z|[+-][0-9]{2}:?[0-9]{2})$/i.test(raw)) return 'TZ?';" in template
 
 
 def test_application_logging_uses_utc_iso_formatter():
