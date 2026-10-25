@@ -9,7 +9,7 @@
 | Path | Finding addressed | Current contract |
 |---|---|---|
 | `app/production_console/streaming.py` and `templates/owner/production_console.html` | New console events exposed an ISO timestamp but the UI preferred a time-only UTC string without its timezone. | New events carry offset-qualified UTC timestamps; the browser localizes only a timestamp whose timezone is explicit. A legacy value without an offset is shown as unknown (`TZ?`), not guessed. |
-| `app/__init__.py` and `app/utils/time.py` | Default application logs used a formatter whose displayed timezone depended on the host. | The configured root log formatter emits UTC ISO-8601 timestamps ending in `Z`. Other independently configured logging handlers still require separate review. |
+| `app/__init__.py`, `app.py`, `app/notifications/events/stream_consumer.py`, `app/production_console/streaming.py`, and `app/utils/time.py` | Default/standalone logging entry points could use host-local `asctime` output or leave preconfigured handlers unchanged. | The shared UTC ISO formatter is applied to preconfigured root stream handlers, the app factory, stream consumer, and production console; the root bootstrap entry point uses an explicit UTC formatter before importing Flask. Other custom handlers and external process supervisors still require review. |
 | `app/geo/history.py` | History query bounds previously treated naive values as UTC. | Bounds now pass through `parse_datetime_to_utc`; callers must send an offset-qualified instant. |
 | `app/geo/activity.py` | Activity/demand windows previously attached UTC to naive values. | Both bounds now pass through the shared parser and normalize to UTC. |
 | `app/geo/validation.py` | Location payload timestamps could be parsed without a timezone; freshness checking then attached UTC. | Payload timestamps require an explicit offset and normalize to UTC. A manually supplied naive point timestamp is not considered fresh. |
@@ -43,7 +43,9 @@ See [`TIMESTAMP_SEMANTICS_REGISTER.md`](TIMESTAMP_SEMANTICS_REGISTER.md) for the
 
 ## Current disposition
 
-- UTC primitives, PostgreSQL session UTC setting, broad model declarations, guarded migration, console formatting, and a focused GEO parser pass are present on the draft branch.
+- UTC primitives, PostgreSQL session UTC setting, broad model declarations, a guarded migration with separate UTC/wall-clock inventories, console formatting, a source-only migration-lineage auditor, and a focused GEO parser pass are present on the draft branch.
+- The source lineage is structurally `h3a20261020` → `c076b257b11d` → `1792869659` → `tza20261025`, but `h3a20261020` is physically in the active migration directory with `down_revision=None` despite a stale docstring saying it is isolated. The recorded `df55cbe3f516` database checkpoint is in the retired-version directory, so the target's active-chain compatibility is unresolved and remains a hard gate.
+- The evidence-based early classification is in `docs/architecture/TIMESTAMP_SEMANTICS_REGISTER.md`; both migration allowlists remain empty. No column is yet approved for conversion.
 - Unit/source-contract workflow success is not proof of application-wide adoption, browser behavior, populated-data migration safety, or database parity.
 - No production database was changed and no migration was run by this source work.
 - Keep the pull request draft/open until the remaining runtime audit, migration lineage, populated-clone tests, and recovery gates are closed.
