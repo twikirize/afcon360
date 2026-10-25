@@ -16,7 +16,7 @@ class OrganisationController(BaseModel):
     added_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
 
     role = Column(String(64))
-    appointed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    appointed_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     organisation = relationship(
         "Organisation",
