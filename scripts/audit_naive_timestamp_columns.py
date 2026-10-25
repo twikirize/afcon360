@@ -86,10 +86,10 @@ def main() -> int:
     )
     try:
         with engine.connect() as conn:
-            # Catalog and setting queries are executed inside an explicit
-            # read-only transaction; no row ranges are scanned.
-            conn.exec_driver_sql("BEGIN READ ONLY")
-            try:
+            # Catalog and setting queries run inside a read-only transaction;
+            # no row ranges are scanned and no schema/data writes are issued.
+            with conn.begin():
+                conn.exec_driver_sql("SET TRANSACTION READ ONLY")
                 identity = conn.execute(
                     text(
                         "SELECT current_database() AS database_name, "
@@ -115,8 +115,6 @@ def main() -> int:
                     ),
                 }
                 print(json.dumps(report, indent=2, default=str))
-            finally:
-                conn.exec_driver_sql("ROLLBACK")
     except Exception as exc:
         print(
             f"ERROR: read-only timezone audit failed "
