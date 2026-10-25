@@ -21,7 +21,7 @@ def test_console_uses_timestamp_as_source_of_truth_and_localizes_in_browser():
     assert "var time = formatConsoleTimestamp(event.timestamp);" in template
     assert "localizeExistingTimestamps();" in template
     assert "event.timestamp_display || new Date(event.timestamp).toLocaleTimeString()" not in template
-    assert 'datetime="{{ event.timestamp or \'\' }}"' in template
+    assert "datetime=\"{{ event.timestamp or '' }}\"" in template
     assert "if (!/(?:Z|[+-][0-9]{2}:?[0-9]{2})$/i.test(raw)) return 'TZ?';" in template
 
 
