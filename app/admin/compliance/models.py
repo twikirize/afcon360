@@ -93,26 +93,26 @@ class ComplianceCase(db.Model):
     
     # Assignment
     assigned_to = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=True, index=True)
-    assigned_at = db.Column(db.DateTime, nullable=True)
+    assigned_at = db.Column(db.DateTime(timezone=True), nullable=True)
     
     # Escalation
     escalated_from = db.Column(db.BigInteger, nullable=True)  # User ID who escalated
-    escalated_at = db.Column(db.DateTime, nullable=True)
+    escalated_at = db.Column(db.DateTime(timezone=True), nullable=True)
     escalation_reason = db.Column(db.Text)
     
     # SLA tracking
-    sla_due_at = db.Column(db.DateTime, nullable=True, index=True)
+    sla_due_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
     sla_priority = db.Column(db.Enum(ComplianceCasePriority), nullable=True)
     
     # Resolution
     resolution = db.Column(db.Text)
-    resolved_at = db.Column(db.DateTime, nullable=True)
+    resolved_at = db.Column(db.DateTime(timezone=True), nullable=True)
     resolved_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=True)
     
     # Audit
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     created_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     
     # Relationships - Fixed to specify foreign_keys to avoid ambiguity
     user = db.relationship('User', foreign_keys=[user_id], backref='compliance_cases_user')
@@ -155,10 +155,10 @@ class ComplianceCaseNote(db.Model):
     content = db.Column(db.Text, nullable=False)
 
     # Timestamps + soft delete (BigInteger/UUID/soft-delete conventions)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     is_deleted = db.Column(db.Boolean, default=False, nullable=False)
-    deleted_at = db.Column(db.DateTime, nullable=True)
+    deleted_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     case = db.relationship('ComplianceCase', foreign_keys=[case_id], backref='case_notes')
     author = db.relationship('User', foreign_keys=[author_id], backref='compliance_case_notes_author')
@@ -197,17 +197,17 @@ class DataSubjectRequest(db.Model):
     # Verification
     identity_verified = db.Column(db.Boolean, default=False, nullable=False)
     verification_method = db.Column(db.String(100))
-    verified_at = db.Column(db.DateTime, nullable=True)
+    verified_at = db.Column(db.DateTime(timezone=True), nullable=True)
     verified_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=True)
     
     # Processing
     assigned_to = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=True, index=True)
-    assigned_at = db.Column(db.DateTime, nullable=True)
+    assigned_at = db.Column(db.DateTime(timezone=True), nullable=True)
     
     # Response
     response = db.Column(db.Text)
     response_data = db.Column(db.Text)  # JSON string of response data
-    completed_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     rejection_reason = db.Column(db.Text)
     
     # Legal basis
@@ -216,12 +216,12 @@ class DataSubjectRequest(db.Model):
     exemption_reason = db.Column(db.Text)
     
     # SLA
-    sla_due_at = db.Column(db.DateTime, nullable=True, index=True)
+    sla_due_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
     
     # Audit
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     created_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     
     # Relationships
     user = db.relationship('User', foreign_keys=[user_id], backref='data_subject_requests')
@@ -251,8 +251,8 @@ class ComplianceReport(db.Model):
     
     # Report parameters
     parameters = db.Column(db.Text)  # JSON string of report parameters
-    date_range_start = db.Column(db.DateTime, nullable=True)
-    date_range_end = db.Column(db.DateTime, nullable=True)
+    date_range_start = db.Column(db.DateTime(timezone=True), nullable=True)
+    date_range_end = db.Column(db.DateTime(timezone=True), nullable=True)
     
     # Report content
     report_data = db.Column(db.Text)  # JSON string of report data
@@ -270,18 +270,18 @@ class ComplianceReport(db.Model):
     
     # Review and approval
     reviewed_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=True)
-    reviewed_at = db.Column(db.DateTime, nullable=True)
+    reviewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     approved_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=True)
-    approved_at = db.Column(db.DateTime, nullable=True)
+    approved_at = db.Column(db.DateTime(timezone=True), nullable=True)
     
     # Distribution
     distributed_to = db.Column(db.Text)  # JSON string of recipient list
-    distributed_at = db.Column(db.DateTime, nullable=True)
+    distributed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     
     # Audit
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     created_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     
     # Relationships
     reviewer = db.relationship('User', foreign_keys=[reviewed_by], backref='reviewed_compliance_reports')

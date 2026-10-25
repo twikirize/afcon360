@@ -39,8 +39,8 @@ class FanProfile(BaseModel):
     social_features_enabled = db.Column(db.Boolean, default=True)
 
     # Additional timestamps (BaseModel provides created_at, updated_at)
-    activated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    deactivated_at = db.Column(db.DateTime, nullable=True)
+    activated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    deactivated_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     # Relationship back to User
     user = db.relationship(
@@ -96,7 +96,7 @@ class UserDashboardContext(BaseModel):
     )
 
     current_mode = db.Column(db.String(20), default='standard', nullable=False)
-    last_updated = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    last_updated = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     user = db.relationship(
         'User',

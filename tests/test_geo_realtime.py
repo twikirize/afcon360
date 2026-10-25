@@ -62,6 +62,19 @@ def test_envelope_marks_stale_reading_without_refreshing_it():
     assert event["observed_at"] == old.isoformat()
 
 
+def test_envelope_rejects_naive_timestamp_and_clock():
+    with pytest.raises(ValidationError, match="timezone offset"):
+        build_location_event("driver", "DRV-ABC123", {
+            "latitude": LAT, "longitude": LNG,
+            "timestamp": "2026-10-25T12:00:00",
+        })
+    with pytest.raises(ValueError, match="timezone-aware"):
+        build_location_event(
+            "driver", "DRV-ABC123", _location(),
+            now=datetime(2026, 10, 25, 12, 0, 0),
+        )
+
+
 def test_envelope_rejects_invalid_coordinates():
     with pytest.raises(ValidationError):
         build_location_event("driver", "DRV-ABC123",
@@ -125,6 +138,11 @@ def test_parse_round_trip():
                 "entity_type": "driver", "public_ref": "D",
                 "latitude": LAT, "longitude": LNG,
                 "observed_at": "", "age_s": 1.0, "fresh": "yes"}),
+    json.dumps({"version": 1, "event": EVENT_LOCATION_UPDATED,
+                "entity_type": "driver", "public_ref": "D",
+                "latitude": LAT, "longitude": LNG,
+                "observed_at": "2026-10-25T12:00:00",
+                "age_s": 1.0, "fresh": True}),
 ])
 def test_parse_rejects_malformed(raw):
     assert parse_location_event(raw) is None

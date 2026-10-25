@@ -11,14 +11,16 @@ print("FLASK_ENV =", os.getenv("FLASK_ENV"))
 print("REDIS_URL set:", bool(os.getenv("REDIS_URL")))
 
 
-# Setup logging to show errors in console
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[
-        logging.StreamHandler()  # This sends logs to console/shell
-    ]
+# Setup logging in UTC even before the Flask package is imported.
+# The app factory replaces this with the shared millisecond UTC formatter later.
+_utc_formatter = logging.Formatter(
+    '%(asctime)sZ [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%dT%H:%M:%S',
 )
+_utc_formatter.converter = time.gmtime
+_console_handler = logging.StreamHandler()
+_console_handler.setFormatter(_utc_formatter)
+logging.basicConfig(level=logging.INFO, handlers=[_console_handler])
 logger = logging.getLogger(__name__)
 
 # Only show path debug when troubleshooting (set SHOW_PATH_DEBUG=true)

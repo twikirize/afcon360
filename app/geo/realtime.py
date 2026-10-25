@@ -37,6 +37,7 @@ import gevent
 
 from app.geo.services import LOCATION_TTL_SECONDS
 from app.geo.validation import is_fresh, normalize_location_payload
+from app.utils.time import parse_datetime_to_utc, to_iso_utc, to_utc
 
 logger = logging.getLogger(__name__)
 
@@ -90,9 +91,11 @@ def build_location_event(entity_type: str, public_ref: str,
     # instead of publishing a lie.
     point = normalize_location_payload(location)
 
-    ref = now or datetime.now(timezone.utc)
-    if ref.tzinfo is None:
-        ref = ref.replace(tzinfo=timezone.utc)
+    ref = now if now is not None else datetime.now(timezone.utc)
+    try:
+        ref = to_utc(ref, field_name="now")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"now must be timezone-aware: {exc}") from None
     # A payload without a timestamp describes state as of publish time;
     # the envelope always carries an explicit observed_at, never a
     # refreshed copy of a stale reading.
@@ -145,6 +148,12 @@ def parse_location_event(raw: Any) -> Optional[Dict[str, Any]]:
         })
         observed_at = payload.get("observed_at")
         if not isinstance(observed_at, str) or not observed_at.strip():
+            return None
+        try:
+            observed_at = to_iso_utc(
+                parse_datetime_to_utc(observed_at, field_name="observed_at")
+            )
+        except (TypeError, ValueError):
             return None
         try:
             age_s = float(payload.get("age_s", 0.0))

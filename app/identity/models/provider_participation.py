@@ -139,8 +139,8 @@ class ProviderParticipation(BaseModel):
         default=ProviderCapabilityStatus.INTENT.value,
     )
 
-    activated_at = Column(DateTime, nullable=True)
-    verified_at = Column(DateTime, nullable=True)
+    activated_at = Column(DateTime(timezone=True), nullable=True)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
 
     meta = Column(JSON, nullable=False, default=dict)
 

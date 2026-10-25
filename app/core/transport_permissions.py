@@ -96,14 +96,14 @@ class TransportPermission(db.Model):
         comment="User who granted this permission (for audit)",
     )
     granted_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
         server_default=func.now(),
         comment="When the permission was granted",
     )
     expires_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=True,
         comment="When it auto-revokes (NULL = never expires)",
     )

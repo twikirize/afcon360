@@ -184,7 +184,7 @@ class OrgUserRole(BaseModel):
     organisation_member_id = Column(BigInteger, ForeignKey("organisation_members.id", ondelete="CASCADE"), nullable=False)
     role_id                = Column(BigInteger, ForeignKey("org_roles.id",            ondelete="CASCADE"), nullable=False, index=True)
     assigned_by            = Column(BigInteger, ForeignKey("users.id",                ondelete="SET NULL"), nullable=True,  index=True)
-    assigned_at            = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    assigned_at            = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     organisation_member = relationship("OrganisationMember", back_populates="roles",         lazy="joined")
     role                = relationship("OrgRole",            lazy="joined")
@@ -318,7 +318,7 @@ class OrgMemberPermission(BaseModel):
     permission_id = Column(BigInteger, ForeignKey("permissions.id",          ondelete="CASCADE"), nullable=False, index=True)
     granted       = Column(Boolean, default=True, nullable=False)   # True = grant, False = explicit deny
     granted_by    = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    granted_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    granted_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     member     = relationship("OrganisationMember", back_populates="direct_permissions")
     permission = relationship("Permission")

@@ -17,6 +17,7 @@ from collections import deque
 from flask import has_request_context, request
 from app.extensions import redis_client, socketio
 from app.notifications.events.context import get_correlation_id
+from app.utils.time import UTCISOFormatter, to_iso_utc
 from app.realtime import (
     is_bare_cli_invocation as _is_bare_cli_invocation,
     socketio_enabled,
@@ -178,8 +179,8 @@ class ProductionConsoleHandler(logging.Handler):
         
         event = {
             'id': f"evt_{uuid.uuid4().hex[:12]}",
-            'timestamp': timestamp.isoformat(),
-            'timestamp_display': timestamp.strftime('%H:%M:%S'),
+            'timestamp': to_iso_utc(timestamp),
+            'timestamp_display': timestamp.strftime('%H:%M:%S UTC'),
             'severity': record.levelname,
             'logger': record.name,
             'message': sanitized_message,
@@ -302,8 +303,8 @@ class FrontendEventCapture:
         timestamp = datetime.now(timezone.utc)
         event = {
             'id': f"evt_{uuid.uuid4().hex[:12]}",
-            'timestamp': timestamp.isoformat(),
-            'timestamp_display': timestamp.strftime('%H:%M:%S'),
+            'timestamp': to_iso_utc(timestamp),
+            'timestamp_display': timestamp.strftime('%H:%M:%S UTC'),
             'severity': data.get('severity', 'INFO'),
             'logger': data.get('logger', 'frontend.console'),
             'message': sanitize_message(data.get('message', '')),
@@ -420,7 +421,7 @@ def init_production_console_logging(app):
         return None
     handler = ProductionConsoleHandler()
     handler.setLevel(logging.DEBUG)
-    handler.setFormatter(logging.Formatter(
+    handler.setFormatter(UTCISOFormatter(
         "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     ))
     

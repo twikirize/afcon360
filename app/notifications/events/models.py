@@ -129,10 +129,10 @@ class DomainEvent(BaseModel):
 
     # --- lifecycle ----------------------------------------------------
     occurred_at = Column(
-        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True
     )
-    published_at = Column(DateTime, nullable=True)
-    processed_at = Column(DateTime, nullable=True)
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
     status = Column(String(16), nullable=False, default=EventStatus.PENDING.value, index=True)
 
     def mark_published(self) -> None:
@@ -200,12 +200,12 @@ class OutboxEvent(BaseModel):
     max_attempts = Column(Integer, nullable=False, default=8)
     # Backoff gate: the relay only picks up rows whose available_at has passed.
     available_at = Column(
-        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True
     )
     last_error = Column(Text, nullable=True)
-    published_at = Column(DateTime, nullable=True)
+    published_at = Column(DateTime(timezone=True), nullable=True)
     # Guards against two relay workers grabbing the same row.
-    locked_at = Column(DateTime, nullable=True)
+    locked_at = Column(DateTime(timezone=True), nullable=True)
     locked_by = Column(String(64), nullable=True)
 
     def __repr__(self) -> str:
@@ -236,7 +236,7 @@ class ProcessedEvent(BaseModel):
     attempts = Column(Integer, nullable=False, default=1)
     error = Column(Text, nullable=True)
     processed_at = Column(
-        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
 
     def __repr__(self) -> str:
@@ -276,8 +276,8 @@ class EventSubscription(BaseModel):
     timeout_seconds = Column(Integer, nullable=False, default=10)
     # Circuit-breaker bookkeeping so one dead partner cannot degrade the queue.
     consecutive_failures = Column(Integer, nullable=False, default=0)
-    last_success_at = Column(DateTime, nullable=True)
-    last_failure_at = Column(DateTime, nullable=True)
+    last_success_at = Column(DateTime(timezone=True), nullable=True)
+    last_failure_at = Column(DateTime(timezone=True), nullable=True)
     owner_user_id = Column(BigInteger, db.ForeignKey('users.id'), nullable=True)
 
     def matches(self, event_type: str) -> bool:
@@ -322,11 +322,11 @@ class WebhookDelivery(BaseModel):
     status = Column(String(16), nullable=False, default='pending', index=True)
     attempts = Column(Integer, nullable=False, default=0)
     max_attempts = Column(Integer, nullable=False, default=6)
-    next_attempt_at = Column(DateTime, nullable=True, index=True)
+    next_attempt_at = Column(DateTime(timezone=True), nullable=True, index=True)
     response_code = Column(Integer, nullable=True)
     response_body = Column(Text, nullable=True)
     last_error = Column(Text, nullable=True)
-    delivered_at = Column(DateTime, nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
 
     def __repr__(self) -> str:
         return f'<WebhookDelivery {self.delivery_id}: {self.event_type} {self.status}>'

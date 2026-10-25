@@ -56,8 +56,8 @@ class OrganisationDocument(BaseModel):
         nullable=False
     )
 
-    uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
-    verified_at = Column(DateTime)
+    uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    verified_at = Column(DateTime(timezone=True))
     expires_at = Column(Date)
 
     organisation = relationship("Organisation", back_populates="documents")
@@ -99,7 +99,7 @@ class OrganisationAuditLog(BaseModel):
     context = Column(JSON)
 
     changed_by = Column(BigInteger, ForeignKey("users.id"))
-    changed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    changed_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     organisation = relationship("Organisation", back_populates="audit_logs")
 

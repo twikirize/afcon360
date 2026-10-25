@@ -45,7 +45,7 @@ class ComplianceAuditLog(BaseModel):
 
     # Who made the decision (system, admin, user)
     decided_by = Column(BigInteger, ForeignKey("users.id"))
-    decided_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    decided_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     reviewer = relationship("User", foreign_keys=[decided_by])
 

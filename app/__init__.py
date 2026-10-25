@@ -85,12 +85,21 @@ from typing import Dict
 from app.config import get_config  # layered config with env validation
 from app.extensions import db, migrate, login_manager, csrf, limiter, cache, redis_client, mail, socketio
 from app.utils.module_toggle_service import ModuleToggleService
+from app.utils.time import UTCISOFormatter
 
 
 # Configure logging globally at the entry point
 def configure_logging():
     root = logging.getLogger()
     if root.handlers:
+        # The app can be launched through entry points that configure root
+        # logging before this module is imported. Normalize existing stream
+        # handlers too, rather than leaving their host-local formatter in place.
+        for existing_handler in root.handlers:
+            if isinstance(existing_handler, logging.StreamHandler):
+                existing_handler.setFormatter(UTCISOFormatter(
+                    "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+                ))
         return
 
     # Get log level from environment or use default based on FLASK_ENV
@@ -116,7 +125,7 @@ def configure_logging():
             root.setLevel(logging.DEBUG)
 
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter(
+    handler.setFormatter(UTCISOFormatter(
         "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     ))
     root.addHandler(handler)

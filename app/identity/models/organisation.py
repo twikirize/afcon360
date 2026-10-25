@@ -227,7 +227,7 @@ class Organisation(BaseModel):
         default=dict,
     )
 
-    verified_at = Column(DateTime, nullable=True)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
     verified_by = Column(String(128), nullable=True)
 
     moderation_notes = Column(Text, nullable=True)
@@ -250,7 +250,7 @@ class Organisation(BaseModel):
 
     compliance_status = Column(String(50), nullable=True, index=True)
     compliance_notes = Column(Text, nullable=True)
-    compliance_reviewed_at = Column(DateTime, nullable=True)
+    compliance_reviewed_at = Column(DateTime(timezone=True), nullable=True)
 
     compliance_reviewed_by = Column(
         BigInteger,
@@ -265,7 +265,7 @@ class Organisation(BaseModel):
         index=True,
     )
 
-    referred_at = Column(DateTime, nullable=True)
+    referred_at = Column(DateTime(timezone=True), nullable=True)
 
     referred_by = Column(
         BigInteger,

@@ -30,6 +30,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from app.geo.models import LocationObservation
 from app.geo.realtime import ENTITY_TYPES
 from app.utils.exceptions import ValidationError
+from app.utils.time import parse_datetime_to_utc
 
 CELL_DECIMALS = 2
 MAX_CELLS = 200
@@ -121,16 +122,12 @@ def parse_window(since: Any, until: Any) -> Tuple[datetime, datetime]:
     if since is None or until is None:
         raise ValueError("since and until are required (ISO-8601)")
     try:
-        start = (since if isinstance(since, datetime)
-                 else datetime.fromisoformat(str(since).strip()))
-        end = (until if isinstance(until, datetime)
-               else datetime.fromisoformat(str(until).strip()))
-    except (ValueError, AttributeError):
-        raise ValueError("since/until must be ISO-8601 datetimes") from None
-    if start.tzinfo is None:
-        start = start.replace(tzinfo=timezone.utc)
-    if end.tzinfo is None:
-        end = end.replace(tzinfo=timezone.utc)
+        start = parse_datetime_to_utc(since, field_name="since")
+        end = parse_datetime_to_utc(until, field_name="until")
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise ValueError(
+            f"since/until must be ISO-8601 datetimes with timezone offsets: {exc}"
+        ) from None
     if start > end:
         raise ValueError("since must not be after until")
     if (end - start).days > MAX_WINDOW_DAYS:

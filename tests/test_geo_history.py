@@ -192,6 +192,13 @@ def test_since_until_window_filters(app):
     assert before[0]["latitude"] == pytest.approx(LAT_A)
 
 
+def test_naive_history_bounds_are_rejected():
+    with pytest.raises(ValueError, match="timezone offset"):
+        get_observations("driver", "DRV-X", since="2026-10-25T12:00:00")
+    with pytest.raises(ValueError, match="timezone offset"):
+        get_observations("driver", "DRV-X", until="2026-10-25T12:00:00")
+
+
 def test_invalid_scope_rejected():
     with pytest.raises(ValueError):
         get_observations("rider", "D1")

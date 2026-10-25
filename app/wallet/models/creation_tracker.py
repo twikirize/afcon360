@@ -89,7 +89,7 @@ class WalletCreationEventModel(db.Model):
 
     # Timestamps
     created_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         server_default=db.func.now(),
         nullable=False
