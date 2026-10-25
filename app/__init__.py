@@ -92,6 +92,14 @@ from app.utils.time import UTCISOFormatter
 def configure_logging():
     root = logging.getLogger()
     if root.handlers:
+        # The app can be launched through entry points that configure root
+        # logging before this module is imported. Normalize existing stream
+        # handlers too, rather than leaving their host-local formatter in place.
+        for existing_handler in root.handlers:
+            if isinstance(existing_handler, logging.StreamHandler):
+                existing_handler.setFormatter(UTCISOFormatter(
+                    "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+                ))
         return
 
     # Get log level from environment or use default based on FLASK_ENV
