@@ -28,14 +28,14 @@ from app.utils.id_guard import IDGuard
 class TimestampMixin:
     """Mixin for models that require created_at and updated_at timestamps"""
     created_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),  # ← Python-side: populates before INSERT
         server_default=func.now(),  # ← DB-side: fallback for raw SQL inserts
         index=True
     )
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),  # ← Python-side: populates before INSERT
         server_default=func.now(),
@@ -61,7 +61,7 @@ class BaseModel(TimestampMixin, db.Model):
 
     # Soft Delete Fields
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
-    deleted_at = Column(DateTime, nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     def soft_delete(self):
         """Mark record as deleted without removing from DB"""
