@@ -13,6 +13,8 @@
 7. **One application API.** Use app.utils.time for UTC clock reads, awareness checks, UTC normalization, explicit-zone parsing and local display conversion. New code must not introduce datetime.utcnow(), unqualified datetime.now(), implicit naive-to-UTC coercion, or machine-local timezone assumptions.
 8. **Database sessions use UTC.** The PostgreSQL session timezone is set to UTC so database-generated timestamp expressions are deterministic and timezone-aware columns display consistently.
 
+9. **Logs and console displays must not be ambiguous.** Application log lines use explicit UTC ISO-8601 timestamps. Console events carry a timezone-qualified UTC timestamp; the browser may display that instant in the operator's local timezone. Legacy console timestamps lacking an offset are marked unknown rather than silently interpreted as UTC or local time.
+
 ## Rollout and safety gates
 
 - The central helper and connection-session UTC setting are the initial enforcement foundation.
