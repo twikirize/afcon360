@@ -20,6 +20,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.identity.models.user import User
@@ -185,6 +187,22 @@ class TestPhaseBSchema:
             "OR pickup_time IS NOT NULL"
         )
 
+    def test_live_check_constraint_definition(self, app):
+        with app.app_context():
+            definition = db.session.execute(
+                text(
+                    "select pg_get_constraintdef(oid) from pg_constraint "
+                    "where conrelid = 'transport_bookings'::regclass "
+                    "and conname = 'ck_pickup_time_mode_aware'"
+                )
+            ).scalar()
+        normalized = " ".join((definition or "").split()).lower()
+        assert normalized, "ck_pickup_time_mode_aware missing from live catalog"
+        assert "pickup_mode is null" in normalized
+        assert "'instant'" in normalized
+        assert "pickup_time is not null" in normalized
+        assert not normalized.startswith("check (((pickup_time is not null)")
+
     def test_create_booking_persists_mode_and_receipt_time(self, app):
         user_id = _create_user(app)
         result = get_booking_service().create_booking(
@@ -213,6 +231,28 @@ class TestPhaseBSchema:
             assert booking.request_received_at is not None
 
 
+class TestPickupConstraintBehavior:
+
+    def test_instant_booking_without_pickup_time_is_allowed(self, app):
+        user_id = _create_user(app)
+        booking_id, _ = _create_booking(
+            app, user_id, mode="instant", pickup_time=None)
+        with app.app_context():
+            booking = db.session.get(Booking, booking_id)
+            assert booking is not None
+            assert booking.pickup_mode == "instant"
+            assert booking.pickup_time is None
+
+    def test_scheduled_booking_without_pickup_time_is_rejected(self, app):
+        user_id = _create_user(app)
+        with pytest.raises(IntegrityError) as exc:
+            _create_booking(
+                app, user_id, mode="scheduled", pickup_time=None)
+        assert "ck_pickup_time_mode_aware" in str(exc.value)
+        with app.app_context():
+            db.session.rollback()
+
+
 # ---------------------------------------------------------------------------
 # Central gate: scheduled rides only dispatch inside the lead window
 # ---------------------------------------------------------------------------
@@ -232,10 +272,13 @@ class TestScheduledDispatchGate:
             "offers_created": 0,
         }
 
-    def test_scheduled_with_null_pickup_time_is_held(self, app):
+    def test_legacy_scheduled_with_null_pickup_time_is_held(self, app):
         user_id = _create_user(app)
         booking_id, _ = _create_booking(
-            app, user_id, mode="scheduled", pickup_time=None,
+            app, user_id, mode=None,
+            metadata_mode="scheduled",
+            with_column_mode=False,
+            pickup_time=None,
         )
         outcome = MatchingService.discover_and_offer(booking_id)
         assert outcome["reason"] == "scheduled_pickup_time_unset"

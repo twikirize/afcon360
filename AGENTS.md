@@ -376,13 +376,14 @@ pgpass path used, entry count (never contents), ACL, probe commands with exit co
 
 **Applies to every agent, every database-reliability task. This section is a record and a rule set. It authorizes no cutover, rollback, migration, restore, or database mutation.**
 
-### 10.1 Recorded production state (25 October 2026)
+### 10.1 Recorded production state (25 October 2026; M3 update 26 October 2026)
 
 | Role | Database | Alembic revision | Verified facts |
 |---|---|---|---|
-| Current production | `afcon360_prod` | `1792869659` | 109 users, 61 transport bookings, `ck_pickup_time_sane` present (post-cutover SQL checks) |
+| Current production | `afcon360_prod` | `1793013676` | 109 users, 61 transport bookings, `ck_pickup_time_sane` present; `ck_pickup_time_mode_aware` corrected and validated (M3, 26 Oct 2026) |
 | Preserved previous production — rollback resource | `afcon360_prod_old` | `df55cbe3f516` | Pre-rename checks recorded 109 users and 61 bookings |
 
+- Revision history: `1792869659` → `1793011323` (M2) → `1793013676` (M3, corrected `ck_pickup_time_mode_aware`). M1/M2 remain applied; do not roll back production to `1792869659`.
 - `afcon360_prod_old` is the rollback resource. It must not be dropped, overwritten, upgraded, or repurposed as part of any documentation, cleanup, or reliability task.
 - `afcon360_h3_candidate_cutover_test` (the old Gate 4 candidate) contains **test data** and must never be promoted to production.
 - The clean candidate was upgraded and populated **before** being renamed to `afcon360_prod`. Do not imply the old Gate 4 candidate was used for the final promotion.
@@ -393,8 +394,11 @@ pgpass path used, entry count (never contents), ACL, probe commands with exit co
 |---|---|---|---|
 | Pre-cutover | `C:\Users\OBED\AppData\Local\AFCON360\rebuild-evidence\afcon360_prod_pre_cutover_20261025_160251.dump` | 1,670,399 bytes | Previously reported restore-verified; treat as the pre-cutover recovery archive |
 | Post-cutover | `C:\Users\OBED\AppData\Local\AFCON360\rebuild-evidence\post_cutover_20261025_201202\afcon360_prod_post_cutover_20261025_201202.dump` | 1,664,542 bytes | `pg_restore -l` successfully read its metadata/TOC — archive readable; a complete restore test has NOT been demonstrated |
+| Pre-M3 rehearsal | `C:\Users\OBED\AppData\Local\AFCON360\rebuild-evidence\pre_m3_prod_20261026_143847.dump` | 1,665,589 bytes | Full custom-format dump; restored into isolated `afcon360_p1_candidate`; candidate verified at `1793011323` (109 users, 61 bookings); M3 applied and verified; P1 suite 40/40 on a `_test` clone |
+| Pre-M3 final | `C:\Users\OBED\AppData\Local\AFCON360\rebuild-evidence\pre_m3_prod_final_20261026_144843.dump` | 1,665,589 bytes | Full custom-format dump; `pg_restore -l` verified; SHA256 `28D7DF538AD5C360131CE1090729E0EB9B3E6A300721C6E6183CB1C9062FBEA9`; ACL owner-only; final pre-M3 recovery point |
 
 - Archive readability (`pg_restore -l`) is not restore verification. Never describe the post-cutover archive as restore-verified.
+- The 14:38 pre-M3 dump was fully restored into `afcon360_p1_candidate`; the 14:48 final pre-M3 dump has `pg_restore -l` verification only. Neither archive is a substitute for an authorized rollback procedure.
 - These are Windows paths recorded for one machine. They are not portable and are not guaranteed to exist on another computer.
 - Full recovery detail and the rollback runbook: root `README.md` → "Production Database Cutover and Recovery — 25 October 2026".
 
@@ -405,6 +409,7 @@ pgpass path used, entry count (never contents), ACL, probe commands with exit co
 - Never assume that a database name, a `.env.local` setting, or a successful command proves the application is connected to the intended database.
 - Production rollback is an explicitly authorized operational procedure with precondition checks — never an automatic response. Do not roll back solely because of an unverified warning or a superficial mismatch; investigate first and retain evidence.
 - Backups, dump files, and credentials remain outside source control. Never commit `.env.local`, `.env.local.pre_cutover`, dump archives, or credential-bearing files. `.env.local.pre_cutover` is a configuration snapshot only; its database name must be re-checked before any rollback use.
+- `afcon360_p1_candidate` is an isolated rehearsal copy of production (restored at `1793011323`, M3 applied and verified). It must not be used by application services, scheduled jobs, notifications, or external integrations, and must not be promoted to production.
 - Any future agent performing database-reliability work must read the documented recovery information in `README.md` before proposing operations that could affect production data.
 
 ---

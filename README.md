@@ -301,10 +301,12 @@ migration, restore, or any other database operation.
 | Item | Value |
 |---|---|
 | Database | `afcon360_prod` |
-| Alembic revision | `1792869659` |
+| Alembic revision | `1793013676` |
 | Users | 109 |
 | Transport bookings | 61 |
 | Post-cutover checks | Confirmed the database name, revision, user count, booking count, and the presence of `ck_pickup_time_sane` |
+
+M3 (26 October 2026) corrected and validated `ck_pickup_time_mode_aware`; production is at `1793013676`.
 
 ### Preserved previous production database (rollback resource)
 
