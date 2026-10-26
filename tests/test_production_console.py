@@ -145,6 +145,43 @@ class TestProductionConsoleAuthorization:
         assert response.status_code == 400
 
 
+class _FakeConsolePipeline:
+    """In-memory stand-in for a redis pipeline (LPUSH + LTRIM)."""
+
+    def __init__(self, store):
+        self._store = store
+        self._pending = []
+
+    def lpush(self, key, value):
+        self._pending.append(value)
+        return self
+
+    def ltrim(self, key, start, end):
+        return self
+
+    def execute(self):
+        self._store[0:0] = list(reversed(self._pending))
+        self._pending = []
+
+
+class _FakeConsoleRedis:
+    """Minimal redis_client double: truthy _url, .client, .pipeline(), .lrange()."""
+
+    def __init__(self, store):
+        self._url = "redis://fake:6379/0"
+        self._store = store
+
+    @property
+    def client(self):
+        return self
+
+    def pipeline(self):
+        return _FakeConsolePipeline(self._store)
+
+    def lrange(self, key, start, end):
+        return list(self._store[start:end + 1])
+
+
 class TestProductionConsoleLogCapture:
     """Test that production console captures logs correctly."""
     
@@ -211,6 +248,45 @@ class TestProductionConsoleLogCapture:
         # Check history
         history = ProductionConsoleHandler.get_recent_history(limit=10)
         # May be empty if Redis not available, but shouldn't crash
+
+    def test_frontend_event_round_trips_through_storage(self, app, client, logged_in_user, monkeypatch):
+        """A submitted frontend event must reach stored history, not only the live push."""
+        import app.production_console.streaming as streaming_mod
+
+        store = []
+        monkeypatch.setattr(streaming_mod, "redis_client", _FakeConsoleRedis(store))
+
+        _set_user_session(client, logged_in_user)
+        token = "roundtrip_probe_20261025"
+
+        response = client.post('/admin/owner/production-console/frontend-event',
+                               json={'message': token, 'category': 'FRONTEND',
+                                     'frontend': {'action': 'click'}})
+        assert response.status_code == 200
+
+        assert any(token in item for item in store), "frontend event payload was never stored"
+
+        history = streaming_mod.ProductionConsoleHandler.get_recent_history(limit=50)
+        assert any(token in (event.get('message') or '') for event in history), \
+            "stored frontend event is not readable through get_recent_history()"
+
+    def test_persistence_is_independent_of_socketio(self, app):
+        """History capture must initialize even when the push layer is disabled."""
+        import logging
+        from app.production_console.streaming import init_production_console_logging
+
+        handler = None
+        previous = app.config.get('SOCKETIO_ENABLED', True)
+        app.config['SOCKETIO_ENABLED'] = False
+        try:
+            handler = init_production_console_logging(app)
+        finally:
+            app.config['SOCKETIO_ENABLED'] = previous
+            if handler is not None:
+                logging.getLogger().removeHandler(handler)
+                logging.getLogger('app').removeHandler(handler)
+
+        assert handler is not None, "persistence must not be gated on SOCKETIO_ENABLED"
 
 
 class TestProductionConsoleSocketIO:

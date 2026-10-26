@@ -88,7 +88,10 @@ Alembic migrations, and then run:
 ```powershell
 $env:APP_ENV = "testing"
 $env:FLASK_ENV = "testing"
-$env:TEST_DATABASE_URL = "postgresql://postgres:password@localhost:5432/afcon360_test"
+# Passwordless DSN per AGENTS.md section 9 — the password lives only in the
+# libpq pgpass file (%APPDATA%\postgresql\pgpass.conf on Windows, $HOME/.pgpass
+# elsewhere), never in this URL.
+$env:TEST_DATABASE_URL = "postgresql://postgres@localhost:5432/afcon360_test"
 & .venv\Scripts\python.exe -m flask --app 'app:create_app()' db current
 & .venv\Scripts\python.exe -m flask --app 'app:create_app()' db heads
 & .venv\Scripts\python.exe -m flask --app 'app:create_app()' db upgrade

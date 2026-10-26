@@ -1338,3 +1338,38 @@ Run in order; report commands and exit codes only:
 ### E. Evidence expectations for reports
 
 Include: pgpass path used, entry COUNT (never contents), ACL/permission state, each probe command with its exit code, the redacted connection form, and any environment that could not be verified (explicit BLOCKED). This section authorizes no migrations, password rotations, or schema changes by itself; rotation remains an owner decision (BACKLOG DB-PGPASS-02).
+
+---
+
+## §50 Production Database Cutover, Backups & Rollback (Permanent Rule)
+
+**Cross-reference: root `AGENTS.md` §10 is the authoritative short form of this rule. The operational record and rollback runbook live in root `README.md` → "Production Database Cutover and Recovery — 25 October 2026". Applies to every agent, every database-reliability task. This section is a record and a rule set; it authorizes no cutover, rollback, migration, restore, or database mutation.**
+
+### A. Recorded production state (25 October 2026)
+
+| Role | Database | Alembic revision | Verified facts |
+|---|---|---|---|
+| Current production | `afcon360_prod` | `1792869659` | 109 users, 61 transport bookings, `ck_pickup_time_sane` present (post-cutover SQL checks) |
+| Preserved previous production — rollback resource | `afcon360_prod_old` | `df55cbe3f516` | Pre-rename checks recorded 109 users and 61 bookings |
+
+- `afcon360_prod_old` is the rollback resource: never drop, overwrite, upgrade, or repurpose it.
+- `afcon360_h3_candidate_cutover_test` (the old Gate 4 candidate) contains test data and must never be promoted to production.
+- The clean candidate was upgraded and populated before being renamed to `afcon360_prod`; the old Gate 4 candidate was not the promotion source.
+
+### B. Recovery points (outside the repository)
+
+| Archive | Path | Size | Verification status |
+|---|---|---|---|
+| Pre-cutover | `C:\Users\OBED\AppData\Local\AFCON360\rebuild-evidence\afcon360_prod_pre_cutover_20261025_160251.dump` | 1,670,399 bytes | Previously reported restore-verified; the pre-cutover recovery archive |
+| Post-cutover | `C:\Users\OBED\AppData\Local\AFCON360\rebuild-evidence\post_cutover_20261025_201202\afcon360_prod_post_cutover_20261025_201202.dump` | 1,664,542 bytes | `pg_restore -l` read its metadata/TOC — readable; full restore NOT demonstrated |
+
+Archive readability is not restore verification: never call the post-cutover archive restore-verified. Both paths are recorded Windows paths for one machine — not portable, not guaranteed elsewhere.
+
+### C. Mandatory rules
+
+1. Every production cutover must document a pre-cutover recovery point, a post-cutover recovery point, their exact locations, and their verification status.
+2. Verify the actual database identity and migration revision with read-only checks before issuing any migration or restore command.
+3. Never assume a database name, a `.env.local` setting, or a successful command proves the application is connected to the intended database.
+4. Production rollback is an explicitly authorized operational procedure with precondition checks — never an automatic response. Do not roll back solely because of an unverified warning or a superficial mismatch; investigate first and retain evidence. Treat `.env.local.pre_cutover` as a configuration snapshot only; re-check its database name before any rollback use.
+5. Backups, dump files, and credentials remain outside source control. Never commit `.env.local`, `.env.local.pre_cutover`, dump archives, or credential-bearing files (§49.B).
+6. Any future agent performing database-reliability work must read the documented recovery information in root `README.md` before proposing operations that could affect production data.

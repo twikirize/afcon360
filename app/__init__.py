@@ -292,6 +292,51 @@ def require_redis(url: str, purpose: str, existing_client=None):
         return None
 
 
+def _socketio_async_mode() -> str:
+    """Resolve the async mode python-engineio would pick for this process.
+
+    Mirrors ``engineio.base_server.Server.__init__``: the first importable
+    driver wins, in ``async_modes()`` order. Kept as a separate helper so the
+    Redis-queue gate below can be tested without booting the whole app.
+    """
+    import importlib
+
+    for mode in ("eventlet", "gevent_uwsgi", "gevent", "threading"):
+        try:
+            importlib.import_module("engineio.async_drivers." + mode)
+        except ImportError:
+            continue
+        return mode
+    return "threading"  # pragma: no cover - engineio requires one driver
+
+
+def _redis_queue_allowed(async_mode=None) -> bool:
+    """Whether a Redis message queue may be handed to Socket.IO here.
+
+    ``socketio.redis_manager.RedisManager.initialize()`` raises
+    ``RuntimeError('Redis requires a monkey patched socket library ...')``
+    unless ``socket.socket`` is monkey-patched when the async mode is
+    gevent/eventlet. AFCON360 never monkey-patches (see ``dev_tls.py``), so
+    enabling the queue under the gevent dev server would reject every
+    ``/socket.io/`` connect (401) — killing the production console stream,
+    host dashboard namespace and all realtime emits.
+
+    Returns False in that case so Socket.IO falls back to its in-memory,
+    single-process manager instead.
+    """
+    mode = async_mode or _socketio_async_mode()
+    if mode == "eventlet":
+        try:
+            from eventlet.patcher import is_monkey_patched  # type: ignore[import-not-found]
+            return is_monkey_patched("socket")
+        except ImportError:  # pragma: no cover - driver import proved presence
+            return False
+    if "gevent" in mode:
+        from gevent.monkey import is_module_patched
+        return is_module_patched("socket")
+    return True
+
+
 def create_app(config_object=None) -> Flask:
     """
     Application factory pattern.
@@ -810,6 +855,15 @@ def create_app(config_object=None) -> Flask:
                 "🔌 Socket.IO Redis message queue unavailable; "
                 "continuing in single-process mode"
             )
+        elif not _redis_queue_allowed():
+            logger.warning(
+                "🔌 Socket.IO Redis message queue disabled: async_mode=%s "
+                "requires a monkey-patched socket module, and AFCON360 never "
+                "monkey-patches. Socket.IO runs single-process in this "
+                "process; cross-worker emit fan-out is tracked separately.",
+                _socketio_async_mode(),
+            )
+            socketio_message_queue = None
         socketio.init_app(app, message_queue=socketio_message_queue)
     else:
         logger.info("🔌 Socket.IO disabled for this process; skipping init_app and Redis message queue")
@@ -1533,16 +1587,15 @@ def create_app(config_object=None) -> Flask:
     except Exception as e:
         app.logger.error(f"❌ Failed to register Production Console: {e}")
 
-    # Initialize production console logging handler (after socketio is ready)
-    if app.config['SOCKETIO_ENABLED']:
-        try:
-            from app.production_console.streaming import init_production_console_logging
-            init_production_console_logging(app)
-            app.logger.info("✅ Production Console logging handler initialized")
-        except Exception as e:
-            app.logger.error(f"❌ Failed to initialize Production Console logging: {e}")
-    else:
-        app.logger.info("Production Console logging disabled (Socket.IO disabled)")
+    # Initialize production console logging handler (after socketio is ready).
+    # Persistence is independent of Socket.IO: capture history even when the
+    # live push layer is disabled.
+    try:
+        from app.production_console.streaming import init_production_console_logging
+        init_production_console_logging(app)
+        app.logger.info("✅ Production Console logging handler initialized")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to initialize Production Console logging: {e}")
 
     # ------------------------------------------------------------------
     # Template helpers for module isolation

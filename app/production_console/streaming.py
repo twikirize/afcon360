@@ -265,7 +265,7 @@ class ProductionConsoleHandler(logging.Handler):
     def log_event(cls, event: Dict[str, Any]) -> None:
         """Store event in history and broadcast to connected SocketIO clients."""
         try:
-            cls._store_history(event)
+            cls()._store_history(event)
         except Exception:
             pass
         if not socketio_enabled() or not socketio_server_ready():
@@ -411,10 +411,11 @@ class CeleryEventCapture:
 
 
 def init_production_console_logging(app):
-    """Initialize production console logging handler."""
-    if not app.config.get("SOCKETIO_ENABLED", True):
-        logger.info("Production console disabled because Socket.IO is disabled")
-        return None
+    """Initialize production console logging handler.
+
+    Persistence is deliberately independent of Socket.IO: history must be
+    captured whether or not the live push layer is enabled.
+    """
     if os.environ.get("PRODUCTION_CONSOLE_ENABLED", "true").lower() in ("false", "0", "no"):
         logger.info("Production console disabled via PRODUCTION_CONSOLE_ENABLED env var")
         return None

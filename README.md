@@ -1,6 +1,6 @@
 # AFCON360 — Integrated Tournament Management Platform
 
-**Repository status:** Active development · **Updated:** 2026-08-14
+**Repository status:** Active development · **Updated:** 2026-10-25
 
 AFCON360 is a modular Flask platform for tournament operations, accommodation,
 transport, events, identity/KYC, wallet transactions, notifications, media, and
@@ -18,6 +18,7 @@ every environment.
 - [Running services](#running-services)
 - [Testing and verification](#testing-and-verification)
 - [Configuration](#configuration)
+- [Production database cutover and recovery](#production-database-cutover-and-recovery--25-october-2026)
 - [Documentation](#documentation)
 - [Known limitations](#known-limitations)
 
@@ -286,6 +287,128 @@ Start from `env.example`. Common settings include:
 
 Use environment-specific files for deployment overrides. Never place provider
 secrets, production passwords, or private keys in source control.
+
+## Production Database Cutover and Recovery — 25 October 2026
+
+Production was cut over to a new PostgreSQL database on 25 October 2026. This
+section is the operational record: which database is production, where the
+recovery archives are stored, what has been verified, and how to approach a
+rollback. It is documentation only — it does not authorize a cutover, rollback,
+migration, restore, or any other database operation.
+
+### Current production database
+
+| Item | Value |
+|---|---|
+| Database | `afcon360_prod` |
+| Alembic revision | `1792869659` |
+| Users | 109 |
+| Transport bookings | 61 |
+| Post-cutover checks | Confirmed the database name, revision, user count, booking count, and the presence of `ck_pickup_time_sane` |
+
+### Preserved previous production database (rollback resource)
+
+| Item | Value |
+|---|---|
+| Database | `afcon360_prod_old` |
+| Alembic revision | `df55cbe3f516` |
+| Pre-rename checks | 109 users and 61 bookings |
+
+This database is preserved as the rollback resource. It must not be dropped,
+overwritten, upgraded, or repurposed.
+
+### Other candidate databases
+
+- `afcon360_h3_candidate_cutover_test` — the old Gate 4 candidate. It contains
+  **test data** and must never be promoted to production.
+- The clean candidate was upgraded and populated **before** it was renamed to
+  `afcon360_prod`. The old Gate 4 candidate was not the source of the final
+  promotion.
+
+### Backup locations
+
+Both archives are stored **outside the Git repository**, under the recorded
+Windows development environment. These are machine-specific paths: they are not
+portable and are not guaranteed to exist on another computer.
+
+**Pre-cutover production backup**
+
+```text
+C:\Users\OBED\AppData\Local\AFCON360\rebuild-evidence\afcon360_prod_pre_cutover_20261025_160251.dump
+```
+
+- Created before the cutover on 25 October 2026.
+- Size: 1,670,399 bytes.
+- Previously reported as restore-verified.
+- Treat this as the pre-cutover recovery archive.
+
+**Post-cutover production backup**
+
+```text
+C:\Users\OBED\AppData\Local\AFCON360\rebuild-evidence\post_cutover_20261025_201202\afcon360_prod_post_cutover_20261025_201202.dump
+```
+
+- Created on 25 October 2026 at approximately 20:12.
+- Size: 1,664,542 bytes; custom-format PostgreSQL archive.
+- `pg_restore -l` successfully read its metadata and table-of-contents entries,
+  so the archive is **readable**.
+- A complete restore test has **not** yet been demonstrated.
+
+Archive readability is not the same as successful restoration. The post-cutover
+archive must not be described as restore-verified until a full restore has been
+demonstrated.
+
+### Verification status
+
+Verified:
+
+- Current database name, Alembic revision, user count, booking count, and
+  `ck_pickup_time_sane` in `afcon360_prod` after cutover.
+- Pre-rename user and booking counts recorded for `afcon360_prod_old`.
+- Both archive files present at the paths above, with the recorded sizes.
+- Post-cutover archive table of contents readable via `pg_restore -l`.
+
+Still outstanding:
+
+- A complete restore test of the post-cutover archive has not been demonstrated.
+- No rollback rehearsal has been recorded against `afcon360_prod_old`.
+
+### Rollback runbook — incident procedure, operator approval required
+
+This is **not** an instruction to execute now. Rollback is an explicitly
+authorized operational procedure: it requires a declared incident, approval from
+the responsible operator, and satisfied precondition checks. Do not attempt a
+rollback solely because of an unverified warning or a superficial mismatch —
+investigate first and retain evidence.
+
+1. Declare an incident and obtain approval from the responsible operator.
+2. Stop the application and relevant background workers before switching
+   databases.
+3. Investigate whether any user transactions occurred after cutover. Preserve
+   and reconcile those transactions before rolling back, so a rollback does not
+   silently discard newer bookings or other writes.
+4. Confirm the current database names, revisions, connectivity, and available
+   backup files using read-only checks.
+5. Preserve the new production-named database for investigation. If it must be
+   renamed, select and verify an unused destination name first; never drop it as
+   part of rollback.
+6. Rename the preserved old production database back to `afcon360_prod` only
+   after checking connection and naming conflicts.
+7. Update the application's database configuration without exposing or
+   documenting passwords. Treat `.env.local.pre_cutover` only as a
+   configuration snapshot and re-check its database name before any rollback
+   use.
+8. Restart the application and verify the actual SQL connection, revision,
+   essential record counts, login, My Trips, and relevant booking functionality.
+9. Record the incident, decision, verification evidence, and any reconciled
+   post-cutover transactions.
+
+### Secrets and backup hygiene
+
+- Never place database passwords, credential-bearing connection strings, or
+  secret values in this README, the agent instructions, or the constitution.
+- Do not copy database dump files into the repository, and never commit
+  `.env.local`, `.env.local.pre_cutover`, or backup archives.
 
 ## Documentation
 
