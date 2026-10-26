@@ -489,6 +489,10 @@
   var isMatching = {{ is_matching|tojson }};
   var hasDriver = {{ (driver is not none)|tojson }};
   var hasVehicle = {{ (vehicle is not none)|tojson }};
+  var bookingMode = {{ booking_mode|tojson }};
+  var bookingCurrency = {{ booking_currency|tojson }};
+  var pickupTimeIso = {{ pickup_time_iso|tojson }};
+  var cancellationPreview = {{ cancellation_policy_preview|tojson }};
 
   var SAFETY_CATEGORIES = new Set([
     'driver_vehicle_mismatch',
@@ -498,28 +502,30 @@
     'unexpected_driver_behaviour'
   ]);
 
-  var STAGE_MESSAGES = {
-    'pending_payment': {
-      normal: 'Your booking is awaiting payment. Cancelling now will not incur a fee.',
-      safety: 'Cancelling for a safety or mismatch reason will not incur a fee.'
-    },
-    'confirmed': {
-      normal: 'Your request is still being matched and no driver has been assigned yet. Cancelling now will not incur a fee.',
-      safety: 'Cancelling for a safety or mismatch reason will not incur a fee.'
-    },
-    'assigned': {
-      normal: 'A driver has been assigned and may already be on the way. A cancellation fee may apply based on timing.',
-      safety: 'If the driver or vehicle does not match what was shown, you can cancel without a fee.'
-    },
-    'driver_en_route': {
-      normal: 'Your driver is already on the way. A cancellation fee will apply to compensate the driver for their time and travel.',
-      safety: 'If the driver or vehicle does not match what was shown, or you have a safety concern, the fee will be waived.'
-    },
-    'pickup_arrived': {
-      normal: 'Your driver has arrived at the pickup location. A higher cancellation fee applies to compensate the driver.',
-      safety: 'If the driver or vehicle does not match what was shown, or you have a safety concern, the fee will be waived.'
+  function formatMoney(amount, currency) {
+    var n = Number(amount || 0);
+    var text = n.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+    return currency ? (currency + ' ' + text) : text;
+  }
+
+  function cancellationMessage(isSafety) {
+    if (isSafety) {
+      return 'Cancelling for a safety or mismatch reason will waive the cancellation fee.';
     }
-  };
+    if (bookingMode !== 'scheduled' || !cancellationPreview.scheduled) {
+      return 'This ride is not scheduled. The scheduled cancellation fee does not apply.';
+    }
+    var fee = Number(cancellationPreview.fee || 0);
+    if (fee <= 0) {
+      return 'No cancellation fee applies right now.';
+    }
+    return 'A cancellation fee of ' +
+      formatMoney(fee, bookingCurrency || cancellationPreview.currency) +
+      ' applies based on the scheduled pickup time. It will be recorded as uncollected.';
+  }
 
   var selectedReason = 'rider_change_of_mind';
 
@@ -547,10 +553,7 @@
     selectedReason = checked.value;
 
     var isSafety = SAFETY_CATEGORIES.has(selectedReason);
-    var msgObj = STAGE_MESSAGES[currentStatus] || STAGE_MESSAGES['confirmed'];
-    var message = isSafety ? msgObj.safety : msgObj.normal;
-
-    confirmMsg.textContent = message;
+    confirmMsg.textContent = cancellationMessage(isSafety);
     step1.hidden = true;
     step2.hidden = false;
   }
@@ -587,12 +590,24 @@
       var body = await r.json().catch(function () { return {}; });
 
       if (r.ok) {
+        var data = body.data || {};
+        var fee = Number(data.cancellation_fee || 0);
+        var refund = Number(data.refund_amount || 0);
+        var currency = data.currency || bookingCurrency ||
+          cancellationPreview.currency;
+        var summary = fee > 0
+          ? 'A cancellation fee of ' + formatMoney(fee, currency) +
+            ' was recorded as uncollected.'
+          : 'No cancellation fee applies.';
+        summary += ' Refund due: ' + formatMoney(refund, currency) + '.';
         closeCancelModal();
+        alert(summary);
         location.reload();
         return;
       }
 
-      alert('Could not cancel: ' + (body.message || body.error || 'Unknown error'));
+      alert('Could not cancel: ' + (body.message || body.error ||
+        (body.data && body.data.message) || 'Unknown error'));
     } catch (e) {
       clearTimeout(t);
 

@@ -2,7 +2,7 @@
 Handles booking creation, management, and lifecycle
 """
 from datetime import datetime, timezone, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional, Any
 import random
 import string
@@ -18,6 +18,7 @@ from app.extensions import db, cache
 from app.transport.models import (
     Booking,
     BookingStatus as BookingStatusPy,
+    DriverProfile,
 )
 from app.utils.enums import (
     ServiceType,
@@ -41,6 +42,50 @@ from app.transport.services.location_snapshot import (
 
 # Module-level logger (doesn't need app context)
 logger = logging.getLogger(__name__)
+
+# CANCEL-FEE-SCHEDULED-P1 policy. Caps are face value in the booking
+# currency; nothing here converts currency or touches the wallet.
+SCHEDULED_BOOKING_MODE = "scheduled"
+CANCEL_FEE_STANDARD_RATE = Decimal("0.20")
+CANCEL_FEE_LATE_RATE = Decimal("0.40")
+CANCEL_FEE_STANDARD_CAP = Decimal("10000.00")
+CANCEL_FEE_LATE_CAP = Decimal("20000.00")
+NO_SHOW_FEE_RATE = Decimal("0.40")
+NO_SHOW_FEE_CAP = Decimal("20000.00")
+NO_SHOW_GRACE = timedelta(minutes=15)
+DRIVER_LATE_CANCEL_CREDIT_RATE = Decimal("0.80")
+
+
+def _as_utc(value):
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _money(value) -> Decimal:
+    if value is None:
+        return Decimal("0.00")
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return Decimal("0.00")
+    return amount.quantize(Decimal("0.01"))
+
+
+def _booking_mode(booking) -> str:
+    metadata = getattr(booking, "booking_metadata", None) or {}
+    if isinstance(metadata, dict):
+        return str(metadata.get("booking_mode") or "").strip().lower()
+    return ""
+
+
+def _booking_currency_code(booking) -> str:
+    currency = getattr(booking, "currency", None)
+    if hasattr(currency, "value"):
+        currency = getattr(currency, "value", currency)
+    return str(currency or "UGX").strip().upper()
 
 
 def _validate_booking_location_coordinates(location: Any, field_name: str) -> Any:
@@ -928,17 +973,80 @@ class BookingService:
             is_safety_cancellation = (reason_category or '').lower() in SAFETY_CATEGORIES
             safety_flag = bool(safety_flag) or is_safety_cancellation
 
-            # Calculate fee (waived for safety cancellations)
+            # CANCEL-FEE-SCHEDULED-P1: only the rider pays; instant and
+            # mode-less bookings are fail-safe zero; safety always waives.
+            is_rider = (booking.user_id == user_id)
+            initiated_by = "rider" if is_rider else "admin"
+            policy = self._cancellation_policy(booking)
+            cancellation_fee = policy["fee"]
+            fee_tier = policy["tier"]
             if is_safety_cancellation:
                 cancellation_fee = Decimal("0.00")
-            else:
-                cancellation_fee = self._calculate_cancellation_fee(booking)
-            refund_amount = float(booking.final_price - cancellation_fee)
+                fee_tier = "safety"
+            elif not is_rider:
+                cancellation_fee = Decimal("0.00")
+                fee_tier = "non_rider"
 
             now = datetime.now(timezone.utc)
+            booking_reference = booking.booking_reference
+            final_price = _money(booking.final_price)
+            refund_amount = _money(max(
+                Decimal("0.00"), final_price - cancellation_fee
+            ))
+
+            metadata = dict(booking.booking_metadata or {})
+            metadata["cancellation"] = {
+                "fee": str(cancellation_fee),
+                "currency": policy["currency"],
+                "tier": fee_tier,
+                "policy": "scheduled_v1",
+                "recorded_uncollected": True,
+                "initiated_by": initiated_by,
+                "scheduled": policy["scheduled"],
+                "percentage": (
+                    0 if fee_tier in {"safety", "non_rider"}
+                    else policy["percentage"]
+                ),
+                "at": now.isoformat(),
+            }
+
+            driver_credit = Decimal("0.00")
+            if is_rider and cancellation_fee > 0 and booking.assigned_driver_id:
+                driver = db.session.get(DriverProfile, booking.assigned_driver_id)
+                if driver is not None:
+                    driver_credit = _money(
+                        cancellation_fee * DRIVER_LATE_CANCEL_CREDIT_RATE
+                    )
+                    metadata = self._append_driver_credit(
+                        metadata,
+                        booking=booking,
+                        driver=driver,
+                        amount=driver_credit,
+                        currency=policy["currency"],
+                        reason="late_cancellation",
+                        now=now,
+                    )
+                else:
+                    logger.warning(
+                        "Assigned driver profile %s missing for booking %s; "
+                        "cancellation credit not recorded",
+                        booking.assigned_driver_id, booking_reference,
+                    )
+
+            audit_details = {
+                "booking_reference": booking_reference,
+                "fee": str(cancellation_fee),
+                "currency": policy["currency"],
+                "tier": fee_tier,
+                "scheduled": policy["scheduled"],
+                "recorded_uncollected": True,
+                "initiated_by": initiated_by,
+                "safety": safety_flag,
+                "driver_credit": str(driver_credit),
+            }
 
             if current_status in PRE_ASSIGNMENT_STATUSES:
-                # Pre-assignment: simple status update (existing behavior)
+                # Pre-assignment: one guarded UPDATE, including fee metadata.
                 result = db.session.execute(
                     sa.update(Booking.__table__)
                     .where(
@@ -954,6 +1062,8 @@ class BookingService:
                         cancellation_safety_flag=safety_flag,
                         cancelled_stage=current_status,
                         cancellation_fee=cancellation_fee,
+                        cancellation_initiated_by=initiated_by,
+                        booking_metadata=metadata,
                     )
                     .execution_options(synchronize_session=False)
                 )
@@ -962,12 +1072,38 @@ class BookingService:
                     raise ValidationError(
                         "Cannot cancel booking: it is no longer in a cancellable state"
                     )
+                audit_log(
+                    action="booking_cancellation_fee_recorded",
+                    resource_type="booking",
+                    resource_id=booking_id,
+                    user_id=user_id,
+                    details=audit_details,
+                    db_session=db.session,
+                )
                 release_result = None
             else:
-                # Post-assignment: use canonical release through AssignmentService
-                # This atomically: sets status=CANCELLED, clears assigned_driver_id/vehicle_id,
-                # releases driver/vehicle availability, cleans up offers
+                # Post-assignment: compose fee/credit metadata first, then
+                # let AssignmentService.release commit it atomically with
+                # status= CANCELLED and resource clearing.
                 try:
+                    booking.cancelled_at = now
+                    booking.cancellation_reason = reason
+                    booking.cancellation_reason_category = reason_category
+                    booking.cancellation_safety_flag = safety_flag
+                    booking.cancelled_stage = current_status
+                    booking.cancellation_fee = cancellation_fee
+                    booking.cancellation_initiated_by = initiated_by
+                    booking.booking_metadata = metadata
+                    db.session.flush()
+                    audit_log(
+                        action="booking_cancellation_fee_recorded",
+                        resource_type="booking",
+                        resource_id=booking_id,
+                        user_id=user_id,
+                        details=audit_details,
+                        db_session=db.session,
+                    )
+                    db.session.flush()
                     release_result = AssignmentService.release(
                         booking_id,
                         BookingStatusPy.CANCELLED,
@@ -977,26 +1113,11 @@ class BookingService:
                             "from": current_status,
                             "reason_category": reason_category,
                             "safety_flag": safety_flag,
-                            "cancelled_by": "rider",
+                            "cancelled_by": initiated_by,
+                            "cancellation_fee": str(cancellation_fee),
+                            "fee_tier": fee_tier,
+                            "driver_credit": str(driver_credit),
                         },
-                    )
-                    # Update the booking with additional cancellation metadata
-                    # (AssignmentService.release sets status, cancelled_at, assigned_driver_id=None, assigned_vehicle_id=None)
-                    db.session.execute(
-                        sa.update(Booking.__table__)
-                        .where(
-                            Booking.__table__.c.id == booking_id,
-                            Booking.__table__.c.is_deleted.is_(False),
-                        )
-                        .values(
-                            cancellation_reason=reason,
-                            cancellation_reason_category=reason_category,
-                            cancellation_safety_flag=safety_flag,
-                            cancelled_stage=current_status,
-                            cancellation_fee=cancellation_fee,
-                            cancellation_initiated_by="rider",
-                        )
-                        .execution_options(synchronize_session=False)
                     )
                 except DispatchClaimError as e:
                     db.session.rollback()
@@ -1031,9 +1152,13 @@ class BookingService:
                 "success": True,
                 "message": "Booking cancelled successfully",
                 "data": {
-                    "booking_id": booking_id,
+                    "booking_reference": booking_reference,
                     "cancellation_fee": float(cancellation_fee),
-                    "refund_amount": refund_amount,
+                    "refund_amount": float(refund_amount),
+                    "currency": policy["currency"],
+                    "fee_tier": fee_tier,
+                    "recorded_uncollected": True,
+                    "driver_credit": float(driver_credit),
                     "stage_at_cancellation": current_status,
                     "safety_cancellation": safety_flag,
                     "release": release_result,
@@ -1048,6 +1173,191 @@ class BookingService:
             db.session.rollback()
             logger.error(f"Database error cancelling booking {booking_id}: {e}", exc_info=True)
             raise ServiceUnavailableError("Could not cancel booking")
+
+    @monitor_endpoint("mark_no_show")
+    def mark_no_show(self, booking_id: int, driver_user_id: int,
+                     reason: Optional[str] = None) -> Dict[str, Any]:
+        """Record a scheduled rider no-show after the 15-minute grace.
+
+        Only the assigned driver may call this. The no-show fee is 40% of
+        the fare capped at 20,000 face value; the driver accrues 100% of
+        that fee as uncollected metadata. The status transition and
+        resource release remain owned by ``transition_status`` /
+        ``AssignmentService`` — this method never writes the status
+        directly and never writes ``no_show_at``.
+        """
+        from app.transport.services.assignment_service import (
+            AssignmentService,
+            DispatchClaimError,
+        )
+
+        try:
+            booking = db.session.get(Booking, booking_id)
+            if not booking or booking.is_deleted:
+                raise NotFoundError(
+                    "Booking not found", resource_type="booking",
+                    resource_id=booking_id,
+                )
+
+            driver = DriverProfile.query.filter_by(
+                user_id=driver_user_id, is_deleted=False
+            ).first()
+            if driver is None:
+                raise PermissionError(
+                    "Only the assigned driver may mark a rider no-show"
+                )
+
+            metadata = dict(booking.booking_metadata or {})
+            no_show = metadata.get("no_show") or {}
+            if booking.status == BookingStatusPy.NO_SHOW.value:
+                # Release clears assigned_driver_id, so idempotency is
+                # proven by the recorded driver_code, not a live FK.
+                if no_show.get("driver_code") != driver.driver_code:
+                    raise PermissionError(
+                        "Only the assigned driver may mark a rider no-show"
+                    )
+                return {
+                    "success": True,
+                    "message": "Rider no-show already recorded",
+                    "data": {
+                        "booking_reference": booking.booking_reference,
+                        "status": BookingStatusPy.NO_SHOW.value,
+                        "cancellation_fee": float(
+                            _money(no_show.get("fee"))
+                        ),
+                        "driver_credit": float(
+                            _money(no_show.get("driver_credit"))
+                        ),
+                        "currency": no_show.get("currency")
+                        or _booking_currency_code(booking),
+                        "idempotent": True,
+                    },
+                }
+
+            if booking.assigned_driver_id != driver.id:
+                raise PermissionError(
+                    "Only the assigned driver may mark a rider no-show"
+                )
+
+            if booking.status != BookingStatusPy.PICKUP_ARRIVED.value:
+                raise ValidationError(
+                    "A rider no-show can only be recorded after the driver "
+                    "has arrived at the pickup location"
+                )
+            if _booking_mode(booking) != SCHEDULED_BOOKING_MODE:
+                raise ValidationError(
+                    "Rider no-show is only available for scheduled rides"
+                )
+
+            pickup = _as_utc(booking.pickup_time)
+            if pickup is None:
+                raise ValidationError(
+                    "Rider no-show requires a released pickup time"
+                )
+
+            now = datetime.now(timezone.utc)
+            if now < pickup + NO_SHOW_GRACE:
+                raise ValidationError(
+                    "Rider no-show can only be recorded 15 minutes after "
+                    "the scheduled pickup time"
+                )
+
+            fee = self._calculate_no_show_fee(booking)
+            currency = _booking_currency_code(booking)
+            driver_user_public_id = getattr(
+                getattr(driver, "user", None), "public_id", None
+            )
+
+            metadata["no_show"] = {
+                "fee": str(fee),
+                "currency": currency,
+                "recorded_uncollected": True,
+                "grace_minutes": int(NO_SHOW_GRACE.total_seconds() // 60),
+                "marked_at": now.isoformat(),
+                "marked_by": "driver",
+                "driver_code": driver.driver_code,
+                "driver_user_public_id": (
+                    str(driver_user_public_id)
+                    if driver_user_public_id is not None else None
+                ),
+                "driver_credit": str(fee),
+            }
+            metadata = self._append_driver_credit(
+                metadata,
+                booking=booking,
+                driver=driver,
+                amount=fee,
+                currency=currency,
+                reason="no_show",
+                now=now,
+            )
+
+            booking.cancellation_fee = fee
+            booking.cancellation_reason = reason or "rider_no_show"
+            booking.cancellation_reason_category = "rider_no_show"
+            booking.cancellation_safety_flag = False
+            booking.cancelled_stage = BookingStatusPy.PICKUP_ARRIVED.value
+            booking.cancellation_initiated_by = "driver"
+            booking.booking_metadata = metadata
+            db.session.flush()
+
+            audit_log(
+                action="booking_no_show_recorded",
+                resource_type="booking",
+                resource_id=booking_id,
+                user_id=driver_user_id,
+                details={
+                    "booking_reference": booking.booking_reference,
+                    "fee": str(fee),
+                    "currency": currency,
+                    "driver_credit": str(fee),
+                    "recorded_uncollected": True,
+                    "driver_code": driver.driver_code,
+                    "driver_user_public_id": (
+                        str(driver_user_public_id)
+                        if driver_user_public_id is not None else None
+                    ),
+                },
+                db_session=db.session,
+            )
+            db.session.flush()
+
+            self.transition_status(
+                booking_id,
+                BookingStatusPy.NO_SHOW,
+                reason=reason or "rider_no_show",
+                initiated_by="driver",
+                actor=None,
+            )
+            self._invalidate_booking_caches(booking_id)
+
+            return {
+                "success": True,
+                "message": "Rider no-show recorded",
+                "data": {
+                    "booking_reference": booking.booking_reference,
+                    "status": BookingStatusPy.NO_SHOW.value,
+                    "cancellation_fee": float(fee),
+                    "driver_credit": float(fee),
+                    "currency": currency,
+                    "recorded_uncollected": True,
+                    "idempotent": False,
+                },
+            }
+
+        except DispatchClaimError as e:
+            db.session.rollback()
+            raise ValidationError(e.message)
+        except (NotFoundError, PermissionError, ValidationError):
+            db.session.rollback()
+            raise
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            logger.error(
+                f"Database error marking no-show for booking {booking_id}: {e}",
+                exc_info=True,
+            )
+            raise ServiceUnavailableError("Could not record rider no-show")
 
     @staticmethod
     def transition_status(booking_id: int, new_status: "BookingStatusPy",
@@ -1626,9 +1936,28 @@ class BookingService:
         ``pickup_location_text`` / ``dropoff_location_text`` properties
         never reached the driver dashboard context (Node 3, D1) and every
         trip route rendered its literal 'Pickup' / 'Dropoff' fallback.
+
+        CANCEL-FEE-SCHEDULED-P1 adds the metadata mode and the server's
+        no-show eligibility. The driver page must never decide the grace
+        window client-side.
         """
+        status = getattr(booking, "status", "")
+        if hasattr(status, "value"):
+            status = status.value
+        mode = _booking_mode(booking)
+        pickup = _as_utc(getattr(booking, "pickup_time", None))
+        now = datetime.now(timezone.utc)
+        can_mark_no_show = bool(
+            status == BookingStatusPy.PICKUP_ARRIVED.value
+            and mode == SCHEDULED_BOOKING_MODE
+            and pickup is not None
+            and now >= pickup + NO_SHOW_GRACE
+            and getattr(booking, "assigned_driver_id", None) is not None
+        )
         return {
             **booking.to_dict(),
+            "booking_mode": mode,
+            "can_mark_no_show": can_mark_no_show,
             "pickup_location_text": booking.pickup_location_text,
             "dropoff_location_text": booking.dropoff_location_text,
         }
@@ -1883,39 +2212,129 @@ class BookingService:
     # Private Helper Methods
     # =========================================================
 
-    def _calculate_cancellation_fee(self, booking: Booking) -> Decimal:
-        """Cancellation fee tiers.
+    def get_cancellation_policy(self, booking: Booking) -> Dict[str, Any]:
+        """Public preview of the scheduled cancellation policy."""
+        return self._cancellation_policy(booking)
 
-        DEV/TESTING: the immediate-cancel grace window is 0 minutes — any
-        pickup_time at or before now is free to cancel. This is intentional
-        while the platform is under test. Before production, restore the
-        industry-standard 5-minute grace window (see BACKLOG.md BL-01).
+    def _cancellation_policy(self, booking: Booking,
+                             now: Optional[datetime] = None) -> Dict[str, Any]:
+        """Scheduled cancellation policy, computed server-side.
 
-        Tiers when pickup is in the future:
-          > 24h  → 0
-          > 4h   → 10%
-          > 2h   → 25%
-          <= 2h  → 50%
+        Scheduled mode is the metadata gate from PICKUP-TIME-AUTHORITY-P1.
+        Instant and mode-less bookings are deliberately free (fail-safe).
+        Boundary rules use timedeltas so exact 1h / 15m cannot drift.
         """
-        now = datetime.now(timezone.utc)
-        pickup = booking.pickup_time
+        current = _as_utc(now) or datetime.now(timezone.utc)
+        currency = _booking_currency_code(booking)
+        scheduled = _booking_mode(booking) == SCHEDULED_BOOKING_MODE
+
+        if not scheduled:
+            return {
+                "scheduled": False,
+                "fee": Decimal("0.00"),
+                "currency": currency,
+                "tier": "not_scheduled",
+                "percentage": 0,
+                "cap": Decimal("0.00"),
+                "pickup_time": None,
+            }
+
+        pickup = _as_utc(booking.pickup_time)
         if pickup is None:
-            return Decimal("0.00")
-        if pickup.tzinfo is None:
-            pickup = pickup.replace(tzinfo=timezone.utc)
+            return {
+                "scheduled": True,
+                "fee": Decimal("0.00"),
+                "currency": currency,
+                "tier": "unreleased_pickup",
+                "percentage": 0,
+                "cap": Decimal("0.00"),
+                "pickup_time": None,
+            }
 
-        hours_before = (pickup - now).total_seconds() / 3600.0
-        final_price = booking.final_price or Decimal("0.00")
+        fare = max(Decimal("0.00"), _money(booking.final_price))
+        delta = pickup - current
 
-        if hours_before <= 0:
-            return Decimal("0.00")
-        if hours_before > 24:
-            return Decimal("0.00")
-        if hours_before > 4:
-            return final_price * Decimal("0.10")
-        if hours_before > 2:
-            return final_price * Decimal("0.25")
-        return final_price * Decimal("0.50")
+        if delta > timedelta(hours=1):
+            return {
+                "scheduled": True,
+                "fee": Decimal("0.00"),
+                "currency": currency,
+                "tier": "more_than_1h",
+                "percentage": 0,
+                "cap": Decimal("0.00"),
+                "pickup_time": pickup,
+            }
+
+        if delta >= timedelta(minutes=15):
+            percentage = 20
+            cap = CANCEL_FEE_STANDARD_CAP
+        else:
+            percentage = 40
+            cap = CANCEL_FEE_LATE_CAP
+
+        fee = min(
+            (fare * Decimal(percentage) / Decimal("100")).quantize(
+                Decimal("0.01")
+            ),
+            cap,
+            fare,
+        )
+        return {
+            "scheduled": True,
+            "fee": _money(fee),
+            "currency": currency,
+            "tier": "15m_to_1h" if percentage == 20 else "under_15m",
+            "percentage": percentage,
+            "cap": cap,
+            "pickup_time": pickup,
+        }
+
+    def _calculate_cancellation_fee(self, booking: Booking,
+                                    now: Optional[datetime] = None) -> Decimal:
+        """Scheduled-only cancellation fee.
+
+        > 1h              → 0
+        15m through 1h    → 20%, cap 10,000
+        < 15m or past     → 40%, cap 20,000
+        Instant/mode-less → 0 (fail-safe)
+        """
+        return self._cancellation_policy(booking, now=now)["fee"]
+
+    def _calculate_no_show_fee(self, booking: Booking) -> Decimal:
+        """40% of fare, capped at 20,000 and never above the fare."""
+        fare = max(Decimal("0.00"), _money(booking.final_price))
+        return _money(min(
+            (fare * NO_SHOW_FEE_RATE).quantize(Decimal("0.01")),
+            NO_SHOW_FEE_CAP,
+            fare,
+        ))
+
+    def _append_driver_credit(self, metadata: Dict[str, Any], *,
+                              booking: Booking, driver: DriverProfile,
+                              amount: Decimal, currency: str,
+                              reason: str,
+                              now: datetime) -> Dict[str, Any]:
+        """Append a non-wallet driver credit fact to booking metadata."""
+        credit = _money(amount)
+        if credit <= 0:
+            return metadata
+        driver_user = getattr(driver, "user", None)
+        user_public_id = getattr(driver_user, "public_id", None)
+        credits = list(metadata.get("driver_cancellation_credits") or [])
+        credits.append({
+            "driver_code": driver.driver_code,
+            "driver_user_public_id": (
+                str(user_public_id) if user_public_id is not None else None
+            ),
+            "amount": str(credit),
+            "currency": currency,
+            "reason": reason,
+            "recorded_uncollected": True,
+            "booking_reference": booking.booking_reference,
+            "at": now.isoformat(),
+        })
+        metadata["driver_cancellation_credits"] = credits
+        return metadata
 
     def _generate_booking_code(self) -> str:
         letters = ''.join(random.choices(string.ascii_uppercase, k=3))

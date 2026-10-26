@@ -515,6 +515,9 @@ _DRIVER_TRIP_ACTIONS = {
     "arrive": (BookingStatus.DRIVER_EN_ROUTE, BookingStatus.PICKUP_ARRIVED, "driver_arrived_at", None),
     "start": (BookingStatus.PICKUP_ARRIVED, BookingStatus.IN_PROGRESS, None, "pickup_actual_time"),
     "complete": (BookingStatus.IN_PROGRESS, BookingStatus.COMPLETED, "completed_at", "dropoff_actual_time"),
+    # CANCEL-FEE-SCHEDULED-P1: special-cased to BookingService.mark_no_show
+    # so the 15-minute grace and fee/credit rules stay server-owned.
+    "no_show": (BookingStatus.PICKUP_ARRIVED, BookingStatus.NO_SHOW, None, None),
 }
 
 
@@ -537,8 +540,35 @@ def _execute_driver_trip_action(booking, profile, action, actor):
     if action not in _DRIVER_TRIP_ACTIONS:
         return {
             "success": False,
-            "error": "action must be one of: en_route|arrive|start|complete",
+            "error": (
+                "action must be one of: "
+                "en_route|arrive|start|complete|no_show"
+            ),
         }, 400
+
+    if action == "no_show":
+        from app.transport.services.booking_service import get_booking_service
+        from app.utils.exceptions import (
+            NotFoundError,
+            PermissionError as AppPermissionError,
+            ValidationError,
+        )
+
+        try:
+            result = get_booking_service().mark_no_show(
+                booking.id, profile.user_id
+            )
+            return {
+                "success": True,
+                "message": result.get("message"),
+                "data": result.get("data", {}),
+            }, 200
+        except NotFoundError as e:
+            return {"success": False, "error": str(e)}, 404
+        except AppPermissionError as e:
+            return {"success": False, "error": str(e)}, 403
+        except ValidationError as e:
+            return {"success": False, "error": str(e)}, 409
 
     expected, target, ts_col, actual_col = _DRIVER_TRIP_ACTIONS[action]
     now = datetime.now(timezone.utc)

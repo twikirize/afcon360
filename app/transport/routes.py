@@ -1262,6 +1262,31 @@ def rides_show(booking_reference):
                            f"lookup failed: {e}")
     driver_user = driver.user if driver is not None else None
 
+    # CANCEL-FEE-SCHEDULED-P1: the rider dialog must show the same fee the
+    # server will charge, computed here — never re-derived in JavaScript.
+    try:
+        _policy = get_booking_service().get_cancellation_policy(
+            booking_model
+        )
+        cancellation_policy_preview = {
+            "scheduled": bool(_policy.get("scheduled")),
+            "fee": float(_policy.get("fee") or 0),
+            "currency": _policy.get("currency") or "",
+            "tier": _policy.get("tier") or "",
+            "percentage": int(_policy.get("percentage") or 0),
+        }
+    except Exception as e:
+        logger.warning(f"Ride {booking_reference}: cancellation preview "
+                       f"failed: {e}")
+        cancellation_policy_preview = {
+            "scheduled": False, "fee": 0.0, "currency": "",
+            "tier": "", "percentage": 0,
+        }
+    _pickup = getattr(booking_model, "pickup_time", None)
+    if _pickup is not None and _pickup.tzinfo is None:
+        _pickup = _pickup.replace(tzinfo=timezone.utc)
+    pickup_time_iso = _pickup.isoformat() if _pickup is not None else ""
+
     # Rider live-tracking approval (GEO rider node): the same Transport-owned
     # subject decision as the booking stream, so the page never offers
     # tracking the stream would deny.
@@ -1307,6 +1332,13 @@ def rides_show(booking_reference):
         vehicle=vehicle,
         tracking_allowed=tracking_allowed,
         tracking_booking_ref=tracking_booking_ref,
+        booking_mode=(
+            "scheduled" if cancellation_policy_preview["scheduled"]
+            else "instant"
+        ),
+        booking_currency=cancellation_policy_preview["currency"],
+        pickup_time_iso=pickup_time_iso,
+        cancellation_policy_preview=cancellation_policy_preview,
         tile_url=current_app.config["TILE_PROVIDER_URL_TEMPLATE"],
         tile_attribution=current_app.config["TILE_PROVIDER_ATTRIBUTION"],
     )
@@ -1331,7 +1363,7 @@ def rides_cancel(booking_reference):
         reason_category = data.get("reason_category")
         safety_flag = data.get("safety_flag", False)
         
-        get_booking_service().cancel_booking(
+        result = get_booking_service().cancel_booking(
             booking_model.id, user_id=current_user.id,
             reason=reason,
             reason_category=reason_category,
@@ -1345,7 +1377,10 @@ def rides_cancel(booking_reference):
         logger.info(f"Ride {booking_reference} cancelled by passenger "
                     f"user_id={_uid()}, category={reason_category}, safety={safety_flag}")
         if request.is_json:
-            return jsonify({"status": "success"}), 200
+            return jsonify({
+                "status": "success",
+                "data": (result or {}).get("data", {}),
+            }), 200
         flash("Booking cancelled successfully", "success")
     except ValidationError as e:
         logger.warning(f"Passenger cancel ride {booking_reference} rejected: {e}")
