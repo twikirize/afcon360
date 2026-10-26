@@ -1428,11 +1428,6 @@
     };
     return m[vc] || 'fa-car';
   }
-  function setPickupTimeNow(){
-    var d = new Date();
-    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-    hPickupTime.value = d.toISOString().slice(0, 16);
-  }
 
   var gpsSeq = 0;
   function bumpGpsSeq(){ gpsSeq += 1; return gpsSeq; }
@@ -1919,7 +1914,10 @@
     // UI-14-F1: returns false when a Later selection has no valid time.
     // The commitment boundary must block in that case — silently
     // substituting the current time would book an immediate ride the
-    // rider did not ask for. Now keeps its existing behavior.
+    // rider did not ask for.
+    // PICKUP-TIME-AUTHORITY-P1: 'now' no longer writes the client clock
+    // into the form. The server stamps pickup_time for instant rides;
+    // a stale client clock must never be able to replay an old value.
     if (state.schedule === 'later') {
       if (!schedAt.value) return false;
       var d = new Date(schedAt.value);
@@ -1930,7 +1928,7 @@
       hPickupTime.value = d.toISOString().slice(0, 16);
       return true;
     }
-    setPickupTimeNow();
+    hPickupTime.value = '';
     return true;
   }
 

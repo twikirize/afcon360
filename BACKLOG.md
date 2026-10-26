@@ -23,6 +23,46 @@
 
 ---
 
+## TRANSPORT-VEHICLE-CURRENT-BOOKING-01 — Vehicle.current_booking reports deleted and pickup-arrived rides (DEFERRED — admin/display only, not dispatch)
+
+- Status: Not started (recorded 2026-10-26; scope-scan verdict = no urgent consumer)
+- Raised: 2026-10-26 (PICKUP-TIME-AUTHORITY-P1 review; defect #10 deliberately NOT bundled into P1)
+- Context: `Vehicle.current_booking` (`app/transport/models.py`, property on `Vehicle`) has two defects: (1) it does not filter `Booking.is_deleted == False`, so a soft-deleted booking can still be reported as the vehicle's current ride; (2) its live-status list omits `BookingStatus.PICKUP_ARRIVED`, so while a driver waits at pickup the vehicle reports no current booking — inconsistent with `Booking.is_upcoming`, which treats PICKUP_ARRIVED as live.
+- Scope-scan evidence (2026-10-26, `grep -r current_booking --include=*.py`): the property has exactly two readers, both admin-only in `app/transport/api/vehicle_routes.py` — GET detail serialization (lines 192-194) and the vehicle soft-delete guard (line 245). `app/transport/services/coordination_contract.py:148` reads the unrelated legacy column `current_booking_id`, not this property. No reads exist anywhere in the pickup-time/dispatch scope (`booking_service.py`, `matching_service.py`, `routes.py`, `driver_routes.py`, `app/tasks/`). Classification: admin/display-only; neither bug is a dispatch dependency.
+- What needs to happen: in its own small session — add `Booking.is_deleted == False` and `BookingStatus.PICKUP_ARRIVED` to the property's predicate; add regression tests (deleted booking excluded; PICKUP_ARRIVED reported as current); re-check the two `vehicle_routes.py` call sites. No schema change; no migration.
+- Owner/area: Transport (vehicle admin/API)
+- Links: `app/transport/models.py` (`Vehicle.current_booking`), `app/transport/api/vehicle_routes.py:192-194,245`, parity reference `Booking.is_upcoming` (`app/transport/models.py`).
+
+---
+
+## TRANSPORT-PREEXISTING-RED-5 — Five red tests at HEAD 7b65c4c outside PICKUP-TIME-AUTHORITY-P1 (DEFERRED — pre-existing, NOT caused by P1)
+
+- Status: Not started (recorded 2026-10-26; reproduced on pure HEAD with P1 changes stashed)
+- Raised: 2026-10-26 (PICKUP-TIME-AUTHORITY-P1 Deploy-1 verification — the five failures block a clean "all green" claim for the touched test set even though they predate the node)
+- Context: with all P1 application changes and P1 test edits stashed (`git stash push -- app/ tests/test_ui_loc_02a_closure.py`), these fail identically on commit `7b65c4c`:
+  1. `tests/test_transport_fare_engine.py::test_creation_records_applied_surge`
+  2. `tests/test_transport_fare_engine.py::test_creation_persists_chosen_vehicle_class`
+  3. `tests/test_transport_fare_engine.py::test_estimate_matches_creation_inputs`
+  4. `tests/test_transport_passengers.py::test_create_booking_service_returns_public_reference`
+  5. `tests/test_ui_loc_02a_closure.py::test_legacy_book_route_rejects_text_only_endpoints`
+- Root cause (established): (a) tests 1-4 call `BookingService.create_booking()` directly with `pickup_location`/`dropoff_location` as dicts, but the UI-LOC-02A closure (`booking_service.py:_extract_coords`) only reads flat `pickup_latitude`/`pickup_longitude` keys, so the service now raises `pickup_location must include both 'latitude' and 'longitude'`. This is either stale service-level test payloads or an undocumented direct-service contract break — needs a decision. (b) test 5 expects the legacy-route validation error to redirect to `/transport/book`, but the route currently redirects to `/transport/`.
+- What needs to happen: classify (stale tests vs. real contract regression in `_extract_coords`), then either update the service-level payloads/tests or restore dict support in the service boundary; confirm the intended legacy-route error redirect target and align test or route. No P1 work should fix these opportunistically.
+- Owner/area: Transport (booking service boundary + UI-LOC-02A tests)
+- Links: `tests/test_transport_fare_engine.py:_seed_booking`, `tests/test_transport_passengers.py:335`, `tests/test_ui_loc_02a_closure.py:271-289`, `app/transport/services/booking_service.py` (`_extract_coords`), `app/transport/routes.py` (booking error redirect).
+
+---
+
+## TRANSPORT-CHECK-SYNC-TARGET-01 — CHECK-constraint sync tool has no explicit DB target (DEFERRED — operational safety)
+
+- Status: Not started (recorded 2026-10-26)
+- Raised: 2026-10-26 (PICKUP-TIME-AUTHORITY-P1 CHECK correction; dry-run resolved to production by default)
+- Context: `scripts/sync_check_constraints.py` calls `create_app()` and has no `--database-url` / `--target` flag. `--environment` is only a label written into the generated migration. With repo `.env.local` (`APP_ENV=local`, `DATABASE_URL` → `afcon360_prod`), the default target is **production**; setting `FLASK_ENV=testing` alone is insufficient because `.env.local` sets `APP_ENV=local`. Targeting the test DB required setting `APP_ENV=testing` before launch. A write-mode run intended for test can therefore modify production.
+- What needs to happen: add an explicit target selector, or echo the resolved DB identity and refuse write mode unless a `--confirm-target <db>` value matches `current_database()`; refuse production write mode without an additional explicit confirmation. Add tests for target selection. Do not change the tool while P1 is blocked.
+- Owner/area: Transport / database tooling
+- Links: `scripts/sync_check_constraints.py` (`main`, `parse_args`), `app/config.py` (`_load_env`, `get_config`), `AGENTS.md` §10/§49.
+
+---
+
 ## SOCKETIO-QUEUE-01 — Cross-worker Socket.IO emit fan-out without monkey-patching (Deferred — latency optimization, NOT a correctness requirement)
 
 - Status: Deferred after Phase 0 (recorded 2026-10-25; reclassified 2026-10-25 from "residual risk" to "latency optimization only")

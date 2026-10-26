@@ -873,9 +873,13 @@ def _split_rides(rides):
     """Split light booking dicts into (upcoming, past), newest first.
 
     Upcoming: live statuses with a pickup_time newer than now - 2 min.
-    Everything else (completed/cancelled/no_show/disputed, missing or
-    past pickup_time) is past. pickup_time arrives as an ISO string
-    (or None) from get_user_bookings.
+    A live SCHEDULED ride also stays upcoming while its
+    server-authoritative pickup_time is still NULL (PICKUP-TIME-AUTHORITY-P1:
+    Deploy 2 releases matching 30 minutes before pickup). Everything
+    else (completed/cancelled/no_show/disputed, missing or past
+    pickup_time on an instant ride) is past. pickup_time arrives as an
+    ISO string (or None) from get_user_bookings; booking_mode comes from
+    booking_metadata.
     """
     from datetime import datetime, timedelta, timezone
 
@@ -889,8 +893,17 @@ def _split_rides(rides):
     now = datetime.now(timezone.utc)
     upcoming, past = [], []
     for ride in sorted(rides, key=lambda r: r.get("created_at") or "", reverse=True):
+        if ride.get("status") not in live:
+            past.append(ride)
+            continue
         when = _parse_ride_time(ride.get("pickup_time"))
-        if ride.get("status") in live and when is not None and when > now - timedelta(minutes=2):
+        is_scheduled = ride.get("booking_mode") == "scheduled"
+        if when is None:
+            if is_scheduled:
+                upcoming.append(ride)
+            else:
+                past.append(ride)
+        elif when > now - timedelta(minutes=2):
             upcoming.append(ride)
         else:
             past.append(ride)
@@ -967,8 +980,12 @@ def book_transport():
         # so the booking becomes claimable, then dispatch immediately so
         # the rider lands on a live matching screen. The
         # transport.dispatch_recovery beat stays as the safety net.
+        # PICKUP-TIME-AUTHORITY-P1: SCHEDULED rides skip this immediate
+        # confirm/dispatch — they stay PENDING_PAYMENT until the Deploy-2
+        # scheduler releases matching 30 minutes before pickup.
         # Soft-fail: a dispatch problem must never block the redirect.
-        if str(data.get("payment_method") or "cash").lower() == "cash":
+        if (str(data.get("payment_method") or "cash").lower() == "cash"
+                and booking["data"].get("booking_mode") != "scheduled"):
             try:
                 get_booking_service().transition_status(
                     booking_id, BookingStatus.CONFIRMED,

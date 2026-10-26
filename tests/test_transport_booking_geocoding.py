@@ -38,6 +38,7 @@ def _payload(**over):
     data = {
         "pickup_location": "Nile Stadium, Kampala",
         "dropoff_location": "Entebbe Airport",
+        "booking_mode": "instant",
         "pickup_time": (datetime.now(timezone.utc)
                         + timedelta(hours=1)).isoformat(),
         "service_type": "on_demand", "passenger_count": 1,

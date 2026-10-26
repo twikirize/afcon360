@@ -40,6 +40,7 @@ def _payload(**over):
     data = {
         "pickup_location": "Nile Stadium, Kampala",
         "dropoff_location": "Entebbe Airport",
+        "booking_mode": "instant",
         "pickup_time": (datetime.now(timezone.utc)
                         + timedelta(hours=1)).isoformat(),
         "service_type": "on_demand", "passenger_count": 1,
@@ -271,6 +272,7 @@ def test_legacy_book_route_rejects_text_only_endpoints(app,
     resp = authenticated_client.post("/transport/book", data={
         "service_type": "on_demand",
         "provider_type": "individual_driver",
+        "booking_mode": "instant",
         "passenger_count": "1",
         "luggage_count": "0",
         "currency": "USD",

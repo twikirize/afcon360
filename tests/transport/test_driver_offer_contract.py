@@ -558,6 +558,7 @@ class TestLocationEndToEnd:
             "pickup_longitude": 32.5825,
             "dropoff_latitude": 0.3136,
             "dropoff_longitude": 32.5811,
+            "booking_mode": "instant",
             "pickup_time": (
                 datetime.now(timezone.utc) + timedelta(hours=3)).isoformat(),
             "service_type": "on_demand",

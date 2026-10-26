@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Any
 import random
 import string
 import json
+import hashlib
 import logging
 import sqlalchemy as sa
 from flask import current_app
@@ -262,6 +263,42 @@ def _matching_window_start(booking: Booking) -> Optional[datetime]:
     return fallback
 
 
+def _trip_fingerprint(data: Dict[str, Any]) -> str:
+    """Canonical request fingerprint for idempotency-key reuse checks.
+
+    Normalises the fields that define WHAT trip a request asks for.
+    Client-supplied pickup_time is deliberately NOT hashed for instant
+    rides (it may differ between retries; the server clock is the
+    authority). Scheduled rides hash the explicit ISO pickup_time, but
+    only after mode-aware validation has accepted it. A request with no
+    valid booking_mode is fingerprinted in the scheduled branch so that
+    any later retry with a valid mode never matches it (fail-closed).
+    """
+    mode = str(data.get("booking_mode") or "").strip().lower()
+    if mode == "instant":
+        pickup_fp = "instant"
+    else:
+        raw = data.get("pickup_time")
+        try:
+            dt = datetime.fromisoformat(str(raw))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            pickup_fp = dt.astimezone(timezone.utc).isoformat()
+        except (ValueError, TypeError):
+            pickup_fp = ""
+    canonical = {
+        "booking_mode": mode,
+        "pickup_time": pickup_fp,
+        "service_type": str(data.get("service_type") or "").strip().lower(),
+        "vehicle_class": str(data.get("vehicle_class") or "comfort").strip().lower(),
+        "pickup_address": str(data.get("pickup_address") or "").strip().lower(),
+        "dropoff_address": str(data.get("dropoff_address") or "").strip().lower(),
+        "passenger_count": str(data.get("passenger_count") or "1"),
+    }
+    raw_payload = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw_payload.encode("utf-8")).hexdigest()
+
+
 class BookingService:
     """Instance-based service for managing transport bookings"""
 
@@ -282,7 +319,17 @@ class BookingService:
         try:
             sanitized_data = booking_data or {}
 
-            # Idempotency dedupe — before any fare calc or DB write
+            # Request-receipt clock (6C): captured BEFORE any fare call,
+            # retry sleep or dedupe so the scheduled lead-time (and, from
+            # Deploy 2, the server pickup_time itself) is measured from
+            # this instant — never from a later clock read that already
+            # includes processing latency.
+            request_received_at = datetime.now(timezone.utc)
+
+            # Idempotency dedupe — before any fare calc or DB write.
+            # Addendum-2 Option A: a successful replay is a READ. No
+            # metadata mutation, no commit. The same key with a
+            # different trip is a client error, not a replay.
             key = (sanitized_data.get("idempotency_key") or "").strip() or None
             if key:
                 existing = Booking.query.filter_by(
@@ -291,9 +338,32 @@ class BookingService:
                     is_deleted=False,
                 ).first()
                 if existing:
-                    existing.booking_metadata = existing.booking_metadata or {}
-                    existing.booking_metadata["idempotent_replay"] = True
-                    existing.booking_metadata["replayed_at"] = datetime.now(timezone.utc).isoformat()
+                    stored_fp = (existing.booking_metadata or {}).get(
+                        "trip_fingerprint")
+                    if stored_fp is None:
+                        logger.info(
+                            f"Idempotent replay rejected: key exists without a "
+                            f"trip fingerprint (legacy row) for "
+                            f"user_id={customer_id}"
+                        )
+                        raise ValidationError(
+                            message="Idempotency key exists but cannot be "
+                                    "verified. Refresh the page and try again.",
+                            field="idempotency_key",
+                        )
+                    if stored_fp != _trip_fingerprint(sanitized_data):
+                        logger.info(
+                            f"Idempotent replay rejected: key reused with a "
+                            f"different trip for user_id={customer_id}"
+                        )
+                        raise ValidationError(
+                            message="idempotency_key reused with a different trip",
+                            field="idempotency_key",
+                        )
+                    logger.info(
+                        f"Idempotent replay returned existing booking "
+                        f"id={existing.id} (read-only)"
+                    )
                     return {
                         "success": True,
                         "data": {
@@ -525,38 +595,41 @@ class BookingService:
             _APP_TZ_NAME = current_app.config.get('APP_TZ', 'Africa/Nairobi')
             _APP_TZ = ZoneInfo(_APP_TZ_NAME)
 
-            booking_mode = (sanitized_data.get('booking_mode') or 'instant').strip().lower()
+            _raw_mode = sanitized_data.get('booking_mode')
+            if _raw_mode is None or str(_raw_mode).strip() == '':
+                raise ValidationError(
+                    message=(
+                        "booking_mode is required ('instant' or 'scheduled'). "
+                        "Refresh the page and try again."
+                    ),
+                    field="booking_mode",
+                )
+            booking_mode = str(_raw_mode).strip().lower()
             if booking_mode not in ('instant', 'scheduled'):
                 raise ValidationError(
                     message="booking_mode must be 'instant' or 'scheduled'",
                     field="booking_mode",
                 )
 
-            try:
-                raw = sanitized_data["pickup_time"]
-                pickup_time = datetime.fromisoformat(str(raw))
-                if pickup_time.tzinfo is None:
-                    # Naive input is interpreted as the configured app zone —
-                    # the contract the form posts under. Never machine-local,
-                    # never UTC by accident.
-                    pickup_time = pickup_time.replace(tzinfo=_APP_TZ)
-            except (ValueError, TypeError, KeyError):
-                # No pickup_time in the request.
-                if booking_mode == 'scheduled':
+            if booking_mode == 'scheduled':
+                try:
+                    raw = sanitized_data["pickup_time"]
+                    pickup_time = datetime.fromisoformat(str(raw))
+                    if pickup_time.tzinfo is None:
+                        # Naive input is interpreted as the configured app
+                        # zone — the contract the form posts under. Never
+                        # machine-local, never UTC by accident.
+                        pickup_time = pickup_time.replace(tzinfo=_APP_TZ)
+                except (ValueError, TypeError, KeyError):
                     raise ValidationError(
                         message="Scheduled pickups require an explicit pickup_time",
                         field="pickup_time",
                     )
-                # Instant: default to "right now". The ck_pickup_time_sane
-                # constraint (5-min grace) absorbs any processing latency.
-                pickup_time = datetime.now(timezone.utc)
-
-            # Mode-specific validation. The scheduled lead-time rule lives
-            # here, where booking_mode is known. The DB constraint
-            # (ck_pickup_time_sane) stays universal — it catches
-            # clearly-past bookings regardless of mode.
-            if booking_mode == 'scheduled':
-                minimum_lead = datetime.now(timezone.utc) + timedelta(minutes=15)
+                # Lead time is measured from request receipt (6C), not from
+                # a clock read after fare/dedupe latency. The DB constraint
+                # (ck_pickup_time_sane) stays universal — it catches
+                # clearly-past bookings regardless of mode.
+                minimum_lead = request_received_at + timedelta(minutes=15)
                 if pickup_time < minimum_lead:
                     raise ValidationError(
                         message=(
@@ -565,6 +638,13 @@ class BookingService:
                         ),
                         field="pickup_time",
                     )
+            else:
+                # Instant: the server clock is the pickup-time authority.
+                # Any client-supplied pickup_time is IGNORED — the stale-UI
+                # replay hole (a client resending an old pickup_time whose
+                # grace expired) is closed here. The ck_pickup_time_sane
+                # 5-minute grace absorbs this call's own processing latency.
+                pickup_time = datetime.now(timezone.utc)
 
             special_req = sanitized_data.get("special_requirements") or {}
             if isinstance(special_req, str):
@@ -579,6 +659,8 @@ class BookingService:
                 pickup_location=pickup_snapshot,
                 dropoff_location=dropoff_snapshot,
                 pickup_time=pickup_time,
+                pickup_mode=booking_mode,
+                request_received_at=request_received_at,
                 passenger_count=int(sanitized_data.get("passenger_count") or 1),
                 luggage_count=int(sanitized_data.get("luggage_count") or 0),
                 special_requirements=special_req,
@@ -604,6 +686,7 @@ class BookingService:
                     if distance_for_fare is not None else None,
                     "distance_basis": distance_basis,
                     "booking_mode": booking_mode,  # 'instant' | 'scheduled'
+                    "trip_fingerprint": _trip_fingerprint(sanitized_data),
                 }
             )
 
@@ -675,6 +758,8 @@ class BookingService:
                     "estimated_price": float(estimated_price),
                     "status": booking.status,
                     "pickup_time": booking.pickup_time.isoformat()
+                    if booking.pickup_time else None,
+                    "booking_mode": booking_mode,
                 }
             }
 
@@ -683,10 +768,12 @@ class BookingService:
             record_metric("booking_creation", tags={"status": "failed", "error_type": "validation"}, value=1)
             raise
 
-        except IntegrityError:
+        except IntegrityError as e:
             # Concurrent same-key race: two threads passed the dedupe check,
             # one INSERT won, this one hit the partial unique index. The
-            # winner's booking exists — return it as a replay.
+            # winner's booking exists — return it as a replay, but ONLY if
+            # its fingerprint matches this request (Addendum-2 Option A:
+            # the replay return is a read; no metadata write, no commit).
             db.session.rollback()
             if key:
                 winner = Booking.query.filter_by(
@@ -695,12 +782,23 @@ class BookingService:
                     is_deleted=False,
                 ).first()
                 if winner is not None:
-                    winner.booking_metadata = winner.booking_metadata or {}
-                    winner.booking_metadata["idempotent_replay"] = True
-                    winner.booking_metadata["replayed_at"] = (
-                        datetime.now(timezone.utc).isoformat()
+                    stored_fp = (winner.booking_metadata or {}).get(
+                        "trip_fingerprint")
+                    if stored_fp is None:
+                        raise ValidationError(
+                            message="Idempotency key exists but cannot be "
+                                    "verified. Refresh the page and try again.",
+                            field="idempotency_key",
+                        )
+                    if stored_fp != _trip_fingerprint(sanitized_data):
+                        raise ValidationError(
+                            message="idempotency_key reused with a different trip",
+                            field="idempotency_key",
+                        )
+                    logger.info(
+                        f"Concurrent idempotent replay returned existing "
+                        f"booking id={winner.id} (read-only)"
                     )
-                    db.session.commit()
                     return {
                         "success": True,
                         "message": "Booking already exists (concurrent replay)",
@@ -710,7 +808,31 @@ class BookingService:
                             "idempotent_replay": True,
                         },
                     }
-            logger.error("IntegrityError with no key — cannot recover", exc_info=True)
+            # Structural (CHECK-constraint) rejects are client errors with a
+            # usable field, not service outages. Match by constraint name.
+            _constraint_name = getattr(
+                getattr(getattr(e, "orig", None), "diag", None),
+                "constraint_name", None)
+            _structural = {
+                "ck_pickup_mode_valid": (
+                    "booking_mode",
+                    "booking_mode must be 'instant' or 'scheduled'.",
+                ),
+                "ck_pickup_time_mode_aware": (
+                    "pickup_time",
+                    "Pickup time does not match the selected booking mode.",
+                ),
+            }
+            if _constraint_name in _structural:
+                _field, _msg = _structural[_constraint_name]
+                logger.info(
+                    f"Structural constraint {_constraint_name} rejected booking "
+                    f"for user_id={customer_id}"
+                )
+                raise ValidationError(message=_msg, field=_field)
+            logger.error(
+                f"IntegrityError with constraint={_constraint_name} — "
+                f"cannot recover", exc_info=True)
             raise ServiceUnavailableError("Booking service temporarily unavailable")
 
         except SQLAlchemyError as e:
@@ -1148,12 +1270,16 @@ class BookingService:
         """Manual rider "Try again": NO_MATCH -> CONFIRMED + fresh window.
 
         Authorization mirrors cancel_booking's rider check (booker only;
-        admins use the admin status endpoint). Resets the matching-window
-        cursor (review Condition 1) and clears no_match_reason so the CHECK
-        holds; then immediately re-runs discover_and_offer so the rider
-        lands on a live matching screen. No auto-retry exists anywhere else.
+        admins use the admin status endpoint). The status change, the
+        no_match_reason clear (so chk_no_match_reason holds) and the
+        matching-window cursor reset (review Condition 1) happen in ONE
+        ORM transaction on a FOR UPDATE-locked row, so no recovery or
+        dispatch beat can observe CONFIRMED with a stale cursor.
+        confirmed_at is first-confirmation audit history and is
+        deliberately NOT rewritten. Then immediately re-runs
+        discover_and_offer. No auto-retry exists anywhere else.
         """
-        booking = db.session.get(Booking, booking_id)
+        booking = db.session.get(Booking, booking_id, with_for_update=True)
         if not booking or booking.is_deleted:
             raise NotFoundError("Booking not found",
                                 resource_type="booking",
@@ -1167,32 +1293,13 @@ class BookingService:
                 field="status",
             )
         now = datetime.now(timezone.utc)
-        result = db.session.execute(
-            sa.update(Booking.__table__)
-            .where(
-                Booking.__table__.c.id == booking_id,
-                Booking.__table__.c.status == BookingStatusPy.NO_MATCH.value,
-                Booking.__table__.c.is_deleted.is_(False),
-            )
-            .values(
-                status=BookingStatusPy.CONFIRMED.value,
-                no_match_reason=None,
-                confirmed_at=now,
-            )
-            .execution_options(synchronize_session=False)
-        )
-        if result.rowcount != 1:
-            db.session.rollback()
-            raise ValidationError("Retry failed: ride is no longer in no_match")
-        db.session.commit()
-        db.session.expire_all()
-        refreshed = db.session.get(Booking, booking_id)
-        # Fresh window cursor (Condition 1): confirmed_at is re-stamped above
-        # as the user-observable "search restarted" time AND the metadata
-        # cursor is reset — either alone suffices; both are set so the
-        # confirmed_at fallback path can never see a stale window.
-        _stamp_matching_window_start(refreshed, now)
-        refreshed.audit_log = (refreshed.audit_log or []) + [{
+        booking.status = BookingStatusPy.CONFIRMED
+        booking.no_match_reason = None
+        # Fresh window cursor (Condition 1): metadata cursor reset in the
+        # same transaction as the status change. confirmed_at is left
+        # untouched as immutable first-confirmation audit history.
+        _stamp_matching_window_start(booking, now)
+        booking.audit_log = (booking.audit_log or []) + [{
             "action": "retry_matching",
             "from": BookingStatusPy.NO_MATCH.value,
             "to": BookingStatusPy.CONFIRMED.value,
@@ -1204,7 +1311,7 @@ class BookingService:
             db.session.commit()
         except SQLAlchemyError as e:
             db.session.rollback()
-            logger.error(f"Error auditing retry for {booking_id}: {e}",
+            logger.error(f"Error committing retry for {booking_id}: {e}",
                          exc_info=True)
             raise ServiceUnavailableError("Could not restart matching")
         BookingService()._invalidate_booking_caches(booking_id)
@@ -1216,7 +1323,7 @@ class BookingService:
         except Exception as e:
             db.session.rollback()
             logger.warning(f"Retry re-dispatch soft-failed for {booking_id}: {e}")
-        return {"booking": refreshed, "replayed": False,
+        return {"booking": booking, "replayed": False,
                 "offers_created": offers_created}
 
     # =========================================================
@@ -1351,6 +1458,10 @@ class BookingService:
                     "dropoff_location": dropoff or "Destination",
                     "status": b.status if b.status else None,
                     "pickup_time": b.pickup_time.isoformat() if b.pickup_time else None,
+                    "booking_mode": (
+                        b.booking_metadata.get("booking_mode")
+                        if isinstance(b.booking_metadata, dict) else None
+                    ),
                     "created_at": b.created_at.isoformat() if b.created_at else None,
                     "final_price": float(b.final_price) if b.final_price is not None else None,
                     "currency": b.currency.value if b.currency else None,

@@ -59,6 +59,7 @@ def _base_payload():
         "dropoff_latitude": 0.3476,
         "dropoff_longitude": 32.5825,
         "service_type": "on_demand",
+        "booking_mode": "instant",
         "pickup_time": "2026-12-31T10:00:00",
         "passenger_count": 1,
         "currency": "USD",
@@ -218,3 +219,178 @@ class TestBookingIdempotency:
             f"Expected at least one replay among {len(results)} results; "
             f"got {replay_count}"
         )
+
+
+class TestIdempotencyFingerprint:
+    """PICKUP-TIME-AUTHORITY-P1 (patch #7 + Addendum-2 Option A).
+
+    A replay is only valid when the same key arrives with the SAME trip
+    (canonical fingerprint). A successful replay is a READ: no metadata
+    mutation, no commit. Legacy rows without a fingerprint fail closed.
+    """
+
+    def test_replay_same_key_same_payload_is_read_only(self, app, test_user):
+        """Addendum-2 Option A: the replay return writes nothing."""
+        from app.extensions import db
+        from app.transport.models import Booking
+
+        user_id = _get_user_id(app, test_user)
+        idem_key = _unique_key("p1-fp-read-only")
+
+        first = _call_service(app, user_id, idem_key)
+        assert first.get("success") is True
+
+        with app.app_context():
+            booking = Booking.query.filter_by(
+                idempotency_key=idem_key, user_id=user_id,
+                is_deleted=False).first()
+            meta_before = dict(booking.booking_metadata or {})
+            updated_before = booking.updated_at
+            assert "trip_fingerprint" in meta_before
+            db.session.rollback()
+
+        second = _call_service(app, user_id, idem_key)
+        assert second.get("success") is True
+        assert second["data"].get("idempotent_replay") is True
+        assert second["data"]["booking_reference"] == first["data"]["booking_reference"]
+
+        with app.app_context():
+            booking = Booking.query.filter_by(
+                idempotency_key=idem_key, user_id=user_id,
+                is_deleted=False).first()
+            meta_after = dict(booking.booking_metadata or {})
+            db.session.rollback()
+        # No replay bookkeeping leaked into the row.
+        assert "idempotent_replay" not in meta_after
+        assert "replayed_at" not in meta_after
+        assert meta_after == meta_before
+
+    def test_replay_rejects_legacy_row_without_fingerprint(self, app, test_user):
+        """A pre-P1 row has no trip_fingerprint: fail closed (Addendum 2)."""
+        from app.extensions import db
+        from app.transport.models import Booking
+        from app.utils.exceptions import ValidationError
+
+        user_id = _get_user_id(app, test_user)
+        idem_key = _unique_key("p1-fp-legacy")
+
+        first = _call_service(app, user_id, idem_key)
+        assert first.get("success") is True
+
+        # Simulate a legacy row: strip the fingerprint.
+        with app.app_context():
+            booking = Booking.query.filter_by(
+                idempotency_key=idem_key, user_id=user_id,
+                is_deleted=False).first()
+            meta = dict(booking.booking_metadata or {})
+            meta.pop("trip_fingerprint", None)
+            booking.booking_metadata = meta
+            db.session.commit()
+
+        with pytest.raises(ValidationError) as exc:
+            _call_service(app, user_id, idem_key)
+        assert exc.value.field == "idempotency_key"
+        assert _count_bookings(app, idem_key, user_id) == 1
+
+    def test_replay_rejects_same_key_different_trip(self, app, test_user):
+        """Same key + different trip is a client error, not a replay."""
+        from app.utils.exceptions import ValidationError
+
+        user_id = _get_user_id(app, test_user)
+        idem_key = _unique_key("p1-fp-different-trip")
+
+        first = _call_service(app, user_id, idem_key)
+        assert first.get("success") is True
+
+        with pytest.raises(ValidationError) as exc:
+            _call_service(app, user_id, idem_key,
+                          payload={"passenger_count": 3})
+        assert "different trip" in str(exc.value.message)
+        assert _count_bookings(app, idem_key, user_id) == 1
+
+    def test_instant_replay_ignores_client_pickup_time_drift(
+            self, app, test_user):
+        """Instant fingerprint normalises pickup_time away: the server
+        clock is the authority, so a retried client time cannot block
+        the replay."""
+        from datetime import datetime, timezone, timedelta
+
+        user_id = _get_user_id(app, test_user)
+        idem_key = _unique_key("p1-fp-instant-drift")
+
+        first = _call_service(app, user_id, idem_key)
+        assert first.get("success") is True
+
+        drifted = (datetime.now(timezone.utc) + timedelta(hours=3)).isoformat()
+        second = _call_service(app, user_id, idem_key,
+                               payload={"pickup_time": drifted})
+        assert second.get("success") is True
+        assert second["data"].get("idempotent_replay") is True
+        assert second["data"]["booking_reference"] == first["data"]["booking_reference"]
+
+    def test_scheduled_replay_fingerprint_guards_pickup_time(
+            self, app, test_user):
+        """Scheduled fingerprint hashes the explicit ISO pickup_time:
+        same time replays, a different time is rejected."""
+        from datetime import datetime, timezone, timedelta
+        from app.utils.exceptions import ValidationError
+
+        user_id = _get_user_id(app, test_user)
+        idem_key = _unique_key("p1-fp-scheduled")
+        sched = (datetime.now(timezone.utc) + timedelta(minutes=45)).isoformat()
+
+        first = _call_service(
+            app, user_id, idem_key,
+            payload={"booking_mode": "scheduled", "pickup_time": sched})
+        assert first.get("success") is True
+
+        replay = _call_service(
+            app, user_id, idem_key,
+            payload={"booking_mode": "scheduled", "pickup_time": sched})
+        assert replay.get("success") is True
+        assert replay["data"].get("idempotent_replay") is True
+
+        other = (datetime.now(timezone.utc) + timedelta(minutes=90)).isoformat()
+        with pytest.raises(ValidationError) as exc:
+            _call_service(
+                app, user_id, idem_key,
+                payload={"booking_mode": "scheduled", "pickup_time": other})
+        assert "different trip" in str(exc.value.message)
+        assert _count_bookings(app, idem_key, user_id) == 1
+
+    @pytest.mark.threaded
+    def test_concurrent_same_key_different_trip_one_wins(self, app, test_user):
+        """Racing submissions: same key, DIFFERENT trips.
+
+        Exactly one insert wins; every loser resolves to a field-precise
+        client error (dedupe or IntegrityError fingerprint path), never
+        a silent replay of the other trip and never a service outage.
+        """
+        from app.utils.exceptions import ValidationError
+
+        user_id = _get_user_id(app, test_user)
+        idem_key = _unique_key("p1-fp-race")
+
+        def submit(passengers):
+            return _call_service(app, user_id, idem_key,
+                                 payload={"passenger_count": passengers})
+
+        outcomes = []
+        try:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                futures = [executor.submit(submit, n) for n in (1, 2)]
+                for f in as_completed(futures):
+                    try:
+                        outcomes.append(("ok", f.result()))
+                    except ValidationError as e:
+                        outcomes.append(("validation", e))
+            row_count = _count_bookings(app, idem_key, user_id)
+        finally:
+            _cleanup_key(app, idem_key)
+
+        wins = [o for o in outcomes if o[0] == "ok"]
+        losses = [o for o in outcomes if o[0] == "validation"]
+        assert len(wins) == 1, outcomes
+        assert len(losses) == 1, outcomes
+        assert wins[0][1]["data"].get("idempotent_replay") in (None, False)
+        assert row_count == 1

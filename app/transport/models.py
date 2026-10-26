@@ -940,6 +940,16 @@ class Booking(TransportBase):
             "pickup_time > created_at - INTERVAL '5 minutes'",
             name="ck_pickup_time_sane"
         ),
+        # PICKUP-TIME-AUTHORITY-P1 (Phase B): permissive mode-aware contract.
+        CheckConstraint(
+            "pickup_mode IS NULL OR pickup_mode IN ('instant', 'scheduled')",
+            name="ck_pickup_mode_valid"
+        ),
+        CheckConstraint(
+            "pickup_mode IS NULL OR pickup_mode = 'instant' "
+            "OR pickup_time IS NOT NULL",
+            name="ck_pickup_time_mode_aware"
+        ),
         CheckConstraint(
             "passenger_count > 0 AND passenger_count <= 100",
             name="chk_passenger_count"
@@ -1021,7 +1031,10 @@ class Booking(TransportBase):
     dropoff_contact_phone = db.Column(db.String(20))
 
     # Timing
-    pickup_time = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
+    # PICKUP-TIME-AUTHORITY-P1 (Phase B): persisted at creation.
+    pickup_mode = db.Column(db.String(20))
+    request_received_at = db.Column(db.DateTime(timezone=True))
+    pickup_time = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
     pickup_estimated_time = db.Column(db.DateTime(timezone=True))
     pickup_actual_time = db.Column(db.DateTime(timezone=True))
     dropoff_estimated_time = db.Column(db.DateTime(timezone=True))
@@ -1196,11 +1209,30 @@ class Booking(TransportBase):
 
     @property
     def is_upcoming(self):
-        """Check if booking is upcoming"""
-        return (
-                self.status in [BookingStatus.CONFIRMED, BookingStatus.ASSIGNED, BookingStatus.DRIVER_EN_ROUTE, BookingStatus.PICKUP_ARRIVED, BookingStatus.IN_PROGRESS] and
-                self.pickup_time > datetime.now(timezone.utc) - timedelta(minutes=2)
+        """Check if booking is upcoming.
+
+        PICKUP-TIME-AUTHORITY-P1: NULL-safe (pickup_time becomes nullable
+        in Deploy 2) and mode-aware — a live SCHEDULED booking whose
+        server-authoritative pickup_time is not yet released still counts
+        as upcoming. Live instant bookings need a pickup_time that has
+        not gone stale.
+        """
+        live = (
+            BookingStatus.CONFIRMED,
+            BookingStatus.ASSIGNED,
+            BookingStatus.DRIVER_EN_ROUTE,
+            BookingStatus.PICKUP_ARRIVED,
+            BookingStatus.IN_PROGRESS,
         )
+        if self.status not in live:
+            return False
+        meta = self.booking_metadata or {}
+        if (isinstance(meta, dict)
+                and str(meta.get("booking_mode") or "").strip().lower() == "scheduled"):
+            return True
+        if self.pickup_time is None:
+            return False
+        return self.pickup_time > datetime.now(timezone.utc) - timedelta(minutes=2)
 
     @property
     def pickup_location_text(self):
@@ -1269,24 +1301,6 @@ class Booking(TransportBase):
                 pickup.isoformat() if pickup is not None else None
             )
         return data
-
-    def calculate_cancellation_fee(self, cancelled_at=None):
-        """Calculate cancellation fee based on timing"""
-        from datetime import datetime, timezone
-
-        if not cancelled_at:
-            cancelled_at = datetime.now(timezone.utc)
-
-        hours_before = (self.pickup_time - cancelled_at).total_seconds() / 3600
-
-        if hours_before > 24:
-            return Decimal('0.00')  # No fee if cancelled > 24h before
-        elif hours_before > 4:
-            return self.final_price * Decimal('0.10')  # 10% fee
-        elif hours_before > 1:
-            return self.final_price * Decimal('0.25')  # 25% fee
-        else:
-            return self.final_price * Decimal('0.50')  # 50% fee
 
 
 # ===========================================================================
@@ -1852,7 +1866,7 @@ class ScheduledRoute(TransportBase):
             .where(ScheduledRoute.id == self.id)
             .with_for_update()
         ).scalar_one()
-        confirmed = db.session.query(func.sum(Booking.passenger_count)).filter(
+        confirmed = db.session.query(sa.func.sum(Booking.passenger_count)).filter(
             Booking.assigned_route_id == self.id,
             Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.ASSIGNED]),
             Booking.is_deleted == False,

@@ -35,7 +35,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 
 from app.celery_app import celery_app
 from app.extensions import db
@@ -423,6 +423,134 @@ def scheduled_route_execution(batch: int = None, dry_run: bool = False) -> dict:
             )
     except Exception as e:
         logger.error(f"Transport scheduled-route execution failed: {e}", exc_info=True)
+        result["error"] = str(e)
+    finally:
+        db.session.rollback()
+
+    return result
+
+
+@celery_app.task(name="transport.scheduled_booking_dispatch")
+@_with_app_context
+def scheduled_booking_dispatch(batch: int = None, dry_run: bool = False) -> dict:
+    """Release due SCHEDULED bookings into matching.
+
+    PICKUP-TIME-AUTHORITY-P1 (Deploy 2). A scheduled booking is due inside
+    the lead window before pickup
+    (``TRANSPORT_SCHEDULED_DISPATCH_LEAD_MINUTES``, default 30). Scheduled
+    cash rides are confirmed at release through the canonical guarded
+    transition (PENDING_PAYMENT -> CONFIRMED); non-cash rides wait for
+    their payment. Dispatch itself goes through
+    ``MatchingService.discover_and_offer``, whose central gate is
+    idempotent: running every minute never re-confirms or double-claims.
+
+    Args:
+        batch: Max bookings to consider per run (default config
+            ``TRANSPORT_SCHEDULED_DISPATCH_BATCH`` / 100).
+        dry_run: When True, report due bookings without confirming or
+            dispatching.
+
+    Returns:
+        dict: considered / confirmed / dispatched / offers_created and
+            per-booking skip reasons.
+    """
+    result = {
+        "considered": 0,
+        "confirmed": [],
+        "dispatched": [],
+        "offers_created": 0,
+        "skipped": {},
+        "dry_run": dry_run,
+    }
+    try:
+        from flask import current_app
+
+        from app.transport.services.booking_service import get_booking_service
+        from app.transport.services.matching_service import MatchingService
+
+        if batch is None:
+            batch = int(
+                current_app.config.get("TRANSPORT_SCHEDULED_DISPATCH_BATCH", 100)
+            )
+
+        now = datetime.now(timezone.utc)
+        horizon = now + timedelta(
+            minutes=MatchingService._scheduled_dispatch_lead_minutes()
+        )
+
+        scheduled_mode = or_(
+            Booking.pickup_mode == "scheduled",
+            and_(
+                Booking.pickup_mode.is_(None),
+                Booking.booking_metadata["booking_mode"].astext == "scheduled",
+            ),
+        )
+        due_bookings = (
+            Booking.query.filter(
+                Booking.status.in_(
+                    (
+                        BookingStatus.CONFIRMED.value,
+                        BookingStatus.PENDING_PAYMENT.value,
+                    )
+                ),
+                Booking.assigned_driver_id.is_(None),
+                Booking.assigned_vehicle_id.is_(None),
+                Booking.is_deleted.is_(False),
+                Booking.pickup_time.is_not(None),
+                Booking.pickup_time <= horizon,
+                scheduled_mode,
+            )
+            .order_by(Booking.pickup_time.asc())
+            .limit(batch)
+            .all()
+        )
+
+        for booking in due_bookings:
+            result["considered"] += 1
+            if dry_run:
+                result["dispatched"].append(booking.id)
+                continue
+            try:
+                if booking.status == BookingStatus.PENDING_PAYMENT.value:
+                    payment_method = str(
+                        getattr(booking, "payment_method", "") or ""
+                    ).strip().lower()
+                    if payment_method != "cash":
+                        result["skipped"][booking.id] = "awaiting_payment"
+                        continue
+                    get_booking_service().transition_status(
+                        booking.id,
+                        BookingStatus.CONFIRMED,
+                        reason="scheduled_release",
+                        initiated_by="system",
+                    )
+                    result["confirmed"].append(booking.id)
+
+                not_due = MatchingService.scheduled_not_due_reason(booking)
+                if not_due:
+                    result["skipped"][booking.id] = not_due
+                    continue
+
+                outcome = MatchingService.discover_and_offer(booking.id)
+                result["dispatched"].append(booking.id)
+                result["offers_created"] += int(outcome.get("offers_created", 0))
+            except Exception as e:
+                db.session.rollback()
+                logger.warning(
+                    f"Scheduled release failed for booking {booking.id}: {e}"
+                )
+                result["skipped"][booking.id] = "error"
+
+        if result["dispatched"]:
+            logger.info(
+                f"Transport scheduled-booking dispatch considered "
+                f"{result['considered']}, confirmed {len(result['confirmed'])}, "
+                f"dispatched {len(result['dispatched'])}"
+            )
+    except Exception as e:
+        logger.error(
+            f"Transport scheduled-booking dispatch failed: {e}", exc_info=True
+        )
         result["error"] = str(e)
     finally:
         db.session.rollback()

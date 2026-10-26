@@ -568,6 +568,7 @@ def _payload(**over):
         "dropoff_latitude": _DROPOFF[0],
         "dropoff_longitude": _DROPOFF[1],
         "service_type": "on_demand",
+        "booking_mode": "instant",
         "pickup_time": "2026-12-31T10:00:00",
         "passenger_count": 2,
         "currency": "USD",

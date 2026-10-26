@@ -511,10 +511,10 @@ class DriverOfferDeclineResource(Resource):
 # Driver trip lifecycle actions -- single canonical transition table shared by
 # BOTH resource variants (internal-id legacy + reference-keyed canonical).
 _DRIVER_TRIP_ACTIONS = {
-    "en_route": (BookingStatus.ASSIGNED, BookingStatus.DRIVER_EN_ROUTE, "driver_en_route_at"),
-    "arrive": (BookingStatus.DRIVER_EN_ROUTE, BookingStatus.PICKUP_ARRIVED, "driver_arrived_at"),
-    "start": (BookingStatus.PICKUP_ARRIVED, BookingStatus.IN_PROGRESS, None),
-    "complete": (BookingStatus.IN_PROGRESS, BookingStatus.COMPLETED, "completed_at"),
+    "en_route": (BookingStatus.ASSIGNED, BookingStatus.DRIVER_EN_ROUTE, "driver_en_route_at", None),
+    "arrive": (BookingStatus.DRIVER_EN_ROUTE, BookingStatus.PICKUP_ARRIVED, "driver_arrived_at", None),
+    "start": (BookingStatus.PICKUP_ARRIVED, BookingStatus.IN_PROGRESS, None, "pickup_actual_time"),
+    "complete": (BookingStatus.IN_PROGRESS, BookingStatus.COMPLETED, "completed_at", "dropoff_actual_time"),
 }
 
 
@@ -540,7 +540,7 @@ def _execute_driver_trip_action(booking, profile, action, actor):
             "error": "action must be one of: en_route|arrive|start|complete",
         }, 400
 
-    expected, target, ts_col = _DRIVER_TRIP_ACTIONS[action]
+    expected, target, ts_col, actual_col = _DRIVER_TRIP_ACTIONS[action]
     now = datetime.now(timezone.utc)
     booking_id = booking.id
 
@@ -607,6 +607,8 @@ def _execute_driver_trip_action(booking, profile, action, actor):
         
         if target == BookingStatus.COMPLETED:
             booking.completed_at = now
+            if actual_col:
+                setattr(booking, actual_col, now)
             result = AssignmentService.release(
                 booking_id,
                 BookingStatus.COMPLETED,
@@ -617,6 +619,8 @@ def _execute_driver_trip_action(booking, profile, action, actor):
             values = {"status": target.value}
             if ts_col:
                 values[ts_col] = now
+            if actual_col:
+                values[actual_col] = now
             res = db.session.execute(
                 sa.update(Booking.__table__)
                 .where(

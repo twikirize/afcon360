@@ -100,6 +100,7 @@ def _seed_booking(app, **over):
     payload = {
         "pickup_location": {"latitude": 0.3150, "longitude": 32.5820},
         "dropoff_location": {"latitude": 0.3350, "longitude": 32.6000},
+        "booking_mode": "instant",
         "pickup_time": (datetime.now(timezone.utc)
                         + timedelta(hours=1)).isoformat(),
         "service_type": "on_demand", "passenger_count": 1,

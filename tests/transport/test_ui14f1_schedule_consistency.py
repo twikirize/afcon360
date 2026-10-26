@@ -17,6 +17,12 @@ Correction (this node, template inline flow only):
   * The submit handler revalidates (recovery: back to the form) and
     finalizePickupTime() reports success instead of substituting now.
 
+PICKUP-TIME-AUTHORITY-P1 correction (this node):
+  * The Now branch of finalizePickupTime() no longer writes the client
+    clock into hPickupTime. setPickupTimeNow() is DELETED. The server
+    stamps pickup_time for instant rides; a stale client clock must
+    never be able to replay an old value.
+
 Pure-file assertions — no DB, no browser. Mirrors the template-byte
 pattern established by tests/transport/test_node3_source_provenance.py.
 """
@@ -104,8 +110,18 @@ def test_finalize_reports_instead_of_substituting_now():
     assert "if (!schedAt.value) return false;" in body
     assert "if (isNaN(d.getTime())) return false;" in body
     assert "if (d.getTime() <= Date.now()) return false;" in body
-    assert "setPickupTimeNow();" in body
+    # PICKUP-TIME-AUTHORITY-P1: the Now branch clears the hidden field —
+    # the server is the pickup-time authority for instant rides.
+    assert "hPickupTime.value = '';" in body
+    assert "setPickupTimeNow();" not in body
     assert "return true;" in body
+
+
+def test_set_pickup_time_now_is_deleted():
+    """P1: the client-clock writer is gone from the template entirely."""
+    text = _template()
+    assert "function setPickupTimeNow" not in text
+    assert "setPickupTimeNow()" not in text
 
 
 def test_submit_guard_revalidates_schedule_with_recovery():
@@ -117,10 +133,18 @@ def test_submit_guard_revalidates_schedule_with_recovery():
     assert "if (!finalizePickupTime()) { e.preventDefault(); return goTo('a'); }" in block
 
 
-def test_now_path_unchanged():
-    """Now keeps the exact pre-existing current-time behavior."""
+def test_now_path_is_server_authority():
+    """P1: Now never writes a client clock value into the hidden field.
+
+    The scheduled ('later') branch keeps writing the committed ISO
+    value; the Now branch clears it so create_booking stamps the
+    server clock.
+    """
     text = _template()
     assert "state.schedule = mode;" in text
-    assert re.search(
-        r"function finalizePickupTime\(\)\{.*?setPickupTimeNow\(\);",
-        text, re.S) is not None
+    start = text.index("function finalizePickupTime(){")
+    end = text.index("function ", start + len("function finalizePickupTime(){"))
+    body = text[start:end]
+    later_branch, now_branch = body.split("}\n    hPickupTime.value = '';")
+    assert "hPickupTime.value = d.toISOString().slice(0, 16);" in later_branch
+    assert "return true;" in now_branch

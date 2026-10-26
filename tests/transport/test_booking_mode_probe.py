@@ -1,9 +1,12 @@
-"""Regression tests for the 2026-10-24 booking_mode fix (E1-E10).
+"""Regression tests for the 2026-10-24 booking_mode fix (E1-E10),
+extended by PICKUP-TIME-AUTHORITY-P1 (server clock authority).
 
 Proves end-to-end:
 - instant booking with pickup_time=now commits (the 13:53 failure is fixed)
 - instant booking with up to 5min latency commits (ck_pickup_time_sane grace)
-- instant booking beyond 5min grace is rejected (constraint still fires)
+- instant booking with a STALE client pickup_time commits with a
+  SERVER-stamped time (client value ignored — P1 flips the old
+  beyond-grace rejection)
 - scheduled +30min commits
 - scheduled +3min is rejected by app validation (before DB)
 - scheduled with naive pickup_time interprets as Africa/Nairobi
@@ -94,16 +97,31 @@ class TestBookingModeFix:
         )
         assert result["success"] is True
 
-    def test_instant_beyond_grace_rejected(self, probe_user):
-        """pickup_time > 5min in the past should hit ck_pickup_time_sane.
+    def test_instant_beyond_grace_now_server_stamped(self, probe_user):
+        """PICKUP-TIME-AUTHORITY-P1 flips the old beyond-grace behavior.
 
-        The service wraps IntegrityError as ServiceUnavailableError.
+        A stale client pickup_time on an instant ride is IGNORED — the
+        server clock is the authority. The old behavior (client time
+        honoured, ck_pickup_time_sane rejects as ServiceUnavailableError)
+        is closed; the booking now commits with a server-now pickup_time
+        inside the 5-minute grace window.
         """
-        now = datetime.now(timezone.utc)
-        with pytest.raises(ServiceUnavailableError):
-            get_booking_service().create_booking(
-                probe_user.id, _payload("instant", now - timedelta(minutes=10))
-            )
+        stale = datetime.now(timezone.utc) - timedelta(minutes=10)
+        result = get_booking_service().create_booking(
+            probe_user.id, _payload("instant", stale)
+        )
+        assert result["success"] is True
+        booking = Booking.query.filter_by(
+            booking_reference=result["data"]["booking_reference"]
+        ).first()
+        assert booking is not None
+        # Server-stamped: within the ck_pickup_time_sane grace of now,
+        # nowhere near the stale client value.
+        drift = abs(
+            (booking.pickup_time - datetime.now(timezone.utc)).total_seconds())
+        assert drift < 300
+        # The return dict carries the server value, not the client's.
+        assert result["data"]["pickup_time"] == booking.pickup_time.isoformat()
 
     def test_scheduled_future_commits(self, probe_user):
         """Scheduled +30min should pass E6b validation and commit."""

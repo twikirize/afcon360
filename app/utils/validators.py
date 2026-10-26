@@ -293,12 +293,20 @@ class TransportValidators:
         errors = []
 
         required_fields = [
-            'pickup_location', 'dropoff_location', 'pickup_time', 'service_type'
+            'pickup_location', 'dropoff_location', 'service_type'
         ]
 
         for field in required_fields:
             if field not in data or not data.get(field):
                 errors.append(f"{field.replace('_', ' ').title()} is required")
+
+        # booking_mode gates pickup_time: instant rides take the
+        # server-clock pickup_time from create_booking (no client value
+        # required); scheduled rides require an explicit ISO pickup_time.
+        _mode = str(data.get('booking_mode') or '').strip().lower()
+        if _mode == 'scheduled':
+            if 'pickup_time' not in data or not data.get('pickup_time'):
+                errors.append("Pickup Time is required")
 
         # Validate coordinates if provided
         if 'pickup_lat' in data and 'pickup_lng' in data:

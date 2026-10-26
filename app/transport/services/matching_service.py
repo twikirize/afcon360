@@ -47,6 +47,52 @@ class MatchingService:
     MATCHING_POOL_SIZE = 5
     OFFER_TIMEOUT_SECONDS = 25
 
+    # PICKUP-TIME-AUTHORITY-P1 (Deploy 2): scheduled rides enter matching
+    # only inside this lead window before pickup.
+    SCHEDULED_DISPATCH_LEAD_MINUTES = 30
+
+    @staticmethod
+    def _scheduled_dispatch_lead_minutes() -> int:
+        try:
+            return int(current_app.config.get(
+                "TRANSPORT_SCHEDULED_DISPATCH_LEAD_MINUTES",
+                MatchingService.SCHEDULED_DISPATCH_LEAD_MINUTES,
+            ))
+        except (TypeError, ValueError):
+            return MatchingService.SCHEDULED_DISPATCH_LEAD_MINUTES
+
+    @staticmethod
+    def _booking_mode(booking: Booking) -> Optional[str]:
+        mode = getattr(booking, "pickup_mode", None)
+        if not mode:
+            meta = cast(Dict[str, Any], booking.booking_metadata or {})
+            mode = meta.get("booking_mode")
+        mode = str(mode or "").strip().lower()
+        return mode or None
+
+    @staticmethod
+    def scheduled_not_due_reason(booking: Booking) -> Optional[str]:
+        """Return why a scheduled ride must not enter matching yet, else None.
+
+        Central gate for every dispatch entry point (route dispatch,
+        retry_matching, dispatch_recovery, scheduled_route_execution and the
+        scheduled-release beat): a SCHEDULED ride is dispatchable only when
+        pickup_time is set and now >= pickup_time - lead. NULL pickup_time or
+        non-scheduled/mode-less (legacy) rows are never held back.
+        """
+        if MatchingService._booking_mode(booking) != "scheduled":
+            return None
+        pickup_time = getattr(booking, "pickup_time", None)
+        if pickup_time is None:
+            return "scheduled_pickup_time_unset"
+        if pickup_time.tzinfo is None:
+            pickup_time = pickup_time.replace(tzinfo=timezone.utc)
+        due_at = pickup_time - timedelta(
+            minutes=MatchingService._scheduled_dispatch_lead_minutes())
+        if datetime.now(timezone.utc) < due_at:
+            return "scheduled_not_due"
+        return None
+
     @staticmethod
     def _booking_vehicle_class(booking: Booking) -> Optional[str]:
         """Canonical vehicle-class preference lives in booking_metadata (JSONB)."""
@@ -180,6 +226,14 @@ class MatchingService:
             if not booking:
                 return {'success': False, 'reason': 'booking_not_found', 'offers_created': 0}
 
+            not_due = MatchingService.scheduled_not_due_reason(booking)
+            if not_due:
+                return {
+                    'success': False,
+                    'reason': not_due,
+                    'offers_created': 0,
+                }
+
             _, ranked_drivers = MatchingService._ranked_candidates(booking)
             if not ranked_drivers:
                 return {
@@ -300,6 +354,10 @@ class MatchingService:
                     or booking.assigned_driver_id is not None
                     or booking.assigned_vehicle_id is not None):
                 return {'terminal': False, 'reason': 'not_awaiting_matching'}
+
+            not_due = MatchingService.scheduled_not_due_reason(booking)
+            if not_due:
+                return {'terminal': False, 'reason': not_due}
 
             db.session.refresh(booking)
             meta = booking.booking_metadata or {}

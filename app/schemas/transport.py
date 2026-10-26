@@ -73,7 +73,10 @@ class _BookingModel(BaseModel):
     # Required (validators.py:283-362)
     pickup_location: str = Field(min_length=1)
     dropoff_location: str = Field(min_length=1)
-    pickup_time: str
+    # Optional at the boundary: instant rides carry no client pickup_time
+    # (create_booking stamps the server clock); scheduled rides require
+    # an explicit ISO time — enforced by the service, mirrored here.
+    pickup_time: Optional[str] = None
     service_type: str
 
     # Optional with service defaults (create_booking)
@@ -139,7 +142,9 @@ class _BookingModel(BaseModel):
 
     @field_validator("pickup_time")
     @classmethod
-    def _check_pickup_time(cls, v: str) -> str:
+    def _check_pickup_time(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or str(v).strip() == "":
+            return v
         if not _is_iso8601(v):
             raise ValueError("pickup_time must be ISO-8601")
         return v

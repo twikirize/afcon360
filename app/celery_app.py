@@ -196,6 +196,14 @@ def make_celery(app=None):
             "task": "transport.scheduled_route_execution",
             "schedule": 60.0,  # every minute
         },
+        # Scheduled-booking release (PICKUP-TIME-AUTHORITY-P1 Deploy 2):
+        # confirm due cash scheduled rides and release them into matching
+        # inside the pickup lead window. The matcher's central gate makes
+        # repeated runs idempotent.
+        "transport-scheduled-booking-dispatch": {
+            "task": "transport.scheduled_booking_dispatch",
+            "schedule": 60.0,  # every minute
+        },
     }
 
     celery.conf.update(
