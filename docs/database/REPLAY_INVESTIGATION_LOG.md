@@ -62,6 +62,13 @@ The replay is **not PASS** until an empty disposable PostgreSQL database starts 
 - **Next investigation:** Inspect `docker info` networking/forwarding and userland-proxy settings, routes, and listeners. Then test a documented host-published-port/host-gateway path or a replay topology supported by this environment, without exposing DB/Redis beyond the sandbox. If the limitation is specific to nested Codespaces networking, document the environment requirement or use a suitable replay runner. Preserve stable service discovery and do not change application/migration logic to mask network timeouts.
 - **Status:** Compose same-network connectivity root cause OPEN; web startup and migration replay stay gated.
 
+### RPL-07 — Published-port probe command rejected before the network test ran
+
+- **Observed:** A temporary HTTP server container started successfully on the built-in bridge with a port published on `172.17.0.1:18089`. The subsequent `docker compose run ... --add-host=host.docker.internal:host-gateway` command returned `unknown flag: --add-host` before the probe process ran. The test wrapper then removed the temporary server. PostgreSQL and Redis remained healthy.
+- **Interpretation:** This is a Compose CLI/option compatibility problem, not a failed TCP test. It provides no evidence for or against host-gateway connectivity. Do not record the published-port approach as failed.
+- **Next step:** Repeat the same isolated HTTP probe using `docker run --network afcon360_afcon_net --add-host=host.docker.internal:host-gateway` directly, bypassing the Compose `run` command. Keep the temporary port bound only to the Docker bridge gateway and remove the probe container on completion.
+- **Status:** Probe not yet executed; root networking issue remains open.
+
 ### RPL-05 — Web startup was blocked before Alembic began
 
 - **Observed:** `docker-entrypoint.sh` repeatedly printed `db:5432 - no response` while waiting for PostgreSQL. The web container later exited with code 137 and `OOMKilled=false`. The `alembic_version` relation was absent when queried.
