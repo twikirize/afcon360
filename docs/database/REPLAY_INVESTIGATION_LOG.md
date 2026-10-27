@@ -84,6 +84,14 @@ The replay is **not PASS** until an empty disposable PostgreSQL database starts 
 - **Next step:** Confirm the effective database locale/collation and decide whether Alpine's locale behavior is acceptable for replay and production-parity requirements. Do not silently remove locale flags or change collation assumptions without evidence.
 - **Status:** Non-blocking observation; follow-up required before calling locale parity verified.
 
+### RPL-08 — Terminal/session expiry interrupted the published-port probe
+
+- **Observed:** The user reported that the Codespaces terminal expired before the published-port test result could be captured. The prior test had created a temporary HTTP probe container and used a shell cleanup trap; an earlier run confirmed the cleanup command removed the probe container. The most recent attempted command's outcome is unknown, so it must not be classified as a network failure or PASS.
+- **Impact:** Manual interactive testing is vulnerable to terminal/Codespace lifecycle interruption, and the current networking question remains unresolved. Codespaces documentation notes that stopped/timed-out Codespaces stop running processes while saved workspace changes remain available after restarting.
+- **Durable process improvement:** Prefer a bounded diagnostic script with explicit timeouts, output capture, and cleanup, then move the full fresh-database replay to a repeatable CI job or another Docker host with verified inter-container networking. Avoid long, manually pasted loops as the only record of a test.
+- **Recovery:** Reopen the existing Codespace rather than creating a new one if possible, use a new terminal, check the investigation branch and `docker compose ps -a`, then run only the next diagnostic if this environment is still in use. Do not assume containers survived a Codespace stop.
+- **Status:** Published-port probe NOT CONFIRMED; terminal expiry is an execution-process hurdle, not a networking result.
+
 ## Current evidence-based state
 
 | Gate | Result |
