@@ -1169,3 +1169,38 @@ The probe temporarily set `sys.orig_argv` per case and restored it afterward. It
 - **Sub-item 12c remains IN REVIEW.** The tracked implementation is present and the six manual classification cases passed; the existing six-test Socket.IO queue suite also passed. However, manual probe cases are not persistent regression tests, and the test search found no direct tests of `is_bare_cli_invocation` or `_resolve_socketio_enabled`.
 - **Next code-quality step:** add focused automated tests for the detector and the application-level Socket.IO enable/disable decision, covering the command classes above, then run those tests in the read-only/no-database test mode. Review the diff and test result before changing 12c's disposition.
 - **Safety boundary:** No application/test source was changed in this checkpoint. Do not start the web container for this check; its standard entrypoint may run migrations. Do not query or write Production/Test, alter schema, or remove/reset Docker volumes.
+
+
+---
+
+## Phase 18 — 27 October 2026: Item 12c source history confirmed; focused CLI regression tests added (execution pending)
+
+**Scope.** This is limited to the Socket.IO/one-shot CLI behavior in Item 12c. No Codespaces networking override, application startup, migration, or database operation is included. The source-history review used GitHub commit metadata and the current tracked files on `sandbox/codespaces-alembic-investigation`.
+
+### History audit
+
+- Commit [`bd289acc238eb17d82bf4f55c6e451e53752d0f3`](https://github.com/twikirize/afcon360/commit/bd289acc238eb17d82bf4f55c6e451e53752d0f3) on 22 October 2026 added `app/realtime.py` and modified `app/__init__.py` and `app/config.py`. This establishes that the implementation is tracked and committed; it is not an uncommitted local edit.
+- Commit [`7b65c4c33b911532ec42f5d6ef10d8a8a2e491a3`](https://github.com/twikirize/afcon360/commit/7b65c4c33b911532ec42f5d6ef10d8a8a2e491a3) on 26 October modified `app/__init__.py`, added `tests/test_socketio_queue_contract.py`, and extended `tests/test_production_console.py`. These tests cover queue rules and persistence independence, but not direct CLI command classification or `_resolve_socketio_enabled`.
+
+### Focused regression test file added
+
+- Commit [`e8af03d8713a6ce0a6ce4449249052bf23559440`](https://github.com/twikirize/afcon360/commit/e8af03d8713a6ce0a6ce4449249052bf23559440) adds `tests/test_realtime_cli_detection.py`.
+- The new tests cover direct and Python-module Alembic invocations; Flask CLI and Windows launcher forms; server commands that must remain enabled; `sys.orig_argv` preference and `sys.argv` fallback; forced Socket.IO-off behavior for bare CLI even when the environment says true; and explicit environment-flag parsing for non-CLI invocation.
+- The 15 command-line classifications, two argv-source checks, one CLI resolver case and ten environment-value cases yield **28 focused test cases**.
+- Test source was added without changing application logic, migration files, workflows, database state or Docker configuration.
+
+### Current disposition
+
+**Sub-item 12c remains IN REVIEW — regression test execution pending.** Creating the test file is not a PASS. The focused tests and existing queue-contract suite must be run together in no-database mode, and their actual exit code/results recorded before considering closure. The intended command is:
+
+```bash
+docker compose run --rm --no-deps -T \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  --entrypoint python web \
+  -m pytest --noconftest -q -p no:cacheprovider \
+  tests/test_realtime_cli_detection.py \
+  tests/test_socketio_queue_contract.py
+```
+
+After the owner syncs the updated investigation branch into Codespaces and runs this command, capture the exact pytest summary and exit code. Do not start the normal web service: this task does not need app serving, DB access or migration execution. Top-level Item 12 remains ADVANCED pending 12c closure and independent deployed-environment revision/catalog evidence.
