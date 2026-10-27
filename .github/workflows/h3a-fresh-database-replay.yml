@@ -13,7 +13,6 @@ on:
       - app/**
       - migrations/**
       - tests/test_h3_baseline_pg_version_compat.py
-      - docs/database/REPLAY_INVESTIGATION_LOG.md
 
 permissions:
   contents: read
@@ -58,7 +57,11 @@ jobs:
 
       - name: Run H3-A compatibility regression tests
         run: |
+          # The production image intentionally excludes tests/ via .dockerignore.
+          # Mount repository source read-only for this source-only test step.
           docker compose run --rm --no-deps \
+            -v "$GITHUB_WORKSPACE:/workspace:ro" \
+            -w /workspace \
             --entrypoint python web \
             -m pytest --noconftest -q -p no:cacheprovider \
             tests/test_h3_baseline_pg_version_compat.py
