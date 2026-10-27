@@ -35,6 +35,7 @@ jobs:
           REDIS_PASS="$(openssl rand -hex 24)"
           SECRET="$(openssl rand -hex 32)"
           SALT="$(openssl rand -hex 32)"
+          ENCRYPTION="$(openssl rand -hex 32)"
 
           cat > .env <<EOF
           DB_NAME=afcon360_replay_test
@@ -45,6 +46,7 @@ jobs:
           REDIS_URL=redis://:${REDIS_PASS}@redis:6379/0
           SECRET_KEY=${SECRET}
           SECURITY_SALT=${SALT}
+          ENCRYPTION_KEY=${ENCRYPTION}
           EOF
           cp .env .env.docker
           chmod 600 .env .env.docker
