@@ -1,11 +1,12 @@
-"""Candidate H3/N-squash static baseline; generated from the approved H2-prime replay.
+"""H3-A static baseline; generated from the approved H2-prime replay.
 Source database: afcon360_h2p_replay_20261018_test
 Source Alembic revision: df55cbe3f516
 Source PostgreSQL version: 18.4
 pg_dump client version: 18.4
 Normalized schema SQL SHA-256: 0701c42dda041f3725c59d2b8081fd4534b5f8d3359f67839aad98c8d53198da
-This file is isolated under migrations/h3_candidate and is not the active application migration chain.
-Review and disposable replay are required before any activation.
+This file is the active H3-A root migration under migrations/versions.
+The original normalized schema SQL and its provenance are preserved; the
+upgrade function handles PostgreSQL-version-specific session settings.
 """
 from alembic import op
 
@@ -28384,10 +28385,34 @@ _SCHEMA_SQL = (
     '--\n'
 )
 
+# PostgreSQL 17 introduced transaction_timeout. Keep the captured schema SQL
+# unchanged for provenance; omit only this session setting when replaying it on
+# earlier PostgreSQL servers. It does not create or modify schema objects.
+_TRANSACTION_TIMEOUT_SETTING = 'SET transaction_timeout = 0;\n'
+
+
+def _schema_sql_for_server_version(schema_sql: str, server_version_num: int) -> str:
+    """Return baseline SQL compatible with the target PostgreSQL server version."""
+    if server_version_num >= 170000:
+        return schema_sql
+
+    occurrences = schema_sql.count(_TRANSACTION_TIMEOUT_SETTING)
+    if occurrences != 1:
+        raise RuntimeError(
+            "Expected exactly one transaction_timeout setting in the H3-A baseline "
+            f"for PostgreSQL versions below 17; found {occurrences}."
+        )
+    return schema_sql.replace(_TRANSACTION_TIMEOUT_SETTING, "", 1)
+
+
 def upgrade():
     bind = op.get_bind()
-    bind.exec_driver_sql(_SCHEMA_SQL, execution_options={"no_parameters": True})
+    server_version_num = int(bind.exec_driver_sql("SHOW server_version_num").scalar_one())
+    schema_sql = _schema_sql_for_server_version(_SCHEMA_SQL, server_version_num)
+    bind.exec_driver_sql(schema_sql, execution_options={"no_parameters": True})
     bind.exec_driver_sql('SET search_path = public', execution_options={"no_parameters": True})
+
+
 def downgrade():
     raise NotImplementedError(
         'H3 baseline downgrade is intentionally disabled; recovery requires a verified backup restore.'
