@@ -287,3 +287,41 @@ The wrapper reported `READ_ONLY_CENSUS_EXIT=0`. Its SQL used `BEGIN READ ONLY`, 
 - **Local Windows Production/Test census: PASS — read-only identity/revision/coarse-catalog queries completed.**
 - **Top-level Item 12: remains ADVANCED.** The local databases' current revision/catalog snapshot is now captured, but it does not by itself verify the remote public deployment, and the old-to-current schema/extension/FK discrepancies need explicit reconciliation.
 - **Next safe step:** collect a more detailed read-only inventory of the two local databases and compare object definitions/dependencies to the existing historical evidence; separately establish the remote deployment's approved database identity/revision query path. No write or migration is authorized by this finding.
+
+---
+
+## RPL-20 — 27 October: normalized schema-only comparison of local Windows Production/Test databases
+
+**Evidence source.** Owner-pasted PowerShell output from the local comparison under `C:\\Users\\OBED\\Desktop\\afcon360_app`. Both PostgreSQL 18.4 `pg_dump` schema-only exports completed successfully against `localhost:5432` as role `israeli`; both reported exit code `0`. The export used `--schema-only`, `--no-owner`, `--no-privileges`, `--quote-all-identifiers`, and `--exclude-table=public.alembic_version`, with `PGOPTIONS=...default_transaction_read_only=on`. Output files were written under the local temporary directory. No migration or database-changing command was run.
+
+### Raw exports
+
+| Measurement | Production | Test |
+|---|---:|---:|
+| Raw dump size | 891,210 bytes | 891,320 bytes |
+| Raw SHA-256 | `70018DF072205B4B82178A9390EAE9831D97EBAE2064AEEADDF5863760992772` | `D5BBD4A860C7F61F7E80F494AE412E3710E18F64D7D86B7C4B7B1FE4DBDEF167` |
+| `pg_dump` exit code | `0` | `0` |
+
+The initial raw diff contained different per-run `\\restrict` / `\\unrestrict` tokens and an extra non-executing comment block stating that the Test dump was not creating the `public` schema because `initdb` creates it. The visible initial diff showed no altered object definition, but the raw files were not identical.
+
+### Normalized comparison
+
+The follow-up local Python comparison removed only the identified run-specific restriction-token lines and the exact non-executing public-schema comment block, and normalized repeated blank lines. It then compared the complete normalized dump text.
+
+- Normalized Production SHA-256: `bb7867e852d77fa210ec5d723caf26af4376b774b129a066899221c1907f2ea1`
+- Normalized Test SHA-256: `bb7867e852d77fa210ec5d723caf26af4376b774b129a066899221c1907f2ea1`
+- `PROD_TEST_NORMALIZED_SCHEMA_MATCH=YES`
+- `DIFF_LINES=0`
+- Normalized comparison script exit status: successful; no exception reported.
+
+### Interpretation and boundaries
+
+- **Supported conclusion:** The normalized schema-only dump contents for the two named local Windows databases are identical within this export scope.
+- The comparison explicitly excluded `public.alembic_version`; owner and privilege metadata were also excluded. It did not compare table data or prove equivalent runtime/application behavior.
+- This is evidence for databases reached through local Windows `localhost:5432` only. It does not establish which database backs the remote public website at `pamoja.space`.
+- This current match is more specific than the earlier coarse counts, but it does not by itself reconcile historical catalog/extension observations or verify the remote deployment.
+
+### Disposition
+
+- **Local Windows Production/Test normalized schema comparison: PASS within the stated dump scope.**
+- **Top-level Item 12: remains ADVANCED.** The remote deployed database identity/revision still requires its approved read-only verification path; historical evidence also remains subject to reconciliation. Do not change the human-maintained master register from this entry, and do not perform a schema/data write, migration, or extension mutation based on this result.
