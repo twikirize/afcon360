@@ -1,20 +1,22 @@
 # AFCON360 — Database Reliability — Master To-Do & Fix Register
 
-**Snapshot: 25 October 2026 · reconciled to the 23 October master, 24 October disposable-candidate migration/table decisions, pickup-time CHECK-constraint investigation, synchronizer inventory findings, and 25 October probe-test outcome. Counts reflect current evidence, not deployment readiness.**
+**Snapshot: 27 October 2026 · includes the 24–25 October schema/constraint investigation and the repeated GitHub-hosted Docker fresh-database replay completed on 26–27 October. Counts reflect current evidence, not deployment readiness.**
 
 **Status: 24 closed · 10 advanced · 1 partial · 0 open · 0 gated · 4 not started (39 top-level items)**
 
-**Architecture: H2′ approved and implemented as the interim fresh-install repair · H3/N-squash remains the durable destination · H3-A is the active static baseline and a snapshot of `afcon360_h2p_replay_20261018_test` at `df55cbe3f516`; its replay and current-head idempotence have been verified on PostgreSQL 18.4. This reproduces the captured H2-prime physical state (49 enums, 224 tables), not yet the B0 47-enum target. The 49-vs-47 scope decision is pending · H3-B existing-database transition remains unauthorized**
+**Architecture: H2′ approved and implemented as the interim fresh-install repair · H3/N-squash remains the durable destination · H3-A is the active static baseline. Local PostgreSQL 18.4 replay/current-head idempotence and a fresh GitHub-hosted Docker replay on PostgreSQL 18.6 have passed; the hosted replay reaches `1793013676`, checks 226 public tables / 49 enums / 139 checks, and returns HTTP 200. This proves the tested fresh-install path, not exact approved-schema parity. The 49-vs-47 B0 target decision is pending · H3-B existing-database transition remains unauthorized**
 
 **Permanent fixes implemented: 2 (H2′ interim fresh-install repair; Design 2 model-bootstrap path)**
 
-**Clean-install verification completed: 2 (H2′ empty-database migration replay to `df55cbe3f516`; Design 2 live bootstrap PASS on `afcon360_d2_bootstrap_fix_20261018_test`)**
+**Clean-install verification completed: 3 paths (H2′ empty-database migration replay to `df55cbe3f516`; Design 2 live bootstrap PASS on `afcon360_d2_bootstrap_fix_20261018_test`; H3-A fresh hosted Docker replay on PostgreSQL 18.6 through `1793013676`, schema-shape guard PASS and application health HTTP 200)**
 
-**H3-A replay verification completed: 1 (the static baseline executes and is idempotent at head on PostgreSQL 18.4 against the captured H2-prime physical state; this does not establish that the 49-enum baseline matches B0's 47-enum target)**
+**H3-A replay verification: local PostgreSQL 18.4 replay/current-head idempotence PASS; hosted Docker/PostgreSQL 18.6 fresh-database chain to `1793013676` and application health PASS. This does not establish that the 49-enum baseline matches B0's 47-enum target or that every hosting environment is compatible.**
 
-**Not verified: full test suite · genuinely fresh-clone replay · PostgreSQL 15 / Docker-pinned replay · historical/intermediate-state upgrades · broad populated-state migration safety · existing-database transition readiness · 49-vs-47 H3-A target-scope decision · H3-A object-ownership proof against B0 final-schema inventory · end-to-end server_sessions persistence · analytics-flush failure safety · pickup-time contract closure and clean regression-test/cleanup run**
+**Not verified: full test suite · PostgreSQL 15 compatibility replay · historical/intermediate-state upgrades · broad populated-state migration safety · existing-database transition readiness · the 49-vs-47 H3-A target-scope decision · H3-A object-ownership proof against B0 final-schema inventory · end-to-end server_sessions persistence · analytics-flush failure safety · pickup-time contract closure and a clean regression-test/cleanup run · replay compatibility on other cloud/provider configurations**
 
-**Current-status rule:** Phases 1–13 retain dated historical evidence. The 25 October 2026 reconciliation in Phase 14 is the current status record where it explicitly supersedes earlier counts/statuses. Historical wording is retained for chronology, not as a live status claim.
+**Current-status rule:** Phases 1–13 retain dated historical evidence. The 25 October 2026 reconciliation in Phase 14 is the current status record where it explicitly supersedes earlier counts/statuses; Phase 15 records the 27 October hosted Docker replay. Historical wording is retained for chronology, not as a live status claim.
+
+**Human-readable companion:** [`docs/database/AFCON360_39_ITEM_REGISTER_PLAIN_LANGUAGE.md`](docs/database/AFCON360_39_ITEM_REGISTER_PLAIN_LANGUAGE.md). It preserves these official item IDs and explains the current state without technical shorthand. The Docker replay checkpoint discussed in our operational sequence is recorded separately from top-level Item 26 below, whose formal scope is populated-state migration safety.
 
 ---
 
@@ -45,7 +47,7 @@
 | 9 | Reconstruct original baseline history | Compare the historical root/declaration source at key commits and keep historical reconstruction separate from current replay proof. | CLOSED |
 | 10 | Verify the historical “182 tables from EMPTY” claim | Locate contemporaneous replay evidence or explicitly record the owner’s decision that the exact historical claim is superseded; do not substitute the 224-table H2′ replay. | PARTIAL |
 | 11 | Trace enum declaration changes | Verify the introduction/removal of enum-creation flags and related changes from Git history; preserve the corrected `create_type`/`checkfirst` contract. | CLOSED |
-| 12 | Establish deployed migration states | Use read-only, per-environment revision/catalog evidence and complete the Docker census; do not modify production or test databases. | ADVANCED |
+| 12 | Establish deployed migration states | Two hosted fresh Docker replays now pass through the active H3-A chain, but read-only revision/catalog evidence for existing environments and the Docker census remain outstanding; do not modify production or test databases. | ADVANCED |
 | 13 | Define supported starting revisions | Owner-approved four-case policy recorded 2026-10-21; H3-A clean-install and normal Flask-Migrate workflow verified on local PostgreSQL 18.4. Existing databases remain conditional on per-database parity and a reviewed transition plan; older revisions require explicit enumeration and tests; unknown/divergent states fail closed. Closure is policy-only and does not authorize H3-B. | CLOSED |
 | 14 | Compare H2′ with existing database states | Complete the independent Reference/Prod/Test normalized-schema comparison and record measured differences and distinct hashes; same Alembic revision must not be treated as proof of identical schema. Comparison complete; divergence remains unresolved. | CLOSED |
 | 15 | Design the H3 transition procedure | Complete the state-by-state runbook for empty, root-stamped, intermediate, at-head and unknown states, with parity-gated stamping and tested recovery/rollback. A reversible H3 probe-migration rehearsal passed; other states and cutover gates remain unproven. | ADVANCED |
@@ -59,12 +61,12 @@
 | 23 | Resolve duplicate slug migrations | The H2′ clean-install replay must create each slug object once and preserve the required constraints; historical/intermediate behavior remains a separate test. | CLOSED |
 | 24 | Resolve remaining confirmed and conditional conflicts | Reconcile the 324-row matrix against successful replay evidence and record explicit dispositions for conditional conflicts, orphan types and divergent `org_business_category` copies. | ADVANCED |
 | 25 | Correct foreign-key assumptions | Read-only physical inventory: 411 FKs in each Reference/Prod/Test/H3-A state (410 distinct relationship signatures). The `DriverProfile.user_id` duplicate model declaration is corrected and committed/pushed as `719f01c`; regression test 1/1, compilation and diff checks passed. The physical duplicate pair remains in existing states and frozen H3-A baseline. Test's `organisation_types.category_code` CASCADE-vs-RESTRICT divergence remains unresolved. Complete application-wide FK-to-model/relationship/migration mapping and state-specific qualification. | ADVANCED |
-| 26 | Make data-sensitive migrations safe | Run populated-state tests for NOT NULL additions, backfills, unique indexes, CHECKs and FKs; prove existing data preservation and invalid-data rejection. | NOT STARTED |
+| 26 | Make data-sensitive migrations safe | Run populated-state tests for NOT NULL additions, backfills, unique indexes, CHECKs and FKs; prove existing data preservation and invalid-data rejection. An empty-database Docker replay does not satisfy this item. | NOT STARTED |
 | 27 | Resolve `df55cbe3f516` and coupled model changes | Revision tracking/reachability is satisfied. The model-side duplicate `DriverProfile.user_id` FK is corrected at source, but `driver_profiles_user_id_fkey` still exists in recorded physical states and the frozen H3-A baseline; database-side removal is subordinate 27c and requires H3-B parity/authorization gates. Complete remaining FK/model coupling and separate physical-parity/transition-qualification evidence for Production and Test. No database constraint repair is authorized by this source fix. | ADVANCED |
 | 28 | Consolidate schema-creation procedures | Document and keep separate the supported migration and bootstrap paths. The Item 33e ownership decision is now resolved: retain server_sessions and analytics_page_views, intentionally retire activity_logs. End-to-end session persistence and analytics-flush failure-safety tests remain open; the 145 Prod/Test server-default differences and broader schema convergence remain unresolved. | ADVANCED |
 | 29 | Establish permanent database engineering rules | Verify the rules and their mirror agree: ordinary migrations are regenerated from corrected source/configuration, hand-patching is prohibited except for the narrowly authorized baseline-reconstruction exception. | CLOSED |
 | 30 | Create approved disposable PostgreSQL verification environment | Retain the authorized disposable replay/bootstrap databases and their evidence; verify that production/test databases were not used as scratch targets. | CLOSED |
-| 31 | Pass clean-install migration test | Replay from an empty database to `df55cbe3f516` and verify the resulting schema; extend separately to a genuinely fresh clone and supported/pinned PostgreSQL versions. | CLOSED |
+| 31 | Pass clean-install migration test | The H2′ replay reached `df55cbe3f516`; a fresh GitHub Actions checkout then built the Docker image and replayed H3-A plus its child chain on PostgreSQL 18.6 to `1793013676`, verified the coarse schema guard and returned health HTTP 200. PostgreSQL 15 and other hosting configurations remain separate compatibility checks. | CLOSED |
 | 32 | Verify physical schema completeness independently | Completed normalized Reference/Prod/Test extraction and recorded hashes, diff sizes, object counts, timestamp differences, FK-action differences, triggers, functions, indexes, enums and defaults. The comparison is complete; physical divergences are not thereby resolved. | CLOSED |
 | 33 | Verify model/schema parity | H3-A runtime audit on PostgreSQL 18.4 confirmed 223 physical app tables = 223 runtime ORM metadata tables at that snapshot. Selected agent_onboarding defaults remain committed/pushed in 05163de (focused regression 4/4). The disposable candidate migration c076b257b11d subsequently added server_sessions and analytics_page_views; activity_logs is intentionally retired (33e). This does not prove session/analytics paths are reliable, establish Prod/Test parity, resolve the 49-vs-47 target decision, or settle the 145 Prod/Test default differences. | ADVANCED |
 | 34 | Verify current-head behavior | CLOSED 2026-10-23: second ordinary `flask db upgrade` at `h3a20261020` on `afcon360_chain_verify_test` exited 0; before/after normalized snapshots were both 886,434 bytes and SHA-256 `8577c2a975d5846c3b99567a2c1d59d47b3686d893dbf23531adb9dcf40753d7`; diff exit 0, 0 bytes, 0 lines, first 10 lines blank. | CLOSED |
@@ -987,12 +989,12 @@ At the 23 October checkpoint, Items **35, 36, 37 and 38 were recorded NOT STARTE
 | 23 | **CLOSED** | Fresh-install duplicate slug issue is resolved for the verified chain; historical/intermediate behavior remains a separate test. |
 | 24 / 24a | **ADVANCED** | Historical 324-row matrix remains historical; finish H3-A/B0 ownership and enum dependency/disposition work. |
 | 25 / 25b-fix | **ADVANCED / source fix committed** | Commit `719f01c`; regression 1/1, compile/diff checks passed, local main synchronized. Explicit table-level sweep found 16 declarations with relationship counterparts. Broader column-level FK mapping is not complete. |
-| 26 | **NOT STARTED** | No qualifying populated-state artifact recovered; inventory migration hazards and test representative populated states with preservation and invalid-data checks. |
+| 26 | **NOT STARTED** | No qualifying populated-state artifact recovered; inventory migration hazards and test representative populated states with preservation and invalid-data checks. This remains outstanding despite the successful empty-database Docker replay. |
 | 27 / 27c | **ADVANCED / DB convergence deferred** | Physical states and frozen H3-A baseline still contain both driver-profile FKs. Test category-code CASCADE-vs-RESTRICT divergence remains. No Prod/Test writes; H3-B gates apply. |
 | 28 / 28a | **ADVANCED / defaults open** | 145 Prod/Test default differences: 132 Prod-only, 12 Test-only, 1 Both-differ. Classify intent; do not normalize to force a match. |
 | 29 | **CLOSED** | Owner-confirmed permanent database engineering rules accepted; do not infer migration or cutover authorization from closure. |
 | 30 | **CLOSED** | Approved disposable PostgreSQL verification databases are retained; `afcon360_prod` and `afcon360_test` were not scratch targets. Do not reset/drop evidence environments. |
-| 31 | **CLOSED — PostgreSQL 18.4 scope** | H2′ empty-database replay reached `df55cbe3f516` with recorded catalog counts. Fresh-clone and Docker-pinned-version replay remain separate environment gates. |
+| 31 | **CLOSED — clean checkout + Docker PostgreSQL 18.6 verified** | H2′ empty-database replay reached `df55cbe3f516`; the hosted fresh-checkout Docker replay now reaches H3-A's active head `1793013676`, passes 9 compatibility tests and 226/49/139 schema-count guards, and returns health HTTP 200. PostgreSQL 15 and other hosting configurations remain unverified. |
 | 32 | **CLOSED — comparison evidence only** | Physical-schema extraction/comparison complete within recorded scope; divergences remain unresolved elsewhere. |
 | 33 / 33b | **ADVANCED / selected defaults closed** | Three selected agent onboarding model defaults committed in `05163de`, focused tests 4/4; H3-A runtime metadata/physical table sets match 223-to-223. Broader schema parity remains open. |
 | 33c | **CLOSED for H3-A inventory scope** | Runtime metadata and H3-A physical application table sets match exactly. |
@@ -1053,4 +1055,48 @@ The resulting **39 parent-item totals** are **24 CLOSED, 10 ADVANCED, 1 PARTIAL,
 - Items **26 and 35–38** retain their previous acceptance gates except for the narrowly stated Item 36 advancement; no complete populated-state migration/row-preservation test, fresh-vs-upgraded schema comparison, historical/intermediate-state upgrade matrix, or controlled migration recovery/restore proof is recorded here.
 - The 145 Prod/Test server-default differences, the H3-A 49-vs-47 target decision, FK-action differences, extension-dependency disposition, Docker census, full suite, fresh-clone replay and PostgreSQL version coverage remain open to their existing scopes.
 - afcon360_prod and afcon360_test remain protected. No H3-B existing-database transition, stamping, rebuild, forced convergence, enum conversion/relabel/drop, frozen baseline rewrite, or test-row deletion is authorized by this update. Preserve all scratch databases and evidence.
+
+
+
+---
+
+## Phase 15 — 27 October 2026: hosted Docker fresh-database replay and checkpoint reconciliation
+
+**Scope and provenance.** This phase records the successful GitHub Actions run [40469733857](https://github.com/twikirize/afcon360/actions/runs/40469733857) at workflow commit `f15e7e880bf1c91bc853f2a38c61aa05e4cd159e` on `sandbox/codespaces-alembic-investigation`. The workflow checks out the branch into a fresh hosted runner, creates temporary per-run credentials, builds the application image, starts disposable PostgreSQL and Redis services, runs H3-A compatibility tests, starts the app through the normal entrypoint/migration path, verifies the Alembic revision and schema-shape counts, and probes the application health endpoint. It tears down with `docker compose down --remove-orphans`, not `down -v`. No Production/Test database was used or changed.
+
+### Observed verification
+
+| Check | Evidence | Result |
+|---|---|---|
+| Fresh checkout / hosted runner | GitHub Actions run 40469733857 | PASS |
+| Application Docker image | Image build step completed | PASS |
+| H3-A PostgreSQL-version compatibility tests | `9 passed` | PASS |
+| PostgreSQL | PostgreSQL 18.6, service healthy | PASS |
+| Redis | Service healthy; web logs show successful service connections | PASS |
+| Normal application startup / migrations | Web logs contain `Migrations complete` | PASS |
+| Alembic head | Direct SQL reports `1793013676` | PASS |
+| Coarse schema regression guard | `226` public tables, `49` public enums, `139` CHECK constraints | PASS |
+| Application health | `APP_HEALTH_HTTP_200=PASS`, response `{"status":"ok"}` | PASS |
+
+The same workflow has two successful fresh hosted-runner executions: runs [40469293373](https://github.com/twikirize/afcon360/actions/runs/40469293373) and [40469733857](https://github.com/twikirize/afcon360/actions/runs/40469733857). The counts are a coarse regression guard only; exact normalized schema parity against an independently approved expected schema is still a separate gate.
+
+### Register reconciliation
+
+| Register/checkpoint | Current disposition | Reason / boundary |
+|---|---|---|
+| Operational Docker replay checkpoint #26 discussed with the owner | **PASS — tested hosted environment only** | Fresh checkout, image build, PostgreSQL 18.6 migration replay to `1793013676`, 9 tests, coarse schema guard, and health HTTP 200 all passed. Do not generalize this to every hosting provider. |
+| Top-level Item 12 — Establish deployed migration states | **ADVANCED — not closed** | The replay provides deployment-path evidence, but the read-only census and revision/catalog evidence for existing environments remain outstanding. Subordinate Item 12b (Docker census) stays OPEN until that actual census is run. |
+| Top-level Item 26 — Make data-sensitive migrations safe | **NOT STARTED — unchanged** | This is the different acceptance task for upgrades with existing rows. An empty-database replay cannot prove populated data, constraints or backfills are safe. |
+| Top-level Item 31 — Pass clean-install migration test | **CLOSED; evidence expanded** | In addition to the earlier H2′ replay on PostgreSQL 18.4, a fresh GitHub Actions checkout and Docker/PostgreSQL 18.6 replay reached the active head with schema-count and health checks passing. PostgreSQL 15 compatibility and other providers are not thereby verified. |
+| Overall 39-item counts | **Unchanged: 24 CLOSED, 10 ADVANCED, 1 PARTIAL, 4 NOT STARTED** | This run adds evidence but does not complete the remaining parity, populated-state, historical-state, recovery or full-suite requirements. |
+
+### What this proves — and what it does not
+
+**Proven:** AFCON360 can build its Docker image, migrate a fresh PostgreSQL 18.6 database through the active H3-A chain, reach Alembic head `1793013676`, pass the recorded schema-count guard and answer the application health check on the tested GitHub-hosted runner. The second successful run provides repeatability evidence for that workflow.
+
+**Not proven:** universal portability to every AWS, Oracle Cloud or other setup; PostgreSQL 15 compatibility; exact approved-schema parity; existing Production/Test readiness; migration safety when data already exists; historical/intermediate-state upgrade safety; failure recovery or full-suite completion.
+
+**Codespaces note:** the local nested-Docker Compose-network TCP timeout remains a separate environment issue. The hosted-runner PASS does not root-cause or fix that local networking limitation. Do not alter application logic to hide it, and do not make Production/Test changes as part of this replay.
+
+**Numbering note:** the owner’s operational run sequence calls the Docker deployment/replay the 26th checkpoint, now PASS. In the canonical 39-item master table, top-level Item 26 is explicitly the populated-state migration-safety task and therefore remains NOT STARTED. These are different numbering contexts; retain the canonical item IDs and track the replay PASS under Items 12/31 plus this phase rather than mislabeling populated-state safety as complete.
 
