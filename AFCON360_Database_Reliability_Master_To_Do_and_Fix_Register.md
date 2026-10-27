@@ -14,7 +14,7 @@
 
 **Not verified: full test suite · PostgreSQL 15 compatibility replay · historical/intermediate-state upgrades · broad populated-state migration safety · existing-database transition readiness · the 49-vs-47 H3-A target-scope decision · H3-A object-ownership proof against B0 final-schema inventory · end-to-end server_sessions persistence · analytics-flush failure safety · pickup-time contract closure and a clean regression-test/cleanup run · replay compatibility on other cloud/provider configurations**
 
-**Current-status rule:** Phases 1–13 retain dated historical evidence. The 25 October 2026 reconciliation in Phase 14 is the current status record where it explicitly supersedes earlier counts/statuses; Phase 15 records the 27 October hosted Docker replay. Historical wording is retained for chronology, not as a live status claim.
+**Current-status rule:** Phases 1–13 retain dated historical evidence. Phase 14 reconciles the 25 October findings; Phase 15 records the hosted Docker replay; Phase 16 records the Codespaces census; and Phases 17–19 record subsequent Item 12c evidence. Phase 19 is the current disposition for sub-item 12c and supersedes earlier statements that its history/test review was pending. Historical wording is retained for chronology, not as a live status claim.
 
 **Human-readable companion:** [`docs/database/AFCON360_39_ITEM_REGISTER_PLAIN_LANGUAGE.md`](docs/database/AFCON360_39_ITEM_REGISTER_PLAIN_LANGUAGE.md). It preserves these official item IDs and explains the current state without technical shorthand. The Docker replay checkpoint discussed in our operational sequence is recorded separately from top-level Item 26 below, whose formal scope is populated-state migration safety.
 
@@ -47,7 +47,7 @@
 | 9 | Reconstruct original baseline history | Compare the historical root/declaration source at key commits and keep historical reconstruction separate from current replay proof. | CLOSED |
 | 10 | Verify the historical “182 tables from EMPTY” claim | Locate contemporaneous replay evidence or explicitly record the owner’s decision that the exact historical claim is superseded; do not substitute the 224-table H2′ replay. | PARTIAL |
 | 11 | Trace enum declaration changes | Verify the introduction/removal of enum-creation flags and related changes from Git history; preserve the corrected `create_type`/`checkfirst` contract. | CLOSED |
-| 12 | Establish deployed migration states | Two hosted fresh Docker replays pass. A read-only census has now captured the Codespaces Docker engine, containers, volumes, networks and the empty afcon360_sandbox database; only PostgreSQL and Redis containers are running, and no web container is present. Revision/catalog evidence for existing deployed environments, and review of sub-item 12c, remain outstanding. Do not modify Production/Test. | ADVANCED |
+| 12 | Establish deployed migration states | Two hosted fresh Docker replays pass. A read-only census captured the Codespaces Docker engine, containers, volumes, networks and empty afcon360_sandbox database; only PostgreSQL and Redis containers were running. Sub-item 12c is now CLOSED: source history is identified and the focused CLI/Socket.IO regression run passed 34 tests (28 new cases plus 6 existing queue-contract tests; exit 0). Read-only revision/catalog evidence for actual deployed environments remains outstanding. Do not modify Production/Test. | ADVANCED |
 | 13 | Define supported starting revisions | Owner-approved four-case policy recorded 2026-10-21; H3-A clean-install and normal Flask-Migrate workflow verified on local PostgreSQL 18.4. Existing databases remain conditional on per-database parity and a reviewed transition plan; older revisions require explicit enumeration and tests; unknown/divergent states fail closed. Closure is policy-only and does not authorize H3-B. | CLOSED |
 | 14 | Compare H2′ with existing database states | Complete the independent Reference/Prod/Test normalized-schema comparison and record measured differences and distinct hashes; same Alembic revision must not be treated as proof of identical schema. Comparison complete; divergence remains unresolved. | CLOSED |
 | 15 | Design the H3 transition procedure | Complete the state-by-state runbook for empty, root-stamped, intermediate, at-head and unknown states, with parity-gated stamping and tested recovery/rollback. A reversible H3 probe-migration rehearsal passed; other states and cutover gates remain unproven. | ADVANCED |
@@ -1204,3 +1204,45 @@ docker compose run --rm --no-deps -T \
 ```
 
 After the owner syncs the updated investigation branch into Codespaces and runs this command, capture the exact pytest summary and exit code. Do not start the normal web service: this task does not need app serving, DB access or migration execution. Top-level Item 12 remains ADVANCED pending 12c closure and independent deployed-environment revision/catalog evidence.
+
+
+---
+
+## Phase 19 — 27 October 2026: Item 12c focused CLI/Socket.IO regression suite PASS
+
+**Evidence source.** Owner-run Codespaces output after fetching and fast-forwarding the investigation branch to include the new test file. The repository working tree was clean before fetch/merge. Merge was a successful fast-forward from local `2287936` to the investigation branch; no conflict was reported.
+
+### Exact verification result
+
+Command executed:
+
+```bash
+docker compose run --rm --no-deps -T \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  --entrypoint python web \
+  -m pytest --noconftest -q -p no:cacheprovider \
+  tests/test_realtime_cli_detection.py \
+  tests/test_socketio_queue_contract.py
+```
+
+Observed output:
+
+- `34 passed in 3.14s`
+- `SOCKETIO_CLI_TEST_EXIT=0`
+- The temporary container `afcon360-web-run-375dbd56b1f8` was created for the test command.
+- Source was mounted read-only at `/workspace:ro`; the one-off command explicitly used Python/pytest as entrypoint with `--no-deps`, so it did not run the normal web entrypoint. No migration, database query, or database write was part of this test command.
+
+### What passed
+
+- **28 new focused cases** in `tests/test_realtime_cli_detection.py`: direct and Python-module Alembic forms; Flask CLI and Windows launcher forms; server commands that must not be classified as one-shot CLI jobs; `sys.orig_argv` preference and `sys.argv` fallback; CLI-forced Socket.IO disablement even when the environment says enabled; and environment override parsing for non-CLI processes.
+- **6 existing queue-contract cases** in `tests/test_socketio_queue_contract.py`.
+
+Together with the previously verified source history, this supplies the missing focused test evidence for sub-item 12c. The manual six-case probe remains earlier supplemental evidence; the new permanent test suite is the regression protection.
+
+### Disposition
+
+- **Sub-item 12c: CLOSED** — tracked implementation and introducing history identified; direct automated regression tests now exist and passed with exit code 0.
+- **Top-level Item 12: remains ADVANCED** — the 12c source/test gate is closed, but read-only Alembic revision/catalog evidence for the actual deployed environments remains outstanding.
+- **Official top-level status totals do not change** because 12c is a subordinate item, not a separate member of the 39-item count.
+- **No application source or migration changed in this checkpoint.** Only the test file previously added and documentation records are in scope. No networking override, web-service start, DB operation, Production/Test access, or volume removal is authorized by this result.
