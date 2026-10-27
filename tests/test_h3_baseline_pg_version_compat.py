@@ -15,7 +15,7 @@ assert SPEC is not None and SPEC.loader is not None
 BASELINE = module_from_spec(SPEC)
 SPEC.loader.exec_module(BASELINE)
 
-TRANSACTION_TIMEOUT = "SET transaction_timeout = 0;\\n"
+TRANSACTION_TIMEOUT = "SET transaction_timeout = 0;\n"
 
 
 @pytest.mark.parametrize("server_version_num", [150000, 150014, 160000, 160009])
@@ -43,7 +43,7 @@ def test_postgresql_17_or_newer_preserves_original_sql(server_version_num):
 
 def test_pre_17_fails_closed_if_expected_setting_is_missing_or_duplicated():
     with pytest.raises(RuntimeError, match="Expected exactly one transaction_timeout"):
-        BASELINE._schema_sql_for_server_version("SELECT 1;\\n", 150000)
+        BASELINE._schema_sql_for_server_version("SELECT 1;\n", 150000)
 
     with pytest.raises(RuntimeError, match="Expected exactly one transaction_timeout"):
         BASELINE._schema_sql_for_server_version(
