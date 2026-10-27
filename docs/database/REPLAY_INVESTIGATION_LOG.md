@@ -136,6 +136,14 @@ The replay is **not PASS** until an empty disposable PostgreSQL database starts 
 - **Non-blocking, understood startup behavior:** A `system_configs` lookup for `CSP_STRICT_ENFORCE` emitted an error before the baseline created that table. The source's `refresh_csp_strict_cache()` intentionally catches this, rolls back, and fails closed to `False`; this did not block migration.
 - **Overall result:** **PASS for a fresh Docker Compose deployment replay through the expected Alembic head and HTTP health endpoint on the hosted GitHub Actions runner.** This is not yet a full production-parity/schema-parity sign-off, and it does not prove the Codespaces nested Docker network issue is fixed.
 
+### RPL-13 — Repeat replay PASS with structural count guard
+
+- **Workflow run:** [GitHub Actions run 40469733857](https://github.com/twikirize/afcon360/actions/runs/40469733857), workflow commit `f15e7e880bf1c91bc853f2a38c61aa05e4cd159e`, sandbox branch.
+- **Repeatability result:** All workflow steps completed successfully on a second fresh hosted-runner environment. The image built; H3-A compatibility tests reported **9 passed**; the normal web startup reported `Migrations complete`; direct SQL returned `ALEMBIC_REVISION=1793013676`; schema-shape checks passed; health endpoint returned `APP_HEALTH_HTTP_200=PASS`; cleanup succeeded.
+- **Counts asserted by the workflow:** `PUBLIC_TABLES=226`, `PUBLIC_ENUMS=49`, `PUBLIC_CHECK_CONSTRAINTS=139`, with `SCHEMA_SHAPE_COUNTS=PASS`.
+- **Meaning:** The full replay is now repeatable in the hosted GitHub Actions Docker environment across two successful fresh-runner runs, and the recorded coarse schema shape has a regression guard. This supports the deployment replay path, not full object-level schema parity, production-readiness, or the resolution of Codespaces' local Docker connectivity failure.
+- **Status:** Second hosted fresh replay **PASS**. Exact approved-schema parity and locale behavior remain separate follow-up gates.
+
 ## Current evidence-based state
 
 | Gate | Result |
@@ -150,7 +158,7 @@ The replay is **not PASS** until an empty disposable PostgreSQL database starts 
 | TCP from Compose-network source to services' built-in bridge IPs | FAIL — different bridge network; not a same-network test |
 | TCP from built-in-bridge source to services' built-in bridge IPs | PASS — source placement matters; diagnostic only |
 | TCP to PostgreSQL and Redis through Compose from hosted GitHub Actions runner | PASS — web logs show both service connections succeeded |
-| Hosted runner normal app startup | BLOCKED — missing `ENCRYPTION_KEY` at Flask config validation |
+| Hosted runner normal app startup | PASS — after CI added a fresh ephemeral `ENCRYPTION_KEY` |
 | Active Alembic chain reaches `1793013676` on hosted runner | PASS — migration logs and direct Alembic-version query agree |
 | Fresh database schema counts / collation metadata | PASS — 226 public tables, 49 enums, 139 checks; parity comparison pending |
 | App health endpoint | PASS — HTTP 200 and `{"status":"ok"}` on hosted runner |
