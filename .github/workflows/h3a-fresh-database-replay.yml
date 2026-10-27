@@ -114,7 +114,7 @@ jobs:
 
           echo "=== DATABASE VERSION, ENCODING, AND COLLATION ==="
           docker compose exec -T db psql -X -v ON_ERROR_STOP=1 -U afcon360_ci -d afcon360_replay_test \
-            -c 'SELECT version() AS server_version, current_database() AS database, current_setting('"'server_encoding'"') AS server_encoding, current_setting('"'lc_collate'"') AS lc_collate, current_setting('"'lc_ctype'"') AS lc_ctype;'
+            -c "SELECT version() AS server_version, current_database() AS database, current_setting('server_encoding') AS server_encoding, datcollate AS lc_collate, datctype AS lc_ctype FROM pg_catalog.pg_database WHERE datname = current_database();"
 
           echo "=== PUBLIC SCHEMA COUNTS (EVIDENCE FOR FOLLOW-UP PARITY CHECKS) ==="
           docker compose exec -T db psql -X -v ON_ERROR_STOP=1 -U afcon360_ci -d afcon360_replay_test \
