@@ -119,6 +119,23 @@ The replay is **not PASS** until an empty disposable PostgreSQL database starts 
 - **Additional observable startup behavior:** During Flask app initialization against the empty database, PostgreSQL logged an error for a query to the not-yet-created `system_configs` table (`CSP_STRICT_ENFORCE`). Source inspection of `app/__init__.py::refresh_csp_strict_cache()` confirms this pre-baseline condition is explicitly handled: the lookup is best-effort, failures roll back the SQLAlchemy session, and the flag fails closed to `False`. This is intentional/non-fatal for the fresh replay, though the emitted database ERROR may warrant a separate logging-noise review. Do not change CSP policy behavior as part of replay work.
 - **Status:** Full active Alembic chain and head revision PASS on the hosted runner. Schema count/collation reporting and HTTP health check remain pending after correcting the verification query; complete deployment replay not yet PASS.
 
+### RPL-12 — First hosted fresh-database replay PASS (end-to-end)
+
+- **Workflow run:** [GitHub Actions run 40469293373](https://github.com/twikirize/afcon360/actions/runs/40469293373), branch `sandbox/codespaces-alembic-investigation`, workflow source commit `9c9d15b5e34a0a5cdc0c6029c89237b9c9a3a571`.
+- **Docker/config gate:** Compose validation PASS; application image build PASS with Dockerfile Python 3.13; only disposable, freshly generated workflow credentials used.
+- **Regression tests:** `tests/test_h3_baseline_pg_version_compat.py` — **9 passed**.
+- **Service networking:** On hosted GitHub Actions Ubuntu runner, the app container resolved and connected to PostgreSQL and Redis through normal Compose service names. This confirms those Compose settings work on this runner; Codespaces' earlier TCP timeouts remain environment-specific to the tested Codespaces instance.
+- **Migration chain:** The normal `docker-entrypoint.sh` / `flask db upgrade` path ran each migration in order:
+  `h3a20261020 -> c076b257b11d -> 1792869659 -> d3ba8c51f407 -> 1793011323 -> 1793013676`.
+  The log emitted `Migrations complete`; direct SQL verification returned `ALEMBIC_REVISION=1793013676`.
+- **Baseline provenance:** The H3-A root migration logged the approved source database `afcon360_h2p_replay_20261018_test`, source revision `df55cbe3f516`, source PostgreSQL `18.4`, and normalized SQL SHA-256 `0701c42dda041f3725c59d2b8081fd4534b5f8d3359f67839aad98c8d53198da`. The target runner server itself is PostgreSQL `18.6`.
+- **Database settings reported by PostgreSQL:** database `afcon360_replay_test`; server encoding `UTF8`; `datcollate=en_US.UTF-8`; `datctype=en_US.UTF-8`.
+- **Fresh replay counts (public schema):** `pg_tables=226`; public enum types `49`; public check constraints `139`. These are captured as a new comparison point, not yet a schema-parity PASS: reconcile exact catalog counts and object identities against the approved expected schema/reference.
+- **Application health:** The public container port's `GET /api/health/ping` eventually returned `{"status":"ok"}` with `APP_HEALTH_HTTP_200=PASS`. Early curl attempts during app startup received connection resets, then the retry loop succeeded; readiness checks should accommodate the actual startup delay.
+- **Non-blocking observation:** PostgreSQL logs an Alpine locale warning (`locale: not found`, `no usable system locales were found`) despite reporting the requested locale names in database metadata. Locale/collation behavior is not fully verified by the metadata string alone; retain RPL-06 follow-up.
+- **Non-blocking, understood startup behavior:** A `system_configs` lookup for `CSP_STRICT_ENFORCE` emitted an error before the baseline created that table. The source's `refresh_csp_strict_cache()` intentionally catches this, rolls back, and fails closed to `False`; this did not block migration.
+- **Overall result:** **PASS for a fresh Docker Compose deployment replay through the expected Alembic head and HTTP health endpoint on the hosted GitHub Actions runner.** This is not yet a full production-parity/schema-parity sign-off, and it does not prove the Codespaces nested Docker network issue is fixed.
+
 ## Current evidence-based state
 
 | Gate | Result |
@@ -135,8 +152,8 @@ The replay is **not PASS** until an empty disposable PostgreSQL database starts 
 | TCP to PostgreSQL and Redis through Compose from hosted GitHub Actions runner | PASS — web logs show both service connections succeeded |
 | Hosted runner normal app startup | BLOCKED — missing `ENCRYPTION_KEY` at Flask config validation |
 | Active Alembic chain reaches `1793013676` on hosted runner | PASS — migration logs and direct Alembic-version query agree |
-| Fresh database schema counts / collation checks | PENDING — diagnostic query fixed; rerun required |
-| App health endpoint | NOT VERIFIED — skipped after verification-query error |
+| Fresh database schema counts / collation metadata | PASS — 226 public tables, 49 enums, 139 checks; parity comparison pending |
+| App health endpoint | PASS — HTTP 200 and `{"status":"ok"}` on hosted runner |
 
 ## Rules for continuing the investigation
 
