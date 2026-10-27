@@ -48,16 +48,19 @@ The replay is **not PASS** until an empty disposable PostgreSQL database starts 
 - **Safety:** Do not delete the old volume or use `docker compose down -v`. Confirm the actual volume name and database identity before any future replay or cleanup.
 - **Status:** Startup/layout issue resolved in the disposable environment; data-preservation and full-replay gates remain open.
 
-### RPL-04 — Compose-network TCP connectivity fails despite healthy services
+### RPL-04 — Container TCP connectivity differs by source network in Codespaces
 
-- **Observed:** PostgreSQL and Redis both report healthy. A temporary container attached to the Compose network resolves `db` to `172.18.0.3` and `redis` to `172.18.0.2`, but TCP probes to ports 5432 and 6379 time out. PostgreSQL's own `pg_isready` works from inside the database container. Redis answers locally with `NOAUTH Authentication required`, showing that its listener answers and authentication is required.
-- **Network recreation test:** `docker compose down --remove-orphans` followed by `docker compose up -d db redis` recreated the network and containers, but the cross-container TCP timeouts remained. No `-v` flag was used; the named database volume was preserved.
-- **Built-in bridge comparison:** Connecting the same PostgreSQL and Redis containers to Docker's built-in `bridge` and testing their bridge IPs from `afcon360-web` succeeded for both TCP ports (exit code 0).
-- **What this establishes:** A path-specific connectivity difference is reproducible: the default built-in bridge path succeeded, while the Compose user-defined bridge path timed out in this Codespaces Docker environment.
-- **What is not yet established:** The underlying cause of that difference. Do not call it a confirmed Codespaces platform defect until network settings, routes/firewall behavior, and repeatability are inspected.
-- **Temporary workaround:** Additional built-in bridge attachment proved direct IP reachability. This is diagnostic evidence only, not an approved durable design. Do not bake dynamic container IPs or dependence on the built-in bridge into application configuration.
-- **Next investigation:** Capture `docker info`, both network inspections (driver/options/subnets/IPAM), container routes and listeners, and compare connectivity from each side. Then decide whether the durable fix belongs in the sandbox/Compose network design or the chosen replay environment. Prefer stable service-name connectivity; avoid hard-coded container IPs.
-- **Status:** Root cause OPEN; full application startup must stay gated.
+- **Observed services:** PostgreSQL and Redis both report healthy. PostgreSQL accepts `pg_isready` against its own loopback and service address from inside its own container. Redis responds locally with `NOAUTH Authentication required`, showing the listener answers and authentication is required. A PostgreSQL-container probe to Redis times out.
+- **Compose network:** Inspection reports a normal user-defined bridge named `afcon360_afcon_net`, subnet `172.18.0.0/16`, gateway `172.18.0.1`, no custom network options. DNS from a temporary app-image container resolves `db` to `172.18.0.3` and `redis` to `172.18.0.2`; TCP to either service times out. Recreating Compose containers/network did not cure the symptom, and the existing named database volume was preserved (no `-v` was used).
+- **Built-in bridge network:** Docker's built-in `bridge` uses `172.17.0.0/16`; its inspection shows the usual default bridge options, including inter-container connectivity enabled. PostgreSQL and Redis were additionally attached to this bridge at `172.17.0.2` and `172.17.0.3`.
+- **Successful test, with its scope:** A standalone temporary app-image container explicitly started with `docker run --network bridge` successfully made TCP connections to the PostgreSQL and Redis built-in-bridge IP addresses (exit code 0).
+- **Follow-up matrix from a Compose-network source:** A `docker compose run` temporary app-image container on the Compose network timed out for all four destinations: PostgreSQL Compose IP `172.18.0.3:5432`, PostgreSQL built-in bridge IP `172.17.0.2:5432`, Redis Compose IP `172.18.0.2:6379`, and Redis built-in bridge IP `172.17.0.3:6379`.
+- **Interpretation correction:** These results are not contradictory. The successful test's *source container* was on the built-in bridge; the follow-up matrix's source container was on the Compose network. The evidence shows built-in-bridge source -> built-in-bridge destination works, while Compose-network source cannot reach either service in this environment. A connection across two different bridge networks would normally be isolated, so the cross-network matrix entries alone are not evidence of a defect. The same-network Compose TCP timeouts are the abnormal part that remains to explain.
+- **Environment:** `docker info` reports Docker Server `29.8.0-1`, Ubuntu `24.04.5 LTS (containerized)`. The Compose network has no non-default options. This is consistent with a nested/containerized Docker environment, but these facts alone do not prove the underlying cause.
+- **External corroboration (hypothesis, not proof):** A [GitHub Codespaces community discussion #208098](https://github.com/orgs/community/discussions/208098) describes a closely similar signature—containerized Ubuntu, working DNS, and TCP timeouts on a user-defined bridge—and proposes nested Docker bridge/forwarding behavior as a cause. This is an independent community report, not authoritative confirmation that the same cause applies here. [Docker's bridge documentation](https://docs.docker.com/engine/network/drivers/bridge/) states that containers attached to the same bridge should communicate by default and that different bridge networks are isolated.
+- **Temporary workaround status:** Built-in-bridge connectivity is proven only for a source container attached to that built-in bridge and destination IPs on that bridge. It is not yet a safe application workaround because the Compose source cannot reach it, and service-name discovery differs on the default bridge. Do not embed dynamic IPs into application configuration or declare the networking issue fixed.
+- **Next investigation:** Inspect `docker info` networking/forwarding and userland-proxy settings, routes, and listeners. Then test a documented host-published-port/host-gateway path or a replay topology supported by this environment, without exposing DB/Redis beyond the sandbox. If the limitation is specific to nested Codespaces networking, document the environment requirement or use a suitable replay runner. Preserve stable service discovery and do not change application/migration logic to mask network timeouts.
+- **Status:** Compose same-network connectivity root cause OPEN; web startup and migration replay stay gated.
 
 ### RPL-05 — Web startup was blocked before Alembic began
 
@@ -84,8 +87,9 @@ The replay is **not PASS** until an empty disposable PostgreSQL database starts 
 | PostgreSQL 18.6 service healthy | PASS |
 | Redis service healthy | PASS |
 | Compose service-name DNS resolution from app image | PASS |
-| TCP to PostgreSQL/Redis over Compose network | FAIL — timeout |
-| TCP to PostgreSQL/Redis over built-in bridge IPs | PASS — diagnostic comparison only |
+| TCP from Compose-network source to services' Compose IPs | FAIL — timeout |
+| TCP from Compose-network source to services' built-in bridge IPs | FAIL — different bridge network; not a same-network test |
+| TCP from built-in-bridge source to services' built-in bridge IPs | PASS — source placement matters; diagnostic only |
 | Active Alembic chain reaches `1793013676` | NOT VERIFIED |
 | Fresh database/schema checks after full replay | NOT RUN |
 | App health endpoint | NOT VERIFIED |
