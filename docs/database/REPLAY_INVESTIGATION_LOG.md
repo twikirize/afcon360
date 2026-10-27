@@ -210,3 +210,27 @@ The replay is **not PASS** until an empty disposable PostgreSQL database starts 
 - **Related-but-not-equivalent coverage:** the supplied test search showed a production-console test that sets `SOCKETIO_ENABLED=False` and verifies persistence remains independent. It does not directly test the CLI detector or `_resolve_socketio_enabled`.
 - **Conclusion:** implementation runtime behavior is supported for these six simulated command lines, and the existing queue-contract suite passes. Dedicated persistent tests for the CLI detector/application enablement decision were not found. Keep sub-item 12c IN REVIEW; add direct automated tests and run them in read-only/no-database mode before closure. Top-level Item 12 remains ADVANCED pending both 12c and actual deployed-environment revision/catalog evidence.
 - **Safety:** no source, test, migration, database row, schema, or Docker volume was changed in this checkpoint.
+
+
+---
+
+## RPL-17 — 27 October: Item 12c history audit and permanent CLI regression tests added
+
+- **Source-history evidence:** Commit `bd289acc238eb17d82bf4f55c6e451e53752d0f3` (22 October) added `app/realtime.py` and modified `app/__init__.py` and `app/config.py`. Commit `7b65c4c33b911532ec42f5d6ef10d8a8a2e491a3` (26 October) modified `app/__init__.py`, added `tests/test_socketio_queue_contract.py`, and extended `tests/test_production_console.py`.
+- **Coverage finding:** Existing queue-contract tests and the production-console persistence test are related but do not directly cover `is_bare_cli_invocation` or `_resolve_socketio_enabled`.
+- **Test file added:** [`tests/test_realtime_cli_detection.py`](https://github.com/twikirize/afcon360/blob/sandbox/codespaces-alembic-investigation/tests/test_realtime_cli_detection.py), commit `e8af03d8713a6ce0a6ce4449249052bf23559440`. It contains 28 focused cases covering command-line classifications, `sys.orig_argv` preference/fallback, CLI-forced Socket.IO disablement, and non-CLI environment flag behavior.
+- **Run status:** Not yet executed in the submitted evidence. Do not describe the new tests as passing until the owner runs them and provides the pytest summary and exit code.
+- **Next command after syncing the investigation branch in Codespaces:**
+
+```bash
+docker compose run --rm --no-deps -T \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  --entrypoint python web \
+  -m pytest --noconftest -q -p no:cacheprovider \
+  tests/test_realtime_cli_detection.py \
+  tests/test_socketio_queue_contract.py
+```
+
+- **Safety:** This is a temporary no-dependency one-off test container with the source mounted read-only. It does not start the normal web entrypoint and must not run migrations or touch database rows. No Docker networking override was introduced; no app source, migration or database configuration was changed.
+- **Disposition:** 12c remains IN REVIEW pending actual regression results. Parent Item 12 remains ADVANCED and still requires read-only revision/catalog evidence for the actual deployed environments.
