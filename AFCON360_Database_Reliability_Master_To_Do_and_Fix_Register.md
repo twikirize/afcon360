@@ -1134,3 +1134,38 @@ The owner's git status --short, git diff --name-only, and git diff --cached --na
 - **Sub-item 12c:** worktree clean and implementation present in tracked source; history and focused test evidence still need verification before closure.
 - **Existing Production/Test:** no connections, queries or writes were performed as part of this Codespaces census. Prior saved catalog comparisons show those databases differ; no cutover or migration is authorized.
 - **Next action:** audit the tracked change history and tests for the Socket.IO/CLI-disable behavior; separately, obtain read-only revision/catalog evidence for the actual deployed environments through their approved connection path. Do not start the web app just to see what happens, because its normal startup can run migrations against the configured database. Do not remove any PostgreSQL volume.
+
+---
+
+## Phase 17 — 27 October 2026: Socket.IO bare-CLI detector runtime probe and focused-test coverage check
+
+**Evidence source.** Owner-pasted Codespaces terminal output from branch `sandbox/codespaces-alembic-investigation`. Commands ran temporary one-off containers with `docker compose run --rm --no-deps`, Python as the entrypoint, and the checked-out source mounted read-only. No web service was started; no application migration was invoked; no database connection or database change was reported. This update changes documentation only.
+
+### Observed results
+
+| Check | Exact result | Interpretation |
+|---|---|---|
+| Tracked test search | `GIT_PAGER=cat git grep -n -I -E 'is_bare_cli_invocation|_resolve_socketio_enabled' -- tests` returned `TEST_SEARCH_EXIT=1` with no matching test lines | No direct permanent test references to either helper were found in the searched `tests/` tree. Exit 1 is the normal no-match result, not a runtime-test failure. |
+| Bare-CLI detector probe | `CLI_DETECTOR_CASES=6`; `CLI_DETECTOR_FAILURES=0`; `CLI_DETECTOR_EXIT=0` | All six one-off runtime classifications matched their expected Boolean values. |
+| Existing Socket.IO queue-contract tests | `tests/test_socketio_queue_contract.py`: **6 passed in 3.05s**; `QUEUE_TEST_EXIT=0` | Existing queue-contract behavior remains green in this run. |
+| Related production-console coverage | The supplied earlier search showed a test that temporarily sets `SOCKETIO_ENABLED=False` and asserts persistence remains independent of that setting | Related persistence coverage exists, but it does not directly exercise bare-CLI detection. |
+
+### CLI detector cases exercised
+
+| Simulated command line | Expected result | Actual result |
+|---|---:|---:|
+| `flask --app app db upgrade` | `True` | `True` — PASS |
+| `flask --app app db current` | `True` | `True` — PASS |
+| `flask --app app run` | `False` | `False` — PASS |
+| `python -m flask --app app db upgrade` | `True` | `True` — PASS |
+| `python -m alembic upgrade head` | `True` | `True` — PASS |
+| `gunicorn app:create_app()` | `False` | `False` — PASS |
+
+The probe temporarily set `sys.orig_argv` per case and restored it afterward. It imported `is_bare_cli_invocation` and evaluated the helper; the command did not call Alembic, run an upgrade, or start the web entrypoint.
+
+### Item 12 / 12c disposition
+
+- **Top-level Item 12 remains ADVANCED.** This narrow runtime/test-coverage check does not provide the missing read-only migration-revision/catalog evidence for actual deployed environments.
+- **Sub-item 12c remains IN REVIEW.** The tracked implementation is present and the six manual classification cases passed; the existing six-test Socket.IO queue suite also passed. However, manual probe cases are not persistent regression tests, and the test search found no direct tests of `is_bare_cli_invocation` or `_resolve_socketio_enabled`.
+- **Next code-quality step:** add focused automated tests for the detector and the application-level Socket.IO enable/disable decision, covering the command classes above, then run those tests in the read-only/no-database test mode. Review the diff and test result before changing 12c's disposition.
+- **Safety boundary:** No application/test source was changed in this checkpoint. Do not start the web container for this check; its standard entrypoint may run migrations. Do not query or write Production/Test, alter schema, or remove/reset Docker volumes.
