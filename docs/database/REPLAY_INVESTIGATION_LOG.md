@@ -197,3 +197,16 @@ The replay is **not PASS** until an empty disposable PostgreSQL database starts 
 - **Git working tree:** The owner reported blank `git status --short`, `git diff --name-only` and `git diff --cached --name-only`, on branch sandbox/codespaces-alembic-investigation at local HEAD 2287936. Tracked app/__init__.py, app/config.py and app/realtime.py at that commit contain Socket.IO disabling for one-shot Flask/Alembic CLI invocations. Therefore the previous “uncommitted local change” wording for 12c is stale for this checkout, but source-history and focused-test verification are still needed before 12c is closed.
 - **Item 12 outcome:** Top-level Item 12 remains ADVANCED. The old Windows Docker-command-not-found obstacle is resolved for the Codespaces host and local census evidence is now recorded. Remaining work: verify the Socket.IO/CLI change history/tests (12c) and obtain separate read-only revision/catalog evidence for actual deployed environments. Do not start the web container merely to inspect it; its normal entrypoint may run migrations. Do not delete or reset volumes.
 - **Status:** Local Codespaces census recorded; broader deployment-state census still in progress.
+
+---
+
+## RPL-16 — 27 October: Socket.IO bare-CLI detector runtime probe and test-coverage gap
+
+- **Source:** Owner-pasted Codespaces terminal output on `sandbox/codespaces-alembic-investigation`. These were run by the owner, not executed by the assistant in Codespaces.
+- **Execution boundary:** Temporary Compose one-off containers used `--rm --no-deps`, Python as entrypoint, and the repository mounted read-only at `/workspace:ro`. The web service was not started, and the commands did not invoke the migration entrypoint or issue SQL. No database change was reported.
+- **Coverage search:** `GIT_PAGER=cat git grep -n -I -E 'is_bare_cli_invocation|_resolve_socketio_enabled' -- tests` returned exit 1 with no matches. That is a no-match result, not a failed runtime test.
+- **Manual detector probe:** six of six cases matched expected values, with `CLI_DETECTOR_FAILURES=0` and `CLI_DETECTOR_EXIT=0`: Flask db upgrade = True; Flask db current = True; Flask run = False; Python -m Flask db upgrade = True; Python -m Alembic upgrade = True; Gunicorn server = False.
+- **Existing queue suite:** `tests/test_socketio_queue_contract.py` reported **6 passed in 3.05s**, `QUEUE_TEST_EXIT=0`.
+- **Related-but-not-equivalent coverage:** the supplied test search showed a production-console test that sets `SOCKETIO_ENABLED=False` and verifies persistence remains independent. It does not directly test the CLI detector or `_resolve_socketio_enabled`.
+- **Conclusion:** implementation runtime behavior is supported for these six simulated command lines, and the existing queue-contract suite passes. Dedicated persistent tests for the CLI detector/application enablement decision were not found. Keep sub-item 12c IN REVIEW; add direct automated tests and run them in read-only/no-database mode before closure. Top-level Item 12 remains ADVANCED pending both 12c and actual deployed-environment revision/catalog evidence.
+- **Safety:** no source, test, migration, database row, schema, or Docker volume was changed in this checkpoint.
