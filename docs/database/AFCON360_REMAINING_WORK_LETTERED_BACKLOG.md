@@ -20,7 +20,7 @@ The official register has 15 top-level items that are not CLOSED: Item 10 is PAR
 
 | Work ID | Original item(s) | Work package | Current status |
 |---|---|---|---|
-| A | 12, 12b, 12c | Complete the remaining Item 12 environment evidence; Codespaces Docker census is recorded, and 12c source-history/test review remains | ADVANCED; 12c review remains |
+| A | 12, 12b | Complete the remaining Item 12 environment evidence; Codespaces Docker census is recorded, sub-item 12c is CLOSED after the focused 34-test PASS, and read-only revision/catalog evidence for actual deployed environments remains | ADVANCED; 12c CLOSED |
 | B | 21 | Decide and document the 49-versus-47 enum target | ADVANCED |
 | C | 24 | Finish remaining migration-conflict and enum-disposition review | ADVANCED |
 | D | 25 | Complete foreign-key-to-model mapping | ADVANCED |
@@ -39,15 +39,15 @@ The official register has 15 top-level items that are not CLOSED: Item 10 is PAR
 ## Lettered work packages
 
 ### A — Complete the read-only environment census
-**Official references:** Item 12 and sub-items 12b/12c  
-**Status:** Item 12 ADVANCED; sub-item 12b OPEN; sub-item 12c OPEN
+**Official references:** Item 12 and sub-item 12b; sub-item 12c is closed and is retained in the master register's history  
+**Status:** Item 12 ADVANCED; sub-item 12b environment evidence incomplete (Codespaces census recorded; actual deployed environments remain to be verified); sub-item 12c CLOSED
 
 **Evidence now captured (27 October):** The Codespaces Docker engine responds (Docker 29.8.0-1; Ubuntu 24.04.5 LTS, containerized). Only afcon360_db (PostgreSQL 18.6, healthy) and afcon360_redis (healthy) were present; the web, Nginx and Celery containers were absent. The active PostgreSQL volume is afcon360_postgres_data_pg18; the old afcon360_postgres_data volume still exists and was preserved. The current database afcon360_sandbox has only public schema, no app tables or Alembic revision table. The database list contains only afcon360_sandbox, postgres and the templates. All supplied inspection commands exited 0. This closes the earlier Docker-CLI-unavailable obstacle for this Codespaces host but does not show the state of remote Production/Test environments. The nested Docker TCP timeout remains a separate environment limitation.
 
 **Work to do**
 1. Preserve the captured Codespaces census as evidence; no need to repeat the same commands unless the environment changes.
 2. Obtain read-only revision/catalog evidence for the actual deployed environments through their approved connection path; do not use Production/Test as scratch databases.
-3. Review sub-item 12c's Socket.IO/CLI-disable source history and focused test evidence. The current checkout reported clean, and the implementation is present in tracked source, so the old wording that it is still uncommitted is stale; do not close 12c until the introducing commit and tests are identified.
+3. **12c CLOSED (27 October):** source history is identified and the permanent test file `tests/test_realtime_cli_detection.py` plus the existing queue suite passed together: 34 passed in 3.14s, exit 0. No further 12c work is currently required. Keep the next activity focused on Item 12's read-only revision/catalog evidence for actual deployed environments.
 
 **Acceptance evidence:** Exact commands, exit codes, timestamps, environment identity, versions and captured outputs; no database writes. State clearly which environments were observed and which were not.
 
