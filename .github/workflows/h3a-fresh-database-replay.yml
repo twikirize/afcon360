@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/h3a-fresh-database-replay.yml
       - Dockerfile
+      - .dockerignore
       - docker-compose.yml
       - docker-entrypoint.sh
       - requirements.txt
@@ -116,11 +117,23 @@ jobs:
           docker compose exec -T db psql -X -v ON_ERROR_STOP=1 -U afcon360_ci -d afcon360_replay_test \
             -c "SELECT version() AS server_version, current_database() AS database, current_setting('server_encoding') AS server_encoding, datcollate AS lc_collate, datctype AS lc_ctype FROM pg_catalog.pg_database WHERE datname = current_database();"
 
-          echo "=== PUBLIC SCHEMA COUNTS (EVIDENCE FOR FOLLOW-UP PARITY CHECKS) ==="
-          docker compose exec -T db psql -X -v ON_ERROR_STOP=1 -U afcon360_ci -d afcon360_replay_test \
-            -c "SELECT count(*) AS public_tables FROM pg_catalog.pg_tables WHERE schemaname = 'public';" \
-            -c "SELECT count(*) AS public_enums FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = 'public' AND t.typtype = 'e';" \
-            -c "SELECT count(*) AS public_check_constraints FROM pg_catalog.pg_constraint c JOIN pg_catalog.pg_namespace n ON n.oid = c.connamespace WHERE n.nspname = 'public' AND c.contype = 'c';"
+          echo "=== PUBLIC SCHEMA COUNTS (PROVISIONAL STRUCTURAL REGRESSION GUARD) ==="
+          # These values are the recorded counts from the first successful replay.
+          # They are a coarse regression guard, not a substitute for exact schema parity.
+          PUBLIC_TABLES="$(docker compose exec -T db psql -X -U afcon360_ci -d afcon360_replay_test -Atqc "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname = 'public'")"
+          PUBLIC_ENUMS="$(docker compose exec -T db psql -X -U afcon360_ci -d afcon360_replay_test -Atqc "SELECT count(*) FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = 'public' AND t.typtype = 'e'")"
+          PUBLIC_CHECKS="$(docker compose exec -T db psql -X -U afcon360_ci -d afcon360_replay_test -Atqc "SELECT count(*) FROM pg_catalog.pg_constraint c JOIN pg_catalog.pg_namespace n ON n.oid = c.connamespace WHERE n.nspname = 'public' AND c.contype = 'c'")"
+
+          echo "PUBLIC_TABLES=$PUBLIC_TABLES"
+          echo "PUBLIC_ENUMS=$PUBLIC_ENUMS"
+          echo "PUBLIC_CHECK_CONSTRAINTS=$PUBLIC_CHECKS"
+
+          if [[ "$PUBLIC_TABLES" != "226" || "$PUBLIC_ENUMS" != "49" || "$PUBLIC_CHECKS" != "139" ]]; then
+            echo "FAIL: replay schema-shape counts changed from the recorded successful run."
+            echo "Review the schema change and update these provisional guards only with explicit approval."
+            exit 1
+          fi
+          echo "SCHEMA_SHAPE_COUNTS=PASS"
 
       - name: Verify application health endpoint
         shell: bash
