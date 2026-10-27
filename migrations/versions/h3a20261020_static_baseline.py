@@ -28388,7 +28388,7 @@ _SCHEMA_SQL = (
 # PostgreSQL 17 introduced transaction_timeout. Keep the captured schema SQL
 # unchanged for provenance; omit only this session setting when replaying it on
 # earlier PostgreSQL servers. It does not create or modify schema objects.
-_TRANSACTION_TIMEOUT_SETTING = 'SET transaction_timeout = 0;\\n'
+_TRANSACTION_TIMEOUT_SETTING = 'SET transaction_timeout = 0;\n'
 
 
 def _schema_sql_for_server_version(schema_sql: str, server_version_num: int) -> str:
