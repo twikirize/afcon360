@@ -1084,7 +1084,7 @@ The same workflow has two successful fresh hosted-runner executions: runs [40469
 
 | Register/checkpoint | Current disposition | Reason / boundary |
 |---|---|---|
-| Operational Docker replay checkpoint #26 discussed with the owner | **PASS — tested hosted environment only** | Fresh checkout, image build, PostgreSQL 18.6 migration replay to `1793013676`, 9 tests, coarse schema guard, and health HTTP 200 all passed. Do not generalize this to every hosting provider. |
+| Operational Docker replay checkpoint #25 (24 checkpoints were completed before Docker) | **PASS — tested hosted environment only** | Fresh checkout, image build, PostgreSQL 18.6 migration replay to `1793013676`, 9 tests, coarse schema guard, and health HTTP 200 all passed. Do not generalize this to every hosting provider. |
 | Top-level Item 12 — Establish deployed migration states | **ADVANCED — not closed** | The replay provides deployment-path evidence, but the read-only census and revision/catalog evidence for existing environments remain outstanding. Subordinate Item 12b (Docker census) stays OPEN until that actual census is run. |
 | Top-level Item 26 — Make data-sensitive migrations safe | **NOT STARTED — unchanged** | This is the different acceptance task for upgrades with existing rows. An empty-database replay cannot prove populated data, constraints or backfills are safe. |
 | Top-level Item 31 — Pass clean-install migration test | **CLOSED; evidence expanded** | In addition to the earlier H2′ replay on PostgreSQL 18.4, a fresh GitHub Actions checkout and Docker/PostgreSQL 18.6 replay reached the active head with schema-count and health checks passing. PostgreSQL 15 compatibility and other providers are not thereby verified. |
@@ -1098,5 +1098,5 @@ The same workflow has two successful fresh hosted-runner executions: runs [40469
 
 **Codespaces note:** the local nested-Docker Compose-network TCP timeout remains a separate environment issue. The hosted-runner PASS does not root-cause or fix that local networking limitation. Do not alter application logic to hide it, and do not make Production/Test changes as part of this replay.
 
-**Numbering note:** the owner’s operational run sequence calls the Docker deployment/replay the 26th checkpoint, now PASS. In the canonical 39-item master table, top-level Item 26 is explicitly the populated-state migration-safety task and therefore remains NOT STARTED. These are different numbering contexts; retain the canonical item IDs and track the replay PASS under Items 12/31 plus this phase rather than mislabeling populated-state safety as complete.
+**Numbering correction (owner-confirmed):** 24 checkpoints had been completed before Docker; the Docker deployment/replay is operational checkpoint #25, now PASS. In the canonical 39-item master table, top-level Item 26 is explicitly the populated-state migration-safety task and therefore remains NOT STARTED. These are different numbering contexts; retain the canonical item IDs and track the replay PASS under Items 12/31 plus this phase rather than mislabeling populated-state safety as complete.
 
