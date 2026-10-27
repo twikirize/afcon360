@@ -171,3 +171,14 @@ The replay is **not PASS** until an empty disposable PostgreSQL database starts 
 4. After each new failure, preserve the exact command, exit status, relevant logs, commit SHA, environment/server version, and whether migrations had begun.
 5. Fix environmental prerequisites before interpreting blocked migration execution as a migration defect.
 6. After the first clean replay, turn the proven manual steps into a repeatable script or CI job. It should fail fast on connectivity/runtime errors, capture the exact Alembic head and schema checks, and never silently reset or delete persistent volumes.
+
+
+## RPL-14 — 27 October checkpoint and register reconciliation
+
+- **Owner's operational checkpoint:** The Docker fresh-database replay was the 26th checkpoint in the step-by-step sequence discussed with the owner. It is recorded as **PASS for the tested GitHub-hosted Docker environment**.
+- **Successful run:** [GitHub Actions 40469733857](https://github.com/twikirize/afcon360/actions/runs/40469733857), workflow commit `f15e7e880bf1c91bc853f2a38c61aa05e4cd159e`; the preceding hosted replay [40469293373](https://github.com/twikirize/afcon360/actions/runs/40469293373) also succeeded.
+- **Evidence:** Fresh hosted checkout; Docker image built; 9 H3-A compatibility tests passed; PostgreSQL 18.6 and Redis healthy; normal entrypoint logged `Migrations complete`; Alembic revision verified as `1793013676`; schema guard passed at 226 public tables, 49 enums, 139 CHECK constraints; application health returned HTTP 200 / `{"status":"ok"}`.
+- **Safety boundary:** The workflow generated disposable credentials, used a disposable replay database, and cleaned up containers without `docker compose down -v`. It did not modify `afcon360_prod` or `afcon360_test`.
+- **Formal 39-item mapping:** Top-level Item 12 remains ADVANCED because a successful fresh replay does not complete the census and revision/catalog evidence for existing environments. Sub-item 12b (Docker census) remains OPEN. Top-level Item 31 remains CLOSED and now has stronger clean-checkout/PostgreSQL 18.6 evidence. Top-level Item 26 remains NOT STARTED because it tests safety when existing data is present; an empty database cannot prove row preservation or populated-state migration safety. The 39-item status totals remain 24 CLOSED, 10 ADVANCED, 1 PARTIAL and 4 NOT STARTED.
+- **Scope limit:** This is repeatability evidence for the tested GitHub-hosted PostgreSQL 18.6 Docker workflow. It does not prove PostgreSQL 15 compatibility, exact schema parity, readiness of existing databases, universal compatibility with AWS/Oracle Cloud or other hosting configurations, or resolution of the local Codespaces nested-Docker network timeout.
+- **Status:** Operational Docker replay checkpoint PASS (tested environment); wider investigation remains active. See the master register Phase 15 and [plain-language 39-item register](AFCON360_39_ITEM_REGISTER_PLAIN_LANGUAGE.md).
