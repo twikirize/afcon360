@@ -109,6 +109,16 @@ The replay is **not PASS** until an empty disposable PostgreSQL database starts 
 - **Verification:** A third hosted-runner replay has been triggered by the workflow correction; outcome pending. No successful Alembic replay has yet been recorded.
 - **Status:** Missing test-only production configuration corrected in CI; migration gate still open.
 
+### RPL-11 — The migration chain passed; a diagnostic collation query failed
+
+- **Observed:** Hosted runner commit `f727d92e60e6a004a59597e5da7985f1e5771bcd` passed the image build and the 9 H3-A compatibility regression tests. Web startup connected to PostgreSQL and Redis, then log output confirmed each active Alembic upgrade:
+  ` -> h3a20261020 -> c076b257b11d -> 1792869659 -> d3ba8c51f407 -> 1793011323 -> 1793013676`.
+  The workflow emitted `✅ Migrations complete`; a direct database query returned `ALEMBIC_REVISION=1793013676`.
+- **Why the overall job failed:** The subsequent environment verification tried `current_setting('lc_collate')` and PostgreSQL returned `unrecognized configuration parameter "lc_collate"`. The migration had already succeeded; the job stopped before the schema-count and health checks because the diagnostic SQL was wrong.
+- **Correction committed:** Workflow commit `9c9d15b5e34a0a5cdc0c6029c89237b9c9a3a571` reads collation from `pg_catalog.pg_database.datcollate/datctype`, while `server_encoding` remains read via `current_setting()`.
+- **Additional observable startup warning:** During Flask app initialization against the empty database, PostgreSQL logged an error for a query to the not-yet-created `system_configs` table (`CSP_STRICT_ENFORCE`). Alembic subsequently completed. Investigate this startup-time read so fresh boot does not emit avoidable missing-table errors; it has not blocked this run but should not be silently ignored.
+- **Status:** Full active Alembic chain and head revision PASS on the hosted runner. Schema count/collation reporting and HTTP health check remain pending after correcting the verification query; complete deployment replay not yet PASS.
+
 ## Current evidence-based state
 
 | Gate | Result |
@@ -124,9 +134,9 @@ The replay is **not PASS** until an empty disposable PostgreSQL database starts 
 | TCP from built-in-bridge source to services' built-in bridge IPs | PASS — source placement matters; diagnostic only |
 | TCP to PostgreSQL and Redis through Compose from hosted GitHub Actions runner | PASS — web logs show both service connections succeeded |
 | Hosted runner normal app startup | BLOCKED — missing `ENCRYPTION_KEY` at Flask config validation |
-| Active Alembic chain reaches `1793013676` | NOT VERIFIED |
-| Fresh database/schema checks after full replay | NOT RUN |
-| App health endpoint | NOT VERIFIED |
+| Active Alembic chain reaches `1793013676` on hosted runner | PASS — migration logs and direct Alembic-version query agree |
+| Fresh database schema counts / collation checks | PENDING — diagnostic query fixed; rerun required |
+| App health endpoint | NOT VERIFIED — skipped after verification-query error |
 
 ## Rules for continuing the investigation
 
