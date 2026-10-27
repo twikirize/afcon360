@@ -100,6 +100,15 @@ The replay is **not PASS** until an empty disposable PostgreSQL database starts 
 - **Verification in progress:** A second GitHub Actions run has started for commit `171ba7771113b2ede2213c42e63451797b7830d8`; its final outcome must be recorded separately.
 - **Status:** Initial workflow wiring defect diagnosed; corrected attempt pending. No migration has been reported from the first run.
 
+### RPL-10 — Production configuration requires ENCRYPTION_KEY before Alembic can run
+
+- **Observed on hosted runner:** After correcting the test-source mount, the image built, the H3-A compatibility tests passed, PostgreSQL and Redis started healthy, and the web entrypoint successfully reached both services. The web container then failed while Flask loaded configuration, raising `RuntimeError: [CONFIG] FATAL: Missing required production environment variables: ENCRYPTION_KEY`.
+- **Boundary confirmed:** `docker-entrypoint.sh`'s early four-variable check passed, but `app/config.py::validate_for_production()` has an additional required `ENCRYPTION_KEY` check because the Docker image sets `FLASK_ENV=production`. Thus the startup had progressed to application configuration but had not successfully run `flask db upgrade`. The `alembic_version` table was absent, consistent with migration not having begun successfully.
+- **Correction committed:** Workflow commit `f727d92e60e6a004a59597e5da7985f1e5771bcd` adds a cryptographically random, per-run dummy `ENCRYPTION_KEY` to the ephemeral `.env`/`.env.docker`. It is not a real application/production secret and is not committed to the repository.
+- **Additional observation:** App startup logs say `.env` and `.env.docker` files are not present inside `/app`; Compose passes their variables as container environment, which the early checks could see. This message is currently informational in this run, but after the required-key correction the next run should show whether config initialization works with environment variables alone. Do not add env files into the production image to suppress these messages without verifying the intended config loader contract.
+- **Verification:** A third hosted-runner replay has been triggered by the workflow correction; outcome pending. No successful Alembic replay has yet been recorded.
+- **Status:** Missing test-only production configuration corrected in CI; migration gate still open.
+
 ## Current evidence-based state
 
 | Gate | Result |
@@ -110,9 +119,11 @@ The replay is **not PASS** until an empty disposable PostgreSQL database starts 
 | PostgreSQL 18.6 service healthy | PASS |
 | Redis service healthy | PASS |
 | Compose service-name DNS resolution from app image | PASS |
-| TCP from Compose-network source to services' Compose IPs | FAIL — timeout |
+| TCP from Compose-network source to services' Compose IPs in Codespaces | FAIL — timeout |
 | TCP from Compose-network source to services' built-in bridge IPs | FAIL — different bridge network; not a same-network test |
 | TCP from built-in-bridge source to services' built-in bridge IPs | PASS — source placement matters; diagnostic only |
+| TCP to PostgreSQL and Redis through Compose from hosted GitHub Actions runner | PASS — web logs show both service connections succeeded |
+| Hosted runner normal app startup | BLOCKED — missing `ENCRYPTION_KEY` at Flask config validation |
 | Active Alembic chain reaches `1793013676` | NOT VERIFIED |
 | Fresh database/schema checks after full replay | NOT RUN |
 | App health endpoint | NOT VERIFIED |
