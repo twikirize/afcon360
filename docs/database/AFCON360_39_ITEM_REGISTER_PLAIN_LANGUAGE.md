@@ -7,6 +7,12 @@
 
 This is the human-readable companion to the technical register. It keeps the same official item numbers and current statuses, but explains them in everyday language.
 
+## Active remaining-work list
+
+The finished items are kept in this 39-item history. To work on only the unfinished tasks, use the new lettered backlog **A–O**. It contains only the 15 top-level items that are not CLOSED, including what remains, acceptance evidence and the suggested order of work.
+
+[Open the remaining-work-only lettered backlog](AFCON360_REMAINING_WORK_LETTERED_BACKLOG.md)
+
 ## Where we are today
 
 | Status | Count | What it means |
