@@ -234,3 +234,15 @@ docker compose run --rm --no-deps -T \
 
 - **Safety:** This is a temporary no-dependency one-off test container with the source mounted read-only. It does not start the normal web entrypoint and must not run migrations or touch database rows. No Docker networking override was introduced; no app source, migration or database configuration was changed.
 - **Disposition:** 12c remains IN REVIEW pending actual regression results. Parent Item 12 remains ADVANCED and still requires read-only revision/catalog evidence for the actual deployed environments.
+
+
+---
+
+## RPL-18 — 27 October: focused Item 12c CLI/Socket.IO tests passed
+
+- **Branch sync:** Owner reported a clean `git status --short`, successful `git fetch origin`, and successful `git merge --ff-only origin/sandbox/codespaces-alembic-investigation`. The new test file arrived in that fast-forward; no merge conflict was reported.
+- **Command:** `docker compose run --rm --no-deps -T -v "$PWD:/workspace:ro" -w /workspace --entrypoint python web -m pytest --noconftest -q -p no:cacheprovider tests/test_realtime_cli_detection.py tests/test_socketio_queue_contract.py`
+- **Observed result:** `34 passed in 3.14s`; `SOCKETIO_CLI_TEST_EXIT=0`.
+- **Scope:** 28 cases from the new direct CLI/resolver regression file plus the 6 existing Socket.IO queue-contract tests. This complements the source-history evidence that commit `bd289acc238eb17d82bf4f55c6e451e53752d0f3` introduced the implementation and commit `7b65c4c33b911532ec42f5d6ef10d8a8a2e491a3` added the earlier queue tests.
+- **Execution boundary:** A disposable `--no-deps` test container used the source mounted read-only. Python/pytest replaced the normal entrypoint. No web app startup, Alembic command, database query/write, Docker network change, or volume deletion was part of this run.
+- **Disposition:** Sub-item 12c **CLOSED**. Parent Item 12 remains **ADVANCED** pending read-only migration revision/catalog evidence for actual deployed environments. Official 39-item totals are unchanged because 12c is subordinate.
