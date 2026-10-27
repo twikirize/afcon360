@@ -246,3 +246,44 @@ docker compose run --rm --no-deps -T \
 - **Scope:** 28 cases from the new direct CLI/resolver regression file plus the 6 existing Socket.IO queue-contract tests. This complements the source-history evidence that commit `bd289acc238eb17d82bf4f55c6e451e53752d0f3` introduced the implementation and commit `7b65c4c33b911532ec42f5d6ef10d8a8a2e491a3` added the earlier queue tests.
 - **Execution boundary:** A disposable `--no-deps` test container used the source mounted read-only. Python/pytest replaced the normal entrypoint. No web app startup, Alembic command, database query/write, Docker network change, or volume deletion was part of this run.
 - **Disposition:** Sub-item 12c **CLOSED**. Parent Item 12 remains **ADVANCED** pending read-only migration revision/catalog evidence for actual deployed environments. Official 39-item totals are unchanged because 12c is subordinate.
+
+
+---
+
+## RPL-19 — 27 October: read-only Windows PostgreSQL census for local Production/Test databases
+
+**Evidence source.** Owner-pasted PowerShell output from `C:\Users\OBED\Desktop\afcon360_app`. The command used PostgreSQL 18's local `psql.exe`, selected `localhost:5432` (server address reported as `::1/128`), role `israeli`, and explicitly queried only `afcon360_prod` and `afcon360_test`. The Python wrapper refused a non-local host and refused populated password environment variables or a password-bearing `DATABASE_URL`. Output did not reveal a secret or connection URL.
+
+### Observed result
+
+| Measurement | `afcon360_prod` | `afcon360_test` |
+|---|---|---|
+| Database / effective role | `afcon360_prod` / `israeli` | `afcon360_test` / `israeli` |
+| PostgreSQL endpoint | local IPv6 loopback `::1/128:5432` | local IPv6 loopback `::1/128:5432` |
+| Server version | `18.4` | `18.4` |
+| Transaction read-only indicator | `on` | `on` |
+| Encoding | `UTF8` | `UTF8` |
+| Collation / ctype | `English_United Arab Emirates.1252` / `English_United Arab Emirates.1252` | same |
+| Public tables | `226` | `226` |
+| Public enum types | `49` | `49` |
+| Public CHECK constraints | `139` | `139` |
+| Public foreign-key constraints | `410` | `410` |
+| Installed extensions returned by `pg_extension` | `plpgsql` only | `plpgsql` only |
+| Alembic revision | `1793013676` | `1793013676` |
+| `psql` exit code | `0` | `0` |
+
+The wrapper reported `READ_ONLY_CENSUS_EXIT=0`. Its SQL used `BEGIN READ ONLY`, set `default_transaction_read_only=on` through `PGOPTIONS`, and ended with `ROLLBACK`. No migration or data-changing command was invoked by this census.
+
+### Reconciliation notes — do not silently overwrite historical evidence
+
+1. **Revision update:** The current local databases report `1793013676`, whereas the older normalized-schema evidence recorded both at `df55cbe3f516`. The older files remain valid as dated historical snapshots, but they no longer establish the current migration revision.
+2. **Counts changed from the historical comparison:** The older snapshots recorded 224 public tables, 68 enums in Prod / 49 in Test, and 411 FKs per database in the earlier physical inventory. This census reports 226 / 49 / 410 for each database. Treat these as a changed observation requiring explanation; do not infer exact parity from equal counts.
+3. **Extension discrepancy:** Older evidence recorded `pgcrypto` in Prod only, with extension-backed routines and deletion-guard dependencies discussed in the prior review. The current `pg_extension` query reports only `plpgsql` in both databases. Establish whether and when `pgcrypto` and its dependent routines changed before deciding the status of the older dependency record. Do not install, drop, recreate or otherwise mutate an extension as part of this investigation.
+4. **Equal migration revisions/counts are not schema identity:** this query measured selected catalog counts, the Alembic version and extension names. It did not compare every table/column/default/index/constraint/function/trigger, data contents or application behavior.
+5. **Environment boundary:** This is evidence for two databases on the owner's Windows machine via `localhost`, not proof of the PostgreSQL endpoint used by the remote public website or any other hosting deployment. That remote target must be identified and verified separately through its approved read-only access path.
+
+### Disposition
+
+- **Local Windows Production/Test census: PASS — read-only identity/revision/coarse-catalog queries completed.**
+- **Top-level Item 12: remains ADVANCED.** The local databases' current revision/catalog snapshot is now captured, but it does not by itself verify the remote public deployment, and the old-to-current schema/extension/FK discrepancies need explicit reconciliation.
+- **Next safe step:** collect a more detailed read-only inventory of the two local databases and compare object definitions/dependencies to the existing historical evidence; separately establish the remote deployment's approved database identity/revision query path. No write or migration is authorized by this finding.
