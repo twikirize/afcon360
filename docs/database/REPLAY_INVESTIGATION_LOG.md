@@ -92,6 +92,14 @@ The replay is **not PASS** until an empty disposable PostgreSQL database starts 
 - **Recovery:** Reopen the existing Codespace rather than creating a new one if possible, use a new terminal, check the investigation branch and `docker compose ps -a`, then run only the next diagnostic if this environment is still in use. Do not assume containers survived a Codespace stop.
 - **Status:** Published-port probe NOT CONFIRMED; terminal expiry is an execution-process hurdle, not a networking result.
 
+### RPL-09 — CI image excludes tests by design; initial workflow invoked tests from wrong path
+
+- **Observed:** The first hosted GitHub Actions run successfully validated Compose and built the app image. The regression-test step then reported `no tests ran` and `ERROR: file or directory not found: tests/test_h3_baseline_pg_version_compat.py`; the run stopped before starting PostgreSQL/Redis or running migrations.
+- **Root cause confirmed from `.dockerignore`:** It intentionally excludes the entire `tests/` directory, as well as Markdown and Docker files, from the production image build context. Therefore this was a CI test invocation mistake, not a missing source test and not a test assertion failure.
+- **Correction committed:** Workflow commit `171ba7771113b2ede2213c42e63451797b7830d8` mounts the checked-out workspace read-only at `/workspace` for the test step and runs pytest from that mounted source. The production image continues to exclude tests.
+- **Verification in progress:** A second GitHub Actions run has started for commit `171ba7771113b2ede2213c42e63451797b7830d8`; its final outcome must be recorded separately.
+- **Status:** Initial workflow wiring defect diagnosed; corrected attempt pending. No migration has been reported from the first run.
+
 ## Current evidence-based state
 
 | Gate | Result |
