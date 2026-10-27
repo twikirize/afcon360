@@ -20,7 +20,7 @@ The official register has 15 top-level items that are not CLOSED: Item 10 is PAR
 
 | Work ID | Original item(s) | Work package | Current status |
 |---|---|---|---|
-| A | 12, 12b, 12c | Complete read-only environment/Docker census and resolve the outstanding census notes | ADVANCED; 12b/12c outstanding |
+| A | 12, 12b, 12c | Complete the remaining Item 12 environment evidence; Codespaces Docker census is recorded, and 12c source-history/test review remains | ADVANCED; 12c review remains |
 | B | 21 | Decide and document the 49-versus-47 enum target | ADVANCED |
 | C | 24 | Finish remaining migration-conflict and enum-disposition review | ADVANCED |
 | D | 25 | Complete foreign-key-to-model mapping | ADVANCED |
@@ -42,12 +42,12 @@ The official register has 15 top-level items that are not CLOSED: Item 10 is PAR
 **Official references:** Item 12 and sub-items 12b/12c  
 **Status:** Item 12 ADVANCED; sub-item 12b OPEN; sub-item 12c OPEN
 
-**Why it remains:** The successful GitHub-hosted replay proves the fresh-install path in that runner, but it does not inventory the existing environments or prove their revision/catalog states. The earlier local Windows preflight could not invoke Docker, so that result did not show whether local containers were running. The nested Docker TCP timeout in Codespaces remains a separate environment issue.
+**Evidence now captured (27 October):** The Codespaces Docker engine responds (Docker 29.8.0-1; Ubuntu 24.04.5 LTS, containerized). Only afcon360_db (PostgreSQL 18.6, healthy) and afcon360_redis (healthy) were present; the web, Nginx and Celery containers were absent. The active PostgreSQL volume is afcon360_postgres_data_pg18; the old afcon360_postgres_data volume still exists and was preserved. The current database afcon360_sandbox has only public schema, no app tables or Alembic revision table. The database list contains only afcon360_sandbox, postgres and the templates. All supplied inspection commands exited 0. This closes the earlier Docker-CLI-unavailable obstacle for this Codespaces host but does not show the state of remote Production/Test environments. The nested Docker TCP timeout remains a separate environment limitation.
 
 **Work to do**
-1. Run the approved read-only Q1–Q4 Docker/container census from a Docker-enabled host; record container identity/status, image/version, volume/network details, database identity, Alembic revision and catalog evidence without changing state.
-2. Keep Production and Test read-only; do not use them as scratch databases.
-3. Review sub-item 12c's separate Socket.IO/CLI-disable accommodation and record whether it is a deliberate supported setting or a local-only change.
+1. Preserve the captured Codespaces census as evidence; no need to repeat the same commands unless the environment changes.
+2. Obtain read-only revision/catalog evidence for the actual deployed environments through their approved connection path; do not use Production/Test as scratch databases.
+3. Review sub-item 12c's Socket.IO/CLI-disable source history and focused test evidence. The current checkout reported clean, and the implementation is present in tracked source, so the old wording that it is still uncommitted is stale; do not close 12c until the introducing commit and tests are identified.
 
 **Acceptance evidence:** Exact commands, exit codes, timestamps, environment identity, versions and captured outputs; no database writes. State clearly which environments were observed and which were not.
 
