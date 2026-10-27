@@ -175,7 +175,7 @@ The replay is **not PASS** until an empty disposable PostgreSQL database starts 
 
 ## RPL-14 — 27 October checkpoint and register reconciliation
 
-- **Owner's operational checkpoint:** The Docker fresh-database replay was the 26th checkpoint in the step-by-step sequence discussed with the owner. It is recorded as **PASS for the tested GitHub-hosted Docker environment**.
+- **Owner's operational checkpoint (corrected):** The owner confirmed that 24 checkpoints were complete before Docker, making the Docker fresh-database replay operational checkpoint **#25**. It is recorded as **PASS for the tested GitHub-hosted Docker environment**.
 - **Successful run:** [GitHub Actions 40469733857](https://github.com/twikirize/afcon360/actions/runs/40469733857), workflow commit `f15e7e880bf1c91bc853f2a38c61aa05e4cd159e`; the preceding hosted replay [40469293373](https://github.com/twikirize/afcon360/actions/runs/40469293373) also succeeded.
 - **Evidence:** Fresh hosted checkout; Docker image built; 9 H3-A compatibility tests passed; PostgreSQL 18.6 and Redis healthy; normal entrypoint logged `Migrations complete`; Alembic revision verified as `1793013676`; schema guard passed at 226 public tables, 49 enums, 139 CHECK constraints; application health returned HTTP 200 / `{"status":"ok"}`.
 - **Safety boundary:** The workflow generated disposable credentials, used a disposable replay database, and cleaned up containers without `docker compose down -v`. It did not modify `afcon360_prod` or `afcon360_test`.
