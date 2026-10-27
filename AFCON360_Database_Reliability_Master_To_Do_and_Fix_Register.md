@@ -47,7 +47,7 @@
 | 9 | Reconstruct original baseline history | Compare the historical root/declaration source at key commits and keep historical reconstruction separate from current replay proof. | CLOSED |
 | 10 | Verify the historical “182 tables from EMPTY” claim | Locate contemporaneous replay evidence or explicitly record the owner’s decision that the exact historical claim is superseded; do not substitute the 224-table H2′ replay. | PARTIAL |
 | 11 | Trace enum declaration changes | Verify the introduction/removal of enum-creation flags and related changes from Git history; preserve the corrected `create_type`/`checkfirst` contract. | CLOSED |
-| 12 | Establish deployed migration states | Two hosted fresh Docker replays now pass through the active H3-A chain, but read-only revision/catalog evidence for existing environments and the Docker census remain outstanding; do not modify production or test databases. | ADVANCED |
+| 12 | Establish deployed migration states | Two hosted fresh Docker replays pass. A read-only census has now captured the Codespaces Docker engine, containers, volumes, networks and the empty afcon360_sandbox database; only PostgreSQL and Redis containers are running, and no web container is present. Revision/catalog evidence for existing deployed environments, and review of sub-item 12c, remain outstanding. Do not modify Production/Test. | ADVANCED |
 | 13 | Define supported starting revisions | Owner-approved four-case policy recorded 2026-10-21; H3-A clean-install and normal Flask-Migrate workflow verified on local PostgreSQL 18.4. Existing databases remain conditional on per-database parity and a reviewed transition plan; older revisions require explicit enumeration and tests; unknown/divergent states fail closed. Closure is policy-only and does not authorize H3-B. | CLOSED |
 | 14 | Compare H2′ with existing database states | Complete the independent Reference/Prod/Test normalized-schema comparison and record measured differences and distinct hashes; same Alembic revision must not be treated as proof of identical schema. Comparison complete; divergence remains unresolved. | CLOSED |
 | 15 | Design the H3 transition procedure | Complete the state-by-state runbook for empty, root-stamped, intermediate, at-head and unknown states, with parity-gated stamping and tested recovery/rollback. A reversible H3 probe-migration rehearsal passed; other states and cutover gates remain unproven. | ADVANCED |
@@ -207,7 +207,7 @@ Deployment evidence (repo-only): zero tags — no release boundary. Only in-repo
 
 **[NEW] 12a. Deployment evidence ledger.** Recorded. Canonical for future contributors.
 
-**[OPEN] 12b. Docker census.** The 2026-10-20 local PowerShell preflight could not invoke `docker` (`CommandNotFoundException`), so no container census or container-state result was obtained. This blocks H3 until the Q1–Q4 read-only census is run from an approved Docker-enabled host. The local failure does not prove that the containers are down.
+**[RECORDED — CODESPACES SCOPE] 12b. Docker census.** The earlier 2026-10-20 Windows preflight could not invoke Docker, but a read-only census has now been captured from the Codespaces Docker engine. Docker Server 29.8.0-1 reports Ubuntu 24.04.5 LTS (containerized); project containers are afcon360_db (PostgreSQL 18.6, healthy) and afcon360_redis (healthy). No afcon360_web, Nginx or Celery containers are present. The DB container uses volume afcon360_postgres_data_pg18; the legacy afcon360_postgres_data volume is also present and was not removed. afcon360_sandbox contains only the public schema, zero application tables/enums/check constraints, and no Alembic version table; the server also lists the default postgres, template0 and template1 databases. All reported read-only commands exited 0. This closes the earlier command-availability gap and records the census for this Codespaces host only; it does not establish the state of other deployments or Production/Test.
 
 **[CLOSED] 13. Define supported starting revisions.**
 The owner-approved support policy (2026-10-21) defines the state categories and acceptance rules. The policy's closure means the support boundaries have been decided; it does not mean every existing database is ready to transition.
@@ -897,7 +897,7 @@ The previously recorded SHA-256 hashes and schema metrics remain under Phase 7 a
 
 ### Subordinate follow-ups
 
-- **12c [OPEN]** — The review reports a separate Socket.IO/CLI-disable change that still needs its own source-control closeout. Git status was not inspected or changed as part of this register update; this entry records the supplied review finding, not a new Git verification.
+- **12c [IN REVIEW; WORKTREE CLEAN AT 2287936]** — The owner-provided git status --short, git diff --name-only, and git diff --cached --name-only outputs are blank, so this checkout has no staged or unstaged changes. The tracked app/__init__.py, app/config.py, and app/realtime.py at reported HEAD 2287936 contain the Socket.IO/CLI-one-shot-disable implementation. The earlier note calling it an uncommitted local change is stale for this checkout. Before marking 12c CLOSED, inspect the relevant source-change history and focused test evidence; commit 2287936 itself is documentation-only, so it does not itself prove when the implementation was introduced.
 - **13a [RECORDED; LOCAL PASS]** — H3-A fresh-install path through ordinary Flask-Migrate reaches `h3a20261020` on local PostgreSQL 18.4. Fresh-clone replay and other supported versions remain outstanding under Item 31.
 - **13b [RECORDED]** — `_SCHEMA_SQL` search-path reset is recorded as an H3-A correction; preserve the source review/runtime boundary.
 - **13c [OPEN]** — Correct stale `migrations/versions/h3a20261020_static_baseline.py` docstring that still identifies the file as isolated/inactive. Do not modify its baseline SQL or provenance hash as part of this documentation correction.
@@ -1100,3 +1100,37 @@ The same workflow has two successful fresh hosted-runner executions: runs [40469
 
 **Numbering correction (owner-confirmed):** 24 checkpoints had been completed before Docker; the Docker deployment/replay is operational checkpoint #25, now PASS. In the canonical 39-item master table, top-level Item 26 is explicitly the populated-state migration-safety task and therefore remains NOT STARTED. These are different numbering contexts; retain the canonical item IDs and track the replay PASS under Items 12/31 plus this phase rather than mislabeling populated-state safety as complete.
 
+
+---
+
+## Phase 16 — 27 October 2026: Codespaces Docker census results and source-control reconciliation for Item 12
+
+**Evidence source.** Owner-run, read-only commands from /workspaces/codespaces-blank/afcon360 on branch sandbox/codespaces-alembic-investigation. The assistant reviewed the supplied terminal output and tracked sources on GitHub; no command was executed against the user's Codespaces environment by the assistant. Working-tree output supplied by the owner showed a clean tree at HEAD 2287936.
+
+### Docker/host census
+
+| Observation | Result | Meaning |
+|---|---|---|
+| Docker client/server | Docker 29.8.0-1; API 1.56 | Docker CLI and engine are available and responding in Codespaces. |
+| Docker host OS | Ubuntu 24.04.5 LTS (containerized), x86_64, overlayfs | This is a nested/containerized Docker environment, not evidence about another host. |
+| Compose project containers | afcon360_db healthy; afcon360_redis healthy | Only these two containers appeared in docker compose ps -a. |
+| Full visible container listing | afcon360_db, afcon360_redis only | afcon360_web, Nginx, Celery and Celery Beat were not present in this census. |
+| Active PostgreSQL image and volume | postgres:18-alpine; afcon360_postgres_data_pg18 mounted at /var/lib/postgresql | This identifies the active DB container's attached volume; it is mounted read-write. Do not infer that it is safe to delete or reset. |
+| Other volumes | afcon360_postgres_data, afcon360_app_logs, afcon360_redis_data, and one hash-named volume also exist | The old PostgreSQL volume remains present and was not removed. The hash-named volume was not further identified. |
+| Docker networks | Compose bridge afcon360_afcon_net, default bridge, host, none | DB and Redis were attached to the Compose bridge and default bridge in the inspected output. |
+| Database list | afcon360_sandbox, postgres, template0, template1 | The inspected PostgreSQL container is a sandbox, not a census of remote Production/Test instances. |
+| Sandbox database | PostgreSQL 18.6; UTF8; collation/ctype en_US.UTF-8 | All database inspection queries reported read-only mode. |
+| Application catalog | One non-system schema, public; zero tables, zero enums, zero CHECK constraints; no alembic_version table in any schema | This local sandbox database has not had the app migration schema applied. This is not a migration failure by itself. |
+| Command exits | All reported Docker inspection and SQL census exit codes were 0 | The census commands completed successfully. |
+
+### Source-control / 12c finding
+
+The owner's git status --short, git diff --name-only, and git diff --cached --name-only outputs are empty; last local commit reported as 2287936 docs(database): record repeatable hosted replay pass. The tracked source files app/__init__.py, app/config.py, and app/realtime.py at that commit contain the Socket.IO CLI-one-shot-disable implementation. Therefore the prior description of the code as an uncommitted local change is stale for this checkout. However, the 12c record still needs a focused history/test audit to identify the introducing commit and verify the full related set of source paths before closure. The working-tree cleanliness alone is not a test result.
+
+### Item 12 disposition
+
+- **Top-level Item 12 remains ADVANCED.** Current Codespaces Docker census is now recorded, and the Docker CLI availability obstacle from the older Windows preflight is resolved for this host.
+- **Sub-item 12b:** census evidence recorded for this Codespaces environment. Do not claim that it inventories remote Production/Test or another host.
+- **Sub-item 12c:** worktree clean and implementation present in tracked source; history and focused test evidence still need verification before closure.
+- **Existing Production/Test:** no connections, queries or writes were performed as part of this Codespaces census. Prior saved catalog comparisons show those databases differ; no cutover or migration is authorized.
+- **Next action:** audit the tracked change history and tests for the Socket.IO/CLI-disable behavior; separately, obtain read-only revision/catalog evidence for the actual deployed environments through their approved connection path. Do not start the web app just to see what happens, because its normal startup can run migrations against the configured database. Do not remove any PostgreSQL volume.
