@@ -1,0 +1,157 @@
+name: H3-A fresh database deployment replay (sandbox)
+
+on:
+  push:
+    branches:
+      - sandbox/codespaces-alembic-investigation
+    paths:
+      - .github/workflows/h3a-fresh-database-replay.yml
+      - Dockerfile
+      - docker-compose.yml
+      - docker-entrypoint.sh
+      - requirements.txt
+      - app/**
+      - migrations/**
+      - tests/test_h3_baseline_pg_version_compat.py
+      - docs/database/REPLAY_INVESTIGATION_LOG.md
+
+permissions:
+  contents: read
+
+jobs:
+  fresh-replay:
+    name: Fresh PostgreSQL 18 replay and app health
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out investigation branch
+        uses: actions/checkout@v4
+
+      - name: Create ephemeral sandbox credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_PASS="$(openssl rand -hex 24)"
+          REDIS_PASS="$(openssl rand -hex 24)"
+          SECRET="$(openssl rand -hex 32)"
+          SALT="$(openssl rand -hex 32)"
+
+          cat > .env <<EOF
+          DB_NAME=afcon360_replay_test
+          DB_USER=afcon360_ci
+          DB_PASS=${DB_PASS}
+          REDIS_PASSWORD=${REDIS_PASS}
+          DATABASE_URL=postgresql://afcon360_ci:${DB_PASS}@db:5432/afcon360_replay_test
+          REDIS_URL=redis://:${REDIS_PASS}@redis:6379/0
+          SECRET_KEY=${SECRET}
+          SECURITY_SALT=${SALT}
+          EOF
+          cp .env .env.docker
+          chmod 600 .env .env.docker
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
+      - name: Build application image
+        run: docker compose build web
+
+      - name: Run H3-A compatibility regression tests
+        run: |
+          docker compose run --rm --no-deps \
+            --entrypoint python web \
+            -m pytest --noconftest -q -p no:cacheprovider \
+            tests/test_h3_baseline_pg_version_compat.py
+
+      - name: Run the normal web startup and Alembic chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose up -d web
+
+          MIGRATIONS_OK=0
+          for i in $(seq 1 300); do
+            STATUS="$(docker inspect -f '{{.State.Status}}' afcon360_web 2>/dev/null || echo missing)"
+            LOGS="$(docker logs afcon360_web 2>&1 || true)"
+
+            if grep -Fq "Migrations complete" <<<"$LOGS"; then
+              MIGRATIONS_OK=1
+              break
+            fi
+
+            if [[ "$STATUS" != "running" ]]; then
+              echo "Web container stopped before migrations were confirmed (status=$STATUS)."
+              break
+            fi
+
+            sleep 2
+          done
+
+          echo "=== WEB LOGS ==="
+          docker compose logs --no-color --tail=300 web
+
+          if [[ "$MIGRATIONS_OK" -ne 1 ]]; then
+            echo "FAIL: migration completion was not confirmed."
+            exit 1
+          fi
+
+      - name: Verify Alembic head and record schema facts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          REVISION="$(docker compose exec -T db psql -X -U afcon360_ci -d afcon360_replay_test -Atqc 'SELECT version_num FROM alembic_version')"
+          echo "ALEMBIC_REVISION=$REVISION"
+          if [[ "$REVISION" != "1793013676" ]]; then
+            echo "FAIL: expected Alembic revision 1793013676."
+            exit 1
+          fi
+
+          echo "=== DATABASE VERSION, ENCODING, AND COLLATION ==="
+          docker compose exec -T db psql -X -v ON_ERROR_STOP=1 -U afcon360_ci -d afcon360_replay_test \
+            -c 'SELECT version() AS server_version, current_database() AS database, current_setting('"'server_encoding'"') AS server_encoding, current_setting('"'lc_collate'"') AS lc_collate, current_setting('"'lc_ctype'"') AS lc_ctype;'
+
+          echo "=== PUBLIC SCHEMA COUNTS (EVIDENCE FOR FOLLOW-UP PARITY CHECKS) ==="
+          docker compose exec -T db psql -X -v ON_ERROR_STOP=1 -U afcon360_ci -d afcon360_replay_test \
+            -c "SELECT count(*) AS public_tables FROM pg_catalog.pg_tables WHERE schemaname = 'public';" \
+            -c "SELECT count(*) AS public_enums FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = 'public' AND t.typtype = 'e';" \
+            -c "SELECT count(*) AS public_check_constraints FROM pg_catalog.pg_constraint c JOIN pg_catalog.pg_namespace n ON n.oid = c.connamespace WHERE n.nspname = 'public' AND c.contype = 'c';"
+
+      - name: Verify application health endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          HEALTH_OK=0
+          for i in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:5000/api/health/ping; then
+              echo
+              echo "APP_HEALTH_HTTP_200=PASS"
+              HEALTH_OK=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [[ "$HEALTH_OK" -ne 1 ]]; then
+            echo "FAIL: application health endpoint did not return HTTP 200."
+            exit 1
+          fi
+
+      - name: Capture diagnostics even on failure
+        if: always()
+        shell: bash
+        run: |
+          echo "=== CONTAINER STATUS ==="
+          docker compose ps -a || true
+          for service in web db redis; do
+            echo "=== LOGS: $service ==="
+            docker compose logs --no-color --tail=220 "$service" || true
+          done
+
+          echo "=== ALEMBIC VERSION IF CREATED ==="
+          docker compose exec -T db psql -X -U afcon360_ci -d afcon360_replay_test \
+            -c 'SELECT version_num FROM alembic_version;' || true
+
+      - name: Stop disposable services (preserve named volume during job)
+        if: always()
+        run: docker compose down --remove-orphans
