@@ -159,6 +159,8 @@ def _bolt_form(pickup_time: str) -> dict:
         "currency": "USD",
         "pickup_time": pickup_time,
         "payment_method": "cash",
+        "idempotency_key": "test-%s" % uuid.uuid4().hex,
+        "booking_mode": "instant",
         "vehicle_class": "comfort",
         "pickup_location": "Kampala Centre",
         "dropoff_location": "Nile Independence Stadium",
