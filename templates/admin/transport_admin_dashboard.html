@@ -276,6 +276,38 @@
     </div>
   </div>
 
+  <section class="ta-stats" aria-label="Ride request and payment operations">
+    <div class="ta-stat-card">
+      <div class="stat-icon"><i class="fa-solid fa-magnifying-glass-location"></i></div>
+      <div class="stat-value" id="adminActiveRideRequests">{{ active_ride_requests|default(0)|format_number }}</div>
+      <div class="stat-label">Requests Matching</div>
+      <p class="ta-footer-note">Waiting for a driver to accept</p>
+    </div>
+    <div class="ta-stat-card">
+      <div class="stat-icon"><i class="fa-solid fa-user-slash"></i></div>
+      <div class="stat-value" id="adminUnsuccessfulSearches">{{ unsuccessful_searches_24h|default(0)|format_number }}</div>
+      <div class="stat-label">Searches Without Driver (24h)</div>
+      <p class="ta-footer-note">Exhausted search cycles</p>
+    </div>
+    <div class="ta-stat-card">
+      <div class="stat-icon"><i class="fa-solid fa-wallet"></i></div>
+      <div class="stat-value" id="adminCompletedUnpaidTrips">{{ completed_unpaid_trips|default(0)|format_number }}</div>
+      <div class="stat-label">Completed — Payment Pending</div>
+      <p class="ta-footer-note">Requires payment follow-up</p>
+    </div>
+    <div class="ta-stat-card">
+      <div class="stat-icon"><i class="fa-solid fa-receipt"></i></div>
+      <div class="stat-value" id="adminPendingPaymentRecords">{{ pending_payment_records|default(0)|format_number }}</div>
+      <div class="stat-label">Pending Payment Records</div>
+      <p class="ta-footer-note">Includes trips not yet completed</p>
+    </div>
+  </section>
+  {% if not request_payment_metrics_available|default(true) %}
+  <p role="status" style="color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 12px;">
+    Request/payment operational metrics are temporarily unavailable; the existing dashboard data is still shown.
+  </p>
+  {% endif %}
+
   <div class="ta-grid">
     <div class="ta-card">
       <h3>Bookings — Status Breakdown</h3>
