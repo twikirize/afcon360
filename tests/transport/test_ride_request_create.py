@@ -252,6 +252,58 @@ class TestRollbackAfterPartialFlush:
         assert not event.contains(SearchCycle, "before_insert", _fail_cycle)
 
 
+    def test_instant_request_ignores_stale_client_pickup_time(self, app, client):
+        rider_id = _seed_rider(app, "instantclock")
+        _promote_to_tier2(app, rider_id)
+        _login_as(app, client, rider_id)
+        body = _payload(
+            booking_mode="instant",
+            pickup_time=(datetime.now(timezone.utc) + timedelta(hours=8)).isoformat(),
+        )
+
+        before = datetime.now(timezone.utc)
+        resp = client.post(URL, json=body)
+        after = datetime.now(timezone.utc)
+        assert resp.status_code == 201, resp.get_data(as_text=True)
+        parsed = datetime.fromisoformat(resp.get_json()["data"]["pickup_time"])
+        assert before - timedelta(seconds=2) <= parsed <= after + timedelta(seconds=2), parsed
+
+    def test_payment_method_is_required(self, app, client):
+        rider_id = _seed_rider(app, "paymentrequired")
+        _promote_to_tier2(app, rider_id)
+        _login_as(app, client, rider_id)
+        body = _payload()
+        body.pop("payment_method")
+
+        response = client.post(URL, json=body)
+        assert response.status_code == 400, response.get_data(as_text=True)
+        assert _counts(app, rider_id) == (0, 0, 0)
+
+    def test_cancelled_search_closes_cycle_without_booking(self, app, client):
+        from app.transport.models import Booking, RideRequest, SearchCycle
+        from app.transport.services.ride_request_service import RideRequestService
+        from app.transport.services.ride_request_dispatch_service import (
+            RideRequestDispatchService,
+        )
+
+        rider_id = _seed_rider(app, "cancelrequest")
+        with app.app_context():
+            created = RideRequestService.create_request(rider_id, _payload())
+            reference = created["request"].public_id
+            outcome = RideRequestDispatchService.cancel_request(reference, rider_id)
+            assert outcome["status"] == "cancelled"
+
+            request_row = RideRequest.query.filter_by(public_id=reference).one()
+            cycle = SearchCycle.query.filter_by(
+                ride_request_id=request_row.id, cycle_number=1
+            ).one()
+            assert request_row.status == "cancelled"
+            assert request_row.cancelled_at is not None
+            assert cycle.status == "cancelled"
+            assert cycle.terminal_reason == "rider_cancelled"
+            assert Booking.query.filter_by(booking_reference=reference).one_or_none() is None
+
+
 class TestCommitmentGates:
     def test_anonymous_cannot_create(self, app, client):
         rider_id = _seed_rider(app)
