@@ -3315,6 +3315,10 @@ def dashboard():
             'active_bookings': 0,
             'active_drivers': 0,
             'available_vehicles': 0,
+            'active_ride_requests': 0,
+            'unsuccessful_searches_24h': 0,
+            'completed_unpaid_trips': 0,
+            'pending_payment_records': 0,
             'recent_bookings': []
         }
 
@@ -3345,6 +3349,36 @@ def dashboard():
             ctx['pending_bookings_count'] = ctx['pending_bookings']  # For badge
             ctx['active_drivers'] = get_provider_service().count_active_drivers()
             ctx['available_vehicles'] = get_provider_service().count_available_vehicles()
+
+            # Request-first dispatch and pay-at-completion operational queues.
+            # These are read-only aggregates; no admin dashboard GET writes
+            # request, booking, assignment, or payment state.
+            from app.transport.models import RideRequest, SearchCycle, BookingPayment
+            ctx['active_ride_requests'] = (
+                SearchCycle.query.join(
+                    RideRequest, RideRequest.id == SearchCycle.ride_request_id
+                ).filter(
+                    RideRequest.is_deleted == False,
+                    RideRequest.status == "searching",
+                    SearchCycle.is_deleted == False,
+                    SearchCycle.status == "searching",
+                ).count()
+            )
+            ctx['unsuccessful_searches_24h'] = SearchCycle.query.filter(
+                SearchCycle.is_deleted == False,
+                SearchCycle.status == "expired",
+                SearchCycle.terminal_reason.in_(["no_supply", "all_rejected"]),
+                SearchCycle.completed_at >= datetime.now(timezone.utc) - timedelta(hours=24),
+            ).count()
+            ctx['completed_unpaid_trips'] = Booking.query.filter(
+                Booking.is_deleted == False,
+                Booking.status == BookingStatus.COMPLETED,
+                Booking.payment_status == PaymentStatus.PENDING,
+            ).count()
+            ctx['pending_payment_records'] = BookingPayment.query.filter(
+                BookingPayment.is_deleted == False,
+                BookingPayment.payment_status == PaymentStatus.PENDING,
+            ).count()
 
         except AttributeError as e:
             logger.warning(f"Some stats methods not available: {e}")
