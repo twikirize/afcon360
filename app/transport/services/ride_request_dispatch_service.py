@@ -179,8 +179,10 @@ class RideRequestDispatchService:
                 return {"status": "offered", "request_reference": request.public_id}
             if active.status == "accepting":
                 return {"status": "accepting", "request_reference": request.public_id}
-            cls._advance_locked(request, cycle, active, "timed_out")
+            next_attempt = cls._advance_locked(request, cycle, active, "timed_out")
             db.session.commit()
+            if next_attempt:
+                cls._notify_driver(request, next_attempt)
             return {"status": cycle.status, "request_reference": request.public_id}
 
         # First call snapshots the ranked candidate pool. Later retries and
