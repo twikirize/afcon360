@@ -110,6 +110,10 @@
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
 }
 
+.ta-stat-link{display:block;color:inherit;text-decoration:none;border-radius:12px}
+.ta-stat-link:focus-visible{outline:3px solid #b45309;outline-offset:3px}
+.ta-stat-link:hover .ta-stat-card{border-color:#f59e0b;box-shadow:0 6px 18px rgba(217,119,6,.12)}
+
 .ta-stat-card .stat-icon {
     font-size: 1.6rem;
     margin-bottom: 0.6rem;
@@ -244,7 +248,7 @@
     <a class="nav-link active" href="{{ url_for('admin.transport_admin_dashboard') }}">
       <i class="fa-solid fa-gauge"></i> Overview
     </a>
-    <span class="nav-link disabled" aria-disabled="true"><i class="fa-solid fa-route"></i> Operations <span class="badge-soon">Soon</span></span>
+    <a class="nav-link" href="{{ url_for('admin.transport_admin_operations') }}"><i class="fa-solid fa-route"></i> Operations</a>
     <span class="nav-link disabled" aria-disabled="true"><i class="fa-solid fa-truck-ramp-box"></i> Fleet <span class="badge-soon">Soon</span></span>
     <span class="nav-link disabled" aria-disabled="true"><i class="fa-solid fa-building"></i> Network <span class="badge-soon">Soon</span></span>
     <span class="nav-link disabled" aria-disabled="true"><i class="fa-solid fa-triangle-exclamation"></i> Safety <span class="badge-soon">Soon</span></span>
@@ -277,30 +281,38 @@
   </div>
 
   <section class="ta-stats" aria-label="Ride request and payment operations">
-    <div class="ta-stat-card">
-      <div class="stat-icon"><i class="fa-solid fa-magnifying-glass-location"></i></div>
-      <div class="stat-value" id="adminActiveRideRequests">{{ active_ride_requests|default(0)|format_number }}</div>
-      <div class="stat-label">Requests Matching</div>
-      <p class="ta-footer-note">Waiting for a driver to accept</p>
-    </div>
-    <div class="ta-stat-card">
-      <div class="stat-icon"><i class="fa-solid fa-user-slash"></i></div>
-      <div class="stat-value" id="adminUnsuccessfulSearches">{{ unsuccessful_searches_24h|default(0)|format_number }}</div>
-      <div class="stat-label">Searches Without Driver (24h)</div>
-      <p class="ta-footer-note">Exhausted search cycles</p>
-    </div>
-    <div class="ta-stat-card">
-      <div class="stat-icon"><i class="fa-solid fa-wallet"></i></div>
-      <div class="stat-value" id="adminCompletedUnpaidTrips">{{ completed_unpaid_trips|default(0)|format_number }}</div>
-      <div class="stat-label">Completed — Payment Pending</div>
-      <p class="ta-footer-note">Requires payment follow-up</p>
-    </div>
-    <div class="ta-stat-card">
-      <div class="stat-icon"><i class="fa-solid fa-receipt"></i></div>
-      <div class="stat-value" id="adminPendingPaymentRecords">{{ pending_payment_records|default(0)|format_number }}</div>
-      <div class="stat-label">Pending Payment Records</div>
-      <p class="ta-footer-note">Includes trips not yet completed</p>
-    </div>
+    <a class="ta-stat-link" href="{{ url_for('admin.transport_admin_operations', section='requests') }}">
+      <div class="ta-stat-card">
+        <div class="stat-icon"><i class="fa-solid fa-magnifying-glass-location"></i></div>
+        <div class="stat-value" id="adminActiveRideRequests">{{ active_ride_requests|default(0)|format_number }}</div>
+        <div class="stat-label">Requests Matching</div>
+        <p class="ta-footer-note">Open the active request queue</p>
+      </div>
+    </a>
+    <a class="ta-stat-link" href="{{ url_for('admin.transport_admin_operations', section='failed-searches') }}">
+      <div class="ta-stat-card">
+        <div class="stat-icon"><i class="fa-solid fa-user-slash"></i></div>
+        <div class="stat-value" id="adminUnsuccessfulSearches">{{ unsuccessful_searches_24h|default(0)|format_number }}</div>
+        <div class="stat-label">Searches Without Driver (24h)</div>
+        <p class="ta-footer-note">Review failed search outcomes</p>
+      </div>
+    </a>
+    <a class="ta-stat-link" href="{{ url_for('admin.transport_admin_operations', section='payments') }}">
+      <div class="ta-stat-card">
+        <div class="stat-icon"><i class="fa-solid fa-wallet"></i></div>
+        <div class="stat-value" id="adminCompletedUnpaidTrips">{{ completed_unpaid_trips|default(0)|format_number }}</div>
+        <div class="stat-label">Completed — Payment Pending</div>
+        <p class="ta-footer-note">Review payments awaiting settlement</p>
+      </div>
+    </a>
+    <a class="ta-stat-link" href="{{ url_for('admin.transport_admin_operations', section='payments') }}">
+      <div class="ta-stat-card">
+        <div class="stat-icon"><i class="fa-solid fa-receipt"></i></div>
+        <div class="stat-value" id="adminPendingPaymentRecords">{{ pending_payment_records|default(0)|format_number }}</div>
+        <div class="stat-label">Pending Payment Records</div>
+        <p class="ta-footer-note">Includes trips not yet completed</p>
+      </div>
+    </a>
   </section>
   {% if not request_payment_metrics_available|default(true) %}
   <p role="status" style="color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 12px;">
