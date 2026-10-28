@@ -111,11 +111,22 @@ def transport_admin_operations():
             RideRequest.status == "searching",
             SearchCycle.status == "searching",
         )
-        failed_request_rows = latest_cycle_rows(
-            RideRequest.status == "searching",
-            SearchCycle.status == "expired",
-            SearchCycle.terminal_reason.in_(("no_supply", "all_rejected")),
-            SearchCycle.completed_at >= now - timedelta(hours=24),
+        # Keep every unsuccessful cycle from the last 24 hours, including
+        # requests the rider subsequently retried. This lets operations see
+        # repeated failures rather than silently hiding earlier cycle history.
+        failed_request_rows = (
+            db.session.query(RideRequest, SearchCycle)
+            .join(SearchCycle, SearchCycle.ride_request_id == RideRequest.id)
+            .filter(
+                RideRequest.is_deleted.is_(False),
+                SearchCycle.is_deleted.is_(False),
+                SearchCycle.status == "expired",
+                SearchCycle.terminal_reason.in_(("no_supply", "all_rejected")),
+                SearchCycle.completed_at >= now - timedelta(hours=24),
+            )
+            .order_by(SearchCycle.completed_at.desc())
+            .limit(50)
+            .all()
         )
         pending_payment_records = (
             BookingPayment.query
