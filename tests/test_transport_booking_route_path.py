@@ -32,6 +32,7 @@ from app.extensions import db
 from app.identity.models.user import User
 from app.transport.models import (
     Booking,
+    BookingPayment,
     BookingStatus,
     ComplianceStatus,
     Currency,
@@ -408,6 +409,13 @@ class TestRealRideTransactionPath:
             assert booking.assigned_vehicle_id == vehicle_id
             assert booking.payment_method == "cash"
             assert booking.payment_status == PaymentStatus.PENDING.value
+            payment_row = BookingPayment.query.filter_by(
+                booking_id=booking.id
+            ).one()
+            assert payment_row.payment_status == PaymentStatus.PENDING
+            assert payment_row.payment_method == "cash"
+            assert payment_row.amount > 0
+            assert payment_row.payment_reference
             assert booking.booking_metadata["payment_timing"] == "pay_on_completion"
             assert booking.confirmed_at is not None
             assert booking.driver_assigned_at is not None
