@@ -334,19 +334,37 @@ def get_user_country(user_id: int) -> Optional[str]:
     return current_app.config.get("DEFAULT_COUNTRY", "UG")
 
 
-def get_user_wallet_status(user_id: int) -> bool:
-    """Check if user has an active wallet account"""
+def get_user_wallet_status(
+    user_id: int,
+    currency_code: Optional[str] = None,
+) -> bool:
+    """Check whether the user has a wallet account in the requested currency.
+
+    The legacy default remains UGX for callers that predate currency-aware
+    transport quotes. Transport passes its canonical fare currency explicitly,
+    so a UGX wallet cannot be advertised for a USD-denominated trip (and vice
+    versa) unless an actual matching account exists.
+    """
     try:
-        from app.wallet.services.wallet_service import WalletService
-        ws = WalletService()
-        # Check if user has any wallet account
         from app.wallet.models.ledger import AccountModel
         from app.utils.enums import Currency
+
+        wallet_currency = (
+            Currency(str(currency_code).strip().upper())
+            if currency_code else Currency.UGX
+        )
         account = AccountModel.query.filter_by(
             user_id=user_id,
-            currency=Currency.UGX,  # Default currency
-            is_deleted=False
+            currency=wallet_currency,
+            is_deleted=False,
         ).first()
         return account is not None
+    except (ValueError, TypeError):
+        return False
     except Exception:
+        logger.exception(
+            "Could not verify wallet availability for user %s / currency %s",
+            user_id,
+            currency_code or "UGX",
+        )
         return False
