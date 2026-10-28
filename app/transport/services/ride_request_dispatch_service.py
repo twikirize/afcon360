@@ -381,6 +381,59 @@ class RideRequestDispatchService:
         return cls.start_search(request.public_id)
 
     @classmethod
+    def cancel_request(cls, request_public_id: str, owner_user_id: int) -> Dict[str, Any]:
+        """Close a still-searching request without creating a Booking."""
+        now = _now()
+        request = RideRequest.query.filter_by(
+            public_id=request_public_id, is_deleted=False
+        ).with_for_update().first()
+        if request is None or request.user_id != owner_user_id:
+            raise RideRequestDispatchError("request_not_found", "Ride request not found")
+        if request.status == "converted":
+            raise RideRequestDispatchError(
+                "already_assigned",
+                "A driver has already accepted this ride. Use the trip cancellation flow instead.",
+            )
+        if request.status == "cancelled":
+            return {"status": "cancelled", "request_reference": request.public_id,
+                    "idempotent_replay": True}
+        if request.status != "searching":
+            raise RideRequestDispatchError(
+                "request_not_cancellable", "This ride request can no longer be cancelled"
+            )
+
+        cycle = cls._cycle_for_request(request, lock=True)
+        if cycle is not None and cycle.status == "searching":
+            active_attempts = OfferAttempt.query.filter(
+                OfferAttempt.cycle_id == cycle.id,
+                OfferAttempt.status.in_(("offered", "accepting")),
+            ).with_for_update().all()
+            # An accepting offer is still inside the winning acceptance
+            # transaction. The request row lock serializes this decision;
+            # after it is acquired, a successfully committed acceptance would
+            # already have changed request.status to converted.
+            for attempt in active_attempts:
+                attempt.status = "withdrawn"
+                attempt.responded_at = now
+                attempt.outcome_detail = {
+                    **(attempt.outcome_detail or {}),
+                    "reason": "rider_cancelled",
+                    "at": now.isoformat(),
+                }
+            cycle.status = "cancelled"
+            cycle.completed_at = now
+            cycle.terminal_reason = "rider_cancelled"
+
+        request.status = "cancelled"
+        request.cancelled_at = now
+        meta = dict(request.request_metadata or {})
+        meta["cancelled_at"] = now.isoformat()
+        meta["cancelled_by"] = "rider"
+        request.request_metadata = meta
+        db.session.commit()
+        return {"status": "cancelled", "request_reference": request.public_id}
+
+    @classmethod
     def decline_offer(cls, request_public_id: str, driver_id: int) -> bool:
         request = RideRequest.query.filter_by(
             public_id=request_public_id, is_deleted=False
