@@ -1061,7 +1061,7 @@ def book_transport():
         # confirm/dispatch — they stay PENDING_PAYMENT until the Deploy-2
         # scheduler releases matching 30 minutes before pickup.
         # Soft-fail: a dispatch problem must never block the redirect.
-        if (str(data.get("payment_method") or "cash").lower() == "cash"
+        if (selected_payment_method == "cash"
                 and booking["data"].get("booking_mode") != "scheduled"):
             try:
                 get_booking_service().transition_status(
