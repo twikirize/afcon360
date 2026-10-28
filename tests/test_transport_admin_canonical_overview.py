@@ -164,6 +164,10 @@ class TestCanonicalEntryRenders:
         assert "Available Vehicles" in body
         assert "Today's Completed Revenue" in body
         assert "Recent Activity" in body
+        assert "Requests Matching" in body
+        assert "Searches Without Driver (24h)" in body
+        assert "Completed — Payment Pending" in body
+        assert "Pending Payment Records" in body
 
     def test_canonical_entry_never_self_redirects(self, app, client):
         with app.app_context():
