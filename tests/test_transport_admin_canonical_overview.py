@@ -169,6 +169,21 @@ class TestCanonicalEntryRenders:
         assert "Completed — Payment Pending" in body
         assert "Pending Payment Records" in body
 
+    def test_operations_queues_render_and_keep_booking_ids_private(self, app, client):
+        with app.app_context():
+            public_id = _make_user("ta_ops", [TRANSPORT_ADMIN])
+        _platform_login(client, public_id, TRANSPORT_ADMIN)
+
+        response = _get(client, "/admin/transport-admin/operations")
+        assert response.status_code == 200, response.get_data(as_text=True)
+        body = response.get_data(as_text=True)
+        assert "Transport Operations" in body
+        assert "Requests matching a driver" in body
+        assert "Unsuccessful searches" in body
+        assert "Pending payment records" in body
+        assert "internal booking id" not in body.lower()
+        assert "user_id" not in body
+
     def test_canonical_entry_never_self_redirects(self, app, client):
         with app.app_context():
             public_id = _make_user("ta_loop", [TRANSPORT_ADMIN])
