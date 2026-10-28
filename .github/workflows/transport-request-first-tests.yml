@@ -111,12 +111,10 @@ jobs:
       - name: Parse changed Jinja templates without database access
         run: |
           python - <<'PY'
+          import re
+          from pathlib import Path
           from jinja2 import Environment, FileSystemLoader
 
-          env = Environment(
-              loader=FileSystemLoader("templates"),
-              extensions=["jinja2.ext.do", "jinja2.ext.loopcontrols"],
-          )
           templates = (
               "transport/new_home.html",
               "transport/driver/driver_dashboard.html",
@@ -126,6 +124,22 @@ jobs:
               "admin/transport_admin_operations.html",
               "transport/admin/dashboard.html",
           )
+          env = Environment(
+              loader=FileSystemLoader("templates"),
+              extensions=["jinja2.ext.do", "jinja2.ext.loopcontrols"],
+          )
+
+          # This is a parse-only check. Flask registers application-specific
+          # filters at runtime; pass-through placeholders prevent those runtime
+          # registrations from requiring a database-backed app factory here.
+          # Actual filter behavior is exercised only by application tests.
+          for template in templates:
+              source = Path("templates", template).read_text(encoding="utf-8")
+              for filter_name in re.findall(r"\\|\\s*([A-Za-z_]\\w*)", source):
+                  env.filters.setdefault(
+                      filter_name, lambda value, *args, **kwargs: value
+                  )
+
           for template in templates:
               env.get_template(template)
               print("JINJA_TEMPLATE_OK", template)
