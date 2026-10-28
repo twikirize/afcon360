@@ -148,12 +148,21 @@ def test_ride_options_empty_body_returns_labeled_defaults(app, anonymous_client)
     assert data["currency"] == "USD"
     assert data["distance_basis"] == "straight_line_planner"
     assert data["note"]
-    if data["options"]:
-        assert set(data["options"][0]) >= {
-            "vehicle_class", "display_name", "available_count",
-            "capacity", "luggage", "fare_total", "fare_breakdown",
-            "fare_version", "currency", "eta_minutes",
-        }
+    assert "does not query driver" in data["note"]
+    assert data["options"], "a valid route should return fare quotes even with no drivers"
+    assert {o["vehicle_class"] for o in data["options"]} == {
+        str(vc.value) for vc in VehicleClass
+    }
+    required = {
+        "vehicle_class", "display_name", "fare_total", "fare_breakdown",
+        "fare_version", "currency", "quote_token",
+    }
+    for option in data["options"]:
+        assert set(option) >= required
+        assert not ({"available_count", "capacity", "luggage",
+                     "eta_minutes", "eta_basis"} & set(option))
+        assert option["fare_total"] > 0
+        assert option["quote_token"]
 
 
 def test_ride_options_rejects_unknown_currency(app, anonymous_client):
@@ -162,61 +171,46 @@ def test_ride_options_rejects_unknown_currency(app, anonymous_client):
     assert resp.status_code == 400
 
 
-def test_ride_options_prices_available_classes_via_engine(
-        app, anonymous_client, db_session):
-    loc = {"latitude": 0.32, "longitude": 32.585}
-    keep = set()
-    d1 = _seed_driver(db_session, vehicle_class="comfort",
-                      driver_location=loc, keep_online=keep)
-    _seed_vehicle(db_session, d1, vehicle_class="comfort",
-                  current_location=loc)
-    d2 = _seed_driver(db_session, vehicle_class="comfort",
-                      driver_location=loc, keep_online=keep)
-    _seed_vehicle(db_session, d2, vehicle_class="comfort",
-                  current_location=loc)
-    d3 = _seed_driver(db_session, vehicle_class="economy",
-                      driver_location=loc, keep_online=keep)
-    _seed_vehicle(db_session, d3, vehicle_class="economy",
-                  current_location=loc)
+def test_ride_options_prices_every_class_without_driver_lookup(
+        app, anonymous_client, db_session, monkeypatch):
+    # Any call to live supply is a bug: fare review must not start matching
+    # or inspect availability before the rider agrees to the price.
+    from app.transport.services import availability_service
+    monkeypatch.setattr(
+        availability_service, "available_by_class",
+        lambda: pytest.fail("pre-confirmation fare quote queried live supply"),
+    )
+    body = {"service_type": "on_demand", "currency": "USD",
+            "pickup_latitude": 0.3136, "pickup_longitude": 32.5811,
+            "dropoff_latitude": 0.32, "dropoff_longitude": 32.59}
+    resp = anonymous_client.post("/api/transport/ride-options", json=body)
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    data = resp.get_json()["data"]
+    assert data["distance_basis"] == "straight_line_planner"
+    from app.geo.interfaces import GeoPoint
+    from app.geo.services import straight_line_distance_m
+    from app.transport.services.fare_quote_service import load_fare_quote, money_amount
 
-    iso = _OnlineFleetIsolation(keep)
-    try:
-        # Provide coordinates to satisfy new validation
-        body = {"service_type": "on_demand", "currency": "USD",
-                "pickup_latitude": 0.3136, "pickup_longitude": 32.5811,
-                "dropoff_latitude": 0.32, "dropoff_longitude": 32.59}
-        resp = anonymous_client.post(
-            "/api/transport/ride-options",
-            json=body)
-        assert resp.status_code == 200
-        data = resp.get_json()["data"]
-        assert data["distance_basis"] == "straight_line_planner"
-        comfort = next(o for o in data["options"]
-                       if o["vehicle_class"] == "comfort")
-        economy = next(o for o in data["options"]
-                       if o["vehicle_class"] == "economy")
-        assert comfort["available_count"] == 2
-        assert economy["available_count"] == 1
-        # Compute expected fare using actual straight-line distance from coordinates
-        from app.geo.interfaces import GeoPoint
-        from app.geo.services import straight_line_distance_m
-        pickup_pt = GeoPoint(0.3136, 32.5811)
-        dropoff_pt = GeoPoint(0.32, 32.59)
-        expected_km = straight_line_distance_m(pickup_pt, dropoff_pt) / 1000.0
-        expected = calculate_estimate(service_type="on_demand",
-                                      vehicle_class="comfort", distance_km=expected_km)
-        # Compare with tolerance due to floating point precision
-        comfort_fare = Decimal(str(comfort["fare_total"]))
-        expected_fare = expected["total"]
-        assert abs(comfort_fare - expected_fare) < Decimal('0.01')
-        assert comfort["fare_version"] == FARE_VERSION
-        # Cheapest first.
-        totals = [Decimal(str(o["fare_total"])) for o in data["options"]]
-        assert totals == sorted(totals)
-        blob = __import__("json").dumps(data)
-        assert "driver_id" not in blob and '"id":' not in blob
-    finally:
-        iso.restore()
+    expected_km = straight_line_distance_m(
+        GeoPoint(0.3136, 32.5811), GeoPoint(0.32, 32.59)
+    ) / 1000.0
+    assert data["distance_km"] == pytest.approx(expected_km)
+    assert {o["vehicle_class"] for o in data["options"]} == {
+        str(vc.value) for vc in VehicleClass
+    }
+    comfort = next(o for o in data["options"] if o["vehicle_class"] == "comfort")
+    with app.app_context():
+        quote = load_fare_quote(comfort["quote_token"])
+    assert quote["vehicle_class"] == "comfort"
+    assert quote["distance_km"] == round(expected_km, 6)
+    assert quote["amount"] == format(Decimal(str(comfort["fare_total"])), ".2f")
+    assert Decimal(str(comfort["fare_total"])) == money_amount(comfort["fare_total"])
+    assert comfort["fare_version"] == FARE_VERSION
+    assert "available_count" not in comfort and "eta_minutes" not in comfort
+    totals = [Decimal(str(o["fare_total"])) for o in data["options"]]
+    assert totals == sorted(totals)
+    blob = __import__("json").dumps(data)
+    assert "driver_id" not in blob and '"id":' not in blob
 
 
 def test_ride_options_missing_pickup_coords(app, anonymous_client):
@@ -316,63 +310,38 @@ def test_ride_options_valid_coordinates(app, anonymous_client):
 
 
 
-def test_ride_options_excludes_unavailable_and_inactive(
-        app, anonymous_client, db_session):
-    loc = {"latitude": 0.32, "longitude": 32.585}
-    keep = set()
-    # Driver unavailable -> vehicle must not be offered.
-    d1 = _seed_driver(db_session, vehicle_class="luxury",
-                      is_available=False, driver_location=loc,
-                      keep_online=keep)
-    _seed_vehicle(db_session, d1, vehicle_class="luxury",
-                  current_location=loc)
-    # Vehicle inactive -> driver matchable but vehicle not offered.
-    d2 = _seed_driver(db_session, vehicle_class="luxury",
-                      driver_location=loc, keep_online=keep)
-    _seed_vehicle(db_session, d2, vehicle_class="luxury", status="maintenance",
-                  current_location=loc)
-
-    iso = _OnlineFleetIsolation(keep)
-    try:
-        # Provide coordinates to satisfy validation
-        body = {"pickup_latitude": 0.3136, "pickup_longitude": 32.5811,
-                "dropoff_latitude": 0.32, "dropoff_longitude": 32.59}
-        resp = anonymous_client.post("/api/transport/ride-options", json=body)
-        assert resp.status_code == 200
-        data = resp.get_json()["data"]
-        assert all(o["vehicle_class"] != "luxury" for o in data["options"])
-    finally:
-        iso.restore()
+def test_fare_quote_does_not_depend_on_vehicle_availability(
+        app, anonymous_client, monkeypatch):
+    from app.transport.services import availability_service
+    monkeypatch.setattr(
+        availability_service, "available_by_class",
+        lambda: pytest.fail("pre-confirmation fare quote queried live supply"),
+    )
+    body = {"pickup_latitude": 0.3136, "pickup_longitude": 32.5811,
+            "dropoff_latitude": 0.32, "dropoff_longitude": 32.59}
+    resp = anonymous_client.post("/api/transport/ride-options", json=body)
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    data = resp.get_json()["data"]
+    assert "luxury" in {o["vehicle_class"] for o in data["options"]}
+    assert all("available_count" not in o for o in data["options"])
 
 
-def test_ride_options_straight_line_distance_and_eta(
-        app, anonymous_client, db_session):
+def test_ride_options_distance_has_no_preconfirmation_eta(
+        app, anonymous_client):
     from app.geo.interfaces import GeoPoint
     from app.geo.services import straight_line_distance_m
+    body = {"service_type": "on_demand",
+            "pickup_latitude": 0.3136, "pickup_longitude": 32.5811,
+            "dropoff_latitude": 0.32, "dropoff_longitude": 32.59}
+    resp = anonymous_client.post("/api/transport/ride-options", json=body)
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["distance_basis"] == "straight_line_planner"
+    expected_km = straight_line_distance_m(
+        GeoPoint(0.3136, 32.5811), GeoPoint(0.32, 32.59)) / 1000.0
+    assert data["distance_km"] == pytest.approx(expected_km)
+    comfort = next(o for o in data["options"]
+                   if o["vehicle_class"] == "comfort")
+    assert comfort["quote_token"]
+    assert "eta_minutes" not in comfort and "eta_basis" not in comfort
 
-    loc = {"latitude": 0.32, "longitude": 32.59}
-    keep = set()
-    d1 = _seed_driver(db_session, vehicle_class="comfort",
-                      driver_location=loc, keep_online=keep)
-    _seed_vehicle(db_session, d1, vehicle_class="comfort",
-                  current_location=loc)
-
-    iso = _OnlineFleetIsolation(keep)
-    try:
-        body = {"service_type": "on_demand",
-                "pickup_latitude": 0.3136, "pickup_longitude": 32.5811,
-                "dropoff_latitude": 0.32, "dropoff_longitude": 32.59}
-        resp = anonymous_client.post("/api/transport/ride-options", json=body)
-        assert resp.status_code == 200
-        data = resp.get_json()["data"]
-        assert data["distance_basis"] == "straight_line_planner"
-        expected_km = straight_line_distance_m(
-            GeoPoint(0.3136, 32.5811), GeoPoint(0.32, 32.59)) / 1000.0
-        assert data["distance_km"] == pytest.approx(expected_km)
-        comfort = next(o for o in data["options"]
-                       if o["vehicle_class"] == "comfort")
-        assert isinstance(comfort["eta_minutes"], int)
-        assert comfort["eta_minutes"] >= 1
-        assert comfort["eta_basis"] == "straight_line_planner"
-    finally:
-        iso.restore()
