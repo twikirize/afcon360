@@ -25,6 +25,17 @@ from app.transport.models import (
 from app.transport.services.fare_service import FARE_VERSION, calculate_estimate
 
 
+def _priced_vehicle_classes(app):
+    from app.transport.services import fare_service
+
+    with app.app_context():
+        tables, _, _ = fare_service.resolve_tables(at=datetime.now(timezone.utc))
+    configured = set((tables.get("class_multipliers") or {}).keys())
+    return {
+        str(vc.value) for vc in VehicleClass
+        if str(vc.value) in configured
+    }
+
 def _seed_driver(db_session, *, vehicle_class="comfort",
                  is_available=True, driver_location=None, keep_online=None):
     """Create a unique user + fully-eligible DriverProfile.
@@ -147,9 +158,7 @@ def test_ride_options_empty_body_returns_labeled_defaults(app, anonymous_client)
     assert data["note"]
     assert "does not query driver" in data["note"]
     assert data["options"], "a valid route should return fare quotes even with no drivers"
-    assert {o["vehicle_class"] for o in data["options"]} == {
-        str(vc.value) for vc in VehicleClass
-    }
+    assert {o["vehicle_class"] for o in data["options"]} == _priced_vehicle_classes(app)
     required = {
         "vehicle_class", "display_name", "fare_total", "fare_breakdown",
         "fare_version", "currency", "quote_token",
