@@ -1,12 +1,12 @@
 """
 tests/test_transport_cash_confirmation_semantics.py
-Focused regression: cash booking produces CONFIRMED with payment_status=PENDING.
+Focused regressions for request-first hailing and end-of-trip payment.
 
 Proves the domain separation:
-- Booking.status = CONFIRMED (booking accepted, matching active)
-- payment_status = PENDING at booking; payment is not captured at booking
-- CONFIRMED != payment captured
-- CONFIRMED != driver assigned
+- Initial rider commitment is a RideRequest, not a Booking.
+- Payment method is explicitly selected and remains pending through the trip.
+- Driver acceptance atomically creates the assigned Booking.
+- Trip completion and payment capture remain separate events.
 """
 import pytest
 import re
@@ -44,72 +44,65 @@ OLD_WORDING = "Booking confirmed! Reference"
 
 
 class TestCashConfirmationSemantics:
-    """Prove cash booking semantics: CONFIRMED with payment_status=PENDING."""
+    """Pay-later rides are request-first and remain unpaid during the trip."""
 
-    def test_cash_booking_confirmed_with_pending_payment(
+    def test_cash_request_is_trackable_without_premature_booking(
         self, app, authenticated_client, test_user, monkeypatch
     ):
-        """
-        Cash booking flow:
-        1. Creates booking via POST /transport/book
-        2. Booking.status = CONFIRMED (matching can start)
-        3. payment_status = PENDING (pay-later, not captured)
-        4. Matching may begin (discover_and_offer works)
-        5. Driver NOT assigned yet
-        """
-        user_id = _get_user_id(app, test_user)
+        from app.transport.models import RideRequest, SearchCycle
 
-        # --- Arrange: promote rider to tier-3 (phone + identity verified)
+        user_id = _get_user_id(app, test_user)
         _promote_user_to_tier3(app, user_id)
 
-        # --- Arrange: FakeRedis for matching service
-        fake = _FakeRedis()
-        monkeypatch.setattr(
-            "app.transport.services.offer_service.redis_client", fake
-        )
-
-        # --- Act: POST /transport/book with cash payment
-        resp = authenticated_client.post(
+        response = authenticated_client.post(
             "/transport/book",
             data=_bolt_form(_new_pickup_time()),
             follow_redirects=False,
         )
-        assert resp.status_code in (301, 302), f"Expected redirect, got {resp.status_code}"
-        location = resp.headers.get("Location", "")
+        assert response.status_code in (301, 302), response.get_data(as_text=True)
+        location = response.headers.get("Location", "")
         assert "/transport/rides/" in location, location
-        ref = location.rstrip("/").rsplit("/", 1)[1]
-        assert ref, "redirect carried no booking reference"
+        reference = location.rstrip("/").rsplit("/", 1)[1]
 
-        # --- Assert: Verify booking state in database
         with app.app_context():
-            booking = Booking.query.filter_by(booking_reference=ref).first()
-            assert booking is not None, "Booking not found in DB"
+            request_row = RideRequest.query.filter_by(
+                public_id=reference, user_id=user_id, is_deleted=False
+            ).one()
+            cycle = SearchCycle.query.filter_by(
+                ride_request_id=request_row.id, cycle_number=1
+            ).one()
+            assert request_row.status == "searching"
+            assert cycle.status in ("searching", "expired")
+            assert request_row.payment_method == "cash"
+            assert Booking.query.filter_by(
+                booking_reference=reference, is_deleted=False
+            ).one_or_none() is None
 
-            # 1. Booking.status = CONFIRMED (claimable, matching active)
-            assert booking.status == BookingStatus.CONFIRMED.value, (
-                f"Expected CONFIRMED, got {booking.status}"
+    def test_cash_receipt_is_not_implied_by_trip_completion(self, app, test_user):
+        user_id = _get_user_id(app, test_user)
+        with app.app_context():
+            booking = Booking(
+                user_id=user_id,
+                provider_type="individual_driver",
+                service_type="on_demand",
+                pickup_location={"address": "Test Pickup"},
+                dropoff_location={"address": "Test Dropoff"},
+                pickup_time=datetime.now(timezone.utc) + timedelta(minutes=10),
+                passenger_count=1,
+                base_price=50.00,
+                subtotal=50.00,
+                total_amount=50.00,
+                final_price=50.00,
+                payment_method="cash",
+                payment_status=PaymentStatus.PENDING,
+                status=BookingStatus.COMPLETED,
+                completed_at=datetime.now(timezone.utc),
+                booking_metadata={"payment_timing": "pay_on_completion"},
             )
-
-            # 2. payment_status = PENDING (pay-later, NOT captured)
-            assert booking.payment_status == PaymentStatus.PENDING.value, (
-                f"Expected PENDING, got {booking.payment_status}"
-            )
-
-            # 3. payment_method = cash
-            assert booking.payment_method == "cash", (
-                f"Expected cash, got {booking.payment_method}"
-            )
-
-            # 4. confirmed_at is stamped
-            assert booking.confirmed_at is not None, "confirmed_at not stamped"
-
-            # 5. Driver NOT assigned yet
-            assert booking.assigned_driver_id is None, (
-                f"Driver should not be assigned yet, got {booking.assigned_driver_id}"
-            )
-            assert booking.assigned_vehicle_id is None, (
-                f"Vehicle should not be assigned yet, got {booking.assigned_vehicle_id}"
-            )
+            db.session.add(booking)
+            db.session.commit()
+            assert booking.status == BookingStatus.COMPLETED.value
+            assert booking.payment_status == PaymentStatus.PENDING.value
 
     def test_confirmed_not_equal_payment_captured(self, app, test_user):
         """
