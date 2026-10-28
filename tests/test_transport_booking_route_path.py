@@ -318,6 +318,61 @@ class TestKycGateOnBookRoute:
         )
 
 
+class TestRequestFirstStaleVehicleOffer:
+    def test_offer_cannot_claim_vehicle_after_driver_switches_away(
+        self, app, authenticated_client, test_user
+    ):
+        from app.transport.models import DriverVehicleHistory, RideRequest, SearchCycle, OfferAttempt
+        from app.transport.services.ride_request_dispatch_service import (
+            RideRequestDispatchService, RideRequestDispatchError,
+        )
+
+        with app.app_context():
+            rider = db.session.merge(test_user)
+            rider_id = rider.id
+            _promote_user_to_tier3(app, rider_id)
+        _, driver_id, vehicle_id, history_id = _make_matchable_driver(app, "stalevehicle")
+
+        response = authenticated_client.post(
+            "/transport/book",
+            data=_bolt_form(_new_pickup_time()),
+            follow_redirects=False,
+        )
+        assert response.status_code in (301, 302), response.get_data(as_text=True)
+        reference = response.headers["Location"].rstrip("/").rsplit("/", 1)[1]
+
+        with app.app_context():
+            request_row = RideRequest.query.filter_by(public_id=reference).one()
+            cycle = SearchCycle.query.filter_by(
+                ride_request_id=request_row.id, cycle_number=1
+            ).one()
+            offer = OfferAttempt.query.filter_by(
+                cycle_id=cycle.id, driver_id=driver_id, vehicle_id=vehicle_id,
+                status="offered",
+            ).one()
+            history = db.session.get(DriverVehicleHistory, history_id)
+            history.ended_at = datetime.now(timezone.utc)
+            db.session.commit()
+            offer_id = offer.id
+
+        with pytest.raises(RideRequestDispatchError) as exc:
+            RideRequestDispatchService.accept_offer(
+                reference, driver_id, vehicle_id, actor=None
+            )
+        assert exc.value.code == "vehicle_assignment_changed"
+
+        with app.app_context():
+            request_row = RideRequest.query.filter_by(public_id=reference).one()
+            cycle = SearchCycle.query.filter_by(
+                ride_request_id=request_row.id, cycle_number=1
+            ).one()
+            offer = db.session.get(OfferAttempt, offer_id)
+            assert request_row.status == "searching"
+            assert cycle.status == "expired"
+            assert offer.status == "claim_failed"
+            assert Booking.query.filter_by(booking_reference=reference).one_or_none() is None
+
+
 class TestExplicitPaymentChoiceOnBookRoute:
     def test_missing_payment_method_does_not_create_a_ride_request(
         self, app, authenticated_client, test_user
