@@ -268,6 +268,38 @@ class TestRollbackAfterPartialFlush:
         parsed = datetime.fromisoformat(resp.get_json()["data"]["pickup_time"])
         assert before - timedelta(seconds=2) <= parsed <= after + timedelta(seconds=2), parsed
 
+    def test_expired_matching_window_closes_without_issuing_an_offer(self, app):
+        from app.transport.models import OfferAttempt, RideRequest, SearchCycle
+        from app.transport.services.ride_request_service import RideRequestService
+        from app.transport.services.ride_request_dispatch_service import (
+            RideRequestDispatchService,
+        )
+
+        rider_id = _seed_rider(app, "expiredwindow")
+        with app.app_context():
+            created = RideRequestService.create_request(
+                rider_id, _payload(booking_mode="instant")
+            )
+            reference = created["request"].public_id
+            cycle = SearchCycle.query.filter_by(
+                ride_request_id=created["request"].id, cycle_number=1
+            ).one()
+            cycle.deadline = datetime.now(timezone.utc) - timedelta(seconds=1)
+            db.session.commit()
+
+            outcome = RideRequestDispatchService.start_search(reference)
+            db.session.expire_all()
+            request_row = RideRequest.query.filter_by(public_id=reference).one()
+            cycle = SearchCycle.query.filter_by(
+                ride_request_id=request_row.id, cycle_number=1
+            ).one()
+
+            assert outcome["status"] == "expired"
+            assert request_row.status == "searching"
+            assert cycle.status == "expired"
+            assert cycle.terminal_reason == "no_supply"
+            assert OfferAttempt.query.filter_by(cycle_id=cycle.id).count() == 0
+
     def test_payment_method_is_required(self, app, client):
         rider_id = _seed_rider(app, "paymentrequired")
         _promote_to_tier2(app, rider_id)
