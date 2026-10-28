@@ -411,7 +411,10 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
     <div class="acc-card">
       <div class="acc-card-head">
         <span class="acc-card-title"><i class="fas fa-desktop"></i> Active sessions</span>
-        <span style="font-size:11px;color:var(--ink-3);">{{ active_sessions | length }} device(s)</span>
+        <div style="display:flex;align-items:center;gap:.75rem;">
+          <span style="font-size:11px;color:var(--ink-3);">{{ active_sessions | length }} device(s)</span>
+          <a href="{{ url_for('profile.account_security') }}" class="btn-link" style="font-size:11px;"><i class="fas fa-shield-alt"></i> Security center</a>
+        </div>
       </div>
       <div class="acc-card-body">
         {% if active_sessions %}
@@ -432,6 +435,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
                 <div class="session-meta">
                   {{ sess.ip or '—' }} &nbsp;·&nbsp;
                   Started {{ sess.created_at.strftime('%d %b, %H:%M') if sess.created_at else '—' }} &nbsp;·&nbsp;
+                  Last active {{ sess.updated_at.strftime('%d %b, %H:%M') if sess.updated_at else '—' }} &nbsp;·&nbsp;
                   Expires {{ sess.expires_at.strftime('%d %b') if sess.expires_at else '—' }}
                 </div>
               </div>

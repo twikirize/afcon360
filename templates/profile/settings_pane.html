@@ -1,0 +1,111 @@
+{% set _pane = true %}
+<div class="pane-root settings-pane">
+  <header class="pane-header">
+    <h2><i class="fas fa-user-cog"></i> Settings</h2>
+  </header>
+
+  <section class="pane-section">
+    <h3>Profile</h3>
+    <div class="status-grid">
+      <div class="status-card">
+        <i class="fas fa-user"></i>
+        <div>
+          <strong>Display name</strong>
+          <span>{{ profile.display_name if profile and profile.display_name else (user.username or '—') }}</span>
+        </div>
+      </div>
+      <div class="status-card">
+        <i class="fas fa-at"></i>
+        <div>
+          <strong>Username</strong>
+          <span>@{{ user.username or '—' }}</span>
+        </div>
+      </div>
+      <div class="status-card {{ 'ok' if user.email_verified else 'warn' }}">
+        <i class="fas {{ 'fa-check-circle' if user.email_verified else 'fa-exclamation-triangle' }}"></i>
+        <div>
+          <strong>Email</strong>
+          <span>{{ user.email or '—' }}</span>
+        </div>
+      </div>
+      <div class="status-card {{ 'ok' if user.phone_verified else 'warn' }}">
+        <i class="fas {{ 'fa-check-circle' if user.phone_verified else 'fa-exclamation-triangle' }}"></i>
+        <div>
+          <strong>Phone</strong>
+          <span>{{ user.phone or 'Not set' }}</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pane-section">
+    <h3>Sign-in &amp; recovery</h3>
+    <div class="status-grid">
+      <div class="status-card {{ 'ok' if has_security_question else 'warn' }}">
+        <i class="fas {{ 'fa-check-circle' if has_security_question else 'fa-exclamation-triangle' }}"></i>
+        <div>
+          <strong>Security question</strong>
+          <span>{{ 'Set' if has_security_question else 'Not set' }}</span>
+        </div>
+      </div>
+      <div class="status-card {{ 'ok' if has_recovery_code else 'warn' }}">
+        <i class="fas {{ 'fa-check-circle' if has_recovery_code else 'fa-exclamation-triangle' }}"></i>
+        <div>
+          <strong>Recovery code</strong>
+          <span>{{ 'Available' if has_recovery_code else 'Not generated' }}</span>
+        </div>
+      </div>
+      <div class="status-card">
+        <i class="fas fa-sign-in-alt"></i>
+        <div>
+          <strong>Last login</strong>
+          <span>{{ last_login.strftime('%d %b, %H:%M') if last_login else 'Never' }}</span>
+        </div>
+      </div>
+      <div class="status-card {{ 'ok' if failed_logins == 0 else 'warn' }}">
+        <i class="fas {{ 'fa-check-circle' if failed_logins == 0 else 'fa-exclamation-triangle' }}"></i>
+        <div>
+          <strong>Failed logins</strong>
+          <span>{{ failed_logins }} recorded</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pane-section">
+    <h3>Quick actions</h3>
+    <div class="quick-links">
+      <a href="{{ url_for('profile.account_settings') }}#profile" class="quick-link"><i class="fas fa-user-edit"></i> Edit profile</a>
+      <a href="{{ url_for('profile.account_settings') }}#password" class="quick-link"><i class="fas fa-lock"></i> Change password</a>
+      <a href="{{ url_for('profile.account_settings') }}#security" class="quick-link"><i class="fas fa-question-circle"></i> Security question</a>
+      <a href="{{ url_for('profile.account_settings') }}#recovery" class="quick-link"><i class="fas fa-key"></i> Recovery code</a>
+      <a href="{{ url_for('profile.account_danger') }}" class="quick-link danger"><i class="fas fa-exclamation-triangle"></i> Danger zone</a>
+    </div>
+  </section>
+
+  <div style="margin-top:1rem;text-align:center;">
+    <a href="{{ url_for('profile.account_settings') }}" class="btn-primary btn-sm">Open full settings</a>
+  </div>
+</div>
+
+<style nonce="{{ csp_nonce }}">
+.pane-root {padding:1rem;}
+.pane-header {margin-bottom:1rem;}
+.pane-section {margin-bottom:1.5rem;}
+.pane-section h3 {font-size:.95rem;font-weight:600;color:var(--ink);margin-bottom:.75rem;}
+.status-grid {display:grid;grid-template-columns:1fr 1fr;gap:.5rem;}
+.status-card {display:flex;align-items:center;gap:.75rem;padding:.75rem;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:var(--radius-sm);}
+.status-card.ok i {color:var(--ok);} .status-card.warn i {color:var(--warn);}
+.status-card i {font-size:1.1rem;width:1.5rem;text-align:center;color:var(--primary);}
+.status-card div {flex:1;min-width:0;}
+.status-card strong {display:block;font-size:.8rem;}
+.status-card span {font-size:.7rem;color:var(--ink-3);word-break:break-word;}
+.quick-links {display:grid;grid-template-columns:1fr 1fr;gap:.5rem;}
+.quick-link {display:flex;align-items:center;gap:.5rem;padding:.65rem .75rem;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:var(--radius-sm);font-size:.78rem;font-weight:600;color:var(--ink);text-decoration:none;transition:background .15s;}
+.quick-link:hover {background:var(--surface-3);}
+.quick-link i {color:var(--primary);}
+.quick-link.danger {color:var(--danger);}
+.quick-link.danger i {color:var(--danger);}
+.btn-primary {display:inline-flex;align-items:center;gap:.5rem;padding:.6rem 1.25rem;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-weight:600;font-size:.85rem;cursor:pointer;text-decoration:none;}
+.btn-sm {font-size:.8rem;padding:.5rem 1rem;}
+</style>

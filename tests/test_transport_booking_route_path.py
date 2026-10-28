@@ -150,6 +150,7 @@ class _FakeRedis:
 def _bolt_form(pickup_time: str) -> dict:
     return {
         "service_type": "on_demand",
+        "booking_mode": "instant",
         "provider_type": "individual_driver",
         "passenger_count": "1",
         "luggage_count": "0",

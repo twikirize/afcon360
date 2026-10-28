@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+
+{% block title %}Account Settings | AFCON360{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width:900px;">
+  <header class="page-header" style="margin-bottom:1.5rem;">
+    <h1 style="margin:0;font-size:clamp(1.5rem,3vw,2rem);"><i class="fas fa-user-cog" style="margin-right:.5rem;"></i>Account Settings</h1>
+    <p style="margin:.5rem 0 0;color:var(--ink-3);">Manage your profile, email, phone, and password</p>
+  </header>
+
+  <nav class="subnav" style="margin-bottom:2rem;">
+    <a href="#profile" class="subnav-link active" data-tab="profile"><i class="fas fa-user"></i> Profile</a>
+    <a href="#email" class="subnav-link" data-tab="email"><i class="fas fa-envelope"></i> Email</a>
+    <a href="#phone" class="subnav-link" data-tab="phone"><i class="fas fa-phone"></i> Phone</a>
+    <a href="#password" class="subnav-link" data-tab="password"><i class="fas fa-lock"></i> Password</a>
+    <a href="#security" class="subnav-link" data-tab="security"><i class="fas fa-question-circle"></i> Security Q</a>
+    <a href="#recovery" class="subnav-link" data-tab="recovery"><i class="fas fa-key"></i> Recovery Code</a>
+  </nav>
+
+  {# ── Profile Tab ── #}
+  <section id="profile" class="tab-panel acc-card" style="margin-bottom:1.5rem;">
+    <div class="acc-card-head">
+      <span class="acc-card-title"><i class="fas fa-user"></i> Profile Information</span>
+    </div>
+    <div class="acc-card-body">
+      {% if not profile %}
+      <p style="color:var(--ink-3);">No profile record found for your account. Contact support if this is unexpected.</p>
+      {% else %}
+      <form method="POST" action="{{ url_for('profile.account_settings') }}" id="profile-form">
+        <input type="hidden" name="action" value="update_profile">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem;">
+          <div class="form-group">
+            <label for="display_name">Display Name</label>
+            <input type="text" id="display_name" name="display_name" class="form-control" value="{{ profile.display_name or '' }}" placeholder="Your public display name">
+          </div>
+          <div class="form-group">
+            <label for="full_name">Full Name</label>
+            <input type="text" id="full_name" name="full_name" class="form-control" value="{{ profile.full_name or '' }}" placeholder="Legal full name" {% if is_verified %}disabled title="Cannot change after verification"{% endif %}>
+            {% if is_verified %}<small style="color:var(--ink-3);">Cannot change after verification</small>{% endif %}
+          </div>
+          <div class="form-group">
+            <label for="date_of_birth">Date of Birth</label>
+            <input type="date" id="date_of_birth" name="date_of_birth" class="form-control" value="{{ profile.date_of_birth.strftime('%Y-%m-%d') if profile.date_of_birth else '' }}">
+          </div>
+          <div class="form-group">
+            <label for="nationality">Nationality</label>
+            <input type="text" id="nationality" name="nationality" class="form-control" value="{{ profile.nationality or '' }}" placeholder="Nationality">
+          </div>
+          <div class="form-group">
+            <label for="address">Address</label>
+            <input type="text" id="address" name="address" class="form-control" value="{{ profile.address or '' }}" placeholder="Street address">
+          </div>
+          <div class="form-group">
+            <label for="city">City</label>
+            <input type="text" id="city" name="city" class="form-control" value="{{ profile.city or '' }}" placeholder="City">
+          </div>
+          <div class="form-group">
+            <label for="country">Country</label>
+            <input type="text" id="country" name="country" class="form-control" value="{{ profile.country or '' }}" placeholder="Country">
+          </div>
+          <div class="form-group">
+            <label for="phone_number">Phone Number</label>
+            <input type="tel" id="phone_number" name="phone_number" class="form-control" value="{{ profile.phone_number or '' }}" placeholder="+234 800 000 0000">
+          </div>
+          <div class="form-group">
+            <label for="bio">Bio</label>
+            <textarea id="bio" name="bio" class="form-control" rows="3" placeholder="Tell us about yourself...">{{ profile.bio or '' }}</textarea>
+          </div>
+          <div class="form-group">
+            <label for="fan_team">Fan Team</label>
+            <input type="text" id="fan_team" name="fan_team" class="form-control" value="{{ profile.fan_team or '' }}" placeholder="Your favorite team">
+          </div>
+          <div class="form-group">
+            <label for="avatar_url">Avatar URL</label>
+            <input type="url" id="avatar_url" name="avatar_url" class="form-control" value="{{ profile.avatar_url or '' }}" placeholder="https://example.com/avatar.png">
+          </div>
+        </div>
+
+        <div style="margin-top:1.5rem;display:flex;gap:1rem;justify-content:flex-end;">
+          <button type="submit" class="btn-primary"><i class="fas fa-save"></i> Save Changes</button>
+        </div>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+
+  {# ── Email Tab ── #}
+  <section id="email" class="tab-panel acc-card" style="margin-bottom:1.5rem;display:none;">
+    <div class="acc-card-head">
+      <span class="acc-card-title"><i class="fas fa-envelope"></i> Email Address</span>
+    </div>
+    <div class="acc-card-body">
+      <div style="margin-bottom:1rem;padding:1rem;background:var(--surface-2);border-radius:var(--radius-sm);border:1px solid var(--surface-3);">
+        <strong>Current email:</strong> {{ user.email }}
+        {% if user.email_verified %}
+        <span class="pill-ok" style="margin-left:.5rem;font-size:.75rem;"><i class="fas fa-check-circle"></i> Verified</span>
+        {% else %}
+        <span class="pill-warn" style="margin-left:.5rem;font-size:.75rem;"><i class="fas fa-exclamation-triangle"></i> Not verified</span>
+        <a href="{{ url_for('auth.verify_email') }}" class="btn-link" style="margin-left:1rem;">Verify now</a>
+        {% endif %}
+      </div>
+
+      <form method="POST" action="{{ url_for('profile.account_settings') }}" style="max-width:400px;">
+        <input type="hidden" name="action" value="update_email">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="form-group">
+          <label for="email">New Email Address</label>
+          <input type="email" id="email" name="email" class="form-control" required placeholder="new@email.com" {% if user.email_verified_at %}disabled{% endif %}>
+          {% if user.email_verified_at %}
+          <small style="color:var(--ink-3);">Verified email cannot be changed</small>
+          {% endif %}
+        </div>
+
+        <button type="submit" class="btn-primary" {% if user.email_verified_at %}disabled{% endif %}>
+          <i class="fas fa-paper-plane"></i> Update Email
+        </button>
+      </form>
+    </div>
+  </section>
+
+  {# ── Phone Tab ── #}
+  <section id="phone" class="tab-panel acc-card" style="margin-bottom:1.5rem;display:none;">
+    <div class="acc-card-head">
+      <span class="acc-card-title"><i class="fas fa-phone"></i> Phone Number</span>
+    </div>
+    <div class="acc-card-body">
+      <p style="color:var(--ink-3);margin-bottom:1rem;">Phone number is managed in your profile. <a href="#profile" class="btn-link" onclick="switchTab('profile')">Edit profile</a> to update it.</p>
+      <div style="padding:1rem;background:var(--surface-2);border-radius:var(--radius-sm);border:1px solid var(--surface-3);">
+        <strong>Current phone:</strong> {{ profile.phone_number or 'Not set' }}
+        {% if user.phone_verified %}
+        <span class="pill-ok" style="margin-left:.5rem;font-size:.75rem;"><i class="fas fa-check-circle"></i> Verified</span>
+        {% else %}
+        <span class="pill-warn" style="margin-left:.5rem;font-size:.75rem;"><i class="fas fa-exclamation-triangle"></i> Not verified</span>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  {# ── Password Tab ── #}
+  <section id="password" class="tab-panel acc-card" style="margin-bottom:1.5rem;display:none;">
+    <div class="acc-card-head">
+      <span class="acc-card-title"><i class="fas fa-lock"></i> Change Password</span>
+    </div>
+    <div class="acc-card-body">
+      <form method="POST" action="{{ url_for('profile.account_settings') }}" style="max-width:400px;">
+        <input type="hidden" name="action" value="change_password">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="form-group">
+          <label for="current_password">Current Password</label>
+          <input type="password" id="current_password" name="current_password" class="form-control" required autocomplete="current-password">
+        </div>
+
+        <div class="form-group">
+          <label for="new_password">New Password</label>
+          <input type="password" id="new_password" name="new_password" class="form-control" required minlength="8" autocomplete="new-password">
+          <small style="color:var(--ink-3);">Must be at least 8 characters</small>
+        </div>
+
+        <div class="form-group">
+          <label for="confirm_password">Confirm New Password</label>
+          <input type="password" id="confirm_password" name="confirm_password" class="form-control" required autocomplete="new-password">
+        </div>
+
+        <button type="submit" class="btn-primary"><i class="fas fa-key"></i> Change Password</button>
+      </form>
+    </div>
+  </section>
+
+  {# ── Security Question Tab ── #}
+  <section id="security" class="tab-panel acc-card" style="margin-bottom:1.5rem;display:none;">
+    <div class="acc-card-head">
+      <span class="acc-card-title"><i class="fas fa-question-circle"></i> Security Question</span>
+    </div>
+    <div class="acc-card-body">
+      <p style="color:var(--ink-3);margin-bottom:1rem;">Set a security question to help recover your account if you lose access.</p>
+
+      <form method="POST" action="{{ url_for('profile.account_settings') }}" style="max-width:500px;">
+        <input type="hidden" name="action" value="update_security_question">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="form-group">
+          <label for="security_question">Security Question</label>
+          <select id="security_question" name="security_question" class="form-control">
+            <option value="">Select a question</option>
+            <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+            <option value="In what city were you born?">In what city were you born?</option>
+            <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+            <option value="What was the name of your first school?">What was the name of your first school?</option>
+            <option value="What is your favorite book?">What is your favorite book?</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="security_answer">Answer</label>
+          <input type="text" id="security_answer" name="security_answer" class="form-control" placeholder="Your answer" autocomplete="off">
+          <small style="color:var(--ink-3);">Choose an answer you'll remember. Case-insensitive.</small>
+        </div>
+
+        <div style="margin-top:1rem;display:flex;gap:1rem;justify-content:flex-end;">
+          <button type="submit" class="btn-primary"><i class="fas fa-save"></i> Save Security Question</button>
+        </div>
+      </form>
+
+      {% if has_security_question %}
+      <div style="margin-top:1.5rem;padding:1rem;background:var(--surface-2);border-radius:var(--radius-sm);border:1px solid var(--surface-3);">
+        <strong>Current question:</strong> {{ user.security_question }}
+        <form method="POST" action="{{ url_for('profile.account_settings') }}" style="margin-top:.5rem;display:inline;">
+          <input type="hidden" name="action" value="remove_security_question">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-outline-danger btn-sm" onclick="return confirm('Remove your security question?')"><i class="fas fa-trash"></i> Remove</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  {# ── Recovery Code Tab ── #}
+  <section id="recovery" class="tab-panel acc-card" style="margin-bottom:1.5rem;display:none;">
+    <div class="acc-card-head">
+      <span class="acc-card-title"><i class="fas fa-key"></i> Recovery Code</span>
+    </div>
+    <div class="acc-card-body">
+      <p style="color:var(--ink-3);margin-bottom:1rem;">Generate a one-time recovery code to regain access if you lose your 2FA device and security question.</p>
+
+      {% if has_recovery_code %}
+      <div style="margin-bottom:1.5rem;padding:1rem;background:var(--surface-2);border-radius:var(--radius-sm);border:1px solid var(--surface-3);">
+        <strong>Your recovery code:</strong>
+        <div style="margin-top:.5rem;font-family:monospace;font-size:1.2rem;letter-spacing:.2em;color:var(--primary);background:var(--bg);padding:.75rem;border-radius:var(--radius-sm);border:1px solid var(--surface-3);display:inline-block;">
+          {{ user.recovery_code }}
+        </div>
+        <p style="margin-top:.5rem;font-size:.8rem;color:var(--ink-3);"><i class="fas fa-exclamation-triangle"></i> Store this code securely. It can only be used once.</p>
+      </div>
+
+      <form method="POST" action="{{ url_for('profile.account_settings') }}" style="display:inline;">
+        <input type="hidden" name="action" value="generate_recovery_code">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-outline-danger btn-sm" onclick="return confirm('Regenerate recovery code? The old code will be invalidated.')"><i class="fas fa-sync-alt"></i> Regenerate Code</button>
+      </form>
+      <form method="POST" action="{{ url_for('profile.account_settings') }}" style="display:inline;margin-left:.5rem;">
+        <input type="hidden" name="action" value="remove_recovery_code">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-outline-danger btn-sm" onclick="return confirm('Remove your recovery code?')"><i class="fas fa-trash"></i> Remove</button>
+      </form>
+      {% else %}
+      <form method="POST" action="{{ url_for('profile.account_settings') }}">
+        <input type="hidden" name="action" value="generate_recovery_code">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-primary"><i class="fas fa-key"></i> Generate Recovery Code</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+
+  <div style="margin-top:2rem;text-align:center;">
+    <a href="{{ url_for('profile.account_security') }}" class="btn-outline-primary"><i class="fas fa-shield-alt"></i> Go to Security Center</a>
+  </div>
+</div>
+
+<style nonce="{{ csp_nonce }}">
+.subnav {display:flex;flex-wrap:wrap;gap:.5rem;border-bottom:1px solid var(--surface-3);padding-bottom:.5rem;margin-bottom:1.5rem;}
+.subnav-link {display:flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:var(--radius-md);text-decoration:none;color:var(--ink-3);font-size:.8rem;font-weight:600;transition:all .2s;}
+.subnav-link:hover {background:var(--surface-2);color:var(--primary);}
+.subnav-link.active {background:rgba(59,130,246,.1);color:var(--primary);border:1px solid rgba(59,130,246,.3);}
+.subnav-link i {font-size:.9rem;}
+.tab-panel {animation:fadeIn .2s ease;}
+@keyframes fadeIn {from {opacity:0;transform:translateY(4px);} to {opacity:1;transform:translateY(0);}}
+.form-group {margin-bottom:1rem;}
+.form-group label {display:block;font-size:.8rem;font-weight:600;color:var(--ink);margin-bottom:.4rem;}
+.form-control {width:100%;padding:.6rem .85rem;border:1px solid var(--surface-3);border-radius:var(--radius-sm);background:var(--bg);color:var(--ink);font-size:.9rem;transition:border-color .2s,box-shadow .2s;}
+.form-control:focus {outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(59,130,246,.15);}
+.form-control:disabled {background:var(--surface-2);color:var(--ink-3);cursor:not-allowed;}
+textarea.form-control {resize:vertical;min-height:80px;}
+.btn-primary {display:inline-flex;align-items:center;gap:.5rem;padding:.6rem 1.25rem;background:var(--primary);color:white;border:none;border-radius:var(--radius-sm);font-weight:600;font-size:.85rem;cursor:pointer;transition:background .2s;}
+.btn-primary:hover {background:var(--primary-dark);}
+.btn-primary:disabled {opacity:.6;cursor:not-allowed;}
+.btn-outline-primary {display:inline-flex;align-items:center;gap:.5rem;padding:.6rem 1.25rem;background:transparent;color:var(--primary);border:1px solid var(--primary);border-radius:var(--radius-sm);font-weight:600;font-size:.85rem;cursor:pointer;transition:all .2s;}
+.btn-outline-primary:hover {background:var(--primary);color:white;}
+.btn-outline-danger {display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;background:transparent;color:var(--danger);border:1px solid var(--danger);border-radius:var(--radius-sm);font-weight:600;font-size:.8rem;cursor:pointer;}
+.btn-outline-danger:hover {background:var(--danger);color:white;}
+.pill {display:inline-flex;align-items:center;gap:.35rem;padding:.2rem .6rem;border-radius:999px;font-size:.7rem;font-weight:600;white-space:nowrap;}
+.pill-ok {background:rgba(5,150,105,.15);color:#0e7a5f;}
+.pill-warn {background:rgba(245,158,11,.15);color:#a75e0d;}
+</style>
+
+<script nonce="{{ csp_nonce }}">
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('.subnav-link').forEach(l => l.classList.remove('active'));
+  document.getElementById(tabId).style.display = 'block';
+  document.querySelector(`.subnav-link[data-tab="${tabId}"]`).classList.add('active');
+  window.location.hash = tabId;
+}
+
+// Initialize from hash
+document.addEventListener('DOMContentLoaded', () => {
+  const hash = window.location.hash.slice(1);
+  if (hash) switchTab(hash);
+});
+
+// Tab navigation
+document.querySelectorAll('.subnav-link').forEach(link => {
+  link.addEventListener('click', e => {
+    e.preventDefault();
+    switchTab(link.dataset.tab);
+  });
+});
+</script>
+{% endblock %}

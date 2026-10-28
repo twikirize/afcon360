@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+
+{% block title %}Security & Sign-in | AFCON360{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width:900px;">
+  <header class="page-header" style="margin-bottom:1.5rem;">
+    <h1 style="margin:0;font-size:clamp(1.5rem,3vw,2rem);"><i class="fas fa-shield-alt" style="margin-right:.5rem;"></i>Security</h1>
+    <p style="margin:.5rem 0 0;color:var(--ink-3);">Manage your sign-in methods, active devices, and recent security activity</p>
+  </header>
+
+  {# ── Account Protection Status ── #}
+  <section class="acc-card" style="margin-bottom:1.5rem;">
+    <div class="acc-card-head">
+      <span class="acc-card-title"><i class="fas fa-user-shield"></i> Account protection</span>
+    </div>
+    <div class="acc-card-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;">
+      <div class="sec-status-card {{ 'ok' if mfa_active else 'warn' }}">
+        <div class="sec-status-icon"><i class="fas {{ 'fa-check-circle' if mfa_active else 'fa-exclamation-triangle' }}"></i></div>
+        <div class="sec-status-info">
+          <span class="sec-status-title">2-Step Verification</span>
+          <span class="sec-status-sub">{{ 'Enabled' if mfa_active else 'Disabled' }} {% if mfa_types %}({{ mfa_types|join(', ') }}){% endif %}</span>
+        </div>
+        <a href="{{ url_for('auth.setup_mfa') }}" class="sec-status-action btn-sm">{{ 'Manage' if mfa_active else 'Set up' }}</a>
+      </div>
+
+      <div class="sec-status-card {{ 'ok' if email_verified else 'warn' }}">
+        <div class="sec-status-icon"><i class="fas {{ 'fa-check-circle' if email_verified else 'fa-exclamation-triangle' }}"></i></div>
+        <div class="sec-status-info">
+          <span class="sec-status-title">Email verified</span>
+          <span class="sec-status-sub">{{ 'Yes' if email_verified else 'No' }}</span>
+        </div>
+        {% if not email_verified %}
+        <a href="{{ url_for('auth.verify_email') }}" class="sec-status-action btn-sm">Verify</a>
+        {% endif %}
+      </div>
+
+      <div class="sec-status-card {{ 'ok' if phone_verified else 'warn' }}">
+        <div class="sec-status-icon"><i class="fas {{ 'fa-check-circle' if phone_verified else 'fa-exclamation-triangle' }}"></i></div>
+        <div class="sec-status-info">
+          <span class="sec-status-title">Phone verified</span>
+          <span class="sec-status-sub">{{ 'Yes' if phone_verified else 'No' }}</span>
+        </div>
+        {% if not phone_verified %}
+        <a href="{{ url_for('profile.edit_profile') }}#phone" class="sec-status-action btn-sm">Add</a>
+        {% endif %}
+      </div>
+
+      <div class="sec-status-card ok">
+        <div class="sec-status-icon"><i class="fas fa-sign-in-alt"></i></div>
+        <div class="sec-status-info">
+          <span class="sec-status-title">Last login</span>
+          <span class="sec-status-sub">{{ last_login.strftime('%d %b %Y, %H:%M UTC') if last_login else 'Never' }}</span>
+        </div>
+      </div>
+
+      <div class="sec-status-card {{ 'ok' if failed_logins == 0 else 'warn' }}">
+        <div class="sec-status-icon"><i class="fas {{ 'fa-check-circle' if failed_logins == 0 else 'fa-exclamation-triangle' }}"></i></div>
+        <div class="sec-status-info">
+          <span class="sec-status-title">Failed login attempts</span>
+          <span class="sec-status-sub">{{ failed_logins }} recorded{% if failed_logins == 0 %} — Clean{% endif %}</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ── Sign-in & Recovery ── #}
+  <section class="acc-card" style="margin-bottom:1.5rem;">
+    <div class="acc-card-head">
+      <span class="acc-card-title"><i class="fas fa-key"></i> Sign-in & recovery</span>
+    </div>
+    <div class="acc-card-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;">
+      <div class="sec-status-card {{ 'ok' if has_security_question else 'warn' }}">
+        <div class="sec-status-icon"><i class="fas {{ 'fa-check-circle' if has_security_question else 'fa-exclamation-triangle' }}"></i></div>
+        <div class="sec-status-info">
+          <span class="sec-status-title">Security question</span>
+          <span class="sec-status-sub">{{ 'Set' if has_security_question else 'Not set' }}</span>
+        </div>
+        <a href="{{ url_for('profile.account_settings') }}#security" class="sec-status-action btn-sm">{{ 'Update' if has_security_question else 'Add' }}</a>
+      </div>
+
+      <div class="sec-status-card {{ 'ok' if has_recovery_code else 'warn' }}">
+        <div class="sec-status-icon"><i class="fas {{ 'fa-check-circle' if has_recovery_code else 'fa-exclamation-triangle' }}"></i></div>
+        <div class="sec-status-info">
+          <span class="sec-status-title">Recovery code</span>
+          <span class="sec-status-sub">{{ 'Available' if has_recovery_code else 'Not generated' }}</span>
+        </div>
+        <a href="{{ url_for('profile.account_settings') }}#recovery" class="sec-status-action btn-sm">{{ 'Regenerate' if has_recovery_code else 'Generate' }}</a>
+      </div>
+
+      <div class="sec-status-card">
+        <div class="sec-status-icon"><i class="fas fa-lock"></i></div>
+        <div class="sec-status-info">
+          <span class="sec-status-title">Change password</span>
+          <span class="sec-status-sub">Update your login password</span>
+        </div>
+        <a href="{{ url_for('profile.account_settings') }}#password" class="sec-status-action btn-sm">Change</a>
+      </div>
+    </div>
+  </section>
+
+  {# ── Where you're signed in ── #}
+  <section class="acc-card" style="margin-bottom:1.5rem;">
+    <div class="acc-card-head">
+      <span class="acc-card-title"><i class="fas fa-desktop"></i> Where you're signed in</span>
+      <span style="font-size:12px;color:var(--ink-3);">{{ device_sessions|length }} device(s)</span>
+    </div>
+    <div class="acc-card-body">
+      {% if device_sessions %}
+        <div class="session-list">
+          {% for sess in device_sessions %}
+          <div class="session-item" id="sess-{{ sess.id }}">
+            <i class="fas
+              {% if 'Mobile' in (sess.user_agent or '') or 'Android' in (sess.user_agent or '') or 'iPhone' in (sess.user_agent or '') %}fa-mobile-alt
+              {% elif 'Tablet' in (sess.user_agent or '') %}fa-tablet-alt
+              {% else %}fa-laptop{% endif %}
+              session-icon" aria-hidden="true"></i>
+            <div class="session-info">
+              <div class="session-device">
+                {% if sess.user_agent %}
+                  {{ sess.user_agent[:70] }}{% if sess.user_agent|length > 70 %}…{% endif %}
+                {% else %}Unknown device{% endif %}
+              </div>
+              <div class="session-meta">
+                {{ sess.ip or '—' }} &nbsp;·&nbsp;
+                Started {{ sess.created_at.strftime('%d %b %Y, %H:%M') if sess.created_at else '—' }} &nbsp;·&nbsp;
+                Last active {{ sess.updated_at.strftime('%d %b %Y, %H:%M') if sess.updated_at else '—' }} &nbsp;·&nbsp;
+                Expires {{ sess.expires_at.strftime('%d %b %Y') if sess.expires_at else '—' }}
+              </div>
+              {% if sess.session_id == session.get('device_session_id') %}
+              <span class="pill-info" style="font-size:10px;padding:2px 8px;">Current device</span>
+              {% endif %}
+            </div>
+            <button class="session-revoke btn-danger btn-sm"
+              onclick="revokeSession('{{ sess.session_id }}', this)"
+              aria-label="Sign out of this device"
+              {% if sess.session_id == session.get('device_session_id') %}disabled{% endif %}>
+              {% if sess.session_id == session.get('device_session_id') %}This device{% else %}Sign out{% endif %}
+            </button>
+          </div>
+          {% endfor %}
+        </div>
+
+        {% if can_revoke_all %}
+        <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--surface-3);display:flex;justify-content:flex-end;">
+          <button class="btn-outline-danger" onclick="revokeAllSessions()">
+            <i class="fas fa-sign-out-alt"></i> Sign out of all other devices
+          </button>
+        </div>
+        {% endif %}
+      {% else %}
+        <p class="no-sessions"><i class="fas fa-check-circle" style="color:var(--ok);margin-right:6px;"></i>No active sessions found</p>
+      {% endif %}
+    </div>
+  </section>
+
+  {# ── Recent security activity ── #}
+  <section class="acc-card">
+    <div class="acc-card-head">
+      <span class="acc-card-title"><i class="fas fa-history"></i> Recent security activity</span>
+    </div>
+    <div class="acc-card-body">
+      {% if security_events %}
+        <div class="activity-list">
+          {% for ev in security_events %}
+          <div class="activity-item">
+            <div class="activity-icon">
+              <i class="fas
+                {% if 'login' in ev.event_type %}fa-sign-in-alt
+                {% elif 'logout' in ev.event_type %}fa-sign-out-alt
+                {% elif 'password' in ev.event_type %}fa-key
+                {% elif 'email' in ev.event_type %}fa-envelope
+                {% elif 'phone' in ev.event_type %}fa-phone
+                {% elif 'mfa' in ev.event_type %}fa-shield-alt
+                {% elif 'device' in ev.event_type or 'signin' in ev.event_type %}fa-desktop
+                {% elif 'locked' in ev.event_type or 'unlock' in ev.event_type %}fa-lock
+                {% else %}fa-info-circle{% endif %}"></i>
+            </div>
+            <div class="activity-info">
+              <div class="activity-title">{{ ev.description or ev.event_type|replace('_', ' ')|title }}</div>
+              <div class="activity-meta">
+                {{ ev.created_at.strftime('%d %b %Y, %H:%M') if ev.created_at else '—' }}
+                {% if ev.ip_address %} · {{ ev.ip_address }}{% endif %}
+                {% if ev.user_agent %} · {{ ev.user_agent[:40] }}{% if ev.user_agent|length > 40 %}…{% endif %}{% endif %}
+              </div>
+            </div>
+            <span class="pill-{{ 'info' if ev.severity == 'INFO' else 'warn' if ev.severity == 'WARNING' else 'danger' }}" style="font-size:10px;">{{ ev.severity }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        <p style="margin-top:1rem;font-size:12px;color:var(--ink-3);">Showing latest 50 security events.</p>
+      {% else %}
+        <p class="no-sessions"><i class="fas fa-info-circle" style="color:var(--ink-3);margin-right:6px;"></i>No recent security activity recorded</p>
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+<style>
+.sec-status-card {display:flex;align-items:center;gap:1rem;padding:1rem;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:var(--radius-md);}
+.sec-status-card.ok .sec-status-icon {color:var(--ok);}
+.sec-status-card.warn .sec-status-icon {color:var(--warn);}
+.sec-status-icon {font-size:1.25rem;width:2rem;text-align:center;}
+.sec-status-title {display:block;font-weight:600;font-size:.9rem;color:var(--ink);}
+.sec-status-sub {display:block;font-size:.8rem;color:var(--ink-3);}
+.sec-status-action {margin-left:auto;white-space:nowrap;}
+.session-list {display:flex;flex-direction:column;gap:.75rem;}
+.session-item {display:flex;align-items:center;gap:1rem;padding:1rem;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:var(--radius-md);flex-wrap:wrap;}
+.session-icon {font-size:1.5rem;color:var(--primary);width:2.5rem;text-align:center;}
+.session-info {flex:1;min-width:0;}
+.session-device {font-weight:600;font-size:.9rem;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.session-meta {font-size:.75rem;color:var(--ink-3);}
+.activity-list {display:flex;flex-direction:column;gap:.5rem;}
+.activity-item {display:flex;align-items:center;gap:1rem;padding:.75rem;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:var(--radius-md);flex-wrap:wrap;}
+.activity-icon {font-size:1.25rem;width:2rem;text-align:center;color:var(--primary);}
+.activity-title {font-weight:500;font-size:.9rem;color:var(--ink);}
+.activity-meta {font-size:.75rem;color:var(--ink-3);}
+</style>
+
+<script>
+async function revokeSession(sessionId, btn) {
+  if (!confirm('Sign out of this device?')) return;
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const res = await fetch(`/profile/account/security/revoke/${sessionId}`, {method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token() }}'}});
+    const data = await res.json();
+    if (data.success) {
+      btn.closest('.session-item').remove();
+      updateCount();
+    } else {
+      alert(data.error || 'Failed to revoke session');
+    }
+  } catch (e) {
+    alert('Network error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign out';
+  }
+}
+
+async function revokeAllSessions() {
+  if (!confirm('Sign out of ALL other devices? You will stay signed in on this device.')) return;
+  const btn = event.target.closest('button');
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const res = await fetch('/profile/account/security/revoke-all', {method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token() }}'}});
+    const data = await res.json();
+    if (data.success) {
+      alert(data.message);
+      location.reload();
+    } else {
+      alert(data.error || 'Failed to revoke sessions');
+    }
+  } catch (e) {
+    alert('Network error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign out of all other devices';
+  }
+}
+
+function updateCount() {
+  const countEl = document.querySelector('.acc-card-head span[style*="font-size:12px"]');
+  if (countEl) {
+    const items = document.querySelectorAll('.session-item');
+    countEl.textContent = items.length + ' device(s)';
+  }
+}
+</script>
+{% endblock %}

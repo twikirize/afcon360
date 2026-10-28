@@ -1,0 +1,196 @@
+{% set _pane = true %}
+<div class="pane-root security-pane">
+  <header class="pane-header">
+    <h2><i class="fas fa-shield-alt"></i> Security</h2>
+  </header>
+
+  <section class="pane-section">
+    <h3>Account protection</h3>
+    <div class="status-grid">
+      <div class="status-card {{ 'ok' if mfa_active else 'warn' }}">
+        <i class="fas {{ 'fa-check-circle' if mfa_active else 'fa-exclamation-triangle' }}"></i>
+        <div>
+          <strong>2-Step Verification</strong>
+          <span>{{ 'Enabled' if mfa_active else 'Disabled' }} {% if mfa_types %}({{ mfa_types|join(', ') }}){% endif %}</span>
+        </div>
+        <a href="{{ url_for('auth.setup_mfa') }}" class="btn-link">{{ 'Manage' if mfa_active else 'Set up' }}</a>
+      </div>
+      <div class="status-card {{ 'ok' if email_verified else 'warn' }}">
+        <i class="fas {{ 'fa-check-circle' if email_verified else 'fa-exclamation-triangle' }}"></i>
+        <div>
+          <strong>Email verified</strong>
+          <span>{{ 'Yes' if email_verified else 'No' }}</span>
+        </div>
+        {% if not email_verified %}<a href="{{ url_for('auth.verify_email') }}" class="btn-link">Verify</a>{% endif %}
+      </div>
+      <div class="status-card {{ 'ok' if phone_verified else 'warn' }}">
+        <i class="fas {{ 'fa-check-circle' if phone_verified else 'fa-exclamation-triangle' }}"></i>
+        <div>
+          <strong>Phone verified</strong>
+          <span>{{ 'Yes' if phone_verified else 'No' }}</span>
+        </div>
+        {% if not phone_verified %}<a href="{{ url_for('profile.edit_profile') }}#phone" class="btn-link">Add</a>{% endif %}
+      </div>
+      <div class="status-card ok">
+        <i class="fas fa-sign-in-alt"></i>
+        <div>
+          <strong>Last login</strong>
+          <span>{{ last_login.strftime('%d %b, %H:%M') if last_login else 'Never' }}</span>
+        </div>
+      </div>
+      <div class="status-card {{ 'ok' if failed_logins == 0 else 'warn' }}">
+        <i class="fas {{ 'fa-check-circle' if failed_logins == 0 else 'fa-exclamation-triangle' }}"></i>
+        <div>
+          <strong>Failed logins</strong>
+          <span>{{ failed_logins }} recorded{% if failed_logins == 0 %} — Clean{% endif %}</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pane-section">
+    <h3>Sign-in & recovery</h3>
+    <div class="status-grid">
+      <div class="status-card {{ 'ok' if has_security_question else 'warn' }}">
+        <i class="fas {{ 'fa-check-circle' if has_security_question else 'fa-exclamation-triangle' }}"></i>
+        <div>
+          <strong>Security question</strong>
+          <span>{{ 'Set' if has_security_question else 'Not set' }}</span>
+        </div>
+        <a href="{{ url_for('profile.account_settings') }}#security" class="btn-link">{{ 'Update' if has_security_question else 'Add' }}</a>
+      </div>
+      <div class="status-card {{ 'ok' if has_recovery_code else 'warn' }}">
+        <i class="fas {{ 'fa-check-circle' if has_recovery_code else 'fa-exclamation-triangle' }}"></i>
+        <div>
+          <strong>Recovery code</strong>
+          <span>{{ 'Available' if has_recovery_code else 'Not generated' }}</span>
+        </div>
+        <a href="{{ url_for('profile.account_settings') }}#recovery" class="btn-link">{{ 'Regenerate' if has_recovery_code else 'Generate' }}</a>
+      </div>
+      <div class="status-card">
+        <i class="fas fa-lock"></i>
+        <div>
+          <strong>Change password</strong>
+          <span>Update your login password</span>
+        </div>
+        <a href="{{ url_for('profile.account_settings') }}#password" class="btn-link">Change</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="pane-section">
+    <h3>Where you're signed in <span class="badge">{{ device_sessions|length }}</span></h3>
+    {% if device_sessions %}
+      <div class="session-list">
+        {% for sess in device_sessions %}
+        <div class="session-row">
+          <i class="fas {% if 'Mobile' in (sess.user_agent or '') or 'Android' in (sess.user_agent or '') or 'iPhone' in (sess.user_agent or '') %}fa-mobile-alt{% elif 'Tablet' in (sess.user_agent or '') %}fa-tablet-alt{% else %}fa-laptop{% endif %}"></i>
+          <div>
+            <strong>{{ sess.user_agent[:50] if sess.user_agent else 'Unknown device' }}{% if sess.user_agent and sess.user_agent|length > 50 %}…{% endif %}</strong>
+            <div class="meta">{{ sess.ip or '—' }} · Started {{ sess.created_at.strftime('%d %b, %H:%M') if sess.created_at else '—' }} · Last active {{ sess.updated_at.strftime('%d %b, %H:%M') if sess.updated_at else '—' }}</div>
+            {% if sess.session_id == session.get('device_session_id') %}<span class="pill-info xs">Current</span>{% endif %}
+          </div>
+          <button class="btn-icon danger" onclick="revokeSession('{{ sess.session_id }}', this)" {% if sess.session_id == session.get('device_session_id') %}disabled{% endif %} title="Sign out">
+            <i class="fas fa-sign-out-alt"></i>
+          </button>
+        </div>
+        {% endfor %}
+      </div>
+      {% if can_revoke_all %}
+      <button class="btn-link" onclick="revokeAllSessions()" style="margin-top:.5rem;"><i class="fas fa-sign-out-alt"></i> Sign out of all other devices</button>
+      {% endif %}
+    {% else %}
+      <p class="empty">No active sessions</p>
+    {% endif %}
+  </section>
+
+  <section class="pane-section">
+    <h3>Recent activity</h3>
+    {% if security_events %}
+      <div class="activity-list">
+        {% for ev in security_events[:20] %}
+        <div class="activity-row">
+          <i class="fas {% if 'login' in ev.event_type %}fa-sign-in-alt{% elif 'logout' in ev.event_type %}fa-sign-out-alt{% elif 'password' in ev.event_type %}fa-key{% elif 'email' in ev.event_type %}fa-envelope{% elif 'mfa' in ev.event_type %}fa-shield-alt{% elif 'device' in ev.event_type or 'signin' in ev.event_type %}fa-desktop{% elif 'locked' in ev.event_type or 'unlock' in ev.event_type %}fa-lock{% else %}fa-info-circle{% endif %}"></i>
+          <div>
+            <strong>{{ ev.description or ev.event_type|replace('_', ' ')|title }}</strong>
+            <span class="meta">{{ ev.created_at.strftime('%d %b, %H:%M') if ev.created_at else '—' }}{% if ev.ip_address %} · {{ ev.ip_address }}{% endif %}</span>
+          </div>
+          <span class="pill {{ 'info' if ev.severity == 'INFO' else 'warn' if ev.severity == 'WARNING' else 'danger' }} xs">{{ ev.severity }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="empty">No recent activity</p>
+    {% endif %}
+  </section>
+
+  <div style="margin-top:1rem;text-align:center;">
+    <a href="{{ url_for('profile.account_security') }}" class="btn-primary btn-sm">View full security page</a>
+  </div>
+</div>
+
+<style>
+.pane-root {padding:1rem;}
+.pane-header {margin-bottom:1rem;}
+.pane-section {margin-bottom:1.5rem;}
+.pane-section h3 {font-size:.95rem;font-weight:600;color:var(--ink);margin-bottom:.75rem;display:flex;align-items:center;gap:.5rem;}
+.pane-section h3 .badge {font-size:.7rem;background:var(--primary);color:white;padding:1px 6px;border-radius:999px;}
+.status-grid {display:grid;grid-template-columns:1fr 1fr;gap:.5rem;}
+.status-card {display:flex;align-items:center;gap:.75rem;padding:.75rem;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:var(--radius-sm);}
+.status-card.ok i {color:var(--ok);} .status-card.warn i {color:var(--warn);}
+.status-card i {font-size:1.1rem;width:1.5rem;text-align:center;}
+.status-card div {flex:1;min-width:0;}
+.status-card strong {display:block;font-size:.8rem;}
+.status-card span {font-size:.7rem;color:var(--ink-3);}
+.btn-link {font-size:.7rem;color:var(--primary);text-decoration:none;white-space:nowrap;}
+.session-list {display:flex;flex-direction:column;gap:.5rem;}
+.session-row {display:flex;align-items:center;gap:.75rem;padding:.6rem;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:var(--radius-sm);}
+.session-row i {font-size:1.2rem;color:var(--primary);width:1.5rem;text-align:center;}
+.session-row div {flex:1;min-width:0;}
+.session-row strong {display:block;font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.session-row .meta {font-size:.65rem;color:var(--ink-3);}
+.pill {font-size:.6rem;padding:1px 6px;border-radius:999px;white-space:nowrap.}
+.pill-info {background:rgba(59,130,246,.15);color:var(--primary);}
+.pill-info.xs {font-size:.55rem;padding:1px 4px;}
+.pill.warn {background:rgba(245,158,11,.15);color:var(--warn);}
+.pill.danger {background:rgba(239,68,68,.15);color:var(--danger);}
+.btn-icon {background:none;border:none;cursor:pointer;padding:.35rem;border-radius:var(--radius-sm);color:var(--ink-3);}
+.btn-icon:hover {background:var(--surface-3);color:var(--danger);}
+.btn-icon:disabled {opacity:.4;cursor:not-allowed;}
+.activity-list {display:flex;flex-direction:column;gap:.35rem;}
+.activity-row {display:flex;align-items:center;gap:.5rem;padding:.5rem;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:var(--radius-sm);}
+.activity-row i {font-size:.9rem;width:1.2rem;text-align:center;color:var(--primary);}
+.activity-row div {flex:1;min-width:0;}
+.activity-row strong {display:block;font-size:.75rem;}
+.activity-row .meta {font-size:.6rem;color:var(--ink-3);}
+.empty {font-size:.8rem;color:var(--ink-3);text-align:center;padding:1rem;}
+</style>
+
+<script>
+async function revokeSession(sessionId, btn) {
+  if (!confirm('Sign out of this device?')) return;
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/profile/account/security/revoke/${sessionId}`, {method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token() }}'}});
+    const data = await res.json();
+    if (data.success) {
+      btn.closest('.session-row').remove();
+    } else {
+      alert(data.error || 'Failed');
+    }
+  } catch (e) { alert('Network error'); }
+  finally { btn.disabled = false; }
+}
+async function revokeAllSessions() {
+  if (!confirm('Sign out of ALL other devices?')) return;
+  const btn = event.target.closest('button');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/profile/account/security/revoke-all', {method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token() }}'}});
+    const data = await res.json();
+    if (data.success) { alert(data.message); location.reload(); }
+    else { alert(data.error || 'Failed'); }
+  } catch (e) { alert('Network error'); }
+  finally { btn.disabled = false; }
+}
+</script>

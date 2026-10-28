@@ -245,4 +245,148 @@ def add_security_routes(owner_bp):
 
         return redirect(url_for('admin.owner.security_dashboard'))
 
+    # ========================================================================
+    # Admin Security Console - User Management
+    # ========================================================================
+
+    @owner_bp.route('/admin/users/<int:user_id>/unlock', methods=['POST'])
+    @owner_login_required
+    def admin_unlock_user(user_id):
+        """Unlock a user's account (clear failed logins + lock)."""
+        from app.identity.models.user import User
+        from app.audit.comprehensive_audit import AuditService, AuditSeverity
+        
+        target = User.query.get_or_404(user_id)
+        if target.is_app_owner() and not current_user.is_app_owner():
+            flash('Cannot unlock owner accounts', 'danger')
+            return redirect(url_for('admin.owner.security_dashboard'))
+        
+        old_failed = target.failed_logins
+        old_locked = target.locked_until
+        
+        target.failed_logins = 0
+        target.locked_until = None
+        db.session.commit()
+        
+        AuditService.security(
+            event_type='account_unlocked',
+            severity=AuditSeverity.WARNING,
+            description=f'Admin unlocked account for user {target.public_id}',
+            user_id=current_user.id,
+            ip_address=request.remote_addr,
+            extra_data={'target_user_id': target.id, 'old_failed_logins': old_failed, 'old_locked_until': str(old_locked)}
+        )
+        
+        # TODO: Send email notification to user (async)
+        flash(f'User {target.username or target.public_id} unlocked successfully', 'success')
+        return redirect(url_for('admin.owner.security_dashboard'))
+
+    @owner_bp.route('/admin/users/<int:user_id>/devices')
+    @owner_login_required
+    def admin_user_devices(user_id):
+        """View a user's active device sessions."""
+        from app.identity.models.user import User, Session as DeviceSession
+        from datetime import datetime, timezone
+        
+        target = User.query.get_or_404(user_id)
+        now = datetime.now(timezone.utc)
+        devices = DeviceSession.query.filter_by(user_id=target.id).filter(
+            DeviceSession.expires_at > now,
+            DeviceSession.revoked_at == None
+        ).order_by(DeviceSession.updated_at.desc()).all()
+        
+        return render_template('admin/owner/user_devices.html',
+            target=target, devices=devices, now=now)
+
+    @owner_bp.route('/admin/users/<int:user_id>/devices/revoke-all', methods=['POST'])
+    @owner_login_required
+    def admin_revoke_all_user_devices(user_id):
+        """Force sign-out everywhere for a user."""
+        from app.auth.sessions import revoke_all_device_sessions_for_user
+        from app.identity.models.user import User
+        from app.audit.comprehensive_audit import AuditService, AuditSeverity
+        
+        target = User.query.get_or_404(user_id)
+        if target.is_app_owner() and not current_user.is_app_owner():
+            flash('Cannot revoke owner sessions', 'danger')
+            return redirect(url_for('admin.owner.security_dashboard'))
+        
+        count = revoke_all_device_sessions_for_user(target.id, reason='admin_revoked_all')
+        
+        AuditService.security(
+            event_type='all_device_sessions_revoked',
+            severity=AuditSeverity.WARNING,
+            description=f'Admin revoked all sessions for user {target.public_id}',
+            user_id=current_user.id,
+            ip_address=request.remote_addr,
+            extra_data={'target_user_id': target.id, 'revoked_count': count}
+        )
+        
+        flash(f'Revoked {count} device session(s) for {target.username or target.public_id}', 'success')
+        return redirect(url_for('admin.owner.admin_user_devices', user_id=user_id))
+
+    @owner_bp.route('/admin/users/<int:user_id>/security-events')
+    @owner_login_required
+    def admin_user_security_events(user_id):
+        """View a user's security event timeline."""
+        from app.identity.models.user import User
+        from app.audit.comprehensive_audit import SecurityEventLog
+        from sqlalchemy import desc
+        
+        target = User.query.get_or_404(user_id)
+        events = SecurityEventLog.query.filter_by(user_id=target.id).filter(
+            SecurityEventLog.event_type.in_([
+                'login', 'logout', 'password_change', 'email_change',
+                'phone_change', 'mfa_enabled', 'mfa_disabled',
+                'device_session_created', 'new_signin',
+                'device_session_revoked', 'all_device_sessions_revoked',
+                'account_locked', 'account_unlocked',
+                'security_answer_verified', 'recovery_code_used'
+            ])
+        ).order_by(desc(SecurityEventLog.created_at)).limit(100).all()
+        
+        return render_template('admin/owner/user_security_events.html',
+            target=target, events=events)
+
+    @owner_bp.route('/admin/ip-blocks')
+    @owner_login_required
+    def admin_ip_blocks():
+        """View IP block log (from rate limiting / auth failures)."""
+        from app.audit.comprehensive_audit import SecurityEventLog
+        from sqlalchemy import desc
+        
+        blocks = SecurityEventLog.query.filter(
+            SecurityEventLog.event_type.in_(['ip_blocked', 'rate_limit_exceeded', 'login_ip_blocked'])
+        ).order_by(desc(SecurityEventLog.created_at)).limit(200).all()
+        
+        return render_template('admin/owner/ip_blocks.html', blocks=blocks)
+
+    @owner_bp.route('/admin/ip-blocks/<ip>/clear', methods=['POST'])
+    @owner_login_required
+    def admin_clear_ip_block(ip):
+        """Clear an IP block (Redis + log)."""
+        from flask import current_app
+        from app.audit.comprehensive_audit import AuditService, AuditSeverity
+        import redis
+        
+        try:
+            redis_client = current_app.extensions.get('redis')
+            if redis_client:
+                redis_client.delete(f'login_ip:{ip}')
+                redis_client.delete(f'login_ip:{ip}:locked')
+        except Exception:
+            pass
+        
+        AuditService.security(
+            event_type='ip_block_cleared',
+            severity=AuditSeverity.INFO,
+            description=f'Admin cleared IP block for {ip}',
+            user_id=current_user.id,
+            ip_address=request.remote_addr,
+            extra_data={'ip': ip}
+        )
+        
+        flash(f'IP block cleared for {ip}', 'success')
+        return redirect(url_for('admin.owner.admin_ip_blocks'))
+
     return owner_bp

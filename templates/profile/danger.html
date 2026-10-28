@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Danger Zone | AFCON360{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width:820px;">
+  <header class="page-header" style="margin-bottom:1.5rem;">
+    <h1 style="margin:0;font-size:clamp(1.5rem,3vw,2rem);color:var(--danger);">
+      <i class="fas fa-exclamation-triangle" style="margin-right:.5rem;"></i>Danger Zone
+    </h1>
+    <p style="margin:.5rem 0 0;color:var(--ink-3);">Irreversible and destructive actions for your account</p>
+  </header>
+
+  <nav class="subnav" style="margin-bottom:2rem;">
+    <a href="{{ url_for('profile.account_overview') }}" class="subnav-link"><i class="fas fa-user-cog"></i> Account</a>
+    <a href="{{ url_for('profile.account_settings') }}" class="subnav-link"><i class="fas fa-sliders-h"></i> Settings</a>
+    <a href="{{ url_for('profile.account_security') }}" class="subnav-link"><i class="fas fa-shield-alt"></i> Security</a>
+    <a href="{{ url_for('profile.account_danger') }}" class="subnav-link active"><i class="fas fa-exclamation-triangle"></i> Danger zone</a>
+  </nav>
+
+  <div class="danger-note">
+    <i class="fas fa-info-circle"></i>
+    <span>Signed in as <strong>@{{ user.username }}</strong>{% if user.is_verified or user.kyc_level > 0 %} (verified account){% endif %}. Actions here affect your whole account.</span>
+  </div>
+
+  {# ── Download data ── #}
+  <section class="dz-card">
+    <div class="dz-head">
+      <span class="dz-title"><i class="fas fa-download"></i> Download my data</span>
+    </div>
+    <div class="dz-body">
+      <p class="dz-desc">Get a copy of the personal data we hold about you as a JSON file (GDPR / data portability).</p>
+      <form method="POST" action="{{ url_for('profile.download_data') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-soft"><i class="fas fa-file-export"></i> Export my data</button>
+      </form>
+    </div>
+  </section>
+
+  {# ── Deactivate ── #}
+  <section class="dz-card">
+    <div class="dz-head">
+      <span class="dz-title"><i class="fas fa-pause-circle"></i> Deactivate account</span>
+    </div>
+    <div class="dz-body">
+      <p class="dz-desc">Temporarily disable your account. You can reactivate it by signing in again. Your data is retained.</p>
+      {% if user.is_app_owner() %}
+      <p class="dz-warn"><i class="fas fa-lock"></i> The owner account cannot be deactivated.</p>
+      {% else %}
+      <form method="POST" action="{{ url_for('profile.deactivate_account') }}" id="deactivate-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="dz-label" for="confirm_deactivate">Type <code>deactivate</code> to confirm</label>
+        <input type="text" id="confirm_deactivate" name="confirm_deactivate" class="dz-input" autocomplete="off" required>
+        <button type="submit" class="btn-soft" id="deactivate-btn" disabled><i class="fas fa-pause-circle"></i> Deactivate account</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+
+  {# ── Delete ── #}
+  <section class="dz-card dz-hard">
+    <div class="dz-head">
+      <span class="dz-title"><i class="fas fa-trash-alt"></i> Delete account permanently</span>
+    </div>
+    <div class="dz-body">
+      <p class="dz-desc">Permanently remove your account and personal data. This action cannot be undone.</p>
+      {% if user.is_verified or user.kyc_level > 0 %}
+      <p class="dz-warn"><i class="fas fa-info-circle"></i> Because your account is verified, deletion is processed as an anonymization request and personal data is removed permanently.</p>
+      {% endif %}
+      {% if user.is_app_owner() %}
+      <p class="dz-warn"><i class="fas fa-lock"></i> The owner account cannot be deleted.</p>
+      {% else %}
+      <form method="POST" action="{{ url_for('profile.delete_account') }}" id="delete-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="dz-label" for="confirm_delete">Type <code>DELETE MY ACCOUNT</code> exactly to confirm</label>
+        <input type="text" id="confirm_delete" name="confirm_delete" class="dz-input" autocomplete="off" placeholder="DELETE MY ACCOUNT" required>
+        <button type="submit" class="btn-hard" id="delete-btn" disabled><i class="fas fa-trash-alt"></i> Permanently delete account</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+<style nonce="{{ csp_nonce }}">
+.subnav {display:flex;flex-wrap:wrap;gap:.5rem;border-bottom:1px solid var(--surface-3);padding-bottom:.5rem;}
+.subnav-link {display:flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:var(--radius-md);text-decoration:none;color:var(--ink-3);font-size:.8rem;font-weight:600;transition:all .2s;}
+.subnav-link:hover {background:var(--surface-2);color:var(--primary);}
+.subnav-link.active {background:rgba(239,68,68,.1);color:var(--danger);border:1px solid rgba(239,68,68,.3);}
+.subnav-link i {font-size:.9rem;}
+.danger-note {display:flex;align-items:flex-start;gap:.6rem;padding:.85rem 1rem;margin-bottom:1.5rem;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:var(--radius-md);font-size:.85rem;color:var(--ink-2);}
+.danger-note i {color:var(--warn);margin-top:.15rem;}
+.dz-card {background:var(--surface);border:1px solid var(--surface-3);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:1.5rem;box-shadow:var(--shadow-card);}
+.dz-card.dz-hard {border-color:rgba(239,68,68,.35);}
+.dz-head {padding:.95rem 1.25rem;background:var(--surface-2);border-bottom:1px solid var(--surface-3);}
+.dz-hard .dz-head {background:rgba(239,68,68,.07);border-color:rgba(239,68,68,.25);}
+.dz-title {font-family:var(--font-head);font-size:.78rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;display:flex;align-items:center;gap:.5rem;}
+.dz-title i {color:var(--danger);}
+.dz-body {padding:1.25rem;}
+.dz-desc {font-size:.9rem;color:var(--ink-2);margin:0 0 1rem;}
+.dz-warn {display:flex;align-items:flex-start;gap:.5rem;font-size:.82rem;color:#92400e;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);padding:.6rem .75rem;border-radius:var(--radius-sm);margin:0 0 1rem;}
+.dz-label {display:block;font-size:.78rem;font-weight:600;color:var(--ink-3);margin-bottom:.4rem;}
+.dz-label code {background:var(--surface-3);padding:.1rem .35rem;border-radius:4px;font-size:.75rem;}
+.dz-input {width:100%;max-width:340px;padding:.6rem .85rem;border:1px solid var(--surface-3);border-radius:var(--radius-sm);background:var(--bg);color:var(--ink);font-size:.9rem;margin-bottom:1rem;}
+.dz-input:focus {outline:none;border-color:var(--danger);box-shadow:0 0 0 3px rgba(239,68,68,.15);}
+.btn-soft, .btn-hard {display:inline-flex;align-items:center;gap:.5rem;padding:.65rem 1.1rem;border-radius:var(--radius-sm);font-weight:700;font-size:.82rem;cursor:pointer;transition:all .15s;}
+.btn-soft {background:transparent;border:1px solid var(--surface-3);color:var(--ink);}
+.btn-soft:hover:not(:disabled) {background:var(--surface-2);}
+.btn-hard {background:var(--danger);border:1px solid var(--danger);color:#fff;}
+.btn-hard:hover:not(:disabled) {opacity:.9;}
+.btn-soft:disabled, .btn-hard:disabled {opacity:.45;cursor:not-allowed;}
+</style>
+
+<script nonce="{{ csp_nonce }}">
+(function () {
+  function wire(inputId, buttonId, expected) {
+    var input = document.getElementById(inputId);
+    var button = document.getElementById(buttonId);
+    if (!input || !button) return;
+    input.addEventListener('input', function () {
+      button.disabled = input.value.trim() !== expected;
+    });
+  }
+  wire('confirm_deactivate', 'deactivate-btn', 'deactivate');
+  wire('confirm_delete', 'delete-btn', 'DELETE MY ACCOUNT');
+})();
+</script>
+{% endblock %}

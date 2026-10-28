@@ -932,7 +932,7 @@ def login():
                 flash(f"Account locked due to too many failed attempts. Try again in {minutes} minute(s).", "danger")
             else:
                 flash("Account locked due to too many failed attempts. Try again later.", "danger")
-            return render_template("login.html", username=identifier)
+            return redirect(url_for("auth.login"))
 
         if result == AuthResult.INVALID_CREDENTIALS:
             user = payload.get("user")
@@ -945,15 +945,15 @@ def login():
                     flash("Invalid username or password. Account will be locked.", "danger")
             else:
                 flash("Invalid username or password.", "danger")
-            return render_template("login.html", username=identifier)
+            return redirect(url_for("auth.login"))
 
         if result == AuthResult.NOT_FOUND:
             flash("Invalid username or password.", "danger")
-            return render_template("login.html", username=identifier)
+            return redirect(url_for("auth.login"))
 
         if result == AuthResult.INACTIVE:
             flash("This account has been deactivated. Please contact support.", "danger")
-            return render_template("login.html", username=identifier)
+            return redirect(url_for("auth.login"))
 
         if result == AuthResult.SUCCESS:
             user       = payload["user"]
@@ -970,6 +970,11 @@ def login():
                 # Allow login but mark session as requiring verification
                 # User will be redirected to verification page after login
                 login_user(user, remember="remember" in request.form)
+                # Create device session for long-lived tracking
+                from app.auth.sessions import start_device_session
+                device_sid = start_device_session(user, ip, user_agent)
+                if device_sid:
+                    session["device_session_id"] = device_sid
                 session["requires_email_verification"] = True
                 flash("Please verify your email address to continue. A verification code has been sent to your email.", "warning")
                 return redirect(url_for("auth.verify_email_code"))
@@ -990,13 +995,13 @@ def login():
                     mfa_code = request.form.get('mfa_code')
                     if not mfa_code:
                         flash("MFA code is required for owner login", "danger")
-                        return render_template("login.html", username=identifier, require_mfa=True)
+                        return redirect(url_for("auth.login"))
                     
                     # Validate MFA token (skip when the MFA_REQUIRED flow above already verified it)
                     if not session.get("mfa_verified") and not _verify_mfa_token(user, mfa_code):
                         current_app.logger.warning(f"Failed MFA attempt for owner {user.public_id}")
                         flash("Invalid MFA code. Please try again.", "danger")
-                        return render_template("login.html", username=identifier, require_mfa=True)
+                        return redirect(url_for("auth.login"))
                     
                     # MFA passed - track in session
                     session["mfa_verified"] = True
@@ -1007,12 +1012,17 @@ def login():
                         mfa_code = request.form.get('mfa_code')
                         if mfa_code and not session.get("mfa_verified") and not _verify_mfa_token(user, mfa_code):
                             flash("Invalid MFA code. Please try again.", "danger")
-                            return render_template("login.html", username=identifier, require_mfa=True)
+                            return redirect(url_for("auth.login"))
                         # If no MFA code provided but user has MFA, we'll still allow login
                         # (this maintains backward compatibility while encouraging MFA use)
                 
                 # Proceed with login
                 login_user(user, remember="remember" in request.form)
+                # Create device session for long-lived tracking
+                from app.auth.sessions import start_device_session
+                device_sid = start_device_session(user, ip, user_agent)
+                if device_sid:
+                    session["device_session_id"] = device_sid
                 current_app.logger.warning(
                     f"LOGIN_USER session_id={user.get_id()}"
                 )
@@ -1074,6 +1084,11 @@ def login():
                 return redirect(url_for("auth.login"))
 
             login_user(user, remember="remember" in request.form)
+            # Create device session for long-lived tracking
+            from app.auth.sessions import start_device_session
+            device_sid = start_device_session(user, ip, user_agent)
+            if device_sid:
+                session["device_session_id"] = device_sid
             current_app.logger.warning(
                 f"LOGIN_USER session_id={user.get_id()}"
             )
@@ -1234,17 +1249,24 @@ def change_password():
 @login_required
 def logout():
     from app.auth.services import revoke_session
+    from app.auth.sessions import revoke_device_session
     ssid = session.get("server_session_id")
+    dsid = session.get("device_session_id")
     try:
         if ssid:
             revoke_session(ssid)
+    except Exception:
+        pass
+    try:
+        if dsid:
+            revoke_device_session(dsid, user_id=current_user.id, reason="logout")
     except Exception:
         pass
 
     logout_user()
     # Clear all session data
     keys_to_clear = [
-        "server_session_id", "user_id", "username", "ip", "user_agent",
+        "server_session_id", "device_session_id", "user_id", "username", "ip", "user_agent",
         "current_context", "current_org_id", "has_organisations",
         "available_orgs", "needs_profile_completion",
         "active_context_type", "active_context_id", "active_role",
