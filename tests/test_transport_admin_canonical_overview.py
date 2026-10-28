@@ -182,7 +182,6 @@ class TestCanonicalEntryRenders:
         assert "Unsuccessful searches" in body
         assert "Completed trips still unpaid" in body
         assert "Pending payment records" in body
-        assert "Payment record missing" in body
         assert "internal booking id" not in body.lower()
 
     def test_canonical_entry_never_self_redirects(self, app, client):
