@@ -8,7 +8,7 @@ Handles payment processing and transactions
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Dict, List, Optional, Any
-import uuid
+import logging
 from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -58,71 +58,118 @@ class PaymentService:
                     resource_id=booking_id
                 )
 
-            # Check if booking can be paid for
-            if booking.status not in [BookingStatus.COMPLETED, BookingStatus.CONFIRMED]:
+            # Settlement is an end-of-trip event, never a booking-confirmation
+            # event. Do not debit or capture while the ride is merely requested,
+            # assigned, en route, or in progress.
+            if booking.status != BookingStatus.COMPLETED:
                 raise ValidationError(
-                        message=f"Cannot process payment for booking in {booking.status} status"
+                    message="Payment can be settled only after the trip is completed"
                 )
 
-            # Calculate final price
-            final_price = PaymentService._calculate_final_price(booking)
+            # A retry of a captured payment is a read-only success; never debit
+            # the same trip twice.
+            if booking.payment_status == PaymentStatus.CAPTURED:
+                return {
+                    "success": True,
+                    "message": "Payment is already settled",
+                    "data": {
+                        "booking_reference": booking.booking_reference,
+                        "amount": float(booking.final_price or booking.total_amount or 0),
+                        "payment_method": booking.payment_method,
+                        "payment_status": "captured",
+                        "payment_reference": booking.payment_gateway_reference,
+                        "booking_status": str(getattr(booking.status, "value", booking.status)),
+                        "idempotent_replay": True,
+                    },
+                }
 
-            # Generate payment reference
-            payment_ref = PaymentService._generate_payment_reference()
-
-            # Process payment
-            payment_method = sanitized_data.get('payment_method', 'cash')
-
-            # Validate payment method against configured methods
+            # The method is selected and stored when the rider commits the
+            # request. A payment call cannot silently switch it at trip end.
+            stored_method = str(booking.payment_method or "").strip().lower()
+            requested_method = str(
+                sanitized_data.get("payment_method") or stored_method
+            ).strip().lower()
+            if not stored_method:
+                raise ValidationError(message="This trip has no recorded payment method")
+            if requested_method != stored_method:
+                raise ValidationError(
+                    message="Payment method must match the method selected when the ride was requested",
+                    field="payment_method",
+                )
+            payment_method = stored_method
             PaymentService._validate_payment_method(booking, payment_method)
 
+            final_price = PaymentService._calculate_final_price(booking)
+            # Stable reference across retries; wallet idempotency uses the same
+            # stable trip key instead of a timestamp generated on every call.
+            payment_ref = str(
+                booking.payment_gateway_reference or
+                ("TRP-" + str(booking.booking_reference))
+            )[:100]
+
             wallet_txn_id = None
-            if payment_method == 'wallet':
+            payment_processed = False
+            if payment_method == "cash":
+                # Trip completion is not evidence that the driver received
+                # cash. The assigned driver must confirm receipt separately.
+                return {
+                    "success": True,
+                    "message": "Trip completed; cash receipt is still awaiting confirmation",
+                    "data": {
+                        "booking_reference": booking.booking_reference,
+                        "amount": float(final_price),
+                        "payment_method": payment_method,
+                        "payment_status": "pending",
+                        "payment_reference": None,
+                        "booking_status": str(getattr(booking.status, "value", booking.status)),
+                        "requires_cash_receipt_confirmation": True,
+                    },
+                }
+            elif payment_method == "wallet":
                 wallet_service = WalletService()
-                account = wallet_service.account_repo.get_by_user_id(booking.user_id, booking.currency)
+                account = wallet_service.account_repo.get_by_user_id(
+                    booking.user_id, booking.currency
+                )
                 if not account:
                     raise ValidationError(message="No wallet account found")
                 balance = wallet_service.ledger_repo.get_balance(account.id, booking.currency)
                 if balance < final_price:
                     raise ValidationError(message="Insufficient wallet balance")
-                client_request_id = f"TRN-PAY-{booking_id}-{int(datetime.now(timezone.utc).timestamp())}"
+                client_request_id = "TRN-PAY-%s" % booking.booking_reference
                 result = wallet_service.withdraw(
                     account_id=str(account.id),
                     amount=final_price,
                     currency=booking.currency,
                     client_request_id=client_request_id,
-                    metadata={"transport_booking_id": str(booking_id), "payment_reference": payment_ref}
+                    metadata={
+                        "transport_booking_id": str(booking_id),
+                        "booking_reference": booking.booking_reference,
+                        "payment_reference": payment_ref,
+                    },
                 )
                 if result.get("status") != "success":
                     raise ValidationError(message=result.get("error", "Wallet payment failed"))
                 wallet_txn_id = result.get("transaction_id")
-                payment_status = 'completed'
+                payment_status = "captured"
                 payment_processed = True
-            elif payment_method == 'cash':
-                payment_status = 'pending'
-                payment_processed = False
             else:
-                payment_status = 'processing'
+                # Card/mobile-money methods remain pending until an integrated
+                # provider returns a verifiable success. Never simulate capture.
+                payment_status = "pending"
                 payment_processed = PaymentService._process_online_payment(
                     amount=final_price,
-                    payment_data=sanitized_data
+                    payment_data=sanitized_data,
                 )
-                if payment_processed:
-                    payment_status = 'completed'
-                else:
-                    payment_status = 'failed'
 
-            # Update booking with payment info
             booking.final_price = final_price
-            booking.payment_method = payment_method
-            booking.payment_status = PaymentStatus.CAPTURED if payment_processed else PaymentStatus.PENDING
-            booking.payment_gateway_reference = payment_ref
+            booking.payment_status = (
+                PaymentStatus.CAPTURED if payment_processed else PaymentStatus.PENDING
+            )
+            booking.payment_gateway_reference = payment_ref if payment_processed else None
             booking.payment_captured_at = datetime.now(timezone.utc) if payment_processed else None
             booking.wallet_transaction_id = wallet_txn_id or booking.wallet_transaction_id
-
-            if payment_processed:
-                booking.status = BookingStatus.CONFIRMED
-
+            # Do not rewrite Booking.status when a payment succeeds. A completed
+            # trip stays completed; payment has its own independent lifecycle.
             db.session.commit()
 
             # Create audit log
@@ -199,23 +246,21 @@ class PaymentService:
         if not current_app.config.get('PAYMENT_PROCESSING_ENABLED', False):
             raise RuntimeError("Payment processing is disabled in production. Configure PAYMENT_PROCESSING_ENABLED and integrate with a real payment gateway.")
 
-        # In production, this should integrate with Stripe, PayPal, etc.
-        # For now, we'll raise an error to prevent accidental use of mock payments
-        raise NotImplementedError(
-            "Online payment processing not implemented. "
-            "Integrate with a real payment gateway for production use. "
-            "Set PAYMENT_PROCESSING_ENABLED=true only after integration."
+        # No transport card/mobile-money capture is implemented in this
+        # service yet. Fail closed rather than fabricating a successful payment.
+        raise ServiceUnavailableError(
+            message=(
+                "The selected payment provider is not yet integrated for "
+                "transport settlement. The trip remains completed and unpaid."
+            )
         )
 
     @staticmethod
-    def _generate_payment_reference() -> str:
-        """Generate unique payment reference"""
-        import random
-        import string
-        prefix = "PAY"
-        timestamp = datetime.now().strftime("%Y%m%d")
-        random_chars = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-        return f"{prefix}{timestamp}{random_chars}"
+    def _generate_payment_reference(booking: Optional[Booking] = None) -> str:
+        """Stable payment reference scoped to one trip."""
+        if booking is not None and booking.booking_reference:
+            return ("TRP-" + str(booking.booking_reference))[:100]
+        raise ValidationError("A booking reference is required for a payment reference")
 
     @staticmethod
     def _validate_payment_method(booking: Booking, payment_method: str) -> None:
@@ -249,9 +294,13 @@ class PaymentService:
         except ValidationError:
             raise
         except Exception as exc:
-            logger.warning(f"Payment method validation failed, allowing: {exc}")
-            # Fail open - allow payment if validation fails
-            pass
+            logging.getLogger(__name__).error(
+                "Payment method validation could not reach configuration: %s",
+                exc, exc_info=True,
+            )
+            raise ServiceUnavailableError(
+                message="Payment-method configuration is unavailable; payment was not processed"
+            ) from exc
 
     @staticmethod
     def _get_amount_range(amount: Decimal) -> str:
