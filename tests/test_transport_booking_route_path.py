@@ -263,7 +263,7 @@ def _make_matchable_driver(app, label="rt"):
     with app.app_context():
         dp = DriverProfile(
             user_id=owner_user_id,
-            driver_code=f"RT-{label}-{uuid.uuid4().hex[:6].upper()}",
+            driver_code=f"RT-{label[:7]}-{uuid.uuid4().hex[:6].upper()}",
             verification_tier="platform_verified",
             compliance_status=ComplianceStatus.APPROVED,
             is_active=True,
