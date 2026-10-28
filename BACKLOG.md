@@ -3223,14 +3223,15 @@ Yes — this BACKLOG.md final report; `.opencode/thread_state.md` unchanged by t
 
 ## BL-11: Normalize Booking.created_at to TIMESTAMPTZ
 
-- Status: Not started
+- Status: Done, Resolved: 2026-10-28 (superseded by TZ-UNIFY-01/02/02b/03 — permanent rule in AGENTS.md §51)
 - Raised: 2026-09-22
 - Context: Booking.created_at is TIMESTAMP WITHOUT TIME ZONE while Booking.pickup_time is TIMESTAMP WITH TIME ZONE. The constraint ck_pickup_time_sane compares the two across a type boundary, so Postgres coerces created_at using the DB session TZ. In dev that's benign; in prod with a different session TZ the 5-minute grace window silently shifts by the offset.
 - What needs to happen: ALTER COLUMN transport_bookings.created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE '<app write TZ>', plus verification that the constraint still behaves as intended. Audit other naive/aware column pairs across the schema for the same class of bug (BaseModel.created_at is shared).
+- Resolution: Closed by the site-wide TZ-UNIFY chain (`c4b306c2ed73` → `c8c6a2c5a3f9` → `31287acd4eb8` → `85776e36d829` → `fc87cdbd0e6a`), which converted ALL naive timestamp columns (incl. transport_bookings.created_at) to TIMESTAMPTZ. Historical nuance differs from this entry's original plan: legacy naive values were `Africa/Nairobi` wall-clock, so the conversions ran plain `ALTER COLUMN TYPE TIMESTAMPTZ` under `PGTZ=Africa/Nairobi` — NOT `AT TIME ZONE 'UTC'` (which would have shifted values +3h). The full-schema naive/aware audit this entry requested was completed: prod and test both have naive=0, aware=983; fresh-install rebuild verified with full catalog parity (2026-10-28). Permanent rule codified in AGENTS.md §51 and README invariants.
 - Owner/area: Transport / Data model
-- Authorization: Not authorized (record only)
+- Authorization: authorized via the TZ-UNIFY node contracts (TZ-UNIFY-01/02/03) and the owner-approved 2026-10-28 migration-history repair
 - Evidence/source: app/transport/models.py (BaseModel + Booking column defs), ck_pickup_time_sane constraint
-- Links: ck_pickup_time_sane constraint, BaseModel.created_at
+- Links: ck_pickup_time_sane constraint, BaseModel.created_at, AGENTS.md §51, docs/transport/nodes/TZ-UNIFY-01-contract.md
 
 ---
 
@@ -4291,7 +4292,7 @@ part of the pgcrypto closure, but as a distinct H3-B gate.
 ---
 
 ## H3-MODEL-SCHEMA-DRIFT — Agent model/schema alignment before next `flask db migrate`
-- Status: Not started (deferred follow-up; not a Stage C gate)
+- Status: Timestamp half DONE (resolved: 2026-10-28 — all four agent models now declare `DateTime(timezone=True)` with `server_default=func.now()` preserved and `is_deleted` overridden without index; verified against post-TZ-UNIFY `fc87cdbd0e6a` schema where naive columns = 0). Index/unique-constraint half (15 `ix_agent_*` additions + `uq_agent_onboardings_reference`) is STILL OPEN — check before the next `flask db migrate`.
 - Raised: 2026-10-22
 - Context: Running `flask db migrate` against a fresh H3-A database produced the diagnostic migration `f10d3e9c7082_h3_drift_check.py`, which has been deleted (never applied, never committed). The drift source is the models, not the schema. Detected divergences: 12 timestamp type changes (`timestamptz` → timestamp without time zone) across 4 agent tables × `created_at`, `updated_at`, `deleted_at`; 15 `ix_agent_*` index additions; and replacement of `uq_agent_onboardings_reference` with `ix_agent_onboardings_reference`. The H3 baseline schema is correct and preserves timezone awareness and uniqueness.
 - What needs to happen: Align `app/wallet/models/agent_float.py` and `app/wallet/models/agent_onboarding.py` to the H3 schema before future `flask db migrate` use:
@@ -4369,3 +4370,27 @@ part of the pgcrypto closure, but as a distinct H3-B gate.
 - What needs to happen: owner decides per credential: (a) Redis - remove the password from env if the servers run without requirepass (local already does), or move to a secrets file like pgpass; note removing it from `.env.prod`/`.env.docker` only after confirming the redis service config; (b) SMTP - revoke/rotate the Gmail app password (account.google.com) and then decide the storage location (env vs secret file). Never paste rotated values into chat or tracked files.
 - Owner/area: security / operations decision
 - Links: `.env` (33, 141, 169, 170), `.env.prod:36-38`, `.env.docker:23-24`, BACKLOG DB-PGPASS-02 (rotation precedent)
+
+## TZ-UNIFY-FOLLOWUPS — Residual items from the 2026-10-28 timezone unification (OPEN)
+- Status: Open (three small items; the TZ-UNIFY work itself is DONE and codified in AGENTS.md §51 + README invariants)
+- Raised: 2026-10-28
+- Context: The naive/aware epoch is closed (prod/test naive=0, aware=983; fresh install reproduces prod exactly). Three follow-ups from that work remain:
+  1. CI/verification gate: add an automated empty-database `flask db upgrade` + catalog-parity + `flask db check` gate so a migration chain that only works on an already-upgraded DB (the 85776 failure class) cannot pass review again.
+  2. BaseModel/TimestampMixin drift: `app/models/base.py` redefines `created_at`/`updated_at` on top of `TimestampMixin` but the override drops the `server_default=func.now()` the mixin declares. Existing DB columns keep server defaults, but fresh model-bootstrap tables and future autogenerate can drift — and `migrations/env.py` does not set `compare_server_default=True`, so `flask db check` will not catch it. Decide which class owns the timestamps and align.
+  3. Stale front-page copy tests: 3 browser/text tests still expect removed copy ("Book Your Ride Now!", "Become a driver", "Add a vehicle"). Unrelated to timezone; fix in the frontend workstream.
+- What needs to happen: implement items as separate small nodes; item 1 is the highest-value regression protection.
+- Owner/area: database reliability (1, 2), frontend (3)
+- Links: AGENTS.md §51, migrations/versions/{c4b306c2ed73,c8c6a2c5a3f9,31287acd4eb8,85776e36d829,fc87cdbd0e6a}_*, app/models/base.py, migrations/env.py
+
+## MIGRATION-BASELINE-FUTURE — Evaluate "always from a re-frozen static baseline" fresh-install strategy (FUTURE, owner-decision)
+- Status: Open (recorded 2026-10-28; owner-unscheduled, not authorized)
+- Raised: 2026-10-28
+- Context: Current contract (README "Database migrations" section; AGENTS.md §52) provisions fresh installs by replaying the entire linear chain from `h3a20261020` — frozen static baseline → TZ-UNIFY chain → head — and lands catalog-identical to production (proven 2026-10-28). This works, but replay cost grows with every applied revision (each new migration adds forever to every fresh install, CI gate, and disaster-recovery rehearsal). Long-term, the repository may choose to provision fresh installs **always from the baseline-create-all class**: a periodically re-frozen static baseline (a fresh `h3a…`-style `_DDL` snapshot, i.e. "base create_all" governance) instead of full-history replay.
+- What needs to happen (when the owner triggers the evaluation node):
+  1. Owner schedules an evaluation node with consequences named: replay-vs-snapshot trade-off, review burden, diff-noise, and how schema-question tooling maps.
+  2. A re-freeze produces a NEW frozen `_DDL` baseline (reviewable statement list, deterministic on any empty disposable DB) — it must NOT derive schema from runtime model imports and must NOT call `metadata.create_all()` at migration runtime; the "create_all" posture means generate-and-freeze (a static snapshot of what create_all would emit), never dynamic create-all executed during upgrades.
+  3. Existing databases get an explicit evidence-backed transition policy: how already-applied databases re-anchor Alembic (`stamp` scope, revision-id policy, in-place vs rebuild), and how prod/test parity gates are re-run after the re-freeze (§20.3.1/§48.8 gates, §49.3 verification protocol).
+  4. Until then: ordinary incremental migrations follow §20; the linear-chain contract in README/AGENTS §52 remains the governing one.
+- Constraints/red lines: this is the §20.3.1-class authorized-reconstruction operation — requires explicit owner approval per re-freeze, independent review, fresh-install reproducibility, and a catalog-parity gate against BOTH prod and test. Recording this entry authorizes nothing.
+- Owner/area: database reliability / owner decision
+- Links: README "Database migrations — architecture, how to use, and why", AGENTS.md §52.4, migrations/versions/h3a20261020_static_baseline.py, BACKLOG TZ-UNIFY-FOLLOWUPS

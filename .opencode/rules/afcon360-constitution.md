@@ -1373,3 +1373,32 @@ Archive readability is not restore verification: never call the post-cutover arc
 4. Production rollback is an explicitly authorized operational procedure with precondition checks — never an automatic response. Do not roll back solely because of an unverified warning or a superficial mismatch; investigate first and retain evidence. Treat `.env.local.pre_cutover` as a configuration snapshot only; re-check its database name before any rollback use.
 5. Backups, dump files, and credentials remain outside source control. Never commit `.env.local`, `.env.local.pre_cutover`, dump archives, or credential-bearing files (§49.B).
 6. Any future agent performing database-reliability work must read the documented recovery information in root `README.md` before proposing operations that could affect production data.
+
+---
+
+## §51 Timezone Unification (Permanent Rule — TZ-UNIFY, 28 October 2026)
+
+**Cross-reference: root `AGENTS.md` §51 is the authoritative short form; this section mirrors it for the OpenCode consolidation with no information loss. Applies to every agent, every model change, every timestamp write or comparison, forever.**
+
+### A. The rules
+
+1. Every `DateTime` column is declared `DateTime(timezone=True)`. A naive `DateTime` column or model default is a defect; fix it at the declaration, not at the call site.
+2. Application code must never compare a naive datetime with an aware one. Use aware values everywhere: `datetime.now(timezone.utc)`, never `datetime.now()` or `utcnow()`.
+3. If legacy or external input arrives naive, it is treated as UTC unless a documented source proves otherwise; coerce to aware at the boundary and leave the storage layer untouched.
+4. Display-side conversion to a user's timezone happens only at the presentation edge (templates, serializers). Never convert in models, services, or the database layer.
+5. Templates and serializers must not re-shift UTC values that the edge already renders correctly.
+
+### B. The historical nuance — keep this, or you will corrupt data
+
+Legacy naive columns were NOT UTC — they held `Africa/Nairobi` wall-clock (the DB session TZ), even though the app wrote `datetime.now(timezone.utc)` into them. The TZ-UNIFY conversions (TZ-UNIFY-01/02/02b/03: `c4b306c2ed73` → `c8c6a2c5a3f9` → `31287acd4eb8` → `85776e36d829` → `fc87cdbd0e6a`) therefore ran plain `ALTER COLUMN TYPE TIMESTAMPTZ` under `PGTZ=Africa/Nairobi`. Do not invent new `AT TIME ZONE 'UTC'` conversions for these columns (that would shift every legacy value by +3 hours). Any new naive→aware conversion must first prove the legacy values' timezone with the temp-table insertion probe.
+
+### C. Migration-chain facts (do not disturb)
+
+- The repaired chain `c4b → c8c6 → 31287 → 85776 → fc87` is the authoritative conversion history; `85776`'s 370 index recreations are the deliberate inverse of `c8c6`'s 366 drops plus 4 genuinely new indexes. Do not trim them; do not fix collisions with `checkfirst=True`.
+- Fresh-install reproducibility was proven 28 October 2026: empty database upgraded to `fc87cdbd0e6a` with full catalog parity to production (226 tables, 4,260 columns, 0 naive, 983 aware). Keep a fresh-install upgrade + parity check in the verification routine for timestamp-touching migrations.
+- The `c8c6a2c5a3f9`/`31287acd4eb8` source frames were recovered from compiled artifacts during the authorized 28 October 2026 repair; they are compensated restorations, verified byte-equivalent in op stream, not decompiler output.
+- Backlog: BL-11 closed by this work; `H3-MODEL-SCHEMA-DRIFT` timestamp half resolved, index/unique half open; `TZ-UNIFY-FOLLOWUPS` records CI gate default-drift, and stale front-page tests.
+
+### D. Verification hook
+
+When a task touches timestamps: `information_schema.columns` naive count must remain 0 and aware count must remain 983 (plus intentional new columns), on prod AND test. Report both counts in the work item's evidence.

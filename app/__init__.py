@@ -2348,10 +2348,37 @@ def create_app(config_object=None) -> Flask:
             nonce = secrets.token_urlsafe(16)
         return {"csp_nonce": nonce}
 
+    @app.before_request
+    def touch_device_session():
+        """Sliding expiry: extend device session on authenticated requests.
+        Throttled to ~1/hour per session via touch_device_session()."""
+        from flask import session, current_app
+        from flask_login import current_user
+        
+        # Only for authenticated users with a device session
+        if not current_user.is_authenticated:
+            return
+        
+        dsid = session.get("device_session_id")
+        if not dsid:
+            return
+        
+        # Delegate to the session module (handles throttling & cap logic)
+        try:
+            from app.auth.sessions import touch_device_session
+            touch_device_session(dsid)
+        except Exception:
+            # Non-fatal: never break the request for session housekeeping
+            current_app.logger.debug("Device session touch failed", exc_info=True)
+
     @app.route('/csp-report', methods=['POST'])
     @csrf.exempt
     def csp_report():
         """Endpoint to receive CSP violation reports. Logs payload for analysis.
+
+        Supports both legacy `application/csp-report` (single object with
+        "csp-report" key) and the modern Reporting API `application/reports+json`
+        (array of report objects under top-level array).
 
         Browsers POST CSP reports without a CSRF token (the request is generated
         by the user agent, not a form), so this endpoint must be CSRF-exempt.
@@ -2359,34 +2386,51 @@ def create_app(config_object=None) -> Flask:
         """
         # Log raw request for debugging
         current_app.logger.debug("CSP report content-type: %s", request.content_type)
-        current_app.logger.debug("CSP report raw data: %s", request.get_data(as_text=True)[:500])
+        raw = request.get_data(as_text=True)[:2000]
+        current_app.logger.debug("CSP report raw data: %s", raw)
         
         try:
-            # Handle both application/csp-report and application/json
-            report = request.get_json(force=True, silent=True) or {}
+            payload = request.get_json(force=True, silent=True)
         except Exception:
-            report = {}
-        try:
-            # Browsers nest the payload under "csp-report"; be tolerant and
-            # log one informative line per violation so the source template
-            # can be located from the log alone. Endpoint path, 204
-            # response, non-DB and header architecture are unchanged.
-            body = report.get("csp-report", report) if isinstance(report, dict) else {}
+            payload = None
+        
+        # Normalize to a list of report bodies
+        reports = []
+        if isinstance(payload, list):
+            # Reporting API: payload is array of report objects
+            for item in payload:
+                if isinstance(item, dict) and item.get("type") == "csp-violation":
+                    reports.append(item.get("body", item))
+        elif isinstance(payload, dict):
+            # Legacy format: single object, possibly nested under "csp-report"
+            if "csp-report" in payload:
+                reports.append(payload["csp-report"])
+            else:
+                reports.append(payload)
+        
+        for body in reports:
             if not isinstance(body, dict):
-                body = {}
-            directive = body.get("effective-directive") or body.get("violated-directive") or "unknown"
-            blocked = body.get("blocked-uri") or body.get("blocked-URI") or "unknown"
-            source = body.get("source-file") or "unknown"
-            document = body.get("document-uri") or body.get("document-URL") or "unknown"
-            line_number = body.get("line-number") or body.get("lineNumber") or "unknown"
-            column_number = body.get("column-number") or body.get("columnNumber") or "unknown"
-            script_sample = body.get("script-sample") or body.get("scriptSample") or ""
+                continue
+            # Normalize field names (camelCase vs snake_case vs kebab-case)
+            def g(*keys):
+                for k in keys:
+                    if k in body:
+                        return body[k]
+                return "unknown"
+            
+            directive = g("effective-directive", "violated-directive")
+            blocked = g("blocked-uri", "blocked-URI", "blockedURL")
+            source = g("source-file", "sourceFile")
+            document = g("document-uri", "document-URL", "documentURL")
+            line_number = g("line-number", "lineNumber")
+            column_number = g("column-number", "columnNumber")
+            script_sample = g("script-sample", "scriptSample") or ""
+            
             current_app.logger.info(
                 "CSP violation: directive=%s blocked=%s source=%s document=%s line=%s col=%s sample=%s",
                 directive, blocked, source, document, line_number, column_number, script_sample[:100] if script_sample else "",
             )
-        except Exception as e:
-            current_app.logger.error("CSP report parse error: %s", e)
+        
         return ("", 204)
 
     # DB schema validation moved to _run_deferred_startup (first-request handler)

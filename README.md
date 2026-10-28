@@ -20,6 +20,8 @@ every environment.
 - [Configuration](#configuration)
 - [Production database cutover and recovery](#production-database-cutover-and-recovery--25-october-2026)
 - [Documentation](#documentation)
+- [Adding or activating a database enum](#adding-or-activating-a-database-enum)
+- [Database migrations — architecture, how to use, and why](#database-migrations--architecture-how-to-use-and-why)
 - [Known limitations](#known-limitations)
 
 ## Architecture
@@ -142,6 +144,13 @@ The state machine, delivery boundary, and security invariants are defined in
 - Every wallet operation requires idempotency and balanced ledger entries.
 - Frontend behavior must comply with the CSP nonce policy; prefer external
   JavaScript modules over inline handlers/scripts.
+- All timestamps are timezone-aware UTC, end to end: every `DateTime` column
+  must be declared `DateTime(timezone=True)`, comparisons must use aware values
+  (`datetime.now(timezone.utc)`, never naive `datetime.now()`/`utcnow()`), and
+  conversion to a user's timezone happens only at the presentation edge. The
+  TZ-UNIFY chain (`c4b306c2ed73` → `fc87cdbd0e6a`) converted all legacy naive
+  columns; those legacy values were `Africa/Nairobi` wall-clock, so never
+  re-interpret them with new `AT TIME ZONE 'UTC'` conversions. See AGENTS.md §51.
 - An active organisation context lands in that organisation's public workspace;
   the workspace can show its organisation-owned events, properties, and
   accommodation bookings without changing the user's identity or granting new
@@ -512,6 +521,88 @@ enum-reconciliation roadmap.
   Admin Compliance (6), Accommodation (12+), Audit (4)
 - **CATALOGUED Category B**: Notifications (4), Audit (4), Events (4),
   Accommodation (20+), Profile (if any), Wallet (if any)
+
+## Database migrations — architecture, how to use, and why
+
+One single, linear Alembic chain. One head. No shortcuts.
+
+### The architecture
+
+```
+h3a20261020 (frozen static baseline, root)
+  → c076b257b11d → 1792869659 → d3ba8c51f407 → 1793011323 → 1793013676
+  → c4b306c2ed73 (TZ-UNIFY-01) → c8c6a2c5a3f9 (TZ-UNIFY-02)
+  → 31287acd4eb8 (TZ-UNIFY-02b) → 85776e36d829 (TZ-UNIFY-02 index recreation)
+  → fc87cdbd0e6a (TZ-UNIFY-03)   [head]
+```
+
+- **The root is a frozen baseline**: `h3a20261020_static_baseline.py` contains an
+  explicit, reviewable `_DDL` statement list. It does not import application
+  models and never calls `metadata.create_all()`.
+- **Everything else is ordinary autogeneration** via `flask db migrate`
+  (Flask-Migrate/Alembic) from the SQLAlchemy models, which are the
+  canonical source driven by the model registry.
+- **Fresh installs are a replay, not a rebuild**: `flask db upgrade` from an
+  empty database must produce a catalog identical to production. This was
+  proven on 2026-10-28 (226 tables, 4,260 columns, 1,746 indexes, 3,068
+  constraints, 0 naive timestamps, 983 aware). Keep that proof current:
+  whenever a timestamp- or index-touching migration lands, re-run the
+  fresh-install replay and compare counts.
+- **Revision IDs are not proof of schema.** `alembic_version` records the
+  current revision only. IDs can match while schemas diverge; compare catalogs.
+
+### How to use it
+
+```powershell
+# inspect (always safe, run these first)
+python -m flask db heads          # expect exactly one head
+python -m flask db current        # which revision is the connected DB at
+python -m flask db history        # the linear chain
+python -m flask db check          # models vs this database
+
+# ordinary schema change (agents propose, owner runs)
+# 1. change the model (source of truth)
+# 2. owner runs:
+python -m flask db migrate -m "description"
+# 3. inspect the generated file — it must contain every intended change and
+#    nothing else; if autogeneration missed something, fix the SOURCE and
+#    regenerate. Never hand-patch the migration file.
+# 4. after review, owner runs:
+python -m flask db upgrade
+```
+
+For test/verification environments, point at the migration-built `*_test`
+database (`APP_ENV=testing`, `TEST_DATABASE_URL`) — never a model-bootstrap
+schema. If a migration adapts legacy naive timestamps, keep the documented
+`PGTZ=Africa/Nairobi` upgrade convention and AGENTS.md §51.2's history rules.
+
+### Running a fresh-install proof (required comparator)
+
+```powershell
+$env:APP_ENV='testing'; $env:FLASK_ENV='testing'
+$env:TEST_DATABASE_URL='postgresql://<user>@localhost:5432/<disposable_db>'
+$env:DISABLE_REDIS='1'
+dropdb -w -U <user> -h localhost --if-exists <disposable_db>
+createdb -w -U <user> -h localhost <disposable_db>
+python -m flask db upgrade     # must reach head with zero errors
+python -m flask db check       # expect: No new upgrade operations detected
+# then compare table/column/index/constraint counts against production
+```
+
+### Why we decided this (the TZ-UNIFY lesson)
+
+Between 16–20 November and October 2026 the TZ-UNIFY work demonstrated the
+failure mode of every alternative: an applied revision whose file was deleted
+stranded databases ("Can't locate revision"); autogeneration against an
+already-converted database produced a "symptom" migration (`85776e36d829`)
+that skipped conversion history and duplicated 366 existing indexes, breaking
+fresh installs; and a branded-ahead database passed unit tests while failing
+the chain. The rules now in place: **never delete or rewrite an applied
+migration** (restore instead, with owner approval and a structural-equivalence
+proof), **never stamp a database to hide drift**, never rely on
+`checkfirst=True` to mask a duplicate-index defect, and verify every
+migration batch with an empty-database replay. See AGENTS.md §48, §51, and
+§52 for the enforceable forms.
 
 ## Known limitations
 

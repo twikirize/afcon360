@@ -547,4 +547,68 @@ A deliberately authorized baseline reconstruction or migration-history squash, s
 
 ---
 
+## 51. Timezone Unification (Permanent Rule — TZ-UNIFY, 28 October 2026)
+
+**Applies to every agent, every model change, every timestamp write or comparison, forever.**
+
+AFCON360 stores and computes time in **UTC, timezone-aware, end to end**. The naive/aware mixed-schema era is closed. Do not reopen it.
+
+### 51.1 The rules
+
+1. Every `DateTime` column is declared `DateTime(timezone=True)`. A naive `DateTime` column or model default is a defect; fix it at the declaration, not at the call site.
+2. Application code must never compare a naive datetime with an aware one. Use aware values everywhere: `datetime.now(timezone.utc)`, never `datetime.now()` or `utcnow()`.
+3. If legacy or external input arrives naive, it is treated as UTC unless a documented source proves otherwise; coerce to aware at the boundary and leave the storage layer untouched.
+4. Display-side conversion to a user's timezone happens **only at the presentation edge** (templates, serializers). Never convert in models, services, or the database layer.
+5. Templates and serializers must not re-shift UTC values that the edge already renders correctly.
+
+### 51.2 The historical nuance — keep this, or you will corrupt data
+
+Legacy naive columns were **not** UTC — they held `Africa/Nairobi` wall-clock (the DB session TZ), even though the app wrote `datetime.now(timezone.utc)` into them.
+
+- The TZ-UNIFY conversions (TZ-UNIFY-01/02/02b/03: `c4b306c2ed73` → `c8c6a2c5a3f9` → `31287acd4eb8` → `85776e36d829` → `fc87cdbd0e6a`) therefore ran **plain `ALTER COLUMN TYPE TIMESTAMPTZ` under `PGTZ=Africa/Nairobi`**.
+- Do **not** invent new `AT TIME ZONE 'UTC'` conversions for these columns; that would shift every legacy value by +3 hours.
+- Any new naive→aware conversion must first prove the legacy values' timezone with the temp-table insertion probe before it runs.
+
+### 51.3 Migration-chain facts (do not disturb)
+
+- The repaired chain `c4b → c8c6 → 31287 → 85776 → fc87` is the authoritative history for the conversion; `85776e36d829`'s 370 index recreations are the deliberate inverse of `c8c6`'s 366 drops plus 4 genuinely new indexes. Do not trim them and do not fix collisions with `checkfirst=True`.
+- Fresh-install reproducibility was proven on 28 October 2026: an empty database upgraded to `fc87cdbd0e6a` with full catalog parity to production (226 tables, 4,260 columns, 0 naive, 983 aware). Keep a fresh-install upgrade + parity check in the verification routine for any future timestamp-touching migration.
+- The original `c8c6a2c5a3f9`/`31287acd4eb8` source frames were recovered from compiled artifacts during the authorized 28 October 2026 repair; they are compensated restorations, verified byte-equivalent in op stream, not decompiler output.
+
+### 51.4 Verification hook
+
+When a task touches timestamps: `information_schema.columns` naive count must remain **0** and aware count must remain **983** (plus intentional new columns), on prod AND test. Report both counts in the work item's evidence.
+
+---
+
+## 52. Migration Architecture & Fresh-Install Law (Permanent Rule — 28 October 2026)
+
+**Applies to every agent, every migration task. Companion to §20, §49, §51.**
+
+### 52.1 The architecture
+
+AFCON360 has **one linear Alembic chain, one head**:
+
+`h3a20261020` (frozen static baseline, root) → `c076b257b11d` → `1792869659` → `d3ba8c51f407` → `1793011323` → `1793013676` → `c4b306c2ed73` → `c8c6a2c5a3f9` → `31287acd4eb8` → `85776e36d829` → `fc87cdbd0e6a` [head]
+
+- The root baseline is **frozen DDL**: an explicit reviewable statement list. It does not import current models and never calls `create_all()`.
+- All ordinary revisions come from Flask-Migrate autogeneration out of the models (canonical source, model registry). Hand-patching is prohibited per §20.
+- Fresh install = full replay from empty; it must end catalog-identical to production. This is the migration contract, not an aspiration.
+
+### 52.2 How agents use it
+
+1. Inspect before anything: `flask db heads` (expect exactly one), `current`, `history`, `db check`.
+2. Ordinary change: edit the model → owner runs `flask db migrate` → agent inspects the generated file against §20.8 (every intended change, nothing more) → incomplete ⇒ fix the source and regenerate, never patch the artifact → owner runs `flask db upgrade`.
+3. Test paths use the migration-built `*_test` database (§21). A fresh-install proof — empty disposable DB, `flask db upgrade` zero errors, `flask db check` clean, catalog counts vs production — is **required evidence for any migration that touches timestamps, indexes, or constraints**.
+
+### 52.3 Why (the lesson, in one paragraph)
+
+The TZ-UNIFY saga (Oct 2026) proved the alternatives fail: a deleted applied revision stranded databases at an unreachable `alembic_version`; autogeneration run against an already-converted database produced a symptom-only revision that skipped 441 conversions and duplicated 366 indexes; and a stamped-ahead database passed unit tests while its chain could not rebuild the schema. Therefore: never delete or rewrite an applied migration (restore with owner approval + structural-equivalence proof — as done 2026-10-28 for `c8c6a2c5a3f9`/`31287acd4eb8`); never stamp to hide drift; never mask duplicate-index defects with `checkfirst=True`; a revision ID and a green test suite are never, by themselves, proof of schema state.
+
+### 52.4 Future direction under evaluation
+
+The backlog (`MIGRATION-BASELINE-FUTURE`) records an owner-unscheduled evaluation of provisioning fresh installs from a periodically re-frozen static baseline (baseline-create-all class) instead of full-history replay. Until that decision, §52.1 expansion and replay rules govern. Any baseline re-freeze follows the §20.3.1/§48.8 authorized-reconstruction gates: owner approval, reviewable frozen DDL, no runtime model imports, and a catalog-parity gate against both prod and test.
+
+---
+
 *End of Directive. Begin with UNDERSTAND.*
