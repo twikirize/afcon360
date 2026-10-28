@@ -61,6 +61,7 @@
           {% set dropoff = ride.dropoff_location if ride.dropoff_location is mapping else {} %}
           <tr>
             <td><div class="ta-ops-ref">{{ ride.public_id }}</div><small>{{ ride.created_at.strftime('%Y-%m-%d %H:%M UTC') if ride.created_at else '—' }}</small></td>
+            <td>#{{ cycle.cycle_number }}</td>
             <td>{{ pickup.get('display_name') or pickup.get('address') or pickup.get('label') or 'Pickup saved' }}<br><span aria-hidden="true">↓</span><br>{{ dropoff.get('display_name') or dropoff.get('address') or dropoff.get('label') or 'Destination saved' }}</td>
             <td>{{ (ride.service_type.value if ride.service_type.value is defined else ride.service_type)|replace('_',' ')|title }}<br>{{ (ride.vehicle_class or '—')|title }} · {{ ride.passenger_count or 1 }} passenger(s)</td>
             <td>{{ ride.currency_code or '—' }} {{ '%.2f'|format(ride.fare_estimate_amount or 0) }}</td>
@@ -78,11 +79,11 @@
 
   <section class="ta-ops-section" id="failed-searches">
     <h2>Unsuccessful searches — last 24 hours</h2>
-    <p class="ta-ops-desc">Latest search cycle ended without a driver acceptance. A rider can retry; this is not a completed booking.</p>
+    <p class="ta-ops-desc">Every cycle that ended without driver acceptance in the last 24 hours, including earlier attempts for riders who later retried. This is not a completed booking.</p>
     {% if failed_request_rows %}
     <div class="ta-ops-table-wrap">
       <table class="ta-ops-table">
-        <thead><tr><th>Reference / received</th><th>Route</th><th>Ride</th><th>Payment choice</th><th>Outcome</th><th>Ended</th></tr></thead>
+        <thead><tr><th>Reference / received</th><th>Cycle</th><th>Route</th><th>Ride</th><th>Payment choice</th><th>Outcome</th><th>Ended</th></tr></thead>
         <tbody>
           {% for ride, cycle in failed_request_rows %}
           {% set pickup = ride.pickup_location if ride.pickup_location is mapping else {} %}
