@@ -466,17 +466,11 @@ class DriverOfferAcceptResource(Resource):
         if error:
             return error, status
 
-        vehicle_id = profile.current_vehicle.id if profile.current_vehicle else None
-        if not vehicle_id:
-            return {
-                "success": False,
-                "error": "driver has no vehicle to accept with",
-            }, 400
-
-        # Request-first offers are persisted against RideRequest/SearchCycle.
-        # Convert to Booking only after the winning driver+vehicle claim can
-        # commit; the legacy Redis/Booking path remains unchanged for old refs.
-        from app.transport.models import RideRequest
+        # Request-first offers select a concrete eligible vehicle at offer
+        # creation time. Accept the exact server-recorded offer, not merely
+        # DriverProfile.current_vehicle (which can be unset or differ from the
+        # vehicle offered). The driver cannot substitute an arbitrary vehicle.
+        from app.transport.models import RideRequest, OfferAttempt, SearchCycle
         request_first = RideRequest.query.filter_by(
             public_id=booking_reference, is_deleted=False
         ).first()
@@ -484,9 +478,29 @@ class DriverOfferAcceptResource(Resource):
             from app.transport.services.ride_request_dispatch_service import (
                 RideRequestDispatchService, RideRequestDispatchError,
             )
+            active_offer = (
+                OfferAttempt.query
+                .join(SearchCycle, OfferAttempt.cycle_id == SearchCycle.id)
+                .filter(
+                    SearchCycle.ride_request_id == request_first.id,
+                    SearchCycle.status == "searching",
+                    OfferAttempt.driver_id == profile.id,
+                    OfferAttempt.status == "offered",
+                    OfferAttempt.response_deadline > datetime.now(timezone.utc),
+                )
+                .with_for_update()
+                .first()
+            )
+            if active_offer is None:
+                return {
+                    "success": False,
+                    "error": "This driver has no active offer for the ride",
+                    "code": "offer_unavailable",
+                }, 409
             try:
                 result = RideRequestDispatchService.accept_offer(
-                    booking_reference, profile.id, vehicle_id, actor=current_user
+                    booking_reference, profile.id, active_offer.vehicle_id,
+                    actor=current_user
                 )
             except RideRequestDispatchError as e:
                 return {"success": False, "error": e.message, "code": e.code}, 409
@@ -507,6 +521,13 @@ class DriverOfferAcceptResource(Resource):
                     "payment_status": "pending",
                 },
             }
+
+        vehicle_id = profile.current_vehicle.id if profile.current_vehicle else None
+        if not vehicle_id:
+            return {
+                "success": False,
+                "error": "driver has no vehicle to accept with",
+            }, 400
 
         # Offer CAS is the pace gate; the canonical claim is the authority.
         try:
