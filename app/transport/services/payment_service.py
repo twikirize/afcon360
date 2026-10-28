@@ -172,7 +172,13 @@ class PaymentService:
                         "transport_booking_id": str(booking_id),
                         "booking_reference": booking.booking_reference,
                         "payment_reference": payment_ref,
+                        "settlement_timing": "after_trip_completion",
                     },
+                    # The rider selected Wallet when requesting the ride.
+                    # Settlement runs from either the driver completion action
+                    # or the owner's retry endpoint, so the transport service is
+                    # the authorized system actor for this pre-consented debit.
+                    system_initiated=True,
                 )
                 if result.get("status") != "success":
                     raise ValidationError(message=result.get("error", "Wallet payment failed"))
