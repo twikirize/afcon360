@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.extensions import db
-from app.transport.models import Booking, BookingPayment, BookingStatus, PaymentStatus, ProviderType, ServiceType
+from app.transport.models import Booking, BookingPayment, BookingStatus, Currency, PaymentStatus, ProviderType, ServiceType
 from app.transport.services.payment_service import PaymentService
 from app.utils.exceptions import ValidationError
 
@@ -141,7 +141,7 @@ def test_owner_can_retry_wallet_payment_for_completed_unpaid_trip(
         booking.booking_reference = "WALLET-RETRY-TEST"
         booking.final_price = 25
         booking.total_amount = 25
-        booking.currency = "USD"
+        booking.currency = Currency.USD
         booking.payment_status = PaymentStatus.PENDING
         db.session.commit()
 
@@ -181,7 +181,7 @@ def test_owner_can_retry_wallet_payment_for_completed_unpaid_trip(
 
 
 def test_rider_wallet_retry_does_not_allow_another_users_booking(
-    app, client, test_user
+    app, authenticated_client, test_user
 ):
     from app.identity.models.user import User
 
@@ -203,8 +203,8 @@ def test_rider_wallet_retry_does_not_allow_another_users_booking(
         booking.booking_reference = "WALLET-RETRY-FOREIGN"
         db.session.commit()
 
-    response = client.post(
+    response = authenticated_client.post(
         "/api/transport/rides/WALLET-RETRY-FOREIGN/payment/settle-wallet",
         json={},
     )
-    assert response.status_code == 401 or response.status_code == 404, response.get_data(as_text=True)
+    assert response.status_code == 404, response.get_data(as_text=True)
