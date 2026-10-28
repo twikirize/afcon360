@@ -135,7 +135,7 @@ jobs:
           # Actual filter behavior is exercised only by application tests.
           for template in templates:
               source = Path("templates", template).read_text(encoding="utf-8")
-              for filter_name in re.findall(r"\\|\\s*([A-Za-z_]\\w*)", source):
+              for filter_name in re.findall(r"\|\s*([A-Za-z_]\w*)", source):
                   env.filters.setdefault(
                       filter_name, lambda value, *args, **kwargs: value
                   )
