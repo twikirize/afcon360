@@ -26,6 +26,8 @@ Test 2: a tier-3 rider POSTs the bolt-sheet form; a durable RideRequest and
          with payment still pending.
 """
 import uuid
+
+import pytest
 from datetime import datetime, timedelta, timezone
 
 from app.extensions import db
