@@ -291,7 +291,16 @@ class RideRequestService:
             raise ValidationError(message="Invalid currency code",
                                   field="currency")
 
-        payment_method = str(data.get("payment_method") or "cash").lower()
+        raw_payment_method = data.get("payment_method")
+        payment_method = (
+            str(raw_payment_method).strip().lower()
+            if raw_payment_method is not None else ""
+        )
+        if not payment_method:
+            raise ValidationError(
+                message="Choose a payment method before requesting the ride",
+                field="payment_method",
+            )
         from app.transport.services.payment_methods import get_available_payment_methods
         offered = {m.get("code") for m in
                    get_available_payment_methods(owner_user_id)}
@@ -385,6 +394,12 @@ class RideRequestService:
                     "distance_basis": "straight_line_planner",
                     "created_via": "ride_request_api",
                     "created_at": now.isoformat(),
+                    "booking_mode": (
+                        str(data.get("booking_mode") or "instant").strip().lower()
+                        if str(data.get("booking_mode") or "instant").strip().lower()
+                        in ("instant", "scheduled") else "instant"
+                    ),
+                    "payment_timing": "pay_on_completion",
                 },
             )
             db.session.add(ride_request)
