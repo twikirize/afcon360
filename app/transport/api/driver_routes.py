@@ -3,12 +3,13 @@ from flask import request, jsonify
 from flask_restful import Resource
 from flask_login import current_user, login_required
 from app.extensions import db
-from app.transport.models import DriverProfile, DriverVehicleHistory, Booking
+from app.transport.models import DriverProfile, DriverVehicleHistory, Booking, BookingPayment
 from app.utils.enums import BookingStatus, PaymentStatus
 from app.auth.decorators import admin_required
 from app.transport.decorator import transport_admin_required
 from app.transport.utils.helpers import paginate, filter_query, sort_query
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from sqlalchemy import or_, func
 import sqlalchemy as sa
 import logging
@@ -974,6 +975,35 @@ class DriverTripPaymentResource(Resource):
         booking.payment_captured_at = now
         db.session.add(booking)
         try:
+            payment_record = (
+                BookingPayment.query.filter_by(booking_id=booking.id)
+                .order_by(BookingPayment.initiated_at.desc(), BookingPayment.id.desc())
+                .with_for_update()
+                .first()
+            )
+            amount = Decimal(str(booking.final_price or booking.total_amount or 0))
+            if payment_record is None:
+                payment_record = BookingPayment(
+                    booking_id=booking.id,
+                    payment_reference="",
+                    amount=amount,
+                    currency=booking.currency,
+                    payment_method="cash",
+                    payment_method_details={"timing": "pay_on_completion"},
+                    payment_status=PaymentStatus.PENDING,
+                    initiated_at=booking.completed_at or now,
+                )
+                payment_record.generate_payment_reference()
+                db.session.add(payment_record)
+            payment_record.amount = amount
+            payment_record.payment_method = "cash"
+            payment_record.payment_status = PaymentStatus.CAPTURED
+            payment_record.captured_at = now
+            payment_record.payment_method_details = {
+                **(payment_record.payment_method_details or {}),
+                "timing": "pay_on_completion",
+                "cash_receipt": metadata["cash_receipt"],
+            }
             db.session.flush()
             audit_log(
                 action="transport_cash_payment_received",
