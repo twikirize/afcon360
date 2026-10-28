@@ -25,6 +25,7 @@ TRANSPORT_END_OF_TRIP_METHODS = frozenset({"cash", "wallet"})
 
 def get_available_transport_payment_methods(
     user_id: Optional[int] = None,
+    currency_code: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Return configured methods that transport can actually settle at trip end.
 
@@ -32,7 +33,21 @@ def get_available_transport_payment_methods(
     extra capability gate prevents advertising card/mobile-money/bank methods
     when the transport settlement adapter cannot yet verify and record them.
     """
-    configured = get_available_payment_methods(user_id)
+    if currency_code is None:
+        try:
+            # This is the actual currency returned by calculate_estimate().
+            # Do not guess from browser input or user country.
+            from app.transport.services.fare_service import CURRENCY_DEFAULT
+            currency_code = str(CURRENCY_DEFAULT).strip().upper()
+        except Exception:
+            currency_code = "USD"
+    else:
+        currency_code = str(currency_code).strip().upper()
+
+    configured = get_available_payment_methods(
+        user_id,
+        wallet_currency_code=currency_code,
+    )
     result = [
         method for method in configured
         if str(method.get("code") or "").strip().lower()
@@ -48,7 +63,9 @@ def get_available_transport_payment_methods(
 
     try:
         from app.transport.services.payment_config import get_user_wallet_status
-        wallet_available = bool(get_user_wallet_status(user_id))
+        wallet_available = bool(
+            get_user_wallet_status(user_id, currency_code=currency_code)
+        )
     except Exception:
         logger.warning(
             "Wallet availability could not be verified for rider %s",
@@ -65,7 +82,10 @@ def get_available_transport_payment_methods(
     return result
 
 
-def get_available_payment_methods(user_id: Optional[int] = None) -> List[Dict[str, Any]]:
+def get_available_payment_methods(
+    user_id: Optional[int] = None,
+    wallet_currency_code: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """Return the payment methods the rider may choose from.
 
     Each entry: {"code": str, "label": str, "default": bool, "category": str, "gateway": str}.
@@ -86,7 +106,10 @@ def get_available_payment_methods(user_id: Optional[int] = None) -> List[Dict[st
 
         if user_id is not None:
             country = get_user_country(user_id)
-            user_has_wallet = get_user_wallet_status(user_id)
+            user_has_wallet = (
+                get_user_wallet_status(user_id, currency_code=wallet_currency_code)
+                if wallet_currency_code else get_user_wallet_status(user_id)
+            )
 
         methods = config_service.get_methods_for_country(
             country_code=country,
