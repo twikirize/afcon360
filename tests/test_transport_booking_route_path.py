@@ -436,6 +436,56 @@ class TestExplicitPaymentChoiceOnBookRoute:
             assert Booking.query.filter_by(user_id=rider_id, is_deleted=False).count() == 0
 
 
+    def test_missing_signed_fare_quote_does_not_create_request_or_search(
+        self, app, authenticated_client, test_user
+    ):
+        with app.app_context():
+            rider = db.session.merge(test_user)
+            rider_id = rider.id
+            _promote_user_to_tier3(app, rider_id)
+
+        form = _bolt_form(app, _new_pickup_time())
+        form.pop("fare_quote_token", None)
+        response = authenticated_client.post(
+            "/transport/book", data=form, follow_redirects=False
+        )
+        assert response.status_code in (301, 302)
+        with app.app_context():
+            assert RideRequest.query.filter_by(
+                user_id=rider_id, is_deleted=False
+            ).count() == 0
+            assert Booking.query.filter_by(
+                user_id=rider_id, is_deleted=False
+            ).count() == 0
+            assert SearchCycle.query.count() == 0
+
+    def test_changed_confirmed_fare_does_not_create_request(
+        self, app, authenticated_client, test_user
+    ):
+        with app.app_context():
+            rider = db.session.merge(test_user)
+            rider_id = rider.id
+            _promote_user_to_tier3(app, rider_id)
+
+        form = _bolt_form(app, _new_pickup_time())
+        from decimal import Decimal
+        form["confirmed_fare_amount"] = format(
+            Decimal(form["confirmed_fare_amount"]) + Decimal("1.00"), ".2f"
+        )
+        response = authenticated_client.post(
+            "/transport/book", data=form, follow_redirects=False
+        )
+        assert response.status_code in (301, 302)
+        with app.app_context():
+            assert RideRequest.query.filter_by(
+                user_id=rider_id, is_deleted=False
+            ).count() == 0
+            assert Booking.query.filter_by(
+                user_id=rider_id, is_deleted=False
+            ).count() == 0
+            assert SearchCycle.query.count() == 0
+
+
 # =====================================================================
 # 2. Full REAL RIDE TRANSACTION PATH through POST /transport/book
 # =====================================================================
