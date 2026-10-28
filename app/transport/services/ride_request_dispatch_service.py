@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.extensions import db
 from app.transport.models import (
-    Booking, BookingStatus, ComplianceStatus, Currency, DriverProfile,
+    Booking, BookingPayment, BookingStatus, ComplianceStatus, Currency, DriverProfile,
     OfferAttempt, PaymentStatus, ProviderType, RideRequest, SearchCycle,
     ServiceType, Vehicle,
 )
@@ -631,6 +631,29 @@ class RideRequestDispatchService:
         db.session.add(booking)
         try:
             db.session.flush()
+            # The existing transport payment index is the admin/reconciliation
+            # surface. Record the pending obligation in the same transaction as
+            # conversion and assignment, so a visible Booking cannot be missing
+            # its corresponding payment lifecycle row.
+            payment_record = BookingPayment.query.filter_by(
+                booking_id=booking.id
+            ).with_for_update().first()
+            if payment_record is None:
+                payment_record = BookingPayment(
+                    booking_id=booking.id,
+                    payment_reference="",
+                    amount=amount,
+                    currency=currency,
+                    payment_method=request.payment_method,
+                    payment_method_details={
+                        "timing": "pay_on_completion",
+                        "request_reference": request.public_id,
+                    },
+                    payment_status=PaymentStatus.PENDING,
+                    initiated_at=now,
+                )
+                payment_record.generate_payment_reference()
+                db.session.add(payment_record)
             result = AssignmentService.claim(
                 request.public_id, driver_id, vehicle_id,
                 actor=actor, commit=False,
