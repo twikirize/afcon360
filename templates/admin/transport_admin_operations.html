@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Transport Operations — AFCON360{% endblock %}
+
+{% block styles %}
+<style nonce="{{ csp_nonce }}">
+.ta-ops{max-width:1440px;margin:0 auto;padding:clamp(1rem,3vw,2rem)}
+.ta-ops-header{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem}
+.ta-ops-header h1{font-size:clamp(1.45rem,3vw,2rem);margin:0 0 .3rem;font-weight:800}
+.ta-ops-sub{color:var(--text-muted,#64748b);font-size:.9rem}
+.ta-ops-nav{display:flex;gap:.5rem;flex-wrap:wrap;margin:1rem 0 1.5rem}
+.ta-ops-nav a{display:inline-flex;align-items:center;min-height:44px;padding:.55rem .9rem;border:1px solid #d1d5db;border-radius:8px;text-decoration:none;font-weight:650;color:inherit;background:#fff}
+.ta-ops-nav a:focus-visible,.ta-ops-nav a:hover{outline:2px solid #d97706;outline-offset:2px}
+.ta-ops-section{scroll-margin-top:1rem;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:clamp(.9rem,2vw,1.35rem);margin-bottom:1.2rem;box-shadow:0 4px 15px rgba(0,0,0,.04)}
+.ta-ops-section h2{font-size:1.1rem;font-weight:800;margin:0 0 .4rem}
+.ta-ops-desc{color:#64748b;font-size:.83rem;margin:0 0 1rem}
+.ta-ops-table-wrap{overflow-x:auto}
+.ta-ops-table{border-collapse:collapse;width:100%;font-size:.83rem}
+.ta-ops-table th,.ta-ops-table td{text-align:left;padding:.7rem .6rem;border-bottom:1px solid #eef0f2;vertical-align:top}
+.ta-ops-table th{color:#64748b;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em}
+.ta-ops-table td{overflow-wrap:anywhere}
+.ta-ops-ref{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#92400e;font-size:.78rem}
+.ta-ops-pill{display:inline-block;border-radius:999px;background:#f3f4f6;padding:.23rem .55rem;font-size:.72rem;font-weight:750;white-space:nowrap}
+.ta-ops-pill--amber{background:#fffbeb;color:#92400e}
+.ta-ops-pill--red{background:#fef2f2;color:#991b1b}
+.ta-ops-pill--green{background:#f0fdf4;color:#166534}
+.ta-ops-empty{padding:1.25rem;text-align:center;color:#64748b;background:#f8fafc;border-radius:8px}
+.ta-ops-warning{padding:.8rem 1rem;background:#fffbeb;color:#92400e;border:1px solid #fde68a;border-radius:8px;font-size:.85rem;margin:1rem 0}
+@media(max-width:720px){.ta-ops-table th,.ta-ops-table td{padding:.55rem .45rem}.ta-ops-table{font-size:.78rem}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ta-ops">
+  <div class="ta-ops-header">
+    <div>
+      <h1>Transport Operations</h1>
+      <p class="ta-ops-sub">Read-only operational queues · Updated {{ now.strftime('%Y-%m-%d %H:%M UTC') }}</p>
+    </div>
+    <a href="{{ url_for('admin.transport_admin_dashboard') }}" class="btn btn-secondary">
+      <i class="fa-solid fa-arrow-left"></i> Back to Overview
+    </a>
+  </div>
+
+  <nav class="ta-ops-nav" aria-label="Operations queue navigation">
+    <a href="#requests">Requests matching ({{ active_request_rows|length }})</a>
+    <a href="#failed-searches">Unsuccessful searches ({{ failed_request_rows|length }})</a>
+    <a href="#payments">Pending payment records ({{ pending_payment_records|length }})</a>
+  </nav>
+
+  <section class="ta-ops-section" id="requests">
+    <h2>Requests matching a driver</h2>
+    <p class="ta-ops-desc">The request is not a confirmed trip until a driver accepts and vehicle assignment commits. Showing the newest 50 active requests.</p>
+    {% if active_request_rows %}
+    <div class="ta-ops-table-wrap">
+      <table class="ta-ops-table">
+        <thead><tr><th>Reference / received</th><th>Route</th><th>Ride</th><th>Fare estimate</th><th>Payment</th><th>Search state / deadline</th></tr></thead>
+        <tbody>
+          {% for ride, cycle in active_request_rows %}
+          {% set pickup = ride.pickup_location if ride.pickup_location is mapping else {} %}
+          {% set dropoff = ride.dropoff_location if ride.dropoff_location is mapping else {} %}
+          <tr>
+            <td><div class="ta-ops-ref">{{ ride.public_id }}</div><small>{{ ride.created_at.strftime('%Y-%m-%d %H:%M UTC') if ride.created_at else '—' }}</small></td>
+            <td>{{ pickup.get('display_name') or pickup.get('address') or pickup.get('label') or 'Pickup saved' }}<br><span aria-hidden="true">↓</span><br>{{ dropoff.get('display_name') or dropoff.get('address') or dropoff.get('label') or 'Destination saved' }}</td>
+            <td>{{ (ride.service_type.value if ride.service_type.value is defined else ride.service_type)|replace('_',' ')|title }}<br>{{ (ride.vehicle_class or '—')|title }} · {{ ride.passenger_count or 1 }} passenger(s)</td>
+            <td>{{ ride.currency_code or '—' }} {{ '%.2f'|format(ride.fare_estimate_amount or 0) }}</td>
+            <td>{{ (ride.payment_method or '—')|replace('_',' ')|title }}<br><span class="ta-ops-pill ta-ops-pill--amber">Due at trip end</span></td>
+            <td><span class="ta-ops-pill ta-ops-pill--amber">{{ cycle.status|title if cycle else 'No active cycle' }}</span><br><small>Cycle {{ cycle.cycle_number if cycle else '—' }} · deadline {{ cycle.deadline.strftime('%Y-%m-%d %H:%M UTC') if cycle and cycle.deadline else '—' }}</small></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="ta-ops-empty">No requests are currently waiting for a driver.</div>
+    {% endif %}
+  </section>
+
+  <section class="ta-ops-section" id="failed-searches">
+    <h2>Unsuccessful searches — last 24 hours</h2>
+    <p class="ta-ops-desc">Latest search cycle ended without a driver acceptance. A rider can retry; this is not a completed booking.</p>
+    {% if failed_request_rows %}
+    <div class="ta-ops-table-wrap">
+      <table class="ta-ops-table">
+        <thead><tr><th>Reference / received</th><th>Route</th><th>Ride</th><th>Payment choice</th><th>Outcome</th><th>Ended</th></tr></thead>
+        <tbody>
+          {% for ride, cycle in failed_request_rows %}
+          {% set pickup = ride.pickup_location if ride.pickup_location is mapping else {} %}
+          {% set dropoff = ride.dropoff_location if ride.dropoff_location is mapping else {} %}
+          <tr>
+            <td><div class="ta-ops-ref">{{ ride.public_id }}</div><small>{{ ride.created_at.strftime('%Y-%m-%d %H:%M UTC') if ride.created_at else '—' }}</small></td>
+            <td>{{ pickup.get('display_name') or pickup.get('address') or pickup.get('label') or 'Pickup saved' }}<br><span aria-hidden="true">↓</span><br>{{ dropoff.get('display_name') or dropoff.get('address') or dropoff.get('label') or 'Destination saved' }}</td>
+            <td>{{ (ride.service_type.value if ride.service_type.value is defined else ride.service_type)|replace('_',' ')|title }} · {{ (ride.vehicle_class or '—')|title }}</td>
+            <td>{{ (ride.payment_method or '—')|replace('_',' ')|title }}</td>
+            <td><span class="ta-ops-pill ta-ops-pill--red">{{ (cycle.terminal_reason or 'no_supply')|replace('_',' ')|title }}</span></td>
+            <td>{{ cycle.completed_at.strftime('%Y-%m-%d %H:%M UTC') if cycle.completed_at else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="ta-ops-empty">No unsuccessful search cycles in the last 24 hours.</div>
+    {% endif %}
+  </section>
+
+  <section class="ta-ops-section" id="payments">
+    <h2>Pending payment records</h2>
+    <p class="ta-ops-desc">Showing the newest 100 pending ledger records. Active trips may be here by design; completed unpaid trips need follow-up. A completed trip is not evidence that payment was received.</p>
+    {% if pending_payment_records %}
+    <div class="ta-ops-table-wrap">
+      <table class="ta-ops-table">
+        <thead><tr><th>Trip / payment reference</th><th>Trip status</th><th>Selected method</th><th>Amount due</th><th>Payment state</th><th>Record created</th></tr></thead>
+        <tbody>
+          {% for payment in pending_payment_records %}
+          {% set booking = payment.booking %}
+          <tr>
+            <td><div class="ta-ops-ref">{{ booking.booking_reference if booking else 'Booking unavailable' }}</div><small>{{ payment.payment_reference }}</small></td>
+            <td>{{ (booking.status.value if booking and booking.status.value is defined else booking.status if booking else 'unknown')|replace('_',' ')|title }}</td>
+            <td>{{ (payment.payment_method or (booking.payment_method if booking else '—'))|replace('_',' ')|title }}</td>
+            <td>{{ (payment.currency.value if payment.currency.value is defined else payment.currency)|default('—', true) }} {{ '%.2f'|format(payment.amount or 0) }}</td>
+            <td><span class="ta-ops-pill ta-ops-pill--amber">Pending</span></td>
+            <td>{{ payment.created_at.strftime('%Y-%m-%d %H:%M UTC') if payment.created_at else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="ta-ops-empty">No pending payment records.</div>
+    {% endif %}
+    <p class="ta-ops-warning">Card and mobile-money settlement are not currently offered in transport checkout because provider verification is not integrated in the transport payment service. Only supported methods should be selected by riders.</p>
+  </section>
+</div>
+{% endblock %}
