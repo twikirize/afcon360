@@ -131,6 +131,10 @@ def test_wallet_choice_must_match_transport_quote_currency(monkeypatch):
     methods = payment_methods.get_available_transport_payment_methods(123)
     assert [method["code"] for method in methods] == ["cash", "wallet"]
     assert wallet_checks[-1] == "USD"
+    descriptions = {method["code"]: method["description"] for method in methods}
+    assert "USD" in descriptions["cash"]
+    assert "USD Wallet balance" in descriptions["wallet"]
+    assert "No automatic currency conversion" in descriptions["wallet"]
 
     # The same rider must not be offered a UGX-wallet debit for a different
     # quote denomination unless an actual UGX account exists.
