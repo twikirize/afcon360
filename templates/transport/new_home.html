@@ -2262,6 +2262,7 @@
         selectedClass: state.selectedClass, selectedFare: state.selectedFare,
         selectedName: state.selectedName, fareBreakdown: state.fareBreakdown,
         distanceKm: state.distanceKm, currency: state.currency || null,
+        paymentMethod: (hPayment && hPayment.value) || '',
         schedule: state.schedule, schedAt: schedAt ? schedAt.value : ''
       };
       sessionStorage.setItem(TRIP_STASH_KEY, JSON.stringify(draft));
@@ -2319,6 +2320,19 @@
     state.fareBreakdown = draft.fareBreakdown || null;
     state.distanceKm = (draft.distanceKm === undefined) ? null : draft.distanceKm;
     if (draft.currency) state.currency = draft.currency;
+    if (draft.paymentMethod) {
+      var restoredMethod = null;
+      Array.prototype.forEach.call(paymentChoices, function(choice){
+        if (String(choice.value || '').toLowerCase() === String(draft.paymentMethod).toLowerCase()) {
+          choice.checked = true;
+          restoredMethod = choice;
+        }
+      });
+      // Only restore a method the current authenticated rider is still
+      // allowed to use. Otherwise require a fresh explicit selection.
+      if (!restoredMethod && hPayment) hPayment.value = '';
+      syncPaymentChoice();
+    }
     if (draft.schedule && typeof setSchedule === 'function'
         && (draft.schedule === 'now' || draft.schedule === 'later')) {
       setSchedule(draft.schedule);
