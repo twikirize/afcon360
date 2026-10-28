@@ -43,14 +43,14 @@
   </div>
 
   <nav class="ta-ops-nav" aria-label="Operations queue navigation">
-    <a href="#requests">Requests matching ({{ active_request_rows|length }})</a>
-    <a href="#failed-searches">Unsuccessful searches ({{ failed_request_rows|length }})</a>
-    <a href="#payments">Pending payment records ({{ pending_payment_records|length }})</a>
+    <a href="#requests">Requests matching ({{ active_request_count|default(0) }})</a>
+    <a href="#failed-searches">Unsuccessful searches ({{ failed_search_count|default(0) }})</a>
+    <a href="#payments">Pending payment records ({{ pending_payment_count|default(0) }})</a>
   </nav>
 
   <section class="ta-ops-section" id="requests">
     <h2>Requests matching a driver</h2>
-    <p class="ta-ops-desc">The request is not a confirmed trip until a driver accepts and vehicle assignment commits. Showing the newest 50 active requests.</p>
+    <p class="ta-ops-desc">The request is not a confirmed trip until a driver accepts and vehicle assignment commits. Showing {{ active_request_rows|length }} of {{ active_request_count }} active requests.</p>
     {% if active_request_rows %}
     <div class="ta-ops-table-wrap">
       <table class="ta-ops-table">
@@ -78,7 +78,7 @@
 
   <section class="ta-ops-section" id="failed-searches">
     <h2>Unsuccessful searches — last 24 hours</h2>
-    <p class="ta-ops-desc">Every cycle that ended without driver acceptance in the last 24 hours, including earlier attempts for riders who later retried. This is not a completed booking.</p>
+    <p class="ta-ops-desc">Showing {{ failed_request_rows|length }} of {{ failed_search_count }} search cycles that ended without driver acceptance in the last 24 hours, including earlier attempts for riders who later retried. This is not a completed booking.</p>
     {% if failed_request_rows %}
     <div class="ta-ops-table-wrap">
       <table class="ta-ops-table">
@@ -107,7 +107,7 @@
 
   <section class="ta-ops-section" id="payments">
     <h2>Pending payment records</h2>
-    <p class="ta-ops-desc">Showing the newest 100 pending ledger records. Active trips may be here by design; completed unpaid trips need follow-up. A completed trip is not evidence that payment was received.</p>
+    <p class="ta-ops-desc">Showing {{ pending_payment_records|length }} of {{ pending_payment_count }} pending ledger records (maximum 100 per page). Active trips may be here by design; completed unpaid trips need follow-up. A completed trip is not evidence that payment was received.</p>
     {% if pending_payment_records %}
     <div class="ta-ops-table-wrap">
       <table class="ta-ops-table">
@@ -133,4 +133,18 @@
     <p class="ta-ops-warning">Card and mobile-money settlement are not currently offered in transport checkout because provider verification is not integrated in the transport payment service. Only supported methods should be selected by riders.</p>
   </section>
 </div>
+<script nonce="{{ csp_nonce }}">
+(function () {
+  'use strict';
+  var section = {{ selected_section|default('requests')|tojson }};
+  var allowed = ['requests', 'failed-searches', 'payments'];
+  if (!allowed.includes(section)) return;
+  var target = document.getElementById(section);
+  if (target) {
+    window.requestAnimationFrame(function () {
+      target.scrollIntoView({behavior: 'auto', block: 'start'});
+    });
+  }
+})();
+</script>
 {% endblock %}
