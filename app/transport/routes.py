@@ -969,7 +969,84 @@ def book_transport():
         else:
             data = request.form.to_dict()
 
+    # Payment choice is an explicit rider decision. Do not silently turn
+    # a missing/unavailable choice into Cash, even while schema enforcement
+    # remains in shadow mode.
+    selected_payment_method = str(data.get("payment_method") or "").strip().lower()
+    available_payment_methods = get_available_payment_methods(current_user.id)
+    allowed_payment_methods = {
+        str(method.get("code") or "").strip().lower()
+        for method in available_payment_methods
+        if method.get("enabled", True)
+    }
+    if not selected_payment_method or selected_payment_method not in allowed_payment_methods:
+        flash("Choose an available payment method before requesting the ride.", "danger")
+        return redirect(url_for("transport.home"))
+    data["payment_method"] = selected_payment_method
+
     try:
+        # Instant on-demand hailing uses the durable request-first lifecycle:
+        # the reference tracks intent/search, but no Booking row exists until
+        # a driver accepts and the driver+vehicle assignment commits atomically.
+        service_key = str(data.get("service_type") or "").strip().lower()
+        mode_key = str(data.get("booking_mode") or "instant").strip().lower()
+        if service_key == "on_demand" and mode_key == "instant":
+            from app.transport.services.ride_request_service import RideRequestService
+            from app.transport.services.ride_request_dispatch_service import (
+                RideRequestDispatchService,
+                RideRequestDispatchError,
+            )
+
+            request_payload = {
+                "idempotency_key": data.get("idempotency_key"),
+                "pickup": {
+                    "latitude": data.get("pickup_latitude"),
+                    "longitude": data.get("pickup_longitude"),
+                    "address": data.get("pickup_location"),
+                },
+                "dropoff": {
+                    "latitude": data.get("dropoff_latitude"),
+                    "longitude": data.get("dropoff_longitude"),
+                    "address": data.get("dropoff_location"),
+                },
+                "pickup_source": data.get("pickup_source"),
+                "dropoff_source": data.get("dropoff_source"),
+                "pickup_geocode": data.get("pickup_geocode"),
+                "dropoff_geocode": data.get("dropoff_geocode"),
+                "service_type": service_key,
+                "vehicle_class": data.get("vehicle_class"),
+                "passenger_count": data.get("passenger_count") or 1,
+                "pickup_time": data.get("pickup_time") or None,
+                "booking_mode": mode_key,
+                "payment_method": selected_payment_method,
+                "currency": data.get("currency") or "USD",
+            }
+            request_result = RideRequestService.create_request(
+                current_user.id, request_payload
+            )
+            ride_request = request_result["request"]
+            reference = ride_request.public_id
+            # A dispatch infrastructure problem must not erase the durable
+            # request/reference; normal recovery can resume a searching cycle.
+            try:
+                RideRequestDispatchService.start_search(reference)
+            except RideRequestDispatchError as dispatch_error:
+                logger.warning(
+                    "Initial request dispatch deferred for %s: %s",
+                    reference, dispatch_error.message,
+                )
+            except Exception:
+                db.session.rollback()
+                logger.exception(
+                    "Initial request dispatch failed for %s; recovery will retry",
+                    reference,
+                )
+            flash(
+                f"Ride request received! We’re finding your driver. Reference: {reference}",
+                "success",
+            )
+            return redirect(url_for("transport.rides_show", booking_reference=reference))
+
         booking = get_booking_service().create_booking(current_user.id, data)
         ref = booking["data"]["booking_reference"]
         booking_id = booking["data"]["booking_id"]
