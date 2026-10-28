@@ -1995,18 +1995,8 @@
     mDest.textContent = state.dest || '—';
     mRide.textContent = state.selectedName || '—';
   }
-  function runMatchSteps(){
-    var steps = document.querySelectorAll('#matchSteps .bolt-step');
-    var i = 0;
-    var timer = setInterval(function(){
-      i += 1;
-      steps.forEach(function(st, idx){
-        st.classList.toggle('is-active', idx === i);
-        st.classList.toggle('is-done', idx < i);
-      });
-      if (i >= steps.length - 1) clearInterval(timer);
-    }, 1400);
-  }
+  // Deliberately no client-side simulated match progression. The actual
+  // request/search state is shown after the server accepts the confirmed fare.
 
   // ---------- Submit ----------
   form.addEventListener('submit', function(e){
