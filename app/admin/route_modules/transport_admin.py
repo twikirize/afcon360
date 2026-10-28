@@ -165,6 +165,29 @@ def transport_admin_operations():
             )
         )
         pending_payment_count = pending_payment_query.count()
+
+        # A separate oldest-first queue prevents active-trip payment rows
+        # from burying completed trips that need actual settlement follow-up.
+        completed_unpaid_query = (
+            BookingPayment.query
+            .join(Booking, Booking.id == BookingPayment.booking_id)
+            .filter(
+                BookingPayment.is_deleted.is_(False),
+                BookingPayment.payment_status == PaymentStatus.PENDING,
+                Booking.is_deleted.is_(False),
+                Booking.status == BookingStatus.COMPLETED,
+                Booking.payment_status == PaymentStatus.PENDING,
+            )
+        )
+        completed_unpaid_count = completed_unpaid_query.count()
+        completed_unpaid_records = (
+            completed_unpaid_query
+            .options(joinedload(BookingPayment.booking))
+            .order_by(Booking.completed_at.asc(), BookingPayment.created_at.asc())
+            .limit(100)
+            .all()
+        )
+
         pending_payment_records = (
             pending_payment_query
             .options(joinedload(BookingPayment.booking))
@@ -181,6 +204,8 @@ def transport_admin_operations():
             failed_search_count=failed_search_count,
             pending_payment_records=pending_payment_records,
             pending_payment_count=pending_payment_count,
+            completed_unpaid_records=completed_unpaid_records,
+            completed_unpaid_count=completed_unpaid_count,
             now=now,
             selected_section=request.args.get("section", "requests"),
         )
