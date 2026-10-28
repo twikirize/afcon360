@@ -93,19 +93,30 @@ jobs:
               )
           PY
 
-      - name: Build the disposable test schema from reviewed migrations
-        run: python -m flask --app 'app:create_app()' db upgrade
-
+      # These source-level checks deliberately run before migration replay.
+      # They can still report useful code/template failures when an unrelated
+      # migration prevents the database-backed regression suite from starting.
       - name: Compile Python modules changed by the transport feature
-        run: |
-          python -m compileall -q             app/transport             app/tasks/transport_recovery.py             app/utils/validators.py             tests/test_transport_booking_route_path.py             tests/test_transport_cash_confirmation_semantics.py             tests/test_transport_admin_canonical_overview.py             tests/transport/test_ride_request_create.py             tests/transport/test_trip_end_payment_semantics.py
+        run: >-
+          python -m compileall -q
+          app/transport
+          app/tasks/transport_recovery.py
+          app/utils/validators.py
+          tests/test_transport_booking_route_path.py
+          tests/test_transport_cash_confirmation_semantics.py
+          tests/test_transport_admin_canonical_overview.py
+          tests/transport/test_ride_request_create.py
+          tests/transport/test_trip_end_payment_semantics.py
 
-      - name: Compile changed Jinja templates
+      - name: Parse changed Jinja templates without database access
         run: |
           python - <<'PY'
-          from app import create_app
+          from jinja2 import Environment, FileSystemLoader
 
-          app = create_app()
+          env = Environment(
+              loader=FileSystemLoader("templates"),
+              extensions=["jinja2.ext.do", "jinja2.ext.loopcontrols"],
+          )
           templates = (
               "transport/new_home.html",
               "transport/driver/driver_dashboard.html",
@@ -115,12 +126,19 @@ jobs:
               "admin/transport_admin_operations.html",
               "transport/admin/dashboard.html",
           )
-          with app.app_context():
-              for template in templates:
-                  app.jinja_env.get_template(template)
-                  print("JINJA_TEMPLATE_OK", template)
+          for template in templates:
+              env.get_template(template)
+              print("JINJA_TEMPLATE_OK", template)
           PY
 
+      - name: Build the disposable test schema from reviewed migrations
+        run: python -m flask --app 'app:create_app()' db upgrade
+
       - name: Run request lifecycle, payment, and admin regression tests
-        run: |
-          python -m pytest -q             tests/test_transport_booking_route_path.py             tests/test_transport_cash_confirmation_semantics.py             tests/test_transport_admin_canonical_overview.py             tests/transport/test_ride_request_create.py             tests/transport/test_trip_end_payment_semantics.py
+        run: >-
+          python -m pytest -q
+          tests/test_transport_booking_route_path.py
+          tests/test_transport_cash_confirmation_semantics.py
+          tests/test_transport_admin_canonical_overview.py
+          tests/transport/test_ride_request_create.py
+          tests/transport/test_trip_end_payment_semantics.py
