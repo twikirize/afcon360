@@ -19,7 +19,8 @@ PICKUP = {"latitude": 0.3136, "longitude": 32.5811, "address": "Kampala Centre"}
 DROPOFF = {"latitude": 0.3476, "longitude": 32.5825, "address": "Stadium Gate"}
 
 
-def _payload(**overrides):
+def _payload(app, **overrides):
+    """A real signed server quote for direct service/API contract tests."""
     body = {
         "idempotency_key": "req-%s" % uuid.uuid4().hex,
         "pickup": dict(PICKUP),
@@ -32,6 +33,36 @@ def _payload(**overrides):
         "currency": "USD",
     }
     body.update(overrides)
+    with app.app_context():
+        from app.transport.services.booking_service import _measured_distance_km
+        from app.transport.services.fare_service import calculate_estimate
+        from app.transport.services.fare_quote_service import (
+            issue_fare_quote, money_amount,
+        )
+
+        quoted_at = datetime.now().replace(microsecond=0)
+        distance_km = _measured_distance_km(body["pickup"], body["dropoff"])
+        estimate = calculate_estimate(
+            service_type=body["service_type"],
+            vehicle_class=body["vehicle_class"],
+            distance_km=distance_km,
+            at=quoted_at,
+        )
+        currency = str(estimate.get("currency") or "USD").upper()
+        amount = money_amount(estimate["total"])
+        body["currency"] = currency
+        body["confirmed_fare_amount"] = format(amount, ".2f")
+        body["fare_quote_token"] = issue_fare_quote(
+            service_type=body["service_type"],
+            vehicle_class=body["vehicle_class"],
+            currency=currency,
+            amount=amount,
+            fare_version=estimate.get("version"),
+            pickup=body["pickup"],
+            dropoff=body["dropoff"],
+            distance_km=distance_km,
+            quoted_at=quoted_at,
+        )
     return body
 
 
@@ -113,7 +144,7 @@ class TestRequestCreate:
         _promote_to_tier2(app, rider_id)
         _login_as(app, client, rider_id)
 
-        resp = client.post(URL, json=_payload())
+        resp = client.post(URL, json=_payload(app, ))
         assert resp.status_code == 201, resp.get_data(as_text=True)
         data = resp.get_json()["data"]
         assert data["request_id"] and len(data["request_id"]) >= 16
@@ -143,7 +174,7 @@ class TestRequestCreate:
         with app.app_context():
             before = Booking.query.count()
         _login_as(app, client, rider_id)
-        body = _payload()
+        body = _payload(app, )
         assert client.post(URL, json=body).status_code == 201
         assert client.post(URL, json=body).status_code == 200  # replay
         with app.app_context():
@@ -155,7 +186,7 @@ class TestRequestCreate:
         _promote_to_tier2(app, rider_id)
         _login_as(app, client, rider_id)
 
-        body = _payload()
+        body = _payload(app, )
         first = client.post(URL, json=body).get_json()
         second = client.post(URL, json=body)
         assert second.status_code == 200, second.get_data(as_text=True)
@@ -173,8 +204,8 @@ class TestRequestCreate:
         _login_as(app, client, rider_id)
 
         key = "req-%s" % uuid.uuid4().hex
-        assert client.post(URL, json=_payload(idempotency_key=key)).status_code == 201
-        conflict = client.post(URL, json=_payload(
+        assert client.post(URL, json=_payload(app, idempotency_key=key)).status_code == 201
+        conflict = client.post(URL, json=_payload(app, 
             idempotency_key=key,
             dropoff={"latitude": 0.4000, "longitude": 32.6500}))
         assert conflict.status_code == 409, conflict.get_data(as_text=True)
@@ -205,7 +236,7 @@ class TestRollbackAfterPartialFlush:
         _login_as(app, client, rider_id)
 
         key = "req-%s" % uuid.uuid4().hex
-        body = _payload(idempotency_key=key)
+        body = _payload(app, idempotency_key=key)
         expected_cycle_key = "%s:1" % key
         seen = {"fired": False, "ride_request_id": None}
 
@@ -256,7 +287,7 @@ class TestRollbackAfterPartialFlush:
         rider_id = _seed_rider(app, "instantclock")
         _promote_to_tier2(app, rider_id)
         _login_as(app, client, rider_id)
-        body = _payload(
+        body = _payload(app, 
             booking_mode="instant",
             pickup_time=(datetime.now(timezone.utc) + timedelta(hours=8)).isoformat(),
         )
@@ -278,7 +309,7 @@ class TestRollbackAfterPartialFlush:
         rider_id = _seed_rider(app, "expiredwindow")
         with app.app_context():
             created = RideRequestService.create_request(
-                rider_id, _payload(booking_mode="instant")
+                rider_id, _payload(app, booking_mode="instant")
             )
             reference = created["request"].public_id
             cycle = SearchCycle.query.filter_by(
@@ -304,7 +335,7 @@ class TestRollbackAfterPartialFlush:
         rider_id = _seed_rider(app, "paymentrequired")
         _promote_to_tier2(app, rider_id)
         _login_as(app, client, rider_id)
-        body = _payload()
+        body = _payload(app, )
         body.pop("payment_method")
 
         response = client.post(URL, json=body)
@@ -320,7 +351,7 @@ class TestRollbackAfterPartialFlush:
 
         rider_id = _seed_rider(app, "cancelrequest")
         with app.app_context():
-            created = RideRequestService.create_request(rider_id, _payload())
+            created = RideRequestService.create_request(rider_id, _payload(app, ))
             reference = created["request"].public_id
             outcome = RideRequestDispatchService.cancel_request(reference, rider_id)
             assert outcome["status"] == "cancelled"
@@ -339,7 +370,7 @@ class TestRollbackAfterPartialFlush:
 class TestCommitmentGates:
     def test_anonymous_cannot_create(self, app, client):
         rider_id = _seed_rider(app)
-        resp = client.post(URL, json=_payload())
+        resp = client.post(URL, json=_payload(app, ))
         assert resp.status_code == 401, resp.get_data(as_text=True)
         assert _counts(app, rider_id) == (0, 0, 0)
 
@@ -350,7 +381,7 @@ class TestCommitmentGates:
         with app.app_context():
             assert calculate_kyc_tier(rider_id)["tier"] < 2
         _login_as(app, client, rider_id)
-        resp = client.post(URL, json=_payload(), follow_redirects=False)
+        resp = client.post(URL, json=_payload(app, ), follow_redirects=False)
         assert resp.status_code in (301, 302), resp.get_data(as_text=True)
         assert "kyc" in (resp.headers.get("Location") or "").lower()
         assert _counts(app, rider_id) == (0, 0, 0)
@@ -369,7 +400,7 @@ class TestCanonicalValidation:
         rider_id = _seed_rider(app)
         _promote_to_tier2(app, rider_id)
         _login_as(app, client, rider_id)
-        body = _payload()
+        body = _payload(app, )
         mutate(body)
         resp = client.post(URL, json=body)
         assert resp.status_code == 400, resp.get_data(as_text=True)
