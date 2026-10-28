@@ -3,7 +3,7 @@ Transport Admin Routes for AFCON360 - Production Ready.
 All decorators imported from app.auth.decorators.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 from flask import (
     render_template, redirect, url_for, abort,
@@ -55,6 +55,93 @@ def transport_admin_dashboard():
         abort(500)
 
     return render_template("admin/transport_admin_dashboard.html", **context)
+
+
+# -----------------------------
+# Request + payment operational queues
+# -----------------------------
+@admin_bp.route(
+    "/transport-admin/operations",
+    endpoint="transport_admin_operations",
+)
+@login_required
+@require_permission("transport.view")
+@active_context_or_platform_required(ContextType.PLATFORM)
+def transport_admin_operations():
+    """Read-only operational queues for request matching and payment follow-up."""
+    try:
+        from sqlalchemy import and_, func
+        from app.transport.models import (
+            Booking, BookingPayment, PaymentStatus, RideRequest, SearchCycle,
+        )
+
+        now = datetime.now(timezone.utc)
+        latest_cycle = (
+            db.session.query(
+                SearchCycle.ride_request_id.label("request_id"),
+                func.max(SearchCycle.cycle_number).label("cycle_number"),
+            )
+            .filter(SearchCycle.is_deleted.is_(False))
+            .group_by(SearchCycle.ride_request_id)
+            .subquery()
+        )
+
+        def latest_cycle_rows(*conditions, limit=50):
+            query = (
+                db.session.query(RideRequest, SearchCycle)
+                .outerjoin(
+                    latest_cycle,
+                    latest_cycle.c.request_id == RideRequest.id,
+                )
+                .outerjoin(
+                    SearchCycle,
+                    and_(
+                        SearchCycle.ride_request_id == RideRequest.id,
+                        SearchCycle.cycle_number == latest_cycle.c.cycle_number,
+                        SearchCycle.is_deleted.is_(False),
+                    ),
+                )
+                .filter(RideRequest.is_deleted.is_(False))
+            )
+            for condition in conditions:
+                query = query.filter(condition)
+            return query.order_by(RideRequest.created_at.desc()).limit(limit).all()
+
+        active_request_rows = latest_cycle_rows(
+            RideRequest.status == "searching",
+            SearchCycle.status == "searching",
+        )
+        failed_request_rows = latest_cycle_rows(
+            RideRequest.status == "searching",
+            SearchCycle.status == "expired",
+            SearchCycle.terminal_reason.in_(("no_supply", "all_rejected")),
+            SearchCycle.completed_at >= now - timedelta(hours=24),
+        )
+        pending_payment_records = (
+            BookingPayment.query
+            .join(Booking, Booking.id == BookingPayment.booking_id)
+            .filter(
+                BookingPayment.is_deleted.is_(False),
+                BookingPayment.payment_status == PaymentStatus.PENDING,
+                Booking.is_deleted.is_(False),
+            )
+            .order_by(BookingPayment.created_at.desc())
+            .limit(100)
+            .all()
+        )
+
+        return render_template(
+            "admin/transport_admin_operations.html",
+            active_request_rows=active_request_rows,
+            failed_request_rows=failed_request_rows,
+            pending_payment_records=pending_payment_records,
+            now=now,
+            selected_section=request.args.get("section", "requests"),
+        )
+    except Exception:
+        db.session.rollback()
+        logger.exception("Transport Admin operations queue failed to load")
+        abort(500)
 
 
 # -----------------------------
