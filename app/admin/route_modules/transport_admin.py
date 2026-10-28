@@ -71,6 +71,7 @@ def transport_admin_operations():
     """Read-only operational queues for request matching and payment follow-up."""
     try:
         from sqlalchemy import and_, func
+        from sqlalchemy.orm import joinedload
         from app.transport.models import (
             Booking, BookingPayment, PaymentStatus, RideRequest, SearchCycle,
         )
@@ -107,6 +108,20 @@ def transport_admin_operations():
                 query = query.filter(condition)
             return query.order_by(RideRequest.created_at.desc()).limit(limit).all()
 
+        active_request_count = (
+            db.session.query(func.count(func.distinct(RideRequest.id)))
+            .join(
+                SearchCycle,
+                SearchCycle.ride_request_id == RideRequest.id,
+            )
+            .filter(
+                RideRequest.is_deleted.is_(False),
+                RideRequest.status == "searching",
+                SearchCycle.is_deleted.is_(False),
+                SearchCycle.status == "searching",
+            )
+            .scalar() or 0
+        )
         active_request_rows = latest_cycle_rows(
             RideRequest.status == "searching",
             SearchCycle.status == "searching",
@@ -128,7 +143,19 @@ def transport_admin_operations():
             .limit(50)
             .all()
         )
-        pending_payment_records = (
+        failed_search_count = (
+            db.session.query(func.count(SearchCycle.id))
+            .join(RideRequest, RideRequest.id == SearchCycle.ride_request_id)
+            .filter(
+                RideRequest.is_deleted.is_(False),
+                SearchCycle.is_deleted.is_(False),
+                SearchCycle.status == "expired",
+                SearchCycle.terminal_reason.in_(("no_supply", "all_rejected")),
+                SearchCycle.completed_at >= now - timedelta(hours=24),
+            )
+            .scalar() or 0
+        )
+        pending_payment_query = (
             BookingPayment.query
             .join(Booking, Booking.id == BookingPayment.booking_id)
             .filter(
@@ -136,6 +163,11 @@ def transport_admin_operations():
                 BookingPayment.payment_status == PaymentStatus.PENDING,
                 Booking.is_deleted.is_(False),
             )
+        )
+        pending_payment_count = pending_payment_query.count()
+        pending_payment_records = (
+            pending_payment_query
+            .options(joinedload(BookingPayment.booking))
             .order_by(BookingPayment.created_at.desc())
             .limit(100)
             .all()
@@ -144,8 +176,11 @@ def transport_admin_operations():
         return render_template(
             "admin/transport_admin_operations.html",
             active_request_rows=active_request_rows,
+            active_request_count=active_request_count,
             failed_request_rows=failed_request_rows,
+            failed_search_count=failed_search_count,
             pending_payment_records=pending_payment_records,
+            pending_payment_count=pending_payment_count,
             now=now,
             selected_section=request.args.get("section", "requests"),
         )
