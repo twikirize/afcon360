@@ -331,6 +331,32 @@ class TestRollbackAfterPartialFlush:
             assert cycle.terminal_reason == "no_supply"
             assert OfferAttempt.query.filter_by(cycle_id=cycle.id).count() == 0
 
+    def test_confirmed_fare_must_match_signed_quote(self, app, client):
+        rider_id = _seed_rider(app, "fareamounttamper")
+        _promote_to_tier2(app, rider_id)
+        _login_as(app, client, rider_id)
+        body = _payload(app)
+        body["confirmed_fare_amount"] = format(
+            Decimal(body["confirmed_fare_amount"]) + Decimal("1.00"), ".2f"
+        )
+
+        response = client.post(URL, json=body)
+        assert response.status_code == 400, response.get_data(as_text=True)
+        assert "fare" in response.get_json()["error"].lower()
+        assert _counts(app, rider_id) == (0, 0, 0)
+
+    def test_tampered_fare_quote_token_is_rejected_without_request(self, app, client):
+        rider_id = _seed_rider(app, "farequotetamper")
+        _promote_to_tier2(app, rider_id)
+        _login_as(app, client, rider_id)
+        body = _payload(app)
+        token = body["fare_quote_token"]
+        body["fare_quote_token"] = ("a" if token[0] != "a" else "b") + token[1:]
+
+        response = client.post(URL, json=body)
+        assert response.status_code == 400, response.get_data(as_text=True)
+        assert _counts(app, rider_id) == (0, 0, 0)
+
     def test_payment_method_is_required(self, app, client):
         rider_id = _seed_rider(app, "paymentrequired")
         _promote_to_tier2(app, rider_id)
