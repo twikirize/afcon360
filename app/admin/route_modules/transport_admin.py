@@ -71,7 +71,7 @@ def transport_admin_operations():
     """Read-only operational queues for request matching and payment follow-up."""
     try:
         from sqlalchemy import and_, func
-        from sqlalchemy.orm import joinedload
+        from sqlalchemy.orm import joinedload, selectinload
         from app.transport.models import (
             Booking, BookingPayment, PaymentStatus, RideRequest, SearchCycle,
         )
@@ -168,25 +168,37 @@ def transport_admin_operations():
 
         # A separate oldest-first queue prevents active-trip payment rows
         # from burying completed trips that need actual settlement follow-up.
-        completed_unpaid_query = (
-            BookingPayment.query
-            .join(Booking, Booking.id == BookingPayment.booking_id)
-            .filter(
-                BookingPayment.is_deleted.is_(False),
-                BookingPayment.payment_status == PaymentStatus.PENDING,
-                Booking.is_deleted.is_(False),
-                Booking.status == BookingStatus.COMPLETED,
-                Booking.payment_status == PaymentStatus.PENDING,
-            )
+        completed_unpaid_query = Booking.query.filter(
+            Booking.is_deleted.is_(False),
+            Booking.status == BookingStatus.COMPLETED,
+            Booking.payment_status == PaymentStatus.PENDING,
         )
         completed_unpaid_count = completed_unpaid_query.count()
-        completed_unpaid_records = (
+        completed_unpaid_bookings = (
             completed_unpaid_query
-            .options(joinedload(BookingPayment.booking))
-            .order_by(Booking.completed_at.asc(), BookingPayment.created_at.asc())
+            .options(selectinload(Booking.payments))
+            .order_by(Booking.completed_at.asc(), Booking.id.asc())
             .limit(100)
             .all()
         )
+        # One row per trip. A missing payment index row remains visible as a
+        # reconciliation exception instead of disappearing from the queue.
+        completed_unpaid_records = []
+        for booking in completed_unpaid_bookings:
+            pending_rows = [
+                payment for payment in booking.payments
+                if not payment.is_deleted
+                and payment.payment_status == PaymentStatus.PENDING
+            ]
+            latest_pending = max(
+                pending_rows,
+                key=lambda payment: (
+                    payment.created_at or datetime.min.replace(tzinfo=timezone.utc),
+                    payment.id or 0,
+                ),
+                default=None,
+            )
+            completed_unpaid_records.append((booking, latest_pending))
 
         pending_payment_records = (
             pending_payment_query
