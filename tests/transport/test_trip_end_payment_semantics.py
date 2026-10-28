@@ -117,3 +117,14 @@ def test_anonymous_transport_choices_do_not_advertise_wallet(monkeypatch):
 
     methods = payment_methods.get_available_transport_payment_methods(None)
     assert [method["code"] for method in methods] == ["cash"]
+
+
+def test_payment_validation_accepts_canonical_ugx_for_east_africa():
+    from app.utils.validators import validate_payment
+
+    valid, errors = validate_payment({
+        "amount": "25000.00",
+        "currency": "UGX",
+        "payment_method": "WALLET",
+    })
+    assert valid, errors
