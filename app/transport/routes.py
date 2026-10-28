@@ -1020,6 +1020,8 @@ def book_transport():
                 "booking_mode": mode_key,
                 "payment_method": selected_payment_method,
                 "currency": data.get("currency") or "USD",
+                "fare_quote_token": data.get("fare_quote_token"),
+                "confirmed_fare_amount": data.get("confirmed_fare_amount"),
             }
             request_result = RideRequestService.create_request(
                 current_user.id, request_payload
@@ -1042,7 +1044,7 @@ def book_transport():
                     reference,
                 )
             flash(
-                f"Ride request received! We’re finding your driver. Reference: {reference}",
+                f"Fare confirmed. We’re now matching you with a driver. Reference: {reference}",
                 "success",
             )
             return redirect(url_for("transport.rides_show", booking_reference=reference))
@@ -1090,6 +1092,13 @@ def book_transport():
         if return_to:
             return redirect(return_to)
         return redirect(url_for("transport.rides_show", booking_reference=ref))
+
+    except ValidationError as e:
+        db.session.rollback()
+        logger.info("Transport booking rejected before request creation for user_id=%s: %s",
+                    _uid(), e.message)
+        flash(e.message, "warning")
+        return redirect(url_for("transport.home"))
 
     except ServiceUnavailableError:
         logger.error(f"Booking service unavailable for user_id={_uid()}")
