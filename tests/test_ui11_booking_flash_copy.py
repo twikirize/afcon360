@@ -2,16 +2,15 @@
 
 Ratified finding (UI-11 trace, adversarial review): the booking state
 machine is correct - ``confirmed`` = booking accepted / matching active /
-no driver yet. The only rider-facing defect was the finality-sounding
-success flash produced by ``book_transport``. This pins, through the real
+no driver yet. The important rider-facing boundary is that fare acceptance precedes driver
+matching. This pins, through the real
 ``POST /transport/book`` route and its redirect render, that:
 
   1. the successful booking flow still produces the booking reference;
-  2. the rider-facing flash uses the corrected wording;
+  2. the rider-facing flash states fare confirmation and that matching starts next;
   3. the old finality-sounding wording is absent from the success message.
 
-Presentation-only: no state, transition, timeline, or MATCH-01 contract
-assertions are made or changed here.
+Copy regression only; state/dispatch ordering is separately covered by the request-flow tests.
 """
 from datetime import datetime, timedelta, timezone
 
@@ -24,7 +23,7 @@ from tests.test_transport_booking_route_path import (
 )
 
 OLD_WORDING = "Booking confirmed! Reference"
-NEW_WORDING = "Ride request received! We’re finding your driver. Reference:"
+NEW_WORDING = "Fare confirmed. We’re now matching you with a driver. Reference:"
 
 
 def test_success_flash_uses_ride_request_wording(
