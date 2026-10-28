@@ -711,6 +711,24 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
             {{ b.dropoff_location_text or b.dropoff_address or 'Dropoff' }}
           </div>
           <div class="trip-meta">{{ b.booking_reference }} · {{ (b.service_type or 'trip')|replace('_',' ')|title }}</div>
+          {% if b.status == 'completed'
+                and (b.payment_method or '')|lower == 'cash'
+                and (b.payment_status|string|lower) == 'pending'
+                and b.completed_by_driver_profile_id == driver_profile.id %}
+          <div style="margin-top:8px;">
+            <div style="font-size:.78rem;color:var(--text-muted);margin-bottom:6px;">
+              Cash payment awaiting receipt confirmation
+            </div>
+            <button type="button" class="btn btn-primary btn-sm trip-payment-confirm"
+                    data-url="/api/transport/drivers/me/trips/{{ b.booking_reference }}/payment/confirm-cash">
+              <i class="fa-solid fa-money-bill-wave"></i> Confirm cash received
+            </button>
+          </div>
+          {% elif b.status == 'completed' and (b.payment_method or '')|lower != 'cash' and (b.payment_status|string|lower) != 'captured' %}
+          <div style="margin-top:6px;font-size:.78rem;color:var(--text-muted);">
+            Payment: {{ (b.payment_status|string)|replace('_',' ')|title }} · {{ (b.payment_method or 'method not recorded')|replace('_',' ')|title }}
+          </div>
+          {% endif %}
         </div>
         <span class="badge badge-{{ 'green' if b.status == 'completed' else 'red' if b.status in ['cancelled','disputed'] else 'gray' }}">
           {{ (b.status or 'unknown')|replace('_',' ')|title }}
@@ -1565,6 +1583,36 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
       } catch (e) {
         this.disabled = false; this.innerHTML = prev;
         flashMsg('Could not update trip', false);
+      }
+    });
+  });
+
+  // ===== POST-TRIP CASH RECEIPT =====
+  document.querySelectorAll('.trip-payment-confirm').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      if (!confirm('Confirm that you received the full cash fare from the rider? This records payment as received.')) return;
+      const previous = this.innerHTML;
+      this.disabled = true;
+      this.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Recording receipt…';
+      try {
+        const response = await fetchWithTimeout(this.dataset.url, {
+          method: 'POST',
+          headers: csrfHeaders(),
+          body: '{}'
+        });
+        const body = await response.json().catch(() => ({}));
+        if (response.ok && body.success) {
+          flashMsg('Cash receipt recorded. Trip remains completed.', true);
+          setTimeout(() => location.reload(), 800);
+        } else {
+          flashMsg((body && body.error) || 'Could not record cash receipt', false);
+          this.disabled = false;
+          this.innerHTML = previous;
+        }
+      } catch (e) {
+        this.disabled = false;
+        this.innerHTML = previous;
+        flashMsg('Could not record cash receipt — check your connection and retry', false);
       }
     });
   });
