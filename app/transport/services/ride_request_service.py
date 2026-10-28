@@ -308,9 +308,13 @@ class RideRequestService:
                 message="Choose a payment method before requesting the ride",
                 field="payment_method",
             )
-        from app.transport.services.payment_methods import get_available_payment_methods
-        offered = {m.get("code") for m in
-                   get_available_payment_methods(owner_user_id)}
+        from app.transport.services.payment_methods import (
+            get_available_transport_payment_methods,
+        )
+        offered = {
+            str(m.get("code") or "").strip().lower()
+            for m in get_available_transport_payment_methods(owner_user_id)
+        }
         if payment_method not in offered:
             raise ValidationError(
                 message="payment_method must be one of: %s" % sorted(offered),
