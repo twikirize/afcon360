@@ -175,12 +175,14 @@
     }
     var cycle = data.cycle || {};
     if (data.status === 'cancelled') {
+      stopped = true;
       if (statusText) statusText.textContent = 'Request cancelled';
       if (badge) badge.classList.add('terminal');
       if (statusMessage) statusMessage.textContent = 'This ride request has been cancelled. No driver or vehicle was assigned.';
       if (searchingEvent) searchingEvent.classList.remove('active');
       if (searchingEventText) searchingEventText.textContent = 'The rider cancelled this request.';
     } else if (cycle.status === 'expired' || cycle.status === 'cancelled') {
+      stopped = true;
       if (statusText) statusText.textContent = cycle.status === 'cancelled' ? 'Search cancelled' : 'No driver available';
       if (badge) badge.classList.add('terminal');
       if (statusMessage) statusMessage.textContent = cycle.status === 'cancelled'
