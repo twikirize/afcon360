@@ -297,7 +297,7 @@
         <p class="ta-footer-note">Review failed search outcomes</p>
       </div>
     </a>
-    <a class="ta-stat-link" href="{{ url_for('admin.transport_admin_operations', section='payments') }}">
+    <a class="ta-stat-link" href="{{ url_for('admin.transport_admin_operations', section='completed-unpaid') }}">
       <div class="ta-stat-card">
         <div class="stat-icon"><i class="fa-solid fa-wallet"></i></div>
         <div class="stat-value" id="adminCompletedUnpaidTrips">{{ completed_unpaid_trips|default(0)|format_number }}</div>
