@@ -1,6 +1,6 @@
 # AFCON360 Database Reliability — Remaining Work Only
 
-**Updated:** 27 October 2026  
+**Updated:** 28 October 2026  
 **Branch:** `sandbox/codespaces-alembic-investigation`  
 **Purpose:** A practical work queue containing only unfinished work from the official 39-item Database Reliability Master Register. Closed items are deliberately excluded.
 
@@ -10,17 +10,17 @@
 ## Current checkpoint
 
 - The 24 checkpoints before Docker were completed according to the owner; the Docker fresh-database replay is operational checkpoint **#25 — PASS for the tested GitHub-hosted environment**.
+- **28 October 2026:** Lettered package A / formal Item 12 is now **CLOSED — PASS for the identified Production deployment and previously recorded Codespaces census scope**. The Oracle production database revision and running application's Alembic current/head all report `f91075478868`; the three-revision deployed chain and read-only catalog inventory are recorded in Phase 15 of the canonical master register. No production database changes were made. The next active package is **B / formal Item 21**.
 - The hosted replay built the application image, ran 9 H3-A compatibility tests, migrated a fresh PostgreSQL 18.6 database to Alembic revision `1793013676`, passed its coarse schema guard (226 public tables, 49 enums, 139 CHECK constraints) and returned HTTP 200 from the health endpoint.
 - The replay does not prove compatibility with every cloud provider, safety of upgrading a populated database, or readiness of existing Production/Test databases.
 - Formal Item 26 in the canonical register is **populated-state migration safety**, not the operational Docker checkpoint. Formal Item 26 remains NOT STARTED.
 
 ## Remaining work at a glance
 
-The official register has 15 top-level items that are not CLOSED: Item 10 is PARTIAL; Items 12, 15, 21, 24, 25, 27, 28, 33, 36 and 39 are ADVANCED; Items 26, 35, 37 and 38 are NOT STARTED. This file groups those 15 items into lettered work packages A–O. The letters are practical work IDs only; official item numbers and statuses remain authoritative.
+The official register has 14 top-level items that are not CLOSED: Item 10 is PARTIAL; Items 15, 21, 24, 25, 27, 28, 33, 36 and 39 are ADVANCED; Items 26, 35, 37 and 38 are NOT STARTED. This file tracks those 14 remaining items in the existing lettered work IDs; closed package A / Item 12 is no longer in the active queue. The letters are practical work IDs only; official item numbers and statuses remain authoritative.
 
 | Work ID | Original item(s) | Work package | Current status |
 |---|---|---|---|
-| A | 12, 12b | Complete the remaining Item 12 environment evidence; Codespaces Docker census is recorded, sub-item 12c is CLOSED after the focused 34-test PASS, and read-only revision/catalog evidence for actual deployed environments remains | ADVANCED; 12c CLOSED |
 | B | 21 | Decide and document the 49-versus-47 enum target | ADVANCED |
 | C | 24 | Finish remaining migration-conflict and enum-disposition review | ADVANCED |
 | D | 25 | Complete foreign-key-to-model mapping | ADVANCED |
@@ -38,24 +38,11 @@ The official register has 15 top-level items that are not CLOSED: Item 10 is PAR
 
 ## Lettered work packages
 
-### A — Complete the read-only environment census
-**Official references:** Item 12 and sub-item 12b; sub-item 12c is closed and is retained in the master register's history  
-**Status:** Item 12 ADVANCED; sub-item 12b environment evidence incomplete (Codespaces census recorded; actual deployed environments remain to be verified); sub-item 12c CLOSED
-
-**Evidence now captured (27 October):** The Codespaces Docker engine responds (Docker 29.8.0-1; Ubuntu 24.04.5 LTS, containerized). Only afcon360_db (PostgreSQL 18.6, healthy) and afcon360_redis (healthy) were present; the web, Nginx and Celery containers were absent. The active PostgreSQL volume is afcon360_postgres_data_pg18; the old afcon360_postgres_data volume still exists and was preserved. The current database afcon360_sandbox has only public schema, no app tables or Alembic revision table. The database list contains only afcon360_sandbox, postgres and the templates. All supplied inspection commands exited 0. This closes the earlier Docker-CLI-unavailable obstacle for this Codespaces host but does not show the state of remote Production/Test environments. The nested Docker TCP timeout remains a separate environment limitation.
-
-**Work to do**
-1. Preserve the captured Codespaces census as evidence; no need to repeat the same commands unless the environment changes.
-2. Obtain read-only revision/catalog evidence for the actual deployed environments through their approved connection path; do not use Production/Test as scratch databases.
-3. **12c CLOSED (27 October):** source history is identified and the permanent test file `tests/test_realtime_cli_detection.py` plus the existing queue suite passed together: 34 passed in 3.14s, exit 0. No further 12c work is currently required. Keep the next activity focused on Item 12's read-only revision/catalog evidence for actual deployed environments.
-
-**Acceptance evidence:** Exact commands, exit codes, timestamps, environment identity, versions and captured outputs; no database writes. State clearly which environments were observed and which were not.
-
 ### B — Decide the 49-versus-47 enum target
 **Official reference:** Item 21  
 **Status:** ADVANCED
 
-**Why it remains:** H3-A replays with 49 enum types, while the documented B0 target expectation is 47. The target-scope decision and related ownership/disposition are not settled.
+**Why it remains:** H3-A replays with 49 enum types, while the documented B0 target expectation is 47. The target-scope decision and related ownership/disposition are not settled. The 28 October production census found 43 enum types in the older August deployment; that is expected release-age evidence and does not decide the H3-A/B0 target question.
 
 **Work to do:** Reconcile each differing enum against model declarations, the approved target schema, historical uses, dependencies, labels and defaults. Record an explicit decision for every discrepancy. Preserve existing type representations unless a separately reviewed and authorized plan says otherwise; do not drop, relabel or convert enums as a shortcut.
 
@@ -205,14 +192,13 @@ The official register has 15 top-level items that are not CLOSED: Item 10 is PAR
 
 This is a proposed order based on dependencies, not a status change or authorization to modify databases:
 
-1. **A —** Read-only environment census and deployment evidence.
-2. **B, C, D —** Resolve the enum target, migration conflict dispositions and FK mapping.
-3. **E, F, G —** Qualify per-database differences, defaults and model/schema behavior.
-4. **H —** Close the pickup-time contract and focused test/cleanup gate.
-5. **J, K, M —** Prove populated-state safety, historical upgrades and failure recovery on disposable databases.
-6. **L —** Compare clean and upgraded results after the prerequisite tests pass.
-7. **I, N —** Finalize transition runbook and automated regression gates after the underlying evidence exists.
-8. **O —** Resolve the historic-count claim when its original artifact is located or formally superseded.
+1. **B, C, D —** Resolve the enum target, migration conflict dispositions and FK mapping.
+2. **E, F, G —** Qualify per-database differences, defaults and model/schema behavior.
+3. **H —** Close the pickup-time contract and focused test/cleanup gate.
+4. **J, K, M —** Prove populated-state safety, historical upgrades and failure recovery on disposable databases.
+5. **L —** Compare clean and upgraded results after the prerequisite tests pass.
+6. **I, N —** Finalize transition runbook and automated regression gates after the underlying evidence exists.
+7. **O —** Resolve the historic-count claim when its original artifact is located or formally superseded.
 
 **Safety rules:** Keep `afcon360_prod` and `afcon360_test` read-only. Do not run H3-B, stamp, rebuild, drop/rename/relabel enums, prune legacy constraints, delete probe rows, or remove database volumes without separate explicit authorization. Never use `docker compose down -v` as routine cleanup. Keep all work on the investigation branch until reviewed.
 
