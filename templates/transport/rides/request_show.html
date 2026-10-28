@@ -122,6 +122,13 @@
         <button class="request-button" type="submit">Try finding a driver again</button>
       </form>
       {% endif %}
+      {% if request_model.status == 'searching' %}
+      <form method="post" action="{{ url_for('transport.rides_cancel_request', booking_reference=booking_reference) }}"
+            onsubmit="return confirm('Cancel this ride request? If a driver has already accepted, the trip will remain protected and you will need to use the trip cancellation flow.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="request-button" type="submit" style="background:#991b1b">Cancel request</button>
+      </form>
+      {% endif %}
       <a class="request-button" href="{{ url_for('transport.home') }}" style="background:#475569">Back to transport</a>
     </div>
   </section>
