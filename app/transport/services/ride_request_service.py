@@ -231,8 +231,11 @@ class RideRequestService:
         validation_view = {
             "pickup_location": data.get("pickup"),
             "dropoff_location": data.get("dropoff"),
-            "pickup_time": data.get("pickup_time")
-            or datetime.now(timezone.utc).isoformat(),
+            "pickup_time": (
+                data.get("pickup_time")
+                if str(data.get("booking_mode") or "instant").strip().lower() == "scheduled"
+                else request_received_at.isoformat()
+            ) or request_received_at.isoformat(),
             "service_type": data.get("service_type"),
             "passenger_count": data.get("passenger_count", 1),
             "vehicle_class": data.get("vehicle_class", "comfort"),
