@@ -93,15 +93,52 @@ def test_transport_choices_hide_configured_but_unimplemented_gateway_methods(mon
     ]
     monkeypatch.setattr(
         payment_methods, "get_available_payment_methods",
-        lambda user_id=None: configured,
+        lambda user_id=None, wallet_currency_code=None: configured,
     )
     monkeypatch.setattr(
         "app.transport.services.payment_config.get_user_wallet_status",
-        lambda user_id: True,
+        lambda user_id, currency_code=None: True,
     )
 
     methods = payment_methods.get_available_transport_payment_methods(123)
     assert [method["code"] for method in methods] == ["cash", "wallet"]
+
+
+def test_wallet_choice_must_match_transport_quote_currency(monkeypatch):
+    from app.transport.services import payment_methods
+
+    configured = [
+        {"code": "cash", "label": "Cash", "enabled": True},
+        {"code": "wallet", "label": "Wallet", "enabled": True},
+    ]
+    wallet_checks = []
+
+    monkeypatch.setattr(
+        payment_methods,
+        "get_available_payment_methods",
+        lambda user_id=None, wallet_currency_code=None: configured,
+    )
+
+    def wallet_status(user_id, currency_code=None):
+        wallet_checks.append(currency_code)
+        return currency_code == "USD"
+
+    monkeypatch.setattr(
+        "app.transport.services.payment_config.get_user_wallet_status",
+        wallet_status,
+    )
+
+    methods = payment_methods.get_available_transport_payment_methods(123)
+    assert [method["code"] for method in methods] == ["cash", "wallet"]
+    assert wallet_checks[-1] == "USD"
+
+    # The same rider must not be offered a UGX-wallet debit for a different
+    # quote denomination unless an actual UGX account exists.
+    methods_ugx = payment_methods.get_available_transport_payment_methods(
+        123, currency_code="UGX"
+    )
+    assert [method["code"] for method in methods_ugx] == ["cash"]
+    assert wallet_checks[-1] == "UGX"
 
 
 def test_anonymous_transport_choices_do_not_advertise_wallet(monkeypatch):
@@ -109,7 +146,7 @@ def test_anonymous_transport_choices_do_not_advertise_wallet(monkeypatch):
 
     monkeypatch.setattr(
         payment_methods, "get_available_payment_methods",
-        lambda user_id=None: [
+        lambda user_id=None, wallet_currency_code=None: [
             {"code": "cash", "label": "Cash", "enabled": True},
             {"code": "wallet", "label": "Wallet", "enabled": True},
         ],
