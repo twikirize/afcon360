@@ -46,6 +46,11 @@ from app.transport.services.location_snapshot import (
     SOURCE_METHOD_PAIRS,
     build_canonical_location_snapshot,
 )
+from app.transport.services.fare_quote_service import (
+    load_fare_quote,
+    money_amount,
+    validate_fare_quote,
+)
 from app.utils.exceptions import ServiceUnavailableError, ValidationError
 from app.utils.validators import validate_booking_request
 
@@ -275,10 +280,25 @@ class RideRequestService:
                 message="Resolved coordinates required for fare calculation",
                 field="pickup",
             )
+        # Only a current, signed quote can cross the commitment boundary.
+        # Reuse the quote's issue time so a change of hour/table version
+        # during the review step cannot silently change the shown amount.
+        fare_quote = load_fare_quote(data.get("fare_quote_token"))
+        try:
+            quoted_at = datetime.fromisoformat(str(fare_quote.get("quoted_at")))
+            if quoted_at.tzinfo is not None:
+                raise ValueError("quoted_at must be the signed local reference time")
+        except (TypeError, ValueError) as exc:
+            raise ValidationError(
+                message="Your fare quote is invalid. Please review the fare again.",
+                field="fare_quote_token",
+            ) from exc
+
         estimate = calculate_estimate(
             service_type=service_key,
             vehicle_class=vehicle_class,
             distance_km=measured_km,
+            at=quoted_at,
         )
 
         # Denomination authority is the fare estimate itself: the stored
@@ -320,6 +340,19 @@ class RideRequestService:
                 message="payment_method must be one of: %s" % sorted(offered),
                 field="payment_method",
             )
+
+        accepted_fare_amount = validate_fare_quote(
+            fare_quote,
+            service_type=service_key,
+            vehicle_class=vehicle_class,
+            currency=currency_code,
+            pickup=pickup_snapshot,
+            dropoff=dropoff_snapshot,
+            distance_km=measured_km,
+            fare_version=estimate.get("version"),
+            server_amount=estimate["total"],
+            confirmed_amount=data.get("confirmed_fare_amount"),
+        )
 
         booking_mode = str(data.get("booking_mode") or "instant").strip().lower()
         if booking_mode not in ("instant", "scheduled"):
@@ -413,7 +446,7 @@ class RideRequestService:
                 service_type=service_type,
                 vehicle_class=vehicle_class,
                 passenger_count=passenger_count,
-                fare_estimate_amount=Decimal(str(estimate["total"])),
+                fare_estimate_amount=accepted_fare_amount,
                 currency_code=currency_code,
                 payment_method=payment_method,
                 status="searching",
@@ -422,7 +455,7 @@ class RideRequestService:
                     "fare_version": estimate.get("version"),
                     "fare_effective_from": estimate.get("effective_from"),
                     "fare_estimate": {
-                        "amount": float(estimate["total"]),
+                        "amount": float(accepted_fare_amount),
                         "currency": estimate.get("currency"),
                     },
                     "requested_currency": requested_currency,
