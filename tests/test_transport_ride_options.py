@@ -165,6 +165,36 @@ def test_ride_options_empty_body_returns_labeled_defaults(app, anonymous_client)
         assert option["quote_token"]
 
 
+def test_fare_quote_never_creates_request_search_or_booking(
+        app, anonymous_client):
+    from app.transport.models import Booking, OfferAttempt, RideRequest, SearchCycle
+
+    def counts():
+        with app.app_context():
+            return (
+                Booking.query.count(),
+                RideRequest.query.count(),
+                SearchCycle.query.count(),
+                OfferAttempt.query.count(),
+            )
+
+    before = counts()
+    response = anonymous_client.post(
+        "/api/transport/ride-options",
+        json={
+            "service_type": "on_demand",
+            "currency": "USD",
+            "pickup_latitude": 0.3136,
+            "pickup_longitude": 32.5811,
+            "dropoff_latitude": 0.32,
+            "dropoff_longitude": 32.59,
+        },
+    )
+    assert response.status_code == 200, response.get_data(as_text=True)
+    after = counts()
+    assert after == before, "pricing alone must not persist a ride or start a search"
+
+
 def test_ride_options_rejects_unknown_currency(app, anonymous_client):
     resp = anonymous_client.post("/api/transport/ride-options",
                                  json={"currency": "GIL"})
