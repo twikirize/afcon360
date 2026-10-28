@@ -79,6 +79,23 @@ def get_available_transport_payment_methods(
             method for method in result
             if str(method.get("code") or "").strip().lower() != "wallet"
         ]
+
+    # State the denomination before the rider commits. This transport path
+    # does not perform implicit FX conversion, so the fare currency must be
+    # clear for both direct cash payment and Wallet balance settlement.
+    for method in result:
+        code = str(method.get("code") or "").strip().lower()
+        if code == "cash":
+            method["description"] = (
+                "Pay the quoted fare in %s directly to the driver at trip end."
+                % currency_code
+            )
+        elif code == "wallet":
+            method["description"] = (
+                "Pay from your %s Wallet balance at trip end. "
+                "No automatic currency conversion is performed."
+                % currency_code
+            )
     return result
 
 
