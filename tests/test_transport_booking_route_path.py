@@ -4,7 +4,7 @@ REAL RIDE TRANSACTION PATH — route-level proof.
 
 Closes the final evidence gap for the rider journey:
 
-  SELECT (homepage bolt-sheet, live availability)
+  LOCATIONS -> QUOTE -> RIDER ACCEPTANCE -> REQUEST/SEARCH
     -> REQUEST (POST /transport/book; no Booking row before acceptance)
     -> durable OfferAttempt -> ACCEPT -> atomic Booking + assignment
 
