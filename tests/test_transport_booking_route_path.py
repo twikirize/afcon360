@@ -444,6 +444,8 @@ class TestExplicitPaymentChoiceOnBookRoute:
             rider_id = rider.id
             _promote_user_to_tier3(app, rider_id)
 
+        with app.app_context():
+            before_cycles = SearchCycle.query.count()
         form = _bolt_form(app, _new_pickup_time())
         form.pop("fare_quote_token", None)
         response = authenticated_client.post(
@@ -457,7 +459,7 @@ class TestExplicitPaymentChoiceOnBookRoute:
             assert Booking.query.filter_by(
                 user_id=rider_id, is_deleted=False
             ).count() == 0
-            assert SearchCycle.query.count() == 0
+            assert SearchCycle.query.count() == before_cycles
 
     def test_changed_confirmed_fare_does_not_create_request(
         self, app, authenticated_client, test_user
@@ -467,6 +469,8 @@ class TestExplicitPaymentChoiceOnBookRoute:
             rider_id = rider.id
             _promote_user_to_tier3(app, rider_id)
 
+        with app.app_context():
+            before_cycles = SearchCycle.query.count()
         form = _bolt_form(app, _new_pickup_time())
         from decimal import Decimal
         form["confirmed_fare_amount"] = format(
@@ -483,7 +487,7 @@ class TestExplicitPaymentChoiceOnBookRoute:
             assert Booking.query.filter_by(
                 user_id=rider_id, is_deleted=False
             ).count() == 0
-            assert SearchCycle.query.count() == 0
+            assert SearchCycle.query.count() == before_cycles
 
 
 # =====================================================================
