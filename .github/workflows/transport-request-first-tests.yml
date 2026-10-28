@@ -1,0 +1,126 @@
+name: Transport request-first PostgreSQL regression
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/transport/**"
+      - "app/tasks/transport_recovery.py"
+      - "app/utils/validators.py"
+      - "app/config.py"
+      - "app/__init__.py"
+      - "templates/transport/**"
+      - "templates/admin/transport_admin_*.html"
+      - "tests/test_transport_booking_route_path.py"
+      - "tests/test_transport_cash_confirmation_semantics.py"
+      - "tests/test_transport_admin_canonical_overview.py"
+      - "tests/transport/test_ride_request_create.py"
+      - "tests/transport/test_trip_end_payment_semantics.py"
+      - "migrations/**"
+      - "requirements.txt"
+      - ".github/workflows/transport-request-first-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transport-request-first-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-regression:
+    name: PostgreSQL 18 — request lifecycle, payments, admin queues
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: afcon360_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d afcon360_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      APP_ENV: testing
+      FLASK_ENV: testing
+      DISABLE_REDIS: "1"
+      SOCKETIO_ENABLED: "false"
+      LOG_LEVEL: WARNING
+      SECRET_KEY: "ci-only-not-a-production-secret"
+      ENCRYPTION_KEY: "ci-only-not-a-production-key"
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afcon360_test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afcon360_test
+      TEST_DB_LOCK_TIMEOUT: "60"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install project and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Confirm one Alembic head
+        run: |
+          python - <<'PY'
+          from alembic.config import Config
+          from alembic.script import ScriptDirectory
+
+          config = Config("migrations/alembic.ini")
+          config.set_main_option("script_location", "migrations")
+          heads = ScriptDirectory.from_config(config).get_heads()
+          print("Alembic heads:", heads)
+          if len(heads) != 1:
+              raise SystemExit(
+                  f"Expected exactly one Alembic head before test provisioning; found {len(heads)}"
+              )
+          PY
+
+      - name: Build the disposable test schema from reviewed migrations
+        run: python -m flask --app 'app:create_app()' db upgrade
+
+      - name: Compile Python modules changed by the transport feature
+        run: |
+          python -m compileall -q             app/transport             app/tasks/transport_recovery.py             app/utils/validators.py             tests/test_transport_booking_route_path.py             tests/test_transport_cash_confirmation_semantics.py             tests/test_transport_admin_canonical_overview.py             tests/transport/test_ride_request_create.py             tests/transport/test_trip_end_payment_semantics.py
+
+      - name: Compile changed Jinja templates
+        run: |
+          python - <<'PY'
+          from app import create_app
+
+          app = create_app()
+          templates = (
+              "transport/new_home.html",
+              "transport/driver/driver_dashboard.html",
+              "transport/rides/request_show.html",
+              "transport/rides/show.html",
+              "admin/transport_admin_dashboard.html",
+              "admin/transport_admin_operations.html",
+              "transport/admin/dashboard.html",
+          )
+          with app.app_context():
+              for template in templates:
+                  app.jinja_env.get_template(template)
+                  print("JINJA_TEMPLATE_OK", template)
+          PY
+
+      - name: Run request lifecycle, payment, and admin regression tests
+        run: |
+          python -m pytest -q             tests/test_transport_booking_route_path.py             tests/test_transport_cash_confirmation_semantics.py             tests/test_transport_admin_canonical_overview.py             tests/transport/test_ride_request_create.py             tests/transport/test_trip_end_payment_semantics.py
