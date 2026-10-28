@@ -128,3 +128,83 @@ def test_payment_validation_accepts_canonical_ugx_for_east_africa():
         "payment_method": "WALLET",
     })
     assert valid, errors
+
+
+def test_owner_can_retry_wallet_payment_for_completed_unpaid_trip(
+    app, authenticated_client, test_user, monkeypatch
+):
+    with app.app_context():
+        rider = db.session.merge(test_user)
+        user_id = rider.id
+        booking_id = _booking(user_id, BookingStatus.COMPLETED, "wallet")
+        booking = db.session.get(Booking, booking_id)
+        booking.booking_reference = "WALLET-RETRY-TEST"
+        booking.final_price = 25
+        booking.total_amount = 25
+        booking.currency = "USD"
+        booking.payment_status = PaymentStatus.PENDING
+        db.session.commit()
+
+    called = {}
+
+    def fake_process(booking_id, payment_data, request_id=None):
+        called["booking_id"] = booking_id
+        called["payment_data"] = payment_data
+        called["request_id"] = request_id
+        return {
+            "success": True,
+            "data": {
+                "payment_status": "captured",
+                "payment_reference": "TRP-WALLET-RETRY-TEST",
+                "amount": 25.0,
+            },
+        }
+
+    monkeypatch.setattr(
+        PaymentService, "process_payment", staticmethod(fake_process)
+    )
+    response = authenticated_client.post(
+        "/api/transport/rides/WALLET-RETRY-TEST/payment/settle-wallet",
+        json={},
+    )
+    assert response.status_code == 200, response.get_data(as_text=True)
+    body = response.get_json()
+    assert body["success"] is True
+    assert body["data"]["payment_status"] == "captured"
+    assert called["booking_id"] == booking_id
+    assert called["payment_data"] == {
+        "amount": "25",
+        "currency": "USD",
+        "payment_method": "wallet",
+    }
+    assert called["request_id"] == "trip-complete:WALLET-RETRY-TEST"
+
+
+def test_rider_wallet_retry_does_not_allow_another_users_booking(
+    app, client, test_user
+):
+    from app.identity.models.user import User
+
+    with app.app_context():
+        other = User(
+            username="wallet_retry_other_" + str(datetime.now(timezone.utc).timestamp()).replace(".", ""),
+            email="wallet_retry_other_" + str(datetime.now(timezone.utc).timestamp()).replace(".", "") + "@test.example.com",
+            is_active=True,
+            is_verified=True,
+        )
+        other.set_password("TestPassword123!")
+        db.session.add(other)
+        db.session.commit()
+        other_id = other.id
+        booking_id = _booking(
+            other_id, BookingStatus.COMPLETED, "wallet"
+        )
+        booking = db.session.get(Booking, booking_id)
+        booking.booking_reference = "WALLET-RETRY-FOREIGN"
+        db.session.commit()
+
+    response = client.post(
+        "/api/transport/rides/WALLET-RETRY-FOREIGN/payment/settle-wallet",
+        json={},
+    )
+    assert response.status_code == 401 or response.status_code == 404, response.get_data(as_text=True)
