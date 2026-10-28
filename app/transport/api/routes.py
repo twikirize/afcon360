@@ -71,6 +71,7 @@ def register_api_resources(api):
         BookingStatusResource,
         BookingAssignmentResource,
         BookingPaymentResource,
+        RiderWalletSettlementResource,
         BookingRouteResource,
     )
     from .incident_routes import (
@@ -181,6 +182,11 @@ def register_api_resources(api):
     safe_add_resource(BookingStatusResource, "/bookings/<int:booking_id>/status", endpoint="booking_status")
     safe_add_resource(BookingAssignmentResource, "/bookings/<int:booking_id>/assign", endpoint="booking_assignment")
     safe_add_resource(BookingPaymentResource, "/bookings/<int:booking_id>/payments", endpoint="booking_payments")
+    safe_add_resource(
+        RiderWalletSettlementResource,
+        "/rides/<string:booking_reference>/payment/settle-wallet",
+        endpoint="rider_wallet_settlement",
+    )
     safe_add_resource(BookingRouteResource, "/bookings/<int:booking_id>/route", endpoint="booking_route")
 
     # Fare estimation (fare node: canonical engine, pre-submit preview)
