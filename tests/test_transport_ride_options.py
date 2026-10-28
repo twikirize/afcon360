@@ -1,14 +1,11 @@
-"""Transport ride options (hailing node) - contract tests.
+"""Transport fare quote endpoint contract tests.
 
-Pins the anonymous ride-options endpoint: it composes real fleet
-availability grouped by class with the canonical fare engine, honours
-currency validation, reports the straight-line distance basis and
-planning ETA, and leaks no internal IDs. Excludes vehicles and drivers
-that are deleted, unavailable, or inactive — per the sanctioned
-``availability_service`` predicate (online + approved + fresh driver
-linked to the vehicle by an active history row, not engaged elsewhere).
-The booking action itself remains behind transport.book_transport
-(auth + KYC), so no booking is created here.
+Pins the anonymous pre-confirmation endpoint: it validates resolved
+coordinates, returns a short-lived signed fare quote for every supported
+vehicle class using the canonical fare engine, and exposes no driver,
+vehicle, availability-count, or ETA data. Most importantly, quote
+requests must not create a Booking, RideRequest, SearchCycle or offer.
+Driver lookup/matching is a separate post-confirmation step.
 """
 
 import uuid
