@@ -114,14 +114,23 @@
       <table class="ta-ops-table">
         <thead><tr><th>Trip / payment reference</th><th>Completed</th><th>Selected method</th><th>Amount due</th><th>Payment state</th></tr></thead>
         <tbody>
-          {% for payment in completed_unpaid_records %}
-          {% set booking = payment.booking %}
+          {% for booking, payment in completed_unpaid_records %}
           <tr>
-            <td><div class="ta-ops-ref">{{ booking.booking_reference if booking else 'Booking unavailable' }}</div><small>{{ payment.payment_reference }}</small></td>
-            <td>{{ booking.completed_at.strftime('%Y-%m-%d %H:%M UTC') if booking and booking.completed_at else '—' }}</td>
-            <td>{{ (payment.payment_method or (booking.payment_method if booking else '—'))|replace('_',' ')|title }}</td>
-            <td>{{ (payment.currency.value if payment.currency.value is defined else payment.currency)|default('—', true) }} {{ '%.2f'|format(payment.amount or 0) }}</td>
-            <td><span class="ta-ops-pill ta-ops-pill--amber">Pending</span></td>
+            <td><div class="ta-ops-ref">{{ booking.booking_reference }}</div><small>{{ payment.payment_reference if payment else 'Missing payment record' }}</small></td>
+            <td>{{ booking.completed_at.strftime('%Y-%m-%d %H:%M UTC') if booking.completed_at else '—' }}</td>
+            <td>{{ (payment.payment_method if payment else booking.payment_method or '—')|replace('_',' ')|title }}</td>
+            <td>
+              {% set due_currency = (payment.currency.value if payment and payment.currency.value is defined else payment.currency if payment else booking.currency.value if booking.currency.value is defined else booking.currency) %}
+              {% set due_amount = payment.amount if payment else booking.final_price if booking.final_price is not none else booking.total_amount %}
+              {{ due_currency|default('—', true) }} {{ '%.2f'|format(due_amount or 0) }}
+            </td>
+            <td>
+              {% if payment %}
+              <span class="ta-ops-pill ta-ops-pill--amber">Pending</span>
+              {% else %}
+              <span class="ta-ops-pill ta-ops-pill--red">Payment record missing</span>
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>
