@@ -1087,7 +1087,7 @@ def book_transport():
                     f"{booking_id}: {e}", exc_info=True,
                 )
 
-        flash(f"Ride request received! We’re finding your driver. Reference: {ref}", "success")
+        flash(f"Your booking was created. Reference: {ref}", "success")
         return_to = session.pop("transport_book_return_to", None)
         if return_to:
             return redirect(return_to)
