@@ -227,7 +227,7 @@ class TestCashConfirmationSemantics:
 
         resp = authenticated_client.post(
             "/transport/book",
-            data=_bolt_form(_new_pickup_time()),
+            data=_bolt_form(app, _new_pickup_time()),
             follow_redirects=False,
         )
         assert resp.status_code in (301, 302)
