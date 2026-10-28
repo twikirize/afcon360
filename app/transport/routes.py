@@ -1512,6 +1512,43 @@ def rides_cancel(booking_reference):
                             booking_reference=booking_reference))
 
 
+@transport_bp.route("/rides/<string:booking_reference>/cancel-request", methods=["POST"])
+@module_enabled_required("transport")
+@login_required
+def rides_cancel_request(booking_reference):
+    """Cancel a request-first ride before a driver accepts it."""
+    from app.transport.models import RideRequest
+    ride_request = RideRequest.query.filter_by(
+        public_id=booking_reference, is_deleted=False
+    ).first()
+    if ride_request is None or ride_request.user_id != current_user.id:
+        abort(404)
+
+    try:
+        from app.transport.services.ride_request_dispatch_service import (
+            RideRequestDispatchService, RideRequestDispatchError,
+        )
+        outcome = RideRequestDispatchService.cancel_request(
+            booking_reference, current_user.id
+        )
+        if request.is_json:
+            return jsonify({"status": "success", **outcome}), 200
+        flash("Ride request cancelled. No driver was assigned.", "success")
+    except RideRequestDispatchError as e:
+        if request.is_json:
+            return jsonify({"status": "error", "code": e.code,
+                            "message": e.message}), 409
+        flash(e.message, "warning")
+    except Exception:
+        db.session.rollback()
+        logger.exception("Request-first cancellation failed for %s", booking_reference)
+        if request.is_json:
+            return jsonify({"status": "error",
+                            "message": "Unable to cancel this ride request"}), 500
+        flash("Unable to cancel this ride request", "danger")
+    return redirect(url_for("transport.rides_show", booking_reference=booking_reference))
+
+
 # ---------------------------------------------------------------------------
 # MATCH-01-owned: manual rider retry (rides section — NOT the cancellation
 # section; cancellation-owned rides_cancel/bookings_cancel above untouched).
