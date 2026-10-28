@@ -311,6 +311,74 @@ class RideRequestDispatchService:
         return cls._insert_offer(request, cycle, candidate, next_number)
 
     @classmethod
+    def retry_search(cls, request_public_id: str, owner_user_id: int) -> Dict[str, Any]:
+        """Open a new durable search cycle after a previous cycle exhausted."""
+        from app.transport.services.matching_service import MatchingService
+
+        request = RideRequest.query.filter_by(
+            public_id=request_public_id, is_deleted=False
+        ).with_for_update().first()
+        if request is None or request.user_id != owner_user_id:
+            raise RideRequestDispatchError("request_not_found", "Ride request not found")
+        if request.status != "searching":
+            raise RideRequestDispatchError(
+                "request_not_retryable", "This ride request can no longer be retried"
+            )
+
+        current_cycle = cls._cycle_for_request(request, lock=True)
+        if current_cycle is not None and current_cycle.status == "searching":
+            active = OfferAttempt.query.filter(
+                OfferAttempt.cycle_id == current_cycle.id,
+                OfferAttempt.status.in_(("offered", "accepting")),
+            ).first()
+            if active is not None:
+                if active.status == "accepting":
+                    raise RideRequestDispatchError(
+                        "accept_in_progress", "A driver is currently accepting this ride"
+                    )
+                if active.response_deadline and active.response_deadline > _now():
+                    return {"status": "offered", "request_reference": request.public_id}
+                next_attempt = cls._advance_locked(
+                    request, current_cycle, active, "timed_out"
+                )
+                db.session.commit()
+                if next_attempt:
+                    cls._notify_driver(request, next_attempt)
+                return {
+                    "status": current_cycle.status,
+                    "request_reference": request.public_id,
+                }
+
+            # Search cycle exists but its first offer has not yet been created;
+            # leave the same cycle and let start_search resume it.
+            db.session.commit()
+            return cls.start_search(request.public_id)
+
+        if current_cycle is not None and current_cycle.status not in ("expired", "cancelled"):
+            raise RideRequestDispatchError(
+                "request_not_retryable", "This ride request is not awaiting a retry"
+            )
+
+        number = (current_cycle.cycle_number + 1) if current_cycle else 1
+        now = _now()
+        cycle = SearchCycle(
+            ride_request_id=request.id,
+            cycle_number=number,
+            cycle_key="%s:%s" % (request.idempotency_key, number),
+            status="searching",
+            started_at=now,
+            deadline=now + timedelta(seconds=MatchingService._matching_window_seconds()),
+            cycle_metadata={},
+        )
+        meta = dict(request.request_metadata or {})
+        meta["retry_count"] = int(meta.get("retry_count") or 0) + 1
+        meta["last_retry_at"] = now.isoformat()
+        request.request_metadata = meta
+        db.session.add(cycle)
+        db.session.commit()
+        return cls.start_search(request.public_id)
+
+    @classmethod
     def decline_offer(cls, request_public_id: str, driver_id: int) -> bool:
         request = RideRequest.query.filter_by(
             public_id=request_public_id, is_deleted=False
@@ -380,6 +448,34 @@ class RideRequestDispatchService:
                 logging.getLogger(__name__).exception(
                     "Ride-request offer expiry recovery failed for attempt %s", row.id
                 )
+        # Recovery also starts cycles whose request row committed but
+        # whose first offer could not be created due to a transient failure.
+        try:
+            requests = (
+                RideRequest.query.filter_by(status="searching", is_deleted=False)
+                .order_by(RideRequest.created_at.asc())
+                .limit(batch)
+                .all()
+            )
+            for request in requests:
+                cycle = cls._cycle_for_request(request)
+                if cycle is None or cycle.status != "searching":
+                    continue
+                attempt_count = OfferAttempt.query.filter_by(cycle_id=cycle.id).count()
+                if attempt_count == 0:
+                    try:
+                        cls.start_search(request.public_id)
+                    except Exception:
+                        db.session.rollback()
+                        import logging
+                        logging.getLogger(__name__).exception(
+                            "Request-first dispatch recovery failed for %s",
+                            request.public_id,
+                        )
+        except Exception:
+            db.session.rollback()
+            import logging
+            logging.getLogger(__name__).exception("Request-first search recovery scan failed")
         return {"expired": expired, "advanced": advanced, "closed": closed}
 
     @classmethod
