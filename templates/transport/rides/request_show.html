@@ -50,7 +50,7 @@
       <span class="request-status{% if cycle_state in ['expired','cancelled'] %} terminal{% endif %}" id="requestStatusBadge" aria-live="polite">
         <span aria-hidden="true">●</span>
         <span id="requestStatusText">
-          {% if request_model.status == 'converted' %}Driver confirmed
+          {% if request_model.status == 'converted' %}Driver found
           {% elif request_model.status == 'cancelled' %}Request cancelled
           {% elif cycle_state == 'expired' %}No driver available
           {% else %}Finding your driver{% endif %}
@@ -165,8 +165,8 @@
     if (!data) return;
     if (data.converted || data.status === 'converted') {
       stopped = true;
-      if (statusText) statusText.textContent = 'Driver confirmed';
-      if (statusMessage) statusMessage.textContent = 'A driver accepted and the vehicle assignment was committed. Opening your confirmed trip…';
+      if (statusText) statusText.textContent = 'Driver found';
+      if (statusMessage) statusMessage.textContent = 'A driver accepted and the vehicle assignment is complete. Loading your driver and vehicle details…';
       if (searchingEvent) searchingEvent.classList.add('done');
       if (assignedEvent) assignedEvent.classList.add('done','active');
       if (paymentStatus) paymentStatus.textContent = 'Unpaid / pending — payment is due at trip completion';
