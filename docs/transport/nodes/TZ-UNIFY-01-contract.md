@@ -187,3 +187,43 @@ This node requires explicit human approval for:
 - `TZ-UNIFY-02`: Frontend timezone picker & persistence
 - `TZ-UNIFY-03`: Scheduled job / Celery beat timezone alignment
 - `TZ-UNIFY-04`: Historical data audit & correction (if mixed TZ discovered)
+
+---
+
+## Migration History Repair (2026-10-28)
+
+**Grep term:** `TZ-UNIFY-02 recovery`
+
+The TZ-UNIFY-02 step is intentionally split across three migrations because the original source for two of them was lost and had to be recovered from compiled artifacts:
+
+- `c8c6a2c5a3f9` — 387 timestamp conversions + drops the 366 baseline timestamp indexes.
+- `31287acd4eb8` — 54 further timestamp conversions.
+- `85776e36d829` — recreates 370 indexes: the 366 dropped by `c8c6` plus 4 new ones.
+
+**Do not squash or collapse these three files.**
+
+The original commit `315c36e` chained only:
+
+`c4b306c2ed73 -> 85776e36d829 -> fc87cdbd0e6a`
+
+It did **not** include `c8c6a2c5a3f9` or `31287acd4eb8`. Its `85776` had 370 `create_index` operations and 370 downgrade `drop_index` operations, but **zero** `alter_column` conversions. The repaired chain is:
+
+`1793013676 -> c4b306c2ed73 -> c8c6a2c5a3f9 -> 31287acd4eb8 -> 85776e36d829 -> fc87cdbd0e6a`
+
+**Repair commit:** the commit that adds this section. The recovered files were validated by operation counts, fresh install from empty, a data-bearing downgrade/upgrade, and full catalog parity; the exact original `.pyc` source text was not recoverable.
+
+### Deploy warning
+
+A database that ran `315c36e`'s broken chain must **not** be upgraded in place or stamped to the repaired head. It carries `85776`/`fc87` revision markers but is missing the `c8c6`/`31287` conversions and the 366 index drops; `flask db upgrade` will see `fc87` and do nothing.
+
+Audit any database claiming to be at head:
+
+- Naive timestamp columns: `SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND data_type='timestamp without time zone';` — must be `0`.
+- Aware timestamp columns: same query with `timestamp with time zone` — must be `983` (plus intentional new columns).
+- Public index count: must be `1,746` at this head.
+
+Rebuild from a verified backup, or apply the missing DDL under review with row-count/hash and catalog evidence. Do not simply stamp it.
+
+Databases at `c4b306c2ed73` or earlier can upgrade through the repaired chain. Fresh installs from empty were proven on 2026-10-28: 226 tables, 0 naive / 983 aware, 1,746 indexes, full catalog parity with production. A database already at `fc87cdbd0e6a` with 0 naive / 983 aware and 1,746 indexes is already correct; these files are a history/reproducibility repair, not a new schema change.
+
+For any still-naive database, run the conversions with the legacy values interpreted as `Africa/Nairobi` wall-clock (the historical `PGTZ`/session timezone). Do not add `AT TIME ZONE 'UTC'` casts to these columns.
