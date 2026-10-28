@@ -191,12 +191,11 @@ def transport_admin_operations():
                 if not payment.is_deleted
                 and payment.payment_status == PaymentStatus.PENDING
             ]
+            # The sequence-backed payment id is monotonic and avoids
+            # comparing potentially mixed naive/aware legacy timestamps.
             latest_pending = max(
                 pending_rows,
-                key=lambda payment: (
-                    payment.created_at or datetime.min.replace(tzinfo=timezone.utc),
-                    payment.id or 0,
-                ),
+                key=lambda payment: int(payment.id or 0),
                 default=None,
             )
             completed_unpaid_records.append((booking, latest_pending))
