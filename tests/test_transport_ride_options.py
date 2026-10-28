@@ -203,9 +203,24 @@ def test_ride_options_prices_every_class_without_driver_lookup(
     # Any call to live supply is a bug: fare review must not start matching
     # or inspect availability before the rider agrees to the price.
     from app.transport.services import availability_service
+    from app.transport.api import ride_options_routes
+
+    def forbidden_supply_lookup(*args, **kwargs):
+        pytest.fail("pre-confirmation fare quote queried live driver/vehicle supply")
+
     monkeypatch.setattr(
         availability_service, "available_by_class",
-        lambda: pytest.fail("pre-confirmation fare quote queried live supply"),
+        forbidden_supply_lookup,
+    )
+    # Patch the endpoint namespace too so a future direct import of the
+    # availability function cannot bypass this guard.
+    monkeypatch.setattr(
+        ride_options_routes, "available_by_class",
+        forbidden_supply_lookup, raising=False,
+    )
+    monkeypatch.setattr(
+        ride_options_routes, "nearest_eta_minutes_for_class",
+        forbidden_supply_lookup, raising=False,
     )
     body = {"service_type": "on_demand", "currency": "USD",
             "pickup_latitude": 0.3136, "pickup_longitude": 32.5811,
