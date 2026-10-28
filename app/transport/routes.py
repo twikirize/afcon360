@@ -400,14 +400,6 @@ def home():
 
     logger.info(f"Transport home accessed by user_id={_uid()}, pane={is_pane}")
 
-    # Active drivers count for map display
-    active_drivers = 0
-    try:
-        from app.transport.services.provider_service import get_provider_service
-        active_drivers = get_provider_service().count_active_drivers()
-    except Exception:
-        active_drivers = 0
-
     ctx = dict(
         title="AFCON Transport & Travel",
         services=services,                    # already there: ServiceType enum
@@ -426,7 +418,6 @@ def home():
             if selected_service in {s["key"] for s in services}
             else "on_demand"
         ),
-        active_drivers=active_drivers,
         tile_url=current_app.config["TILE_PROVIDER_URL_TEMPLATE"],
         tile_attribution=current_app.config["TILE_PROVIDER_ATTRIBUTION"],
     )
@@ -471,13 +462,6 @@ def new_home():
             db.session.rollback()
             logger.error(f"Error loading user bookings for user_id={_uid()}: {e}")
 
-    active_drivers = 0
-    try:
-        from app.transport.services.provider_service import get_provider_service
-        active_drivers = get_provider_service().count_active_drivers()
-    except Exception:
-        active_drivers = 0
-
     ctx = dict(
         title="AFCON360 - Your Ride, Your Game!",
         services=services,
@@ -496,7 +480,6 @@ def new_home():
             if selected_service in {s["key"] for s in services}
             else "on_demand"
         ),
-        active_drivers=active_drivers,
         tile_url=current_app.config["TILE_PROVIDER_URL_TEMPLATE"],
         tile_attribution=current_app.config["TILE_PROVIDER_ATTRIBUTION"],
     )
