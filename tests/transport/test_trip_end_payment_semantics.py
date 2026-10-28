@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.extensions import db
-from app.transport.models import Booking, BookingStatus, PaymentStatus, ProviderType, ServiceType
+from app.transport.models import Booking, BookingPayment, BookingStatus, PaymentStatus, ProviderType, ServiceType
 from app.transport.services.payment_service import PaymentService
 from app.utils.exceptions import ValidationError
 
@@ -53,6 +53,10 @@ def test_settlement_rejected_before_trip_completion(app, test_user, monkeypatch)
         assert booking.status == BookingStatus.IN_PROGRESS.value
         assert booking.payment_status == PaymentStatus.PENDING.value
         assert booking.payment_captured_at is None
+        payment_row = BookingPayment.query.filter_by(booking_id=booking_id).one()
+        assert payment_row.payment_status == PaymentStatus.PENDING
+        assert payment_row.payment_method == "cash"
+        assert payment_row.payment_reference
 
 
 def test_cash_stays_pending_after_trip_completion_until_receipt_confirmed(
@@ -76,3 +80,40 @@ def test_cash_stays_pending_after_trip_completion_until_receipt_confirmed(
         assert booking.payment_status == PaymentStatus.PENDING.value
         assert booking.payment_captured_at is None
         assert booking.payment_gateway_reference is None
+
+
+def test_transport_choices_hide_configured_but_unimplemented_gateway_methods(monkeypatch):
+    from app.transport.services import payment_methods
+
+    configured = [
+        {"code": "cash", "label": "Cash", "enabled": True},
+        {"code": "wallet", "label": "Wallet", "enabled": True},
+        {"code": "flutterwave", "label": "Card", "enabled": True},
+        {"code": "mtn_momo", "label": "MTN Mobile Money", "enabled": True},
+    ]
+    monkeypatch.setattr(
+        payment_methods, "get_available_payment_methods",
+        lambda user_id=None: configured,
+    )
+    monkeypatch.setattr(
+        "app.transport.services.payment_config.get_user_wallet_status",
+        lambda user_id: True,
+    )
+
+    methods = payment_methods.get_available_transport_payment_methods(123)
+    assert [method["code"] for method in methods] == ["cash", "wallet"]
+
+
+def test_anonymous_transport_choices_do_not_advertise_wallet(monkeypatch):
+    from app.transport.services import payment_methods
+
+    monkeypatch.setattr(
+        payment_methods, "get_available_payment_methods",
+        lambda user_id=None: [
+            {"code": "cash", "label": "Cash", "enabled": True},
+            {"code": "wallet", "label": "Wallet", "enabled": True},
+        ],
+    )
+
+    methods = payment_methods.get_available_transport_payment_methods(None)
+    assert [method["code"] for method in methods] == ["cash"]
