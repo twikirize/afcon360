@@ -362,6 +362,22 @@
           {% endif %}
         </span>
       </div>
+      {% if current_status == 'completed'
+            and pstatus == 'pending'
+            and (booking.payment_method or '')|lower == 'wallet' %}
+      <div class="payment-row" style="align-items:flex-start;flex-direction:column;gap:8px;">
+        <p id="walletSettlementMessage" role="status" style="margin:0;color:#92400e;">
+          Your trip is complete, but Wallet payment has not been confirmed yet. You can retry after adding funds if your balance was insufficient.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <button type="button" class="btn btn-primary btn-sm" id="retryWalletSettlement"
+                  data-url="{{ url_for('transport_api.rider_wallet_settlement', booking_reference=booking.booking_reference) }}">
+            Retry Wallet Payment
+          </button>
+          <a class="btn btn-secondary btn-sm" href="{{ url_for('wallet.wallet_dashboard') }}">Open Wallet</a>
+        </div>
+      </div>
+      {% endif %}
       {% if booking.payments %}
       {% for p in booking.payments %}
       <div class="payment-row">
@@ -636,6 +652,58 @@
       }
     }
   }
+
+
+// Completed-trip Wallet retry. The server derives fare, currency, owner and
+// payment method from the stored Booking; this request sends no financial data.
+(function () {
+  'use strict';
+  var button = document.getElementById('retryWalletSettlement');
+  var message = document.getElementById('walletSettlementMessage');
+  if (!button || !message) return;
+
+  button.addEventListener('click', async function () {
+    var previous = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Processing…';
+    message.textContent = 'Requesting secure Wallet settlement…';
+    var controller = new AbortController();
+    var timeout = setTimeout(function () { controller.abort(); }, 15000);
+    try {
+      var response = await fetch(button.getAttribute('data-url'), {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': {{ raw_csrf_token|tojson }},
+          'Accept': 'application/json'
+        },
+        body: '{}',
+        signal: controller.signal
+      });
+      var body = await response.json().catch(function () { return {}; });
+      clearTimeout(timeout);
+      if (response.ok && body.success &&
+          body.data && body.data.payment_status === 'captured') {
+        message.textContent = 'Payment received. Your trip remains completed.';
+        button.textContent = 'Payment Received';
+        setTimeout(function () { window.location.reload(); }, 700);
+        return;
+      }
+      message.textContent = (body && body.error) ||
+        'Wallet payment is still pending. Add funds or retry in a moment.';
+      button.disabled = false;
+      button.textContent = previous;
+    } catch (error) {
+      clearTimeout(timeout);
+      message.textContent = error && error.name === 'AbortError'
+        ? 'Payment is taking longer than expected. Check the status and retry.'
+        : 'Wallet service is unavailable. Your trip remains completed and unpaid.';
+      button.disabled = false;
+      button.textContent = previous;
+    }
+  });
+})();
 
   // Expose for onclick handlers
   window.openCancelModal = openCancelModal;
