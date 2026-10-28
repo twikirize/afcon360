@@ -407,8 +407,8 @@
       <div class="card-header"><span class="card-title">Trip Timeline</span></div>
       <div class="card-body">
         <div id="riderTimeline" class="timeline">
-          <div class="tl-step {{ 'done' if booking.created_at }}" data-tl="created"><div class="tl-label">Booking Created</div><div class="tl-time">{{ booking.created_at|datetimeformat|default('—') }}</div></div>
-          <div class="tl-step {{ 'done' if booking.confirmed_at else 'skip' }}" data-tl="confirmed"><div class="tl-label">Request received</div><div class="tl-time">{{ booking.confirmed_at|datetimeformat|default('—') }}</div></div>
+          <div class="tl-step {{ 'done' if booking.request_received_at or booking.created_at }}" data-tl="request_received"><div class="tl-label">Ride Request Received</div><div class="tl-time">{{ (booking.request_received_at or booking.created_at)|datetimeformat|default('—') }}</div></div>
+          <div class="tl-step {{ 'done' if booking.confirmed_at else 'skip' }}" data-tl="confirmed"><div class="tl-label">Driver Accepted</div><div class="tl-time">{{ booking.confirmed_at|datetimeformat|default('—') }}</div></div>
           <div class="tl-step {{ 'done' if booking.driver_assigned_at else 'skip' }}" data-tl="assigned"><div class="tl-label">Driver Assigned</div><div class="tl-time">{{ booking.driver_assigned_at|datetimeformat|default('—') }}</div></div>
           <div class="tl-step {{ 'done' if booking.driver_en_route_at else 'skip' }}" data-tl="en_route"><div class="tl-label">Driver En Route</div><div class="tl-time">{{ booking.driver_en_route_at|datetimeformat|default('—') }}</div></div>
           <div class="tl-step {{ 'done' if booking.driver_arrived_at else 'skip' }}" data-tl="arrived"><div class="tl-label">Driver Arrived</div><div class="tl-time">{{ booking.driver_arrived_at|datetimeformat|default('—') }}</div></div>
