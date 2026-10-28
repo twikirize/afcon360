@@ -895,9 +895,12 @@ class DriverTripReferenceResource(Resource):
         if error:
             return error, status
 
+        # Serialize concurrent receipt confirmations on the booking row.
+        # A second request waits, observes CAPTURED, and returns the idempotent
+        # result instead of writing a duplicate payment/audit event.
         booking = Booking.query.filter_by(
             booking_reference=booking_reference, is_deleted=False
-        ).first()
+        ).with_for_update().first()
         if not booking:
             return {"success": False, "error": "booking not found"}, 404
 
@@ -937,7 +940,11 @@ class DriverTripPaymentResource(Resource):
 
         metadata = booking.booking_metadata or {}
         completed_by = metadata.get("completed_by_driver_profile_id")
-        if completed_by is None or int(completed_by) != int(profile.id):
+        try:
+            completed_by_id = int(completed_by) if completed_by is not None else None
+        except (TypeError, ValueError):
+            completed_by_id = None
+        if completed_by_id is None or completed_by_id != int(profile.id):
             return {
                 "success": False,
                 "error": "only the driver who completed this trip may confirm its cash receipt",
@@ -977,7 +984,7 @@ class DriverTripPaymentResource(Resource):
         try:
             payment_record = (
                 BookingPayment.query.filter_by(booking_id=booking.id)
-                .order_by(BookingPayment.initiated_at.desc(), BookingPayment.id.desc())
+                .order_by(BookingPayment.created_at.desc(), BookingPayment.id.desc())
                 .with_for_update()
                 .first()
             )
