@@ -27,6 +27,9 @@ import hashlib
 import json
 import logging
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+from flask import current_app
 from decimal import Decimal
 from typing import Any, Dict, Optional
 
@@ -336,9 +339,9 @@ class RideRequestService:
                 # Match the legacy booking service contract: naive form values
                 # are interpreted in the configured application zone.
                 if requested_at.tzinfo is None:
-                    from app.transport.services.booking_service import _APP_TZ
                     raw_was_naive = True
-                    requested_at = requested_at.replace(tzinfo=_APP_TZ)
+                    app_tz_name = current_app.config.get("APP_TZ", "Africa/Nairobi")
+                    requested_at = requested_at.replace(tzinfo=ZoneInfo(app_tz_name))
                 else:
                     raw_was_naive = False
                 minimum_lead = request_received_at + timedelta(minutes=15)
