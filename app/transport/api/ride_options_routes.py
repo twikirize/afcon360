@@ -123,8 +123,18 @@ class RideOptionsResource(Resource):
         # The fare engine currently denominates transport quotes in its own
         # currency. Never label a USD amount as UGX/KES/TZS or imply FX.
         options = []
+        active_tables, _, _ = fare_service.resolve_tables(at=quote_at)
+        explicitly_priced_classes = set(
+            (active_tables.get("class_multipliers") or {}).keys()
+        )
         for vc in VehicleClass:
             vc_value = str(getattr(vc, "value", vc)).lower()
+            # Do not publish a quote for a vehicle class that has no
+            # explicit price multiplier. The fare engine's fallback to the
+            # default class is useful for legacy inputs, but would mislead a
+            # rider comparing vehicle classes.
+            if vc_value not in explicitly_priced_classes:
+                continue
             try:
                 estimate = fare_service.calculate_estimate(
                     service_type=service_type,
