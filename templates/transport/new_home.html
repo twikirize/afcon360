@@ -837,6 +837,8 @@
   <input type="hidden" name="vehicle_class"     id="hVehicleClass"   value="">
   {# Payment must be chosen explicitly; never silently submit Cash. #}
   <input type="hidden" name="payment_method"    id="hPayment"        value="">
+  <input type="hidden" name="fare_quote_token"  id="hFareQuoteToken"  value="">
+  <input type="hidden" name="confirmed_fare_amount" id="hConfirmedFareAmount" value="">
   <input type="hidden" name="dropoff_location"  id="hDropoff"        value="{{ dropoff_value }}">
   <input type="hidden" name="pickup_location"   id="hPickup"         value="{{ pickup_value }}">
   <input type="hidden" id="pickup_latitude"     name="pickup_latitude"  value="">
@@ -1129,10 +1131,11 @@
     </div>
 
     <div class="bolt-panel">
-      <h2 class="bolt-title">Select Your Ride</h2>
-      <p class="bolt-sub" id="tripMeta">Live pricing from real available vehicles.</p>
+      <h2 class="bolt-title">Choose a vehicle class</h2>
+      <p class="bolt-sub" id="tripMeta">Fare estimates only. Driver matching starts after you confirm the fare and payment method.</p>
 
       <div class="bolt-options" id="optionsBox" aria-live="polite"></div>
+      <p class="bolt-sub">These prices are quotes, not driver availability or a reservation. You will review and accept the amount before we contact drivers.</p>
 
       <div class="bolt-fare" id="farePanel" aria-live="polite">
         <div class="bolt-fare-row">
@@ -1269,6 +1272,7 @@
       <p id="paymentMethodError" class="bolt-payment-error" role="alert" hidden>
         Select an available payment method to continue.
       </p>
+      <p class="bolt-sub">No driver search has started yet. Tapping confirm accepts the displayed fare and begins matching. You are not charged now; payment is due at trip completion.</p>
       {# Request commitment is separate from driver acceptance. #}
       <button type="submit" class="bolt-cta" id="btnConfirm">
         <span id="btnConfirmMain">Confirm Fare & Request Ride</span>
@@ -1368,7 +1372,7 @@
     stage: 'a', dest: '', pickup: '',
     svcType: '{{ default_service }}', vip: false,
     selectedClass: null, selectedFare: null, selectedName: null,
-    fareBreakdown: null, distanceKm: null,
+    fareBreakdown: null, distanceKm: null, fareQuoteToken: null,
     // UI-14-D1-followup: the rider's chosen class, kept as a preference
     // across Edit-trip navigation. Only ever honored against freshly
     // returned options; fare/details always come from the fresh response.
@@ -1393,6 +1397,8 @@
   var hPickup      = document.getElementById('hPickup');
   var hPickupTime  = document.getElementById('hPickupTime');
   var hPayment     = document.getElementById('hPayment');
+  var hFareQuoteToken = document.getElementById('hFareQuoteToken');
+  var hConfirmedFareAmount = document.getElementById('hConfirmedFareAmount');
   var paymentMethodError = document.getElementById('paymentMethodError');
   var paymentLabel = document.getElementById('btnConfirmPaymentLabel');
   var confirmMainLabel = document.getElementById('btnConfirmMain');
@@ -1774,6 +1780,9 @@
     state.selectedFare = null;
     state.selectedName = null;
     state.fareBreakdown = null;
+    state.fareQuoteToken = null;
+    if (hFareQuoteToken) hFareQuoteToken.value = '';
+    if (hConfirmedFareAmount) hConfirmedFareAmount.value = '';
     hVehicleCls.value = '';
 
     var body = {
@@ -1809,9 +1818,10 @@
   }
 
   function renderTripNote(data){
-    var note = 'Live pricing from real available vehicles.';
+    var note = 'Fare quote only. Driver matching has not started.';
     if (data && data.distance_km != null) {
-      note = '~' + Number(data.distance_km).toFixed(1) + ' km trip · straight-line estimate.';
+      note = '~' + Number(data.distance_km).toFixed(1) +
+        ' km · estimated fare only. No driver has been contacted yet.';
     }
     tripMeta.textContent = note;
   }
@@ -1828,33 +1838,27 @@
   function optionsEmpty(){
     optionsBox.innerHTML =
       '<div class="bolt-empty">' +
-      '<i class="bi bi-car-front"></i>' +
-      'No vehicles available right now. Try a different destination or schedule for later.</div>';
+      '<i class="bi bi-receipt"></i>' +
+      'We could not calculate a fare for this route. Check the locations and try again. No driver search has started.</div>';
     btnReview.disabled = true;
     hideFarePanel();
   }
 
   function renderOptions(opts, currency){
     optionsBox.innerHTML = '<div class="bolt-vehgrid">' + opts.map(function(o){
-      var seats = o.capacity && o.capacity.max ? String(o.capacity.max) : null;
-      var luggage = o.luggage ? String(o.luggage.max != null ? o.luggage.max : o.luggage) : null;
-      if (luggage === 'null' || luggage === 'undefined') luggage = null;
-      var detail = (seats ? seats + ' seats' : '') +
-                   (seats && luggage ? ' · ' : '') +
-                   (luggage ? luggage + ' bags' : '');
-      var eta = (o.eta_minutes != null) ? (o.eta_minutes + ' min away') : 'Nearby';
       return '<button type="button" class="bolt-veh" ' +
         'data-class="' + esc(o.vehicle_class) + '" ' +
         'data-fare="' + esc(o.fare_total) + '" ' +
         'data-name="' + esc(o.display_name) + '" ' +
+        'data-quote-token="' + esc(o.quote_token) + '" ' +
         'data-breakdown="' + esc(JSON.stringify(o.fare_breakdown || {})) + '" ' +
         'data-distance="' + esc(state.distanceKm != null ? state.distanceKm : '') + '" ' +
         'data-currency="' + esc(currency) + '">' +
         '<span class="bolt-veh-ico"><i class="fas ' + vehicleIcon(o.vehicle_class) + '"></i></span>' +
         '<span class="bolt-veh-name">' + esc(o.display_name) + '</span>' +
         '<span class="bolt-veh-price">' + esc(currency) + ' ' + Number(o.fare_total).toFixed(2) + '</span>' +
-        '<span class="bolt-veh-eta">' + esc(eta) + '</span>' +
-        '<span class="bolt-veh-sub">' + esc(detail) + '</span>' +
+        '<span class="bolt-veh-eta">Estimated fare</span>' +
+        '<span class="bolt-veh-sub">Driver matching starts after confirmation</span>' +
         '</button>';
     }).join('') + '</div>';
 
@@ -1882,6 +1886,9 @@
     });
     el.classList.add('is-selected');
     state.selectedClass = el.dataset.class;
+    state.fareQuoteToken = el.dataset.quoteToken || null;
+    if (hFareQuoteToken) hFareQuoteToken.value = state.fareQuoteToken || '';
+    if (hConfirmedFareAmount) hConfirmedFareAmount.value = '';
     // UI-14-D1-followup: remember the choice as the cross-navigation
     // preference. It is only honored against fresh options on reload.
     state.preferredClass = el.dataset.class;
@@ -2037,7 +2044,14 @@
     // be honored; a false return blocks the POST (unreachable when the
     // gate above held, kept as an explicit second lock).
     if (!finalizePickupTime()) { e.preventDefault(); return goTo('a'); }
+    if (!state.fareQuoteToken || !isFinite(Number(state.selectedFare))) {
+      e.preventDefault();
+      if (tripMeta) tripMeta.textContent = 'Please load and review a fresh fare quote before confirming.';
+      return goTo('b');
+    }
     hVehicleCls.value = state.selectedClass;
+    if (hFareQuoteToken) hFareQuoteToken.value = state.fareQuoteToken;
+    if (hConfirmedFareAmount) hConfirmedFareAmount.value = Number(state.selectedFare).toFixed(2);
     // UI-15: pending guard runs last — only a committable submission
     // reaches it, so the button is never disabled on a blocked path.
     var btnConfirm = document.getElementById('btnConfirm');
@@ -2314,11 +2328,18 @@
     setVal('dropoff_geocode', draft.dropoff.geocode);
     state.svcType = draft.svcType || state.svcType;
     state.vip = !!draft.vip;
-    state.selectedClass = draft.selectedClass || null;
-    state.selectedFare = (draft.selectedFare === undefined) ? null : draft.selectedFare;
-    state.selectedName = draft.selectedName || null;
-    state.fareBreakdown = draft.fareBreakdown || null;
+    // A pre-login quote is not accepted server-side and may become stale.
+    // Preserve the preferred class, but force a fresh quote and a second
+    // explicit review after login.
+    state.preferredClass = draft.selectedClass || null;
+    state.selectedClass = null;
+    state.selectedFare = null;
+    state.selectedName = null;
+    state.fareBreakdown = null;
     state.distanceKm = (draft.distanceKm === undefined) ? null : draft.distanceKm;
+    state.fareQuoteToken = null;
+    if (hFareQuoteToken) hFareQuoteToken.value = '';
+    if (hConfirmedFareAmount) hConfirmedFareAmount.value = '';
     if (draft.currency) state.currency = draft.currency;
     if (draft.paymentMethod) {
       var restoredMethod = null;
@@ -2352,7 +2373,7 @@
   /* Post-login return: a stashed anonymous trip restores onto the fresh
      form and returns straight to review — then Confirm books as the now
      authenticated rider. */
-  if (restoreTrip()) { goTo('c'); }
+  if (restoreTrip()) { goTo('b'); }
 
   {% if selected_service %}
   (function(){
