@@ -280,7 +280,7 @@ class PaymentService:
         timestamp = now or datetime.now(timezone.utc)
         record = (
             BookingPayment.query.filter_by(booking_id=booking.id)
-            .order_by(BookingPayment.initiated_at.desc(), BookingPayment.id.desc())
+            .order_by(BookingPayment.created_at.desc(), BookingPayment.id.desc())
             .with_for_update()
             .first()
         )
