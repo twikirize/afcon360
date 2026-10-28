@@ -1,8 +1,8 @@
 # AFCON360 — Database Reliability — Master To-Do & Fix Register
 
-**Snapshot: 25 October 2026 · reconciled to the 23 October master, 24 October disposable-candidate migration/table decisions, pickup-time CHECK-constraint investigation, synchronizer inventory findings, and 25 October probe-test outcome. Counts reflect current evidence, not deployment readiness.**
+**Snapshot: 28 October 2026 · carries forward the 25 October evidence reconciliation and adds the read-only Oracle production census and migration-history verification for Item 12. Counts reflect current evidence, not deployment readiness.**
 
-**Status: 24 closed · 10 advanced · 1 partial · 0 open · 0 gated · 4 not started (39 top-level items)**
+**Status: 25 closed · 9 advanced · 1 partial · 0 open · 0 gated · 4 not started (39 top-level items)**
 
 **Architecture: H2′ approved and implemented as the interim fresh-install repair · H3/N-squash remains the durable destination · H3-A is the active static baseline and a snapshot of `afcon360_h2p_replay_20261018_test` at `df55cbe3f516`; its replay and current-head idempotence have been verified on PostgreSQL 18.4. This reproduces the captured H2-prime physical state (49 enums, 224 tables), not yet the B0 47-enum target. The 49-vs-47 scope decision is pending · H3-B existing-database transition remains unauthorized**
 
@@ -14,7 +14,7 @@
 
 **Not verified: full test suite · genuinely fresh-clone replay · PostgreSQL 15 / Docker-pinned replay · historical/intermediate-state upgrades · broad populated-state migration safety · existing-database transition readiness · 49-vs-47 H3-A target-scope decision · H3-A object-ownership proof against B0 final-schema inventory · end-to-end server_sessions persistence · analytics-flush failure safety · pickup-time contract closure and clean regression-test/cleanup run**
 
-**Current-status rule:** Phases 1–13 retain dated historical evidence. The 25 October 2026 reconciliation in Phase 14 is the current status record where it explicitly supersedes earlier counts/statuses. Historical wording is retained for chronology, not as a live status claim.
+**Current-status rule:** Phases 1–14 retain dated historical evidence. The 28 October 2026 reconciliation in Phase 15 is the current status record where it explicitly supersedes earlier counts/statuses. Historical wording is retained for chronology, not as a live status claim.
 
 ---
 
@@ -22,8 +22,8 @@
 
 | Status | Count |
 |---|---:|
-| CLOSED | 24 |
-| ADVANCED | 10 |
+| CLOSED | 25 |
+| ADVANCED | 9 |
 | PARTIAL | 1 |
 | OPEN | 0 |
 | NOT STARTED | 4 |
@@ -45,7 +45,7 @@
 | 9 | Reconstruct original baseline history | Compare the historical root/declaration source at key commits and keep historical reconstruction separate from current replay proof. | CLOSED |
 | 10 | Verify the historical “182 tables from EMPTY” claim | Locate contemporaneous replay evidence or explicitly record the owner’s decision that the exact historical claim is superseded; do not substitute the 224-table H2′ replay. | PARTIAL |
 | 11 | Trace enum declaration changes | Verify the introduction/removal of enum-creation flags and related changes from Git history; preserve the corrected `create_type`/`checkfirst` contract. | CLOSED |
-| 12 | Establish deployed migration states | Use read-only, per-environment revision/catalog evidence and complete the Docker census; do not modify production or test databases. | ADVANCED |
+| 12 | Establish deployed migration states | Identified live Production census completed 2026-10-28: host `afcon-360`, checkout `8c25246ab5e41d44f0d64ad9ff030819e69e9ff1`, PostgreSQL `15.19`, database and running-app Alembic current/head both `f91075478868`; three-revision linear chain and catalog inventory captured. Prior Codespaces census and 12c evidence retained. No database writes. No separate deployed Test/Staging host was identified in the supplied operations handbook; if one exists, track it separately. | CLOSED |
 | 13 | Define supported starting revisions | Owner-approved four-case policy recorded 2026-10-21; H3-A clean-install and normal Flask-Migrate workflow verified on local PostgreSQL 18.4. Existing databases remain conditional on per-database parity and a reviewed transition plan; older revisions require explicit enumeration and tests; unknown/divergent states fail closed. Closure is policy-only and does not authorize H3-B. | CLOSED |
 | 14 | Compare H2′ with existing database states | Complete the independent Reference/Prod/Test normalized-schema comparison and record measured differences and distinct hashes; same Alembic revision must not be treated as proof of identical schema. Comparison complete; divergence remains unresolved. | CLOSED |
 | 15 | Design the H3 transition procedure | Complete the state-by-state runbook for empty, root-stamped, intermediate, at-head and unknown states, with parity-gated stamping and tested recovery/rollback. A reversible H3 probe-migration rehearsal passed; other states and cutover gates remain unproven. | ADVANCED |
@@ -108,7 +108,7 @@
 |---|---|
 | **H2′ interim fresh-install repair** | **Implemented and committed.** Four previously modified migration files repaired; a full empty-database replay passed on local **PostgreSQL 18.4**, reaching `public.alembic_version = df55cbe3f516`. This is an *interim* repair, not the durable destination. |
 | **Design 2 model-bootstrap path** | **Committed** in `ff5fe53` (implementation + contract suite) and `96636f2` (`%`-placeholder fix + 5 regression tests). Source-level tests pass (33 standard, 38 in the isolated no-connection run). Live PostgreSQL runtime verification PASSED on 2026-10-18 against `afcon360_d2_bootstrap_fix_20261018_test` (217 tables, 47 enums, marker `complete`, no `alembic_version`). Read-only `validate_model_bootstrap()` returns `model_bootstrap_complete`. The pre-fix failure database `afcon360_b0_design2_rt_20261018` is preserved as historical evidence of the `%`-placeholder defect. Not interchangeable with the migration path. |
-| **H3 / N-squash** | **Selected durable destination.** In the owner-reported local checkout, `migrations/versions/h3a20261020_static_baseline.py` is the active single root/head. The normal Flask-Migrate baseline path and a reversible follow-up migration round trip were verified on local PostgreSQL 18.4. H3-B remains unauthorized and blocked by Docker census, FK/model coupling, existing-database parity, populated-state safety and transition/recovery evidence. The active baseline docstring is stale; see 13c. |
+| **H3 / N-squash** | **Selected durable destination.** In the owner-reported local checkout, `migrations/versions/h3a20261020_static_baseline.py` is the active single root/head. The normal Flask-Migrate baseline path and a reversible follow-up migration round trip were verified on local PostgreSQL 18.4. Item 12's identified Production census is now complete; H3-B remains unauthorized and blocked by FK/model coupling, existing-database parity, populated-state safety and transition/recovery evidence. The active baseline docstring is stale; see 13c. |
 | **Existing production and test databases** | **Not upgraded and not modified in this work.** `afcon360_prod` and `afcon360_test` remain read-only evidence sources. |
 | **Physical-schema comparison and broader parity** | **Comparison recorded; differences unresolved.** Reference/Prod/Test hashes and diff counts are available (Items 14/32). Model/schema parity is only partially evidenced on H3-A; Prod/Test transition qualification, historical/intermediate upgrades, defaults, model-less tables and FK/model coupling remain open. |
 
@@ -1054,3 +1054,40 @@ The resulting **39 parent-item totals** are **24 CLOSED, 10 ADVANCED, 1 PARTIAL,
 - The 145 Prod/Test server-default differences, the H3-A 49-vs-47 target decision, FK-action differences, extension-dependency disposition, Docker census, full suite, fresh-clone replay and PostgreSQL version coverage remain open to their existing scopes.
 - afcon360_prod and afcon360_test remain protected. No H3-B existing-database transition, stamping, rebuild, forced convergence, enum conversion/relabel/drop, frozen baseline rewrite, or test-row deletion is authorized by this update. Preserve all scratch databases and evidence.
 
+
+---
+
+## Phase 15 — 28 October 2026 production census and Item 12 closure
+
+**Scope and provenance.** This phase records command output supplied by the owner from an SSH session to the Oracle host identified in the AFCON360 operations handbook. The commands inspected host metadata, Git checkout metadata, Docker state, Alembic history and PostgreSQL catalogs. Catalog queries ran inside `BEGIN READ ONLY` transactions and ended with `ROLLBACK`. No production migration, stamp, schema edit, data write, container rebuild or deployment was performed as part of this census.
+
+### Item 12 status change
+
+| Item | Previous current status | Current status | Closure boundary |
+|---:|---|---|---|
+| 12 | ADVANCED | **CLOSED — PASS for identified Production and previously recorded Codespaces census scope** | The live Pamoja production host, deployed revision, application Alembic current/head, deployed migration chain and schema inventory have now been observed. No separate deployed Test/Staging host was identified in the supplied operations handbook; do not imply such an environment was inspected. If a separate deployed Test/Staging environment is later identified as an Item 12 requirement, record its state independently. |
+
+### Read-only production evidence captured
+
+- **Observation time:** 28 October 2026 (host UTC output: `2026-10-28 06:40:12`; the Alembic inspection logs were recorded shortly afterward).
+- **Host:** `afcon-360`, Ubuntu `24.04.4 LTS`; production domain `https://pamoja.space`; reported Oracle public IP `150.230.155.121`.
+- **Deployed checkout:** `8c25246ab5e41d44f0d64ad9ff030819e69e9ff1`, commit date `2026-08-30T17:40:51+03:00`, subject `fix: exempt health endpoint from request rate limiting`.
+- **Checkout working tree:** `git status --short` reported untracked `.env.docker.runtime`, `.env.runtime` and `docker-compose.prod.yml`. Their contents were not displayed or copied. Preserve these deployment-specific files; do not clean or overwrite them as part of this database work.
+- **Docker services:** `afcon360_db` (`postgres:15-alpine`), `afcon360_redis` (`redis:7-alpine`) and `afcon360_web` (`afcon360-web`) were each reported `Up 8 weeks (healthy)`. The web mapping was `127.0.0.1:5000->5000/tcp`. The observed web image ID was `sha256:e85cd474fa0891f58823579f5d40d15500b80240071c45f04701936c532a3136`, created `2026-08-30T14:46:35.589701392Z`.
+- **Database identity:** `afcon360_prod`, role `afcon_prod`, PostgreSQL `15.19`, `transaction_read_only=on`. `inet_server_addr()` and port fields were blank in this connection, consistent with the local Unix-socket connection used by `psql` inside the database container.
+- **Revision agreement:** the database's `public.alembic_version` contained `f91075478868`. The running application reported `flask db current = f91075478868 (head)` and `flask db heads = f91075478868 (head)`.
+- **Deployed migration chain:** exactly three tracked Python migration files were listed, with the following linear parent chain:
+  1. `8a0deccce6f6_initial_full_schema_baseline.py` — revision `8a0deccce6f6`, no parent.
+  2. `20260830_1420_add_booking_flow_type.py` — revision `20260830_1420`, parent `8a0deccce6f6`.
+  3. `f91075478868_production_console.py` — revision `f91075478868`, parent `20260830_1420`.
+- **Production public-schema catalog counts from the read-only census:** 191 tables and partitions; 3,707 columns; 43 enum types with 249 enum labels; 1,482 indexes; 112 CHECK constraints; 364 foreign keys; 191 primary-key constraints; 98 unique constraints. The listed extension inventory contained only `plpgsql` version `1.0`.
+- **Transaction outcome:** the catalog census returned `ROLLBACK`; no database writes were performed.
+
+### Interpretation and limits
+
+1. The database revision and the deployed application's current/head agree, and the deployed checkout contains a three-revision linear chain ending at that revision. This closes the revision/catalog census acceptance for the identified Production deployment.
+2. Production's reported 43 enum types and 191 tables/partitions belong to its older August deployment. They are not to be compared with newer development counts as if the counts must match. The differences are expected in context and are not, by themselves, defects.
+3. Matching Alembic current/head does not independently prove that every physical database object matches the migration definitions. Broad schema-transition qualification, populated-state safety, historical/intermediate upgrades, recovery, and H3-B authorization remain governed by their existing items and gates.
+4. The census does not authorize `git pull`, container rebuild/recreation, `flask db upgrade`, `flask db stamp`, enum changes, or any other production change.
+
+**Current next work package:** Lettered backlog **B / formal Item 21** — decide and document the H3-A 49-versus-47 enum target. Production's 43-enum August release is historical deployment evidence; it does not decide the newer H3-A/B0 target question.
