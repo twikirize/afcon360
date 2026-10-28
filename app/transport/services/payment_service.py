@@ -433,7 +433,12 @@ class PaymentService:
 
             config_service = get_payment_config_service()
             country = get_user_country(booking.user_id)
-            user_has_wallet = get_user_wallet_status(booking.user_id)
+            user_has_wallet = get_user_wallet_status(
+                booking.user_id,
+                currency_code=str(
+                    getattr(booking.currency, "value", booking.currency)
+                ),
+            )
 
             allowed_methods = config_service.get_methods_for_country(
                 country_code=country,
