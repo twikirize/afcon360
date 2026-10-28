@@ -44,6 +44,15 @@ The official register has 14 top-level items that are not CLOSED: Item 10 is PAR
 
 **Why it remains:** H3-A replays with 49 enum types, while the documented B0 target expectation is 47. The target-scope decision and related ownership/disposition are not settled. The 28 October production census found 43 enum types in the older August deployment; that is expected release-age evidence and does not decide the H3-A/B0 target question.
 
+**Evidence already reconciled for the next decision:**
+- The B0 source inventory records 58 enum declaration sites resolving to 47 distinct model-declared enum type names; repeated use of a type does not create a new type name.
+- `organisations.business_category` is `String(40)` in the current model and route comments explicitly say it no longer uses `org_business_category`. The older migration refers to a four-label lowercase version, while the recorded existing-database inventory found a 39-label uppercase legacy version. Recent local read-only column checks found no `public` columns using `org_business_category`; the `business_category` column itself is `varchar`.
+- `bookingstatus` appears only in the historical downgrade path in the source inventory and was not found as a live public column type in the recent local catalog query.
+- These two legacy objects explain the 49-versus-47 difference in the recorded reference/test snapshot. They are not reasons to create either type in a fresh H3 schema. They are also **not permission to drop, relabel, or convert** existing objects in populated databases.
+- The B0 inventory identifies three retired-migration-only referenced types (`account_owner_type_enum`, `creatortype`, `ownertype`) and 16 development-only orphan types in its historical source/physical inventory. Their existing-database disposition remains separate from the fresh-install target; do not prune them automatically.
+
+**Proposed disposition for owner review (not yet an owner decision):** H3 clean-install target = the 47 current model-declared enum types with their exact declared labels. Do not create `org_business_category` or `bookingstatus` in the fresh H3 baseline. Preserve existing native enum objects, labels and defaults in already-populated databases unless a separately reviewed and explicitly authorized per-object plan says otherwise. Keep Item 21 ADVANCED until this target and the required legacy-object dispositions are explicitly recorded by the owner.
+
 **Work to do:** Reconcile each differing enum against model declarations, the approved target schema, historical uses, dependencies, labels and defaults. Record an explicit decision for every discrepancy. Preserve existing type representations unless a separately reviewed and authorized plan says otherwise; do not drop, relabel or convert enums as a shortcut.
 
 **Acceptance evidence:** Owner-approved 49-versus-47 decision and a per-enum inventory showing keep/retire/recreate/legacy disposition, dependencies, exact labels and rationale.
