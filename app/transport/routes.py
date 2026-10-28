@@ -1281,7 +1281,33 @@ _ASSIGNED_STATUSES = ("assigned", "driver_en_route", "pickup_arrived",
 @module_enabled_required("transport")
 @login_required
 def rides_show(booking_reference):
-    """Rider ride page — matching view before assignment, management after."""
+    """Rider tracking page from initial request through completed trip."""
+
+    # A committed on-demand intent is tracked as RideRequest until a driver
+    # wins. Only the winning acceptance transaction creates a Booking row.
+    from app.transport.models import RideRequest, SearchCycle
+    ride_request = RideRequest.query.filter_by(
+        public_id=booking_reference, is_deleted=False
+    ).first()
+    if ride_request is not None and ride_request.status != "converted":
+        if ride_request.user_id != current_user.id:
+            abort(404)
+        cycle = SearchCycle.query.filter_by(
+            ride_request_id=ride_request.id, is_deleted=False
+        ).order_by(SearchCycle.cycle_number.desc()).first()
+        if cycle is None:
+            abort(404)
+        from app.transport.services.ride_request_service import serialize_request
+        return render_template(
+            "transport/rides/request_show.html",
+            request_model=ride_request,
+            request_data=serialize_request(ride_request, cycle),
+            cycle=cycle,
+            booking_reference=ride_request.public_id,
+        )
+
+    # Once converted, the exact same public reference resolves to the Booking
+    # and the established full trip management/tracking page.
     booking_model = _load_owned_ride(booking_reference)
 
     try:
