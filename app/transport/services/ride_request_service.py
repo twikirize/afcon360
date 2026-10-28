@@ -217,6 +217,7 @@ class RideRequestService:
         imports the Booking writer path.
         """
         data = payload or {}
+        request_received_at = datetime.now(timezone.utc)
 
         key = (data.get("idempotency_key") or "").strip() or None
         if not key:
@@ -310,33 +311,58 @@ class RideRequestService:
                 field="payment_method",
             )
 
-        try:
-            raw_time = data.get("pickup_time")
-            requested_at = (datetime.fromisoformat(str(raw_time))
-                            if raw_time else datetime.now(timezone.utc))
-            # Naivety is captured BEFORE storage localization below: the
-            # fingerprint must never depend on worker-local conversion,
-            # while storage keeps its established interpretation.
-            raw_was_naive = bool(raw_time) and requested_at.tzinfo is None
-            if requested_at.tzinfo is None:
-                requested_at = requested_at.replace(
-                    tzinfo=datetime.now().astimezone().tzinfo)
-        except (ValueError, TypeError) as exc:
-            raise ValidationError(message="pickup_time must be a valid datetime",
-                                  field="pickup_time") from exc
+        booking_mode = str(data.get("booking_mode") or "instant").strip().lower()
+        if booking_mode not in ("instant", "scheduled"):
+            raise ValidationError(
+                message="booking_mode must be 'instant' or 'scheduled'",
+                field="booking_mode",
+            )
 
-        # Fingerprint time (owner ruling): omitted/empty means immediate
-        # intent (stable marker, never wall-clock); aware explicits are
-        # normalized to UTC; naive explicits hash as a deterministic
-        # naive-local wall-clock marker WITHOUT worker-local conversion
-        # (tzinfo stripped from the already-parsed wall clock, so no
-        # local offset can leak in). Stored requested_pickup_time is
-        # unchanged by this.
-        if not raw_time:
+        # Instant requests use the server's request-received clock. Never let
+        # a stale/future datetime left in a browser form turn an on-demand
+        # ride into a scheduled trip or fail a future-time constraint.
+        raw_time = data.get("pickup_time") if booking_mode == "scheduled" else None
+        if booking_mode == "scheduled" and not raw_time:
+            raise ValidationError(
+                message="Scheduled pickups require an explicit pickup_time",
+                field="pickup_time",
+            )
+        try:
+            if booking_mode == "instant":
+                requested_at = request_received_at
+                raw_was_naive = False
+            else:
+                requested_at = datetime.fromisoformat(str(raw_time))
+                # Match the legacy booking service contract: naive form values
+                # are interpreted in the configured application zone.
+                if requested_at.tzinfo is None:
+                    from app.transport.services.booking_service import _APP_TZ
+                    raw_was_naive = True
+                    requested_at = requested_at.replace(tzinfo=_APP_TZ)
+                else:
+                    raw_was_naive = False
+                minimum_lead = request_received_at + timedelta(minutes=15)
+                if requested_at < minimum_lead:
+                    raise ValidationError(
+                        message=(
+                            "Scheduled pickups must be at least 15 minutes from now. "
+                            "For an immediate ride, choose 'Now'."
+                        ),
+                        field="pickup_time",
+                    )
+        except (ValueError, TypeError) as exc:
+            raise ValidationError(
+                message="pickup_time must be a valid datetime",
+                field="pickup_time",
+            ) from exc
+
+        # Fingerprint the server clock for instant intent (so retries do not
+        # conflict because transport latency changed the timestamp); scheduled
+        # trips fingerprint their explicitly validated requested time.
+        if booking_mode == "instant":
             pickup_time_fp = "immediate"
         elif raw_was_naive:
-            pickup_time_fp = ("naive-local:%s"
-                              % requested_at.replace(tzinfo=None).isoformat())
+            pickup_time_fp = "naive-local:%s" % requested_at.replace(tzinfo=None).isoformat()
         else:
             pickup_time_fp = requested_at.astimezone(timezone.utc).isoformat()
         trip_hash = _trip_hash(service_type.value, vehicle_class,
@@ -394,11 +420,7 @@ class RideRequestService:
                     "distance_basis": "straight_line_planner",
                     "created_via": "ride_request_api",
                     "created_at": now.isoformat(),
-                    "booking_mode": (
-                        str(data.get("booking_mode") or "instant").strip().lower()
-                        if str(data.get("booking_mode") or "instant").strip().lower()
-                        in ("instant", "scheduled") else "instant"
-                    ),
+                    "booking_mode": booking_mode,
                     "payment_timing": "pay_on_completion",
                 },
             )
