@@ -45,7 +45,8 @@
   <nav class="ta-ops-nav" aria-label="Operations queue navigation">
     <a href="#requests">Requests matching ({{ active_request_count|default(0) }})</a>
     <a href="#failed-searches">Unsuccessful searches ({{ failed_search_count|default(0) }})</a>
-    <a href="#payments">Pending payment records ({{ pending_payment_count|default(0) }})</a>
+    <a href="#completed-unpaid">Completed unpaid ({{ completed_unpaid_count|default(0) }})</a>
+    <a href="#payments">All pending payment records ({{ pending_payment_count|default(0) }})</a>
   </nav>
 
   <section class="ta-ops-section" id="requests">
@@ -105,6 +106,32 @@
     {% endif %}
   </section>
 
+  <section class="ta-ops-section" id="completed-unpaid">
+    <h2>Completed trips still unpaid</h2>
+    <p class="ta-ops-desc">Showing {{ completed_unpaid_records|length }} of {{ completed_unpaid_count }} completed trips with pending payment, oldest completion first. These need follow-up; trip completion alone does not prove the passenger paid.</p>
+    {% if completed_unpaid_records %}
+    <div class="ta-ops-table-wrap">
+      <table class="ta-ops-table">
+        <thead><tr><th>Trip / payment reference</th><th>Completed</th><th>Selected method</th><th>Amount due</th><th>Payment state</th></tr></thead>
+        <tbody>
+          {% for payment in completed_unpaid_records %}
+          {% set booking = payment.booking %}
+          <tr>
+            <td><div class="ta-ops-ref">{{ booking.booking_reference if booking else 'Booking unavailable' }}</div><small>{{ payment.payment_reference }}</small></td>
+            <td>{{ booking.completed_at.strftime('%Y-%m-%d %H:%M UTC') if booking and booking.completed_at else '—' }}</td>
+            <td>{{ (payment.payment_method or (booking.payment_method if booking else '—'))|replace('_',' ')|title }}</td>
+            <td>{{ (payment.currency.value if payment.currency.value is defined else payment.currency)|default('—', true) }} {{ '%.2f'|format(payment.amount or 0) }}</td>
+            <td><span class="ta-ops-pill ta-ops-pill--amber">Pending</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="ta-ops-empty">No completed trips are awaiting payment.</div>
+    {% endif %}
+  </section>
+
   <section class="ta-ops-section" id="payments">
     <h2>Pending payment records</h2>
     <p class="ta-ops-desc">Showing {{ pending_payment_records|length }} of {{ pending_payment_count }} pending ledger records (maximum 100 per page). Active trips may be here by design; completed unpaid trips need follow-up. A completed trip is not evidence that payment was received.</p>
@@ -137,7 +164,7 @@
 (function () {
   'use strict';
   var section = {{ selected_section|default('requests')|tojson }};
-  var allowed = ['requests', 'failed-searches', 'payments'];
+  var allowed = ['requests', 'failed-searches', 'completed-unpaid', 'payments'];
   if (!allowed.includes(section)) return;
   var target = document.getElementById(section);
   if (target) {
