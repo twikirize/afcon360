@@ -505,15 +505,25 @@ class RideRequestDispatchService:
 
     @classmethod
     def recover_expired(cls, batch: int = 100) -> Dict[str, int]:
-        """Advance expired attempts, called by the normal transport recovery beat."""
+        """Recover expired offers/windows and searches with no first offer.
+
+        Each row is revalidated under the parent request lock. The bounded
+        queries prioritize stale attempts and, separately, only requests whose
+        current active cycle has no attempts, so old active searches cannot
+        starve newly committed requests after the first batch.
+        """
         now = _now()
         rows = (
-            OfferAttempt.query.filter(
+            OfferAttempt.query
+            .join(SearchCycle, OfferAttempt.cycle_id == SearchCycle.id)
+            .filter(
                 OfferAttempt.status == "offered",
-                OfferAttempt.response_deadline.is_not(None),
-                OfferAttempt.response_deadline <= now,
+                or_(
+                    OfferAttempt.response_deadline <= now,
+                    SearchCycle.deadline <= now,
+                ),
             )
-            .order_by(OfferAttempt.response_deadline.asc())
+            .order_by(SearchCycle.deadline.asc(), OfferAttempt.response_deadline.asc())
             .limit(batch)
             .all()
         )
@@ -527,18 +537,34 @@ class RideRequestDispatchService:
                     id=request.id, is_deleted=False
                 ).with_for_update().first()
                 if locked_request is None or locked_request.status != "searching":
+                    db.session.rollback()
                     continue
+
                 cycle = cls._cycle_for_request(locked_request, lock=True)
+                if cycle is None or cycle.status != "searching":
+                    db.session.rollback()
+                    continue
+                # A row from an older cycle must never advance the current cycle.
                 attempt = OfferAttempt.query.filter_by(
-                    id=row.id, status="offered"
+                    id=row.id, cycle_id=cycle.id, status="offered"
                 ).with_for_update().first()
-                if cycle is None or cycle.status != "searching" or attempt is None:
+                if attempt is None:
                     db.session.rollback()
                     continue
-                if attempt.response_deadline and attempt.response_deadline > _now():
+
+                current_time = _now()
+                if cls._close_cycle_at_deadline(locked_request, cycle, current_time):
+                    db.session.commit()
+                    expired += 1
+                    closed += 1
+                    continue
+
+                if attempt.response_deadline and attempt.response_deadline > current_time:
                     db.session.rollback()
                     continue
-                next_attempt = cls._advance_locked(locked_request, cycle, attempt, "timed_out")
+                next_attempt = cls._advance_locked(
+                    locked_request, cycle, attempt, "timed_out"
+                )
                 db.session.commit()
                 expired += 1
                 if next_attempt:
@@ -552,36 +578,45 @@ class RideRequestDispatchService:
                 logging.getLogger(__name__).exception(
                     "Ride-request offer expiry recovery failed for attempt %s", row.id
                 )
-        # Recovery also starts cycles whose request row committed but
-        # whose first offer could not be created due to a transient failure.
+
+        # Only scan active cycles that have no OfferAttempt at all. The previous
+        # request-only LIMIT could repeatedly read the same old active requests
+        # and starve newer requests whose initial offer was never persisted.
         try:
             requests = (
-                RideRequest.query.filter_by(status="searching", is_deleted=False)
+                db.session.query(RideRequest)
+                .join(SearchCycle, SearchCycle.ride_request_id == RideRequest.id)
+                .outerjoin(OfferAttempt, OfferAttempt.cycle_id == SearchCycle.id)
+                .filter(
+                    RideRequest.status == "searching",
+                    RideRequest.is_deleted.is_(False),
+                    SearchCycle.status == "searching",
+                    SearchCycle.is_deleted.is_(False),
+                    OfferAttempt.id.is_(None),
+                )
                 .order_by(RideRequest.created_at.asc())
                 .limit(batch)
                 .all()
             )
             for request in requests:
-                cycle = cls._cycle_for_request(request)
-                if cycle is None or cycle.status != "searching":
-                    continue
-                attempt_count = OfferAttempt.query.filter_by(cycle_id=cycle.id).count()
-                if attempt_count == 0:
-                    try:
-                        cls.start_search(request.public_id)
-                    except Exception:
-                        db.session.rollback()
-                        import logging
-                        logging.getLogger(__name__).exception(
-                            "Request-first dispatch recovery failed for %s",
-                            request.public_id,
-                        )
+                try:
+                    cls.start_search(request.public_id)
+                except Exception:
+                    db.session.rollback()
+                    import logging
+                    logging.getLogger(__name__).exception(
+                        "Request-first dispatch recovery failed for %s",
+                        request.public_id,
+                    )
         except Exception:
             db.session.rollback()
             import logging
-            logging.getLogger(__name__).exception("Request-first search recovery scan failed")
+            logging.getLogger(__name__).exception(
+                "Request-first search recovery scan failed"
+            )
         return {"expired": expired, "advanced": advanced, "closed": closed}
 
+    @classmethod
     @classmethod
     def accept_offer(cls, request_public_id: str, driver_id: int,
                      vehicle_id: int, *, actor=None) -> Dict[str, Any]:
@@ -609,6 +644,12 @@ class RideRequestDispatchService:
         cycle = cls._cycle_for_request(request, lock=True)
         if cycle is None or cycle.status != "searching":
             raise RideRequestDispatchError("offer_unavailable", "This ride offer is no longer active")
+        if cls._close_cycle_at_deadline(request, cycle, now):
+            db.session.commit()
+            raise RideRequestDispatchError(
+                "matching_window_expired",
+                "This matching window has expired. The rider can try finding a driver again.",
+            )
         attempt = OfferAttempt.query.filter_by(
             cycle_id=cycle.id, driver_id=driver_id, status="offered"
         ).with_for_update().first()
