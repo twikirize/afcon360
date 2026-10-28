@@ -653,16 +653,15 @@ class BookingPaymentResource(Resource):
                 "code": "payment_amount_mismatch",
             }, 409
 
-        existing_pending = BookingPayment.query.filter_by(
+        existing_payment = BookingPayment.query.filter_by(
             booking_id=booking_id,
             is_deleted=False,
-            payment_status=PaymentStatus.PENDING,
         ).first()
-        if existing_pending is not None:
+        if existing_payment is not None:
             return {
                 "success": False,
-                "error": "A pending payment record already exists for this trip.",
-                "code": "pending_record_exists",
+                "error": "A payment record already exists for this trip; use reconciliation rather than creating a duplicate.",
+                "code": "payment_record_exists",
             }, 409
 
         try:
