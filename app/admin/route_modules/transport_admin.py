@@ -73,7 +73,8 @@ def transport_admin_operations():
         from sqlalchemy import and_, func
         from sqlalchemy.orm import joinedload, selectinload
         from app.transport.models import (
-            Booking, BookingPayment, PaymentStatus, RideRequest, SearchCycle,
+            Booking, BookingPayment, BookingStatus, PaymentStatus,
+            RideRequest, SearchCycle,
         )
 
         now = datetime.now(timezone.utc)
