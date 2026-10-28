@@ -169,6 +169,56 @@ class TestCanonicalEntryRenders:
         assert "Completed — Payment Pending" in body
         assert "Pending Payment Records" in body
 
+    def test_legacy_admin_payment_endpoint_cannot_falsely_capture_a_trip(self, app, client):
+        from datetime import datetime, timezone
+        from app.identity.models.user import User
+        from app.transport.models import (
+            Booking, BookingPayment, BookingStatus, Currency, PaymentStatus, ProviderType, ServiceType,
+        )
+
+        with app.app_context():
+            public_id = _make_user("ta_capture_guard", [TRANSPORT_ADMIN])
+            actor = User.query.filter_by(public_id=public_id).one()
+            booking = Booking(
+                user_id=actor.id,
+                provider_type=ProviderType.INDIVIDUAL_DRIVER,
+                service_type=ServiceType.ON_DEMAND,
+                pickup_location={"address": "Kampala pickup"},
+                dropoff_location={"address": "Kampala destination"},
+                pickup_time=datetime.now(timezone.utc),
+                passenger_count=1,
+                base_price=25,
+                subtotal=25,
+                total_amount=25,
+                final_price=25,
+                currency=Currency.USD,
+                payment_method="cash",
+                payment_status=PaymentStatus.PENDING,
+                status=BookingStatus.COMPLETED,
+                completed_at=datetime.now(timezone.utc),
+            )
+            db.session.add(booking)
+            db.session.commit()
+            booking_id = booking.id
+
+        _platform_login(client, public_id, TRANSPORT_ADMIN)
+        response = client.post(
+            f"/api/transport/bookings/{booking_id}/payments",
+            json={
+                "amount": "25.00",
+                "currency": "USD",
+                "payment_method": "cash",
+                "payment_status": "captured",
+            },
+        )
+        assert response.status_code == 409, response.get_data(as_text=True)
+        assert response.get_json()["code"] == "verified_settlement_required"
+
+        with app.app_context():
+            booking = db.session.get(Booking, booking_id)
+            assert booking.payment_status == PaymentStatus.PENDING
+            assert BookingPayment.query.filter_by(booking_id=booking_id).count() == 0
+
     def test_operations_queues_render_and_keep_booking_ids_private(self, app, client):
         with app.app_context():
             public_id = _make_user("ta_ops", [TRANSPORT_ADMIN])
