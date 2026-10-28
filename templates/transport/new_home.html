@@ -672,6 +672,19 @@
   background:rgba(255,255,255,.2);
   font-size:.72rem;font-weight:600;
 }
+.bolt-payment-choices{display:grid;gap:8px;margin:16px 0 8px}
+.bolt-payment-choice{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;cursor:pointer;background:#fff}
+.bolt-payment-choice:has(input:checked){border-color:var(--brand);box-shadow:0 0 0 2px rgba(14,107,79,.12);background:var(--brand-soft)}
+.bolt-payment-choice input{margin-top:3px;accent-color:var(--brand)}
+.bolt-payment-choice-copy{display:flex;flex-direction:column;gap:3px}
+.bolt-payment-choice-name{font-weight:700;font-size:.88rem}
+.bolt-payment-choice-description{font-size:.76rem;color:var(--muted)}
+.bolt-payment-error{font-size:.8rem;color:#b42318;margin:6px 0}
+@media (prefers-color-scheme:dark){
+  .bolt-payment-choice{background:#1A221E;border-color:#2A3531;color:#E8EDE9}
+  .bolt-payment-choice:has(input:checked){background:#22302B;border-color:#2f9478}
+  .bolt-payment-choice-description{color:#94A3A0}
+}
 
 /* ---------- Matching (State D) ---------- */
 .bolt-matching{text-align:center;padding:24px 6px 12px}
@@ -822,7 +835,8 @@
   <input type="hidden" name="pickup_time"       id="hPickupTime"     value="">
   <input type="hidden" name="booking_mode"      id="hBookingMode"    value="instant">
   <input type="hidden" name="vehicle_class"     id="hVehicleClass"   value="">
-  <input type="hidden" name="payment_method"    id="hPayment"        value="cash">
+  {# Payment must be chosen explicitly; never silently submit Cash. #}
+  <input type="hidden" name="payment_method"    id="hPayment"        value="">
   <input type="hidden" name="dropoff_location"  id="hDropoff"        value="{{ dropoff_value }}">
   <input type="hidden" name="pickup_location"   id="hPickup"         value="{{ pickup_value }}">
   <input type="hidden" id="pickup_latitude"     name="pickup_latitude"  value="">
@@ -1234,13 +1248,32 @@
         </div>
       </div>
 
-      {# UI-14-D5: the action submits a ride request (booking creation
-         followed by a driver-matching attempt) — it does not mean a
-         driver is already secured. Keep ID, type, badge and behavior. #}
+      <div class="bolt-payment-choices" role="radiogroup" aria-labelledby="paymentChoiceHeading">
+        <div class="bolt-summary-label" id="paymentChoiceHeading">How would you like to pay?</div>
+        {% for method in payment_methods %}
+          {% if method.get('enabled', true) %}
+          <label class="bolt-payment-choice" for="paymentChoice{{ loop.index }}">
+            <input type="radio" id="paymentChoice{{ loop.index }}"
+                   name="payment_method_choice" value="{{ method.code }}"
+                   data-payment-label="{{ method.label }}">
+            <span class="bolt-payment-choice-copy">
+              <span class="bolt-payment-choice-name">{{ method.label }}</span>
+              {% if method.description %}
+              <span class="bolt-payment-choice-description">{{ method.description }}</span>
+              {% endif %}
+            </span>
+          </label>
+          {% endif %}
+        {% endfor %}
+      </div>
+      <p id="paymentMethodError" class="bolt-payment-error" role="alert" hidden>
+        Select an available payment method to continue.
+      </p>
+      {# Request commitment is separate from driver acceptance. #}
       <button type="submit" class="bolt-cta" id="btnConfirm">
-        <span>Confirm Fare & Request Ride</span>
+        <span id="btnConfirmMain">Confirm Fare & Request Ride</span>
         <span class="bolt-cta-pay">
-          <i class="bi bi-cash-coin"></i><span>Cash</span>
+          <i class="bi bi-wallet2"></i><span id="btnConfirmPaymentLabel">Select payment</span>
         </span>
       </button>
       {# UI-14-D1: state-preserving edit path. type="button" so it can
@@ -1359,6 +1392,11 @@
   var hDropoff     = document.getElementById('hDropoff');
   var hPickup      = document.getElementById('hPickup');
   var hPickupTime  = document.getElementById('hPickupTime');
+  var hPayment     = document.getElementById('hPayment');
+  var paymentMethodError = document.getElementById('paymentMethodError');
+  var paymentLabel = document.getElementById('btnConfirmPaymentLabel');
+  var confirmMainLabel = document.getElementById('btnConfirmMain');
+  var paymentChoices = document.querySelectorAll('input[name="payment_method_choice"]');
   var hVehicleCls  = document.getElementById('hVehicleClass');
   var hServiceType = document.getElementById('hServiceType');
   var hBookingMode = document.getElementById('hBookingMode');
@@ -1412,6 +1450,18 @@
   function fmtCur(n, cur){
     return (cur || 'USD') + ' ' + Number(n || 0).toFixed(2);
   }
+  function syncPaymentChoice(){
+    var chosen = document.querySelector('input[name="payment_method_choice"]:checked');
+    hPayment.value = chosen ? String(chosen.value || '').trim().toLowerCase() : '';
+    if (paymentLabel) paymentLabel.textContent = chosen
+      ? (chosen.getAttribute('data-payment-label') || chosen.value)
+      : 'Select payment';
+    if (paymentMethodError && chosen) paymentMethodError.hidden = true;
+  }
+  Array.prototype.forEach.call(paymentChoices, function(choice){
+    choice.addEventListener('change', syncPaymentChoice);
+  });
+  syncPaymentChoice();
   /* SMALL-01 (J1): render a datetime-local value in the server's
      datetimeformat convention ('%d %b %Y, %H:%M'). Wall-clock time is
      kept as-is (no timezone shift). Unparseable input passes through. */
@@ -1961,6 +2011,15 @@
       if (!state.dest || !state.pickup || !isScheduleValid()) return goTo('a');
       return goTo('b');
     }
+    syncPaymentChoice();
+    if (!hPayment.value) {
+      e.preventDefault();
+      if (paymentMethodError) {
+        paymentMethodError.hidden = false;
+        paymentMethodError.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+      }
+      return;
+    }
     if (!IS_AUTHENTICATED) {
       /* Discovery/commitment boundary: an anonymous Confirm must never
          POST (the 302 would drop the trip body). Stash the complete trip
@@ -1985,8 +2044,13 @@
     if (btnConfirm) {
       btnConfirm.disabled = true;
       btnConfirm.setAttribute('aria-busy', 'true');
-      btnConfirm.innerHTML = '<span>Sending your ride request…</span>' +
-        '<span class="bolt-cta-pay"><i class="bi bi-cash-coin"></i><span>Cash</span></span>';
+      if (confirmMainLabel) confirmMainLabel.textContent = 'Sending your ride request…';
+      if (paymentLabel) {
+        var chosenPayment = document.querySelector('input[name="payment_method_choice"]:checked');
+        paymentLabel.textContent = chosenPayment
+          ? (chosenPayment.getAttribute('data-payment-label') || chosenPayment.value)
+          : 'Payment selected';
+      }
     }
     var boltForm = document.getElementById('boltForm');
     if (boltForm) boltForm.setAttribute('aria-busy', 'true');
