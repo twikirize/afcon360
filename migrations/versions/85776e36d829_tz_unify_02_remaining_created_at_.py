@@ -1,7 +1,7 @@
 """TZ-UNIFY-02: remaining created_at/updated_at to timezone-aware
 
 Revision ID: 85776e36d829
-Revises: c4b306c2ed73
+Revises: 31287acd4eb8
 Create Date: 2026-10-28 18:20:50.325937
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '85776e36d829'
-down_revision = 'c4b306c2ed73'
+down_revision = '31287acd4eb8'
 branch_labels = None
 depends_on = None
 
