@@ -69,7 +69,8 @@ class IdempotencyConflictError(ValidationError):
 def _trip_hash(service_type: str, vehicle_class: str, passenger_count: int,
                pickup: Dict[str, Any], dropoff: Dict[str, Any],
                payment_method: Optional[str], currency_code: Optional[str],
-               pickup_time_fp: str, requested_currency: Optional[str]) -> str:
+               pickup_time_fp: str, requested_currency: Optional[str],
+               accepted_fare_amount: Decimal, fare_version: str) -> str:
     """Stable fingerprint of the trip requirements a key was first used for.
 
     Coordinates are rounded to 6dp so float-encoding noise does not split
@@ -95,6 +96,8 @@ def _trip_hash(service_type: str, vehicle_class: str, passenger_count: int,
         "currency_code": currency_code,
         "pickup_time": pickup_time_fp,
         "requested_currency": requested_currency,
+        "accepted_fare_amount": format(money_amount(accepted_fare_amount), ".2f"),
+        "fare_version": str(fare_version or ""),
     }
     return hashlib.sha256(
         json.dumps(canonical, sort_keys=True).encode("utf-8")).hexdigest()
@@ -411,7 +414,8 @@ class RideRequestService:
         trip_hash = _trip_hash(service_type.value, vehicle_class,
                                passenger_count, pickup_snapshot,
                                dropoff_snapshot, payment_method, currency_code,
-                               pickup_time_fp, requested_currency)
+                               pickup_time_fp, requested_currency,
+                               accepted_fare_amount, str(estimate.get("version") or ""))
 
         # Deferred model import (see module note): resolves at call time.
         from app.transport.models import RideRequest, SearchCycle
