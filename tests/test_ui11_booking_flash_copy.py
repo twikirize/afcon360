@@ -42,7 +42,7 @@ def test_success_flash_uses_ride_request_wording(
     # 1) Booking flow succeeds and produces the booking reference.
     resp = authenticated_client.post(
         "/transport/book",
-        data=_bolt_form(_new_pickup_time()),
+        data=_bolt_form(app, _new_pickup_time()),
         follow_redirects=False,
     )
     assert resp.status_code in (301, 302), resp.status_code
