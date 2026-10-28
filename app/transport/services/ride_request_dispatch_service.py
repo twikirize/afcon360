@@ -9,7 +9,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.extensions import db
@@ -20,7 +20,7 @@ from app.transport.models import (
 )
 from app.utils.exceptions import ValidationError
 
-OFFER_RESPONSE_SECONDS = 15
+OFFER_RESPONSE_SECONDS = 25
 
 
 class RideRequestDispatchError(Exception):
@@ -152,6 +152,39 @@ class RideRequestDispatchService:
         return attempt
 
     @classmethod
+    def _close_cycle_at_deadline(
+        cls, request: RideRequest, cycle: SearchCycle, now: Optional[datetime] = None,
+    ) -> bool:
+        """Close an elapsed matching window and withdraw its actionable offer.
+
+        The request row must already be locked by the caller. This makes
+        expiry mutually exclusive with acceptance and rider cancellation.
+        Returns False when the window has not elapsed.
+        """
+        now = now or _now()
+        if cycle.deadline is None or cycle.deadline > now:
+            return False
+
+        attempts = OfferAttempt.query.filter_by(cycle_id=cycle.id).with_for_update().all()
+        had_attempts = bool(attempts)
+        for attempt in attempts:
+            if attempt.status in ("offered", "accepting"):
+                attempt.status = "timed_out"
+                attempt.responded_at = now
+                attempt.outcome_detail = {
+                    **(attempt.outcome_detail or {}),
+                    "reason": "matching_window_expired",
+                    "at": now.isoformat(),
+                }
+        cycle.status = "expired"
+        cycle.terminal_reason = "all_rejected" if had_attempts else "no_supply"
+        cycle.completed_at = now
+        meta = dict(cycle.cycle_metadata or {})
+        meta["window_expired_at"] = now.isoformat()
+        cycle.cycle_metadata = meta
+        return True
+
+    @classmethod
     def start_search(cls, request_public_id: str) -> Dict[str, Any]:
         """Create the first durable single-driver offer, idempotently."""
         from app.transport.services.matching_service import MatchingService
@@ -169,6 +202,9 @@ class RideRequestDispatchService:
         cycle = cls._cycle_for_request(request, lock=True)
         if cycle is None or cycle.status != "searching":
             return {"status": "no_active_search", "request_reference": request.public_id}
+        if cls._close_cycle_at_deadline(request, cycle):
+            db.session.commit()
+            return {"status": "expired", "request_reference": request.public_id}
 
         active = OfferAttempt.query.filter(
             OfferAttempt.cycle_id == cycle.id,
@@ -192,7 +228,12 @@ class RideRequestDispatchService:
         if not isinstance(pool, list):
             proxy = cls._proxy(request)
             _, ranked = MatchingService._ranked_candidates(proxy)
-            pool = cls._candidate_snapshot(ranked)
+            # Keep request-first matching aligned with the canonical MATCH-01
+            # budget: five ranked drivers per cycle, not the ranker's wider
+            # discovery pool. Retries create a new cycle and a fresh snapshot.
+            pool = cls._candidate_snapshot(
+                ranked[:MatchingService.MATCHING_POOL_SIZE]
+            )
             for rank, candidate in enumerate(pool, start=1):
                 candidate["rank"] = rank
             cycle_meta["ranked_pool"] = pool
