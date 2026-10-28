@@ -825,8 +825,10 @@ def is_safe_url(target):
 @auth_bp.route("/login", methods=["GET", "POST"], endpoint="login")
 @limiter.limit("5 per minute", methods=["POST"])
 @limiter.limit("30 per minute", methods=["GET"])
+@limiter.limit("3 per 15 minutes", key_func=lambda: request.remote_addr, methods=["POST"])
 def login():
     from app.auth.services import authenticate_user, AuthResult, start_server_session
+    from app.extensions import redis_client
 
     if request.method == "POST":
         username   = (request.form.get("username") or "").strip()[:64]
@@ -835,6 +837,36 @@ def login():
         password   = (request.form.get("password") or "")[:128]
         ip         = request.remote_addr
         user_agent = request.headers.get("User-Agent", "")
+
+        # Honeypot field - if filled, it's a bot
+        if request.form.get("website"):
+            current_app.logger.warning(f"Honeypot triggered from IP: {ip}")
+            _ct_delay()
+            flash("Invalid username or password.", "danger")
+            return render_template("login.html", username=identifier, show_captcha=True)
+
+        # Check IP-based rate limit
+        ip_key = f"login_ip:{ip}"
+        try:
+            ip_attempts = redis_client.get(ip_key)
+            if ip_attempts and int(ip_attempts) >= 3:
+                ttl = redis_client.ttl(ip_key)
+                minutes = max(1, ttl // 60 + 1)
+                current_app.logger.warning(f"IP rate limit exceeded: {ip} ({ip_attempts} attempts)")
+                flash(f"Too many attempts from this IP. Try again in {minutes} minute(s).", "danger")
+                return render_template("login.html", username=identifier, show_captcha=True)
+        except Exception:
+            pass  # Redis unavailable, continue without IP check
+
+        # Progressive delay based on failed attempts from this IP
+        try:
+            if ip_attempts and int(ip_attempts) >= 2:
+                delay = min(2 ** int(ip_attempts), 30)  # 4s, 8s, 16s, 30s max
+                current_app.logger.info(f"Progressive delay {delay}s for IP: {ip}")
+                import time
+                time.sleep(delay)
+        except Exception:
+            pass
 
         try:
             result, payload = authenticate_user(
@@ -887,6 +919,41 @@ def login():
             db.session.commit()
             result = AuthResult.SUCCESS
             payload = {"user": user, "session_id": session_id}
+
+        if result == AuthResult.LOCKED:
+            user = payload["user"]
+            locked_until = getattr(user, "locked_until", None)
+            if locked_until:
+                from datetime import datetime, timezone
+                if locked_until.tzinfo is None:
+                    locked_until = locked_until.replace(tzinfo=timezone.utc)
+                remaining = locked_until - datetime.now(timezone.utc)
+                minutes = int(remaining.total_seconds() / 60) + 1
+                flash(f"Account locked due to too many failed attempts. Try again in {minutes} minute(s).", "danger")
+            else:
+                flash("Account locked due to too many failed attempts. Try again later.", "danger")
+            return render_template("login.html", username=identifier)
+
+        if result == AuthResult.INVALID_CREDENTIALS:
+            user = payload.get("user")
+            if user:
+                failed = getattr(user, "failed_logins", 0)
+                remaining = max(0, 5 - failed)
+                if remaining > 0:
+                    flash(f"Invalid username or password. {remaining} attempt(s) remaining before lockout.", "danger")
+                else:
+                    flash("Invalid username or password. Account will be locked.", "danger")
+            else:
+                flash("Invalid username or password.", "danger")
+            return render_template("login.html", username=identifier)
+
+        if result == AuthResult.NOT_FOUND:
+            flash("Invalid username or password.", "danger")
+            return render_template("login.html", username=identifier)
+
+        if result == AuthResult.INACTIVE:
+            flash("This account has been deactivated. Please contact support.", "danger")
+            return render_template("login.html", username=identifier)
 
         if result == AuthResult.SUCCESS:
             user       = payload["user"]
@@ -1111,9 +1178,35 @@ def login():
             }
         )
 
+        # Increment IP-based attempt counter
+        try:
+            ip_key = f"login_ip:{ip}"
+            pipe = redis_client.pipeline()
+            pipe.incr(ip_key)
+            pipe.expire(ip_key, 900)  # 15 minutes
+            pipe.execute()
+        except Exception:
+            pass
+
+        # Get current IP attempts after increment
+        ip_attempts = 0
+        try:
+            val = redis_client.get(f"login_ip:{ip}")
+            if val:
+                ip_attempts = int(val)
+        except Exception:
+            pass
+
+        # Determine remaining attempts before security check (max 3)
+        remaining = max(0, 3 - ip_attempts)
+        show_captcha = remaining == 0
+
         _ct_delay()
-        flash("Invalid username or password.", "danger")
-        return render_template("login.html", username=identifier)
+        if remaining > 0:
+            flash(f"Invalid username or password. {remaining} attempt(s) remaining before security check.", "danger")
+        else:
+            flash("Invalid username or password. Security check required.", "danger")
+        return render_template("login.html", username=identifier, show_captcha=show_captcha)
 
     from config import APP_NAME
     return render_template("login.html", app_name=APP_NAME)

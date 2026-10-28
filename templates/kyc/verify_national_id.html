@@ -166,7 +166,7 @@
 
 {% block styles %}
 {% if not is_pane %}
-<style>
+<style nonce="{{ csp_nonce }}">
   .kyc-verify-wrapper {
     max-width: 560px;
     margin: 2.5rem auto;

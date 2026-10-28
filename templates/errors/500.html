@@ -9,7 +9,7 @@
   <meta name="user-authenticated" content="false">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/dark-mode.css') }}">
-  <style>
+  <style nonce="{{ csp_nonce }}">
     body.dark-mode .error-card { background: var(--bg-elevated); color: var(--text-primary); }
     body.dark-mode .error-title { color: var(--text-primary); }
     body.dark-mode .error-message { color: var(--text-muted); }
@@ -21,7 +21,7 @@
 </head>
 <body>
 
-<style>
+<style nonce="{{ csp_nonce }}">
 .error-container {
     min-height: 80vh;
     display: flex;
@@ -227,7 +227,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 // Auto-refresh after 30 seconds for temporary errors
 setTimeout(function() {
     const refreshConfirm = confirm('Would you like to try refreshing the page?');

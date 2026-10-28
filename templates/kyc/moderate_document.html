@@ -5,7 +5,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/admin/admin.css') }}">
 
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
+<style nonce="{{ csp_nonce }}">
 :root {
   --ink: #0a0a0f; --surface: #0f0f1a; --panel: #14141f;
   --border: rgba(255,255,255,0.07); --gold: #d4a843; --gold-dim: rgba(212,168,67,0.15);

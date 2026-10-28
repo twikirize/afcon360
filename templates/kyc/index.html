@@ -194,7 +194,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
 (function () {
   // Show "Draft saved" badges for any requirement the user has an auto-saved
   // (localStorage) draft for. Keyed per document type so progress persists

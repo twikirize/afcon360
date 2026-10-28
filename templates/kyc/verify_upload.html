@@ -394,7 +394,7 @@
 {% endblock %}
 
 {% block styles %}
-<style>
+<style nonce="{{ csp_nonce }}">
   /* ── Dedicated Clean Custom Styling (Independent of Bootstrap collapse/tabs bugs) ── */
   .kyc-standalone-card {
     background: #ffffff;

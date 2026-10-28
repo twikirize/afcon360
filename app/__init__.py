@@ -646,7 +646,7 @@ def create_app(config_object=None) -> Flask:
             "base-uri 'self'; "
             + upgrade_directive
         )
-        csp_script = f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
+        csp_script = f"script-src 'self' 'nonce-{nonce}' 'unsafe-eval' https://cdn.jsdelivr.net; "
         if strict:
             csp_enforce = (
                 "default-src 'self'; "
@@ -2357,7 +2357,12 @@ def create_app(config_object=None) -> Flask:
         by the user agent, not a form), so this endpoint must be CSRF-exempt.
         It performs no state change — it only logs the report.
         """
+        # Log raw request for debugging
+        current_app.logger.debug("CSP report content-type: %s", request.content_type)
+        current_app.logger.debug("CSP report raw data: %s", request.get_data(as_text=True)[:500])
+        
         try:
+            # Handle both application/csp-report and application/json
             report = request.get_json(force=True, silent=True) or {}
         except Exception:
             report = {}
@@ -2373,12 +2378,15 @@ def create_app(config_object=None) -> Flask:
             blocked = body.get("blocked-uri") or body.get("blocked-URI") or "unknown"
             source = body.get("source-file") or "unknown"
             document = body.get("document-uri") or body.get("document-URL") or "unknown"
+            line_number = body.get("line-number") or body.get("lineNumber") or "unknown"
+            column_number = body.get("column-number") or body.get("columnNumber") or "unknown"
+            script_sample = body.get("script-sample") or body.get("scriptSample") or ""
             current_app.logger.info(
-                "CSP violation: directive=%s blocked=%s source=%s document=%s",
-                directive, blocked, source, document,
+                "CSP violation: directive=%s blocked=%s source=%s document=%s line=%s col=%s sample=%s",
+                directive, blocked, source, document, line_number, column_number, script_sample[:100] if script_sample else "",
             )
-        except Exception:
-            pass
+        except Exception as e:
+            current_app.logger.error("CSP report parse error: %s", e)
         return ("", 204)
 
     # DB schema validation moved to _run_deferred_startup (first-request handler)

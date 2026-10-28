@@ -185,7 +185,14 @@ def _is_account_locked(user: User) -> bool:
             return user.is_locked()
         except Exception:
             pass
-    return bool(locked_until and datetime.now(timezone.utc) < locked_until)
+    if locked_until is None:
+        return False
+    # Handle naive vs aware datetime comparison
+    now = datetime.now(timezone.utc)
+    if locked_until.tzinfo is None:
+        # locked_until is naive, assume UTC
+        locked_until = locked_until.replace(tzinfo=timezone.utc)
+    return now < locked_until
 
 
 def _record_failed_login_attempt(user: User) -> None:

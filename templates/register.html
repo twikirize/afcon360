@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<style>
+<style nonce="{{ csp_nonce }}">
     body {
         background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
         min-height: 100vh;
@@ -107,7 +107,7 @@
 </div>
 
 {% if config is defined and not config.REQUIRE_EMAIL_VERIFICATION %}
-<script>
+<script nonce="{{ csp_nonce }}">
     document.addEventListener('DOMContentLoaded', function() {
         const emailField = document.getElementById('email');
         const securitySection = document.getElementById('security-question-section');
@@ -146,7 +146,7 @@
 {% endif %}
 
 <!-- Form validation -->
-<script>
+<script nonce="{{ csp_nonce }}">
     // Bootstrap form validation
     (function () {
         'use strict'
@@ -164,7 +164,7 @@
     })()
 </script>
 
-<style>
+<style nonce="{{ csp_nonce }}">
     .card {
         background-color: #ffffff;
     }

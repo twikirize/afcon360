@@ -25,32 +25,76 @@
 
 ## CANCEL-FEE-COLLECT-P1 — Scheduled cancellation fees are recorded but never collected (DEFERRED — wallet/payment workstream)
 
-- Status: Not started (recorded 2026-10-26)
+- Status: Blocked (recorded 2026-10-26; requires owner collection/refund policy and Wallet/compliance authorization)
 - Raised: 2026-10-26 (CANCEL-FEE-SCHEDULED-P1 closeout; deliberately excluded from the code-only node)
 - Context: `CANCEL-FEE-SCHEDULED-P1` writes `Booking.cancellation_fee` and `booking_metadata["cancellation"]` with `recorded_uncollected: true`. No wallet debit, payment capture, refund execution, or reconciliation occurs. Riders see the fee/refund summary, but the financial outcome is not settled.
 - What needs to happen: define the collection/refund policy and ledger entries; wire the fee to the approved wallet/payment path with idempotency and reconciliation; prove double-entry integrity and failure rollback. Requires wallet/compliance authorization before implementation.
+- Scope: Approved collection/refund settlement and reconciliation for already-assessed scheduled cancellation/no-show fees. Excludes fare pricing, no-show operational authority, and driver earnings settlement.
+- Acceptance criteria:
+  - An owner-approved policy defines what is charged, the funding source (wallet, payment method, or receivable), collection timing, partial/refund treatment, failure/retry/write-off behavior, and whether any fee is waivable.
+  - Every assessed scheduled cancellation/no-show fee produces at most one financial outcome, keyed deterministically by booking plus cancellation/no-show event. Duplicate cancellation, retry, and concurrent requests must not double-charge.
+  - Collection uses the canonical Wallet double-entry path or an approved payment capture, never a direct balance mutation, and persists explicit links between booking, assessment, transaction, and outcome.
+  - Fee state remains truthful: assessed, pending, collected, failed, and waived are distinguishable. A failed or pending collection must not be displayed or reported as collected.
+  - Scheduled-booking confirmation discloses the applicable cancellation terms and cap before the rider commits; the server remains the sole policy authority.
+  - Reconciliation reports assessed-but-uncollected, collected-without-assessment, and amount/currency mismatches, with audit actor, correlation, and transaction reference.
+- Dependencies / decision gates:
+  - Owner decision: collection source and refund policy, including behavior when funds are unavailable.
+  - Owner decision: whether a fee can become a receivable or must fail closed when no approved funding source exists.
+  - Wallet/compliance authorization is required before any payment-path or ledger change; do not create a parallel financial engine.
+  - Collection outcome is a prerequisite for actual driver settlement in `DRIVER-EARNINGS-LEDGER-P1`.
+- Verification:
+  - Tests must cover duplicate/concurrent cancellation, retry after failure, pending/failed/collected states, zero-fee modes, currency boundaries, and refund interaction.
+  - Ledger entries must balance and reconciliation must detect injected assessment/collection mismatches.
 - Owner/area: Transport + Wallet/Payments
-- Links: `app/transport/services/booking_service.py` (`cancel_booking`, `_cancellation_policy`), `app/wallet/**`, `app/tasks/reconcile.py`, `docs/transport/nodes/CANCEL-FEE-SCHEDULED-P1-evidence.md`.
+- Links: `app/transport/services/booking_service.py` (`cancel_booking`, `_cancellation_policy`), `app/wallet/services/wallet_service.py`, `app/wallet/models/transaction.py`, `app/wallet/services/reconciliation_service.py`, `app/tasks/reconcile.py`, `docs/transport/nodes/CANCEL-FEE-SCHEDULED-P1-evidence.md`.
 
 ---
 
 ## DRIVER-EARNINGS-LEDGER-P1 — Driver cancellation/no-show credits are metadata only (DEFERRED — ledger/finance)
 
-- Status: Not started (recorded 2026-10-26)
+- Status: Blocked (recorded 2026-10-26; requires owner earnings policy and finance/wallet authorization)
 - Raised: 2026-10-26 (CANCEL-FEE-SCHEDULED-P1 closeout; non-wallet boundary preserved)
 - Context: `booking_metadata["driver_cancellation_credits"]` records 80% of a late-cancellation fee and 100% of a no-show fee as uncollected facts. `DriverProfile.total_earnings` and `get_driver_earnings()` ignore them, so drivers cannot see or withdraw this compensation.
 - What needs to happen: design the driver earnings ledger, map booking credits into it, expose earnings history, and define reversal/settlement rules. Do not infer amounts from `cancellation_fee` alone; consume the metadata facts. Requires finance/wallet authorization.
+- Scope: Convert collected cancellation/no-show penalty facts into driver earnings records, history, and settlement. Excludes fee collection, no-show operational authority, and general commission redesign.
+- Acceptance criteria:
+  - An owner-approved policy defines whether the 80% late-cancellation and 100% no-show shares remain the rule, whether earnings accrue before collection, how platform share is recorded, and when earnings become withdrawable.
+  - Each booking credit maps to exactly one idempotent earnings record and ledger posting, deterministically keyed by booking plus credit event; retries and duplicate processing cannot double-credit.
+  - Earnings settlement uses the canonical Wallet credit/double-entry path, not a direct `DriverProfile.total_earnings` mutation, and links earnings to the originating booking, assessment, and confirmed collection outcome.
+  - Uncollected or failed penalties cannot create withdrawable driver funds. A reversal of the collection holds or reverses the corresponding earnings under the approved policy.
+  - Earnings history is queryable with booking public reference, amount, currency, status, and timestamps, without exposing internal user IDs.
+  - Reconciliation proves driver credits plus platform share equal collected fees, and flags orphaned credits, duplicate credits, and credits without a confirmed collection.
+- Dependencies / decision gates:
+  - `CANCEL-FEE-COLLECT-P1` must define and produce a confirmed collection outcome.
+  - Owner decision: accrual versus cash basis, withdrawability timing, platform share, reversal/appeal handling, and driver account creation for payout.
+  - Finance/wallet authorization is required before ledger or payout changes; `PayoutService` wallet payout is a precedent, not proof that driver earnings are implemented.
+- Verification:
+  - Tests must cover duplicate/concurrent credit, retry, failed collection, reversal, partial refund, multi-currency, and missing driver wallet account.
+  - Ledger and reconciliation checks must prove conservation: collected fee equals driver share plus platform share.
 - Owner/area: Transport + Wallet/Finance
-- Links: `app/transport/services/booking_service.py` (`_append_driver_credit`, `get_driver_earnings`), `booking_metadata["driver_cancellation_credits"]`, `docs/transport/nodes/CANCEL-FEE-SCHEDULED-P1-evidence.md`.
+- Links: `app/transport/services/booking_service.py` (`_append_driver_credit`, `get_driver_earnings`), `booking_metadata["driver_cancellation_credits"]`, `app/wallet/services/wallet_service.py`, `app/wallet/services/payout_service.py`, `app/wallet/services/reconciliation_service.py`, `docs/transport/nodes/CANCEL-FEE-SCHEDULED-P1-evidence.md`.
 
 ---
 
 ## ADMIN-NO-SHOW-FEE-P1 — No admin/moderator no-show path (DEFERRED — operations)
 
-- Status: Not started (recorded 2026-10-26)
+- Status: Needs review (recorded 2026-10-26; requires an owner decision on operational authority and evidence)
 - Raised: 2026-10-26 (CANCEL-FEE-SCHEDULED-P1 closeout; driver-only authority is intentional for this node)
 - Context: `BookingService.mark_no_show()` and the driver trip API are restricted to the assigned driver. There is no admin/moderator path to record a no-show when a driver cannot or will not use the dashboard.
 - What needs to happen: define admin authority, audit actor, override/evidence requirements, and idempotency for the same booking; reuse the existing no-show fee/credit contract rather than creating a parallel calculation.
+- Scope: Authorized admin/moderator no-show recording and audit. Excludes changing the no-show fee calculation, collection, or driver settlement.
+- Acceptance criteria:
+  - An owner-approved matrix names the roles permitted to record an admin no-show and the required permission checks; authorization is enforced server-side, not by page visibility.
+  - The approved policy's required reason/evidence is enforced, and the action records actor public identity, timestamp, prior trip state, pickup/grace facts, and correlation ID in the audit trail.
+  - Admin and driver paths share one no-show transition and one fee/credit calculation. A booking cannot receive duplicate no-show fees or credits, including driver/admin races.
+  - The path preserves the contract's grace and state prerequisites or records an explicitly authorized override; it cannot silently bypass them.
+  - Reversal or appeal handling is defined, auditable, and does not create a second fee.
+  - Existing driver behavior and the rider-facing truthful fee state remain unchanged unless separately authorized.
+- Dependencies / decision gates:
+  - Owner decision: allowed roles, whether grace can be overridden, evidence standard, notification, and appeal/reversal authority.
+  - `CANCEL-FEE-COLLECT-P1` and `DRIVER-EARNINGS-LEDGER-P1` remain the financial collection/settlement owners; this item governs operational authority only.
+- Verification:
+  - Tests must cover unauthorized roles, wrong trip state, grace boundary, duplicate driver/admin attempts, missing evidence, and audit fields.
 - Owner/area: Transport / operations
 - Links: `app/transport/services/booking_service.py:mark_no_show`, `app/transport/api/driver_routes.py:_execute_driver_trip_action`, `docs/transport/nodes/CANCEL-FEE-SCHEDULED-P1-contract.md` §3.6.
 
@@ -58,23 +102,63 @@
 
 ## CANCEL-FEE-FX-P1 — Cancellation caps are face value in booking currency (DEFERRED — product/finance decision)
 
-- Status: Not started (recorded 2026-10-26)
+- Status: Blocked (recorded 2026-10-26; requires an owner product/finance FX decision)
 - Raised: 2026-10-26 (CANCEL-FEE-SCHEDULED-P1 closeout; no FX policy in contract)
 - Context: Scheduled caps (`10,000` / `20,000`) and no-show cap (`20,000`) are applied as face values in whatever currency the booking uses. There is no conversion to a base currency, so caps are not economically equivalent across currencies.
 - What needs to happen: define base-currency caps, FX source/rate timestamp, rounding, and audit evidence; update the preview and server calculation together. Do not introduce rates in the browser.
+- Scope: Cap denomination, currency conversion, rounding, and supporting evidence for fee assessment. Excludes collection and driver settlement.
+- Acceptance criteria:
+  - An owner-approved policy names the cap currency, whether the existing `10,000`/`20,000` values are base-currency amounts, and the conversion direction.
+  - The server snapshots the rate source, rate timestamp, rate, and converted cap used for each assessment; preview and assessment use the same policy and inputs.
+  - Stale, unavailable, or deviating rates follow an explicit fail-closed or approved fallback rule; they cannot silently use an arbitrary rate.
+  - Rounding is Decimal-based and documented, and the final fee still obeys the fare cap and assessment policy.
+  - Audit/reconciliation can explain the assessed amount from the stored policy inputs; no browser-supplied rate is accepted.
+- Dependencies / decision gates:
+  - Owner decision: base currency, rate source, rate timestamp (booking versus cancellation), rounding mode, and stale-rate behavior.
+  - `CANCEL-FEE-COLLECT-P1` owns actual collection; this item owns cap/currency computation and evidence.
+  - Any use of `FXService` must respect its stale/deviation safety behavior; do not create a second rate source.
+- Verification:
+  - Tests must cover multiple booking currencies, cap boundaries, rounding, stale/unavailable rates, and preview-versus-server parity.
 - Owner/area: Transport + Finance
-- Links: `app/transport/services/booking_service.py:CANCEL_FEE_STANDARD_CAP`, `CANCEL_FEE_LATE_CAP`, `NO_SHOW_FEE_CAP`, `docs/transport/nodes/CANCEL-FEE-SCHEDULED-P1-contract.md` §3.2.
+- Links: `app/transport/services/booking_service.py:CANCEL_FEE_STANDARD_CAP`, `CANCEL_FEE_LATE_CAP`, `NO_SHOW_FEE_CAP`, `app/wallet/services/fx_service.py`, `docs/transport/nodes/CANCEL-FEE-SCHEDULED-P1-contract.md` §3.2.
 
 ---
 
 ## TRANSPORT-D5-SUPPLY00A-STALE-01 — Six D5 assertions still expect retired is_available writes (DEFERRED — pre-existing, not CANCEL-FEE-SCHEDULED-P1)
 
-- Status: Not started (recorded 2026-10-26; reproduced on the CANCEL-FEE-SCHEDULED-P1 parent baseline)
+- Status: Needs review (recorded 2026-10-26; reproduced on the CANCEL-FEE-SCHEDULED-P1 parent baseline)
 - Raised: 2026-10-26 (CANCEL-FEE-SCHEDULED-P1 verification discovered the contract's D5-green criterion is unsatisfiable at baseline)
 - Context: `tests/test_transport_d5_execution_lifecycle.py` has six failures asserting `is_available is False` after claim/release. At `b5b5a7a`, `AssignmentService` already states `SUPPLY-00a: claim no longer writes is_available` and `SUPPLY-00a: release no longer writes is_available`; the tests assert the retired write. Failures: `test_dispute_latches_then_cancel_releases`, `test_illegal_in_progress_to_cancelled_refused`, `test_start_before_no_show_blocks_no_show`, `test_progress_before_recovery_keeps_trip`, `test_moderator_reject_in_progress_blocked`, `test_moderator_reject_requires_reason`.
 - What needs to happen: decide whether the D5 assertions or the `SUPPLY-00a` semantics are authoritative; update the stale tests or restore the intended availability writes without weakening busy protection. Do not bundle into cancellation-fee work.
+- Scope: Resolve the six stale D5 availability assertions and related lifecycle coverage. Excludes cancellation-fee, wallet, and financial work.
+- Acceptance criteria:
+  - An owner-approved decision records whether `SUPPLY-00a` availability semantics or the six test assertions are authoritative, with evidence.
+  - If the tests are stale, update them in a dedicated authorized node to assert the intended busy/availability behavior; do not change production code merely to satisfy retired writes.
+  - If the tests reflect intended behavior, implement that behavior, including busy protection; do not weaken claim/release invariants.
+  - The six named tests and the related D5 lifecycle suite pass for the documented reason, not by skipping or deleting coverage.
+  - No cancellation-fee code or contract is modified as part of this decision.
+- Dependencies / decision gates:
+  - Owner/architecture decision on authoritative D5 semantics.
+  - Separate authorization for test or assignment-service changes.
+- Verification:
+  - Run the six named tests plus the related D5 suite and record outcomes before/after.
 - Owner/area: Transport (assignment/availability)
 - Links: `tests/test_transport_d5_execution_lifecycle.py`, `app/transport/services/assignment_service.py` (`SUPPLY-00a` comments), `docs/transport/nodes/CANCEL-FEE-SCHEDULED-P1-evidence.md` §6.
+
+---
+
+## TRANSPORT-NULL-PICKUP-CONSUMER-AUDIT — Three consumers assumed pickup_time was non-null (DEPLOY 2 PATCHES — awaiting human review)
+
+- Status: Partial (Gaps 1-2 patched and tested; Gap 3 confirmed unreachable; not committed)
+- Raised: 2026-10-26 (follow-up to PICKUP-TIME-AUTHORITY-P1: instant rides may persist `pickup_time = NULL`)
+- Context: Making `pickup_time` nullable for instant rides exposed three consumers that assumed a non-null pickup time. This item records their disposition; it does not authorize further changes.
+  1. **Admin date filter** — `app/transport/api/booking_routes.py:136-138` filtered on `Booking.pickup_time` directly, so NULL pickup rows disappeared from date-bounded admin lists. Patched to `func.coalesce(Booking.pickup_time, Booking.created_at)` for both bounds. `tests/transport/test_node3_admin_booking_post.py` 13/13 pass.
+  2. **Driver upcoming/next** — `app/transport/services/booking_service.py` (`get_driver_upcoming_bookings` ~2053, `get_driver_next_booking` ~2150) required `pickup_time > now`, hiding instant rides with NULL or already-elapsed pickup times. Patched to `sa.or_(Booking.pickup_mode == "instant", Booking.pickup_time > now)` and ordered by `func.coalesce(pickup_time, created_at)`. `tests/transport/test_scheduled_release_p1.py` 23/23 plus `tests/transport/test_ui14_d5_confirm_wording.py` 4/4 pass (40/40 combined with Gap 1).
+  3. **`required` on pickup_time in form** — `templates/transport/bookings/components/_booking_details.html:10-11` marks `pickup_time` required. Repo-wide reference search finds **zero include sites**; the partial is orphaned. The live booking form (`templates/transport/new_home.html:822`) posts `pickup_time` as a hidden input with no `required`. Confirmed safe; no template change made.
+- What needs to happen: human reviews the Gap 1-2 diff and the Gap 3 disposition, then authorizes (or rejects) the Deploy 2 commit. No further consumer work is known in this scope.
+- Verification: targeted 40/40 pass. Full-suite baseline at HEAD `2ff098c` is not five reds: 23 tracked-test failures plus one error reproduce identically with and without these patches in a HEAD worktree, and the full `pytest tests/` run exceeds 30 minutes. The known `TRANSPORT-PREEXISTING-RED-5` and `TRANSPORT-D5-SUPPLY00A-STALE-01` sets are subsets; broader full-suite triage is separate work.
+- Owner/area: Transport (admin list, driver dashboard, booking form)
+- Links: `app/transport/api/booking_routes.py` (`BookingListResource.get`/`post`), `app/transport/services/booking_service.py` (`get_driver_upcoming_bookings`, `get_driver_next_booking`), `templates/transport/bookings/components/_booking_details.html`, `templates/transport/new_home.html`, `tests/transport/test_node3_admin_booking_post.py`, `tests/transport/test_scheduled_release_p1.py`.
 
 ---
 

@@ -92,7 +92,7 @@
 
 {% block styles %}
 {% if not is_pane %}
-<style>
+<style nonce="{{ csp_nonce }}">
   .kyc-upgrade-wrapper { max-width: 680px; margin: 2.5rem auto; padding: 0 1rem; font-family: 'Georgia', serif; }
   .kyc-badge { display: inline-block; background: #1a3a2a; color: #7fffb0; font-size: 0.7rem; font-family: monospace; letter-spacing: 0.12em; text-transform: uppercase; padding: 0.25rem 0.75rem; border-radius: 2px; margin-bottom: 0.75rem; }
   .kyc-header h1 { font-size: 1.75rem; font-weight: 700; color: #0f1f14; margin: 0 0 0.4rem; }
