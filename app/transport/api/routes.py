@@ -101,9 +101,12 @@ def register_api_resources(api):
     )
     from .fare_routes import FareConfigResource, FareEstimateResource
     from .ride_options_routes import RideOptionsResource
-    # BOOKING-LIFECYCLE-REQUEST-CREATE (Stage 3B, Phase 2A): pre-Booking
-    # request creation (authenticated + commitment-gated; zero Bookings).
-    from .ride_request_routes import RideRequestCreateResource
+    # BOOKING-LIFECYCLE-REQUEST-CREATE (Stage 3B, Phase 2A): request-first
+    # hailing and public-reference tracking until acceptance conversion.
+    from .ride_request_routes import (
+        RideRequestCreateResource,
+        RideRequestDetailResource,
+    )
 
     # -------------------------------------------------------------------
     # Resource registration with EXPLICIT endpoint names
@@ -185,6 +188,11 @@ def register_api_resources(api):
     # ride-request creation (authenticated + commitment-gated).
     safe_add_resource(RideRequestCreateResource, "/ride-requests",
                       endpoint="ride_request_create")
+    safe_add_resource(
+        RideRequestDetailResource,
+        "/ride-requests/<string:request_public_id>",
+        endpoint="ride_request_detail",
+    )
 
     # Fare configuration governance (fare node: owner/delegated writes only)
     safe_add_resource(FareConfigResource, "/fare/config", endpoint="fare_config")
