@@ -14,9 +14,9 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.extensions import db
 from app.transport.models import (
-    Booking, BookingPayment, BookingStatus, ComplianceStatus, Currency, DriverProfile,
-    OfferAttempt, PaymentStatus, ProviderType, RideRequest, SearchCycle,
-    ServiceType, Vehicle,
+    Booking, BookingPayment, BookingStatus, ComplianceStatus, Currency,
+    DriverProfile, DriverVehicleHistory, OfferAttempt, PaymentStatus,
+    ProviderType, RideRequest, SearchCycle, ServiceType, Vehicle,
 )
 from app.utils.exceptions import ValidationError
 
@@ -661,6 +661,28 @@ class RideRequestDispatchService:
             if next_attempt:
                 cls._notify_driver(request, next_attempt)
             raise RideRequestDispatchError("offer_expired", "This ride offer has expired")
+
+        # The offered vehicle must still be the active driver/vehicle pairing.
+        # A driver may switch vehicles while an offer is on screen; do not let
+        # an old offer claim the previous vehicle merely because it is still
+        # active and unoccupied.
+        active_pair = DriverVehicleHistory.query.filter_by(
+            driver_id=driver_id,
+            vehicle_id=vehicle_id,
+            ended_at=None,
+            is_deleted=False,
+        ).first()
+        if active_pair is None:
+            next_attempt = cls._advance_locked(
+                request, cycle, attempt, "claim_failed"
+            )
+            db.session.commit()
+            if next_attempt:
+                cls._notify_driver(request, next_attempt)
+            raise RideRequestDispatchError(
+                "vehicle_assignment_changed",
+                "Your active vehicle changed after this offer. We are checking another driver.",
+            )
 
         # Mark in-flight under the request/cycle row locks; the state is
         # committed only together with the booking conversion below.
