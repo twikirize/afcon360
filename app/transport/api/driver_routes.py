@@ -771,7 +771,17 @@ def _execute_driver_trip_action(booking, profile, action, actor):
                         from app.transport.services.payment_service import PaymentService
                         PaymentService.process_payment(
                             booking_id,
-                            {"payment_method": "wallet"},
+                            {
+                                "payment_method": "wallet",
+                                # Amount and currency are server-derived; never trust
+                                # a driver/client supplied settlement amount.
+                                "amount": str(
+                                    refreshed.final_price or refreshed.total_amount or 0
+                                ),
+                                "currency": str(getattr(
+                                    refreshed.currency, "value", refreshed.currency
+                                )),
+                            },
                             request_id="trip-complete:%s" % refreshed.booking_reference,
                         )
                     except Exception:
