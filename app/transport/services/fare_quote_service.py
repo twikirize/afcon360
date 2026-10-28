@@ -27,7 +27,7 @@ def money_amount(value: Any) -> Decimal:
             message="Invalid fare amount. Please request a new fare quote.",
             field="confirmed_fare_amount",
         ) from exc
-    if not amount.is_finite() or amount < 0:
+    if not amount.is_finite() or amount <= 0:
         raise ValidationError(
             message="Invalid fare amount. Please request a new fare quote.",
             field="confirmed_fare_amount",
