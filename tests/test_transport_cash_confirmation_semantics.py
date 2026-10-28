@@ -39,7 +39,7 @@ def _get_user_id(app, test_user):
 
 
 # Use the exact same wording as routes.py (with RIGHT SINGLE QUOTATION MARK U+2019)
-NEW_WORDING = "Ride request received! We\u2019re finding your driver. Reference:"
+NEW_WORDING = "Fare confirmed. We\u2019re now matching you with a driver. Reference:"
 OLD_WORDING = "Booking confirmed! Reference"
 
 
@@ -56,7 +56,7 @@ class TestCashConfirmationSemantics:
 
         response = authenticated_client.post(
             "/transport/book",
-            data=_bolt_form(_new_pickup_time()),
+            data=_bolt_form(app, _new_pickup_time()),
             follow_redirects=False,
         )
         assert response.status_code in (301, 302), response.get_data(as_text=True)
@@ -215,7 +215,7 @@ class TestCashConfirmationSemantics:
         """
         Rider-facing flash uses corrected wording:
         OLD: "Booking confirmed! Reference: {ref}"
-        NEW: "Ride request received! We\u2019re finding your driver. Reference: {ref}"
+        NEW: "Fare confirmed. We\u2019re now matching you with a driver. Reference: {ref}"
         """
         user_id = _get_user_id(app, test_user)
         _promote_user_to_tier3(app, user_id)
