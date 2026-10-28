@@ -61,7 +61,6 @@
           {% set dropoff = ride.dropoff_location if ride.dropoff_location is mapping else {} %}
           <tr>
             <td><div class="ta-ops-ref">{{ ride.public_id }}</div><small>{{ ride.created_at.strftime('%Y-%m-%d %H:%M UTC') if ride.created_at else '—' }}</small></td>
-            <td>#{{ cycle.cycle_number }}</td>
             <td>{{ pickup.get('display_name') or pickup.get('address') or pickup.get('label') or 'Pickup saved' }}<br><span aria-hidden="true">↓</span><br>{{ dropoff.get('display_name') or dropoff.get('address') or dropoff.get('label') or 'Destination saved' }}</td>
             <td>{{ (ride.service_type.value if ride.service_type.value is defined else ride.service_type)|replace('_',' ')|title }}<br>{{ (ride.vehicle_class or '—')|title }} · {{ ride.passenger_count or 1 }} passenger(s)</td>
             <td>{{ ride.currency_code or '—' }} {{ '%.2f'|format(ride.fare_estimate_amount or 0) }}</td>
@@ -90,6 +89,7 @@
           {% set dropoff = ride.dropoff_location if ride.dropoff_location is mapping else {} %}
           <tr>
             <td><div class="ta-ops-ref">{{ ride.public_id }}</div><small>{{ ride.created_at.strftime('%Y-%m-%d %H:%M UTC') if ride.created_at else '—' }}</small></td>
+            <td>#{{ cycle.cycle_number }}</td>
             <td>{{ pickup.get('display_name') or pickup.get('address') or pickup.get('label') or 'Pickup saved' }}<br><span aria-hidden="true">↓</span><br>{{ dropoff.get('display_name') or dropoff.get('address') or dropoff.get('label') or 'Destination saved' }}</td>
             <td>{{ (ride.service_type.value if ride.service_type.value is defined else ride.service_type)|replace('_',' ')|title }} · {{ (ride.vehicle_class or '—')|title }}</td>
             <td>{{ (ride.payment_method or '—')|replace('_',' ')|title }}</td>
