@@ -2058,7 +2058,7 @@
     if (btnConfirm) {
       btnConfirm.disabled = true;
       btnConfirm.setAttribute('aria-busy', 'true');
-      if (confirmMainLabel) confirmMainLabel.textContent = 'Sending your ride request…';
+      if (confirmMainLabel) confirmMainLabel.textContent = 'Confirming fare & starting driver search…';
       if (paymentLabel) {
         var chosenPayment = document.querySelector('input[name="payment_method_choice"]:checked');
         paymentLabel.textContent = chosenPayment
