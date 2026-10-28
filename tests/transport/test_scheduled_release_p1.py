@@ -532,3 +532,40 @@ class TestDriverActualTimes:
             assert booking.status == BookingStatus.COMPLETED.value
             assert booking.completed_at is not None
             assert booking.dropoff_actual_time is not None
+
+
+class TestDriverInstantVisibility:
+
+    def test_upcoming_and_next_include_instant_without_pickup_time(self, app):
+        user_id = _create_user(app)
+        driver_id, vehicle_id = _create_driver_with_vehicle(app)
+        with app.app_context():
+            driver_user_id = db.session.get(DriverProfile, driver_id).user_id
+        _, ref = _create_booking(
+            app, user_id, mode="instant", pickup_time=None,
+            status=BookingStatus.ASSIGNED,
+            assigned_driver_id=driver_id,
+            assigned_vehicle_id=vehicle_id,
+        )
+        service = get_booking_service()
+        upcoming = service.get_driver_upcoming_bookings(driver_user_id, limit=5)
+        assert ref in [row["booking_reference"] for row in upcoming]
+        next_booking = service.get_driver_next_booking(driver_user_id)
+        assert next_booking is not None
+        assert next_booking["booking_reference"] == ref
+
+    def test_upcoming_includes_instant_with_elapsed_pickup_time(self, app):
+        user_id = _create_user(app)
+        driver_id, vehicle_id = _create_driver_with_vehicle(app)
+        with app.app_context():
+            driver_user_id = db.session.get(DriverProfile, driver_id).user_id
+        _, ref = _create_booking(
+            app, user_id, mode="instant",
+            pickup_time=_now() - timedelta(minutes=1),
+            status=BookingStatus.ASSIGNED,
+            assigned_driver_id=driver_id,
+            assigned_vehicle_id=vehicle_id,
+        )
+        service = get_booking_service()
+        upcoming = service.get_driver_upcoming_bookings(driver_user_id, limit=5)
+        assert ref in [row["booking_reference"] for row in upcoming]

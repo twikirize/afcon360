@@ -24,6 +24,13 @@ def register_api_resources(api):
         registered_endpoints.add(endpoint)
 
     # Import all resource classes (lazy import inside function)
+    from .payment_config_routes import (
+        PaymentMethodsConfigResource,
+        PaymentMethodsDefaultsResource,
+        PaymentMethodsAvailableResource,
+        PaymentMethodDetailResource,
+        PaymentMethodToggleResource,
+    )
     from .driver_routes import (
         DriverListResource,
         DriverDetailResource,
@@ -207,6 +214,13 @@ def register_api_resources(api):
     safe_add_resource(SettingsListResource, "/settings", endpoint="settings_list")
     safe_add_resource(SettingDetailResource, "/settings/<int:setting_id>", endpoint="setting_detail")
     safe_add_resource(SettingByKeyResource, "/settings/key/<string:key>", endpoint="setting_by_key")
+
+    # Payment Methods Configuration
+    safe_add_resource(PaymentMethodsConfigResource, "/payment-methods/config", endpoint="payment_methods_config")
+    safe_add_resource(PaymentMethodsDefaultsResource, "/payment-methods/config/seed-defaults", endpoint="payment_methods_seed_defaults")
+    safe_add_resource(PaymentMethodsAvailableResource, "/payment-methods/available", endpoint="payment_methods_available")
+    safe_add_resource(PaymentMethodDetailResource, "/payment-methods/config/<string:method_code>", endpoint="payment_method_detail")
+    safe_add_resource(PaymentMethodToggleResource, "/payment-methods/config/<string:method_code>/toggle", endpoint="payment_method_toggle")
 
     # Dashboard
     safe_add_resource(DashboardOverviewResource, "/dashboard/overview", endpoint="dashboard_overview")

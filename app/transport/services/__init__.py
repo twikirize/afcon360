@@ -11,6 +11,7 @@ from .availability_service import (
     nearest_eta_minutes_for_class,
 )
 from .payment_methods import get_available_payment_methods
+from .payment_config import get_payment_config_service
 from .provider_service import ProviderService, get_provider_service
 from .booking_service import BookingService, get_booking_service
 from .matching_service import MatchingService, get_matching_service
@@ -64,6 +65,7 @@ __all__ = [
 
     # Singleton getters
     'get_provider_service',
+    'get_payment_config_service',
     'get_booking_service',
     'get_matching_service',
     'get_payment_service',

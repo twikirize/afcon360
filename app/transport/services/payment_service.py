@@ -1,4 +1,4 @@
-#app/transport/sevices/payment_service.py
+#app/transport/services/payment_service.py
 
 """
 AFCON360 Transport Module - Payment Service
@@ -72,6 +72,9 @@ class PaymentService:
 
             # Process payment
             payment_method = sanitized_data.get('payment_method', 'cash')
+
+            # Validate payment method against configured methods
+            PaymentService._validate_payment_method(booking, payment_method)
 
             wallet_txn_id = None
             if payment_method == 'wallet':
@@ -213,6 +216,42 @@ class PaymentService:
         timestamp = datetime.now().strftime("%Y%m%d")
         random_chars = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
         return f"{prefix}{timestamp}{random_chars}"
+
+    @staticmethod
+    def _validate_payment_method(booking: Booking, payment_method: str) -> None:
+        """Validate that the payment method is allowed for this booking."""
+        try:
+            from app.transport.services.payment_config import (
+                get_payment_config_service,
+                get_user_country,
+                get_user_wallet_status,
+            )
+
+            config_service = get_payment_config_service()
+            country = get_user_country(booking.user_id)
+            user_has_wallet = get_user_wallet_status(booking.user_id)
+
+            allowed_methods = config_service.get_methods_for_country(
+                country_code=country,
+                user_has_wallet=user_has_wallet,
+            )
+            allowed_codes = {m.code for m in allowed_methods}
+
+            # Cash is always allowed as fallback
+            allowed_codes.add('cash')
+
+            if payment_method not in allowed_codes:
+                raise ValidationError(
+                    message=f"Payment method '{payment_method}' is not available in your region. "
+                            f"Available methods: {', '.join(sorted(allowed_codes))}",
+                    field="payment_method",
+                )
+        except ValidationError:
+            raise
+        except Exception as exc:
+            logger.warning(f"Payment method validation failed, allowing: {exc}")
+            # Fail open - allow payment if validation fails
+            pass
 
     @staticmethod
     def _get_amount_range(amount: Decimal) -> str:

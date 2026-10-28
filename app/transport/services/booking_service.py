@@ -2050,9 +2050,14 @@ class BookingService:
             bookings = Booking.query.filter(
                 Booking.assigned_driver_id == profile.id,
                 Booking.status.in_([BookingStatusPy.CONFIRMED, BookingStatusPy.ASSIGNED, BookingStatusPy.DRIVER_EN_ROUTE]),
-                Booking.pickup_time > now,
+                sa.or_(
+                    Booking.pickup_mode == "instant",
+                    Booking.pickup_time > now,
+                ),
                 Booking.is_deleted == False,  # noqa: E712
-            ).order_by(Booking.pickup_time.asc()).limit(limit).all()
+            ).order_by(
+                func.coalesce(Booking.pickup_time, Booking.created_at).asc()
+            ).limit(limit).all()
             return [self._driver_trip_row(b) for b in bookings]
         except Exception as e:
             logger.error(f"Error getting driver upcoming bookings: {e}", exc_info=True)
@@ -2147,9 +2152,14 @@ class BookingService:
             booking = Booking.query.filter(
                 Booking.assigned_driver_id == profile.id,
                 Booking.status.in_([BookingStatusPy.ASSIGNED, BookingStatusPy.DRIVER_EN_ROUTE]),
-                Booking.pickup_time > now,
+                sa.or_(
+                    Booking.pickup_mode == "instant",
+                    Booking.pickup_time > now,
+                ),
                 Booking.is_deleted == False,  # noqa: E712
-            ).order_by(Booking.pickup_time.asc()).first()
+            ).order_by(
+                func.coalesce(Booking.pickup_time, Booking.created_at).asc()
+            ).first()
             return booking.to_dict() if booking else None
         except Exception as e:
             logger.error(f"Error getting driver next booking: {e}", exc_info=True)

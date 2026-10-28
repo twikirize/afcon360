@@ -18,6 +18,7 @@ Pinned here:
 """
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -208,3 +209,99 @@ def test_admin_post_requires_admin_role(app, client, test_user):
     payload = _base_payload(_user_id(app, test_user))
     resp = _post(client, payload)
     assert resp.status_code in (302, 401, 403), resp.status_code
+
+
+def test_admin_post_instant_allows_missing_pickup_time(app, admin_client,
+                                                       test_user):
+    payload = _base_payload(_user_id(app, test_user))
+    payload.pop("pickup_time")
+    payload["pickup_mode"] = "instant"
+
+    resp = _post(admin_client, payload)
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+
+    data = resp.get_json()["data"]
+    from app.extensions import db
+    from app.transport.models import Booking
+    with app.app_context():
+        booking = Booking.query.filter_by(
+            booking_reference=data["booking_reference"], is_deleted=False
+        ).first()
+        assert booking is not None
+        assert booking.pickup_mode == "instant"
+        assert booking.pickup_time is not None
+        assert booking.request_received_at is not None
+        db.session.rollback()
+
+
+def test_admin_post_scheduled_requires_pickup_time(app, admin_client,
+                                                   test_user):
+    before = _booking_count(app)
+    payload = _base_payload(_user_id(app, test_user))
+    payload.pop("pickup_time")
+    payload["pickup_mode"] = "scheduled"
+
+    resp = _post(admin_client, payload)
+    assert resp.status_code == 400, resp.get_data(as_text=True)
+    assert "pickup_time" in resp.get_json()["error"]
+    assert _booking_count(app) == before
+
+
+def test_admin_post_legacy_without_mode_requires_pickup_time(app, admin_client,
+                                                             test_user):
+    before = _booking_count(app)
+    payload = _base_payload(_user_id(app, test_user))
+    payload.pop("pickup_time")
+
+    resp = _post(admin_client, payload)
+    assert resp.status_code == 400, resp.get_data(as_text=True)
+    assert "pickup_time" in resp.get_json()["error"]
+    assert _booking_count(app) == before
+
+
+def test_admin_post_rejects_unknown_pickup_mode(app, admin_client, test_user):
+    before = _booking_count(app)
+    payload = _base_payload(_user_id(app, test_user))
+    payload["pickup_mode"] = "later"
+
+    resp = _post(admin_client, payload)
+    assert resp.status_code == 400, resp.get_data(as_text=True)
+    assert "pickup_mode" in resp.get_json()["error"]
+    assert _booking_count(app) == before
+
+
+def test_admin_list_date_filter_includes_null_pickup_time(app, admin_client,
+                                                          test_user):
+    from app.extensions import db
+    from app.transport.models import Booking, ServiceType
+
+    user_id = _user_id(app, test_user)
+    ref = f"NULLPICK-{uuid.uuid4().hex[:10].upper()}"
+    now = datetime.now(timezone.utc)
+    with app.app_context():
+        booking = Booking(
+            booking_reference=ref,
+            user_id=user_id,
+            provider_type="individual_driver",
+            service_type=ServiceType.ON_DEMAND,
+            pickup_location={"latitude": 0.3136, "longitude": 32.5811},
+            dropoff_location={"latitude": 0.3476, "longitude": 32.5825},
+            pickup_time=None,
+            pickup_mode=None,
+            passenger_count=1,
+            base_price=50000,
+            subtotal=50000,
+            total_amount=50000,
+            final_price=50000,
+        )
+        db.session.add(booking)
+        db.session.commit()
+
+    resp = admin_client.get("/api/transport/bookings", query_string={
+        "from_date": (now - timedelta(days=1)).isoformat(),
+        "to_date": (now + timedelta(days=1)).isoformat(),
+        "search": ref,
+    })
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    items = resp.get_json()["data"]["items"]
+    assert any(item["booking_reference"] == ref for item in items), items

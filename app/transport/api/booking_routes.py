@@ -133,9 +133,13 @@ class BookingListResource(Resource):
         from_date = request.args.get("from_date")
         to_date = request.args.get("to_date")
         if from_date:
-            query = query.filter(Booking.pickup_time >= from_date)
+            query = query.filter(
+                func.coalesce(Booking.pickup_time, Booking.created_at) >= from_date
+            )
         if to_date:
-            query = query.filter(Booking.pickup_time <= to_date)
+            query = query.filter(
+                func.coalesce(Booking.pickup_time, Booking.created_at) <= to_date
+            )
 
         # Driver / vehicle filter
         driver_id = request.args.get("driver_id", type=int)
@@ -178,10 +182,20 @@ class BookingListResource(Resource):
         if not data:
             return {"success": False, "error": "JSON body required"}, 400
 
+        raw_mode = data.get("pickup_mode")
+        mode = str(raw_mode).strip().lower() if raw_mode not in (None, "") else None
+        if mode is not None and mode not in ("instant", "scheduled"):
+            return {
+                "success": False,
+                "error": "pickup_mode must be 'instant' or 'scheduled'",
+            }, 400
+
         required = ["user_id", "service_type", "provider_type",
                     "pickup_location", "dropoff_location",
-                    "pickup_time", "passenger_count",
+                    "passenger_count",
                     "base_price", "subtotal", "total_amount", "final_price"]
+        if mode != "instant":
+            required.append("pickup_time")
 
         missing = [f for f in required if f not in data]
         if missing:
@@ -189,6 +203,13 @@ class BookingListResource(Resource):
 
         try:
             validated = dict(data)
+            if mode == "instant":
+                now = datetime.now(timezone.utc)
+                validated["pickup_time"] = now
+                validated["request_received_at"] = now
+            if mode is not None:
+                validated["pickup_mode"] = mode
+
             # Node 3 (D2): the admin path must not persist an un-canonicalized
             # endpoint. Both endpoints are resolved through the canonical
             # snapshot builder before the row is constructed.
@@ -200,7 +221,12 @@ class BookingListResource(Resource):
                 data.get("dropoff_location"), "dropoff_location",
                 data.get("dropoff_address"),
             )
-            booking = Booking(**{k: validated[k] for k in required})
+            fields = list(required)
+            if mode == "instant":
+                fields.extend(["pickup_time", "request_received_at"])
+            if mode is not None:
+                fields.append("pickup_mode")
+            booking = Booking(**{k: validated[k] for k in fields})
             booking.generate_booking_reference()
             db.session.add(booking)
             db.session.commit()
