@@ -502,7 +502,6 @@ class DriverOfferAcceptResource(Resource):
                     OfferAttempt.status == "offered",
                     OfferAttempt.response_deadline > datetime.now(timezone.utc),
                 )
-                .with_for_update()
                 .first()
             )
             if active_offer is None:
