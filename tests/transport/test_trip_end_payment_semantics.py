@@ -1,5 +1,6 @@
 """Transport settlement is separate from the ride lifecycle."""
 from datetime import datetime, timezone
+import uuid
 
 import pytest
 
@@ -29,8 +30,20 @@ def _booking(user_id, status, method="cash"):
         status=status,
     )
     db.session.add(booking)
+    db.session.flush()
+    booking_id = booking.id
+    # This fixture represents a booking that has already created its
+    # canonical pending payment ledger row, as production booking creation does.
+    db.session.add(BookingPayment(
+        booking_id=booking_id,
+        payment_reference="PAYTEST" + uuid.uuid4().hex[:10].upper(),
+        amount=25,
+        currency=Currency.USD,
+        payment_method=method,
+        payment_status=PaymentStatus.PENDING,
+    ))
     db.session.commit()
-    return booking.id
+    return booking_id
 
 
 def _payment_payload(method="cash"):
@@ -214,7 +227,7 @@ def test_owner_can_retry_wallet_payment_for_completed_unpaid_trip(
     assert body["data"]["payment_status"] == "captured"
     assert called["booking_id"] == booking_id
     assert called["payment_data"] == {
-        "amount": "25",
+        "amount": "25.00",
         "currency": "USD",
         "payment_method": "wallet",
     }
