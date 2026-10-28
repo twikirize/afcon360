@@ -438,7 +438,14 @@ class DriverOfferListResource(Resource):
             return error, status
         # Preserve legacy offers while adding durable request-first offers.
         # Both shapes expose the same safe driver card contract.
-        offers = OfferService.list_driver_offers(profile.id) or []
+        try:
+            offers = OfferService.list_driver_offers(profile.id) or []
+        except Exception:
+            logger.warning(
+                "Could not load legacy driver offers; continuing with durable offers",
+                exc_info=True,
+            )
+            offers = []
         try:
             request_offers = RideRequestDispatchService.list_driver_offers(profile.id)
         except Exception:
@@ -475,7 +482,13 @@ class DriverOfferAcceptResource(Resource):
         request_first = RideRequest.query.filter_by(
             public_id=booking_reference, is_deleted=False
         ).first()
-        if request_first is not None and request_first.status != "converted":
+        if request_first is not None:
+            if request_first.status == "converted":
+                return {
+                    "success": False,
+                    "error": "This ride has already been assigned to another driver",
+                    "code": "already_accepted",
+                }, 409
             from app.transport.services.ride_request_dispatch_service import (
                 RideRequestDispatchService, RideRequestDispatchError,
             )
@@ -574,16 +587,28 @@ class DriverOfferDeclineResource(Resource):
         request_first = RideRequest.query.filter_by(
             public_id=booking_reference, is_deleted=False
         ).first()
-        if request_first is not None and request_first.status != "converted":
+        if request_first is not None:
+            if request_first.status == "converted":
+                return {
+                    "success": False,
+                    "error": "This ride has already been assigned",
+                    "code": "already_accepted",
+                }, 409
             from app.transport.services.ride_request_dispatch_service import (
                 RideRequestDispatchService,
             )
             declined = RideRequestDispatchService.decline_offer(
                 booking_reference, profile.id
             )
+            if not declined:
+                return {
+                    "success": False,
+                    "error": "This offer is no longer active",
+                    "code": "offer_unavailable",
+                }, 409
             return {
                 "success": True,
-                "data": {"booking_reference": booking_reference, "declined": declined},
+                "data": {"booking_reference": booking_reference, "declined": True},
             }
         declined = OfferService.decline_offer(booking_reference, profile.id)
         return {
