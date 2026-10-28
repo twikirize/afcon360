@@ -198,7 +198,7 @@ class RateLimitBreach(ProtectedModel):
     block_duration_minutes = db.Column(db.Integer, nullable=True)
 
     notified = db.Column(db.Boolean, default=False, nullable=False)
-    notified_at = db.Column(db.DateTime, nullable=True)
+    notified_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     owner_id = db.Column(db.BigInteger, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     owner = db.relationship('User', foreign_keys=[owner_id])

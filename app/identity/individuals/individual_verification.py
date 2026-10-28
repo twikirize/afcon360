@@ -60,9 +60,9 @@ class IndividualVerification(BaseModel):
     provider_id = Column(String(128))
     notes = Column(Text)
 
-    requested_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
-    decided_at = Column(DateTime)
-    expires_at = Column(DateTime)
+    requested_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    decided_at = Column(DateTime(timezone=True))
+    expires_at = Column(DateTime(timezone=True))
 
     # Relationships
     user = relationship(

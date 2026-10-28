@@ -44,7 +44,7 @@ class AMLScreeningResult(BaseModel):
     
     # Screening details
     screening_type = Column(String(50), nullable=False)  # user, transaction, beneficiary
-    screening_date = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    screening_date = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     risk_level = Column(String(20), nullable=False, index=True)
     risk_score = Column(Float, nullable=False)
     
@@ -63,7 +63,7 @@ class AMLScreeningResult(BaseModel):
     # Review status
     reviewed = Column(Boolean, default=False, nullable=False)
     reviewed_by = Column(BigInteger, ForeignKey('users.id'), nullable=True)
-    reviewed_date = Column(DateTime, nullable=True)
+    reviewed_date = Column(DateTime(timezone=True), nullable=True)
     review_notes = Column(Text, nullable=True)
 
 
@@ -74,7 +74,7 @@ class AMLTransactionMonitor(BaseModel):
     user_id = Column(BigInteger, ForeignKey('users.id'), nullable=False, index=True)
     
     # Monitoring period
-    monitoring_date = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    monitoring_date = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     period_type = Column(String(20), nullable=False)  # daily, weekly, monthly
     
     # Transaction statistics

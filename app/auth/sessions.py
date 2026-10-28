@@ -12,7 +12,7 @@ class ServerSession(BaseModel):
     user_id = db.Column(db.String(64), nullable=False, index=True)  # public user_id (UUID/ULID)
     ip_address = db.Column(db.String(45), nullable=True)
     user_agent = db.Column(db.String(255), nullable=True)
-    expires_at = db.Column(db.DateTime, nullable=False)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
     is_revoked = db.Column(db.Boolean, default=False, nullable=False)
 
 def start_server_session(public_user_id: str, ip: str | None, ua: str | None, ttl_hours: int = 12) -> str:

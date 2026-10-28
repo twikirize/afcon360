@@ -134,8 +134,8 @@ class Advertisement(BaseModel):
 
     # Lifecycle
     status = Column(String(20), nullable=False, default="pending", index=True)
-    start_date = Column(DateTime, nullable=True)
-    end_date = Column(DateTime, nullable=True)
+    start_date = Column(DateTime(timezone=True), nullable=True)
+    end_date = Column(DateTime(timezone=True), nullable=True)
     priority = Column(Integer, default=5, nullable=False)
 
     # Metrics (denormalized)

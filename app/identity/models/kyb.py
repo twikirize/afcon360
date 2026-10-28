@@ -34,8 +34,8 @@ class OrganisationVerification(BaseModel):
     provider_id = Column(String(128))
     notes = Column(Text)
 
-    decided_at = Column(DateTime)
-    expires_at = Column(DateTime)
+    decided_at = Column(DateTime(timezone=True))
+    expires_at = Column(DateTime(timezone=True))
 
     organisation = relationship(
         "Organisation",
@@ -104,10 +104,10 @@ class OrganisationUBO(BaseModel):
         default=UboType.INDIVIDUAL.value
     )
     ownership_percentage = Column(BigInteger)
-    effective_from = Column(DateTime)
-    effective_to = Column(DateTime)
+    effective_from = Column(DateTime(timezone=True))
+    effective_to = Column(DateTime(timezone=True))
 
-    verified_at = Column(DateTime)
+    verified_at = Column(DateTime(timezone=True))
 
     organisation = relationship(
         "Organisation",

@@ -104,7 +104,7 @@ class UserProfile(BaseModel):
     )
     rejected_reason = Column(String(256), nullable=True)
     verified_by = Column(String(64), nullable=True)
-    last_reviewed_at = Column(DateTime, nullable=True)
+    last_reviewed_at = Column(DateTime(timezone=True), nullable=True)
     # Native PostgreSQL ENUM (kyc_level_enum)
     kyc_level = Column(
         PgEnum(KYCLevel, name="kyc_level_enum", create_type=False, values_callable=lambda c: [e.value for e in c]),
@@ -120,11 +120,11 @@ class UserProfile(BaseModel):
 
     # Soft delete
     is_deleted = Column(Boolean, default=False, nullable=False, )
-    deleted_at = Column(DateTime, nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     # Lifecycle tracking
-    suspended_at = Column(DateTime, nullable=True)
-    revoked_at = Column(DateTime, nullable=True)
+    suspended_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
 
     def __repr__(self):
         return f"<UserProfile id={self.id} user_id={self.user_id} full_name={self.full_name}>"
@@ -333,7 +333,7 @@ class UserProfileAudit(BaseModel):
     field_name = Column(String(64), nullable=False)
     old_value = Column(Text, nullable=True)
     attempted_value = Column(Text, nullable=True)
-    attempted_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    attempted_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     attempted_by_user_id = Column(BigInteger, nullable=True)
 
     user_profile = relationship("UserProfile", backref="audit_logs")
@@ -375,22 +375,22 @@ class ProfileChangeRequest(BaseModel):
     # Approval status
     admin_approved = Column(Boolean, default=False, nullable=False)
     admin_approved_by = Column(BigInteger, nullable=True)
-    admin_approved_at = Column(DateTime, nullable=True)
+    admin_approved_at = Column(DateTime(timezone=True), nullable=True)
     admin_approval_notes = Column(Text, nullable=True)
 
     compliance_approved = Column(Boolean, default=False, nullable=False)
     compliance_approved_by = Column(BigInteger, nullable=True)
-    compliance_approved_at = Column(DateTime, nullable=True)
+    compliance_approved_at = Column(DateTime(timezone=True), nullable=True)
     compliance_approval_notes = Column(Text, nullable=True)
 
     super_admin_approved = Column(Boolean, default=False, nullable=False)
     super_admin_approved_by = Column(BigInteger, nullable=True)
-    super_admin_approved_at = Column(DateTime, nullable=True)
+    super_admin_approved_at = Column(DateTime(timezone=True), nullable=True)
     super_admin_approval_notes = Column(Text, nullable=True)
 
     owner_approved = Column(Boolean, default=False, nullable=False)
     owner_approved_by = Column(BigInteger, nullable=True)
-    owner_approved_at = Column(DateTime, nullable=True)
+    owner_approved_at = Column(DateTime(timezone=True), nullable=True)
     owner_approval_notes = Column(Text, nullable=True)
 
     # Status: pending, approved, rejected, applied, expired
@@ -400,10 +400,10 @@ class ProfileChangeRequest(BaseModel):
         default="pending",
         index=True,
     )
-    approved_at = Column(DateTime, nullable=True)
-    applied_at = Column(DateTime, nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    applied_at = Column(DateTime(timezone=True), nullable=True)
     applied_by = Column(BigInteger, nullable=True)
-    rejected_at = Column(DateTime, nullable=True)
+    rejected_at = Column(DateTime(timezone=True), nullable=True)
     rejected_by = Column(BigInteger, nullable=True)
     rejection_reason = Column(Text, nullable=True)
 

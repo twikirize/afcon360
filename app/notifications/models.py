@@ -245,21 +245,21 @@ class Notification(BaseModel):
     body = Column(Text, nullable=False, server_default='')
     priority = Column(String(16), default='normal')
     status = Column(String(16), server_default='pending')
-    scheduled_for = Column(DateTime, nullable=True)
-    sent_at = Column(DateTime, nullable=True)
-    delivered_at = Column(DateTime, nullable=True)
+    scheduled_for = Column(DateTime(timezone=True), nullable=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
     attempts = Column(BigInteger, default=0)
     last_error = Column(Text, nullable=True)
     external_id = Column(String(128), nullable=True, index=True)
     parent_id = Column(BigInteger, db.ForeignKey('notifications.id'), nullable=True)
     is_read = Column(Boolean, default=False)
-    read_at = Column(DateTime, nullable=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
     is_important = Column(Boolean, default=False, nullable=False, index=True, server_default='false')
     error_message = Column(Text, nullable=True)
     link = Column(String(512), nullable=True)  # Deep link for in-app navigation
     # Dead-letter tracking
     dead_letter = Column(Boolean, default=False)
-    last_attempt_at = Column(DateTime, nullable=True)
+    last_attempt_at = Column(DateTime(timezone=True), nullable=True)
 
 
     # Relationships
@@ -395,7 +395,7 @@ class NotificationLog(BaseModel):
     status = Column(String(16), nullable=False)
     response_code = Column(BigInteger, nullable=True)
     response_body = Column(Text, nullable=True)
-    attempted_at = Column(DateTime, default=datetime.utcnow)
+    attempted_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     notification = relationship('Notification', foreign_keys=[notification_id], lazy='noload')
 
@@ -469,15 +469,15 @@ class NotificationDelivery(BaseModel):
     recipient = Column(String(255), nullable=True)
     attempts = Column(Integer, nullable=False, default=0)
     max_attempts = Column(Integer, nullable=False, default=5)
-    next_retry_at = Column(DateTime, nullable=True)
+    next_retry_at = Column(DateTime(timezone=True), nullable=True)
 
     response_code = Column(Integer, nullable=True)
     error = Column(Text, nullable=True)
 
-    queued_at = Column(DateTime, nullable=True, default=lambda: datetime.now(timezone.utc))
-    sent_at = Column(DateTime, nullable=True)
-    delivered_at = Column(DateTime, nullable=True)
-    read_at = Column(DateTime, nullable=True)
+    queued_at = Column(DateTime(timezone=True), nullable=True, default=lambda: datetime.now(timezone.utc))
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
 
     # Correlation id of the originating domain event, so a delivery can be
     # traced back through the whole journey during an incident.
@@ -595,9 +595,9 @@ class Message(BaseModel):
     direction = Column(String(16), default='outbound')  # inbound, outbound, system
     parent_id = Column(BigInteger, db.ForeignKey('messages.id'), nullable=True)  # For threading
     is_read = Column(Boolean, default=False)
-    read_at = Column(DateTime, nullable=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
     archived = Column(Boolean, default=False)
-    archived_at = Column(DateTime, nullable=True)
+    archived_at = Column(DateTime(timezone=True), nullable=True)
     priority = Column(String(16), default='normal')
     notification_id = Column(BigInteger, db.ForeignKey('notifications.id'), nullable=True)
 

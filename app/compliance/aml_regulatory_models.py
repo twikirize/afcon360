@@ -104,9 +104,9 @@ class RegulatoryReport(BaseModel):
     amount = Column(Numeric(18, 2), nullable=True)
     currency_code = Column(String(3), nullable=True)
 
-    suspicion_formed_at = Column(DateTime, nullable=True)
-    due_at = Column(DateTime, nullable=True, index=True)
-    filed_at = Column(DateTime, nullable=True)
+    suspicion_formed_at = Column(DateTime(timezone=True), nullable=True)
+    due_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    filed_at = Column(DateTime(timezone=True), nullable=True)
     filed_by = Column(BigInteger, ForeignKey('users.id'), nullable=True)
     external_reference = Column(String(120), nullable=True)
 
@@ -164,7 +164,7 @@ class TerminatedEntity(BaseModel):
     source = Column(String(50), nullable=False, default='manual')
     reason_code = Column(String(40), nullable=True)
     reason_text = Column(Text, nullable=True)
-    terminated_at = Column(DateTime, nullable=True)
+    terminated_at = Column(DateTime(timezone=True), nullable=True)
     added_by = Column(BigInteger, ForeignKey('users.id'), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
 
@@ -189,7 +189,7 @@ class OrganisationAmlProfile(BaseModel):
     edd_status = Column(String(20), nullable=False, default='not_required')
     edd_rationale = Column(Text, nullable=True)
     edd_approved_by = Column(BigInteger, ForeignKey('users.id'), nullable=True)
-    edd_approved_at = Column(DateTime, nullable=True)
+    edd_approved_at = Column(DateTime(timezone=True), nullable=True)
     # Proper enforced FK to the AML screening result. AMLScreeningResult now
     # inherits BaseModel with a BigInteger PK (see app/compliance/aml_service.py),
     # so the types align and the reference is database-enforced. Application-level
@@ -216,7 +216,7 @@ class MonitoringScenario(BaseModel):
     threshold_value = Column(Numeric(18, 4), nullable=True)
     is_enabled = Column(Boolean, default=True, nullable=False)
     parameters = Column(JSON, nullable=True)
-    last_calibrated_at = Column(DateTime, nullable=True)
+    last_calibrated_at = Column(DateTime(timezone=True), nullable=True)
     last_calibrated_by = Column(BigInteger, ForeignKey('users.id'), nullable=True)
 
 
@@ -226,9 +226,9 @@ class AmlBacktestRun(BaseModel):
 
     public_id = Column(String(36), unique=True, nullable=False, index=True)
     scenario_id = Column(BigInteger, ForeignKey('aml_monitoring_scenarios.id'), nullable=True, index=True)
-    run_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
-    window_start = Column(DateTime, nullable=True)
-    window_end = Column(DateTime, nullable=True)
+    run_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    window_start = Column(DateTime(timezone=True), nullable=True)
+    window_end = Column(DateTime(timezone=True), nullable=True)
     transactions_scored = Column(Integer, nullable=False, default=0)
     alerts_generated = Column(Integer, nullable=False, default=0)
     true_positives = Column(Integer, nullable=True)
@@ -245,10 +245,10 @@ class AmlTrainingRecord(BaseModel):
     public_id = Column(String(36), unique=True, nullable=False, index=True)
     user_id = Column(BigInteger, ForeignKey('users.id'), nullable=False, index=True)
     training_module = Column(String(120), nullable=False)
-    completed_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    completed_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     score = Column(Integer, nullable=True)
     certificate_ref = Column(String(120), nullable=True)
-    expires_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
     delivered_by = Column(String(120), nullable=True)
 
 
@@ -268,10 +268,10 @@ class AmlAttestation(BaseModel):
 
     public_id = Column(String(36), unique=True, nullable=False, index=True)
     attestation_type = Column(String(40), nullable=False, default='mlro_quarterly')
-    period_start = Column(DateTime, nullable=True)
-    period_end = Column(DateTime, nullable=True)
+    period_start = Column(DateTime(timezone=True), nullable=True)
+    period_end = Column(DateTime(timezone=True), nullable=True)
     attested_by = Column(BigInteger, ForeignKey('users.id'), nullable=False, index=True)
-    attested_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    attested_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     statement = Column(Text, nullable=True)
     status = Column(String(20), nullable=False, default='submitted')
     document_ref = Column(String(120), nullable=True)
@@ -292,6 +292,6 @@ class RetentionPolicy(BaseModel):
     retention_years = Column(Integer, nullable=False, default=10)
     auto_purge = Column(Boolean, default=False, nullable=False)
     is_enabled = Column(Boolean, default=True, nullable=False)
-    last_reviewed_at = Column(DateTime, nullable=True)
+    last_reviewed_at = Column(DateTime(timezone=True), nullable=True)
     reviewed_by = Column(BigInteger, ForeignKey('users.id'), nullable=True)
     notes = Column(Text, nullable=True)

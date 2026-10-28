@@ -802,7 +802,7 @@ class BookingStatusHistory(BaseModel):
     booking_id = Column(BigInteger, ForeignKey('accommodation_bookings.id'), nullable=False)
     from_status = Column(String(50), nullable=True)
     to_status = Column(String(50), nullable=False)
-    changed_at = Column(DateTime, default=func.now(), nullable=False)
+    changed_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
     changed_by = Column(BigInteger, nullable=True)  # user_id who made the change
     trigger = Column(String(100), nullable=True)  # What triggered the change (e.g., 'payment_callback', 'host_action')
     change_metadata = Column(JSON, nullable=True)  # Additional data about the transition
