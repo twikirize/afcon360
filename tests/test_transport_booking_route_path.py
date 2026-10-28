@@ -476,3 +476,11 @@ class TestRealRideTransactionPath:
             assert booking.booking_metadata["payment_timing"] == "pay_on_completion"
             assert booking.confirmed_at is not None
             assert booking.driver_assigned_at is not None
+
+        # Rider-facing history must distinguish when the request was received
+        # from when a driver accepted it; booking-row creation happens at accept.
+        trip_page = authenticated_client.get(location)
+        assert trip_page.status_code == 200, trip_page.get_data(as_text=True)
+        trip_html = trip_page.get_data(as_text=True)
+        assert "Ride Request Received" in trip_html
+        assert "Driver Accepted" in trip_html
