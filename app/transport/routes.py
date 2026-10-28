@@ -2390,24 +2390,37 @@ def driver_dashboard():
         owned_vehicles = []
         assigned_vehicle = None
 
-    # Live ride offers (D2 + DRIVER-OFFER-UX-REPAIR-1): the same
-    # transient Redis offers the dispatch loop creates, enriched at READ
-    # time from the authoritative Booking row by
-    # ``OfferService.list_driver_offers`` (Redis stays thin).
-    # Non-authoritative + TTL'd; any failure degrades to an empty panel,
-    # never an error page.
+    # Live offers have two compatible sources while the request-first
+    # lifecycle is rolled out: legacy Redis/Booking offers, plus durable
+    # PostgreSQL RideRequest/SearchCycle/OfferAttempt offers. Render both
+    # into the same driver card contract so the page baseline matches the
+    # driver's polling API and does not reload continuously.
     offers = []
     if profile is not None:
         try:
             from app.transport.services.offer_service import OfferService
-
             offers = OfferService.list_driver_offers(profile.id) or []
         except Exception as e:
             db.session.rollback()
             logger.warning(
-                f"Error loading live offers for profile {_uid()}: {e}"
+                f"Error loading legacy live offers for profile {_uid()}: {e}"
             )
-            offers = []
+
+        try:
+            from app.transport.services.ride_request_dispatch_service import (
+                RideRequestDispatchService,
+            )
+            request_offers = RideRequestDispatchService.list_driver_offers(profile.id) or []
+            known_refs = {o.get("booking_reference") for o in offers}
+            offers.extend(
+                offer for offer in request_offers
+                if offer.get("booking_reference") not in known_refs
+            )
+        except Exception as e:
+            db.session.rollback()
+            logger.warning(
+                f"Error loading request-first offers for profile {_uid()}: {e}"
+            )
     offer_count = len(offers)
 
     # GO-LIVE capability: entering the Driver Workspace is participation;
