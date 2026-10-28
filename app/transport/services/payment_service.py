@@ -211,12 +211,9 @@ class PaymentService:
                 "timing": "pay_on_completion",
                 "settlement_request_id": request_id,
             }
-            # Do not rewrite Booking.status when payment succeeds. The trip
-            # stays completed; the booking summary and payment ledger commit
-            # together. WalletService retries reuse the stable booking key.
-            db.session.commit()
-
-            # Create audit log
+            # Audit the ledger change in the same database transaction as
+            # the booking/payment-index update. This preserves a durable admin
+            # trail for captured wallet payments and any pending provider result.
             audit_log(
                 action='payment_processed',
                 resource_type='booking',
@@ -228,19 +225,33 @@ class PaymentService:
                     'payment_status': payment_status,
                     'payment_reference': payment_ref,
                     'request_id': request_id
-                }
+                },
+                db_session=db.session,
             )
 
-            # Record metrics
-            record_metric(
-                'payment_processed',
-                tags={
-                    'payment_method': payment_method,
-                    'payment_status': payment_status,
-                    'amount_range': PaymentService._get_amount_range(final_price)
-                },
-                value=1
-            )
+            # Do not rewrite Booking.status when payment succeeds. The trip
+            # stays completed; the booking summary, payment ledger and audit row
+            # commit together. Wallet retries reuse the stable booking key.
+            db.session.commit()
+
+            # Observability must not turn a committed payment into a reported
+            # failure. The financial state and audit record are authoritative.
+            try:
+                record_metric(
+                    'payment_processed',
+                    tags={
+                        'payment_method': payment_method,
+                        'payment_status': payment_status,
+                        'amount_range': PaymentService._get_amount_range(final_price)
+                    },
+                    value=1
+                )
+            except Exception:
+                current_app.logger.warning(
+                    "Payment metrics emission failed for booking %s",
+                    booking_id,
+                    exc_info=True,
+                )
 
             return {
                 'success': True,
