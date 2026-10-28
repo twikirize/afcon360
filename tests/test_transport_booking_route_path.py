@@ -5,8 +5,8 @@ REAL RIDE TRANSACTION PATH — route-level proof.
 Closes the final evidence gap for the rider journey:
 
   SELECT (homepage bolt-sheet, live availability)
-    -> BOOK  (POST /transport/book, bounded by auth + KYC tier 2 + rate limit)
-    -> OFFER -> ACCEPT -> ASSIGNMENT  (dispatch chain)
+    -> REQUEST (POST /transport/book; no Booking row before acceptance)
+    -> durable OfferAttempt -> ACCEPT -> atomic Booking + assignment
 
 The chain was previously proven only at service level (fare_engine pins
 vehicle_class persistence; concurrent_claim / d2_evidence prove
@@ -19,12 +19,11 @@ Test 1: a tier-1 rider (phone verified only, no identity verification)
          POSTing ``/transport/book`` is redirected to the KYC upgrade page —
          the same gate observed in-browser, now pinned at route level.
 
-Test 2: a tier-3 rider POSTs the bolt-sheet form; the booking row is created
-         with ``service_subtype == vehicle_class == "comfort"`` persisted in
-         ``booking_metadata`` plus an honest straight-line distance; after the
-         payment-confirm handoff (status -> CONFIRMED) the booking is
-         discovered, offered, accepted and assigned to the seeded matchable
-         driver — the real ride transaction path, end to end.
+Test 2: a tier-3 rider POSTs the bolt-sheet form; a durable RideRequest and
+         SearchCycle exist, with no Booking before driver acceptance. The
+         seeded matchable driver accepts; the same public reference then
+         resolves to a Booking atomically assigned to that driver and vehicle,
+         with payment still pending.
 """
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -40,6 +39,10 @@ from app.transport.models import (
     DriverVehicleHistory,
     Vehicle,
     VehicleClass,
+    PaymentStatus,
+    RideRequest,
+    SearchCycle,
+    OfferAttempt,
 )
 
 
@@ -317,19 +320,15 @@ class TestKycGateOnBookRoute:
 # =====================================================================
 
 class TestRealRideTransactionPath:
-    def test_route_creates_booking_then_dispatch_assigns_driver(
+    def test_route_tracks_request_then_converts_after_driver_acceptance(
         self, app, authenticated_client, test_user, monkeypatch
     ):
-        fake = _FakeRedis()
-        monkeypatch.setattr(
-            "app.transport.services.offer_service.redis_client", fake
-        )
-
         with app.app_context():
-            merged = db.session.merge(test_user)  # reattach expired fixture row
+            merged = db.session.merge(test_user)
             rider_id = merged.id
             _promote_user_to_tier3(app, rider_id)
-        _, driver_id, vehicle_id, hist_id = _make_matchable_driver(app, "rt")
+
+        _, driver_id, vehicle_id, _ = _make_matchable_driver(app, "requestfirst")
 
         resp = authenticated_client.post(
             "/transport/book",
@@ -337,68 +336,56 @@ class TestRealRideTransactionPath:
             follow_redirects=False,
         )
         assert resp.status_code in (301, 302), (
-            f"expected booking redirect, got {resp.status_code}"
+            f"expected ride-request redirect, got {resp.status_code}"
         )
         location = resp.headers.get("Location", "")
-        assert "/transport/rides/" in location, (
-            f"must redirect to the rider ride page, got {location}"
+        assert "/transport/rides/" in location, location
+        reference = location.rstrip("/").rsplit("/", 1)[1]
+        assert reference
+
+        # Initial commitment is a tracking request, not a confirmed Booking.
+        with app.app_context():
+            request_row = RideRequest.query.filter_by(
+                public_id=reference, user_id=rider_id, is_deleted=False
+            ).one()
+            cycle = SearchCycle.query.filter_by(
+                ride_request_id=request_row.id, cycle_number=1, is_deleted=False
+            ).one()
+            assert request_row.status == "searching"
+            assert cycle.status == "searching"
+            assert request_row.payment_method == "cash"
+            assert Booking.query.filter_by(booking_reference=reference).one_or_none() is None
+            attempt = OfferAttempt.query.filter_by(
+                cycle_id=cycle.id, driver_id=driver_id, status="offered"
+            ).one()
+            assert attempt.vehicle_id == vehicle_id
+
+        # Acceptance is the only point that creates the Booking. The request,
+        # cycle, Booking, and assigned driver+vehicle transition together.
+        from app.transport.services.ride_request_dispatch_service import (
+            RideRequestDispatchService,
         )
-        booking_ref = location.rstrip("/").rsplit("/", 1)[1]
-        with app.app_context():
-            redirected = Booking.query.filter_by(
-                booking_reference=booking_ref).first()
-            assert redirected is not None, (
-                f"redirect reference {booking_ref} did not resolve"
-            )
-            booking_id = redirected.id
-
-        # --- Booking created via the route, class persisted ---
-        with app.app_context():
-            booking = db.session.get(Booking, booking_id)
-            assert booking is not None, "route did not create a booking row"
-            assert booking.user_id == rider_id
-            assert booking.service_subtype == "comfort", booking.service_subtype
-            meta = booking.booking_metadata or {}
-            assert meta.get("vehicle_class") == "comfort", meta
-            assert meta.get("distance_basis") == "straight_line_planner", meta
-            assert (booking.estimated_distance_km or 0) > 0, (
-                "coordinate pair should yield a measured straight-line distance"
-            )
-            assert booking.currency == Currency.USD, booking.currency
-            # Cash (pay-later) rides are confirmed by the route itself:
-            # PENDING_PAYMENT -> CONFIRMED runs at POST time so the booking
-            # is claimable immediately (no separate payment handoff).
-            assert booking.status == BookingStatus.CONFIRMED.value, (
-                booking.status
-            )
-            assert booking.confirmed_at is not None, (
-                "cash confirm must stamp confirmed_at"
-            )
-            ref = booking.booking_reference
-
-        # --- Dispatch: discover -> offer (FakeRedis) ---
-        from app.transport.services.matching_service import MatchingService
-        from app.transport.services.offer_service import OfferService
-        with app.app_context():
-            outcome = MatchingService.discover_and_offer(booking_id)
-        assert outcome["offers_created"] >= 1, outcome
-        offer = OfferService.get_offer(ref)
-        assert offer is not None, "offer was not created for the booking"
-        assert offer["driver_id"] == driver_id, offer
-
-        # --- Driver accepts; assignment claims driver + vehicle ---
-        from app.transport.services.assignment_service import AssignmentService
-        accepted = OfferService.accept_offer(ref, driver_id)
-        assert accepted["accepted"] is True, accepted
-        with app.app_context():
-            AssignmentService.claim(ref, driver_id, vehicle_id, actor=None)
+        result = RideRequestDispatchService.accept_offer(
+            reference, driver_id, vehicle_id, actor=None
+        )
+        assert result["status"] == BookingStatus.ASSIGNED.value
 
         with app.app_context():
-            booking = db.session.get(Booking, booking_id)
-            assert booking.assigned_driver_id == driver_id, (
-                booking.assigned_driver_id
-            )
-            assert booking.assigned_vehicle_id == vehicle_id, (
-                booking.assigned_vehicle_id
-            )
-            assert booking.status == BookingStatus.ASSIGNED.value, booking.status
+            request_row = RideRequest.query.filter_by(public_id=reference).one()
+            cycle = SearchCycle.query.filter_by(
+                ride_request_id=request_row.id, cycle_number=1
+            ).one()
+            booking = Booking.query.filter_by(
+                booking_reference=reference, ride_request_id=request_row.id
+            ).one()
+            assert request_row.status == "converted"
+            assert request_row.converted_at is not None
+            assert cycle.status == "completed"
+            assert booking.status == BookingStatus.ASSIGNED.value
+            assert booking.assigned_driver_id == driver_id
+            assert booking.assigned_vehicle_id == vehicle_id
+            assert booking.payment_method == "cash"
+            assert booking.payment_status == PaymentStatus.PENDING.value
+            assert booking.booking_metadata["payment_timing"] == "pay_on_completion"
+            assert booking.confirmed_at is not None
+            assert booking.driver_assigned_at is not None
