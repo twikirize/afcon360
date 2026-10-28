@@ -177,7 +177,7 @@ class TestCanonicalEntryRenders:
         )
 
         with app.app_context():
-            public_id = _make_user("ta_capture_guard", [TRANSPORT_ADMIN])
+            public_id = _make_user("ta_capture_guard", ["admin"])
             actor = User.query.filter_by(public_id=public_id).one()
             booking = Booking(
                 user_id=actor.id,
@@ -201,7 +201,7 @@ class TestCanonicalEntryRenders:
             db.session.commit()
             booking_id = booking.id
 
-        _platform_login(client, public_id, TRANSPORT_ADMIN)
+        _platform_login(client, public_id, "admin")
         response = client.post(
             f"/api/transport/bookings/{booking_id}/payments",
             json={
