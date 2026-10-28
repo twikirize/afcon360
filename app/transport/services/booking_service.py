@@ -1954,12 +1954,23 @@ class BookingService:
             and now >= pickup + NO_SHOW_GRACE
             and getattr(booking, "assigned_driver_id", None) is not None
         )
+        payment_status = getattr(booking, "payment_status", None)
+        if hasattr(payment_status, "value"):
+            payment_status = payment_status.value
+        metadata = booking.booking_metadata or {}
         return {
             **booking.to_dict(),
             "booking_mode": mode,
             "can_mark_no_show": can_mark_no_show,
             "pickup_location_text": booking.pickup_location_text,
             "dropoff_location_text": booking.dropoff_location_text,
+            # Explicit driver-workspace display facts. Do not expose the full
+            # booking metadata blob merely to show a post-trip cash action.
+            "payment_method": booking.payment_method,
+            "payment_status": payment_status,
+            "completed_by_driver_profile_id": metadata.get(
+                "completed_by_driver_profile_id"
+            ),
         }
 
     @monitor_endpoint("get_driver_bookings")
@@ -2129,8 +2140,16 @@ class BookingService:
             ).first()
             if not profile:
                 return []
+            completed_by_this_driver = sa.and_(
+                Booking.status == BookingStatusPy.COMPLETED.value,
+                Booking.booking_metadata["completed_by_driver_profile_id"].astext
+                == str(profile.id),
+            )
             bookings = Booking.query.filter(
-                Booking.assigned_driver_id == profile.id,
+                sa.or_(
+                    Booking.assigned_driver_id == profile.id,
+                    completed_by_this_driver,
+                ),
                 Booking.is_deleted == False,  # noqa: E712
             ).order_by(Booking.created_at.desc()).limit(limit).all()
             return [self._driver_trip_row(b) for b in bookings]
