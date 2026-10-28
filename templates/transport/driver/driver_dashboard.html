@@ -1548,13 +1548,25 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
   document.querySelectorAll('.offer-decline').forEach(function (btn) {
     btn.addEventListener('click', async function () {
       this.disabled = true;
+      const previous = this.innerHTML;
       try {
-        await fetchWithTimeout(this.dataset.url, {method: 'POST', headers: csrfHeaders(), body: '{}'});
+        const response = await fetchWithTimeout(
+          this.dataset.url,
+          {method: 'POST', headers: csrfHeaders(), body: '{}'}
+        );
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || !body.success || (body.data && body.data.declined === false)) {
+          flashMsg((body && body.error) || 'This offer is no longer active', false);
+          this.disabled = false;
+          this.innerHTML = previous;
+          return;
+        }
         flashMsg('Offer declined', true);
         setTimeout(() => location.reload(), 700);
       } catch (e) {
         this.disabled = false;
-        flashMsg('Offer store unavailable — try again', false);
+        this.innerHTML = previous;
+        flashMsg('Offer service unavailable — try again', false);
       }
     });
   });
