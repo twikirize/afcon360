@@ -13,7 +13,7 @@ from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
-from app.transport.models import Booking, BookingStatus, PaymentStatus
+from app.transport.models import Booking, BookingPayment, BookingStatus, PaymentStatus
 from app.wallet.services.wallet_service import WalletService
 from app.utils.exceptions import ValidationError, NotFoundError, ServiceUnavailableError
 from app.utils.monitoring import monitor_endpoint, record_metric
@@ -67,17 +67,34 @@ class PaymentService:
                 )
 
             # A retry of a captured payment is a read-only success; never debit
-            # the same trip twice.
+            # the same trip twice. Repair a missing payment-index row for a
+            # legacy booking without executing the money movement again.
             if booking.payment_status == PaymentStatus.CAPTURED:
+                captured_amount = Decimal(str(
+                    booking.final_price or booking.total_amount or 0
+                ))
+                payment_record = PaymentService._get_or_create_payment_record(
+                    booking, captured_amount, str(booking.payment_method or ""),
+                    booking.payment_captured_at or datetime.now(timezone.utc),
+                )
+                payment_record.payment_status = PaymentStatus.CAPTURED
+                payment_record.captured_at = (
+                    booking.payment_captured_at or payment_record.captured_at
+                    or datetime.now(timezone.utc)
+                )
+                payment_record.wallet_txn_id = (
+                    booking.wallet_transaction_id or payment_record.wallet_txn_id
+                )
+                db.session.commit()
                 return {
                     "success": True,
                     "message": "Payment is already settled",
                     "data": {
                         "booking_reference": booking.booking_reference,
-                        "amount": float(booking.final_price or booking.total_amount or 0),
+                        "amount": float(captured_amount),
                         "payment_method": booking.payment_method,
                         "payment_status": "captured",
-                        "payment_reference": booking.payment_gateway_reference,
+                        "payment_reference": payment_record.payment_reference,
                         "booking_status": str(getattr(booking.status, "value", booking.status)),
                         "idempotent_replay": True,
                     },
@@ -100,18 +117,28 @@ class PaymentService:
             PaymentService._validate_payment_method(booking, payment_method)
 
             final_price = PaymentService._calculate_final_price(booking)
-            # Stable reference across retries; wallet idempotency uses the same
-            # stable trip key instead of a timestamp generated on every call.
-            payment_ref = str(
-                booking.payment_gateway_reference or
-                ("TRP-" + str(booking.booking_reference))
-            )[:100]
+            now = datetime.now(timezone.utc)
+            payment_record = PaymentService._get_or_create_payment_record(
+                booking, final_price, payment_method, now
+            )
+            # Keep one stable transport payment reference for the life of this
+            # booking. Provider retries must not invent a new payment identity.
+            payment_ref = payment_record.payment_reference
 
             wallet_txn_id = None
             payment_processed = False
             if payment_method == "cash":
                 # Trip completion is not evidence that the driver received
-                # cash. The assigned driver must confirm receipt separately.
+                # cash. Keep the payment index pending until explicit receipt.
+                payment_record.amount = final_price
+                payment_record.payment_method = payment_method
+                payment_record.payment_status = PaymentStatus.PENDING
+                payment_record.captured_at = None
+                booking.final_price = final_price
+                booking.payment_status = PaymentStatus.PENDING
+                booking.payment_gateway_reference = None
+                booking.payment_captured_at = None
+                db.session.commit()
                 return {
                     "success": True,
                     "message": "Trip completed; cash receipt is still awaiting confirmation",
@@ -120,7 +147,7 @@ class PaymentService:
                         "amount": float(final_price),
                         "payment_method": payment_method,
                         "payment_status": "pending",
-                        "payment_reference": None,
+                        "payment_reference": payment_record.payment_reference,
                         "booking_status": str(getattr(booking.status, "value", booking.status)),
                         "requires_cash_receipt_confirmation": True,
                     },
@@ -166,10 +193,27 @@ class PaymentService:
                 PaymentStatus.CAPTURED if payment_processed else PaymentStatus.PENDING
             )
             booking.payment_gateway_reference = payment_ref if payment_processed else None
-            booking.payment_captured_at = datetime.now(timezone.utc) if payment_processed else None
+            booking.payment_captured_at = now if payment_processed else None
             booking.wallet_transaction_id = wallet_txn_id or booking.wallet_transaction_id
-            # Do not rewrite Booking.status when a payment succeeds. A completed
-            # trip stays completed; payment has its own independent lifecycle.
+
+            payment_record.amount = final_price
+            payment_record.payment_method = payment_method
+            payment_record.payment_status = (
+                PaymentStatus.CAPTURED if payment_processed else PaymentStatus.PENDING
+            )
+            payment_record.captured_at = now if payment_processed else None
+            if wallet_txn_id:
+                payment_record.wallet_txn_id = str(wallet_txn_id)
+                payment_record.payment_gateway = "internal_wallet"
+                payment_record.gateway_transaction_id = str(wallet_txn_id)
+            payment_record.payment_method_details = {
+                **(payment_record.payment_method_details or {}),
+                "timing": "pay_on_completion",
+                "settlement_request_id": request_id,
+            }
+            # Do not rewrite Booking.status when payment succeeds. The trip
+            # stays completed; the booking summary and payment ledger commit
+            # together. WalletService retries reuse the stable booking key.
             db.session.commit()
 
             # Create audit log
@@ -211,7 +255,7 @@ class PaymentService:
                 }
             }
 
-        except (ValidationError, NotFoundError) as e:
+        except (ValidationError, NotFoundError, ServiceUnavailableError) as e:
             db.session.rollback()
             record_metric('payment_processing', tags={'status': 'failed', 'error_type': type(e).__name__}, value=1)
             raise
@@ -224,6 +268,38 @@ class PaymentService:
                 message="Payment service temporarily unavailable"
             )
 
+
+    @staticmethod
+    def _get_or_create_payment_record(
+        booking: Booking,
+        amount: Decimal,
+        payment_method: str,
+        now: Optional[datetime] = None,
+    ) -> BookingPayment:
+        """Return the authoritative payment row for a booking, creating once."""
+        timestamp = now or datetime.now(timezone.utc)
+        record = (
+            BookingPayment.query.filter_by(booking_id=booking.id)
+            .order_by(BookingPayment.initiated_at.desc(), BookingPayment.id.desc())
+            .with_for_update()
+            .first()
+        )
+        if record is not None:
+            return record
+        record = BookingPayment(
+            booking_id=booking.id,
+            payment_reference="",
+            amount=amount,
+            currency=booking.currency,
+            payment_method=payment_method,
+            payment_method_details={"timing": "pay_on_completion"},
+            payment_status=PaymentStatus.PENDING,
+            initiated_at=timestamp,
+        )
+        record.generate_payment_reference()
+        db.session.add(record)
+        db.session.flush()
+        return record
 
     @staticmethod
     def _calculate_final_price(booking: Booking) -> Decimal:
