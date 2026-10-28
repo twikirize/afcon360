@@ -621,6 +621,103 @@ class BookingPaymentResource(Resource):
             return {"success": False, "error": str(e)}, 500
 
 
+class RiderWalletSettlementResource(Resource):
+    """POST /api/transport/rides/<booking_reference>/payment/settle-wallet.
+
+    Owner-scoped retry for a completed trip whose chosen Wallet payment remains
+    pending. Amount/currency/method are always derived from the stored Booking;
+    the client submits no financial fields.
+    """
+
+    @login_required
+    def post(self, booking_reference):
+        booking = Booking.query.filter_by(
+            booking_reference=booking_reference,
+            is_deleted=False,
+        ).first()
+        if booking is None or booking.user_id != current_user.id:
+            # 404 for both unknown and another rider's trip.
+            return {"success": False, "error": "Ride not found"}, 404
+
+        if booking.status != BookingStatus.COMPLETED:
+            return {
+                "success": False,
+                "error": "Wallet payment is available only after trip completion",
+                "code": "trip_not_completed",
+            }, 409
+        if str(booking.payment_method or "").strip().lower() != "wallet":
+            return {
+                "success": False,
+                "error": "This trip did not select Wallet payment",
+                "code": "payment_method_mismatch",
+            }, 409
+        if booking.payment_status == PaymentStatus.CAPTURED:
+            return {
+                "success": True,
+                "data": {
+                    "booking_reference": booking.booking_reference,
+                    "payment_status": "captured",
+                    "idempotent_replay": True,
+                },
+            }, 200
+        if booking.payment_status != PaymentStatus.PENDING:
+            return {
+                "success": False,
+                "error": "This payment is not awaiting settlement",
+                "code": "payment_not_pending",
+            }, 409
+
+        amount = booking.final_price if booking.final_price is not None else booking.total_amount
+        currency = str(getattr(booking.currency, "value", booking.currency))
+        try:
+            from app.transport.services.payment_service import PaymentService
+            result = PaymentService.process_payment(
+                booking.id,
+                {
+                    "amount": str(amount),
+                    "currency": currency,
+                    "payment_method": "wallet",
+                },
+                request_id="trip-complete:%s" % booking.booking_reference,
+            )
+        except ValidationError as exc:
+            db.session.rollback()
+            message = str(getattr(exc, "message", exc))
+            if "insufficient" in message.lower():
+                return {
+                    "success": False,
+                    "error": "Your wallet balance is too low. Add funds, then retry payment.",
+                    "code": "insufficient_wallet_balance",
+                }, 409
+            return {
+                "success": False,
+                "error": "Wallet payment could not be completed. Please retry.",
+                "code": "wallet_payment_rejected",
+            }, 409
+        except Exception:
+            db.session.rollback()
+            logger.exception(
+                "Rider wallet settlement retry failed for trip %s",
+                booking_reference,
+            )
+            return {
+                "success": False,
+                "error": "Wallet payment service is temporarily unavailable. Your trip remains completed and unpaid.",
+                "code": "wallet_payment_unavailable",
+            }, 503
+
+        return {
+            "success": True,
+            "data": {
+                "booking_reference": booking.booking_reference,
+                "payment_status": result.get("data", {}).get("payment_status", "pending"),
+                "payment_reference": result.get("data", {}).get("payment_reference"),
+                "amount": result.get("data", {}).get("amount"),
+                "currency": currency,
+            },
+        }, 200
+
+
 # ===========================================================================
 # Booking Route Association
 # ===========================================================================
