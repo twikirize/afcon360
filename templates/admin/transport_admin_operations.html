@@ -120,8 +120,13 @@
             <td>{{ booking.completed_at.strftime('%Y-%m-%d %H:%M UTC') if booking.completed_at else '—' }}</td>
             <td>{{ (payment.payment_method if payment else booking.payment_method or '—')|replace('_',' ')|title }}</td>
             <td>
-              {% set due_currency = (payment.currency.value if payment and payment.currency.value is defined else payment.currency if payment else booking.currency.value if booking.currency.value is defined else booking.currency) %}
-              {% set due_amount = payment.amount if payment else booking.final_price if booking.final_price is not none else booking.total_amount %}
+              {% if payment %}
+                {% set due_currency = payment.currency.value if payment.currency.value is defined else payment.currency %}
+                {% set due_amount = payment.amount %}
+              {% else %}
+                {% set due_currency = booking.currency.value if booking.currency.value is defined else booking.currency %}
+                {% set due_amount = booking.final_price if booking.final_price is not none else booking.total_amount %}
+              {% endif %}
               {{ due_currency|default('—', true) }} {{ '%.2f'|format(due_amount or 0) }}
             </td>
             <td>
