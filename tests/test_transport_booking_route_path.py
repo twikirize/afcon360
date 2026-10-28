@@ -153,8 +153,8 @@ class _FakeRedis:
 # Bolt-sheet form payload (mirrors templates/transport/home.html)
 # =====================================================================
 
-def _bolt_form(pickup_time: str) -> dict:
-    return {
+def _bolt_form(app, pickup_time: str) -> dict:
+    form = {
         "service_type": "on_demand",
         "provider_type": "individual_driver",
         "passenger_count": "1",
@@ -172,6 +172,47 @@ def _bolt_form(pickup_time: str) -> dict:
         "dropoff_latitude": "0.3161",
         "dropoff_longitude": "32.6056",
     }
+    with app.app_context():
+        from app.transport.services.booking_service import _measured_distance_km
+        from app.transport.services.fare_service import calculate_estimate
+        from app.transport.services.fare_quote_service import (
+            issue_fare_quote, money_amount,
+        )
+
+        pickup = {
+            "latitude": float(form["pickup_latitude"]),
+            "longitude": float(form["pickup_longitude"]),
+            "address": form["pickup_location"],
+        }
+        dropoff = {
+            "latitude": float(form["dropoff_latitude"]),
+            "longitude": float(form["dropoff_longitude"]),
+            "address": form["dropoff_location"],
+        }
+        quoted_at = datetime.now().replace(microsecond=0)
+        distance_km = _measured_distance_km(pickup, dropoff)
+        estimate = calculate_estimate(
+            service_type=form["service_type"],
+            vehicle_class=form["vehicle_class"],
+            distance_km=distance_km,
+            at=quoted_at,
+        )
+        currency = str(estimate.get("currency") or "USD").upper()
+        amount = money_amount(estimate["total"])
+        form["currency"] = currency
+        form["confirmed_fare_amount"] = format(amount, ".2f")
+        form["fare_quote_token"] = issue_fare_quote(
+            service_type=form["service_type"],
+            vehicle_class=form["vehicle_class"],
+            currency=currency,
+            amount=amount,
+            fare_version=estimate.get("version"),
+            pickup=pickup,
+            dropoff=dropoff,
+            distance_km=distance_km,
+            quoted_at=quoted_at,
+        )
+    return form
 
 
 # =====================================================================
@@ -309,7 +350,7 @@ class TestKycGateOnBookRoute:
 
         resp = authenticated_client.post(
             "/transport/book",
-            data=_bolt_form(_new_pickup_time()),
+            data=_bolt_form(app, _new_pickup_time()),
             follow_redirects=False,
         )
         assert resp.status_code in (301, 302), (
@@ -337,7 +378,7 @@ class TestRequestFirstStaleVehicleOffer:
 
         response = authenticated_client.post(
             "/transport/book",
-            data=_bolt_form(_new_pickup_time()),
+            data=_bolt_form(app, _new_pickup_time()),
             follow_redirects=False,
         )
         assert response.status_code in (301, 302), response.get_data(as_text=True)
@@ -384,7 +425,7 @@ class TestExplicitPaymentChoiceOnBookRoute:
             rider_id = rider.id
             _promote_user_to_tier3(app, rider_id)
 
-        form = _bolt_form(_new_pickup_time())
+        form = _bolt_form(app, _new_pickup_time())
         form.pop("payment_method", None)
         response = authenticated_client.post(
             "/transport/book", data=form, follow_redirects=False
@@ -412,7 +453,7 @@ class TestRealRideTransactionPath:
 
         resp = authenticated_client.post(
             "/transport/book",
-            data=_bolt_form(_new_pickup_time()),
+            data=_bolt_form(app, _new_pickup_time()),
             follow_redirects=False,
         )
         assert resp.status_code in (301, 302), (
