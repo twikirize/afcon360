@@ -49,7 +49,7 @@ from app.utils.exceptions import NotFoundError, ServiceUnavailableError, Validat
 # bare `except PermissionError` (builtin) clauses are untouched.
 from app.utils.exceptions import AuthorizationError as _Match01AuthError
 from app.utils.audit import audit_log
-from app.transport.services.payment_methods import get_available_payment_methods
+from app.transport.services.payment_methods import get_available_transport_payment_methods
 from app.transport.services import get_booking_service, get_provider_service, get_dashboard_service
 from app.transport.services.go_live_service import can_go_live
 from app.transport.services.assignment_service import ACTIVE_ASSIGNMENT_STATUSES
@@ -418,7 +418,7 @@ def home():
         pickup_value=pickup_value,
         dropoff_value=dropoff_value,
         selected_service=selected_service,
-        payment_methods=get_available_payment_methods(
+        payment_methods=get_available_transport_payment_methods(
             current_user.id if is_authenticated else None
         ),
         default_service=(
@@ -488,7 +488,7 @@ def new_home():
         pickup_value=pickup_value,
         dropoff_value=dropoff_value,
         selected_service=selected_service,
-        payment_methods=get_available_payment_methods(
+        payment_methods=get_available_transport_payment_methods(
             current_user.id if is_authenticated else None
         ),
         default_service=(
@@ -973,7 +973,7 @@ def book_transport():
     # a missing/unavailable choice into Cash, even while schema enforcement
     # remains in shadow mode.
     selected_payment_method = str(data.get("payment_method") or "").strip().lower()
-    available_payment_methods = get_available_payment_methods(current_user.id)
+    available_payment_methods = get_available_transport_payment_methods(current_user.id)
     allowed_payment_methods = {
         str(method.get("code") or "").strip().lower()
         for method in available_payment_methods
