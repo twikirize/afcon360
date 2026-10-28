@@ -617,7 +617,6 @@ class RideRequestDispatchService:
         return {"expired": expired, "advanced": advanced, "closed": closed}
 
     @classmethod
-    @classmethod
     def accept_offer(cls, request_public_id: str, driver_id: int,
                      vehicle_id: int, *, actor=None) -> Dict[str, Any]:
         """Atomically convert a request to a Booking only after acceptance.
