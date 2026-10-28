@@ -249,3 +249,36 @@ def test_rider_wallet_retry_does_not_allow_another_users_booking(
         json={},
     )
     assert response.status_code == 404, response.get_data(as_text=True)
+
+
+def test_payment_service_validates_wallet_for_the_booking_currency(monkeypatch):
+    from types import SimpleNamespace
+    from app.transport.services.payment_service import PaymentService
+    from app.utils.enums import Currency
+
+    seen = {}
+
+    def wallet_status(user_id, currency_code=None):
+        seen["currency"] = currency_code
+        return currency_code == "USD"
+
+    def methods_for_country(country_code, user_has_wallet=False):
+        seen["has_wallet"] = user_has_wallet
+        return [SimpleNamespace(code="wallet")] if user_has_wallet else []
+
+    monkeypatch.setattr(
+        "app.transport.services.payment_config.get_payment_config_service",
+        lambda: SimpleNamespace(get_methods_for_country=methods_for_country),
+    )
+    monkeypatch.setattr(
+        "app.transport.services.payment_config.get_user_country",
+        lambda user_id: "UG",
+    )
+    monkeypatch.setattr(
+        "app.transport.services.payment_config.get_user_wallet_status",
+        wallet_status,
+    )
+
+    booking = SimpleNamespace(user_id=123, currency=Currency.USD)
+    PaymentService._validate_payment_method(booking, "wallet")
+    assert seen == {"currency": "USD", "has_wallet": True}
