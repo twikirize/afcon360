@@ -16,6 +16,54 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# Methods with real end-of-trip settlement behaviour implemented in transport.
+# Other methods may remain configured in admin settings, but must not be shown
+# as selectable until their transport initiation + verified callback workflow
+# is integrated. This is a capability gate, not a replacement for configuration.
+TRANSPORT_END_OF_TRIP_METHODS = frozenset({"cash", "wallet"})
+
+
+def get_available_transport_payment_methods(
+    user_id: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Return configured methods that transport can actually settle at trip end.
+
+    Admin configuration remains the source of truth for enabled methods. This
+    extra capability gate prevents advertising card/mobile-money/bank methods
+    when the transport settlement adapter cannot yet verify and record them.
+    """
+    configured = get_available_payment_methods(user_id)
+    result = [
+        method for method in configured
+        if str(method.get("code") or "").strip().lower()
+        in TRANSPORT_END_OF_TRIP_METHODS
+    ]
+
+    # get_available_payment_methods has a legacy fallback that includes Wallet
+    # even if configuration lookup failed. Don't advertise it unless the user
+    # actually has a wallet account available.
+    if user_id is None:
+        return [method for method in result
+                if str(method.get("code") or "").strip().lower() == "cash"]
+
+    try:
+        from app.transport.services.payment_config import get_user_wallet_status
+        wallet_available = bool(get_user_wallet_status(user_id))
+    except Exception:
+        logger.warning(
+            "Wallet availability could not be verified for rider %s",
+            user_id,
+            exc_info=True,
+        )
+        wallet_available = False
+
+    if not wallet_available:
+        result = [
+            method for method in result
+            if str(method.get("code") or "").strip().lower() != "wallet"
+        ]
+    return result
+
 
 def get_available_payment_methods(user_id: Optional[int] = None) -> List[Dict[str, Any]]:
     """Return the payment methods the rider may choose from.
