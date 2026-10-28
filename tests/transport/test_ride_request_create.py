@@ -6,6 +6,7 @@ test imports); shared fixtures (app/client/db_session) untouched.
 """
 import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
 
@@ -144,7 +145,7 @@ class TestRequestCreate:
         _promote_to_tier2(app, rider_id)
         _login_as(app, client, rider_id)
 
-        resp = client.post(URL, json=_payload(app, ))
+        resp = client.post(URL, json=_payload(app))
         assert resp.status_code == 201, resp.get_data(as_text=True)
         data = resp.get_json()["data"]
         assert data["request_id"] and len(data["request_id"]) >= 16
@@ -442,8 +443,8 @@ class TestLegacyPathsUnchanged:
         assert resp.status_code == 200, resp.get_data(as_text=True)
         assert resp.get_json()["success"] is True
 
-    def test_canonical_fare_estimate_still_served(self, client):
-        resp = client.post("/api/transport/fare/estimate", json={
+    def test_canonical_fare_estimate_still_served(self, authenticated_client):
+        resp = authenticated_client.post("/api/transport/fare/estimate", json={
             "service_type": "on_demand", "vehicle_class": "comfort",
             "distance_km": 5})
         assert resp.status_code == 200, resp.get_data(as_text=True)
