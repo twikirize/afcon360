@@ -179,6 +179,18 @@ class PaymentService:
                 wallet_txn_id = result.get("transaction_id")
                 payment_status = "captured"
                 payment_processed = True
+                # WalletService owns its own atomic transaction and deliberately
+                # rolls back any caller-side read transaction before beginning.
+                # Re-read/recreate the transport index after that boundary, using
+                # the original reference so the wallet and transport ledgers stay
+                # correlated even for legacy bookings without a prior index row.
+                payment_record = PaymentService._get_or_create_payment_record(
+                    booking,
+                    final_price,
+                    payment_method,
+                    now,
+                    payment_reference=payment_ref,
+                )
             else:
                 # Card/mobile-money methods remain pending until an integrated
                 # provider returns a verifiable success. Never simulate capture.
@@ -286,6 +298,7 @@ class PaymentService:
         amount: Decimal,
         payment_method: str,
         now: Optional[datetime] = None,
+        payment_reference: Optional[str] = None,
     ) -> BookingPayment:
         """Return the authoritative payment row for a booking, creating once."""
         timestamp = now or datetime.now(timezone.utc)
@@ -299,7 +312,7 @@ class PaymentService:
             return record
         record = BookingPayment(
             booking_id=booking.id,
-            payment_reference="",
+            payment_reference=payment_reference or "",
             amount=amount,
             currency=booking.currency,
             payment_method=payment_method,
@@ -307,7 +320,8 @@ class PaymentService:
             payment_status=PaymentStatus.PENDING,
             initiated_at=timestamp,
         )
-        record.generate_payment_reference()
+        if not payment_reference:
+            record.generate_payment_reference()
         db.session.add(record)
         db.session.flush()
         return record
