@@ -187,9 +187,58 @@ class PaymentService:
                 payment_processed = True
                 # WalletService owns its own atomic transaction and deliberately
                 # rolls back any caller-side read transaction before beginning.
-                # Re-read/recreate the transport index after that boundary, using
-                # the original reference so the wallet and transport ledgers stay
-                # correlated even for legacy bookings without a prior index row.
+                # Re-lock the Booking after the wallet transaction. Concurrent
+                # retries share the wallet idempotency key; this row lock ensures
+                # one transport payment-index row is finalized and all retries
+                # return that same authoritative payment reference.
+                locked_booking = Booking.query.filter_by(
+                    id=booking_id, is_deleted=False
+                ).with_for_update().first()
+                if locked_booking is None:
+                    raise NotFoundError(
+                        "Booking not found",
+                        resource_type="booking",
+                        resource_id=booking_id,
+                    )
+                booking = locked_booking
+
+                if booking.payment_status == PaymentStatus.CAPTURED:
+                    captured_amount = Decimal(str(
+                        booking.final_price or booking.total_amount or final_price
+                    ))
+                    payment_record = PaymentService._get_or_create_payment_record(
+                        booking,
+                        captured_amount,
+                        payment_method,
+                        booking.payment_captured_at or now,
+                        payment_reference=booking.payment_gateway_reference,
+                    )
+                    payment_record.amount = captured_amount
+                    payment_record.payment_method = payment_method
+                    payment_record.payment_status = PaymentStatus.CAPTURED
+                    payment_record.captured_at = (
+                        booking.payment_captured_at or payment_record.captured_at or now
+                    )
+                    payment_record.wallet_txn_id = (
+                        booking.wallet_transaction_id or payment_record.wallet_txn_id
+                    )
+                    db.session.commit()
+                    return {
+                        "success": True,
+                        "message": "Payment is already settled",
+                        "data": {
+                            "booking_reference": booking.booking_reference,
+                            "amount": float(captured_amount),
+                            "payment_method": booking.payment_method,
+                            "payment_status": "captured",
+                            "payment_reference": payment_record.payment_reference,
+                            "booking_status": str(
+                                getattr(booking.status, "value", booking.status)
+                            ),
+                            "idempotent_replay": True,
+                        },
+                    }
+
                 payment_record = PaymentService._get_or_create_payment_record(
                     booking,
                     final_price,
@@ -197,6 +246,9 @@ class PaymentService:
                     now,
                     payment_reference=payment_ref,
                 )
+                # Reuse an already-created record's ref, e.g. from request-first
+                # assignment; never let a retry publish a competing payment ref.
+                payment_ref = payment_record.payment_reference
             else:
                 # Card/mobile-money methods remain pending until an integrated
                 # provider returns a verifiable success. Never simulate capture.
