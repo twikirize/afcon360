@@ -171,15 +171,15 @@ class RideOptionsResource(Resource):
             "success": True,
             "data": {
                 "service_type":   service_type,
-                "currency":       currency,
+                "currency":       (options[0]["currency"] if options else currency),
                 "distance_km":    float(distance_km) if distance_km is not None else None,
                 "distance_basis": distance_basis,
                 "options":        options,
                 "note": (
-                    "Availability is live (online drivers with a current "
-                    "vehicle, not engaged elsewhere). Fares come from the "
-                    "canonical fare engine. ETA is a straight-line "
-                    "planning estimate, not road routing."
+                    "Fare estimate only. This endpoint does not query driver "
+                    "or vehicle availability and does not contact drivers. "
+                    "Matching starts only after the rider confirms the quoted "
+                    "amount and selects an available payment method."
                 ),
             },
         }, 200
