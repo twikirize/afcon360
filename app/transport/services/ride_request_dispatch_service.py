@@ -335,6 +335,8 @@ class RideRequestDispatchService:
         meta = dict(cycle.cycle_metadata or {})
         pool = meta.get("ranked_pool") if isinstance(meta.get("ranked_pool"), list) else []
         previous = OfferAttempt.query.filter_by(cycle_id=cycle.id).all()
+        if cls._close_cycle_at_deadline(request, cycle, now):
+            return None
         used = {int(row.driver_id) for row in previous}
         candidate = next(
             (item for item in pool
@@ -370,6 +372,12 @@ class RideRequestDispatchService:
 
         current_cycle = cls._cycle_for_request(request, lock=True)
         if current_cycle is not None and current_cycle.status == "searching":
+            if cls._close_cycle_at_deadline(request, current_cycle):
+                db.session.commit()
+                return {
+                    "status": "expired",
+                    "request_reference": request.public_id,
+                }
             active = OfferAttempt.query.filter(
                 OfferAttempt.cycle_id == current_cycle.id,
                 OfferAttempt.status.in_(("offered", "accepting")),
