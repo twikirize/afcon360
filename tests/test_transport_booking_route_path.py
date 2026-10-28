@@ -317,6 +317,26 @@ class TestKycGateOnBookRoute:
         )
 
 
+class TestExplicitPaymentChoiceOnBookRoute:
+    def test_missing_payment_method_does_not_create_a_ride_request(
+        self, app, authenticated_client, test_user
+    ):
+        with app.app_context():
+            rider = db.session.merge(test_user)
+            rider_id = rider.id
+            _promote_user_to_tier3(app, rider_id)
+
+        form = _bolt_form(_new_pickup_time())
+        form.pop("payment_method", None)
+        response = authenticated_client.post(
+            "/transport/book", data=form, follow_redirects=False
+        )
+        assert response.status_code in (301, 302)
+        with app.app_context():
+            assert RideRequest.query.filter_by(user_id=rider_id, is_deleted=False).count() == 0
+            assert Booking.query.filter_by(user_id=rider_id, is_deleted=False).count() == 0
+
+
 # =====================================================================
 # 2. Full REAL RIDE TRANSACTION PATH through POST /transport/book
 # =====================================================================
