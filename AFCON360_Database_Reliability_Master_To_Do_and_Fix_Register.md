@@ -1054,3 +1054,40 @@ The resulting **39 parent-item totals** are **24 CLOSED, 10 ADVANCED, 1 PARTIAL,
 - The 145 Prod/Test server-default differences, the H3-A 49-vs-47 target decision, FK-action differences, extension-dependency disposition, Docker census, full suite, fresh-clone replay and PostgreSQL version coverage remain open to their existing scopes.
 - afcon360_prod and afcon360_test remain protected. No H3-B existing-database transition, stamping, rebuild, forced convergence, enum conversion/relabel/drop, frozen baseline rewrite, or test-row deletion is authorized by this update. Preserve all scratch databases and evidence.
 
+
+---
+
+## Phase 15 — 28 October 2026 production census and Item 12 closure
+
+**Scope and provenance.** This phase records command output supplied by the owner from an SSH session to the Oracle host identified in the AFCON360 operations handbook. The commands inspected host metadata, Git checkout metadata, Docker state, Alembic history and PostgreSQL catalogs. Catalog queries ran inside `BEGIN READ ONLY` transactions and ended with `ROLLBACK`. No production migration, stamp, schema edit, data write, container rebuild or deployment was performed as part of this census.
+
+### Item 12 status change
+
+| Item | Previous current status | Current status | Closure boundary |
+|---:|---|---|---|
+| 12 | ADVANCED | **CLOSED — PASS for identified Production and previously recorded Codespaces census scope** | The live Pamoja production host, deployed revision, application Alembic current/head, deployed migration chain and schema inventory have now been observed. No separate deployed Test/Staging host was identified in the supplied operations handbook; do not imply such an environment was inspected. If a separate deployed Test/Staging environment is later identified as an Item 12 requirement, record its state independently. |
+
+### Read-only production evidence captured
+
+- **Observation time:** 28 October 2026 (host UTC output: `2026-10-28 06:40:12`; the Alembic inspection logs were recorded shortly afterward).
+- **Host:** `afcon-360`, Ubuntu `24.04.4 LTS`; production domain `https://pamoja.space`; reported Oracle public IP `150.230.155.121`.
+- **Deployed checkout:** `8c25246ab5e41d44f0d64ad9ff030819e69e9ff1`, commit date `2026-08-30T17:40:51+03:00`, subject `fix: exempt health endpoint from request rate limiting`.
+- **Checkout working tree:** `git status --short` reported untracked `.env.docker.runtime`, `.env.runtime` and `docker-compose.prod.yml`. Their contents were not displayed or copied. Preserve these deployment-specific files; do not clean or overwrite them as part of this database work.
+- **Docker services:** `afcon360_db` (`postgres:15-alpine`), `afcon360_redis` (`redis:7-alpine`) and `afcon360_web` (`afcon360-web`) were each reported `Up 8 weeks (healthy)`. The web mapping was `127.0.0.1:5000->5000/tcp`. The observed web image ID was `sha256:e85cd474fa0891f58823579f5d40d15500b80240071c45f04701936c532a3136`, created `2026-08-30T14:46:35.589701392Z`.
+- **Database identity:** `afcon360_prod`, role `afcon_prod`, PostgreSQL `15.19`, `transaction_read_only=on`. `inet_server_addr()` and port fields were blank in this connection, consistent with the local Unix-socket connection used by `psql` inside the database container.
+- **Revision agreement:** the database's `public.alembic_version` contained `f91075478868`. The running application reported `flask db current = f91075478868 (head)` and `flask db heads = f91075478868 (head)`.
+- **Deployed migration chain:** exactly three tracked Python migration files were listed, with the following linear parent chain:
+  1. `8a0deccce6f6_initial_full_schema_baseline.py` — revision `8a0deccce6f6`, no parent.
+  2. `20260830_1420_add_booking_flow_type.py` — revision `20260830_1420`, parent `8a0deccce6f6`.
+  3. `f91075478868_production_console.py` — revision `f91075478868`, parent `20260830_1420`.
+- **Production public-schema catalog counts from the read-only census:** 191 tables and partitions; 3,707 columns; 43 enum types with 249 enum labels; 1,482 indexes; 112 CHECK constraints; 364 foreign keys; 191 primary-key constraints; 98 unique constraints. The listed extension inventory contained only `plpgsql` version `1.0`.
+- **Transaction outcome:** the catalog census returned `ROLLBACK`; no database writes were performed.
+
+### Interpretation and limits
+
+1. The database revision and the deployed application's current/head agree, and the deployed checkout contains a three-revision linear chain ending at that revision. This closes the revision/catalog census acceptance for the identified Production deployment.
+2. Production's reported 43 enum types and 191 tables/partitions belong to its older August deployment. They are not to be compared with newer development counts as if the counts must match. The differences are expected in context and are not, by themselves, defects.
+3. Matching Alembic current/head does not independently prove that every physical database object matches the migration definitions. Broad schema-transition qualification, populated-state safety, historical/intermediate upgrades, recovery, and H3-B authorization remain governed by their existing items and gates.
+4. The census does not authorize `git pull`, container rebuild/recreation, `flask db upgrade`, `flask db stamp`, enum changes, or any other production change.
+
+**Current next work package:** Lettered backlog **B / formal Item 21** — decide and document the H3-A 49-versus-47 enum target. Production's 43-enum August release is historical deployment evidence; it does not decide the newer H3-A/B0 target question.
