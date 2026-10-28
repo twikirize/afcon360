@@ -1521,12 +1521,40 @@ def rides_cancel(booking_reference):
 @module_enabled_required("transport")
 @login_required
 def rides_retry_matching(booking_reference):
-    """Rider "Try again" from the no_match terminal state.
+    """Retry an exhausted request-first search or legacy NO_MATCH booking."""
 
-    NO_MATCH -> CONFIRMED with a fresh matching window (Condition 1), then
-    immediate re-dispatch. Manual only — nothing auto-retries. Ownership is
-    enforced by _load_owned_ride (called, not modified).
-    """
+    from app.transport.models import RideRequest
+    ride_request = RideRequest.query.filter_by(
+        public_id=booking_reference, is_deleted=False
+    ).first()
+    if ride_request is not None and ride_request.status != "converted":
+        if ride_request.user_id != current_user.id:
+            abort(404)
+        try:
+            from app.transport.services.ride_request_dispatch_service import (
+                RideRequestDispatchService, RideRequestDispatchError,
+            )
+            outcome = RideRequestDispatchService.retry_search(
+                booking_reference, current_user.id
+            )
+            if request.is_json:
+                return jsonify({"status": "success", **outcome}), 200
+            flash("Searching for drivers again", "success")
+        except RideRequestDispatchError as e:
+            if request.is_json:
+                return jsonify({"status": "error", "code": e.code,
+                                "message": e.message}), 409
+            flash(e.message, "warning")
+        except Exception:
+            db.session.rollback()
+            logger.exception("Request-first retry failed for %s", booking_reference)
+            if request.is_json:
+                return jsonify({"status": "error",
+                                "message": "Unable to restart matching"}), 500
+            flash("Unable to restart matching", "danger")
+        return redirect(url_for("transport.rides_show",
+                                booking_reference=booking_reference))
+
     booking_model = _load_owned_ride(booking_reference)
     try:
         result = get_booking_service().retry_matching(
