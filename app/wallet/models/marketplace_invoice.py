@@ -32,6 +32,9 @@ class MarketplaceInvoice(db.Model):
             name="ck_marketplace_invoice_timing_valid",
         ),
         UniqueConstraint(
+            "idempotency_key", name="uq_wallet_marketplace_invoice_idempotency",
+        ),
+        UniqueConstraint(
             "service_code", "service_reference",
             name="uq_marketplace_invoice_service_reference",
         ),
@@ -46,11 +49,11 @@ class MarketplaceInvoice(db.Model):
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # Deterministic caller key. A retry for the same operation resolves to the
     # same invoice; it must never create a second collection obligation.
-    idempotency_key = db.Column(String(255), nullable=False, unique=True)
+    idempotency_key = db.Column(String(255), nullable=False)
     service_code = db.Column(String(50), nullable=False)
     service_reference = db.Column(String(255), nullable=False)
     payer_user_id = db.Column(
-        BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False,
+        BigInteger, ForeignKey("users.id", name="fk_wallet_marketplace_invoice_payer", ondelete="RESTRICT"), nullable=False,
     )
 
     amount = db.Column(Numeric(18, 6), nullable=False)
@@ -75,12 +78,12 @@ class MarketplaceInvoice(db.Model):
     )
     transaction_id = db.Column(
         UUID(as_uuid=True),
-        ForeignKey("transactions.id", ondelete="SET NULL"),
+        ForeignKey("transactions.id", name="fk_wallet_marketplace_invoice_transaction", ondelete="SET NULL"),
         nullable=True,
     )
     provider_reference = db.Column(String(255), nullable=True)
     cash_received_by_user_id = db.Column(
-        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
+        BigInteger, ForeignKey("users.id", name="fk_wallet_marketplace_invoice_cash_receiver", ondelete="SET NULL"), nullable=True,
     )
     invoice_metadata = db.Column(JSONB, nullable=False, default=dict, server_default="{}")
     receipt_metadata = db.Column(JSONB, nullable=False, default=dict, server_default="{}")
