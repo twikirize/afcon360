@@ -317,6 +317,84 @@ def test_wallet_transfer_replay_returns_committed_transaction_before_balance_che
         assert result["new_balance_to"] == "25.00"
 
 
+def test_wallet_transfer_rejects_invoice_mismatch_when_insert_race_wins_late(
+    app, test_user, monkeypatch
+):
+    """The late ON CONFLICT path must validate terms just like an early replay."""
+    from app.identity.models.user import User
+    from app.wallet.exceptions import DuplicateTransactionError
+    from app.wallet.models.transaction import TransactionStatus, TransactionType
+    from app.wallet.services.wallet_service import WalletService
+
+    with app.app_context():
+        payer_id = db.session.merge(test_user).id
+        source_id, escrow_id = uuid.uuid4(), uuid.uuid4()
+        source = SimpleNamespace(
+            id=source_id, user_id=payer_id, currency="USD", is_frozen=False,
+            frozen_reason=None,
+        )
+        escrow = SimpleNamespace(
+            id=escrow_id, user_id=987650, currency="USD", is_frozen=False,
+            frozen_reason=None,
+        )
+        existing = SimpleNamespace(
+            id=uuid.uuid4(),
+            tx_type=TransactionType.TRANSFER.value,
+            status=TransactionStatus.COMPLETED.value,
+            amount=Decimal("25.00"),
+            currency="USD",
+            user_id=payer_id,
+            recipient_user_id=escrow.user_id,
+            tx_metadata={
+                "marketplace_invoice_id": str(uuid.uuid4()),
+                "service_code": "transport",
+                "service_reference": "ride-winner",
+                "escrow_account_id": str(escrow_id),
+                "escrow_service_type": "transport",
+                "settlement_timing": "pay_on_completion",
+            },
+        )
+        monkeypatch.setattr(
+            User,
+            "get_by_private_id",
+            staticmethod(lambda user_id: SimpleNamespace(transaction_pin_hash=None)),
+        )
+        service = WalletService()
+        service._validate_currency = lambda currency: None
+        service._check_transaction_limit = lambda *args, **kwargs: None
+        service.account_repo.get_by_id = lambda account_id, for_update=False: {
+            str(source_id): source,
+            str(escrow_id): escrow,
+        }.get(str(account_id))
+        # Simulate the first lookup missing a concurrently inserted transaction;
+        # get_or_create then returns the winner's already-completed transaction.
+        service.tx_repo.get_by_client_request_id = lambda key: None
+        service.tx_repo.get_or_create = lambda **kwargs: existing
+        service.ledger_repo.get_balance = lambda account_id, currency: Decimal("100.00")
+        service._check_daily_limit = lambda *args, **kwargs: None
+        service._check_monthly_limit = lambda *args, **kwargs: None
+        service._check_kyc_limits = lambda *args, **kwargs: None
+        service._check_fraud_risk = lambda *args, **kwargs: None
+
+        with pytest.raises(DuplicateTransactionError):
+            service.transfer(
+                from_account_id=str(source_id),
+                to_account_id=str(escrow_id),
+                amount=Decimal("25.00"),
+                currency="USD",
+                client_request_id="MARKETPLACE-INVOICE-RACE",
+                metadata={
+                    "marketplace_invoice_id": str(uuid.uuid4()),
+                    "service_code": "transport",
+                    "service_reference": "ride-other",
+                    "escrow_account_id": str(escrow_id),
+                    "escrow_service_type": "transport",
+                    "settlement_timing": "pay_on_completion",
+                },
+                system_initiated=True,
+            )
+
+
 def test_wallet_transfer_idempotency_key_cannot_be_reused_for_another_invoice(
     app, test_user, monkeypatch
 ):
