@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - "app/transport/**"
+      - "app/wallet/**"
+      - "scripts/seed_payment_methods.py"
       - "app/tasks/transport_recovery.py"
       - "app/utils/validators.py"
       - "app/config.py"
@@ -19,6 +21,7 @@ on:
       - "tests/test_transport_admin_canonical_overview.py"
       - "tests/transport/test_ride_request_create.py"
       - "tests/transport/test_trip_end_payment_semantics.py"
+      - "tests/transport/test_wallet_invoice_boundary.py"
       - "migrations/**"
       - "requirements.txt"
       - ".github/workflows/transport-request-first-tests.yml"
@@ -103,6 +106,8 @@ jobs:
         run: >-
           python -m compileall -q
           app/transport
+          app/wallet
+          scripts/seed_payment_methods.py
           app/tasks/transport_recovery.py
           app/utils/validators.py
           tests/test_transport_booking_route_path.py
@@ -113,6 +118,8 @@ jobs:
           tests/test_transport_admin_canonical_overview.py
           tests/transport/test_ride_request_create.py
           tests/transport/test_trip_end_payment_semantics.py
+          tests/transport/test_wallet_invoice_boundary.py
+          tests/transport/test_wallet_invoice_boundary.py
 
       - name: Parse changed Jinja templates without database access
         run: |
