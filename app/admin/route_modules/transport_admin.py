@@ -3,7 +3,7 @@ Transport Admin Routes for AFCON360 - Production Ready.
 All decorators imported from app.auth.decorators.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 from flask import (
     render_template, redirect, url_for, abort,
@@ -55,6 +55,176 @@ def transport_admin_dashboard():
         abort(500)
 
     return render_template("admin/transport_admin_dashboard.html", **context)
+
+
+# -----------------------------
+# Request + payment operational queues
+# -----------------------------
+@admin_bp.route(
+    "/transport-admin/operations",
+    endpoint="transport_admin_operations",
+)
+@login_required
+@require_permission("transport.view")
+@active_context_or_platform_required(ContextType.PLATFORM)
+def transport_admin_operations():
+    """Read-only operational queues for request matching and payment follow-up."""
+    try:
+        from sqlalchemy import and_, func
+        from sqlalchemy.orm import joinedload, selectinload
+        from app.transport.models import (
+            Booking, BookingPayment, BookingStatus, PaymentStatus,
+            RideRequest, SearchCycle,
+        )
+
+        now = datetime.now(timezone.utc)
+        latest_cycle = (
+            db.session.query(
+                SearchCycle.ride_request_id.label("request_id"),
+                func.max(SearchCycle.cycle_number).label("cycle_number"),
+            )
+            .filter(SearchCycle.is_deleted.is_(False))
+            .group_by(SearchCycle.ride_request_id)
+            .subquery()
+        )
+
+        def latest_cycle_rows(*conditions, limit=50):
+            query = (
+                db.session.query(RideRequest, SearchCycle)
+                .outerjoin(
+                    latest_cycle,
+                    latest_cycle.c.request_id == RideRequest.id,
+                )
+                .outerjoin(
+                    SearchCycle,
+                    and_(
+                        SearchCycle.ride_request_id == RideRequest.id,
+                        SearchCycle.cycle_number == latest_cycle.c.cycle_number,
+                        SearchCycle.is_deleted.is_(False),
+                    ),
+                )
+                .filter(RideRequest.is_deleted.is_(False))
+            )
+            for condition in conditions:
+                query = query.filter(condition)
+            return query.order_by(RideRequest.created_at.desc()).limit(limit).all()
+
+        active_request_count = (
+            db.session.query(func.count(func.distinct(RideRequest.id)))
+            .join(
+                SearchCycle,
+                SearchCycle.ride_request_id == RideRequest.id,
+            )
+            .filter(
+                RideRequest.is_deleted.is_(False),
+                RideRequest.status == "searching",
+                SearchCycle.is_deleted.is_(False),
+                SearchCycle.status == "searching",
+            )
+            .scalar() or 0
+        )
+        active_request_rows = latest_cycle_rows(
+            RideRequest.status == "searching",
+            SearchCycle.status == "searching",
+        )
+        # Keep every unsuccessful cycle from the last 24 hours, including
+        # requests the rider subsequently retried. This lets operations see
+        # repeated failures rather than silently hiding earlier cycle history.
+        failed_request_rows = (
+            db.session.query(RideRequest, SearchCycle)
+            .join(SearchCycle, SearchCycle.ride_request_id == RideRequest.id)
+            .filter(
+                RideRequest.is_deleted.is_(False),
+                SearchCycle.is_deleted.is_(False),
+                SearchCycle.status == "expired",
+                SearchCycle.terminal_reason.in_(("no_supply", "all_rejected")),
+                SearchCycle.completed_at >= now - timedelta(hours=24),
+            )
+            .order_by(SearchCycle.completed_at.desc())
+            .limit(50)
+            .all()
+        )
+        failed_search_count = (
+            db.session.query(func.count(SearchCycle.id))
+            .join(RideRequest, RideRequest.id == SearchCycle.ride_request_id)
+            .filter(
+                RideRequest.is_deleted.is_(False),
+                SearchCycle.is_deleted.is_(False),
+                SearchCycle.status == "expired",
+                SearchCycle.terminal_reason.in_(("no_supply", "all_rejected")),
+                SearchCycle.completed_at >= now - timedelta(hours=24),
+            )
+            .scalar() or 0
+        )
+        pending_payment_query = (
+            BookingPayment.query
+            .join(Booking, Booking.id == BookingPayment.booking_id)
+            .filter(
+                BookingPayment.is_deleted.is_(False),
+                BookingPayment.payment_status == PaymentStatus.PENDING,
+                Booking.is_deleted.is_(False),
+            )
+        )
+        pending_payment_count = pending_payment_query.count()
+
+        # A separate oldest-first queue prevents active-trip payment rows
+        # from burying completed trips that need actual settlement follow-up.
+        completed_unpaid_query = Booking.query.filter(
+            Booking.is_deleted.is_(False),
+            Booking.status == BookingStatus.COMPLETED,
+            Booking.payment_status == PaymentStatus.PENDING,
+        )
+        completed_unpaid_count = completed_unpaid_query.count()
+        completed_unpaid_bookings = (
+            completed_unpaid_query
+            .options(selectinload(Booking.payments))
+            .order_by(Booking.completed_at.asc(), Booking.id.asc())
+            .limit(100)
+            .all()
+        )
+        # One row per trip. A missing payment index row remains visible as a
+        # reconciliation exception instead of disappearing from the queue.
+        completed_unpaid_records = []
+        for booking in completed_unpaid_bookings:
+            pending_rows = [
+                payment for payment in booking.payments
+                if not payment.is_deleted
+                and payment.payment_status == PaymentStatus.PENDING
+            ]
+            # The sequence-backed payment id is monotonic and avoids
+            # comparing potentially mixed naive/aware legacy timestamps.
+            latest_pending = max(
+                pending_rows,
+                key=lambda payment: int(payment.id or 0),
+                default=None,
+            )
+            completed_unpaid_records.append((booking, latest_pending))
+
+        pending_payment_records = (
+            pending_payment_query
+            .options(joinedload(BookingPayment.booking))
+            .order_by(BookingPayment.created_at.desc())
+            .limit(100)
+            .all()
+        )
+
+        return render_template(
+            "admin/transport_admin_operations.html",
+            active_request_rows=active_request_rows,
+            active_request_count=active_request_count,
+            failed_request_rows=failed_request_rows,
+            failed_search_count=failed_search_count,
+            pending_payment_records=pending_payment_records,
+            pending_payment_count=pending_payment_count,
+            completed_unpaid_records=completed_unpaid_records,
+            completed_unpaid_count=completed_unpaid_count,
+            now=now,
+            selected_section=request.args.get("section", "requests"),
+        )
+    except Exception:
+        db.session.rollback()
+        logger.exception("Transport Admin operations queue failed to load")
+        abort(500)
 
 
 # -----------------------------

@@ -46,6 +46,7 @@ class IDGuard:
         ('LedgerReversalReference', 'original_entry_id'): 'ledger_entries.id',
         ('LedgerReversalReference', 'reversal_entry_id'): 'ledger_entries.id',
         ('LedgerReversalReference', 'original_transaction_id'): 'transactions.id',
+        ('BookingPayment', 'wallet_invoice_id'): 'wallet_marketplace_invoices.id',
     }
 
     # Foreign keys that should be checked even if they don't end with '_id'

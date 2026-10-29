@@ -113,6 +113,7 @@ class AssignmentService:
         *,
         actor=None,
         force: bool = False,
+        commit: bool = True,
     ) -> Dict[str, Any]:
         """Atomically claim a CONFIRMED, unassigned booking for one
         (driver, vehicle) pair.
@@ -280,33 +281,42 @@ class AssignmentService:
             db_session=db.session,
         )
 
-        db.session.commit()
-        db.session.expire_all()
+        if commit:
+            db.session.commit()
+            db.session.expire_all()
 
-        _invalidate_booking_read_cache(booking_id)
+            _invalidate_booking_read_cache(booking_id)
 
-        if passenger_user_id:
-            AssignmentService._notify_assigned(passenger_user_id, booking_id, booking_ref)
+            if passenger_user_id:
+                AssignmentService._notify_assigned(passenger_user_id, booking_id, booking_ref)
 
-        # Offer-scoped cleanup: the winning driver's per-driver offer is
-        # consumed by a claim. Remove just that transient hash (the 
-        # offer-collision fix makes each driver's offer independent, so
-        # losers keep theirs until they decline/expire). Best-effort —
-        # never fatal, mirrors release() below; an accepted hash simply
-        # TTLs out if Redis is unavailable.
-        try:
-            from app.transport.services.offer_service import OfferService
+            # Offer-scoped cleanup is only safe after the authoritative
+            # assignment transaction commits. When called with commit=False,
+            # the enclosing request-conversion transaction owns cleanup.
+            try:
+                from app.transport.services.offer_service import OfferService
 
-            OfferService.cleanup_offer(booking_ref, driver_id)
-        except Exception:
-            current_app.logger.warning(
-                "offer cleanup after claim failed (non-fatal) for booking %s",
-                booking_ref,
-                exc_info=True,
+                OfferService.cleanup_offer(booking_ref, driver_id)
+            except Exception:
+                current_app.logger.warning(
+                    "offer cleanup after claim failed (non-fatal) for booking %s",
+                    booking_ref,
+                    exc_info=True,
+                )
+            logger.info(
+                "Dispatch claim committed for booking %s (driver=%s, vehicle=%s)",
+                booking_ref, driver_id, vehicle_id,
             )
-
-        logger.info("Dispatch claim committed for booking %s (driver=%s, vehicle=%s)",
-                    booking_ref, driver_id, vehicle_id)
+        else:
+            # Caller owns the surrounding transaction (the request-first
+            # conversion path uses this to commit Booking + assignment +
+            # RideRequest/SearchCycle updates atomically).
+            db.session.flush()
+            logger.info(
+                "Dispatch claim staged in caller transaction for booking %s "
+                "(driver=%s, vehicle=%s)",
+                booking_ref, driver_id, vehicle_id,
+            )
 
         return {
             "booking_id": booking_id,

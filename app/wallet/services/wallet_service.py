@@ -1023,7 +1023,6 @@ class WalletService:
             raise ValueError("Amount must be greater than zero")
 
         self._validate_currency(currency)
-        self._check_transaction_limit(amount, "transfer")
 
         # End any dangling read-only transaction from caller-side queries so we can
         # open our own atomic transaction (see deposit() for rationale).
@@ -1081,6 +1080,83 @@ class WalletService:
             if not system_initiated and from_account.user_id != current_user.id and not self._is_admin():
                 current_app.logger.warning(f"Ownership violation attempt on account {from_account.id} by user {current_user.id}")
                 raise PermissionError("You do not have permission to operate on this account")
+
+            def _transfer_terms_match(candidate_tx):
+                """Reject idempotency-key reuse for different financial terms."""
+                candidate_type = str(
+                    getattr(candidate_tx.tx_type, "value", candidate_tx.tx_type)
+                ).lower()
+                candidate_amount = self._quantize(Decimal(str(candidate_tx.amount)))
+                candidate_currency = str(candidate_tx.currency or "").upper()
+                expected_currency = str(currency or "").upper()
+                if not (
+                    candidate_type == TransactionType.TRANSFER.value
+                    and candidate_amount == self._quantize(Decimal(str(amount)))
+                    and candidate_currency == expected_currency
+                    and candidate_tx.user_id == from_account.user_id
+                    and candidate_tx.recipient_user_id == to_account.user_id
+                ):
+                    return False
+
+                # Marketplace financial identity cannot be reused for another
+                # invoice/escrow. request_id is excluded: it identifies an HTTP
+                # attempt, not the underlying money movement.
+                expected_metadata = metadata if isinstance(metadata, dict) else {}
+                candidate_metadata = (
+                    candidate_tx.tx_metadata
+                    if isinstance(candidate_tx.tx_metadata, dict) else {}
+                )
+                for key in (
+                    "marketplace_invoice_id",
+                    "service_code",
+                    "service_reference",
+                    "settlement_timing",
+                    "escrow_account_id",
+                    "escrow_service_type",
+                ):
+                    if key in expected_metadata or key in candidate_metadata:
+                        if expected_metadata.get(key) != candidate_metadata.get(key):
+                            return False
+                return True
+
+            # Idempotent replay must be resolved before balance and volume limits.
+            # A prior transfer may have committed before the calling business
+            # workflow crashed. After both account locks and sender-authority
+            # checks, return that exact transaction rather than attempting
+            # another debit or reapplying current balance/volume limits.
+            existing_tx = self.tx_repo.get_by_client_request_id(client_request_id)
+            if existing_tx is not None:
+                if not _transfer_terms_match(existing_tx):
+                    raise DuplicateTransactionError(
+                        client_request_id, str(existing_tx.id)
+                    )
+                existing_status = str(
+                    getattr(existing_tx.status, "value", existing_tx.status)
+                ).lower()
+                if existing_status != TransactionStatus.COMPLETED.value:
+                    # Do not post ledger entries against an idempotency key already
+                    # owned by a pending/failed/cancelled transaction.
+                    raise DuplicateTransactionError(
+                        client_request_id, str(existing_tx.id)
+                    )
+
+                from_balance = self.ledger_repo.get_balance(
+                    from_account.id, str(from_account.currency).upper()
+                )
+                to_balance = self.ledger_repo.get_balance(
+                    to_account.id, str(to_account.currency).upper()
+                )
+                return {
+                    "status": "success",
+                    "transaction_id": str(existing_tx.id),
+                    "already_processed": True,
+                    "amount": str(existing_tx.amount),
+                    "currency": str(existing_tx.currency),
+                    "new_balance_from": str(from_balance),
+                    "new_balance_to": str(to_balance),
+                }
+
+            self._check_transaction_limit(amount, "transfer")
 
             # 2. Freeze check (both accounts)
             if from_account.is_frozen:
@@ -1163,7 +1239,13 @@ class WalletService:
                 metadata=metadata
             )
 
-            if tx.status == TransactionStatus.COMPLETED:
+            if str(getattr(tx.status, "value", tx.status)).lower() == TransactionStatus.COMPLETED.value:
+                # A transfer could win a concurrent idempotency-key race after
+                # our earlier lookup. Validate its immutable terms before
+                # returning success, otherwise a reused key could appear to
+                # settle a different payer, recipient or marketplace invoice.
+                if not _transfer_terms_match(tx):
+                    raise DuplicateTransactionError(client_request_id, str(tx.id))
                 from_balance = self.ledger_repo.get_balance(from_account.id, debit_currency)
                 to_balance = self.ledger_repo.get_balance(to_account.id, credit_currency)
                 return {

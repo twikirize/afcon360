@@ -1,11 +1,11 @@
 # app/transport/api/ride_options_routes.py
-"""Ride options — live available vehicles by class, priced by the
-canonical fare engine (hailing node).
+"""Pre-confirmation fare quotes by vehicle class.
 
-Availability comes from ``availability_service`` (the single source of
-truth for "available right now"). Pricing comes from FareService.
-Distance comes from GEO's straight-line planner. Nothing in this module
-invents availability, price, or distance.
+This endpoint must not query live driver/vehicle supply or initiate matching.
+It returns short-lived signed fare quotes from the canonical fare engine;
+the rider must confirm the exact quote and payment method before a request
+is persisted and driver matching begins. Distance uses the GEO straight-line
+planner; no road-distance claim is made.
 """
 import logging
 
@@ -16,10 +16,9 @@ from flask_restful import Resource
 from app.extensions import limiter
 from app.transport.models import Currency, VehicleClass
 from app.transport.services import fare_service
-from app.transport.services.availability_service import (
-    available_by_class,
-    nearest_eta_minutes_for_class,
-)
+from datetime import datetime
+
+from app.transport.services.fare_quote_service import issue_fare_quote, money_amount
 
 logger = logging.getLogger(__name__)
 
@@ -110,71 +109,87 @@ class RideOptionsResource(Resource):
                     return {"success": False, "error": f"Invalid latitude: {name}"}, 400
                 return {"success": False, "error": f"Invalid longitude: {name}"}, 400
 
-        # Distance must be derived from supplied coordinates (no planning default)
-        sl = _straight_line_km(data)
-        if sl is None:
+        # Fare discovery is quote-only: do not query online drivers, vehicles,
+        # availability, or ETA before the rider accepts an exact quote.
+        # Every supported class can be priced even when no driver is online.
+        distance_km = _straight_line_km(data)
+        if distance_km is None:
             return {"success": False, "error": "Invalid coordinates for distance calculation"}, 400
-        distance_km = sl
         distance_basis = "straight_line_planner"
+        quote_at = datetime.now().replace(microsecond=0)
+        pickup = {"latitude": float(pickup_lat), "longitude": float(pickup_lng)}
+        dropoff = {"latitude": float(dropoff_lat), "longitude": float(dropoff_lng)}
 
-        pickup = _point(data, "pickup")
-
-        # Real availability — from the availability service, not a raw
-        # Vehicle query.
-        rows = available_by_class()
-
+        # The fare engine currently denominates transport quotes in its own
+        # currency. Never label a USD amount as UGX/KES/TZS or imply FX.
         options = []
-        for row in rows:
-            vc_raw = row["vehicle_class"]
-            vc = vc_raw if isinstance(vc_raw, VehicleClass) else VehicleClass(vc_raw)
-
+        active_tables, _, _ = fare_service.resolve_tables(at=quote_at)
+        explicitly_priced_classes = set(
+            (active_tables.get("class_multipliers") or {}).keys()
+        )
+        for vc in VehicleClass:
+            vc_value = str(getattr(vc, "value", vc)).lower()
+            # Do not publish a quote for a vehicle class that has no
+            # explicit price multiplier. The fare engine's fallback to the
+            # default class is useful for legacy inputs, but would mislead a
+            # rider comparing vehicle classes.
+            if vc_value not in explicitly_priced_classes:
+                continue
             try:
                 estimate = fare_service.calculate_estimate(
                     service_type=service_type,
-                    vehicle_class=vc.value,
+                    vehicle_class=vc_value,
                     distance_km=distance_km,
+                    at=quote_at,
+                )
+                quote_currency = str(estimate.get("currency") or "USD").upper()
+                if quote_currency != currency:
+                    return {
+                        "success": False,
+                        "error": ("Transport fares are currently quoted in %s. "
+                                  "No automatic currency conversion is applied." % quote_currency),
+                    }, 400
+                fare_total = float(money_amount(estimate["total"]))
+                quote_token = issue_fare_quote(
+                    service_type=service_type,
+                    vehicle_class=vc_value,
+                    currency=quote_currency,
+                    amount=fare_total,
+                    fare_version=estimate.get("version"),
+                    pickup=pickup,
+                    dropoff=dropoff,
+                    distance_km=distance_km,
+                    quoted_at=quote_at,
                 )
             except Exception as exc:
-                logger.warning("Ride-option fare failed for %s: %s", vc, exc)
+                logger.warning("Ride-option fare failed for %s: %s", vc_value, exc)
                 continue
 
-            eta_minutes = nearest_eta_minutes_for_class(vc.value, pickup)
-
             options.append({
-                "vehicle_class":   vc.value,
-                "display_name":    _DISPLAY_NAMES.get(vc, vc.value.title()),
-                "available_count": row["available_count"],
-                "capacity":        row["capacity"],
-                "luggage":         row["luggage"],
-                "fare_total":      float(estimate["total"]),
-                "fare_breakdown":  estimate["breakdown"],
-                "fare_version":    estimate["version"],
-                "currency":        currency,
-                "eta_minutes":     eta_minutes,
-                "eta_basis":       ("straight_line_planner"
-                                    if eta_minutes is not None else None),
+                "vehicle_class": vc_value,
+                "display_name": _DISPLAY_NAMES.get(vc, vc_value.title()),
+                "fare_total": fare_total,
+                "fare_breakdown": estimate["breakdown"],
+                "fare_version": estimate["version"],
+                "currency": quote_currency,
+                "quote_token": quote_token,
             })
 
         options.sort(key=lambda o: o["fare_total"])
-
-        # Truthful distance reporting when the planning default priced
-        # the options.
-        if distance_km is None and options:
-            distance_km = options[0]["fare_breakdown"].get("distance_km")
 
         return {
             "success": True,
             "data": {
                 "service_type":   service_type,
-                "currency":       currency,
+                "currency":       (options[0]["currency"] if options else currency),
                 "distance_km":    float(distance_km) if distance_km is not None else None,
                 "distance_basis": distance_basis,
                 "options":        options,
                 "note": (
-                    "Availability is live (online drivers with a current "
-                    "vehicle, not engaged elsewhere). Fares come from the "
-                    "canonical fare engine. ETA is a straight-line "
-                    "planning estimate, not road routing."
+                    "Fare estimate only. This endpoint does not query driver "
+                    "or vehicle availability and does not contact drivers. "
+                    "Matching starts only after the rider confirms the quoted "
+                    "amount and selects an available payment method."
                 ),
             },
         }, 200

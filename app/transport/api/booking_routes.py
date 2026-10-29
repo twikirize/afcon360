@@ -23,6 +23,7 @@ from app.transport.services.location_snapshot import build_canonical_location_sn
 from app.transport.utils.helpers import paginate, filter_query, sort_query
 from app.utils.exceptions import ValidationError
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from sqlalchemy import func, or_
 import logging
 
@@ -579,46 +580,234 @@ class BookingPaymentResource(Resource):
 
     @admin_required
     def post(self, booking_id):
-        """Record a new payment against a booking"""
-        booking = _booking_or_404(booking_id)
-        data = request.get_json()
+        """Create a missing pending payment record; never assert that money arrived.
+
+        Captures must come from verified settlement paths: the internal Wallet
+        ledger or the explicit post-trip driver cash receipt. This admin endpoint
+        is for reconciliation/backfill only and cannot set a booking to paid.
+        """
+        booking = Booking.query.filter_by(
+            id=booking_id,
+            is_deleted=False,
+        ).with_for_update().first_or_404()
+        data = request.get_json(silent=True)
         if not data:
             return {"success": False, "error": "JSON body required"}, 400
 
         required = ["amount", "currency", "payment_method", "payment_status"]
-        missing = [f for f in required if f not in data]
+        missing = [field for field in required if field not in data]
         if missing:
             return {"success": False, "error": f"Missing fields: {missing}"}, 400
+
+        requested_status = str(data.get("payment_status") or "").strip().lower()
+        if requested_status == PaymentStatus.CAPTURED.value:
+            return {
+                "success": False,
+                "error": (
+                    "Payment cannot be marked captured through admin record creation. "
+                    "Use a verified Wallet settlement or the driver's post-trip cash receipt."
+                ),
+                "code": "verified_settlement_required",
+            }, 409
+        if requested_status != PaymentStatus.PENDING.value:
+            return {
+                "success": False,
+                "error": "This endpoint only creates pending reconciliation records.",
+                "code": "pending_record_only",
+            }, 409
+        if booking.payment_status != PaymentStatus.PENDING:
+            return {
+                "success": False,
+                "error": "Only a booking that is currently pending payment may be reconciled here.",
+                "code": "booking_payment_not_pending",
+            }, 409
+
+        stored_method = str(booking.payment_method or "").strip().lower()
+        supplied_method = str(data.get("payment_method") or "").strip().lower()
+        if not stored_method or supplied_method != stored_method:
+            return {
+                "success": False,
+                "error": "Payment method must match the method selected for the trip.",
+                "code": "payment_method_mismatch",
+            }, 409
+
+        stored_currency = str(getattr(booking.currency, "value", booking.currency) or "").upper()
+        supplied_currency = str(data.get("currency") or "").strip().upper()
+        if not stored_currency or supplied_currency != stored_currency:
+            return {
+                "success": False,
+                "error": "Currency must match the stored fare currency.",
+                "code": "payment_currency_mismatch",
+            }, 409
+
+        expected_amount = booking.final_price if booking.final_price is not None else booking.total_amount
+        try:
+            amount = Decimal(str(data.get("amount")))
+            expected = Decimal(str(expected_amount))
+            if amount <= 0 or amount != expected:
+                raise ValueError("amount mismatch")
+        except (InvalidOperation, TypeError, ValueError):
+            return {
+                "success": False,
+                "error": "Amount must exactly match the stored trip amount.",
+                "code": "payment_amount_mismatch",
+            }, 409
+
+        existing_payment = BookingPayment.query.filter_by(
+            booking_id=booking_id,
+            is_deleted=False,
+        ).first()
+        if existing_payment is not None:
+            return {
+                "success": False,
+                "error": "A payment record already exists for this trip; use reconciliation rather than creating a duplicate.",
+                "code": "payment_record_exists",
+            }, 409
 
         try:
             payment = BookingPayment(
                 booking_id=booking_id,
-                amount=data["amount"],
-                currency=data["currency"],
-                payment_method=data["payment_method"],
-                payment_status=data["payment_status"],
-                payment_gateway=data.get("payment_gateway"),
-                gateway_transaction_id=data.get("gateway_transaction_id"),
+                payment_reference="",
+                amount=amount,
+                currency=booking.currency,
+                payment_method=stored_method,
+                payment_method_details={"source": "admin_pending_reconciliation"},
+                payment_status=PaymentStatus.PENDING,
                 initiated_at=datetime.now(timezone.utc),
             )
             payment.generate_payment_reference()
-
-            # Sync booking payment status
-            if data["payment_status"] == PaymentStatus.CAPTURED.value:
-                booking.payment_status = PaymentStatus.CAPTURED
-                booking.payment_captured_at = datetime.now(timezone.utc)
-            elif data["payment_status"] == PaymentStatus.FAILED.value:
-                booking.payment_status = PaymentStatus.FAILED
-
             db.session.add(payment)
+
+            from app.utils.audit import audit_log
+            audit_log(
+                action="transport_pending_payment_record_created",
+                resource_type="booking",
+                resource_id=booking.id,
+                user_id=current_user.id,
+                details={
+                    "booking_reference": booking.booking_reference,
+                    "payment_reference": payment.payment_reference,
+                    "amount": str(amount),
+                    "currency": stored_currency,
+                    "payment_method": stored_method,
+                    "payment_status": PaymentStatus.PENDING.value,
+                },
+                db_session=db.session,
+            )
             db.session.commit()
-            logger.info(f"Payment recorded for booking {booking_id}: ref={payment.payment_reference}")
+            logger.info(
+                "Pending payment reconciliation record created for trip %s",
+                booking.booking_reference,
+            )
             return {"success": True, "data": payment.to_dict()}, 201
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            logger.error(f"Error recording payment for booking {booking_id}: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}, 500
+            logger.exception(
+                "Error creating pending payment record for booking %s",
+                booking_id,
+            )
+            return {
+                "success": False,
+                "error": "Could not record the pending payment item.",
+            }, 500
+
+
+class RiderWalletSettlementResource(Resource):
+    """POST /api/transport/rides/<booking_reference>/payment/settle-wallet.
+
+    Owner-scoped retry for a completed trip whose chosen Wallet payment remains
+    pending. Amount/currency/method are always derived from the stored Booking;
+    the client submits no financial fields.
+    """
+
+    @login_required
+    def post(self, booking_reference):
+        booking = Booking.query.filter_by(
+            booking_reference=booking_reference,
+            is_deleted=False,
+        ).first()
+        if booking is None or booking.user_id != current_user.id:
+            # 404 for both unknown and another rider's trip.
+            return {"success": False, "error": "Ride not found"}, 404
+
+        if booking.status != BookingStatus.COMPLETED:
+            return {
+                "success": False,
+                "error": "Wallet payment is available only after trip completion",
+                "code": "trip_not_completed",
+            }, 409
+        if str(booking.payment_method or "").strip().lower() != "wallet":
+            return {
+                "success": False,
+                "error": "This trip did not select Wallet payment",
+                "code": "payment_method_mismatch",
+            }, 409
+        if booking.payment_status == PaymentStatus.CAPTURED:
+            return {
+                "success": True,
+                "data": {
+                    "booking_reference": booking.booking_reference,
+                    "payment_status": "captured",
+                    "idempotent_replay": True,
+                },
+            }, 200
+        if booking.payment_status != PaymentStatus.PENDING:
+            return {
+                "success": False,
+                "error": "This payment is not awaiting settlement",
+                "code": "payment_not_pending",
+            }, 409
+
+        amount = booking.final_price if booking.final_price is not None else booking.total_amount
+        currency = str(getattr(booking.currency, "value", booking.currency))
+        try:
+            from app.transport.services.payment_service import PaymentService
+            result = PaymentService.process_payment(
+                booking.id,
+                {
+                    "amount": str(amount),
+                    "currency": currency,
+                    "payment_method": "wallet",
+                },
+                request_id="trip-complete:%s" % booking.booking_reference,
+            )
+        except ValidationError as exc:
+            db.session.rollback()
+            message = str(getattr(exc, "message", exc))
+            if "insufficient" in message.lower():
+                return {
+                    "success": False,
+                    "error": "Your wallet balance is too low. Add funds, then retry payment.",
+                    "code": "insufficient_wallet_balance",
+                }, 409
+            return {
+                "success": False,
+                "error": "Wallet payment could not be completed. Please retry.",
+                "code": "wallet_payment_rejected",
+            }, 409
+        except Exception:
+            db.session.rollback()
+            logger.exception(
+                "Rider wallet settlement retry failed for trip %s",
+                booking_reference,
+            )
+            return {
+                "success": False,
+                "error": "Wallet payment service is temporarily unavailable. Your trip remains completed and unpaid.",
+                "code": "wallet_payment_unavailable",
+            }, 503
+
+        return {
+            "success": True,
+            "data": {
+                "booking_reference": booking.booking_reference,
+                "payment_status": result.get("data", {}).get("payment_status", "pending"),
+                "payment_reference": result.get("data", {}).get("payment_reference"),
+                "amount": result.get("data", {}).get("amount"),
+                "currency": currency,
+            },
+        }, 200
 
 
 # ===========================================================================

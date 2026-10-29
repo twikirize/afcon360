@@ -166,6 +166,20 @@ def dispatch_recovery() -> dict:
     finally:
         db.session.rollback()
 
+    # Durable request-first offers have their own PostgreSQL lifecycle.
+    # Expire unanswered attempts and resume requests that committed before
+    # transient dispatch failure; this recovery path never creates a Booking.
+    try:
+        from app.transport.services.ride_request_dispatch_service import (
+            RideRequestDispatchService,
+        )
+        result["request_first_recovery"] = RideRequestDispatchService.recover_expired(
+            batch=int(os.environ.get("TRANSPORT_REQUEST_RECOVERY_BATCH", "100"))
+        )
+    except Exception:
+        logger.error("Request-first dispatch recovery failed", exc_info=True)
+        result["request_first_recovery"] = {"error": "recovery_failed"}
+
     if rediscovered:
         logger.info(
             f"Transport dispatch recovery rediscovered {rediscovered} booking(s), "

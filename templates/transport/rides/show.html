@@ -344,6 +344,40 @@
         {% set pstatus = booking.payment_status.value if booking.payment_status and booking.payment_status.value is defined else (booking.payment_status if booking.payment_status else 'pending') %}
         <span id="riderPaymentBadge" class="badge {{ 'pay-pill-paid' if pstatus == 'captured' else 'pay-pill-pending' }}" data-payment-status="{{ pstatus }}">{{ pstatus|replace('_',' ')|title }}</span>
       </div>
+      <div class="payment-row">
+        <span>Selected payment method</span>
+        <strong>{{ (booking.payment_method or 'Not selected')|replace('_',' ')|title }}</strong>
+      </div>
+      <div class="payment-row">
+        <span>Payment timing</span>
+        <span>
+          {% if pstatus == 'captured' %}
+            Paid
+          {% elif current_status == 'completed' and (booking.payment_method or '')|lower == 'cash' %}
+            Cash receipt confirmation pending
+          {% elif current_status == 'completed' %}
+            Awaiting payment-provider confirmation
+          {% else %}
+            Due at trip completion
+          {% endif %}
+        </span>
+      </div>
+      {% if current_status == 'completed'
+            and pstatus == 'pending'
+            and (booking.payment_method or '')|lower == 'wallet' %}
+      <div class="payment-row" style="align-items:flex-start;flex-direction:column;gap:8px;">
+        <p id="walletSettlementMessage" role="status" style="margin:0;color:#92400e;">
+          Your trip is complete, but Wallet payment has not been confirmed yet. You can retry after adding funds if your balance was insufficient.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <button type="button" class="btn btn-primary btn-sm" id="retryWalletSettlement"
+                  data-url="{{ url_for('transport_api.rider_wallet_settlement', booking_reference=booking.booking_reference) }}">
+            Retry Wallet Payment
+          </button>
+          <a class="btn btn-secondary btn-sm" href="{{ url_for('wallet.wallet_dashboard') }}">Open Wallet</a>
+        </div>
+      </div>
+      {% endif %}
       {% if booking.payments %}
       {% for p in booking.payments %}
       <div class="payment-row">
@@ -373,8 +407,8 @@
       <div class="card-header"><span class="card-title">Trip Timeline</span></div>
       <div class="card-body">
         <div id="riderTimeline" class="timeline">
-          <div class="tl-step {{ 'done' if booking.created_at }}" data-tl="created"><div class="tl-label">Booking Created</div><div class="tl-time">{{ booking.created_at|datetimeformat|default('—') }}</div></div>
-          <div class="tl-step {{ 'done' if booking.confirmed_at else 'skip' }}" data-tl="confirmed"><div class="tl-label">Request received</div><div class="tl-time">{{ booking.confirmed_at|datetimeformat|default('—') }}</div></div>
+          <div class="tl-step {{ 'done' if booking.request_received_at or booking.created_at }}" data-tl="request_received"><div class="tl-label">Ride Request Received</div><div class="tl-time">{{ (booking.request_received_at or booking.created_at)|datetimeformat|default('—') }}</div></div>
+          <div class="tl-step {{ 'done' if booking.confirmed_at else 'skip' }}" data-tl="confirmed"><div class="tl-label">Driver Accepted</div><div class="tl-time">{{ booking.confirmed_at|datetimeformat|default('—') }}</div></div>
           <div class="tl-step {{ 'done' if booking.driver_assigned_at else 'skip' }}" data-tl="assigned"><div class="tl-label">Driver Assigned</div><div class="tl-time">{{ booking.driver_assigned_at|datetimeformat|default('—') }}</div></div>
           <div class="tl-step {{ 'done' if booking.driver_en_route_at else 'skip' }}" data-tl="en_route"><div class="tl-label">Driver En Route</div><div class="tl-time">{{ booking.driver_en_route_at|datetimeformat|default('—') }}</div></div>
           <div class="tl-step {{ 'done' if booking.driver_arrived_at else 'skip' }}" data-tl="arrived"><div class="tl-label">Driver Arrived</div><div class="tl-time">{{ booking.driver_arrived_at|datetimeformat|default('—') }}</div></div>
@@ -618,6 +652,58 @@
       }
     }
   }
+
+
+// Completed-trip Wallet retry. The server derives fare, currency, owner and
+// payment method from the stored Booking; this request sends no financial data.
+(function () {
+  'use strict';
+  var button = document.getElementById('retryWalletSettlement');
+  var message = document.getElementById('walletSettlementMessage');
+  if (!button || !message) return;
+
+  button.addEventListener('click', async function () {
+    var previous = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Processing…';
+    message.textContent = 'Requesting secure Wallet settlement…';
+    var controller = new AbortController();
+    var timeout = setTimeout(function () { controller.abort(); }, 15000);
+    try {
+      var response = await fetch(button.getAttribute('data-url'), {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': {{ raw_csrf_token|tojson }},
+          'Accept': 'application/json'
+        },
+        body: '{}',
+        signal: controller.signal
+      });
+      var body = await response.json().catch(function () { return {}; });
+      clearTimeout(timeout);
+      if (response.ok && body.success &&
+          body.data && body.data.payment_status === 'captured') {
+        message.textContent = 'Payment received. Your trip remains completed.';
+        button.textContent = 'Payment Received';
+        setTimeout(function () { window.location.reload(); }, 700);
+        return;
+      }
+      message.textContent = (body && body.error) ||
+        'Wallet payment is still pending. Add funds or retry in a moment.';
+      button.disabled = false;
+      button.textContent = previous;
+    } catch (error) {
+      clearTimeout(timeout);
+      message.textContent = error && error.name === 'AbortError'
+        ? 'Payment is taking longer than expected. Check the status and retry.'
+        : 'Wallet service is unavailable. Your trip remains completed and unpaid.';
+      button.disabled = false;
+      button.textContent = previous;
+    }
+  });
+})();
 
   // Expose for onclick handlers
   window.openCancelModal = openCancelModal;

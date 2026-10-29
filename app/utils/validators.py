@@ -400,8 +400,14 @@ class TransportValidators:
             except (InvalidOperation, ValueError):
                 errors.append("Amount must be a valid number")
 
-        # Validate currency
-        valid_currencies = ['USD', 'EUR', 'XAF', 'XOF', 'NGN', 'GHS', 'KES', 'EGP']
+        # Validate currency from AFCON360's canonical currency enum, while
+        # retaining the existing validator's legacy EGP allowance. This keeps
+        # payment validation aligned with transport booking/wallet currency
+        # support (notably UGX) instead of rejecting a valid Ugandan fare.
+        from app.utils.enums import Currency as CanonicalCurrency
+        valid_currencies = sorted(
+            set(CanonicalCurrency.values()) | {'XAF', 'XOF', 'EGP'}
+        )
         if 'currency' in data and data['currency']:
             if data['currency'].upper() not in valid_currencies:
                 errors.append(f"Currency must be one of: {', '.join(valid_currencies)}")

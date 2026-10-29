@@ -88,6 +88,12 @@ class _BookingModel(BaseModel):
     vehicle_class: Optional[str] = None
     preferred_vehicle_class: Optional[str] = None
 
+    # Request-first instant rides must carry the signed quote the rider
+    # reviewed and the exact displayed amount they explicitly accepted.
+    # The service verifies both before creating any request/search state.
+    fare_quote_token: Optional[str] = None
+    confirmed_fare_amount: Optional[str] = None
+
     # Coordinates (optional; both-or-neither enforced in model_validator)
     pickup_latitude: Optional[str] = None
     pickup_longitude: Optional[str] = None

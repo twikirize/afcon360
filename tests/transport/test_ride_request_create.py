@@ -6,6 +6,7 @@ test imports); shared fixtures (app/client/db_session) untouched.
 """
 import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
 
@@ -19,7 +20,8 @@ PICKUP = {"latitude": 0.3136, "longitude": 32.5811, "address": "Kampala Centre"}
 DROPOFF = {"latitude": 0.3476, "longitude": 32.5825, "address": "Stadium Gate"}
 
 
-def _payload(**overrides):
+def _payload(app, **overrides):
+    """A real signed server quote for direct service/API contract tests."""
     body = {
         "idempotency_key": "req-%s" % uuid.uuid4().hex,
         "pickup": dict(PICKUP),
@@ -32,6 +34,40 @@ def _payload(**overrides):
         "currency": "USD",
     }
     body.update(overrides)
+    with app.app_context():
+        # Transport now delegates selectable methods to Wallet's canonical
+        # catalogue. Seed its standard config for this isolated test database.
+        from app.wallet.models.payment_method import PaymentMethodConfig
+        PaymentMethodConfig.initialize_defaults()
+        from app.transport.services.booking_service import _measured_distance_km
+        from app.transport.services.fare_service import calculate_estimate
+        from app.transport.services.fare_quote_service import (
+            issue_fare_quote, money_amount,
+        )
+
+        quoted_at = datetime.now().replace(microsecond=0)
+        distance_km = _measured_distance_km(body["pickup"], body["dropoff"])
+        estimate = calculate_estimate(
+            service_type=body["service_type"],
+            vehicle_class=body["vehicle_class"],
+            distance_km=distance_km,
+            at=quoted_at,
+        )
+        currency = str(estimate.get("currency") or "USD").upper()
+        amount = money_amount(estimate["total"])
+        body["currency"] = currency
+        body["confirmed_fare_amount"] = format(amount, ".2f")
+        body["fare_quote_token"] = issue_fare_quote(
+            service_type=body["service_type"],
+            vehicle_class=body["vehicle_class"],
+            currency=currency,
+            amount=amount,
+            fare_version=estimate.get("version"),
+            pickup=body["pickup"],
+            dropoff=body["dropoff"],
+            distance_km=distance_km,
+            quoted_at=quoted_at,
+        )
     return body
 
 
@@ -113,7 +149,7 @@ class TestRequestCreate:
         _promote_to_tier2(app, rider_id)
         _login_as(app, client, rider_id)
 
-        resp = client.post(URL, json=_payload())
+        resp = client.post(URL, json=_payload(app))
         assert resp.status_code == 201, resp.get_data(as_text=True)
         data = resp.get_json()["data"]
         assert data["request_id"] and len(data["request_id"]) >= 16
@@ -122,6 +158,15 @@ class TestRequestCreate:
         assert data["cycle"]["status"] == "searching"
         assert data["cycle"]["deadline"]
         assert data["fare_estimate"]["amount"] > 0
+        from app.wallet.models.marketplace_invoice import MarketplaceInvoice
+        with app.app_context():
+            invoice = MarketplaceInvoice.query.filter_by(
+                service_code="transport",
+                service_reference=data["request_id"],
+            ).one()
+            assert invoice.payer_user_id == rider_id
+            assert invoice.status == "pending"
+            assert invoice.transaction_id is None
         # Safe serialization: opaque id only.
         assert set(data) <= {"request_id", "status", "cycle", "service_type",
                              "vehicle_class", "passenger_count", "pickup_time",
@@ -143,7 +188,7 @@ class TestRequestCreate:
         with app.app_context():
             before = Booking.query.count()
         _login_as(app, client, rider_id)
-        body = _payload()
+        body = _payload(app, )
         assert client.post(URL, json=body).status_code == 201
         assert client.post(URL, json=body).status_code == 200  # replay
         with app.app_context():
@@ -155,7 +200,7 @@ class TestRequestCreate:
         _promote_to_tier2(app, rider_id)
         _login_as(app, client, rider_id)
 
-        body = _payload()
+        body = _payload(app, )
         first = client.post(URL, json=body).get_json()
         second = client.post(URL, json=body)
         assert second.status_code == 200, second.get_data(as_text=True)
@@ -173,8 +218,8 @@ class TestRequestCreate:
         _login_as(app, client, rider_id)
 
         key = "req-%s" % uuid.uuid4().hex
-        assert client.post(URL, json=_payload(idempotency_key=key)).status_code == 201
-        conflict = client.post(URL, json=_payload(
+        assert client.post(URL, json=_payload(app, idempotency_key=key)).status_code == 201
+        conflict = client.post(URL, json=_payload(app, 
             idempotency_key=key,
             dropoff={"latitude": 0.4000, "longitude": 32.6500}))
         assert conflict.status_code == 409, conflict.get_data(as_text=True)
@@ -205,7 +250,7 @@ class TestRollbackAfterPartialFlush:
         _login_as(app, client, rider_id)
 
         key = "req-%s" % uuid.uuid4().hex
-        body = _payload(idempotency_key=key)
+        body = _payload(app, idempotency_key=key)
         expected_cycle_key = "%s:1" % key
         seen = {"fired": False, "ride_request_id": None}
 
@@ -252,10 +297,120 @@ class TestRollbackAfterPartialFlush:
         assert not event.contains(SearchCycle, "before_insert", _fail_cycle)
 
 
+    def test_instant_request_ignores_stale_client_pickup_time(self, app, client):
+        rider_id = _seed_rider(app, "instantclock")
+        _promote_to_tier2(app, rider_id)
+        _login_as(app, client, rider_id)
+        body = _payload(app, 
+            booking_mode="instant",
+            pickup_time=(datetime.now(timezone.utc) + timedelta(hours=8)).isoformat(),
+        )
+
+        before = datetime.now(timezone.utc)
+        resp = client.post(URL, json=body)
+        after = datetime.now(timezone.utc)
+        assert resp.status_code == 201, resp.get_data(as_text=True)
+        parsed = datetime.fromisoformat(resp.get_json()["data"]["pickup_time"])
+        assert before - timedelta(seconds=2) <= parsed <= after + timedelta(seconds=2), parsed
+
+    def test_expired_matching_window_closes_without_issuing_an_offer(self, app):
+        from app.transport.models import OfferAttempt, RideRequest, SearchCycle
+        from app.transport.services.ride_request_service import RideRequestService
+        from app.transport.services.ride_request_dispatch_service import (
+            RideRequestDispatchService,
+        )
+
+        rider_id = _seed_rider(app, "expiredwindow")
+        with app.app_context():
+            created = RideRequestService.create_request(
+                rider_id, _payload(app, booking_mode="instant")
+            )
+            reference = created["request"].public_id
+            cycle = SearchCycle.query.filter_by(
+                ride_request_id=created["request"].id, cycle_number=1
+            ).one()
+            cycle.deadline = datetime.now(timezone.utc) - timedelta(seconds=1)
+            db.session.commit()
+
+            outcome = RideRequestDispatchService.start_search(reference)
+            db.session.expire_all()
+            request_row = RideRequest.query.filter_by(public_id=reference).one()
+            cycle = SearchCycle.query.filter_by(
+                ride_request_id=request_row.id, cycle_number=1
+            ).one()
+
+            assert outcome["status"] == "expired"
+            assert request_row.status == "searching"
+            assert cycle.status == "expired"
+            assert cycle.terminal_reason == "no_supply"
+            assert OfferAttempt.query.filter_by(cycle_id=cycle.id).count() == 0
+
+    def test_confirmed_fare_must_match_signed_quote(self, app, client):
+        rider_id = _seed_rider(app, "fareamounttamper")
+        _promote_to_tier2(app, rider_id)
+        _login_as(app, client, rider_id)
+        body = _payload(app)
+        body["confirmed_fare_amount"] = format(
+            Decimal(body["confirmed_fare_amount"]) + Decimal("1.00"), ".2f"
+        )
+
+        response = client.post(URL, json=body)
+        assert response.status_code == 400, response.get_data(as_text=True)
+        assert "fare" in response.get_json()["error"].lower()
+        assert _counts(app, rider_id) == (0, 0, 0)
+
+    def test_tampered_fare_quote_token_is_rejected_without_request(self, app, client):
+        rider_id = _seed_rider(app, "farequotetamper")
+        _promote_to_tier2(app, rider_id)
+        _login_as(app, client, rider_id)
+        body = _payload(app)
+        token = body["fare_quote_token"]
+        body["fare_quote_token"] = ("a" if token[0] != "a" else "b") + token[1:]
+
+        response = client.post(URL, json=body)
+        assert response.status_code == 400, response.get_data(as_text=True)
+        assert _counts(app, rider_id) == (0, 0, 0)
+
+    def test_payment_method_is_required(self, app, client):
+        rider_id = _seed_rider(app, "paymentrequired")
+        _promote_to_tier2(app, rider_id)
+        _login_as(app, client, rider_id)
+        body = _payload(app, )
+        body.pop("payment_method")
+
+        response = client.post(URL, json=body)
+        assert response.status_code == 400, response.get_data(as_text=True)
+        assert _counts(app, rider_id) == (0, 0, 0)
+
+    def test_cancelled_search_closes_cycle_without_booking(self, app, client):
+        from app.transport.models import Booking, RideRequest, SearchCycle
+        from app.transport.services.ride_request_service import RideRequestService
+        from app.transport.services.ride_request_dispatch_service import (
+            RideRequestDispatchService,
+        )
+
+        rider_id = _seed_rider(app, "cancelrequest")
+        with app.app_context():
+            created = RideRequestService.create_request(rider_id, _payload(app, ))
+            reference = created["request"].public_id
+            outcome = RideRequestDispatchService.cancel_request(reference, rider_id)
+            assert outcome["status"] == "cancelled"
+
+            request_row = RideRequest.query.filter_by(public_id=reference).one()
+            cycle = SearchCycle.query.filter_by(
+                ride_request_id=request_row.id, cycle_number=1
+            ).one()
+            assert request_row.status == "cancelled"
+            assert request_row.cancelled_at is not None
+            assert cycle.status == "cancelled"
+            assert cycle.terminal_reason == "rider_cancelled"
+            assert Booking.query.filter_by(booking_reference=reference).one_or_none() is None
+
+
 class TestCommitmentGates:
     def test_anonymous_cannot_create(self, app, client):
         rider_id = _seed_rider(app)
-        resp = client.post(URL, json=_payload())
+        resp = client.post(URL, json=_payload(app, ))
         assert resp.status_code == 401, resp.get_data(as_text=True)
         assert _counts(app, rider_id) == (0, 0, 0)
 
@@ -266,7 +421,7 @@ class TestCommitmentGates:
         with app.app_context():
             assert calculate_kyc_tier(rider_id)["tier"] < 2
         _login_as(app, client, rider_id)
-        resp = client.post(URL, json=_payload(), follow_redirects=False)
+        resp = client.post(URL, json=_payload(app, ), follow_redirects=False)
         assert resp.status_code in (301, 302), resp.get_data(as_text=True)
         assert "kyc" in (resp.headers.get("Location") or "").lower()
         assert _counts(app, rider_id) == (0, 0, 0)
@@ -285,7 +440,7 @@ class TestCanonicalValidation:
         rider_id = _seed_rider(app)
         _promote_to_tier2(app, rider_id)
         _login_as(app, client, rider_id)
-        body = _payload()
+        body = _payload(app, )
         mutate(body)
         resp = client.post(URL, json=body)
         assert resp.status_code == 400, resp.get_data(as_text=True)
@@ -301,8 +456,8 @@ class TestLegacyPathsUnchanged:
         assert resp.status_code == 200, resp.get_data(as_text=True)
         assert resp.get_json()["success"] is True
 
-    def test_canonical_fare_estimate_still_served(self, client):
-        resp = client.post("/api/transport/fare/estimate", json={
+    def test_canonical_fare_estimate_still_served(self, authenticated_client):
+        resp = authenticated_client.post("/api/transport/fare/estimate", json={
             "service_type": "on_demand", "vehicle_class": "comfort",
             "distance_km": 5})
         assert resp.status_code == 200, resp.get_data(as_text=True)

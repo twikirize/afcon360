@@ -27,6 +27,9 @@ import hashlib
 import json
 import logging
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+from flask import current_app
 from decimal import Decimal
 from typing import Any, Dict, Optional
 
@@ -42,6 +45,11 @@ from app.utils.enums import Currency, ServiceType
 from app.transport.services.location_snapshot import (
     SOURCE_METHOD_PAIRS,
     build_canonical_location_snapshot,
+)
+from app.transport.services.fare_quote_service import (
+    load_fare_quote,
+    money_amount,
+    validate_fare_quote,
 )
 from app.utils.exceptions import ServiceUnavailableError, ValidationError
 from app.utils.validators import validate_booking_request
@@ -61,7 +69,8 @@ class IdempotencyConflictError(ValidationError):
 def _trip_hash(service_type: str, vehicle_class: str, passenger_count: int,
                pickup: Dict[str, Any], dropoff: Dict[str, Any],
                payment_method: Optional[str], currency_code: Optional[str],
-               pickup_time_fp: str, requested_currency: Optional[str]) -> str:
+               pickup_time_fp: str, requested_currency: Optional[str],
+               accepted_fare_amount: Decimal, fare_version: str) -> str:
     """Stable fingerprint of the trip requirements a key was first used for.
 
     Coordinates are rounded to 6dp so float-encoding noise does not split
@@ -87,6 +96,8 @@ def _trip_hash(service_type: str, vehicle_class: str, passenger_count: int,
         "currency_code": currency_code,
         "pickup_time": pickup_time_fp,
         "requested_currency": requested_currency,
+        "accepted_fare_amount": format(money_amount(accepted_fare_amount), ".2f"),
+        "fare_version": str(fare_version or ""),
     }
     return hashlib.sha256(
         json.dumps(canonical, sort_keys=True).encode("utf-8")).hexdigest()
@@ -217,6 +228,7 @@ class RideRequestService:
         imports the Booking writer path.
         """
         data = payload or {}
+        request_received_at = datetime.now(timezone.utc)
 
         key = (data.get("idempotency_key") or "").strip() or None
         if not key:
@@ -227,8 +239,11 @@ class RideRequestService:
         validation_view = {
             "pickup_location": data.get("pickup"),
             "dropoff_location": data.get("dropoff"),
-            "pickup_time": data.get("pickup_time")
-            or datetime.now(timezone.utc).isoformat(),
+            "pickup_time": (
+                data.get("pickup_time")
+                if str(data.get("booking_mode") or "instant").strip().lower() == "scheduled"
+                else request_received_at.isoformat()
+            ) or request_received_at.isoformat(),
             "service_type": data.get("service_type"),
             "passenger_count": data.get("passenger_count", 1),
             "vehicle_class": data.get("vehicle_class", "comfort"),
@@ -268,10 +283,25 @@ class RideRequestService:
                 message="Resolved coordinates required for fare calculation",
                 field="pickup",
             )
+        # Only a current, signed quote can cross the commitment boundary.
+        # Reuse the quote's issue time so a change of hour/table version
+        # during the review step cannot silently change the shown amount.
+        fare_quote = load_fare_quote(data.get("fare_quote_token"))
+        try:
+            quoted_at = datetime.fromisoformat(str(fare_quote.get("quoted_at")))
+            if quoted_at.tzinfo is not None:
+                raise ValueError("quoted_at must be the signed local reference time")
+        except (TypeError, ValueError) as exc:
+            raise ValidationError(
+                message="Your fare quote is invalid. Please review the fare again.",
+                field="fare_quote_token",
+            ) from exc
+
         estimate = calculate_estimate(
             service_type=service_key,
             vehicle_class=vehicle_class,
             distance_km=measured_km,
+            at=quoted_at,
         )
 
         # Denomination authority is the fare estimate itself: the stored
@@ -291,49 +321,106 @@ class RideRequestService:
             raise ValidationError(message="Invalid currency code",
                                   field="currency")
 
-        payment_method = str(data.get("payment_method") or "cash").lower()
-        from app.transport.services.payment_methods import get_available_payment_methods
-        offered = {m.get("code") for m in
-                   get_available_payment_methods(owner_user_id)}
+        raw_payment_method = data.get("payment_method")
+        payment_method = (
+            str(raw_payment_method).strip().lower()
+            if raw_payment_method is not None else ""
+        )
+        if not payment_method:
+            raise ValidationError(
+                message="Choose a payment method before requesting the ride",
+                field="payment_method",
+            )
+        from app.transport.services.payment_methods import (
+            get_available_transport_payment_methods,
+        )
+        offered = {
+            str(m.get("code") or "").strip().lower()
+            for m in get_available_transport_payment_methods(
+                owner_user_id,
+                currency_code=currency_code,
+                amount=estimate.get("total"),
+                payment_timing="pay_on_completion",
+            )
+        }
         if payment_method not in offered:
             raise ValidationError(
                 message="payment_method must be one of: %s" % sorted(offered),
                 field="payment_method",
             )
 
-        try:
-            raw_time = data.get("pickup_time")
-            requested_at = (datetime.fromisoformat(str(raw_time))
-                            if raw_time else datetime.now(timezone.utc))
-            # Naivety is captured BEFORE storage localization below: the
-            # fingerprint must never depend on worker-local conversion,
-            # while storage keeps its established interpretation.
-            raw_was_naive = bool(raw_time) and requested_at.tzinfo is None
-            if requested_at.tzinfo is None:
-                requested_at = requested_at.replace(
-                    tzinfo=datetime.now().astimezone().tzinfo)
-        except (ValueError, TypeError) as exc:
-            raise ValidationError(message="pickup_time must be a valid datetime",
-                                  field="pickup_time") from exc
+        accepted_fare_amount = validate_fare_quote(
+            fare_quote,
+            service_type=service_key,
+            vehicle_class=vehicle_class,
+            currency=currency_code,
+            pickup=pickup_snapshot,
+            dropoff=dropoff_snapshot,
+            distance_km=measured_km,
+            fare_version=estimate.get("version"),
+            server_amount=estimate["total"],
+            confirmed_amount=data.get("confirmed_fare_amount"),
+        )
 
-        # Fingerprint time (owner ruling): omitted/empty means immediate
-        # intent (stable marker, never wall-clock); aware explicits are
-        # normalized to UTC; naive explicits hash as a deterministic
-        # naive-local wall-clock marker WITHOUT worker-local conversion
-        # (tzinfo stripped from the already-parsed wall clock, so no
-        # local offset can leak in). Stored requested_pickup_time is
-        # unchanged by this.
-        if not raw_time:
+        booking_mode = str(data.get("booking_mode") or "instant").strip().lower()
+        if booking_mode not in ("instant", "scheduled"):
+            raise ValidationError(
+                message="booking_mode must be 'instant' or 'scheduled'",
+                field="booking_mode",
+            )
+
+        # Instant requests use the server's request-received clock. Never let
+        # a stale/future datetime left in a browser form turn an on-demand
+        # ride into a scheduled trip or fail a future-time constraint.
+        raw_time = data.get("pickup_time") if booking_mode == "scheduled" else None
+        if booking_mode == "scheduled" and not raw_time:
+            raise ValidationError(
+                message="Scheduled pickups require an explicit pickup_time",
+                field="pickup_time",
+            )
+        try:
+            if booking_mode == "instant":
+                requested_at = request_received_at
+                raw_was_naive = False
+            else:
+                requested_at = datetime.fromisoformat(str(raw_time))
+                # Match the legacy booking service contract: naive form values
+                # are interpreted in the configured application zone.
+                if requested_at.tzinfo is None:
+                    raw_was_naive = True
+                    app_tz_name = current_app.config.get("APP_TZ", "Africa/Nairobi")
+                    requested_at = requested_at.replace(tzinfo=ZoneInfo(app_tz_name))
+                else:
+                    raw_was_naive = False
+                minimum_lead = request_received_at + timedelta(minutes=15)
+                if requested_at < minimum_lead:
+                    raise ValidationError(
+                        message=(
+                            "Scheduled pickups must be at least 15 minutes from now. "
+                            "For an immediate ride, choose 'Now'."
+                        ),
+                        field="pickup_time",
+                    )
+        except (ValueError, TypeError) as exc:
+            raise ValidationError(
+                message="pickup_time must be a valid datetime",
+                field="pickup_time",
+            ) from exc
+
+        # Fingerprint the server clock for instant intent (so retries do not
+        # conflict because transport latency changed the timestamp); scheduled
+        # trips fingerprint their explicitly validated requested time.
+        if booking_mode == "instant":
             pickup_time_fp = "immediate"
         elif raw_was_naive:
-            pickup_time_fp = ("naive-local:%s"
-                              % requested_at.replace(tzinfo=None).isoformat())
+            pickup_time_fp = "naive-local:%s" % requested_at.replace(tzinfo=None).isoformat()
         else:
             pickup_time_fp = requested_at.astimezone(timezone.utc).isoformat()
         trip_hash = _trip_hash(service_type.value, vehicle_class,
                                passenger_count, pickup_snapshot,
                                dropoff_snapshot, payment_method, currency_code,
-                               pickup_time_fp, requested_currency)
+                               pickup_time_fp, requested_currency,
+                               accepted_fare_amount, str(estimate.get("version") or ""))
 
         # Deferred model import (see module note): resolves at call time.
         from app.transport.models import RideRequest, SearchCycle
@@ -368,7 +455,7 @@ class RideRequestService:
                 service_type=service_type,
                 vehicle_class=vehicle_class,
                 passenger_count=passenger_count,
-                fare_estimate_amount=Decimal(str(estimate["total"])),
+                fare_estimate_amount=accepted_fare_amount,
                 currency_code=currency_code,
                 payment_method=payment_method,
                 status="searching",
@@ -377,7 +464,7 @@ class RideRequestService:
                     "fare_version": estimate.get("version"),
                     "fare_effective_from": estimate.get("effective_from"),
                     "fare_estimate": {
-                        "amount": float(estimate["total"]),
+                        "amount": float(accepted_fare_amount),
                         "currency": estimate.get("currency"),
                     },
                     "requested_currency": requested_currency,
@@ -385,10 +472,46 @@ class RideRequestService:
                     "distance_basis": "straight_line_planner",
                     "created_via": "ride_request_api",
                     "created_at": now.isoformat(),
+                    "booking_mode": booking_mode,
+                    "payment_timing": "pay_on_completion",
                 },
             )
             db.session.add(ride_request)
             db.session.flush()
+
+            # Create a Wallet-owned invoice before dispatch begins. This is an
+            # obligation only: it does not debit the rider or imply payment.
+            from app.wallet.services.marketplace_invoice_service import (
+                MarketplaceInvoiceError,
+                MarketplaceInvoiceService,
+            )
+            try:
+                wallet_invoice = MarketplaceInvoiceService.create_invoice(
+                    idempotency_key="transport-ride:%s:%s" % (owner_user_id, key),
+                    service_code="transport",
+                    service_reference=ride_request.public_id,
+                    payer_user_id=owner_user_id,
+                    amount=accepted_fare_amount,
+                    currency=currency_code,
+                    payment_method=payment_method,
+                    settlement_timing="pay_on_completion",
+                    metadata={
+                        "ride_request_public_id": ride_request.public_id,
+                        "fare_version": estimate.get("version"),
+                        "trip_hash": trip_hash,
+                    },
+                    commit=False,
+                )
+            except MarketplaceInvoiceError as exc:
+                db.session.rollback()
+                raise ValidationError(message=exc.message, field="payment_method") from exc
+
+            request_meta = dict(ride_request.request_metadata or {})
+            request_meta["wallet_invoice_id"] = str(wallet_invoice.id)
+            request_meta["wallet_invoice_status"] = wallet_invoice.status
+            ride_request.request_metadata = request_meta
+            db.session.flush()
+
             cycle = SearchCycle(
                 ride_request_id=ride_request.id,
                 cycle_number=1,

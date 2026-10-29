@@ -1,0 +1,211 @@
+{% extends "user/base_user_dashboard.html" %}
+{% block title %}Ride request {{ booking_reference }}{% endblock %}
+
+{% block extra_css %}
+<style nonce="{{ csp_nonce }}">
+  .request-wrap{max-width:900px;margin:24px auto;padding:0 16px}
+  .request-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;box-shadow:0 4px 18px rgba(15,23,42,.06);margin-bottom:16px}
+  .request-head{padding:20px 22px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap}
+  .request-title{font-size:1.2rem;font-weight:800;margin:0;color:#0f172a}
+  .request-sub{color:#64748b;font-size:.84rem;margin-top:5px;overflow-wrap:anywhere}
+  .request-status{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:999px;background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;font-size:.78rem;font-weight:800}
+  .request-status.terminal{background:#fef2f2;color:#991b1b;border-color:#fecaca}
+  .request-body{padding:20px 22px}
+  .request-route{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .request-place{padding:14px;border:1px solid #e2e8f0;border-radius:10px;min-width:0}
+  .request-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;font-weight:700;margin-bottom:6px}
+  .request-value{color:#0f172a;font-weight:600;overflow-wrap:anywhere}
+  .request-timeline{display:grid;gap:12px;margin:18px 0}
+  .request-event{display:flex;gap:12px;align-items:flex-start}
+  .request-dot{width:12px;height:12px;flex-shrink:0;border-radius:50%;margin-top:5px;background:#d1d5db}
+  .request-event.done .request-dot{background:#15803d}
+  .request-event.active .request-dot{background:#d97706;box-shadow:0 0 0 5px #ffedd5}
+  .request-event strong{display:block;color:#0f172a;font-size:.9rem}
+  .request-event small{display:block;color:#64748b;margin-top:2px}
+  .request-grid{display:grid;grid-template-columns:1fr 1fr;gap:0}
+  .request-cell{padding:12px 16px;border-top:1px solid #e2e8f0;min-width:0}
+  .request-cell:nth-child(even){border-left:1px solid #e2e8f0}
+  .request-actions{padding:16px 22px;border-top:1px solid #e2e8f0;display:flex;gap:10px;flex-wrap:wrap}
+  .request-button{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 16px;border:0;border-radius:9px;background:#166534;color:#fff;font-weight:700;text-decoration:none;cursor:pointer}
+  .request-note{font-size:.82rem;color:#64748b;line-height:1.5}
+  @media(max-width:600px){.request-route,.request-grid{grid-template-columns:1fr}.request-cell:nth-child(even){border-left:0}}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set pickup = request_model.pickup_location if request_model.pickup_location is mapping else {} %}
+{% set dropoff = request_model.dropoff_location if request_model.dropoff_location is mapping else {} %}
+{% set cycle_state = cycle.status|string|lower %}
+<div class="request-wrap"
+     id="rideRequestTracker"
+     data-status-url="{{ url_for('transport_api.ride_request_detail', request_public_id=booking_reference) }}"
+     data-request-status="{{ request_model.status }}"
+     data-cycle-status="{{ cycle_state }}">
+  <section class="request-card">
+    <header class="request-head">
+      <div>
+        <h1 class="request-title">Your ride request</h1>
+        <div class="request-sub">Tracking reference: <strong>{{ booking_reference }}</strong></div>
+      </div>
+      <span class="request-status{% if cycle_state in ['expired','cancelled'] %} terminal{% endif %}" id="requestStatusBadge" aria-live="polite">
+        <span aria-hidden="true">●</span>
+        <span id="requestStatusText">
+          {% if request_model.status == 'converted' %}Driver found
+          {% elif request_model.status == 'cancelled' %}Request cancelled
+          {% elif cycle_state == 'expired' %}No driver available
+          {% else %}Finding your driver{% endif %}
+        </span>
+      </span>
+    </header>
+
+    <div class="request-body">
+      <p class="request-note" id="requestStatusMessage" aria-live="polite">
+        {% if request_model.status == 'cancelled' %}
+          This request has been cancelled.
+        {% elif cycle_state == 'expired' %}
+          We could not secure a driver in this search. Your reference and search history are saved; you can try again.
+        {% else %}
+          Your request and fare choice are recorded. We are contacting eligible drivers. Your ride is not confirmed until a driver accepts and a vehicle is assigned.
+        {% endif %}
+      </p>
+
+      <div class="request-route">
+        <div class="request-place">
+          <div class="request-label">Pickup</div>
+          <div class="request-value">{{ pickup.get('display_name') or pickup.get('address') or pickup.get('label') or 'Pickup location saved' }}</div>
+        </div>
+        <div class="request-place">
+          <div class="request-label">Destination</div>
+          <div class="request-value">{{ dropoff.get('display_name') or dropoff.get('address') or dropoff.get('label') or 'Destination saved' }}</div>
+        </div>
+      </div>
+
+      <div class="request-timeline" aria-label="Ride request progress">
+        <div class="request-event done">
+          <span class="request-dot"></span>
+          <div><strong>Request received</strong><small>Your locations, vehicle preference and confirmed fare have been saved.</small></div>
+        </div>
+        <div class="request-event{% if cycle_state == 'searching' %} active{% elif cycle_state == 'expired' %} done{% endif %}" id="searchingEvent">
+          <span class="request-dot"></span>
+          <div><strong>Finding a driver</strong><small id="searchingEventText">{% if cycle_state == 'expired' %}This search cycle ended without an accepted offer.{% else %}Drivers are being offered this ride one at a time.{% endif %}</small></div>
+        </div>
+        <div class="request-event" id="assignedEvent">
+          <span class="request-dot"></span>
+          <div><strong>Driver and vehicle confirmed</strong><small>This step is recorded only after a driver accepts and assignment commits.</small></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="request-grid">
+      <div class="request-cell">
+        <div class="request-label">Selected vehicle class</div>
+        <div class="request-value">{{ request_model.vehicle_class|title }}</div>
+      </div>
+      <div class="request-cell">
+        <div class="request-label">Confirmed fare</div>
+        <div class="request-value">{{ request_model.currency_code or '—' }} {{ '%.2f'|format(request_model.fare_estimate_amount or 0) }}</div>
+      </div>
+      <div class="request-cell">
+        <div class="request-label">Payment method selected</div>
+        <div class="request-value">{{ (request_model.payment_method or '—')|replace('_',' ')|title }}</div>
+      </div>
+      <div class="request-cell">
+        <div class="request-label">Payment status</div>
+        <div class="request-value" id="requestPaymentStatus">Not charged yet — due at trip completion</div>
+      </div>
+    </div>
+
+    <div class="request-actions">
+      {% if cycle_state in ['expired','cancelled'] and request_model.status == 'searching' %}
+      <form method="post" action="{{ url_for('transport.rides_retry_matching', booking_reference=booking_reference) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="request-button" type="submit">Try finding a driver again</button>
+      </form>
+      {% endif %}
+      {% if request_model.status == 'searching' %}
+      <form id="cancelRideRequestForm" method="post"
+            action="{{ url_for('transport.rides_cancel_request', booking_reference=booking_reference) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="request-button" type="submit" style="background:#991b1b">Cancel request</button>
+      </form>
+      {% endif %}
+      <a class="request-button" href="{{ url_for('transport.home') }}" style="background:#475569">Back to transport</a>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script nonce="{{ csp_nonce }}">
+(function(){
+  'use strict';
+  var root = document.getElementById('rideRequestTracker');
+  if (!root) return;
+  var url = root.getAttribute('data-status-url');
+  var statusText = document.getElementById('requestStatusText');
+  var statusMessage = document.getElementById('requestStatusMessage');
+  var badge = document.getElementById('requestStatusBadge');
+  var searchingEvent = document.getElementById('searchingEvent');
+  var searchingEventText = document.getElementById('searchingEventText');
+  var assignedEvent = document.getElementById('assignedEvent');
+  var paymentStatus = document.getElementById('requestPaymentStatus');
+  var cancelForm = document.getElementById('cancelRideRequestForm');
+  var stopped = false;
+
+  if (cancelForm) {
+    cancelForm.addEventListener('submit', function(event){
+      if (!window.confirm(
+        'Cancel this ride request? If a driver has already accepted, use the trip cancellation flow instead.'
+      )) event.preventDefault();
+    });
+  }
+
+  function apply(data){
+    if (!data) return;
+    if (data.converted || data.status === 'converted') {
+      stopped = true;
+      if (statusText) statusText.textContent = 'Driver found';
+      if (statusMessage) statusMessage.textContent = 'A driver accepted and the vehicle assignment is complete. Loading your driver and vehicle details…';
+      if (searchingEvent) searchingEvent.classList.add('done');
+      if (assignedEvent) assignedEvent.classList.add('done','active');
+      if (paymentStatus) paymentStatus.textContent = 'Unpaid / pending — payment is due at trip completion';
+      window.setTimeout(function(){ window.location.reload(); }, 700);
+      return;
+    }
+    var cycle = data.cycle || {};
+    if (data.status === 'cancelled') {
+      stopped = true;
+      if (statusText) statusText.textContent = 'Request cancelled';
+      if (badge) badge.classList.add('terminal');
+      if (statusMessage) statusMessage.textContent = 'This ride request has been cancelled. No driver or vehicle was assigned.';
+      if (searchingEvent) searchingEvent.classList.remove('active');
+      if (searchingEventText) searchingEventText.textContent = 'The rider cancelled this request.';
+    } else if (cycle.status === 'expired' || cycle.status === 'cancelled') {
+      stopped = true;
+      if (statusText) statusText.textContent = cycle.status === 'cancelled' ? 'Search cancelled' : 'No driver available';
+      if (badge) badge.classList.add('terminal');
+      if (statusMessage) statusMessage.textContent = cycle.status === 'cancelled'
+        ? 'This search cycle was cancelled.'
+        : 'We could not secure a driver in this search. Your reference and search history remain available; you can try again.';
+      if (searchingEvent) searchingEvent.classList.remove('active');
+      if (searchingEventText) searchingEventText.textContent = 'This search cycle ended without an accepted offer.';
+    } else {
+      if (statusText) statusText.textContent = 'Finding your driver';
+      if (badge) badge.classList.remove('terminal');
+      if (statusMessage) statusMessage.textContent = 'Your request is saved. We are contacting eligible drivers. Your ride is not confirmed until a driver accepts and a vehicle is assigned.';
+      if (searchingEvent) searchingEvent.classList.add('active');
+    }
+  }
+  function poll(){
+    if (stopped || document.hidden) return;
+    fetch(url, {credentials:'same-origin',headers:{'Accept':'application/json'}})
+      .then(function(r){ if(!r.ok) throw new Error('Request status unavailable'); return r.json(); })
+      .then(function(body){ if(body && body.success && body.data) apply(body.data); })
+      .catch(function(){ /* next poll retries; never fabricate an accepted state */ });
+  }
+  poll();
+  window.setInterval(poll, 4000);
+})();
+</script>
+{% endblock %}

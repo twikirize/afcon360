@@ -12,7 +12,7 @@ from flask_restful import Resource
 from app.extensions import db
 from app.transport.models import (
     Booking, DriverProfile, Vehicle, TransportIncident,
-    Rating, BookingPayment, ScheduledRoute,
+    Rating, BookingPayment, ScheduledRoute, RideRequest, SearchCycle,
     BookingStatus, PaymentStatus, ComplianceStatus,
     VerificationTier, IncidentSeverity
 )
@@ -72,6 +72,36 @@ class DashboardOverviewResource(Resource):
 
         active_routes = ScheduledRoute.query.filter_by(
             is_deleted=False, is_active=True, is_cancelled=False
+        ).count()
+
+        # Request-first operational metrics: live searches are distinct parent
+        # requests, while exhausted cycles are measured separately so an older
+        # failed cycle doesn't make a later successful retry look active.
+        active_ride_requests = (
+            db.session.query(func.count(func.distinct(SearchCycle.ride_request_id)))
+            .join(RideRequest, RideRequest.id == SearchCycle.ride_request_id)
+            .filter(
+                RideRequest.is_deleted == False,
+                RideRequest.status == "searching",
+                SearchCycle.is_deleted == False,
+                SearchCycle.status == "searching",
+            )
+            .scalar() or 0
+        )
+        unsuccessful_searches_24h = SearchCycle.query.filter(
+            SearchCycle.is_deleted == False,
+            SearchCycle.status == "expired",
+            SearchCycle.terminal_reason.in_(["no_supply", "all_rejected"]),
+            SearchCycle.completed_at >= now - timedelta(hours=24),
+        ).count()
+        completed_unpaid_trips = Booking.query.filter(
+            Booking.is_deleted == False,
+            Booking.status == BookingStatus.COMPLETED,
+            Booking.payment_status == PaymentStatus.PENDING,
+        ).count()
+        pending_payment_records = BookingPayment.query.filter(
+            BookingPayment.is_deleted == False,
+            BookingPayment.payment_status == PaymentStatus.PENDING,
         ).count()
 
         # ---------------------------------------------------------------
@@ -264,6 +294,8 @@ class DashboardOverviewResource(Resource):
                     "live_bookings": live_bookings,
                     "available_vehicles": available_vehicles,
                     "active_routes": active_routes,
+                    "active_ride_requests": active_ride_requests,
+                    "pending_payment_records": pending_payment_records,
                 },
 
                 # Items needing action
@@ -275,9 +307,12 @@ class DashboardOverviewResource(Resource):
                     "critical_incidents": critical_incidents,
                     "disputed_bookings": disputed_bookings,
                     "unreconciled_payments": unreconciled_payments,
+                    "completed_unpaid_trips": completed_unpaid_trips,
+                    "unsuccessful_searches_24h": unsuccessful_searches_24h,
                     "total": (
                         pending_driver_approvals + pending_vehicle_approvals +
-                        unassigned_bookings + critical_incidents + disputed_bookings
+                        unassigned_bookings + critical_incidents +
+                        disputed_bookings + completed_unpaid_trips
                     ),
                 },
 

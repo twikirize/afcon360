@@ -1,82 +1,52 @@
 """
-Payment methods a rider can actually choose today.
+Transport's read-only adapter to the Wallet marketplace payment catalogue.
 
-Source of truth, in priority order:
-
-  1. TransportSetting configuration (country-aware, admin-managed)
-  2. Fallback to hardcoded defaults
-
-Cash is always available as the default fallback.
-Digital methods are configured by super admin/owner and filtered by user's country.
+Transport does not own a payment-method catalogue or capability allowlist.
+Methods are offered only when Wallet configuration and Wallet's implemented
+marketplace collection path both support the quote currency and timing.
 """
 from __future__ import annotations
 
-import logging
 from typing import Any, Dict, List, Optional
 
-logger = logging.getLogger(__name__)
+
+def get_available_transport_payment_methods(
+    user_id: Optional[int] = None,
+    currency_code: Optional[str] = None,
+    amount: Optional[Any] = None,
+    payment_timing: str = "pay_on_completion",
+    service_country_code: Optional[str] = None,
+    payer_country_code: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Delegate method eligibility to Wallet; never invent a fallback method."""
+    if not currency_code:
+        # Pre-quote pages use the fare engine's server-side display denomination.
+        # The signed fare quote and Wallet invoice still bind the actual amount
+        # and currency before dispatch; the browser does not choose the currency.
+        try:
+            from app.transport.services.fare_service import CURRENCY_DEFAULT
+            currency_code = str(CURRENCY_DEFAULT).strip().upper()
+        except Exception:
+            return []
+    from app.wallet.services.marketplace_invoice_service import MarketplaceInvoiceService
+
+    return MarketplaceInvoiceService.list_available_methods(
+        payer_user_id=user_id,
+        currency=currency_code,
+        amount=amount,
+        settlement_timing=payment_timing,
+        service_country_code=service_country_code,
+        payer_country_code=payer_country_code,
+    )
 
 
-def get_available_payment_methods(user_id: Optional[int] = None) -> List[Dict[str, Any]]:
-    """Return the payment methods the rider may choose from.
-
-    Each entry: {"code": str, "label": str, "default": bool, "category": str, "gateway": str}.
-
-    Filters by user's country and wallet status.
-    """
-    try:
-        from app.transport.services.payment_config import (
-            get_payment_config_service,
-            get_user_country,
-            get_user_wallet_status,
-        )
-
-        config_service = get_payment_config_service()
-
-        country = None
-        user_has_wallet = False
-
-        if user_id is not None:
-            country = get_user_country(user_id)
-            user_has_wallet = get_user_wallet_status(user_id)
-
-        methods = config_service.get_methods_for_country(
-            country_code=country,
-            user_has_wallet=user_has_wallet,
-        )
-
-        # Convert to expected format
-        result = []
-        for m in methods:
-            result.append({
-                "code": m.code,
-                "label": m.label,
-                "default": m.default,
-                "category": m.category,
-                "gateway": m.gateway,
-                "description": m.description,
-                "metadata": m.metadata,
-            })
-
-        # Ensure cash is always present as fallback
-        if not any(m["code"] == "cash" for m in result):
-            result.insert(0, {
-                "code": "cash",
-                "label": "Cash",
-                "default": True,
-                "category": "offline",
-                "gateway": None,
-                "description": "Pay driver directly in cash",
-                "metadata": {"sort_order": 0}
-            })
-
-        return result
-
-    except Exception as exc:
-        logger.debug("Payment config service unavailable, using fallback: %s", exc)
-
-    # Fallback: what PaymentService.process_payment() actually executes
-    return [
-        {"code": "cash", "label": "Cash", "default": True, "category": "offline", "gateway": None},
-        {"code": "wallet", "label": "Wallet", "default": False, "category": "digital", "gateway": "internal"},
-    ]
+def get_available_payment_methods(
+    user_id: Optional[int] = None,
+    wallet_currency_code: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Compatibility wrapper; Wallet remains the only source of truth."""
+    return get_available_transport_payment_methods(
+        user_id,
+        currency_code=wallet_currency_code,
+        payment_timing="pay_on_completion",
+    )

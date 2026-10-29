@@ -3,12 +3,13 @@ from flask import request, jsonify
 from flask_restful import Resource
 from flask_login import current_user, login_required
 from app.extensions import db
-from app.transport.models import DriverProfile, DriverVehicleHistory, Booking
+from app.transport.models import DriverProfile, DriverVehicleHistory, Booking, BookingPayment
 from app.utils.enums import BookingStatus, PaymentStatus
 from app.auth.decorators import admin_required
 from app.transport.decorator import transport_admin_required
 from app.transport.utils.helpers import paginate, filter_query, sort_query
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from sqlalchemy import or_, func
 import sqlalchemy as sa
 import logging
@@ -428,11 +429,30 @@ class DriverOfferListResource(Resource):
     @login_required
     def get(self):
         from app.transport.services.offer_service import OfferService
+        from app.transport.services.ride_request_dispatch_service import (
+            RideRequestDispatchService,
+        )
 
         profile, error, status = _current_driver_profile()
         if error:
             return error, status
-        offers = OfferService.list_driver_offers(profile.id)
+        # Preserve legacy offers while adding durable request-first offers.
+        # Both shapes expose the same safe driver card contract.
+        try:
+            offers = OfferService.list_driver_offers(profile.id) or []
+        except Exception:
+            logger.warning(
+                "Could not load legacy driver offers; continuing with durable offers",
+                exc_info=True,
+            )
+            offers = []
+        try:
+            request_offers = RideRequestDispatchService.list_driver_offers(profile.id)
+        except Exception:
+            logger.warning("Could not load request-first driver offers", exc_info=True)
+            request_offers = []
+        known = {o.get("booking_reference") for o in offers}
+        offers.extend(o for o in request_offers if o.get("booking_reference") not in known)
         return {"success": True, "data": {"offers": offers}}
 
 
@@ -453,6 +473,67 @@ class DriverOfferAcceptResource(Resource):
         profile, error, status = _current_driver_profile()
         if error:
             return error, status
+
+        # Request-first offers select a concrete eligible vehicle at offer
+        # creation time. Accept the exact server-recorded offer, not merely
+        # DriverProfile.current_vehicle (which can be unset or differ from the
+        # vehicle offered). The driver cannot substitute an arbitrary vehicle.
+        from app.transport.models import RideRequest, OfferAttempt, SearchCycle
+        request_first = RideRequest.query.filter_by(
+            public_id=booking_reference, is_deleted=False
+        ).first()
+        if request_first is not None:
+            if request_first.status == "converted":
+                return {
+                    "success": False,
+                    "error": "This ride has already been assigned to another driver",
+                    "code": "already_accepted",
+                }, 409
+            from app.transport.services.ride_request_dispatch_service import (
+                RideRequestDispatchService, RideRequestDispatchError,
+            )
+            active_offer = (
+                OfferAttempt.query
+                .join(SearchCycle, OfferAttempt.cycle_id == SearchCycle.id)
+                .filter(
+                    SearchCycle.ride_request_id == request_first.id,
+                    SearchCycle.status == "searching",
+                    OfferAttempt.driver_id == profile.id,
+                    OfferAttempt.status == "offered",
+                    OfferAttempt.response_deadline > datetime.now(timezone.utc),
+                )
+                .first()
+            )
+            if active_offer is None:
+                return {
+                    "success": False,
+                    "error": "This driver has no active offer for the ride",
+                    "code": "offer_unavailable",
+                }, 409
+            try:
+                result = RideRequestDispatchService.accept_offer(
+                    booking_reference, profile.id, active_offer.vehicle_id,
+                    actor=current_user
+                )
+            except RideRequestDispatchError as e:
+                return {"success": False, "error": e.message, "code": e.code}, 409
+            except Exception:
+                db.session.rollback()
+                logger.exception("Request-first driver acceptance failed for %s", booking_reference)
+                return {
+                    "success": False,
+                    "error": "Could not complete the assignment. The request remains trackable.",
+                    "code": "assignment_unavailable",
+                }, 503
+            return {
+                "success": True,
+                "data": {
+                    "booking_reference": booking_reference,
+                    "status": "assigned",
+                    "offer": "accepted",
+                    "payment_status": "pending",
+                },
+            }
 
         vehicle_id = profile.current_vehicle.id if profile.current_vehicle else None
         if not vehicle_id:
@@ -497,10 +578,37 @@ class DriverOfferDeclineResource(Resource):
     @login_required
     def post(self, booking_reference):
         from app.transport.services.offer_service import OfferService
+        from app.transport.models import RideRequest
 
         profile, error, status = _current_driver_profile()
         if error:
             return error, status
+        request_first = RideRequest.query.filter_by(
+            public_id=booking_reference, is_deleted=False
+        ).first()
+        if request_first is not None:
+            if request_first.status == "converted":
+                return {
+                    "success": False,
+                    "error": "This ride has already been assigned",
+                    "code": "already_accepted",
+                }, 409
+            from app.transport.services.ride_request_dispatch_service import (
+                RideRequestDispatchService,
+            )
+            declined = RideRequestDispatchService.decline_offer(
+                booking_reference, profile.id
+            )
+            if not declined:
+                return {
+                    "success": False,
+                    "error": "This offer is no longer active",
+                    "code": "offer_unavailable",
+                }, 409
+            return {
+                "success": True,
+                "data": {"booking_reference": booking_reference, "declined": True},
+            }
         declined = OfferService.decline_offer(booking_reference, profile.id)
         return {
             "success": True,
@@ -637,8 +745,17 @@ def _execute_driver_trip_action(booking, profile, action, actor):
         
         if target == BookingStatus.COMPLETED:
             booking.completed_at = now
+            # Preserve who completed the trip before the canonical release
+            # clears the live assignment FKs. This is used only to authorize
+            # explicit cash-receipt confirmation after drop-off.
+            completion_meta = dict(booking.booking_metadata or {})
+            completion_meta["completed_by_driver_profile_id"] = int(profile.id)
+            completion_meta["completed_by_driver_code"] = profile.driver_code
+            completion_meta["completed_by_user_id"] = int(profile.user_id)
+            booking.booking_metadata = completion_meta
             if actual_col:
                 setattr(booking, actual_col, now)
+            db.session.flush()
             result = AssignmentService.release(
                 booking_id,
                 BookingStatus.COMPLETED,
@@ -687,6 +804,57 @@ def _execute_driver_trip_action(booking, profile, action, actor):
                 "status": target.value,
                 "action": action,
             }
+
+        if action == "complete":
+            # The trip is complete independently of payment. Notify Wallet
+            # for every currently supported market method: cash becomes due
+            # but stays unpaid until the driver's explicit receipt confirmation;
+            # Wallet balance collection is performed only inside Wallet.
+            refreshed = db.session.get(Booking, booking_id)
+            if refreshed is not None:
+                method = str(refreshed.payment_method or "").strip().lower()
+                if method in ("wallet", "cash"):
+                    try:
+                        from app.transport.services.payment_service import PaymentService
+                        PaymentService.process_payment(
+                            booking_id,
+                            {
+                                "payment_method": method,
+                                # Amount and currency are server-derived; never trust
+                                # a driver/client supplied settlement amount.
+                                "amount": str(
+                                    refreshed.final_price or refreshed.total_amount or 0
+                                ),
+                                "currency": str(getattr(
+                                    refreshed.currency, "value", refreshed.currency
+                                )),
+                            },
+                            request_id="trip-complete:%s" % refreshed.booking_reference,
+                        )
+                    except Exception:
+                        db.session.rollback()
+                        logger.warning(
+                            "Trip %s completed but Wallet settlement/receipt remains pending",
+                            refreshed.booking_reference, exc_info=True,
+                        )
+                db.session.expire_all()
+                refreshed = db.session.get(Booking, booking_id)
+                if refreshed is not None:
+                    result["payment_method"] = refreshed.payment_method
+                    result["payment_status"] = str(
+                        getattr(refreshed.payment_status, "value", refreshed.payment_status)
+                    )
+                    result["payment_due_at_trip_end"] = (
+                        result["payment_status"].lower() != PaymentStatus.CAPTURED.value
+                    )
+                    if method == "cash" and result["payment_due_at_trip_end"]:
+                        result["payment_instruction"] = (
+                            "Confirm cash receipt separately after the rider pays."
+                        )
+                    elif method not in ("cash", "wallet") and result["payment_due_at_trip_end"]:
+                        result["payment_instruction"] = (
+                            "Payment remains pending until the selected payment provider confirms settlement."
+                        )
 
         return {"success": True, "data": result}, 200
     except DispatchClaimError as e:
@@ -752,9 +920,12 @@ class DriverTripReferenceResource(Resource):
         if error:
             return error, status
 
+        # Serialize concurrent receipt confirmations on the booking row.
+        # A second request waits, observes CAPTURED, and returns the idempotent
+        # result instead of writing a duplicate payment/audit event.
         booking = Booking.query.filter_by(
             booking_reference=booking_reference, is_deleted=False
-        ).first()
+        ).with_for_update().first()
         if not booking:
             return {"success": False, "error": "booking not found"}, 404
 
@@ -768,6 +939,233 @@ class DriverTripReferenceResource(Resource):
         return _execute_driver_trip_action(
             booking, profile, data.get("action"), current_user
         )
+
+
+
+class DriverTripPaymentResource(Resource):
+    """POST /api/transport/drivers/me/trips/<booking_reference>/payment/confirm-cash.
+
+    Explicit post-trip cash receipt confirmation. Trip completion itself never
+    implies that cash was received.
+    """
+
+    @login_required
+    def post(self, booking_reference):
+        from app.transport.models import PaymentStatus
+        from app.utils.audit import audit_log
+
+        profile, error, status = _current_driver_profile()
+        if error:
+            return error, status
+        # Hold the booking row until the Wallet receipt and Transport cache
+        # are committed together. A duplicate driver tap must observe CAPTURED.
+        booking = Booking.query.filter_by(
+            booking_reference=booking_reference, is_deleted=False
+        ).with_for_update().first()
+        if booking is None:
+            return {"success": False, "error": "booking not found"}, 404
+
+        metadata = booking.booking_metadata or {}
+        completed_by = metadata.get("completed_by_driver_profile_id")
+        try:
+            completed_by_id = int(completed_by) if completed_by is not None else None
+        except (TypeError, ValueError):
+            completed_by_id = None
+        if completed_by_id is None or completed_by_id != int(profile.id):
+            return {
+                "success": False,
+                "error": "only the driver who completed this trip may confirm its cash receipt",
+            }, 403
+        if booking.status != BookingStatus.COMPLETED:
+            return {"success": False, "error": "cash can be confirmed only after trip completion"}, 409
+        if str(booking.payment_method or "").strip().lower() != "cash":
+            return {"success": False, "error": "this trip did not select cash payment"}, 409
+
+        receipt = metadata.get("cash_receipt") or {}
+        if booking.payment_status == PaymentStatus.CAPTURED:
+            if receipt.get("confirmed_by_driver_profile_id") == int(profile.id):
+                return {
+                    "success": True,
+                    "data": {
+                        "booking_reference": booking_reference,
+                        "payment_status": "captured",
+                        "idempotent_replay": True,
+                    },
+                }, 200
+            return {"success": False, "error": "payment is already settled"}, 409
+        if booking.payment_status != PaymentStatus.PENDING:
+            return {"success": False, "error": "payment is not awaiting cash receipt"}, 409
+
+        now = datetime.now(timezone.utc)
+        amount = Decimal(str(booking.final_price or booking.total_amount or 0))
+        currency = str(getattr(booking.currency, "value", booking.currency))
+        from app.wallet.services.marketplace_invoice_service import (
+            MarketplaceInvoiceError,
+            MarketplaceInvoiceService,
+        )
+        try:
+            payment_record = (
+                BookingPayment.query.filter_by(booking_id=booking.id)
+                .order_by(BookingPayment.created_at.desc(), BookingPayment.id.desc())
+                .with_for_update()
+                .first()
+            )
+            if payment_record is None:
+                payment_record = BookingPayment(
+                    booking_id=booking.id,
+                    payment_reference="",
+                    amount=amount,
+                    currency=booking.currency,
+                    payment_method="cash",
+                    payment_method_details={"timing": "pay_on_completion"},
+                    payment_status=PaymentStatus.PENDING,
+                    initiated_at=booking.completed_at or now,
+                )
+                payment_record.generate_payment_reference()
+                db.session.add(payment_record)
+                db.session.flush()
+
+            # Wallet owns the receipt record. Transport may update its cache only
+            # after Wallet accepts the cash receipt for the matching invoice.
+            metadata = dict(booking.booking_metadata or {})
+            raw_invoice_id = payment_record.wallet_invoice_id or metadata.get("wallet_invoice_id")
+            if raw_invoice_id:
+                invoice = MarketplaceInvoiceService.get_invoice(
+                    raw_invoice_id, for_update=True
+                )
+            else:
+                invoice = MarketplaceInvoiceService.find_invoice(
+                    "transport", booking_reference, for_update=True
+                )
+            if invoice is None:
+                invoice = MarketplaceInvoiceService.create_invoice(
+                    idempotency_key="transport-booking:%s" % booking.booking_reference,
+                    service_code="transport",
+                    service_reference=booking.booking_reference,
+                    payer_user_id=booking.user_id,
+                    amount=amount,
+                    currency=currency,
+                    payment_method="cash",
+                    settlement_timing="pay_on_completion",
+                    metadata={"booking_reference": booking.booking_reference},
+                    commit=False,
+                )
+
+            payment_record.wallet_invoice_id = invoice.id
+            metadata["wallet_invoice_id"] = str(invoice.id)
+            booking.booking_metadata = metadata
+            db.session.add(payment_record)
+            db.session.add(booking)
+
+            invoice = MarketplaceInvoiceService.mark_due_after_completion(
+                invoice_id=invoice.id,
+                payer_user_id=booking.user_id,
+                service_code="transport",
+                service_reference=booking_reference,
+                amount=amount,
+                currency=currency,
+                commit=False,
+            )
+            cash_result = MarketplaceInvoiceService.confirm_cash_receipt(
+                invoice_id=invoice.id,
+                payer_user_id=booking.user_id,
+                service_code="transport",
+                service_reference=booking_reference,
+                amount=amount,
+                currency=currency,
+                driver_user_id=int(profile.user_id),
+                driver_profile_id=int(profile.id),
+                driver_code=profile.driver_code,
+                commit=False,
+            )
+            if cash_result.get("status") != "cash_received":
+                raise MarketplaceInvoiceError(
+                    "cash_receipt_unverified",
+                    "Wallet did not confirm the cash receipt.",
+                )
+
+            # Refresh the invoice to cache Wallet's canonical receipt result.
+            invoice = MarketplaceInvoiceService.get_invoice(invoice.id)
+            canonical_receipt = dict(invoice.receipt_metadata or {})
+            receipt_cache = {
+                "confirmed_by_driver_profile_id": int(canonical_receipt.get("driver_profile_id") or profile.id),
+                "confirmed_by_driver_code": canonical_receipt.get("driver_code") or profile.driver_code,
+                "confirmed_at": canonical_receipt.get("confirmed_at") or now.isoformat(),
+                "amount": str(invoice.amount),
+                "currency": invoice.currency,
+                "wallet_invoice_id": str(invoice.id),
+                "collection_channel": "direct_cash_to_driver",
+            }
+            metadata = dict(booking.booking_metadata or {})
+            metadata["wallet_invoice_id"] = str(invoice.id)
+            metadata["wallet_invoice_status"] = invoice.status
+            metadata["cash_receipt"] = receipt_cache
+            booking.booking_metadata = metadata
+            booking.payment_status = PaymentStatus.CAPTURED
+            booking.payment_captured_at = invoice.cash_received_at or now
+            payment_record.amount = amount
+            payment_record.payment_method = "cash"
+            payment_record.wallet_invoice_id = invoice.id
+            payment_record.payment_status = PaymentStatus.CAPTURED
+            payment_record.captured_at = invoice.cash_received_at or now
+            payment_record.payment_method_details = {
+                **(payment_record.payment_method_details or {}),
+                "timing": "pay_on_completion",
+                "wallet_invoice_id": str(invoice.id),
+                "cash_receipt": receipt_cache,
+            }
+            db.session.add(booking)
+            db.session.add(payment_record)
+            db.session.flush()
+            audit_log(
+                action="transport_cash_payment_received",
+                resource_type="booking",
+                resource_id=booking.id,
+                user_id=current_user.id,
+                details={
+                    "booking_reference": booking.booking_reference,
+                    "payment_method": "cash",
+                    "amount": float(amount),
+                    "currency": currency,
+                    "wallet_invoice_id": str(invoice.id),
+                    "confirmed_by_driver_code": profile.driver_code,
+                    "confirmed_at": (invoice.cash_received_at or now).isoformat(),
+                },
+                db_session=db.session,
+            )
+            db.session.commit()
+        except MarketplaceInvoiceError as exc:
+            db.session.rollback()
+            logger.warning(
+                "Wallet rejected cash receipt for %s: %s (%s)",
+                booking_reference, exc.message, exc.code,
+            )
+            return {
+                "success": False,
+                "error": exc.message,
+                "code": exc.code,
+            }, 409
+        except Exception:
+            db.session.rollback()
+            logger.exception("Cash receipt confirmation failed for %s", booking_reference)
+            return {"success": False, "error": "Could not record cash receipt"}, 503
+
+        try:
+            from app.transport.services.booking_service import get_booking_service
+            get_booking_service()._invalidate_booking_caches(booking.id)
+        except Exception:
+            logger.warning("Payment cache invalidation failed for %s", booking_reference, exc_info=True)
+
+        return {
+            "success": True,
+            "data": {
+                "booking_reference": booking_reference,
+                "payment_status": "captured",
+                "amount": float(booking.final_price or booking.total_amount or 0),
+                "currency": str(getattr(booking.currency, "value", booking.currency)),
+                "captured_at": now.isoformat(),
+            },
+        }, 200
 
 
 class DriverStatusResource(Resource):

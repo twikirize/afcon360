@@ -191,6 +191,33 @@
   </div>
 </div>
 
+<section class="stats-grid" aria-label="Ride request and payment operations" id="requestLifecycleStats">
+  <div class="stat-card amber">
+    <div class="stat-icon amber"><i class="fa-solid fa-magnifying-glass-location"></i></div>
+    <div class="stat-value" id="adminActiveRideRequests">{{ active_ride_requests|default(0) }}</div>
+    <div class="stat-label">Requests Matching</div>
+    <div class="stat-trend">Waiting for a driver to accept</div>
+  </div>
+  <div class="stat-card red">
+    <div class="stat-icon red"><i class="fa-solid fa-user-slash"></i></div>
+    <div class="stat-value" id="adminUnsuccessfulSearches">{{ unsuccessful_searches_24h|default(0) }}</div>
+    <div class="stat-label">Unsuccessful Searches (24h)</div>
+    <div class="stat-trend">No eligible driver accepted</div>
+  </div>
+  <div class="stat-card amber">
+    <div class="stat-icon amber"><i class="fa-solid fa-wallet"></i></div>
+    <div class="stat-value" id="adminCompletedUnpaidTrips">{{ completed_unpaid_trips|default(0) }}</div>
+    <div class="stat-label">Completed — Payment Pending</div>
+    <div class="stat-trend">Needs payment follow-up</div>
+  </div>
+  <div class="stat-card blue">
+    <div class="stat-icon blue"><i class="fa-solid fa-receipt"></i></div>
+    <div class="stat-value" id="adminPendingPaymentRecords">{{ pending_payment_records|default(0) }}</div>
+    <div class="stat-label">Pending Payment Records</div>
+    <div class="stat-trend">Includes active trips not yet completed</div>
+  </div>
+</section>
+
 <!-- Admin Grid -->
 <div class="admin-grid">
   <!-- Recent Bookings Card - NEW -->
@@ -307,17 +334,38 @@
 
 {% block extra_js %}
 <script nonce="{{ csp_nonce }}">
-  setInterval(() => {
-    fetch('{{ url_for("transport_admin.dashboard") }}', {
-      headers: { 'X-Requested-With': 'XMLHttpRequest' }
-    })
-    .then(r => r.json())
-    .then(data => {
-      if (data.status === 'ok') {
-        location.reload();
-      }
-    })
-    .catch(() => {});
-  }, 300000);
+  (function () {
+    'use strict';
+    var endpoint = '/api/transport/dashboard/overview';
+    function setCount(id, value) {
+      var node = document.getElementById(id);
+      if (node) node.textContent = String(Number(value || 0));
+    }
+    function refreshOperationalCounts() {
+      if (document.hidden) return;
+      fetch(endpoint, {
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' }
+      })
+      .then(function (response) {
+        if (!response.ok) throw new Error('Dashboard status ' + response.status);
+        return response.json();
+      })
+      .then(function (body) {
+        if (!body || !body.success || !body.data) return;
+        var live = body.data.live_operations || {};
+        var pending = body.data.pending_actions || {};
+        setCount('adminActiveRideRequests', live.active_ride_requests);
+        setCount('adminPendingPaymentRecords', live.pending_payment_records);
+        setCount('adminUnsuccessfulSearches', pending.unsuccessful_searches_24h);
+        setCount('adminCompletedUnpaidTrips', pending.completed_unpaid_trips);
+      })
+      .catch(function () {
+        // Leave the last successful values visible during a temporary outage.
+      });
+    }
+    refreshOperationalCounts();
+    window.setInterval(refreshOperationalCounts, 30000);
+  })();
 </script>
 {% endblock %}

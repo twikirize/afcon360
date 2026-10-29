@@ -43,6 +43,7 @@ def register_api_resources(api):
         DriverOfferDeclineResource,
         DriverTripResource,
         DriverTripReferenceResource,
+        DriverTripPaymentResource,
         DriverStatusResource,
         DriverVehicleSwitchResource,
         DriverAdminOnlineOverrideResource,
@@ -70,6 +71,7 @@ def register_api_resources(api):
         BookingStatusResource,
         BookingAssignmentResource,
         BookingPaymentResource,
+        RiderWalletSettlementResource,
         BookingRouteResource,
     )
     from .incident_routes import (
@@ -101,9 +103,12 @@ def register_api_resources(api):
     )
     from .fare_routes import FareConfigResource, FareEstimateResource
     from .ride_options_routes import RideOptionsResource
-    # BOOKING-LIFECYCLE-REQUEST-CREATE (Stage 3B, Phase 2A): pre-Booking
-    # request creation (authenticated + commitment-gated; zero Bookings).
-    from .ride_request_routes import RideRequestCreateResource
+    # BOOKING-LIFECYCLE-REQUEST-CREATE (Stage 3B, Phase 2A): request-first
+    # hailing and public-reference tracking until acceptance conversion.
+    from .ride_request_routes import (
+        RideRequestCreateResource,
+        RideRequestDetailResource,
+    )
 
     # -------------------------------------------------------------------
     # Resource registration with EXPLICIT endpoint names
@@ -130,6 +135,11 @@ def register_api_resources(api):
     safe_add_resource(DriverTripReferenceResource,
                      "/drivers/me/trips/<string:booking_reference>/status",
                      endpoint="driver_me_trip_status_ref")
+    safe_add_resource(
+        DriverTripPaymentResource,
+        "/drivers/me/trips/<string:booking_reference>/payment/confirm-cash",
+        endpoint="driver_me_trip_payment_confirm_cash",
+    )
 
     # Driver self-service go-live toggle (can_go_live gate)
     safe_add_resource(DriverStatusResource, "/drivers/<int:driver_id>/status",
@@ -172,6 +182,11 @@ def register_api_resources(api):
     safe_add_resource(BookingStatusResource, "/bookings/<int:booking_id>/status", endpoint="booking_status")
     safe_add_resource(BookingAssignmentResource, "/bookings/<int:booking_id>/assign", endpoint="booking_assignment")
     safe_add_resource(BookingPaymentResource, "/bookings/<int:booking_id>/payments", endpoint="booking_payments")
+    safe_add_resource(
+        RiderWalletSettlementResource,
+        "/rides/<string:booking_reference>/payment/settle-wallet",
+        endpoint="rider_wallet_settlement",
+    )
     safe_add_resource(BookingRouteResource, "/bookings/<int:booking_id>/route", endpoint="booking_route")
 
     # Fare estimation (fare node: canonical engine, pre-submit preview)
@@ -185,6 +200,11 @@ def register_api_resources(api):
     # ride-request creation (authenticated + commitment-gated).
     safe_add_resource(RideRequestCreateResource, "/ride-requests",
                       endpoint="ride_request_create")
+    safe_add_resource(
+        RideRequestDetailResource,
+        "/ride-requests/<string:request_public_id>",
+        endpoint="ride_request_detail",
+    )
 
     # Fare configuration governance (fare node: owner/delegated writes only)
     safe_add_resource(FareConfigResource, "/fare/config", endpoint="fare_config")

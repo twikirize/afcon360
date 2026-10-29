@@ -33,6 +33,7 @@ class DashboardService:
     def get_admin_dashboard_context(self) -> Dict[str, Any]:
         """Collect all data needed for admin dashboard"""
         try:
+            request_payment_metrics = self._get_request_payment_admin_metrics()
             return {
                 # Booking metrics
                 'total_bookings': self.booking_service.count_bookings(),
@@ -45,6 +46,9 @@ class DashboardService:
                 'completed_bookings': self.booking_service.count_bookings_by_status('completed'),
                 'cancelled_bookings': self.booking_service.count_bookings_by_status('cancelled'),
                 'booking_report': self.booking_service.generate_booking_report(7),
+
+                # Request-first matching and pay-at-completion operations.
+                **request_payment_metrics,
 
                 # Provider metrics
                 'pending_drivers': self.provider_service.count_pending_drivers(),
@@ -78,6 +82,67 @@ class DashboardService:
         cache.set(key, context, timeout=self.CACHE_TTL)
         logger.debug("Admin dashboard cached for 5 minutes (%s)", scope)
         return context
+
+    def _get_request_payment_admin_metrics(self) -> Dict[str, Any]:
+        """Read the request-first and pending-payment queues for platform ops.
+
+        These are display-only aggregates. They never advance matching, assign
+        a driver, or settle a payment. A failure in the new metrics must not
+        take down the existing admin overview.
+        """
+        defaults = {
+            'active_ride_requests': 0,
+            'unsuccessful_searches_24h': 0,
+            'completed_unpaid_trips': 0,
+            'pending_payment_records': 0,
+            'request_payment_metrics_available': True,
+        }
+        try:
+            from app.transport.models import (
+                Booking, BookingPayment, RideRequest, SearchCycle,
+                BookingStatus, PaymentStatus,
+            )
+            now = datetime.now(timezone.utc)
+            active = (
+                SearchCycle.query
+                .join(RideRequest, RideRequest.id == SearchCycle.ride_request_id)
+                .filter(
+                    RideRequest.is_deleted == False,
+                    RideRequest.status == "searching",
+                    SearchCycle.is_deleted == False,
+                    SearchCycle.status == "searching",
+                )
+                .count()
+            )
+            unsuccessful = SearchCycle.query.filter(
+                SearchCycle.is_deleted == False,
+                SearchCycle.status == "expired",
+                SearchCycle.terminal_reason.in_(("no_supply", "all_rejected")),
+                SearchCycle.completed_at >= now - timedelta(hours=24),
+            ).count()
+            completed_unpaid = Booking.query.filter(
+                Booking.is_deleted == False,
+                Booking.status == BookingStatus.COMPLETED,
+                Booking.payment_status == PaymentStatus.PENDING,
+            ).count()
+            pending_payments = BookingPayment.query.filter(
+                BookingPayment.is_deleted == False,
+                BookingPayment.payment_status == PaymentStatus.PENDING,
+            ).count()
+            return {
+                **defaults,
+                'active_ride_requests': int(active or 0),
+                'unsuccessful_searches_24h': int(unsuccessful or 0),
+                'completed_unpaid_trips': int(completed_unpaid or 0),
+                'pending_payment_records': int(pending_payments or 0),
+            }
+        except Exception:
+            from app.extensions import db
+            db.session.rollback()
+            logger.exception(
+                "Could not calculate request/payment metrics for transport admin"
+            )
+            return {**defaults, 'request_payment_metrics_available': False}
 
     # =========================================================
     # Driver Dashboard

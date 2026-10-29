@@ -11,7 +11,7 @@ Design principles:
 - Granular exception handling (NotFoundError, ValidationError, ServiceUnavailableError)
 - Single responsibility: routing only - business logic lives in services
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 import os
 from sqlalchemy.orm import joinedload
@@ -49,12 +49,12 @@ from app.utils.exceptions import NotFoundError, ServiceUnavailableError, Validat
 # bare `except PermissionError` (builtin) clauses are untouched.
 from app.utils.exceptions import AuthorizationError as _Match01AuthError
 from app.utils.audit import audit_log
-from app.transport.services.payment_methods import get_available_payment_methods
+from app.transport.services.payment_methods import get_available_transport_payment_methods
 from app.transport.services import get_booking_service, get_provider_service, get_dashboard_service
 from app.transport.services.go_live_service import can_go_live
 from app.transport.services.assignment_service import ACTIVE_ASSIGNMENT_STATUSES
 from app.transport.services.passenger_service import get_passenger_service
-from app.transport.models import Booking, DriverProfile, Vehicle, TransportPassenger, ServiceType, BookingStatus
+from app.transport.models import Booking, DriverProfile, Vehicle, TransportPassenger, ServiceType, BookingStatus, PaymentStatus
 from app.transport.models import (
     ComplianceStatus, VehicleMarketplaceListing, DriverVehicleApplication,
     MarketplaceListingStatus, CompensationModel, get_setting,
@@ -400,14 +400,6 @@ def home():
 
     logger.info(f"Transport home accessed by user_id={_uid()}, pane={is_pane}")
 
-    # Active drivers count for map display
-    active_drivers = 0
-    try:
-        from app.transport.services.provider_service import get_provider_service
-        active_drivers = get_provider_service().count_active_drivers()
-    except Exception:
-        active_drivers = 0
-
     ctx = dict(
         title="AFCON Transport & Travel",
         services=services,                    # already there: ServiceType enum
@@ -418,7 +410,7 @@ def home():
         pickup_value=pickup_value,
         dropoff_value=dropoff_value,
         selected_service=selected_service,
-        payment_methods=get_available_payment_methods(
+        payment_methods=get_available_transport_payment_methods(
             current_user.id if is_authenticated else None
         ),
         default_service=(
@@ -426,7 +418,6 @@ def home():
             if selected_service in {s["key"] for s in services}
             else "on_demand"
         ),
-        active_drivers=active_drivers,
         tile_url=current_app.config["TILE_PROVIDER_URL_TEMPLATE"],
         tile_attribution=current_app.config["TILE_PROVIDER_ATTRIBUTION"],
     )
@@ -471,13 +462,6 @@ def new_home():
             db.session.rollback()
             logger.error(f"Error loading user bookings for user_id={_uid()}: {e}")
 
-    active_drivers = 0
-    try:
-        from app.transport.services.provider_service import get_provider_service
-        active_drivers = get_provider_service().count_active_drivers()
-    except Exception:
-        active_drivers = 0
-
     ctx = dict(
         title="AFCON360 - Your Ride, Your Game!",
         services=services,
@@ -488,7 +472,7 @@ def new_home():
         pickup_value=pickup_value,
         dropoff_value=dropoff_value,
         selected_service=selected_service,
-        payment_methods=get_available_payment_methods(
+        payment_methods=get_available_transport_payment_methods(
             current_user.id if is_authenticated else None
         ),
         default_service=(
@@ -496,7 +480,6 @@ def new_home():
             if selected_service in {s["key"] for s in services}
             else "on_demand"
         ),
-        active_drivers=active_drivers,
         tile_url=current_app.config["TILE_PROVIDER_URL_TEMPLATE"],
         tile_attribution=current_app.config["TILE_PROVIDER_ATTRIBUTION"],
     )
@@ -969,7 +952,86 @@ def book_transport():
         else:
             data = request.form.to_dict()
 
+    # Payment choice is an explicit rider decision. Do not silently turn
+    # a missing/unavailable choice into Cash, even while schema enforcement
+    # remains in shadow mode.
+    selected_payment_method = str(data.get("payment_method") or "").strip().lower()
+    available_payment_methods = get_available_transport_payment_methods(current_user.id)
+    allowed_payment_methods = {
+        str(method.get("code") or "").strip().lower()
+        for method in available_payment_methods
+        if method.get("enabled", True)
+    }
+    if not selected_payment_method or selected_payment_method not in allowed_payment_methods:
+        flash("Choose an available payment method before requesting the ride.", "danger")
+        return redirect(url_for("transport.home"))
+    data["payment_method"] = selected_payment_method
+
     try:
+        # Instant on-demand hailing uses the durable request-first lifecycle:
+        # the reference tracks intent/search, but no Booking row exists until
+        # a driver accepts and the driver+vehicle assignment commits atomically.
+        service_key = str(data.get("service_type") or "").strip().lower()
+        mode_key = str(data.get("booking_mode") or "instant").strip().lower()
+        if service_key == "on_demand" and mode_key == "instant":
+            from app.transport.services.ride_request_service import RideRequestService
+            from app.transport.services.ride_request_dispatch_service import (
+                RideRequestDispatchService,
+                RideRequestDispatchError,
+            )
+
+            request_payload = {
+                "idempotency_key": data.get("idempotency_key"),
+                "pickup": {
+                    "latitude": data.get("pickup_latitude"),
+                    "longitude": data.get("pickup_longitude"),
+                    "address": data.get("pickup_location"),
+                },
+                "dropoff": {
+                    "latitude": data.get("dropoff_latitude"),
+                    "longitude": data.get("dropoff_longitude"),
+                    "address": data.get("dropoff_location"),
+                },
+                "pickup_source": data.get("pickup_source"),
+                "dropoff_source": data.get("dropoff_source"),
+                "pickup_geocode": data.get("pickup_geocode"),
+                "dropoff_geocode": data.get("dropoff_geocode"),
+                "service_type": service_key,
+                "vehicle_class": data.get("vehicle_class"),
+                "passenger_count": data.get("passenger_count") or 1,
+                "pickup_time": data.get("pickup_time") or None,
+                "booking_mode": mode_key,
+                "payment_method": selected_payment_method,
+                "currency": data.get("currency") or "USD",
+                "fare_quote_token": data.get("fare_quote_token"),
+                "confirmed_fare_amount": data.get("confirmed_fare_amount"),
+            }
+            request_result = RideRequestService.create_request(
+                current_user.id, request_payload
+            )
+            ride_request = request_result["request"]
+            reference = ride_request.public_id
+            # A dispatch infrastructure problem must not erase the durable
+            # request/reference; normal recovery can resume a searching cycle.
+            try:
+                RideRequestDispatchService.start_search(reference)
+            except RideRequestDispatchError as dispatch_error:
+                logger.warning(
+                    "Initial request dispatch deferred for %s: %s",
+                    reference, dispatch_error.message,
+                )
+            except Exception:
+                db.session.rollback()
+                logger.exception(
+                    "Initial request dispatch failed for %s; recovery will retry",
+                    reference,
+                )
+            flash(
+                f"Fare confirmed. We’re now matching you with a driver. Reference: {reference}",
+                "success",
+            )
+            return redirect(url_for("transport.rides_show", booking_reference=reference))
+
         booking = get_booking_service().create_booking(current_user.id, data)
         ref = booking["data"]["booking_reference"]
         booking_id = booking["data"]["booking_id"]
@@ -984,7 +1046,7 @@ def book_transport():
         # confirm/dispatch — they stay PENDING_PAYMENT until the Deploy-2
         # scheduler releases matching 30 minutes before pickup.
         # Soft-fail: a dispatch problem must never block the redirect.
-        if (str(data.get("payment_method") or "cash").lower() == "cash"
+        if (selected_payment_method == "cash"
                 and booking["data"].get("booking_mode") != "scheduled"):
             try:
                 get_booking_service().transition_status(
@@ -1008,11 +1070,18 @@ def book_transport():
                     f"{booking_id}: {e}", exc_info=True,
                 )
 
-        flash(f"Ride request received! We’re finding your driver. Reference: {ref}", "success")
+        flash(f"Your booking was created. Reference: {ref}", "success")
         return_to = session.pop("transport_book_return_to", None)
         if return_to:
             return redirect(return_to)
         return redirect(url_for("transport.rides_show", booking_reference=ref))
+
+    except ValidationError as e:
+        db.session.rollback()
+        logger.info("Transport booking rejected before request creation for user_id=%s: %s",
+                    _uid(), e.message)
+        flash(e.message, "warning")
+        return redirect(url_for("transport.home"))
 
     except ServiceUnavailableError:
         logger.error(f"Booking service unavailable for user_id={_uid()}")
@@ -1204,7 +1273,33 @@ _ASSIGNED_STATUSES = ("assigned", "driver_en_route", "pickup_arrived",
 @module_enabled_required("transport")
 @login_required
 def rides_show(booking_reference):
-    """Rider ride page — matching view before assignment, management after."""
+    """Rider tracking page from initial request through completed trip."""
+
+    # A committed on-demand intent is tracked as RideRequest until a driver
+    # wins. Only the winning acceptance transaction creates a Booking row.
+    from app.transport.models import RideRequest, SearchCycle
+    ride_request = RideRequest.query.filter_by(
+        public_id=booking_reference, is_deleted=False
+    ).first()
+    if ride_request is not None and ride_request.status != "converted":
+        if ride_request.user_id != current_user.id:
+            abort(404)
+        cycle = SearchCycle.query.filter_by(
+            ride_request_id=ride_request.id, is_deleted=False
+        ).order_by(SearchCycle.cycle_number.desc()).first()
+        if cycle is None:
+            abort(404)
+        from app.transport.services.ride_request_service import serialize_request
+        return render_template(
+            "transport/rides/request_show.html",
+            request_model=ride_request,
+            request_data=serialize_request(ride_request, cycle),
+            cycle=cycle,
+            booking_reference=ride_request.public_id,
+        )
+
+    # Once converted, the exact same public reference resolves to the Booking
+    # and the established full trip management/tracking page.
     booking_model = _load_owned_ride(booking_reference)
 
     try:
@@ -1409,6 +1504,43 @@ def rides_cancel(booking_reference):
                             booking_reference=booking_reference))
 
 
+@transport_bp.route("/rides/<string:booking_reference>/cancel-request", methods=["POST"])
+@module_enabled_required("transport")
+@login_required
+def rides_cancel_request(booking_reference):
+    """Cancel a request-first ride before a driver accepts it."""
+    from app.transport.models import RideRequest
+    ride_request = RideRequest.query.filter_by(
+        public_id=booking_reference, is_deleted=False
+    ).first()
+    if ride_request is None or ride_request.user_id != current_user.id:
+        abort(404)
+
+    try:
+        from app.transport.services.ride_request_dispatch_service import (
+            RideRequestDispatchService, RideRequestDispatchError,
+        )
+        outcome = RideRequestDispatchService.cancel_request(
+            booking_reference, current_user.id
+        )
+        if request.is_json:
+            return jsonify({"status": "success", **outcome}), 200
+        flash("Ride request cancelled. No driver was assigned.", "success")
+    except RideRequestDispatchError as e:
+        if request.is_json:
+            return jsonify({"status": "error", "code": e.code,
+                            "message": e.message}), 409
+        flash(e.message, "warning")
+    except Exception:
+        db.session.rollback()
+        logger.exception("Request-first cancellation failed for %s", booking_reference)
+        if request.is_json:
+            return jsonify({"status": "error",
+                            "message": "Unable to cancel this ride request"}), 500
+        flash("Unable to cancel this ride request", "danger")
+    return redirect(url_for("transport.rides_show", booking_reference=booking_reference))
+
+
 # ---------------------------------------------------------------------------
 # MATCH-01-owned: manual rider retry (rides section — NOT the cancellation
 # section; cancellation-owned rides_cancel/bookings_cancel above untouched).
@@ -1418,12 +1550,40 @@ def rides_cancel(booking_reference):
 @module_enabled_required("transport")
 @login_required
 def rides_retry_matching(booking_reference):
-    """Rider "Try again" from the no_match terminal state.
+    """Retry an exhausted request-first search or legacy NO_MATCH booking."""
 
-    NO_MATCH -> CONFIRMED with a fresh matching window (Condition 1), then
-    immediate re-dispatch. Manual only — nothing auto-retries. Ownership is
-    enforced by _load_owned_ride (called, not modified).
-    """
+    from app.transport.models import RideRequest
+    ride_request = RideRequest.query.filter_by(
+        public_id=booking_reference, is_deleted=False
+    ).first()
+    if ride_request is not None and ride_request.status != "converted":
+        if ride_request.user_id != current_user.id:
+            abort(404)
+        try:
+            from app.transport.services.ride_request_dispatch_service import (
+                RideRequestDispatchService, RideRequestDispatchError,
+            )
+            outcome = RideRequestDispatchService.retry_search(
+                booking_reference, current_user.id
+            )
+            if request.is_json:
+                return jsonify({"status": "success", **outcome}), 200
+            flash("Searching for drivers again", "success")
+        except RideRequestDispatchError as e:
+            if request.is_json:
+                return jsonify({"status": "error", "code": e.code,
+                                "message": e.message}), 409
+            flash(e.message, "warning")
+        except Exception:
+            db.session.rollback()
+            logger.exception("Request-first retry failed for %s", booking_reference)
+            if request.is_json:
+                return jsonify({"status": "error",
+                                "message": "Unable to restart matching"}), 500
+            flash("Unable to restart matching", "danger")
+        return redirect(url_for("transport.rides_show",
+                                booking_reference=booking_reference))
+
     booking_model = _load_owned_ride(booking_reference)
     try:
         result = get_booking_service().retry_matching(
@@ -2222,24 +2382,37 @@ def driver_dashboard():
         owned_vehicles = []
         assigned_vehicle = None
 
-    # Live ride offers (D2 + DRIVER-OFFER-UX-REPAIR-1): the same
-    # transient Redis offers the dispatch loop creates, enriched at READ
-    # time from the authoritative Booking row by
-    # ``OfferService.list_driver_offers`` (Redis stays thin).
-    # Non-authoritative + TTL'd; any failure degrades to an empty panel,
-    # never an error page.
+    # Live offers have two compatible sources while the request-first
+    # lifecycle is rolled out: legacy Redis/Booking offers, plus durable
+    # PostgreSQL RideRequest/SearchCycle/OfferAttempt offers. Render both
+    # into the same driver card contract so the page baseline matches the
+    # driver's polling API and does not reload continuously.
     offers = []
     if profile is not None:
         try:
             from app.transport.services.offer_service import OfferService
-
             offers = OfferService.list_driver_offers(profile.id) or []
         except Exception as e:
             db.session.rollback()
             logger.warning(
-                f"Error loading live offers for profile {_uid()}: {e}"
+                f"Error loading legacy live offers for profile {_uid()}: {e}"
             )
-            offers = []
+
+        try:
+            from app.transport.services.ride_request_dispatch_service import (
+                RideRequestDispatchService,
+            )
+            request_offers = RideRequestDispatchService.list_driver_offers(profile.id) or []
+            known_refs = {o.get("booking_reference") for o in offers}
+            offers.extend(
+                offer for offer in request_offers
+                if offer.get("booking_reference") not in known_refs
+            )
+        except Exception as e:
+            db.session.rollback()
+            logger.warning(
+                f"Error loading request-first offers for profile {_uid()}: {e}"
+            )
     offer_count = len(offers)
 
     # GO-LIVE capability: entering the Driver Workspace is participation;
@@ -3134,6 +3307,10 @@ def dashboard():
             'active_bookings': 0,
             'active_drivers': 0,
             'available_vehicles': 0,
+            'active_ride_requests': 0,
+            'unsuccessful_searches_24h': 0,
+            'completed_unpaid_trips': 0,
+            'pending_payment_records': 0,
             'recent_bookings': []
         }
 
@@ -3164,6 +3341,36 @@ def dashboard():
             ctx['pending_bookings_count'] = ctx['pending_bookings']  # For badge
             ctx['active_drivers'] = get_provider_service().count_active_drivers()
             ctx['available_vehicles'] = get_provider_service().count_available_vehicles()
+
+            # Request-first dispatch and pay-at-completion operational queues.
+            # These are read-only aggregates; no admin dashboard GET writes
+            # request, booking, assignment, or payment state.
+            from app.transport.models import RideRequest, SearchCycle, BookingPayment
+            ctx['active_ride_requests'] = (
+                SearchCycle.query.join(
+                    RideRequest, RideRequest.id == SearchCycle.ride_request_id
+                ).filter(
+                    RideRequest.is_deleted == False,
+                    RideRequest.status == "searching",
+                    SearchCycle.is_deleted == False,
+                    SearchCycle.status == "searching",
+                ).count()
+            )
+            ctx['unsuccessful_searches_24h'] = SearchCycle.query.filter(
+                SearchCycle.is_deleted == False,
+                SearchCycle.status == "expired",
+                SearchCycle.terminal_reason.in_(["no_supply", "all_rejected"]),
+                SearchCycle.completed_at >= datetime.now(timezone.utc) - timedelta(hours=24),
+            ).count()
+            ctx['completed_unpaid_trips'] = Booking.query.filter(
+                Booking.is_deleted == False,
+                Booking.status == BookingStatus.COMPLETED,
+                Booking.payment_status == PaymentStatus.PENDING,
+            ).count()
+            ctx['pending_payment_records'] = BookingPayment.query.filter(
+                BookingPayment.is_deleted == False,
+                BookingPayment.payment_status == PaymentStatus.PENDING,
+            ).count()
 
         except AttributeError as e:
             logger.warning(f"Some stats methods not available: {e}")
