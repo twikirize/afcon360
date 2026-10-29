@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Numeric,
-    String, UniqueConstraint,
+    String, UniqueConstraint, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
@@ -85,16 +85,18 @@ class MarketplaceInvoice(db.Model):
     cash_received_by_user_id = db.Column(
         BigInteger, ForeignKey("users.id", name="fk_wallet_marketplace_invoice_cash_receiver", ondelete="SET NULL"), nullable=True,
     )
-    invoice_metadata = db.Column(JSONB, nullable=False, default=dict, server_default="{}")
-    receipt_metadata = db.Column(JSONB, nullable=False, default=dict, server_default="{}")
+    invoice_metadata = db.Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    receipt_metadata = db.Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
 
     created_at = db.Column(
         DateTime(timezone=True), nullable=False,
         default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
     )
     updated_at = db.Column(
         DateTime(timezone=True), nullable=False,
         default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
         onupdate=lambda: datetime.now(timezone.utc),
     )
     due_at = db.Column(DateTime(timezone=True), nullable=True)
