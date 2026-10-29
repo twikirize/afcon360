@@ -35,6 +35,10 @@ def _payload(app, **overrides):
     }
     body.update(overrides)
     with app.app_context():
+        # Transport now delegates selectable methods to Wallet's canonical
+        # catalogue. Seed its standard config for this isolated test database.
+        from app.wallet.models.payment_method import PaymentMethodConfig
+        PaymentMethodConfig.initialize_defaults()
         from app.transport.services.booking_service import _measured_distance_km
         from app.transport.services.fare_service import calculate_estimate
         from app.transport.services.fare_quote_service import (
