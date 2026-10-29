@@ -137,6 +137,22 @@ class MarketplaceInvoiceService:
         )
 
     @staticmethod
+    def _wallet_requires_transaction_pin(payer_user_id: Optional[int]) -> bool:
+        """Whether deferred wallet payment would bypass an existing PIN prompt."""
+        if payer_user_id is None:
+            return True
+        try:
+            from app.identity.models.user import User
+
+            payer = User.query.filter_by(id=int(payer_user_id)).first()
+            # Fail closed if the payer cannot be loaded. A missing user should
+            # not make an unauthenticated wallet method appear selectable.
+            return payer is None or bool(payer.transaction_pin_hash)
+        except Exception:
+            logger.exception("Could not verify transaction-PIN eligibility for Wallet marketplace payment")
+            return True
+
+    @staticmethod
     def _get_transport_escrow_account(currency: str):
         """Resolve a configured Transport escrow account; never create one at checkout."""
         from app.wallet.models.ledger import AccountModel, AccountType
@@ -208,6 +224,13 @@ class MarketplaceInvoiceService:
                 if method_id == "wallet" and not cls._wallet_account_available(
                     payer_user_id, normalized_currency
                 ):
+                    continue
+                if method_id == "wallet" and cls._wallet_requires_transaction_pin(
+                    payer_user_id
+                ):
+                    # There is no rider pre-authorization UI for an end-of-trip
+                    # transfer in this increment. Don't offer a method that
+                    # Wallet would later reject because the account requires PIN.
                     continue
 
                 category = {
@@ -376,6 +399,11 @@ class MarketplaceInvoiceService:
             raise MarketplaceInvoiceError(
                 "wallet_account_missing",
                 "A Wallet account in the quoted currency is required for this payment method.",
+            )
+        if method == "wallet" and cls._wallet_requires_transaction_pin(payer_user_id):
+            raise MarketplaceInvoiceError(
+                "wallet_pin_authorization_unavailable",
+                "Wallet payment with a configured transaction PIN needs rider pre-authorization, which is not yet available. Choose another available method.",
             )
 
         invoice = MarketplaceInvoice(
