@@ -819,7 +819,7 @@ def _execute_driver_trip_action(booking, profile, action, actor):
                         PaymentService.process_payment(
                             booking_id,
                             {
-                                "payment_method": "wallet",
+                                "payment_method": method,
                                 # Amount and currency are server-derived; never trust
                                 # a driver/client supplied settlement amount.
                                 "amount": str(
