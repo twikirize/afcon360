@@ -78,7 +78,7 @@ def upgrade():
         sa.ForeignKeyConstraint(
             ["transaction_id"], ["transactions.id"],
             name="fk_wallet_marketplace_invoice_transaction",
-            ondelete="SET NULL",
+            ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
             ["cash_received_by_user_id"], ["users.id"],
