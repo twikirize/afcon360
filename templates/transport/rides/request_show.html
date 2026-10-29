@@ -83,7 +83,7 @@
       <div class="request-timeline" aria-label="Ride request progress">
         <div class="request-event done">
           <span class="request-dot"></span>
-          <div><strong>Request received</strong><small>Your locations, vehicle preference and fare estimate have been saved.</small></div>
+          <div><strong>Request received</strong><small>Your locations, vehicle preference and confirmed fare have been saved.</small></div>
         </div>
         <div class="request-event{% if cycle_state == 'searching' %} active{% elif cycle_state == 'expired' %} done{% endif %}" id="searchingEvent">
           <span class="request-dot"></span>
@@ -102,7 +102,7 @@
         <div class="request-value">{{ request_model.vehicle_class|title }}</div>
       </div>
       <div class="request-cell">
-        <div class="request-label">Fare estimate</div>
+        <div class="request-label">Confirmed fare</div>
         <div class="request-value">{{ request_model.currency_code or '—' }} {{ '%.2f'|format(request_model.fare_estimate_amount or 0) }}</div>
       </div>
       <div class="request-cell">
