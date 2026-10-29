@@ -173,6 +173,25 @@ def _bolt_form(app, pickup_time: str) -> dict:
         "dropoff_longitude": "32.6056",
     }
     with app.app_context():
+        # Transport payment choices now come from Wallet's single catalogue.
+        # Seed this test's isolated database with an explicitly enabled cash
+        # method that supports the server-issued quote currency and timing.
+        from app.wallet.models.payment_method import PaymentMethodConfig
+        PaymentMethodConfig.initialize_defaults()
+        cash = PaymentMethodConfig.query.filter_by(method_id="cash").first()
+        assert cash is not None
+        cash.is_enabled = True
+        cash.is_active = True
+        supported = list(cash.supported_currencies or [])
+        if "USD" not in {str(value).upper() for value in supported}:
+            supported.append("USD")
+        cash.supported_currencies = supported
+        timings = list(cash.allowed_timings or [])
+        if "pay_on_completion" not in {str(value).lower() for value in timings}:
+            timings.append("pay_on_completion")
+        cash.allowed_timings = timings
+        db.session.commit()
+
         from app.transport.services.booking_service import _measured_distance_km
         from app.transport.services.fare_service import calculate_estimate
         from app.transport.services.fare_quote_service import (
