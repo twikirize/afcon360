@@ -957,9 +957,11 @@ class DriverTripPaymentResource(Resource):
         profile, error, status = _current_driver_profile()
         if error:
             return error, status
+        # Hold the booking row until the Wallet receipt and Transport cache
+        # are committed together. A duplicate driver tap must observe CAPTURED.
         booking = Booking.query.filter_by(
             booking_reference=booking_reference, is_deleted=False
-        ).first()
+        ).with_for_update().first()
         if booking is None:
             return {"success": False, "error": "booking not found"}, 404
 
@@ -1062,6 +1064,7 @@ class DriverTripPaymentResource(Resource):
                 service_reference=booking_reference,
                 amount=amount,
                 currency=currency,
+                commit=False,
             )
             cash_result = MarketplaceInvoiceService.confirm_cash_receipt(
                 invoice_id=invoice.id,
@@ -1073,6 +1076,7 @@ class DriverTripPaymentResource(Resource):
                 driver_user_id=int(profile.user_id),
                 driver_profile_id=int(profile.id),
                 driver_code=profile.driver_code,
+                commit=False,
             )
             if cash_result.get("status") != "cash_received":
                 raise MarketplaceInvoiceError(
