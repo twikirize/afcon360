@@ -1,170 +1,46 @@
 """
-Payment methods a rider can actually choose today.
+Transport's read-only adapter to the Wallet marketplace payment catalogue.
 
-Source of truth, in priority order:
-
-  1. TransportSetting configuration (country-aware, admin-managed)
-  2. Fallback to hardcoded defaults
-
-Cash is always available as the default fallback.
-Digital methods are configured by super admin/owner and filtered by user's country.
+Transport does not own a payment-method catalogue or capability allowlist.
+Methods are offered only when Wallet configuration and Wallet's implemented
+marketplace collection path both support the quote currency and timing.
 """
 from __future__ import annotations
 
-import logging
 from typing import Any, Dict, List, Optional
-
-logger = logging.getLogger(__name__)
-
-# Methods with real end-of-trip settlement behaviour implemented in transport.
-# Other methods may remain configured in admin settings, but must not be shown
-# as selectable until their transport initiation + verified callback workflow
-# is integrated. This is a capability gate, not a replacement for configuration.
-TRANSPORT_END_OF_TRIP_METHODS = frozenset({"cash", "wallet"})
 
 
 def get_available_transport_payment_methods(
     user_id: Optional[int] = None,
     currency_code: Optional[str] = None,
+    amount: Optional[Any] = None,
+    payment_timing: str = "pay_on_completion",
+    service_country_code: Optional[str] = None,
+    payer_country_code: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Return configured methods that transport can actually settle at trip end.
+    """Delegate method eligibility to Wallet; never invent a fallback method."""
+    if not currency_code:
+        # A method is only selectable against a concrete server-issued quote.
+        return []
+    from app.wallet.services.marketplace_invoice_service import MarketplaceInvoiceService
 
-    Admin configuration remains the source of truth for enabled methods. This
-    extra capability gate prevents advertising card/mobile-money/bank methods
-    when the transport settlement adapter cannot yet verify and record them.
-    """
-    if currency_code is None:
-        try:
-            # This is the actual currency returned by calculate_estimate().
-            # Do not guess from browser input or user country.
-            from app.transport.services.fare_service import CURRENCY_DEFAULT
-            currency_code = str(CURRENCY_DEFAULT).strip().upper()
-        except Exception:
-            currency_code = "USD"
-    else:
-        currency_code = str(currency_code).strip().upper()
-
-    configured = get_available_payment_methods(
-        user_id,
-        wallet_currency_code=currency_code,
+    return MarketplaceInvoiceService.list_available_methods(
+        payer_user_id=user_id,
+        currency=currency_code,
+        amount=amount,
+        settlement_timing=payment_timing,
+        service_country_code=service_country_code,
+        payer_country_code=payer_country_code,
     )
-    result = [
-        method for method in configured
-        if str(method.get("code") or "").strip().lower()
-        in TRANSPORT_END_OF_TRIP_METHODS
-    ]
-
-    # get_available_payment_methods has a legacy fallback that includes Wallet
-    # even if configuration lookup failed. Don't advertise it unless the user
-    # actually has a wallet account available.
-    if user_id is None:
-        return [method for method in result
-                if str(method.get("code") or "").strip().lower() == "cash"]
-
-    try:
-        from app.transport.services.payment_config import get_user_wallet_status
-        wallet_available = bool(
-            get_user_wallet_status(user_id, currency_code=currency_code)
-        )
-    except Exception:
-        logger.warning(
-            "Wallet availability could not be verified for rider %s",
-            user_id,
-            exc_info=True,
-        )
-        wallet_available = False
-
-    if not wallet_available:
-        result = [
-            method for method in result
-            if str(method.get("code") or "").strip().lower() != "wallet"
-        ]
-
-    # State the denomination before the rider commits. This transport path
-    # does not perform implicit FX conversion, so the fare currency must be
-    # clear for both direct cash payment and Wallet balance settlement.
-    for method in result:
-        code = str(method.get("code") or "").strip().lower()
-        if code == "cash":
-            method["description"] = (
-                "Pay the quoted fare in %s directly to the driver at trip end."
-                % currency_code
-            )
-        elif code == "wallet":
-            method["description"] = (
-                "Pay from your %s Wallet balance at trip end. "
-                "No automatic currency conversion is performed."
-                % currency_code
-            )
-    return result
 
 
 def get_available_payment_methods(
     user_id: Optional[int] = None,
     wallet_currency_code: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Return the payment methods the rider may choose from.
-
-    Each entry: {"code": str, "label": str, "default": bool, "category": str, "gateway": str}.
-
-    Filters by user's country and wallet status.
-    """
-    try:
-        from app.transport.services.payment_config import (
-            get_payment_config_service,
-            get_user_country,
-            get_user_wallet_status,
-        )
-
-        config_service = get_payment_config_service()
-
-        country = None
-        user_has_wallet = False
-
-        if user_id is not None:
-            country = get_user_country(user_id)
-            user_has_wallet = (
-                get_user_wallet_status(user_id, currency_code=wallet_currency_code)
-                if wallet_currency_code else get_user_wallet_status(user_id)
-            )
-
-        methods = config_service.get_methods_for_country(
-            country_code=country,
-            user_has_wallet=user_has_wallet,
-        )
-
-        # Convert to expected format
-        result = []
-        for m in methods:
-            result.append({
-                "code": m.code,
-                "label": m.label,
-                "default": m.default,
-                "category": m.category,
-                "gateway": m.gateway,
-                "description": m.description,
-                "metadata": m.metadata,
-            })
-
-        # Ensure cash is always present as fallback
-        if not any(m["code"] == "cash" for m in result):
-            result.insert(0, {
-                "code": "cash",
-                "label": "Cash",
-                "default": True,
-                "category": "offline",
-                "gateway": None,
-                "description": "Pay driver directly in cash",
-                "metadata": {"sort_order": 0}
-            })
-
-        return result
-
-    except Exception as exc:
-        logger.debug("Payment config service unavailable, using fallback: %s", exc)
-
-    # Fallback: what PaymentService.process_payment() actually executes
-    return [
-        {"code": "cash", "label": "Cash", "default": True, "category": "offline", "gateway": None},
-        {"code": "wallet", "label": "Wallet", "default": False, "category": "digital", "gateway": "internal"},
-    ]
+    """Compatibility wrapper; Wallet remains the only source of truth."""
+    return get_available_transport_payment_methods(
+        user_id,
+        currency_code=wallet_currency_code,
+        payment_timing="pay_on_completion",
+    )
