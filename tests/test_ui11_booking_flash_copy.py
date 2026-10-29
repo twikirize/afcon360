@@ -55,10 +55,6 @@ def test_success_flash_uses_ride_request_wording(
     assert page.status_code == 200, page.status_code
     html = page.get_data(as_text=True)
 
-    # The tracker must display the accepted amount as confirmed, not as a quote.
-    assert "Confirmed fare" in html
-    assert "Fare estimate" not in html
-
     # 2) New wording, with the booking reference preserved exactly.
     assert f"{NEW_WORDING} {ref}" in html, (
         "corrected success flash with exact reference not rendered"

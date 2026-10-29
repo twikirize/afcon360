@@ -14,6 +14,7 @@ on:
       - "tests/test_transport_booking_route_path.py"
       - "tests/test_transport_ride_options.py"
       - "tests/test_ui11_booking_flash_copy.py"
+      - "tests/test_transport_request_tracker_copy.py"
       - "tests/test_transport_cash_confirmation_semantics.py"
       - "tests/test_transport_admin_canonical_overview.py"
       - "tests/transport/test_ride_request_create.py"
@@ -107,6 +108,7 @@ jobs:
           tests/test_transport_booking_route_path.py
           tests/test_transport_ride_options.py
           tests/test_ui11_booking_flash_copy.py
+          tests/test_transport_request_tracker_copy.py
           tests/test_transport_cash_confirmation_semantics.py
           tests/test_transport_admin_canonical_overview.py
           tests/transport/test_ride_request_create.py
@@ -158,6 +160,7 @@ jobs:
           tests/test_transport_ride_options.py
           tests/test_transport_booking_route_path.py
           tests/test_ui11_booking_flash_copy.py
+          tests/test_transport_request_tracker_copy.py
           tests/test_transport_cash_confirmation_semantics.py
           tests/test_transport_admin_canonical_overview.py
           tests/transport/test_ride_request_create.py
