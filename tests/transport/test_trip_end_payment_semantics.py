@@ -130,6 +130,10 @@ def test_transport_choices_delegate_to_wallet_and_hide_unintegrated_methods(monk
         MarketplaceInvoiceService, "_wallet_account_available",
         staticmethod(lambda user_id, currency: True),
     )
+    monkeypatch.setattr(
+        MarketplaceInvoiceService, "_wallet_requires_transaction_pin",
+        staticmethod(lambda user_id: False),
+    )
 
     methods = payment_methods.get_available_transport_payment_methods(
         123, currency_code="USD", amount=25
