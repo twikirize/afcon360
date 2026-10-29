@@ -995,17 +995,8 @@ class DriverTripPaymentResource(Resource):
             return {"success": False, "error": "payment is not awaiting cash receipt"}, 409
 
         now = datetime.now(timezone.utc)
-        metadata["cash_receipt"] = {
-            "confirmed_by_driver_profile_id": int(profile.id),
-            "confirmed_by_driver_code": profile.driver_code,
-            "confirmed_at": now.isoformat(),
-            "amount": str(booking.final_price or booking.total_amount or 0),
-            "currency": str(getattr(booking.currency, "value", booking.currency)),
-        }
-        booking.booking_metadata = metadata
-        booking.payment_status = PaymentStatus.CAPTURED
-        booking.payment_captured_at = now
-        db.session.add(booking)
+        amount = Decimal(str(booking.final_price or booking.total_amount or 0))
+        currency = str(getattr(booking.currency, "value", booking.currency))
         try:
             payment_record = (
                 BookingPayment.query.filter_by(booking_id=booking.id)
@@ -1013,7 +1004,6 @@ class DriverTripPaymentResource(Resource):
                 .with_for_update()
                 .first()
             )
-            amount = Decimal(str(booking.final_price or booking.total_amount or 0))
             if payment_record is None:
                 payment_record = BookingPayment(
                     booking_id=booking.id,
@@ -1027,15 +1017,101 @@ class DriverTripPaymentResource(Resource):
                 )
                 payment_record.generate_payment_reference()
                 db.session.add(payment_record)
+                db.session.flush()
+
+            # Wallet owns the receipt record. Transport may update its cache only
+            # after Wallet accepts the cash receipt for the matching invoice.
+            from app.wallet.services.marketplace_invoice_service import (
+                MarketplaceInvoiceError,
+                MarketplaceInvoiceService,
+            )
+            metadata = dict(booking.booking_metadata or {})
+            raw_invoice_id = payment_record.wallet_invoice_id or metadata.get("wallet_invoice_id")
+            if raw_invoice_id:
+                invoice = MarketplaceInvoiceService.get_invoice(
+                    raw_invoice_id, for_update=True
+                )
+            else:
+                invoice = MarketplaceInvoiceService.find_invoice(
+                    "transport", booking_reference, for_update=True
+                )
+            if invoice is None:
+                invoice = MarketplaceInvoiceService.create_invoice(
+                    idempotency_key="transport-booking:%s" % booking.booking_reference,
+                    service_code="transport",
+                    service_reference=booking.booking_reference,
+                    payer_user_id=booking.user_id,
+                    amount=amount,
+                    currency=currency,
+                    payment_method="cash",
+                    settlement_timing="pay_on_completion",
+                    metadata={"booking_reference": booking.booking_reference},
+                    commit=False,
+                )
+
+            payment_record.wallet_invoice_id = invoice.id
+            metadata["wallet_invoice_id"] = str(invoice.id)
+            booking.booking_metadata = metadata
+            db.session.add(payment_record)
+            db.session.add(booking)
+
+            invoice = MarketplaceInvoiceService.mark_due_after_completion(
+                invoice_id=invoice.id,
+                payer_user_id=booking.user_id,
+                service_code="transport",
+                service_reference=booking_reference,
+                amount=amount,
+                currency=currency,
+            )
+            cash_result = MarketplaceInvoiceService.confirm_cash_receipt(
+                invoice_id=invoice.id,
+                payer_user_id=booking.user_id,
+                service_code="transport",
+                service_reference=booking_reference,
+                amount=amount,
+                currency=currency,
+                driver_user_id=int(profile.user_id),
+                driver_profile_id=int(profile.id),
+                driver_code=profile.driver_code,
+            )
+            if cash_result.get("status") != "cash_received":
+                raise MarketplaceInvoiceError(
+                    "cash_receipt_unverified",
+                    "Wallet did not confirm the cash receipt.",
+                )
+
+            # Refresh the invoice to cache Wallet's canonical receipt result.
+            invoice = MarketplaceInvoiceService.get_invoice(invoice.id)
+            canonical_receipt = dict(invoice.receipt_metadata or {})
+            receipt_cache = {
+                "confirmed_by_driver_profile_id": int(canonical_receipt.get("driver_profile_id") or profile.id),
+                "confirmed_by_driver_code": canonical_receipt.get("driver_code") or profile.driver_code,
+                "confirmed_at": canonical_receipt.get("confirmed_at") or now.isoformat(),
+                "amount": str(invoice.amount),
+                "currency": invoice.currency,
+                "wallet_invoice_id": str(invoice.id),
+                "collection_channel": "direct_cash_to_driver",
+            }
+            metadata = dict(booking.booking_metadata or {})
+            metadata["wallet_invoice_id"] = str(invoice.id)
+            metadata["wallet_invoice_status"] = invoice.status
+            metadata["cash_receipt"] = receipt_cache
+            booking.booking_metadata = metadata
+            booking.payment_status = PaymentStatus.CAPTURED
+            booking.payment_captured_at = invoice.cash_received_at or now
             payment_record.amount = amount
             payment_record.payment_method = "cash"
+            payment_record.wallet_invoice_id = invoice.id
             payment_record.payment_status = PaymentStatus.CAPTURED
-            payment_record.captured_at = now
+            payment_record.captured_at = invoice.cash_received_at or now
             payment_record.payment_method_details = {
                 **(payment_record.payment_method_details or {}),
                 "timing": "pay_on_completion",
-                "cash_receipt": metadata["cash_receipt"],
+                "wallet_invoice_id": str(invoice.id),
+                "cash_receipt": receipt_cache,
             }
+            db.session.add(booking)
+            db.session.add(payment_record)
             db.session.flush()
             audit_log(
                 action="transport_cash_payment_received",
@@ -1045,14 +1121,26 @@ class DriverTripPaymentResource(Resource):
                 details={
                     "booking_reference": booking.booking_reference,
                     "payment_method": "cash",
-                    "amount": float(booking.final_price or booking.total_amount or 0),
-                    "currency": str(getattr(booking.currency, "value", booking.currency)),
+                    "amount": float(amount),
+                    "currency": currency,
+                    "wallet_invoice_id": str(invoice.id),
                     "confirmed_by_driver_code": profile.driver_code,
-                    "confirmed_at": now.isoformat(),
+                    "confirmed_at": (invoice.cash_received_at or now).isoformat(),
                 },
                 db_session=db.session,
             )
             db.session.commit()
+        except MarketplaceInvoiceError as exc:
+            db.session.rollback()
+            logger.warning(
+                "Wallet rejected cash receipt for %s: %s (%s)",
+                booking_reference, exc.message, exc.code,
+            )
+            return {
+                "success": False,
+                "error": exc.message,
+                "code": exc.code,
+            }, 409
         except Exception:
             db.session.rollback()
             logger.exception("Cash receipt confirmation failed for %s", booking_reference)
