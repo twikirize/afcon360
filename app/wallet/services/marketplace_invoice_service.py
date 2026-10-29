@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.extensions import db
 from app.wallet.models.marketplace_invoice import MarketplaceInvoice
@@ -406,7 +406,10 @@ class MarketplaceInvoiceService:
                 "Wallet payment with a configured transaction PIN needs rider pre-authorization, which is not yet available. Choose another available method.",
             )
 
-        invoice = MarketplaceInvoice(
+        now = datetime.now(timezone.utc)
+        invoice_id = uuid.uuid4()
+        insert_stmt = pg_insert(MarketplaceInvoice).values(
+            id=invoice_id,
             idempotency_key=key,
             service_code=code,
             service_reference=reference,
@@ -418,11 +421,52 @@ class MarketplaceInvoiceService:
             service_country_code=service_country,
             payer_country_code=payer_country,
             status="pending",
+            transaction_id=None,
+            provider_reference=None,
+            cash_received_by_user_id=None,
             invoice_metadata=dict(metadata or {}),
             receipt_metadata={},
-        )
-        db.session.add(invoice)
-        db.session.flush()
+            created_at=now,
+            updated_at=now,
+        ).on_conflict_do_nothing().returning(MarketplaceInvoice.id)
+        inserted_id = db.session.execute(insert_stmt).scalar_one_or_none()
+
+        if inserted_id is not None:
+            invoice = cls.get_invoice(inserted_id)
+        else:
+            # PostgreSQL waits for a concurrent conflicting insert to commit,
+            # then returns no row here. Resolve the winner in the same transaction
+            # instead of leaking IntegrityError or creating a second invoice.
+            invoice = MarketplaceInvoice.query.filter_by(
+                idempotency_key=key,
+            ).first()
+            if invoice is None:
+                invoice = MarketplaceInvoice.query.filter_by(
+                    service_code=code,
+                    service_reference=reference,
+                ).first()
+            if invoice is None:
+                raise MarketplaceInvoiceError(
+                    "invoice_conflict_unresolved",
+                    "Wallet could not resolve a concurrent invoice request. Retry safely.",
+                )
+            if not cls._immutable_terms_match(
+                invoice,
+                service_code=code,
+                service_reference=reference,
+                payer_user_id=payer_user_id,
+                amount=normalized_amount,
+                currency=normalized_currency,
+                payment_method=method,
+                settlement_timing=timing,
+                service_country_code=service_country,
+                payer_country_code=payer_country,
+            ):
+                raise MarketplaceInvoiceError(
+                    "invoice_idempotency_conflict",
+                    "This marketplace reference already has a Wallet invoice with different terms.",
+                )
+
         if commit:
             db.session.commit()
         return invoice
