@@ -193,16 +193,19 @@ class MarketplaceInvoiceService:
                     "cash": "offline",
                     "wallet": "digital",
                 }.get(method_id, "digital")
+                description = (
+                    f"Pay from your {normalized_currency} Wallet balance at trip end. "
+                    "No automatic currency conversion is performed."
+                    if method_id == "wallet"
+                    else f"Pay the driver directly in {normalized_currency} after the trip."
+                )
                 available.append({
                     "code": method_id,
                     "label": config.display_name,
                     "default": method_id == "cash",
                     "category": category,
                     "gateway": config.provider_name if config.provider_name != "afcon360" else None,
-                    "description": (
-                        f"{config.display_name} in {normalized_currency}; "
-                        "settled after trip completion."
-                    ),
+                    "description": description,
                     "metadata": {
                         "currency": normalized_currency,
                         "settlement_timing": timing,
@@ -678,7 +681,7 @@ class MarketplaceInvoiceService:
                 "amount": str(invoice.amount),
                 "currency": invoice.currency,
             },
-            request_id=invoice.idempotency_key,
+            request_id=invoice.idempotency_key[:100],
         ))
         db.session.commit()
         return {
