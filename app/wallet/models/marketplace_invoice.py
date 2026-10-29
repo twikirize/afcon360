@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Numeric,
-    String, UniqueConstraint, text,
+    String, UniqueConstraint, PrimaryKeyConstraint, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
@@ -21,6 +21,7 @@ class MarketplaceInvoice(db.Model):
 
     __tablename__ = "wallet_marketplace_invoices"
     __table_args__ = (
+        PrimaryKeyConstraint("id", name="pk_wallet_marketplace_invoices"),
         CheckConstraint("amount > 0", name="ck_marketplace_invoice_amount_positive"),
         CheckConstraint(
             "status IN ('pending', 'due', 'paid', 'cash_received', "
@@ -39,11 +40,11 @@ class MarketplaceInvoice(db.Model):
             name="uq_marketplace_invoice_service_reference",
         ),
         Index(
-            "ix_marketplace_invoice_payer_status",
+            "ix_wallet_marketplace_invoice_payer_status",
             "payer_user_id", "status",
         ),
-        Index("ix_marketplace_invoice_status_created", "status", "created_at"),
-        Index("ix_marketplace_invoice_transaction", "transaction_id"),
+        Index("ix_wallet_marketplace_invoice_status_created", "status", "created_at"),
+        Index("ix_wallet_marketplace_invoice_transaction", "transaction_id"),
     )
 
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
