@@ -79,7 +79,7 @@ class MarketplaceInvoice(db.Model):
     )
     transaction_id = db.Column(
         UUID(as_uuid=True),
-        ForeignKey("transactions.id", name="fk_wallet_marketplace_invoice_transaction", ondelete="SET NULL"),
+        ForeignKey("transactions.id", name="fk_wallet_marketplace_invoice_transaction", ondelete="RESTRICT"),
         nullable=True,
     )
     provider_reference = db.Column(String(255), nullable=True)
