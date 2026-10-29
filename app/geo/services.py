@@ -7,9 +7,10 @@ What lives here NOW (pure Python, no network, no DB, no Redis):
 - duration → ETA conversion (explicit; NO distance×k heuristics here)
 - location freshness boundary helper (shares TrackingService 300 s default)
 
-What lives here LATER (behind interfaces, separate nodes):
-- road routing (Valhalla adapter), geocoding (Photon adapter),
-  Redis current-state + Postgres history, SSE delivery.
+What lives here behind interfaces:
+- road routing (Valhalla, OSRM, Geoapify, GraphHopper, ORS, Google Maps
+  adapters with an ordered chain), geocoding (Geoapify/Photon chain),
+  Redis current state + Postgres history, SSE delivery.
 
 Function naming rule: straight-line results are ALWAYS named
 `straight_line_*` so no caller can mistake them for road distance.
@@ -113,24 +114,92 @@ class LocationService:
 
 class RoutingService:
     """
-    GEO routing facade. Until the Valhalla adapter node lands, every call
-    returns a TRUTHFUL unresolved result: straight-line distance labelled
-    provider="haversine-fallback", duration unknown (None). Domains MUST
-    treat resolved=False as "no road data yet", never as road distance.
+    GEO routing facade with an ordered provider chain.
+
+    A configured primary is tried first, then explicit fallbacks. Only a
+    resolved road result is returned as road data. If no provider answers,
+    the result is the labelled straight-line fallback
+    (provider="haversine-fallback", resolved=False). Callers may pass
+    ``provider="osrm"`` to benchmark one engine without fallback leakage.
     """
 
-    def __init__(self, provider=None):
+    def __init__(self, provider=None, fallbacks=None, profile: str = "auto"):
         self._provider = provider
+        self._fallbacks = tuple(
+            p for p in (fallbacks or ()) if p is not None)
+        self._profile = profile or "auto"
 
     @property
     def provider_name(self) -> str:
         return "unresolved" if self._provider is None else str(
             getattr(self._provider, "name", "custom"))
 
-    def route(self, origin: GeoPoint, destination: GeoPoint,
-              profile: str = "auto") -> RouteResult:
+    @property
+    def provider_names(self) -> tuple[str, ...]:
+        return tuple(str(getattr(p, "name", "custom"))
+                     for p in self._chain())
+
+    @property
+    def profile(self) -> str:
+        return self._profile
+
+    def _chain(self):
         if self._provider is not None:
-            return self._provider.route(origin, destination, profile=profile)
+            yield self._provider
+        yield from self._fallbacks
+
+    @staticmethod
+    def _usable(provider) -> bool:
+        available = getattr(provider, "is_available", None)
+        if callable(available):
+            try:
+                return bool(available())
+            except Exception:
+                return False
+        return True
+
+    def _call(self, provider, origin: GeoPoint, destination: GeoPoint,
+              profile: str) -> RouteResult:
+        name = str(getattr(provider, "name", "custom"))
+        if not self._usable(provider):
+            return RouteResult(distance_m=0.0, duration_s=0.0,
+                               provider=name, resolved=False)
+        try:
+            result = provider.route(origin, destination, profile=profile)
+        except ValidationError:
+            raise
+        except Exception as exc:
+            logger.warning("GEO routing provider %s failed: %s", name,
+                           type(exc).__name__)
+            return RouteResult(distance_m=0.0, duration_s=0.0,
+                               provider=name, resolved=False)
+        if result is None:
+            return RouteResult(distance_m=0.0, duration_s=0.0,
+                               provider=name, resolved=False)
+        return result
+
+    def route(self, origin: GeoPoint, destination: GeoPoint,
+              profile: Optional[str] = None,
+              provider: Optional[str] = None) -> RouteResult:
+        validate_coordinates(origin.latitude, origin.longitude)
+        validate_coordinates(destination.latitude, destination.longitude)
+        request_profile = profile or self._profile
+        chain = list(self._chain())
+        if provider:
+            selected = str(provider).strip().lower()
+            for candidate in chain:
+                if str(getattr(candidate, "name", "")).lower() == selected:
+                    return self._call(candidate, origin, destination,
+                                      request_profile)
+            return RouteResult(distance_m=0.0, duration_s=0.0,
+                               provider=selected, resolved=False)
+        for candidate in chain:
+            if not self._usable(candidate):
+                continue
+            result = self._call(candidate, origin, destination,
+                                request_profile)
+            if result.resolved:
+                return result
         return RouteResult(
             distance_m=straight_line_distance_m(origin, destination),
             duration_s=0.0,
@@ -141,8 +210,12 @@ class RoutingService:
 
     def matrix(self, origins: List[GeoPoint],
                destinations: List[GeoPoint]) -> List[List[RouteResult]]:
-        if self._provider is not None:
-            return self._provider.matrix(origins, destinations)
+        for candidate in self._chain():
+            if not self._usable(candidate):
+                continue
+            table = candidate.matrix(origins, destinations)
+            if any(cell.resolved for row in table for cell in row):
+                return table
         table = straight_line_distance_matrix_m(origins, destinations)
         return [[RouteResult(distance_m=d, duration_s=0.0,
                              provider="haversine-fallback", resolved=False)
@@ -452,8 +525,26 @@ def get_location_service() -> LocationService:
 def get_routing_service() -> RoutingService:
     global _routing_service
     if _routing_service is None:
-        _routing_service = RoutingService()
+        try:
+            from flask import current_app, has_app_context
+
+            from app.geo.routing_settings import load_effective_geo_config
+            app = current_app if has_app_context() else None
+            _routing_service = build_routing_service(
+                load_effective_geo_config(app))
+        except Exception as exc:
+            logger.warning(
+                "GEO routing wiring failed; using truthful fallback (%s)",
+                type(exc).__name__)
+            _routing_service = RoutingService()
     return _routing_service
+
+
+def reload_routing_service() -> RoutingService:
+    """Rebuild the singleton after routing env/config changes (dev/test)."""
+    global _routing_service
+    _routing_service = None
+    return get_routing_service()
 
 
 def get_geocoding_service() -> GeocodingService:
@@ -463,20 +554,116 @@ def get_geocoding_service() -> GeocodingService:
     return _geocoding_service
 
 
+def build_routing_provider(name: str, config, force: bool = False):
+    """Build one named routing adapter from GeoConfig. No I/O occurs.
+
+    ``force`` marks an explicitly selected provider as enabled when its
+    endpoint/key is present. Missing endpoint/key still returns None.
+    """
+    from dataclasses import replace
+
+    provider = str(name or "").strip().lower()
+    if provider == "valhalla":
+        cfg = getattr(config, "valhalla", None)
+        if cfg is None or not str(getattr(cfg, "base_url", "") or ""):
+            return None
+        if not (force or bool(getattr(cfg, "enabled", False))):
+            return None
+        from app.geo.providers.valhalla import ValhallaRouter
+        return ValhallaRouter(replace(cfg, enabled=True))
+    if provider == "osrm":
+        cfg = getattr(config, "osrm", None)
+        if cfg is None or not str(getattr(cfg, "base_url", "") or ""):
+            return None
+        if not (force or bool(getattr(cfg, "enabled", False))):
+            return None
+        from app.geo.providers.osrm import OSRMRouter
+        return OSRMRouter(replace(cfg, enabled=True))
+    if provider == "geoapify":
+        cfg = getattr(config, "geoapify", None)
+        if (cfg is None
+                or not str(getattr(cfg, "base_url", "") or "")
+                or not str(getattr(cfg, "api_key", "") or "")):
+            return None
+        if not (force or bool(getattr(cfg, "enabled", False))):
+            return None
+        from app.geo.providers.geoapify_routing import GeoapifyRouter
+        return GeoapifyRouter(replace(cfg, enabled=True))
+    if provider == "graphhopper":
+        cfg = getattr(config, "graphhopper", None)
+        if (cfg is None
+                or not str(getattr(cfg, "base_url", "") or "")
+                or not str(getattr(cfg, "api_key", "") or "")):
+            return None
+        if not (force or bool(getattr(cfg, "enabled", False))):
+            return None
+        from app.geo.providers.graphhopper import GraphHopperRouter
+        return GraphHopperRouter(replace(cfg, enabled=True))
+    if provider == "ors":
+        cfg = getattr(config, "ors", None)
+        if (cfg is None
+                or not str(getattr(cfg, "base_url", "") or "")
+                or not str(getattr(cfg, "api_key", "") or "")):
+            return None
+        if not (force or bool(getattr(cfg, "enabled", False))):
+            return None
+        from app.geo.providers.ors import ORSRouter
+        return ORSRouter(replace(cfg, enabled=True))
+    if provider == "google":
+        cfg = getattr(config, "google", None)
+        if (cfg is None
+                or not str(getattr(cfg, "base_url", "") or "")
+                or not str(getattr(cfg, "api_key", "") or "")):
+            return None
+        if not (force or bool(getattr(cfg, "enabled", False))):
+            return None
+        from app.geo.providers.google import GoogleMapsRouter
+        return GoogleMapsRouter(replace(cfg, enabled=True))
+    return None
+
+
 def build_routing_service(config) -> RoutingService:
     """Wire a RoutingService from a GeoConfig (no I/O at build time).
 
-    Returns a Valhalla-backed service only when the operator explicitly
-    enabled + configured the endpoint; otherwise the truthful-fallback
-    service. Callers check `.resolved` on every result.
+    Explicit ``routing.provider`` plus ``routing.fallbacks`` wins. When no
+    explicit provider is set, legacy enabled Valhalla (then OSRM) is used
+    so existing operator configuration keeps working. A database-selected
+    ``unresolved`` sets ``allow_legacy_fallback=False`` so the owner can
+    truly disable road routing. Callers check ``.resolved`` on every
+    result.
     """
-    valhalla = getattr(config, "valhalla", None)
-    enabled = bool(getattr(valhalla, "enabled", False))
-    base_url = str(getattr(valhalla, "base_url", "") or "")
-    if enabled and base_url:
-        from app.geo.providers.valhalla import ValhallaRouter
-        return RoutingService(provider=ValhallaRouter(valhalla))
-    return RoutingService()
+    routing = getattr(config, "routing", None)
+    provider = str(getattr(routing, "provider", "unresolved")
+                   or "unresolved").strip().lower()
+    names: List[str] = []
+    if provider not in ("", "unresolved", "none"):
+        names.append(provider)
+        names.extend(getattr(routing, "fallbacks", ()) or ())
+    elif getattr(routing, "allow_legacy_fallback", True):
+        valhalla = getattr(config, "valhalla", None)
+        osrm = getattr(config, "osrm", None)
+        if (bool(getattr(valhalla, "enabled", False))
+                and str(getattr(valhalla, "base_url", "") or "")):
+            names.append("valhalla")
+        if (bool(getattr(osrm, "enabled", False))
+                and str(getattr(osrm, "base_url", "") or "")):
+            names.append("osrm")
+    providers = []
+    seen = set()
+    for name in names:
+        normalized = str(name or "").strip().lower()
+        if normalized in seen or normalized in ("", "unresolved", "none"):
+            continue
+        seen.add(normalized)
+        adapter = build_routing_provider(normalized, config, force=True)
+        if adapter is not None:
+            providers.append(adapter)
+    profile = str(getattr(routing, "profile", "auto") or "auto")
+    if not providers:
+        return RoutingService(profile=profile)
+    return RoutingService(provider=providers[0],
+                          fallbacks=providers[1:],
+                          profile=profile)
 
 
 def build_geocoding_service(config) -> GeocodingService:
@@ -617,8 +804,10 @@ __all__ = [
     "eta_from_duration",
     "get_location_service",
     "get_routing_service",
+    "reload_routing_service",
     "get_geocoding_service",
     "build_geocoding_service",
+    "build_routing_provider",
     "build_routing_service",
     "geocode_result_from_candidate",
     "geoapify_needs_secondary",

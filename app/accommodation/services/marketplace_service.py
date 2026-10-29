@@ -16,6 +16,7 @@ from flask import current_app
 from sqlalchemy.exc import OperationalError
 
 from app.extensions import db
+from app.wallet.exceptions import TransactionPINError
 from app.wallet.services.wallet_service import WalletService
 from app.wallet.services.commission_service import CommissionService
 from app.wallet.models.ledger import AccountModel, AccountOwnerType
@@ -77,7 +78,8 @@ class MarketplaceService:
         booking: AccommodationBooking,
         total_amount: Decimal,
         currency: str,
-        idempotency_key: str
+        idempotency_key: str,
+        pin: Optional[str] = None,
     ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         Charge guest and hold funds in platform escrow.
@@ -121,6 +123,8 @@ class MarketplaceService:
                 },
                 platform_fee=commission_amount,
                 fee_currency=currency,
+                pin=pin,
+                require_pin=True,
             )
 
             txn_id = result.get('transaction_id')
@@ -157,6 +161,11 @@ class MarketplaceService:
 
             return True, txn_id, None
 
+        except TransactionPINError:
+            # The wallet refused the debit (missing/invalid/locked PIN). Let the
+            # caller surface the wallet's code instead of flattening it to text.
+            db.session.rollback()
+            raise
         except Exception as e:
             db.session.rollback()
             logger.error(f"Payment failed for booking {booking.booking_reference}: {e}", exc_info=True)

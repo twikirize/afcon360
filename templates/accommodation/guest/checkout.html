@@ -227,6 +227,17 @@
                                     <small class="text-muted">Optional — you can also add this after your booking is confirmed.</small>
                                 </div>
 
+                                <div class="mb-4" id="wallet-pin-section" hidden>
+                                    <div class="checkout-section-title">Wallet Transaction PIN <span class="text-danger">*</span></div>
+                                    <input type="password" name="transaction_pin" id="checkout_transaction_pin"
+                                           class="form-control form-control-lg"
+                                           inputmode="numeric" autocomplete="current-password"
+                                           pattern="[0-9]*" minlength="4" maxlength="6"
+                                           placeholder="Enter your 4-6 digit PIN">
+                                    <small class="text-muted">Your PIN authorises the wallet payment.
+                                        <a href="{{ url_for('wallet.pin_page') }}">Forgot your PIN?</a></small>
+                                </div>
+
                                 <div class="form-check mb-4">
                                     <input type="checkbox" class="form-check-input" id="terms" required>
                                     <label class="form-check-label" for="terms">

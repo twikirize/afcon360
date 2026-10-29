@@ -4394,3 +4394,150 @@ part of the pgcrypto closure, but as a distinct H3-B gate.
 - Constraints/red lines: this is the §20.3.1-class authorized-reconstruction operation — requires explicit owner approval per re-freeze, independent review, fresh-install reproducibility, and a catalog-parity gate against BOTH prod and test. Recording this entry authorizes nothing.
 - Owner/area: database reliability / owner decision
 - Links: README "Database migrations — architecture, how to use, and why", AGENTS.md §52.4, migrations/versions/h3a20261020_static_baseline.py, BACKLOG TZ-UNIFY-FOLLOWUPS
+
+## WALLET-PIN-01 — Transaction-PIN enforcement: remaining surfaces (OPEN)
+
+- Status: Partial (recorded 2026-10-29; the PIN set/change/reset flows and send/create/activate/receive enforcement are implemented, the items below are deliberately out of the current scope)
+- Raised: 2026-10-29 (WALLET-PIN enforcement work; owner scope named create/activate/send/receive only)
+- Context: `/wallet/pin` now exists (set, change with current PIN, forgot via verified email/SMS OTP) and money movement is gated in `wallet.routes`. Three surfaces remain:
+  1. ~~**Withdrawal is not PIN-protected.**~~ **Resolved 2026-10-29 (WALLET-PIN-02)**: `withdraw_funds` now requires the transaction PIN through the shared `verify_debit_pin` gate and the withdraw form collects it (`templates/wallet/withdraw.html`). `WalletService.withdraw` still has no PIN parameter by design — enforcement lives at the route boundary so system/agent flows are unaffected.
+  2. **Failed-attempt counters can be rolled back.** `WalletService.transfer` verifies the PIN *inside* its `db.begin()` block; when verification fails the transaction rolls back, discarding `transaction_pin_failed_attempts`, so callers other than the HTML send route (API/agent paths) get no lockout progression. The HTML route now verifies and commits before calling the service, which masks the defect there only. Fix must preserve double-entry atomicity.
+  3. **Legacy PIN-less wallet owners can no longer receive funds.** The receive gate is intentional, but existing production users with wallets and no PIN are now blocked from incoming transfers until they set one. Requires an owner-approved comms/backfill decision (no migration is implied).
+- What needs to happen: obtain authorization per item; add withdrawal PIN verification through the canonical path; move PIN failure accounting outside the money transaction (or persist it in an independent unit of work); decide the legacy-user notification/grace policy before the receive gate produces support incidents.
+- Owner/area: wallet / security / owner decision
+- Links: `app/wallet/routes.py` (`send_funds`, `withdraw_funds`, `pin_*`), `app/wallet/services/wallet_service.py:1037-1065`, `app/wallet/services/pin_service.py`, `app/identity/models/user.py:305-359`
+
+## WALLET-SEND-RECEIVER-LOOKUP-01 — Send form cannot resolve a recipient by public id or username (OPEN, pre-existing)
+
+- Status: Open (found 2026-10-29 while verifying WALLET-PIN-01; not fixed — outside that node's authorized scope)
+- Raised: 2026-10-29
+- Context: `send_funds` resolves the recipient with
+  `User.query.filter((User.id == receiver_id) | (User.public_id == receiver_id))`
+  (`app/wallet/routes.py`, unchanged by the PIN work). Because `users.id` is BIGINT, PostgreSQL evaluates
+  `id = :receiver_id` for every submitted value, so any non-numeric identifier fails with
+  `psycopg2.errors.InvalidTextRepresentation: invalid input syntax for type bigint: "<value>"`.
+  The generic `except` branch turns that into the user-facing flash "Unable to send funds. Please try again later."
+  Repro (test DB, real HTTP POST): `POST /wallet/send` with `receiver_id` set to a user's `public_id` (UUID)
+  → audit record `SEND_FUNDS_ERROR`, flash "Unable to send funds"; the same happens for a username.
+  The send form itself asks for a person (placeholder "e.g., Henry Tiggan"), so the intended input is not
+  a numeric id; the query has no username branch either. Net effect: the HTML send path only works when the
+  user types an internal BIGINT id (which §12.1 forbids exposing as a public identifier).
+- What needs to happen: resolve the recipient through the canonical public identifier (and/or username) with
+  the BIGINT comparison applied only when the input is numeric; return "Receiver not found" for unknown
+  identifiers instead of the generic failure. Needs its own node; do not fold into the PIN work.
+- Evidence: `app/wallet/routes.py` receiver lookup + generic handler; `templates/wallet/_send_content.html:23-25`;
+  repro script `%TEMP%\opencode\verify_wallet_pin.py` (receiver gate check used a numeric id to bypass this defect);
+  VERIFIED pre-existing: the lookup lines are context-only in `git diff app/wallet/routes.py` (the PIN change only
+  removed a duplicate `User` import there).
+- Owner/area: wallet / security (§12.1 dual-ID)
+- Links: `app/wallet/routes.py` (`send_funds`), `templates/wallet/_send_content.html`, BACKLOG WALLET-PIN-01, AGENTS.md §12.1
+
+## WALLET-PIN-API-01 — JSON `/wallet/pin/set` is shadowed by the form route (OPEN, pre-existing)
+
+- Status: Open (pre-existing; confirmed 2026-10-29 during WALLET-PIN-01 verification; not changed — needs a route/dead-API decision)
+- Raised: 2026-10-29
+- Context: both `wallet.set_pin` (form, `app/wallet/routes.py`) and `wallet_pin.set_pin` (JSON, `app/wallet/routes_pin.py`) register `POST /wallet/pin/set`. `wallet_bp` is registered first, so the JSON handler is unreachable: a JSON POST returns `302 text/html` (verified with the test client). The other JSON PIN endpoints are not shadowed and work — `POST /wallet/pin/verify`, `POST /wallet/pin/reset`, `POST /wallet/pin/reset/confirm` (the latter two returned 200 + structured JSON in the same check).
+- Scope note: while verifying WALLET-PIN-01 the new *form* confirm route originally took `/wallet/pin/reset` and shadowed the JSON send-code endpoint; it was moved to `/wallet/pin/reset/submit` so the JSON route keeps working. Only the pre-existing `/set` collision remains.
+- Callers: no template or JavaScript in the repo calls any of these JSON endpoints (repo-wide grep); the server-rendered PIN page is the actual UI.
+- What needs to happen: decide whether to retire the JSON PIN write API or give it a distinct prefix and keep both. No behaviour change without that decision.
+- Owner/area: wallet / API surface
+- Links: `app/wallet/routes.py` (`set_pin`), `app/wallet/routes_pin.py` (`set_pin`), `app/__init__.py` (`pin_bp` registration), BACKLOG WALLET-PIN-01
+
+## WALLET-PIN-02 — All-debits transaction-PIN enforcement (DONE)
+
+- Status: Done (implemented and verified 2026-10-29 under explicit owner authorization "all debits")
+- Raised: 2026-10-29
+- Scope delivered: withdraw, event registration (wallet), accommodation guest checkout (wallet + mock gateway), accommodation "pay balance" (`guest_pay_booking`), plus balance-privacy headers.
+- Implementation: one shared route-boundary helper `verify_debit_pin(user, pin)` in `app/wallet/services/pin_service.py` — returns `(ok, message)`, covers "no PIN set", "PIN required", "locked", "incorrect", and commits the failed-attempt counter immediately so lockout survives the service layer's own transaction rollback. Callers: `wallet.withdraw_funds`, `wallet.send_funds`, `events.register`, `accommodation.guest_checkout`, `accommodation.guest_pay_booking`.
+- Accommodation plumbing: `pin` threaded through `MarketplaceService.charge_guest → WalletService.transfer(pin=...)`, `WalletProcessor.charge(pin=...)`, `MockGatewayProcessor.charge(pin=...)`. Before this, every PIN-holding user's accommodation wallet charge failed with `TransactionPINError` because no caller ever supplied a PIN.
+- UI: PIN fields added to `templates/wallet/withdraw.html`, `templates/events/attendee/register.html` (paid tiers only; free tier in a mixed event does not require it), `templates/accommodation/guest/checkout.html` (+ `syncWalletPin()` in `static/js/modules/accommodation/checkout.js`), `templates/accommodation/guest/_dashboard_content.html` (both pay-balance forms).
+- Balance privacy: every response now sends `Vary: Cookie` (`app/__init__.py` `after_request`) so shared/proxy caches cannot cross-serve authenticated pages; authenticated responses keep `Cache-Control: no-store, no-cache, must-revalidate, private`.
+- Evidence: `py_compile` OK on all touched modules; `create_app()` → `DB_VERIFY_OK`; `%TEMP%\opencode\verify_debit_gates.py` 23/23 PASS (helper contract, withdraw no-PIN/wrong-PIN/correct-PIN against real balance, plumbing signatures, template/JS wiring); `%TEMP%\opencode\verify_wallet_pin.py` unchanged at 30/30 (exit 0) after the `send_funds` refactor; `%TEMP%\opencode\verify_cache_headers.py` 4/4 PASS.
+- Not covered by design (see follow-ups below): transport wallet payment (no wired debit route) and agent cashout confirmation (no intent-creation caller).
+- Owner/area: wallet / security
+- Links: `app/wallet/services/pin_service.py`, `app/wallet/routes.py`, `app/events/routes.py`, `app/accommodation/routes.py`, `app/accommodation/services/marketplace_service.py`, `app/__init__.py`
+
+## WALLET-TRANSPORT-PAYMENT-DEAD-01 — Transport wallet payment service has no caller (OPEN, pre-existing)
+
+- Status: Open (recorded 2026-10-29 during WALLET-PIN-02 mapping; nothing changed)
+- Raised: 2026-10-29
+- Context: `PaymentService.process_payment` (`app/transport/services/payment_service.py:29`) debits the wallet in its `wallet` branch but has no caller anywhere in the repo — it is only re-exported via `app/transport/__init__.py:49` (`get_payment_service`). The transport bookings "payments" page is read-only, and the API resource `BookingPaymentResource` records a payment status rather than moving money. Consequence: there is no user-initiated transport wallet debit to gate, so no PIN was added there, and any future wiring must add the PIN gate at the same time.
+- What needs to happen: when a transport payment route is actually wired, require `verify_debit_pin` before calling `process_payment`, or remove the dead service. Either way this needs its own node.
+- Owner/area: transport / wallet integration
+- Links: `app/transport/services/payment_service.py`, `app/transport/__init__.py`, BACKLOG WALLET-PIN-02
+
+## WALLET-AGENT-CASHOUT-INTENT-01 — Agent cashout intent creation is unwired (OPEN, pre-existing)
+
+- Status: Open (recorded 2026-10-29 during WALLET-PIN-02 mapping; nothing changed)
+- Raised: 2026-10-29
+- Context: `AgentCashoutService.confirm_cashout` (`app/wallet/services/agent_cashout_service.py`) is unreachable because `save_withdrawal_intent` (`app/wallet/services/withdrawal_intent.py:32`) has no callers — no code path creates the `WDR-` intent a confirmation needs. `AgentCashoutService.withdraw_funds` debits immediately instead, which is the path the agent console actually uses and which now sits behind the owner/agent authorization rules.
+- PIN implication: an agent must not be asked for (and must not know) the user's transaction PIN, so the PIN cannot be added at the confirm step. When the intent flow is wired, the PIN has to be captured and verified at intent creation (the user-initiated step), with confirmation remaining authorization-only.
+- What needs to happen: decide whether to wire the deferred-intent flow or delete it; if wired, gate intent creation with `verify_debit_pin`.
+- Owner/area: wallet / agent operations
+- Links: `app/wallet/services/agent_cashout_service.py`, `app/wallet/services/withdrawal_intent.py`, BACKLOG WALLET-PIN-02
+
+## EVENTS-REGISTER-NO-PAYMENT-UI-01 — Event registration silently defaults to wallet (OPEN)
+
+- Status: Open (behaviour unchanged except the new PIN gate; recorded 2026-10-29)
+- Raised: 2026-10-29
+- Context: `templates/events/attendee/register.html` has no payment-method control at all, and `events.register` falls back to `data.get('payment_method', 'wallet')`. For any paid ticket the wallet is therefore debited with no explicit method choice or confirmation screen; the only guard is the new transaction-PIN field (and the PIN is only shown when `has_paid_tickets`). Free events are unaffected.
+- What needs to happen: owner decision on whether paid registration should show a payment summary/method step (wallet vs external provider) and a confirmation of the amount before debit. Until then the PIN gate (WALLET-PIN-02) is the only second factor.
+- Owner/area: events / wallet / product
+- Links: `templates/events/attendee/register.html`, `app/events/routes.py` (`register`), BACKLOG WALLET-PIN-02
+
+## WALLET-TX-PUBLIC-ID-01 — `/wallet/api/transactions` serializes the transaction primary key (OPEN, needs migration)
+
+- Status: Open (recorded 2026-10-29; not changed — fixing it properly needs a schema change the owner must run)
+- Raised: 2026-10-29
+- Context: `api_transactions` (`app/wallet/routes.py`) returns `'id': str(tx.id)` for each row. `transactions.id` is a `UUID` primary key and the model has no `public_id` column, so the JSON exposes the raw primary key. That is a §12.1 dual-ID violation (no internal `id` in API output), even though the value is a UUID rather than a sequential BigInteger, so the exposure is less harmful than a numeric leak.
+- Why not fixed now: the correct fix is a `public_id` column on `transactions` plus an Alembic migration. Migrations are owner-run in this repo (AGENTS.md §20/§48), and no migration was authorized for this workstream.
+- What needs to happen: owner-approved migration adding `transactions.public_id` (backfilled), then serialize that instead of `tx.id`. Interim options (owner decision): drop the `id` field entirely or return `external_reference`.
+- Owner/area: wallet / API / database
+- Links: `app/wallet/routes.py` (`api_transactions`), `app/wallet/models/transaction.py`, AGENTS.md §12.1, §20
+
+## WALLET-PIN-03 — Debit authorization moved inside the wallet module (DONE)
+
+- Status: Done (implemented and verified 2026-10-29 under explicit owner direction: modules are independent, the wallet is the only payment aggregator, and PIN policy must not live in events/accommodation)
+- Raised: 2026-10-29
+- Why: WALLET-PIN-02 enforced the PIN at the route boundary of the calling module. The owner rejected that architecture: events and accommodation must only *initiate* payment and must never verify a PIN or hold PIN policy. Wallet behaviour must be the same regardless of which module initiates the debit.
+- Implementation:
+  - `app/wallet/services/pin_service.py` — new `authorize_debit(user, pin)` is the single wallet-owned gate. It raises `TransactionPINError` with `code` in `{pin_not_set, pin_required, pin_locked, pin_invalid}` and commits the failed-attempt counter in its own unit of work, before the money transaction opens. `verify_debit_pin()` is now a thin `(ok, message)` wrapper kept only for the wallet's own HTML views.
+  - `app/wallet/exceptions.py` — `TransactionPINError(message, code="pin_invalid")` exposes `.code`.
+  - `WalletService.withdraw` — `pin`/`require_pin` parameters; authorization runs before `db.begin()`.
+  - `WalletService.transfer` — `require_pin` parameter; the old in-transaction PIN block (which silently swallowed non-PIN exceptions) is replaced by the pre-transaction `authorize_debit`, additionally guarded by an ownership check performed *before* PIN state is touched so an unauthorized caller cannot burn the owner's attempts. Platform/system accounts (no `user_id`, `system_initiated=True`) are skipped.
+  - `app/events/routes.py` — `verify_debit_pin` block removed; the route forwards `pin=data.get('transaction_pin')` to all three `process_ticket_purchase` call sites and maps the wallet's refusal (`_payment_failure`, exposing `code` and `pin_url` for `pin_not_set`).
+  - `app/events/payment_service.py` — `pin` threaded through `process_ticket_purchase` → `_process_wallet_payment` → `withdraw(require_pin=True)`; `except TransactionPINError` returns `{success: False, error, code}`.
+  - `app/accommodation/routes.py` — checkout and pay-balance PIN gates removed; the wallet's `TransactionPINError` is caught around the charge, the hold is released, and `pin_not_set` redirects to the wallet PIN page.
+  - `app/accommodation/services/marketplace_service.py` — `charge_guest` calls `transfer(..., require_pin=True)` and re-raises `TransactionPINError` instead of flattening it to text.
+  - `app/wallet/routes.py` — wallet's own send/withdraw views keep their friendly pre-checks (PIN page redirect) and now also pass `pin`/`require_pin` to the service; flash uses `e.message`.
+- Evidence: `py_compile` OK on all touched modules; `create_app()` → `DB_VERIFY_OK`; `%TEMP%\opencode\verify_debit_gates.py` 35/35 PASS (authorize_debit code contract + attempt persistence, withdraw route, `transfer(require_pin=True)` missing/wrong/correct PIN with real balances, module-boundary static assertions, plumbing signatures, template/JS wiring); `%TEMP%\opencode\verify_wallet_pin.py` 30/30 unchanged; `%TEMP%\opencode\verify_cache_headers.py` 4/4 PASS.
+- Supersedes: the route-boundary enforcement described in WALLET-PIN-02 for `events.register`, `accommodation.guest_checkout`, `accommodation.guest_pay_booking`.
+- Owner/area: wallet / security
+- Links: `app/wallet/services/pin_service.py`, `app/wallet/exceptions.py`, `app/wallet/services/wallet_service.py`, `app/events/routes.py`, `app/events/payment_service.py`, `app/accommodation/routes.py`, `app/accommodation/services/marketplace_service.py`, `app/wallet/routes.py`
+
+## EVENTS-ACCOMMODATION-FUNDING-PIN-01 — Organizer funding transfer still demands the organizer's PIN (OPEN, pre-existing)
+
+- Status: Open (behaviour preserved by WALLET-PIN-03; recorded 2026-10-29)
+- Raised: 2026-10-29
+- Context: `app/events/accommodation_booking_service.py` funds an attendee's accommodation from the organizer's wallet via `WalletService.transfer(...)` with no `pin` and no `system_initiated=True`. `transfer` enforces the PIN whenever the sender has one set, so an organizer with a PIN cannot fund an attendee booking; the `TransactionPINError` falls into the generic `except Exception` and surfaces as an `AttendeeAccommodationBookingError`. This existed before WALLET-PIN-03 (the old in-transaction block did the same); the refactor only changed where the check runs.
+- What needs to happen: decide whether organizer funding is system-initiated (pass `system_initiated=True`, which changes financial behaviour and needs explicit authorization) or a user-initiated debit (collect the organizer's PIN in the UI). Do not silently make it PIN-free.
+- Owner/area: events / wallet / product
+- Links: `app/events/accommodation_booking_service.py`, `app/wallet/services/wallet_service.py` (`transfer`), BACKLOG WALLET-PIN-03
+
+## EVENTS-GROUP-BOOKING-PIN-01 — Group ticket purchases debit the wallet with no PIN (OPEN)
+
+- Status: Open (discovered 2026-10-29 while auditing debit coverage after WALLET-PIN-03; nothing changed)
+- Raised: 2026-10-29
+- Context: every group booking (paid or free) is handled by the unconditional block at `app/events/routes.py:761-884`, which calls `EventService.register_for_event(...)` per attendee. For a priced tier that service calls `wallet_service.withdraw(...)` at `app/events/services.py:1626` **without `pin` and without `require_pin`**, then writes `payment_status = "paid"` itself (line 1640) and returns before the paid-event branch. Two consequences: (a) a paid group purchase moves money with no transaction-PIN check — the last user-initiated debit that bypasses the wallet gate; (b) the paid group branch at `app/events/routes.py:921-989` (which does supply a PIN) is effectively unreachable for form posts.
+- What needs to happen: route group purchases through the same wallet-authorized path as individual purchases (PIN forwarded, wallet decides), or delete the dead paid-group branch; do not leave two payment paths for the same product. Needs its own node.
+- Owner/area: events / wallet
+- Links: `app/events/routes.py` (`register`), `app/events/services.py` (`register_for_event`), BACKLOG WALLET-PIN-03
+
+## EVENTS-BULK-PAID-PIN-01 — Paid bulk upload has no PIN field (OPEN, latent)
+
+- Status: Open (latent regression introduced by `require_pin=True` in WALLET-PIN-03; no UI calls the endpoint)
+- Raised: 2026-10-29
+- Context: `confirm_bulk` (`app/events/bulk_upload.py:363`) calls `process_ticket_purchase(...)` with no `pin`, which now reaches `withdraw(require_pin=True)` and is refused with `pin_required`/`pin_not_set`. No template or script posts `transaction_pin` to `events_bulk.confirm`, so the flow is not reachable from the UI today, but it would fail for any organizer with a PIN once wired.
+- What needs to happen: when the bulk-confirm UI is wired, collect the organizer's PIN (or classify the flow as system-initiated with explicit authorization), and surface `TransactionPINError.code` in the JSON response.
+- Owner/area: events / wallet
+- Links: `app/events/bulk_upload.py` (`confirm_bulk`), `app/events/payment_service.py`, BACKLOG WALLET-PIN-03

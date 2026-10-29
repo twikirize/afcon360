@@ -209,6 +209,18 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
        class="subnav-link {% if request.endpoint == 'profile.account_overview' %}active{% endif %}">
       <i class="fas fa-user-cog"></i>&nbsp; Account
     </a>
+    <a href="{{ url_for('profile.account_settings') }}"
+       class="subnav-link {% if request.endpoint == 'profile.account_settings' %}active{% endif %}">
+      <i class="fas fa-sliders-h"></i>&nbsp; Settings
+    </a>
+    <a href="{{ url_for('profile.account_security') }}"
+       class="subnav-link {% if request.endpoint == 'profile.account_security' %}active{% endif %}">
+      <i class="fas fa-shield-alt"></i>&nbsp; Security
+    </a>
+    <a href="{{ url_for('profile.account_danger') }}"
+       class="subnav-link {% if request.endpoint == 'profile.account_danger' %}active{% endif %}">
+      <i class="fas fa-exclamation-triangle"></i>&nbsp; Danger zone
+    </a>
     <a href="{{ url_for('profile.edit_profile') }}"
        class="subnav-link {% if request.endpoint == 'profile.edit_profile' %}active{% endif %}">
       <i class="fas fa-edit"></i>&nbsp; Edit profile
@@ -371,9 +383,9 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
           {% if pin_locked %}
             <span class="pill-danger"><i class="fas fa-lock"></i> Locked</span>
           {% elif has_pin %}
-            <a href="{{ url_for('wallet.change_pin') }}" class="link-btn"><i class="fas fa-edit"></i> Change</a>
+            <a href="{{ url_for('wallet.pin_page') }}" class="link-btn"><i class="fas fa-edit"></i> Change</a>
           {% else %}
-            <a href="{{ url_for('wallet.set_pin') }}" class="link-btn" style="color:var(--warn);"><i class="fas fa-plus"></i> Set PIN</a>
+            <a href="{{ url_for('wallet.pin_page') }}" class="link-btn" style="color:var(--warn);"><i class="fas fa-plus"></i> Set PIN</a>
           {% endif %}
         </div>
         <div class="sec-row">
@@ -652,27 +664,27 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
             <span class="danger-row-title">Download my data</span>
             <span class="danger-row-sub">Get a copy of everything we hold about you (GDPR / data portability)</span>
           </div>
-          <button class="btn-danger-soft" onclick="requestDataExport()">
+          <a href="{{ url_for('profile.account_danger') }}#download" class="btn-danger-soft" style="text-decoration:none;">
             <i class="fas fa-download"></i> Export
-          </button>
+          </a>
         </div>
         <div class="danger-row">
           <div class="danger-row-info">
             <span class="danger-row-title">Deactivate account</span>
             <span class="danger-row-sub">Temporarily disable your account. You can reactivate at any time.</span>
           </div>
-          <button class="btn-danger-soft" onclick="confirmDeactivate()">
+          <a href="{{ url_for('profile.account_danger') }}#deactivate" class="btn-danger-soft" style="text-decoration:none;">
             <i class="fas fa-pause-circle"></i> Deactivate
-          </button>
+          </a>
         </div>
         <div class="danger-row">
           <div class="danger-row-info">
             <span class="danger-row-title">Delete account permanently</span>
             <span class="danger-row-sub">All data will be removed. This action cannot be undone.</span>
           </div>
-          <button class="btn-danger-hard" onclick="confirmDelete()">
+          <a href="{{ url_for('profile.account_danger') }}#delete" class="btn-danger-hard" style="text-decoration:none;">
             <i class="fas fa-trash-alt"></i> Delete account
-          </button>
+          </a>
         </div>
       </div>
     </div>
@@ -704,20 +716,6 @@ function revokeSession(sessionId, btn) {
     }
   })
   .catch(() => { btn.textContent = 'Revoke'; btn.disabled = false; });
-}
-
-function requestDataExport() {
-  if (confirm('We will prepare your data export and email it to you. Continue?'))
-    alert('Request received. You will get an email within 24 hours.');
-}
-function confirmDeactivate() {
-  if (confirm('Deactivate your account? You can reactivate by logging back in.'))
-    window.location.href = '{{ url_for("auth.deactivate_account") }}';
-}
-function confirmDelete() {
-  const code = prompt('Type DELETE to permanently delete your account:');
-  if (code === 'DELETE')
-    window.location.href = '{{ url_for("auth.delete_account") }}';
 }
 </script>
 {% endblock %}

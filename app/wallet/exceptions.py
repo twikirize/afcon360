@@ -99,10 +99,16 @@ class PaymentError(WalletError):
 
 
 class TransactionPINError(WalletError):
-    """Raised when a transaction PIN is required, invalid, or locked."""
+    """Raised when a transaction PIN is required, invalid, or locked.
 
-    def __init__(self, message: str = "Transaction PIN error"):
+    ``code`` lets a calling module route the user without re-implementing PIN
+    logic: ``pin_not_set`` (send them to the PIN page), ``pin_required``
+    (nothing was submitted), ``pin_locked``, ``pin_invalid``.
+    """
+
+    def __init__(self, message: str = "Transaction PIN error", code: str = "pin_invalid"):
         self.message = message
+        self.code = code
         super().__init__(message)
 
 

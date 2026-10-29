@@ -29,13 +29,18 @@
                         <form method="POST" action="{{ url_for('auth.reset_request') }}">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <div class="mb-3">
-                                <label for="username" class="form-label">Username</label>
-                                <input type="text" class="form-control" id="username" name="username"
-                                       required maxlength="64" placeholder="Enter your username">
-                                <div class="form-text">Enter your username to receive a password reset link.</div>
+                                <label for="email" class="form-label">Email address</label>
+                                <input type="email" class="form-control" id="email" name="email"
+                                       required maxlength="254" autocomplete="email"
+                                       value="{{ email or '' }}" placeholder="you@example.com">
+                                <div class="form-text">
+                                    Enter the email on your AFCON360 account and we'll send you a reset link.
+                                </div>
                             </div>
                             <button type="submit" class="btn btn-primary">Send Reset Link</button>
                             <a href="{{ url_for('auth.login') }}" class="btn btn-link">Back to Login</a>
+                            <a href="{{ url_for('auth.reset_phone') }}" class="btn btn-link">No email access? Get a code by SMS</a>
+                            <a href="{{ url_for('auth.recover') }}" class="btn btn-link">Recover with a security question</a>
                         </form>
                     </div>
                 </div>

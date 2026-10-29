@@ -767,6 +767,28 @@
                         Each registered attendee receives a unique QR-code ticket by email.
                     </div>
 
+                    {% if has_paid_tickets %}
+                    <!-- ── Payment confirmation ── -->
+                    <div class="form-section" id="pin-section">
+                        <h2 class="section-title">
+                            <div class="section-icon"><i class="fas fa-lock"></i></div>
+                            Confirm Payment
+                        </h2>
+                        <div class="form-group">
+                            <label class="form-label">Transaction PIN <span class="req">*</span></label>
+                            <input type="password" name="transaction_pin" id="transaction_pin"
+                                   class="form-control" inputmode="numeric"
+                                   autocomplete="current-password" pattern="[0-9]*"
+                                   minlength="4" maxlength="6"
+                                   placeholder="Enter your 4-6 digit PIN">
+                            <p class="form-hint" style="font-size:0.8rem;color:#6b7280;margin-top:0.35rem;">
+                                Your wallet PIN authorises the ticket payment.
+                                <a href="{{ url_for('wallet.pin_page') }}">Forgot your PIN?</a>
+                            </p>
+                        </div>
+                    </div>
+                    {% endif %}
+
                     <!-- Actions -->
                     <div class="form-actions">
                         <a href="{{ safe_url('events.landing', identifier=event.slug) }}" class="btn-back">
@@ -861,6 +883,11 @@ document.addEventListener('DOMContentLoaded', function () {
         if (hidden) hidden.value = card.dataset.tierId;
         var err = document.getElementById('tier-selection-error');
         if (err) err.style.display = 'none';
+        // A wallet debit needs the transaction PIN; a free tier does not.
+        var pinInput = document.getElementById('transaction_pin');
+        if (pinInput) {
+            pinInput.required = parseFloat(card.dataset.tierPrice) > 0;
+        }
     };
 
     // ── Group attendee cards ──

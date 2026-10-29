@@ -770,7 +770,9 @@ class WalletService:
         tx_type: TransactionType = TransactionType.WITHDRAW,
         actor_id: Optional[int] = None,
         agent_on_behalf: bool = False,
-        system_initiated: bool = False
+        system_initiated: bool = False,
+        pin: Optional[str] = None,
+        require_pin: bool = False,
     ) -> Dict[str, Any]:
         """
         Process a withdrawal with full atomicity.
@@ -790,6 +792,9 @@ class WalletService:
             payment_provider: Payment provider
             agent_on_behalf: Allow authorized agent to debit user's account
             system_initiated: Skip ownership check for system-initiated transactions
+            pin: Transaction PIN supplied by the user with the request
+            require_pin: True for user-initiated debits (wallet payments made by
+                other modules). The wallet verifies the PIN before moving money.
 
         Returns:
             Dict with transaction result
@@ -799,6 +804,8 @@ class WalletService:
             InsufficientBalanceError: If insufficient funds
             LimitExceededError: If limits exceeded
             PermissionError: If user doesn't own the account
+            TransactionPINError: If the debit is not authorized (PIN missing,
+                not set, incorrect, or locked)
         """
         amount = self._quantize(amount)
 
@@ -815,6 +822,18 @@ class WalletService:
             self.db.rollback()
         except Exception:
             pass
+
+        # User-initiated debits must be authorized by the wallet itself. The PIN
+        # check runs (and commits its attempt counter) before the money
+        # transaction opens, so a failed attempt is never rolled back with it.
+        if require_pin and not system_initiated and not agent_on_behalf:
+            from app.identity.models.user import User
+            from app.wallet.services.pin_service import authorize_debit
+
+            payer_account = self.account_repo.get_by_id(account_id)
+            if not payer_account:
+                raise WalletNotFoundError(wallet_ref=str(account_id))
+            authorize_debit(User.get_by_private_id(payer_account.user_id), pin)
 
         # SINGLE TRANSACTION
         with self.db.begin():
@@ -981,6 +1000,7 @@ class WalletService:
         platform_fee: Optional[Decimal] = None,
         fee_currency: Optional[str] = None,
         pin: Optional[str] = None,
+        require_pin: bool = False,
         system_initiated: bool = False
     ) -> Dict[str, Any]:
         """
@@ -1002,6 +1022,9 @@ class WalletService:
             platform_fee: Optional platform fee to deduct
             fee_currency: Currency for platform fee
             pin: Transaction PIN for verification
+            require_pin: True when the sender must authorize the debit even if
+                they have not set a PIN yet (the wallet then answers
+                ``pin_not_set`` so the caller can send them to the PIN page)
             system_initiated: Skip ownership check for system-initiated transactions
 
         Returns:
@@ -1032,38 +1055,30 @@ class WalletService:
         except Exception:
             pass
 
+        # 0. Debit authorization, before the money transaction opens.
+        #
+        # The wallet owns this decision: a module that initiates a payment only
+        # forwards the PIN the user supplied and reacts to the outcome. Running
+        # the check outside the transaction means the failed-attempt counter is
+        # committed even though a rejected debit rolls the money legs back.
+        if not system_initiated:
+            from app.identity.models.user import User
+            from app.wallet.services.pin_service import authorize_debit
+
+            sender_account = self.account_repo.get_by_id(from_account_id)
+            if not sender_account:
+                raise WalletNotFoundError(wallet_ref=from_account_id)
+            # Establish permission before touching PIN state: an unauthorized
+            # caller must never be able to burn the owner's PIN attempts.
+            if sender_account.user_id != current_user.id and not self._is_admin():
+                current_app.logger.warning(f"Ownership violation attempt on account {sender_account.id} by user {current_user.id}")
+                raise PermissionError("You do not have permission to operate on this account")
+            sender_user = User.get_by_private_id(sender_account.user_id)
+            if sender_user and (require_pin or sender_user.transaction_pin_hash):
+                authorize_debit(sender_user, pin)
+
         # SINGLE TRANSACTION
         with self.db.begin():
-            # 0. PIN verification inside the transaction to avoid TOCTOU
-            try:
-                from app.identity.models.user import User
-                from app.wallet.exceptions import TransactionPINError
-
-                # Get sender's account first to find user_id
-                from_account = self.account_repo.get_by_id(from_account_id)
-                if not from_account:
-                    raise WalletNotFoundError(wallet_ref=from_account_id)
-                sender_user = User.get_by_private_id(from_account.user_id)
-                if sender_user and sender_user.transaction_pin_hash:
-                    if not pin:
-                        raise TransactionPINError("Transaction PIN is required")
-                    # SELECT FOR UPDATE on the user row to prevent concurrent state changes
-                    try:
-                        locked_user = self.db.query(User).filter_by(id=sender_user.id).with_for_update().one()
-                    except Exception:
-                        # Fallback to the already loaded sender_user if locking failed for any reason
-                        locked_user = sender_user
-
-                    ok = locked_user.verify_transaction_pin(pin, session=self.db)
-                    if not ok:
-                        raise TransactionPINError("Invalid or locked PIN")
-            except TransactionPINError:
-                # Bubble up to caller (will rollback transaction)
-                raise
-            except Exception:
-                # Non-fatal: if verification infrastructure missing, continue without enforcing PIN
-                current_app.logger.debug("Transaction PIN verification infrastructure unavailable; skipping PIN enforcement")
-
             # 1. Get both accounts by UUID with lock (consistent order prevents deadlock)
             account_ids = sorted([from_account_id, to_account_id])
             accounts = {}

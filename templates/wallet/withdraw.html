@@ -54,6 +54,17 @@
           <input type="text" name="agent_id" class="form-control" placeholder="e.g., agent007">
         </div>
 
+        <div class="form-group">
+          <label class="form-label">Transaction PIN <span class="req">*</span></label>
+          <input type="password" name="pin" class="form-control"
+                 inputmode="numeric" autocomplete="current-password"
+                 pattern="[0-9]*" minlength="4" maxlength="6" required
+                 placeholder="Enter your 4-6 digit PIN">
+          <p class="form-hint" style="font-size:12px;color:var(--muted);margin-top:6px;">
+            Your PIN confirms every withdrawal. <a href="{{ url_for('wallet.pin_page') }}">Forgot your PIN?</a>
+          </p>
+        </div>
+
         <button type="submit" class="btn btn-danger" style="width:100%;">
           <i class="fas fa-arrow-up"></i> Withdraw Funds
         </button>

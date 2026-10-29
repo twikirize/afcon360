@@ -704,6 +704,15 @@ document.addEventListener('DOMContentLoaded', function() {
       <div id="mediaAccessStatus" style="margin-top:0.75rem;font-size:0.8125rem;color:#6b7280;"></div>
     </div>
 
+    <a href="{{ url_for('admin.owner.transport_routing') }}" class="settings-card" style="border-left:4px solid #0ea5e9;">
+      <div class="card-icon">🚦</div>
+      <div class="card-title">Transport Routing Engine</div>
+      <div class="card-description">
+        Owner / Super Admin only. Choose the primary routing engine and ordered fallbacks for transport quotes. API keys stay in the server environment.
+      </div>
+      <span class="card-badge badge-system">Transport</span>
+    </a>
+
     <a href="{{ url_for('admin.owner.danger_zone') }}" class="settings-card" style="border-color: #ef4444;">
       <div class="card-icon">⚠️</div>
       <div class="card-title" style="color: #ef4444;">Danger Zone</div>

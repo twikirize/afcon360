@@ -78,16 +78,33 @@ def _geo_rate_limited(error):
 
 def _health_payload():
     """GEO health payload shared by the JSON (tooling) and UX endpoints."""
-    from app.geo.config import load_geo_config
+    from flask import has_app_context
 
-    config = load_geo_config()
+    from app.geo.routing_settings import load_effective_geo_config
+    from app.geo.services import get_routing_service
+
+    app = current_app if has_app_context() else None
+    config = load_effective_geo_config(app)
     geoapify = getattr(config, "geoapify", None)
+    routing = get_routing_service()
     return {
         "module": "geo",
         "status": "ok",
         "adapters": {
             "valhalla": {"enabled": config.valhalla.enabled,
                          "configured": bool(config.valhalla.base_url)},
+            "osrm": {"enabled": config.osrm.enabled,
+                     "configured": bool(config.osrm.base_url)},
+            "graphhopper": {
+                "enabled": config.graphhopper.enabled,
+                "configured": bool(config.graphhopper.api_key),
+            },
+            "ors": {"enabled": config.ors.enabled,
+                    "configured": bool(config.ors.api_key)},
+            "google": {
+                "enabled": config.google.enabled,
+                "configured": bool(config.google.api_key),
+            },
             "photon": {"enabled": config.photon.enabled,
                        "configured": bool(config.photon.base_url)},
             # The API key itself is never exposed: configured is a boolean.
@@ -97,6 +114,14 @@ def _health_payload():
             },
             "tiles": {"kind": config.tiles.kind,
                       "configured": bool(config.tiles.base_url)},
+        },
+        "routing": {
+            "active": routing.provider_name,
+            "providers": list(routing.provider_names),
+            "profile": routing.profile,
+            "configured": bool(
+                getattr(config.routing, "provider", "unresolved")
+                not in ("", "unresolved", "none")),
         },
     }
 

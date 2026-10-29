@@ -67,7 +67,7 @@ class NearbyItem:
 # ---------------------------------------------------------------------------
 
 class RoutingProvider(ABC):
-    """Road routing seam: Valhalla now, OSRM later, paid later."""
+    """Road routing seam: pluggable engines behind one normalized result."""
 
     @abstractmethod
     def route(self, origin: GeoPoint, destination: GeoPoint,

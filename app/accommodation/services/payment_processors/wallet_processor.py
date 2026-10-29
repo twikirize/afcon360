@@ -17,6 +17,7 @@ class WalletProcessor(PaymentProcessor):
         description: str,
         idempotency_key: str,
         metadata: Optional[Dict[str, Any]] = None,
+        pin: Optional[str] = None,
     ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         Charge guest wallet via MarketplaceService.
@@ -48,6 +49,7 @@ class WalletProcessor(PaymentProcessor):
             total_amount=amount,
             currency=currency,
             idempotency_key=idempotency_key,
+            pin=pin,
         )
         return success, txn_id, error
 

@@ -272,8 +272,9 @@ def test_geo_health_json_retained_for_tooling(app, anonymous_client, admin_clien
         # Geoapify joined the adapter set as primary geocoder (chain node):
         # the health contract reports enabled/configured booleans per
         # adapter, never credentials.
-        assert set(payload['adapters']) == {'valhalla', 'photon',
-                                            'geoapify', 'tiles'}
+        assert set(payload['adapters']) == {
+            'valhalla', 'photon', 'geoapify', 'tiles',
+            'osrm', 'graphhopper', 'ors', 'google'}
         assert set(payload['adapters']['geoapify']) == {'enabled',
                                                         'configured'}
         # authenticated admins see the same payload through the same endpoint

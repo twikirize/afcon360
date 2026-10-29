@@ -109,8 +109,13 @@
                         </form>
                         {% endif %}
                         {% if current_stay.can_pay %}
-                        <form method="POST" action="{{ safe_url('accommodation.guest_pay_booking', booking_id=current_stay.booking.id) }}" class="d-inline" data-confirm="Pay balance of {{ current_stay.booking.currency }} {{ '%.2f'|format(current_stay.amount_due) }}?">
+                        <form method="POST" action="{{ safe_url('accommodation.guest_pay_booking', booking_id=current_stay.booking.id) }}" class="d-inline d-flex align-items-center gap-1" data-confirm="Pay balance of {{ current_stay.booking.currency }} {{ '%.2f'|format(current_stay.amount_due) }}?">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="password" name="pin" class="form-control form-control-sm"
+                                   inputmode="numeric" autocomplete="current-password"
+                                   pattern="[0-9]*" minlength="4" maxlength="6" required
+                                   placeholder="PIN" aria-label="Transaction PIN"
+                                   style="max-width:90px;">
                             <button type="submit" class="btn btn-sm btn-warning">
                                 <i class="fas fa-wallet me-1"></i> Pay {{ '%.2f'|format(current_stay.amount_due) }}
                             </button>
@@ -163,8 +168,13 @@
                             </form>
                             {% endif %}
                             {% if b.can_pay %}
-                            <form method="POST" action="{{ safe_url('accommodation.guest_pay_booking', booking_id=b.booking.id) }}" class="d-inline" data-confirm="Pay balance of {{ b.booking.currency }} {{ '%.2f'|format(b.amount_due) }}?">
+                            <form method="POST" action="{{ safe_url('accommodation.guest_pay_booking', booking_id=b.booking.id) }}" class="d-inline d-flex align-items-center gap-1" data-confirm="Pay balance of {{ b.booking.currency }} {{ '%.2f'|format(b.amount_due) }}?">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="password" name="pin" class="form-control form-control-sm"
+                                       inputmode="numeric" autocomplete="current-password"
+                                       pattern="[0-9]*" minlength="4" maxlength="6" required
+                                       placeholder="PIN" aria-label="Transaction PIN"
+                                       style="max-width:90px;">
                                 <button type="submit" class="btn btn-sm btn-warning">Pay balance</button>
                             </form>
                             {% endif %}

@@ -15,6 +15,7 @@ from app.wallet import PaymentMethodConfig, EventPaymentPreference
 from app.events.attendee_accounts import find_or_create_attendee_user
 from app.extensions import db
 from app.identity.models.user import User
+from app.wallet.exceptions import TransactionPINError
 import uuid
 import logging
 
@@ -42,10 +43,15 @@ class EventPaymentService:
         create_primary_for_payer: bool = True,
         group_booking_id: Optional[str] = None,
         group_label: Optional[str] = None,
-        unit_price_override: Optional[Decimal] = None
+        unit_price_override: Optional[Decimal] = None,
+        pin: Optional[str] = None,
     ) -> Dict:
         """
         Process ticket purchase with payment integration.
+
+        ``pin`` is the transaction PIN the payer submitted with the form. This
+        service only forwards it to the wallet, which decides whether the debit
+        is authorized; events never verifies or stores the PIN.
         """
         try:
             # Get event and ticket type
@@ -168,7 +174,7 @@ class EventPaymentService:
 
                 if payment_method == "wallet":
                     payment_result = self._process_wallet_payment(
-                        user_id, total_price, event.currency, audit_transaction_id
+                        user_id, total_price, event.currency, audit_transaction_id, pin
                     )
                 elif payment_method == "mobile_money":
                     if not mobile_money_operator or not mobile_money_phone:
@@ -330,9 +336,15 @@ class EventPaymentService:
         user_id: int,
         amount: Decimal,
         currency: str,
-        audit_transaction_id: str
+        audit_transaction_id: str,
+        pin: Optional[str] = None,
     ) -> Dict:
-        """Process payment using wallet system."""
+        """Process payment using wallet system.
+
+        The wallet verifies the payer's transaction PIN; the resulting
+        ``TransactionPINError.code`` is returned to the caller unchanged so the
+        view can redirect to the wallet's PIN page when none is set yet.
+        """
         try:
             wallet_service = WalletService()
             account = wallet_service.account_repo.get_by_user_id(user_id, currency)
@@ -369,7 +381,9 @@ class EventPaymentService:
                 amount=amount,
                 currency=currency,
                 client_request_id=client_request_id,
-                metadata={"event_ticket_purchase": True, "reference": payment_reference, "audit_transaction_id": audit_transaction_id}
+                metadata={"event_ticket_purchase": True, "reference": payment_reference, "audit_transaction_id": audit_transaction_id},
+                pin=pin,
+                require_pin=True,
             )
 
             if debit_result.get("status") != "success":
@@ -412,6 +426,9 @@ class EventPaymentService:
                 "amount": float(amount)
             }
 
+        except TransactionPINError as exc:
+            logger.info("Wallet debit not authorized: %s", exc.code)
+            return {"success": False, "error": exc.message, "code": exc.code}
         except Exception as e:
             logger.error(f"Wallet payment error: {e}")
             return {"success": False, "error": str(e)}

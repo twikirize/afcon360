@@ -169,6 +169,26 @@
     <!-- Integrations -->
     <div class="card setting-section {{ 'active' if active_section == 'integrations' }}" id="section-integrations">
       <div class="card-header"><span class="card-title">Integration Settings</span></div>
+
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Routing Engine</div>
+          <div class="setting-desc">
+            Choose the road-routing provider and ordered fallbacks used by transport quotes.
+            API keys are server-side environment values and are never shown or stored here.
+          </div>
+        </div>
+        <div class="setting-control">
+          {% if current_user.is_app_owner() or current_user.has_global_role('super_admin') %}
+          <a href="{{ url_for('admin.owner.transport_routing') }}" class="btn btn-primary btn-sm">
+            Configure
+          </a>
+          {% else %}
+          <span class="setting-desc">Owner / Super Admin only</span>
+          {% endif %}
+        </div>
+      </div>
+
       {% for name, key, desc, enabled in [
         ('Google Maps','google_maps_enabled','Enable Google Maps for route display and tracking',false),
         ('WhatsApp Notifications','whatsapp_enabled','Send booking confirmations via WhatsApp',false),

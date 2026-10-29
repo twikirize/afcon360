@@ -38,6 +38,7 @@ class MockGatewayProcessor(PaymentProcessor):
         description: str,
         idempotency_key: str = None,
         metadata: Optional[Dict[str, Any]] = None,
+        pin: Optional[str] = None,
     ) -> Tuple[bool, Optional[str], Optional[str]]:
         if _ENV == "production":
             return False, None, "mock_gateway is disabled in production"
@@ -74,6 +75,7 @@ class MockGatewayProcessor(PaymentProcessor):
             total_amount=amount,
             currency=currency,
             idempotency_key=idempotency_key,
+            pin=pin,
         )
 
     def refund(

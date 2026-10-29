@@ -167,6 +167,23 @@ class Config:
     SESSION_SERIALIZER       = "json"
     SESSION_REDIS_URL        = REDIS_URL
 
+    # ---- Remember-me (Flask-Login) ------------------------------------------
+    # Explicit policy for the long-lived remember_token cookie. Duration keeps
+    # the Flask-Login default (365 days). SameSite=Lax (not the session's
+    # Strict) so a remembered user returning via a cross-site top-level
+    # navigation still re-authenticates; Secure mirrors the session cookie.
+    REMEMBER_COOKIE_DURATION = timedelta(days=365)
+    REMEMBER_COOKIE_HTTPONLY = True
+    REMEMBER_COOKIE_SAMESITE = "Lax"
+    REMEMBER_COOKIE_SECURE   = SESSION_COOKIE_SECURE
+
+    # ---- Transaction PIN ----------------------------------------------------
+    # Second factor for money movement. Failure counters live on the user row;
+    # reset codes are delivered to a verified contact, never reset via password.
+    TRANSACTION_PIN_MAX_ATTEMPTS = int(os.getenv("TRANSACTION_PIN_MAX_ATTEMPTS", 5))
+    TRANSACTION_PIN_LOCK_MINUTES = int(os.getenv("TRANSACTION_PIN_LOCK_MINUTES", 15))
+    TRANSACTION_PIN_RESET_OTP_TTL = int(os.getenv("TRANSACTION_PIN_RESET_OTP_TTL", 300))
+
     # ---- Analytics ----------------------------------------------------------
     ANALYTICS_ENABLED    = os.getenv('ANALYTICS_ENABLED', 'true').lower() == 'true'
     REDIS_HOST           = os.getenv('REDIS_HOST', 'localhost')

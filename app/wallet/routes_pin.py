@@ -153,83 +153,50 @@ def verify_pin():
 
 
 @pin_bp.route("/reset", methods=["POST"])
-@limiter.limit("10/minute")
+@limiter.limit("5/hour")
 @login_required
 def reset_pin():
     """
-    Reset PIN via OTP when user forgets it.
-    Sends OTP to user's verified phone or email.
+    Send a PIN reset code to the user's verified email or phone.
 
     Body: { "method": "sms" | "email" }
     """
-    data = request.get_json(silent=True) or {}
-    method = data.get("method", "sms")
-
     from app.identity.models.user import User
+    from app.wallet.services.pin_service import send_pin_reset_otp
+
+    data = request.get_json(silent=True) or {}
     user = User.get_by_private_id(current_user.id)
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
 
-    # Generate and send OTP via existing SMS/email services
-    try:
-        import secrets
-        otp = str(secrets.randbelow(900000) + 100000)  # 6-digit OTP
-
-        # Store OTP in Redis with 10 min TTL
-        from app.extensions import redis_client
-        redis_key = f"pin_reset_otp:{user.id}"
-        redis_client.setex(redis_key, 600, otp)
-
-        if method == "email" and user.email:
-            from app.auth.email import send_otp_email
-            send_otp_email(user.email, otp, purpose="PIN reset")
-        else:
-            from app.notifications.sms_service import send_sms
-            send_sms(user.phone, f"Your AFCON360 PIN reset code is: {otp}. Valid for 10 minutes.")
-
-        return jsonify({
-            "success": True,
-            "message": f"OTP sent via {method}",
-            "method": method
-        })
-    except Exception as e:
-        current_app.logger.error(f"PIN reset OTP error for user {user.id}: {e}")
-        return jsonify({"success": False, "message": "Failed to send OTP"}), 500
+    result = send_pin_reset_otp(user, data.get("method", "email"))
+    return jsonify(result), (200 if result.get("success") else 400)
 
 
 @pin_bp.route("/reset/confirm", methods=["POST"])
-@limiter.limit("10/minute")
+@limiter.limit("10/15minutes")
 @login_required
 def reset_pin_confirm():
     """
-    Confirm PIN reset using OTP + new PIN.
+    Confirm PIN reset using the delivered code + a new PIN.
 
     Body: { "otp": "123456", "pin": "1234", "confirm_pin": "1234" }
     """
-    data = request.get_json(silent=True) or {}
-    otp = data.get("otp", "")
-    pin = data.get("pin", "")
-    confirm_pin = data.get("confirm_pin", "")
-
-    if not all([otp, pin, confirm_pin]):
-        return jsonify({"success": False, "message": "otp, pin, and confirm_pin required"}), 400
-
-    if pin != confirm_pin:
-        return jsonify({"success": False, "message": "PINs do not match"}), 400
-
-    from app.extensions import redis_client
     from app.identity.models.user import User
+    from app.wallet.services.pin_service import reset_pin_with_otp
 
+    data = request.get_json(silent=True) or {}
     user = User.get_by_private_id(current_user.id)
-    redis_key = f"pin_reset_otp:{user.id}"
-    stored_otp = redis_client.get(redis_key)
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
 
-    if not stored_otp or stored_otp.decode() != otp:
-        return jsonify({"success": False, "message": "Invalid or expired OTP"}), 400
+    ok, message = reset_pin_with_otp(
+        user,
+        data.get("otp", ""),
+        data.get("pin", ""),
+        data.get("confirm_pin", ""),
+    )
+    if not ok:
+        return jsonify({"success": False, "message": message}), 400
 
-    try:
-        user.set_transaction_pin(pin, session=db.session)
-        db.session.commit()
-        redis_client.delete(redis_key)  # consume OTP
-        return jsonify({"success": True, "message": "PIN reset successfully"})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"success": False, "message": str(e)}), 500
+    return jsonify({"success": True, "message": message})

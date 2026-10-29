@@ -1242,6 +1242,76 @@ def module_settings():
         geo_permissions=geo_permissions,
     )
 
+@owner_bp.route('/transport-routing', methods=['GET', 'POST'])
+@login_required
+@owner_or_superadmin_required
+@audit_owner_action('managed_transport_routing', 'transport')
+def transport_routing():
+    """Owner/Super Admin control of the transport routing engine.
+
+    Credentials are environment-only. This page stores the non-secret
+    provider selection and never reads, renders, or accepts API keys.
+    """
+    from app.geo.config import load_geo_config
+    from app.geo.routing_settings import (ALLOWED_PROFILES,
+                                          ALLOWED_PROVIDERS, PROVIDER_LABELS,
+                                          adapter_status,
+                                          resolve_routing_selection,
+                                          save_routing_selection)
+    from app.geo.services import get_routing_service, reload_routing_service
+
+    if request.method == 'POST':
+        provider = request.form.get('provider', '')
+        fallbacks = request.form.getlist('fallbacks')
+        profile = request.form.get('profile', 'auto')
+        try:
+            selection = save_routing_selection(provider, fallbacks, profile,
+                                               updated_by=current_user.id)
+            reload_routing_service()
+            log_owner_action(
+                action='updated_transport_routing',
+                category='transport',
+                details={
+                    'provider': selection.provider,
+                    'fallbacks': list(selection.fallbacks),
+                    'profile': selection.profile,
+                },
+            )
+            flash("Routing engine selection saved. New quotes use it now.",
+                  "success")
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+        except Exception:
+            db.session.rollback()
+            logger.exception("Failed to save transport routing selection")
+            flash("Unable to save routing selection. Please try again.",
+                  "warning")
+        return redirect(url_for('admin.owner.transport_routing'))
+
+    env_routing = load_geo_config(current_app).routing
+    selection = resolve_routing_selection(env_routing)
+    routing = get_routing_service()
+    status = adapter_status(load_geo_config(current_app))
+    return render_template(
+        'owner/transport_routing.html',
+        selection=selection,
+        active_provider=routing.provider_name,
+        active_chain=routing.provider_names,
+        env_provider=env_routing.provider,
+        providers=[
+            (name, PROVIDER_LABELS[name], status.get(name, {}))
+            for name in ALLOWED_PROVIDERS
+        ],
+        fallback_options=[
+            (name, PROVIDER_LABELS[name])
+            for name in ALLOWED_PROVIDERS
+            if name != 'unresolved'
+        ],
+        profiles=ALLOWED_PROFILES,
+    )
+
+
 @owner_bp.route('/modules/<string:module>/toggle', methods=['POST'])
 @owner_login_required
 @audit_owner_action('toggled_module', 'modules')

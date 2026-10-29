@@ -7,11 +7,12 @@ Optimized for lazy loading.
 from __future__ import annotations
 
 import secrets
+import re
 import time
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse, urljoin
 from flask import (Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for,)
 from flask_login import current_user, login_required, login_user, logout_user
@@ -112,8 +113,9 @@ def _rotate_session_id():
     """
     try:
         interface = current_app.session_interface
-        if hasattr(interface, "regenerate"):
-            interface.regenerate(session)
+        regenerate = getattr(interface, "regenerate", None)
+        if regenerate is not None:
+            regenerate(session)
     except Exception:
         current_app.logger.exception("session_id_regenerate_failed")
 
@@ -442,7 +444,7 @@ def register():
             elif isinstance(result, dict) and 'recovery_code' in result:
                 recovery_code = result['recovery_code']
             elif getattr(result, "_recovery_code", None):
-                recovery_code = result._recovery_code
+                recovery_code = getattr(result, "_recovery_code")
             else:
                 # If register_user doesn't provide a recovery code, generate a placeholder
                 # In a real implementation, this should be handled by the service
@@ -633,7 +635,7 @@ def verify_email_code():
         # If user was redirected from login due to unverified email,
         # automatically send a new verification email
         if session.get("requires_email_verification"):
-            if user and user.email and not getattr(user, "email_verified", False):
+            if user and str(user.email or "") and not getattr(user, "email_verified", False):
                 send_verification_email(user)
                 flash("A new verification code has been sent to your email.", "info")
             session.pop("requires_email_verification", None)
@@ -741,7 +743,8 @@ def resend_verification():
         flash("No email address is set on your account.", "danger")
         return redirect(request.referrer or url_for("profile.account_overview"))
 
-    if send_verification_email(current_user):
+    user_obj = current_user._get_current_object()
+    if user_obj is not None and send_verification_email(user_obj):
         flash("Verification email resent. Please check your inbox.", "success")
     else:
         flash("Unable to resend verification email at this time. Please contact support.", "danger")
@@ -825,7 +828,7 @@ def is_safe_url(target):
 @auth_bp.route("/login", methods=["GET", "POST"], endpoint="login")
 @limiter.limit("5 per minute", methods=["POST"])
 @limiter.limit("30 per minute", methods=["GET"])
-@limiter.limit("3 per 15 minutes", key_func=lambda: request.remote_addr, methods=["POST"])
+@limiter.limit("3 per 15 minutes", key_func=lambda: request.remote_addr or "", methods=["POST"])
 def login():
     from app.auth.services import authenticate_user, AuthResult, start_server_session
     from app.extensions import redis_client
@@ -880,6 +883,8 @@ def login():
             _ct_delay()
             flash("Login is temporarily unavailable.", "danger")
             return render_template("login.html", username=identifier)
+
+        payload = payload or {}
 
         if result == AuthResult.MFA_REQUIRED:
             user = payload["user"]
@@ -1189,7 +1194,7 @@ def login():
             user_agent=user_agent,
             extra_data={
                 "identifier": identifier,
-                "failed_attempts": result.value if hasattr(result, 'value') else "unknown"
+                "failed_attempts": getattr(result, "value", result)
             }
         )
 
@@ -1282,23 +1287,232 @@ def logout():
 # Password reset
 # ---------------------------------------------------------------------------
 
+def _mask_phone(phone: str) -> str:
+    """Return a phone safe to show back to the requester, e.g. ***431."""
+    digits = re.sub(r"\D", "", phone or "")
+    if len(digits) < 4:
+        return "your verified phone number"
+    return "***" + digits[-3:]
+
+
+def _mask_email(email: str) -> str:
+    """Return an address safe to show back to the requester, e.g. ob***@g***.com."""
+    try:
+        local, domain = email.split("@", 1)
+    except (ValueError, AttributeError):
+        return "your email address"
+
+    if len(local) <= 2:
+        masked_local = local[:1] + "*" * max(len(local) - 1, 1)
+    else:
+        masked_local = local[:2] + "*" * (len(local) - 2)
+
+    if "." in domain:
+        name, _, tld = domain.rpartition(".")
+        masked_domain = f"{name[:1]}***.{tld}" if name else domain
+    else:
+        masked_domain = domain
+
+    return f"{masked_local}@{masked_domain}"
+
+
 @auth_bp.route("/reset/request", methods=["GET", "POST"], endpoint="reset_request")
 @limiter.limit("10 per hour")
 def reset_request():
+    from sqlalchemy import func
+
     from app.identity.models.user import User
     from app.auth.services import request_password_reset
+    from app.auth.email import send_password_reset_email
 
     if request.method == "POST":
-        username = (request.form.get("username") or "").strip()[:64]
-        user     = User.query.filter_by(username=username).first()
+        # Email is the primary identifier now; `username` is still accepted so
+        # older links/forms keep working. Verified and unverified addresses are
+        # both eligible — an unverified inbox still proves ownership of the
+        # reset link, which is what matters here.
+        email = (request.form.get("email") or request.form.get("username") or "").strip().lower()[:254]
 
-        if user and user.email:
-            request_password_reset(user)
+        if not email or "@" not in email:
+            flash("Please enter the email address on your AFCON360 account.", "danger")
+            return render_template("reset_request.html", email=email), 400
 
-        flash("If that account exists, a reset link has been sent.", "info")
-        return redirect(url_for("auth.login"))
+        user = (
+            User.query
+            .filter(func.lower(User.email) == email, User.is_deleted.is_(False))
+            .first()
+        )
+
+        if not user or not user.email:
+            flash("If an account with that email exists, a reset link has been sent.", "info")
+            return redirect(url_for("auth.login"))
+
+        token = request_password_reset(user)
+
+        if send_password_reset_email(user, token):
+            flash(
+                f"A password reset link has been sent to {_mask_email(user.email)}. "
+                "Check your inbox and spam folder — the link expires in 1 hour.",
+                "success",
+            )
+            return redirect(url_for("auth.login"))
+
+        flash(
+            "We could not send the reset email right now. Please try again shortly.",
+            "danger",
+        )
+        return render_template("reset_request.html", email=email), 502
 
     return render_template("reset_request.html")
+
+
+@auth_bp.route("/reset/<token>", methods=["GET", "POST"], endpoint="reset_password")
+@limiter.limit("10 per hour", methods=["POST"])
+def reset_password(token: str):
+    """Landing page for the emailed reset link; sets the new password."""
+    from app.auth.services import confirm_password_reset
+
+    if request.method == "POST":
+        password = request.form.get("password") or ""
+        confirm = request.form.get("confirm_password") or ""
+
+        if len(password) < 8:
+            flash("Password must be at least 8 characters long.", "danger")
+            return render_template("reset_password.html", token=token), 400
+
+        if password != confirm:
+            flash("Passwords do not match.", "danger")
+            return render_template("reset_password.html", token=token), 400
+
+        if confirm_password_reset(token, password):
+            flash(
+                "Your password has been reset. Please sign in with your new password.",
+                "success",
+            )
+            return redirect(url_for("auth.login"))
+
+        flash(
+            "This reset link is invalid or has expired. Please request a new one.",
+            "danger",
+        )
+        return redirect(url_for("auth.reset_request"))
+
+    return render_template("reset_password.html", token=token)
+
+
+@auth_bp.route("/reset/phone", methods=["GET", "POST"], endpoint="reset_phone")
+@limiter.limit("5 per hour", methods=["POST"])
+def reset_phone():
+    """Password reset by SMS code for accounts with a verified phone."""
+    from app.auth.services import (
+        find_user_by_verified_phone,
+        normalize_phone_digits,
+        request_password_reset_phone_otp,
+    )
+
+    if request.method == "POST":
+        phone = (request.form.get("phone") or "").strip()[:32]
+
+        if len(normalize_phone_digits(phone)) < 7:
+            flash("Please enter the phone number on your AFCON360 account.", "danger")
+            return render_template("reset_phone.html", phone=phone), 400
+
+        user = find_user_by_verified_phone(phone)
+
+        if not user:
+            flash(
+                "If an account with that verified phone number exists, "
+                "a code has been sent by SMS.",
+                "info",
+            )
+            return redirect(url_for("auth.reset_phone"))
+
+        success, reason = request_password_reset_phone_otp(user)
+
+        if success:
+            session["password_reset_phone"] = normalize_phone_digits(str(user.phone))
+            session["password_reset_phone_attempts"] = 0
+            flash(
+                f"A 6-digit code was sent by SMS to {_mask_phone(str(user.phone))}. "
+                "It expires in 5 minutes.",
+                "success",
+            )
+            return redirect(url_for("auth.reset_phone_verify"))
+
+        if reason == "sms_unavailable":
+            flash(
+                "SMS reset is not available on this account right now. "
+                "Use the email reset or recover with your security question.",
+                "warning",
+            )
+        elif reason == "storage_failed":
+            flash("We could not prepare a reset code. Please try again shortly.", "danger")
+        else:
+            flash("We could not send the SMS code. Please try again shortly.", "danger")
+        return render_template("reset_phone.html", phone=phone), 502
+
+    return render_template("reset_phone.html")
+
+
+@auth_bp.route("/reset/phone/verify", methods=["GET", "POST"], endpoint="reset_phone_verify")
+@limiter.limit("10 per 15 minutes", methods=["POST"])
+def reset_phone_verify():
+    """Verify the SMS code, then hand over to the shared set-password page."""
+    from app.auth.services import (
+        PASSWORD_RESET_PHONE_MAX_ATTEMPTS,
+        find_user_by_verified_phone,
+        invalidate_password_reset_phone_otp,
+        request_password_reset,
+        verify_password_reset_phone_otp,
+    )
+
+    phone_digits = session.get("password_reset_phone")
+
+    if not phone_digits:
+        flash("Request a new SMS code to continue.", "info")
+        return redirect(url_for("auth.reset_phone"))
+
+    user = find_user_by_verified_phone(phone_digits)
+    masked_phone = _mask_phone(phone_digits)
+
+    if not user:
+        session.pop("password_reset_phone", None)
+        session.pop("password_reset_phone_attempts", None)
+        flash(
+            "If an account with that verified phone number exists, "
+            "a code has been sent by SMS.",
+            "info",
+        )
+        return redirect(url_for("auth.reset_phone"))
+
+    if request.method == "GET":
+        return render_template("reset_phone_verify.html", masked_phone=masked_phone)
+
+    attempts = int(session.get("password_reset_phone_attempts") or 0) + 1
+    session["password_reset_phone_attempts"] = attempts
+
+    if attempts > PASSWORD_RESET_PHONE_MAX_ATTEMPTS:
+        invalidate_password_reset_phone_otp(user)
+        session.pop("password_reset_phone", None)
+        session.pop("password_reset_phone_attempts", None)
+        flash("Too many incorrect codes. Request a new code.", "danger")
+        return redirect(url_for("auth.reset_phone"))
+
+    code = (request.form.get("code") or "").strip()
+
+    if not code.isdigit() or len(code) != 6:
+        flash("Enter the 6-digit code from the SMS.", "danger")
+        return render_template("reset_phone_verify.html", masked_phone=masked_phone), 400
+
+    if not verify_password_reset_phone_otp(user, code):
+        flash("That code is invalid or has expired.", "danger")
+        return render_template("reset_phone_verify.html", masked_phone=masked_phone), 400
+
+    token = request_password_reset(user)
+    session.pop("password_reset_phone", None)
+    session.pop("password_reset_phone_attempts", None)
+    flash("Phone verified. Choose a new password.", "success")
+    return redirect(url_for("auth.reset_password", token=token))
+
 
 # ---------------------------------------------------------------------------
 # Password recovery without email (using security question) - Step 1: Username entry
@@ -1333,7 +1547,7 @@ def recover():
 
     return render_template("auth/recover_question.html",
                           username=username,
-                          security_question=result["security_question"])
+                          security_question=(result or {}).get("security_question"))
 
 # ---------------------------------------------------------------------------
 # Password recovery without email (using security question) - Step 2: Verify security question
@@ -1442,7 +1656,7 @@ def switch_context(context=None):
     if context and not payload.get("type"):
         payload["type"] = context
     if not payload.get("id") and not payload.get("public_id"):
-        payload["id"] = payload.get("org_id") or payload.get("event_id")
+        payload["id"] = payload.get("org_id") or payload.get("event_id") or ""
     if not payload.get("role") and context in ("individual", "personal"):
         payload["role"] = "user"
 
@@ -1602,10 +1816,10 @@ def complete_profile():
             profile = UserProfile(user_id=user.public_id)
             db.session.add(profile)
 
-        profile.full_name = full_name
+        setattr(profile, "full_name", full_name)
         if phone_number:
-            profile.phone_number = phone_number
-        profile.profile_completed = True
+            setattr(profile, "phone_number", phone_number)
+        setattr(profile, "profile_completed", True)
 
         # Update KYC level to Tier 2 (Verified Booker)
         # First, ensure we have the user object from the database
@@ -1709,7 +1923,7 @@ def mfa_enable():
         
         img = qr.make_image(fill_color="black", back_color="white")
         buffer = io.BytesIO()
-        img.save(buffer, format='PNG')
+        img.save(buffer, "PNG")
         img_str = base64.b64encode(buffer.getvalue()).decode()
         
         qr_code = f"data:image/png;base64,{img_str}"
@@ -1848,7 +2062,7 @@ def verify_otp():
     if request.method == "POST":
         code = request.form.get("code")
         from app.auth.pending_registration import verify_channel_otp
-        success, message = verify_channel_otp(current_user.id, channel, code)
+        success, message = verify_channel_otp(current_user.id, channel, code or "")
         if success:
             flash("Account successfully verified!", "success")
             # Redirect to appropriate dashboard
@@ -1897,7 +2111,8 @@ def grant_transport_permission():
 
     # Check if granter is owner or super_admin
     from app.auth.helpers import is_owner
-    if not (is_owner(current_user) or current_user.is_super_admin()):
+    granter = current_user._get_current_object()
+    if granter is None or not (is_owner(granter) or current_user.is_super_admin()):
         flash("Only platform owner or super_admin can grant transport permissions.", "danger")
         return redirect(url_for("user.dashboard"))
 
@@ -1989,7 +2204,8 @@ def revoke_transport_permission():
 
     # Check if granter is owner or super_admin
     from app.auth.helpers import is_owner
-    if not (is_owner(current_user) or current_user.is_super_admin()):
+    granter = current_user._get_current_object()
+    if granter is None or not (is_owner(granter) or current_user.is_super_admin()):
         flash("Only platform owner or super_admin can revoke transport permissions.", "danger")
         return redirect(url_for("user.dashboard"))
 

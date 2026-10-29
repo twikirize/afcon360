@@ -8,11 +8,15 @@
 # ============================================================================
 
 from datetime import datetime, timedelta, timezone
-from typing import Callable, Dict, List, Optional, Tuple, Any
+from typing import Callable, Dict, List, Optional, Tuple, Any, cast
 import hashlib
+import logging
+import re
 import secrets
 import uuid
 from functools import wraps
+
+from sqlalchemy import func
 
 from app.extensions import db, cache
 from app.identity.models.user import User, UserRole
@@ -35,6 +39,9 @@ from app.auth.otp_service import otp_service
 # ----------------------------
 PASSWORD_RESET_EXPIRY = 3600  # 1 hour
 EMAIL_VERIFY_EXPIRY = 3600  # 1 hour (magic-link bearer token lifetime)
+PASSWORD_RESET_PHONE_PURPOSE = "password_reset_phone"
+PASSWORD_RESET_PHONE_TTL = 300  # 5 minutes
+PASSWORD_RESET_PHONE_MAX_ATTEMPTS = 5
 
 # ----------------------------
 # Hook Registry
@@ -165,7 +172,7 @@ def auth_event_emitter(func):
         elif result == AuthResult.SUCCESS:
             _emit("user.authenticated", {
                 **audit_context,
-                **_user_payload(user_obj),
+                **_user_payload(cast(User, user_obj)),
                 "server_session_id": payload.get("session_id")
             })
 
@@ -177,12 +184,14 @@ def auth_event_emitter(func):
 # ----------------------------
 # Private Helpers
 # ----------------------------
-def _is_account_locked(user: User) -> bool:
+def _is_account_locked(user: Optional[User]) -> bool:
     """Check if user account is currently locked."""
+    if user is None:
+        return False
     locked_until = getattr(user, "locked_until", None)
     if hasattr(user, "is_locked"):
         try:
-            return user.is_locked()
+            return bool(user.is_locked())
         except Exception:
             pass
     if locked_until is None:
@@ -331,22 +340,22 @@ def register_user(
 
     # Set verification and active status
     if email:
-        user.is_verified = False
+        setattr(user, "is_verified", False)
     else:
-        user.is_verified = True
+        setattr(user, "is_verified", True)
         # Store security question and hashed answer
         # Assuming the User model has these fields
         if hasattr(user, 'security_question'):
-            user.security_question = security_question
+            setattr(user, "security_question", security_question)
         if hasattr(user, 'security_answer_hash'):
-            user.security_answer_hash = hashed_security_answer
+            setattr(user, "security_answer_hash", hashed_security_answer)
         if hasattr(user, 'recovery_code_hash') and recovery_code:
             # Hash the recovery code for storage
             recovery_code_hash = hashlib.sha256(recovery_code.encode()).hexdigest()
-            user.recovery_code_hash = recovery_code_hash
+            setattr(user, "recovery_code_hash", recovery_code_hash)
 
     # Always set is_active=True
-    user.is_active = True
+    setattr(user, "is_active", True)
 
     try:
         db.session.add(user)
@@ -379,7 +388,7 @@ def register_user(
             nonce = str(uuid.uuid4())
             user.email_verify_nonce = nonce
 
-        token = generate_email_token(user.public_id, nonce=nonce) if email else None
+        token = generate_email_token(str(user.public_id), nonce=nonce) if email else None
 
         # Prepare audit payload
         audit_payload = {
@@ -405,7 +414,7 @@ def register_user(
         try:
             from app.notifications.services import NotificationService
             NotificationService.send_signup_notification(
-                user_id=user.id,
+                user_id=cast(int, user.id),
                 user_data={'username': username, 'email': email or '', 'role': 'user'},
             )
         except Exception as _notif_err:
@@ -584,7 +593,7 @@ def request_password_reset(user: User) -> str:
     SECURITY: Token is NOT stored in audit log (only hash hint).
     Emits: password.reset.requested
     """
-    token = generate_reset_token(user.public_id)
+    token = generate_reset_token(str(user.public_id))
 
     # SECURITY: Log only hash hint, never the raw token
     token_hint = hashlib.sha256(token.encode()).hexdigest()[:12]
@@ -636,6 +645,159 @@ def confirm_password_reset(token: str, new_password: str) -> bool:
 
     db.session.commit()
     return True
+
+
+# ----------------------------
+# Password Reset by SMS OTP (verified phone)
+# ----------------------------
+def normalize_phone_digits(phone: Optional[str]) -> str:
+    """Return the digits of a phone number, or an empty string."""
+    return re.sub(r"\D", "", phone or "")
+
+
+def canonical_phone_digits(phone: Optional[str]) -> str:
+    """Return digits in the stored form, mapping a local Ugandan 0-prefix to +256."""
+    digits = normalize_phone_digits(phone)
+    if len(digits) == 10 and digits.startswith("0"):
+        return "256" + digits[1:]
+    return digits
+
+
+def find_user_by_verified_phone(phone: Optional[str]) -> Optional[User]:
+    """
+    Resolve a user by a verified phone number.
+
+    Formatting and the Ugandan local/``0`` prefix are tolerated. A last-9-digit
+    match is accepted only when it is unique: an ambiguous match resolves to
+    None so a code can never be delivered to or accepted for the wrong account.
+    """
+    digits = canonical_phone_digits(phone)
+    if len(digits) < 7:
+        return None
+
+    variants = {digits, normalize_phone_digits(phone)}
+    if len(digits) == 12 and digits.startswith("256"):
+        variants.add("0" + digits[-9:])
+
+    candidates = User.query.filter(
+        User.phone.isnot(None),
+        User.phone_verified.is_(True),
+        User.is_deleted.is_(False),
+    )
+    phone_digits_sql = func.regexp_replace(User.phone, r"\D", "", "g")
+
+    exact = candidates.filter(phone_digits_sql.in_(sorted(variants))).first()
+    if exact:
+        return exact
+
+    tail = digits[-9:]
+    matches = candidates.filter(
+        func.right(phone_digits_sql, len(tail)) == tail
+    ).limit(2).all()
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def _send_password_reset_sms(phone_number: str, otp: str) -> Dict[str, Any]:
+    """Deliver the reset code through the configured SMS provider.
+
+    Never falls back to the console provider: a code that was not actually
+    delivered must be reported as a failure, not silently "sent".
+    """
+    from app.auth.config_model import AuthConfiguration
+    from app.auth.phone_verification import PhoneVerificationService
+
+    try:
+        config = AuthConfiguration.get_config()
+    except Exception:
+        config = None
+
+    return PhoneVerificationService._send_sms_code(
+        config,
+        phone_number,
+        otp,
+        message=(
+            f"Your AFCON360 password reset code is: {otp}. "
+            f"It expires in {PASSWORD_RESET_PHONE_TTL // 60} minutes. "
+            "If you did not request this, ignore this message."
+        ),
+    )
+
+
+def request_password_reset_phone_otp(user: User) -> Tuple[bool, str]:
+    """
+    Generate and SMS a password-reset OTP to a verified phone number.
+
+    Returns (success, reason) where reason is one of:
+    ``sent``, ``not_eligible``, ``storage_failed``, ``sms_unavailable`` or
+    ``sms_delivery_failed``.
+    """
+    if (
+        not user
+        or getattr(user, "is_deleted", False)
+        or not getattr(user, "phone", None)
+        or not getattr(user, "phone_verified", False)
+    ):
+        return False, "not_eligible"
+
+    identifier = normalize_phone_digits(str(user.phone))
+    if len(identifier) < 7:
+        return False, "not_eligible"
+
+    otp = otp_service.generate_sms_otp()
+    if not otp_service.store_otp(
+        identifier,
+        otp,
+        PASSWORD_RESET_PHONE_PURPOSE,
+        ttl=PASSWORD_RESET_PHONE_TTL,
+    ):
+        return False, "storage_failed"
+
+    result = _send_password_reset_sms(str(user.phone), otp)
+    if not result.get("success"):
+        otp_service.invalidate_otp(identifier, PASSWORD_RESET_PHONE_PURPOSE)
+        return False, result.get("code") or "sms_delivery_failed"
+
+    _emit("password.reset.phone_code_requested", {
+        "user_id": user.public_id,
+        "id": user.id,
+        "resource_type": "user",
+        "resource_id": user.public_id,
+    })
+    db.session.commit()
+    return True, "sent"
+
+
+def verify_password_reset_phone_otp(user: User, code: str) -> bool:
+    """Consume a reset OTP for the user's verified phone number."""
+    if (
+        not user
+        or getattr(user, "is_deleted", False)
+        or not getattr(user, "phone", None)
+        or not getattr(user, "phone_verified", False)
+    ):
+        return False
+
+    identifier = normalize_phone_digits(str(user.phone))
+    if len(identifier) < 7:
+        return False
+
+    success, _message = otp_service.verify_otp(
+        identifier,
+        (code or "").strip(),
+        PASSWORD_RESET_PHONE_PURPOSE,
+    )
+    return bool(success)
+
+
+def invalidate_password_reset_phone_otp(user: User) -> None:
+    """Drop any outstanding phone reset code for the user."""
+    if not user or not getattr(user, "phone", None):
+        return
+    identifier = normalize_phone_digits(str(user.phone))
+    if identifier:
+        otp_service.invalidate_otp(identifier, PASSWORD_RESET_PHONE_PURPOSE)
 
 
 # ----------------------------

@@ -891,7 +891,21 @@ def register(identifier):
 
         # Check if this is a paid event using ViewModel
         is_paid_event = view_model.is_paid_event
-        
+
+        # Paid registrations paid from the AFCON360 wallet are user-initiated
+        # debits, but the wallet owns authorization. Events only forwards the
+        # PIN the payer submitted and reacts to the wallet's decision.
+        wallet_pin = (data.get('transaction_pin') or '').strip() or None
+
+        def _payment_failure(result):
+            payload = {'success': False, 'error': result.get('error')}
+            if result.get('code'):
+                payload['code'] = result['code']
+                if result['code'] == 'pin_not_set':
+                    payload['pin_url'] = url_for('wallet.pin_page')
+            return jsonify(payload), 400
+
+
         # Handle GROUP booking for paid events (attendees-only, do not re-register payer)
         if booking_type == BookingType.GROUP.value and view_model.is_paid_event and data.get('ticket_type_id'):
             import json
@@ -939,10 +953,11 @@ def register(identifier):
                 mobile_money_phone=data.get('mobile_money_phone'),
                 group_attendees=new_attendees,
                 create_primary_for_payer=False,
-                group_booking_id=group_booking_id
+                group_booking_id=group_booking_id,
+                pin=wallet_pin
             )
             if not pay_result.get('success'):
-                return jsonify({'success': False, 'error': pay_result.get('error')}), 400
+                return _payment_failure(pay_result)
 
             regs = pay_result.get('registrations') or []
             # Build display-friendly group list from DB
@@ -1000,7 +1015,8 @@ def register(identifier):
                     mobile_money_operator=mobile_money_operator,
                     mobile_money_phone=mobile_money_phone,
                     group_attendees=attendee_payload,
-                    create_primary_for_payer=False
+                    create_primary_for_payer=False,
+                    pin=wallet_pin
                 )
             else:
                 payment_result = payment_service.process_ticket_purchase(
@@ -1010,11 +1026,12 @@ def register(identifier):
                     quantity=1,
                     payment_method=payment_method,
                     mobile_money_operator=mobile_money_operator,
-                    mobile_money_phone=mobile_money_phone
+                    mobile_money_phone=mobile_money_phone,
+                    pin=wallet_pin
                 )
             
             if not payment_result.get('success'):
-                return jsonify({'success': False, 'error': payment_result.get('error')}), 400
+                return _payment_failure(payment_result)
             
             registration_ref = payment_result['registrations'][0]['registration_ref']
         else:

@@ -89,6 +89,8 @@ from app.utils.module_toggle_service import ModuleToggleService
 
 # Configure logging globally at the entry point
 def configure_logging():
+    for noisy in ("urllib3", "urllib3.connectionpool"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     root = logging.getLogger()
     if root.handlers:
         return
@@ -698,6 +700,10 @@ def create_app(config_object=None) -> Flask:
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
         response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+        # Session state (login, active role, flashes) lives in the cookie, so
+        # every response varies by it; without this a shared cache could serve
+        # one user's authenticated page (e.g. wallet balances) to another.
+        response.vary.add("Cookie")
         if session.get("user_id"):
             # Don't override Cache-Control on routes that deliberately set their own
             # (theme preferences API uses private short-lived cache for performance)

@@ -82,7 +82,7 @@
   <div style="padding:20px;display:grid;gap:12px;">
     {% set security_items = [
       {'title': 'Two-Factor Authentication', 'desc': 'Add an extra layer of security', 'btn': 'Enable', 'btn_class': 'btn-primary'},
-      {'title': 'Transaction PIN', 'desc': 'Require PIN for all transactions', 'btn': 'Set PIN', 'btn_class': 'btn-outline'},
+      {'title': 'Transaction PIN', 'desc': 'Require PIN for all transactions', 'btn': 'Manage PIN', 'btn_class': 'btn-outline', 'href': url_for('wallet.pin_page')},
       {'title': 'Login Notifications', 'desc': 'Get notified on account login', 'toggle': True, 'checked': True}
     ] %}
     {% for item in security_items %}
@@ -99,7 +99,11 @@
         </span>
       </label>
       {% else %}
+      {% if item.href %}
+      <a href="{{ item.href }}" class="btn {{ item.btn_class }} btn-sm">{{ item.btn }}</a>
+      {% else %}
       <button class="btn {{ item.btn_class }} btn-sm">{{ item.btn }}</button>
+      {% endif %}
       {% endif %}
     </div>
     {% endfor %}

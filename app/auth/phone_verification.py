@@ -1,7 +1,7 @@
 """Phone verification orchestration with owner-selectable delivery transport."""
 
 from datetime import datetime, timezone
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from app.auth.otp_service import OTPService
 from app.auth.config_model import AuthConfiguration
@@ -11,6 +11,23 @@ from app.notifications.sms_service import SMSService
 
 PHONE_VERIFICATION_PURPOSE = "phone_verification"
 PHONE_VERIFICATION_TTL = 300
+
+
+def send_sms_otp_checked(
+    config,
+    phone_number: str,
+    otp: str,
+    message: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Send an OTP by SMS through a configured provider.
+
+    Public entry point for callers outside phone verification (for example a
+    wallet PIN reset). Never falls back to the console provider, so a missing
+    SMS configuration is reported honestly instead of pretending to deliver.
+    """
+    return PhoneVerificationService._send_sms_code(
+        config, phone_number, otp, message=message
+    )
 
 
 class PhoneVerificationService:
@@ -92,7 +109,7 @@ class PhoneVerificationService:
         return result
 
     @staticmethod
-    def _send_sms_code(config, phone_number: str, otp: str) -> Dict[str, Any]:
+    def _send_sms_code(config, phone_number: str, otp: str, message: Optional[str] = None) -> Dict[str, Any]:
         """Send an OTP through a configured provider, never through console fallback."""
         if config is None:
             return {
@@ -114,7 +131,7 @@ class PhoneVerificationService:
 
             result = SMSService(provider=provider, auth_config=config).send_message(
                 phone_number=phone_number,
-                message=f"Your AFCON360 phone verification code is: {otp}",
+                message=message or f"Your AFCON360 phone verification code is: {otp}",
             )
             result["transport"] = "sms"
             return result

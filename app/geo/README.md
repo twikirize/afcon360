@@ -99,7 +99,7 @@ coordinates); no provider SDK objects cross into domains.
 
 | Capability | Status | Behavior when unconfigured |
 |---|---|---|
-| Routing (Valhalla) | STUB | `RouteResult(resolved=False, provider="haversine-fallback")` with straight-line distance; `duration_s=0.0` |
+| Routing | CONFIG-DEPENDENT | configured chain when a provider is selected; otherwise `RouteResult(resolved=False, provider="haversine-fallback")` with straight-line distance and `duration_s=0.0` |
 | Geocoding (Photon) | STUB | `geocode()` → `[]`; `reverse()` → unresolved `GeocodeResult` |
 | Tiles | CONFIG SEAM | `tile_url()` → `""` when unavailable; OSM attribution never stripped |
 | ETA | READY | `eta_from_duration(duration_s)` — duration must come from a routing engine or labelled estimate, never distance×k |
@@ -120,12 +120,99 @@ and never exposes internal database IDs.
 
 | Capability | Primary | Later | Status |
 |---|---|---|---|
-| Routing | Valhalla | OSRM | adapter (live when operator configures `GEO_VALHALLA_URL` + enables it; truthful miss otherwise) |
+| Routing | Valhalla / OSRM / Geoapify / GraphHopper / ORS / Google Maps | — | adapters live only when the provider is selected and configured; each returns a truthful unresolved miss when unavailable |
 | Geocoding | Geoapify | Photon (best-effort fallback) | chain: Geoapify when operator configures `GEOAPIFY_API_KEY` + enables it; Photon when it answers after a Geoapify miss (`GEO_PHOTON_URL` + enabled); honest `unresolved` on double failure; `[lon,lat]` converted at the boundary |
 | Tiles | PMTiles → Martin | external | config seam + shared Leaflet renderer (`map_renderer.py`, `static/js/geo/geo-map.js`, proven on `/geo/`) |
 
 Paid/external providers: disabled by default, server-side credentials only,
 quota + fallback explicit. OSM attribution is never stripped.
+
+### Routing provider chain
+
+`RoutingService` resolves through an ordered chain:
+
+* `ROUTING_PROVIDER` — primary engine (`valhalla`, `osrm`, `geoapify`,
+  `graphhopper`, `ors`, `google`); absent/`unresolved` means no road
+  provider.
+* `ROUTING_FALLBACKS` — comma-separated engines tried in order after the
+  primary fails or is unconfigured.
+* `ROUTING_PROFILE` — `auto` (default), `motorcycle`, `pedestrian`,
+  `bicycle`, `scooter`, or `truck`; adapters map only profiles they
+  genuinely support. An unmapped profile is a truthful miss, never a
+  silent fallback profile.
+* `ROUTING_TIMEOUT_S` — per-request timeout (default 10 s).
+
+Each adapter requires its own URL and enable flag; Geoapify, GraphHopper,
+ORS, and Google Maps additionally require a server-side key. The chain
+returns the first `resolved=True` result. If every provider fails, the
+service returns
+`resolved=False, provider="haversine-fallback"` with straight-line
+distance and `duration_s=0.0`; Transport must keep that result labelled as
+an estimate, not a road route.
+
+| Engine | Transport | Profiles | Notes |
+|---|---|---|---|
+| Valhalla | `GEO_VALHALLA_URL` | `auto`, `motorcycle`, upstream costing names | public demo available; no SLA |
+| OSRM | `GEO_OSRM_URL` | `auto`/`driving` | public demo is driving-only; motorcycle/foot need a self-hosted profile |
+| Geoapify | `GEOAPIFY_*` | `auto`, `motorcycle`, `pedestrian`, `bicycle`, `scooter`, `truck` | hosted; API key server-side only |
+| GraphHopper | `GEO_GRAPHHOPPER_*` | `auto`, `motorcycle`, `pedestrian`, `bicycle` | hosted key or self-hosted; no key configured by default |
+| ORS | `GEO_ORS_*` | `auto`, `pedestrian`, `bicycle` | hosted key or self-hosted; no public motorcycle profile |
+| Google Maps | `GEO_GOOGLE_MAPS_*` | `auto`/`driving`, `pedestrian`, `bicycle` | Directions API; no motorcycle mode; key server-side only; disabled by default |
+
+`get_routing_service()` builds the configured chain lazily (inside a Flask
+app context when one exists). `reload_routing_service()` rebuilds the
+singleton after a configuration change in development. Route calls accept
+an optional `provider=` override; this is intended for benchmarks and
+does not trigger the configured fallback chain.
+
+### Owner routing selection
+
+Owner / Super Admin users can override the environment chain at
+`/admin/owner/transport-routing`. The non-secret selection is stored in
+`SystemConfig` under category `transport_routing`:
+
+* `TRANSPORT_ROUTING_PROVIDER`
+* `TRANSPORT_ROUTING_FALLBACKS`
+* `TRANSPORT_ROUTING_PROFILE`
+
+The page stores no credentials, reads no key values, and renders only
+`enabled` / `configured` booleans. Keys remain in `.env`/process
+environment. A database selection disables the legacy Valhalla/OSRM
+auto-fallback, so selecting `unresolved` really means straight-line
+fallback until a road provider is selected again.
+
+Saving rebuilds the routing singleton in the current worker only; other
+Gunicorn workers may retain the previous chain until restart.
+
+### Hosted routing lab (benchmark)
+
+`scripts/routing_benchmark.py` measures one or more engines on an
+operator-supplied OD list:
+
+```powershell
+& .venv\Scripts\python.exe scripts/routing_benchmark.py `
+  --providers valhalla,osrm,geoapify,google `
+  --valhalla-url https://valhalla1.openstreetmap.de `
+  --osrm-url https://router.project-osrm.org
+```
+
+Results are written to `var/routing-lab/routing-benchmark-<stamp>.json`
+and `.csv` (gitignored). The script suppresses `urllib3` logging so a
+provider URL containing a key cannot leak into debug logs.
+
+The 29 October 2026 Uganda/East Africa sample (14 OD pairs) produced:
+
+| Engine | Resolved | Median detour ratio | p50 latency |
+|---|---|---|---|
+| Valhalla demo | 14/14 | 1.266 | 1460 ms |
+| OSRM demo | 10/14 | 1.164 | 1384 ms |
+| Geoapify | 14/14 | 1.199 | 1564 ms |
+
+The OSRM demo failed every motorcycle pair because it is driving-only.
+Valhalla's public `auto` durations were materially slower than OSRM and
+Geoapify on Ugandan roads (e.g. Kampala CBD→Namboole 33.1 min versus 11.8
+and 14.0 min), so its ETA calibration is not yet trusted. Public demo
+endpoints have no SLA and are not a production deployment.
 
 ### Geocoding provider order + secrets
 
@@ -296,9 +383,19 @@ the page never decides authorization.
 ## Configuration
 
 `app/geo/config.py::load_geo_config()` reads Flask `GEO` config with env
-fallback (`GEO_VALHALLA_URL/_ENABLED`, `GEO_PHOTON_URL/_ENABLED`,
-`GEO_TILES_KIND/_URL/_STYLE_URL`, `GEO_LOCATION_TTL_SECONDS`). No new
-settings model — reuse SystemConfig/TransportSetting KV.
+fallback:
+
+* routing chain: `ROUTING_PROVIDER`, `ROUTING_FALLBACKS`,
+  `ROUTING_PROFILE`, `ROUTING_SHADOW`, `ROUTING_TIMEOUT_S`;
+* engines: `GEO_VALHALLA_URL/_ENABLED`, `GEO_OSRM_URL/_ENABLED`,
+  `GEOAPIFY_BASE_URL/_API_KEY/_ENABLED`, `GEO_GRAPHHOPPER_URL/_KEY/_ENABLED`,
+  `GEO_ORS_URL/_KEY/_ENABLED`, `GEO_GOOGLE_MAPS_URL/_KEY/_ENABLED`;
+* geocoding/tiles/location: `GEO_PHOTON_URL/_ENABLED`,
+  `GEO_TILES_KIND/_URL/_STYLE_URL`, `GEO_LOCATION_TTL_SECONDS`.
+
+No new settings model — reuse SystemConfig/TransportSetting KV. Provider
+keys are server-side only; health and config surfaces report only
+`enabled` / `configured` booleans.
 
 ## Freshness
 

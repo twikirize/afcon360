@@ -8,13 +8,18 @@ from decimal import Decimal
 from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, jsonify
 from flask_login import login_required, current_user
 from sqlalchemy import or_
-from app.extensions import db
+from app.extensions import db, limiter
 from app.utils.transactions import db_transaction
 from app.wallet.models.ledger import AccountModel, LedgerEntryModel
 from app.wallet.models.transaction import TransactionModel, TransactionType, TransactionStatus
 from app.wallet.services.wallet_service import WalletService
 from app.wallet.services.currency_service import CurrencyService
-from app.wallet.exceptions import InsufficientBalanceError, WalletNotFoundError, LimitExceededError
+from app.wallet.exceptions import (
+    InsufficientBalanceError,
+    WalletNotFoundError,
+    LimitExceededError,
+    TransactionPINError,
+)
 from app.wallet.middleware.wallet_check import (
     require_wallet_for_feature,
     require_deposit_access,
@@ -231,6 +236,11 @@ def activate_wallet():
         if not request.form.get('accept_terms'):
             flash('You must accept the terms to activate your wallet.', 'warning')
             return render_template('wallet/wallet_activate.html', account=account)
+
+        # Activation is blocked until the account has a transaction PIN.
+        if not getattr(current_user, 'transaction_pin_hash', None):
+            flash('Set a transaction PIN before activating your wallet.', 'info')
+            return redirect(url_for('wallet.pin_page'))
 
         # Activate wallet
         account.verified = True
@@ -553,6 +563,10 @@ def overview():
 @login_required
 def wallet_create_page():
     """Show wallet creation page with user context"""
+    if not getattr(current_user, 'transaction_pin_hash', None):
+        flash('Set a transaction PIN before opening your wallet.', 'info')
+        return redirect(url_for('wallet.pin_page'))
+
     account = get_account(current_user.id)
     if account:
         flash('You already have a wallet.', 'info')
@@ -584,6 +598,11 @@ def wallet_create():
         flash('Security validation failed. Please refresh and try again.', 'danger')
         return redirect(url_for('wallet.wallet_create_page'))
     
+    # A wallet must not exist without the second factor that protects it.
+    if not getattr(current_user, 'transaction_pin_hash', None):
+        flash('Set a transaction PIN before opening your wallet.', 'info')
+        return redirect(url_for('wallet.pin_page'))
+
     # Check KYC level before wallet creation
     # (Must have verified email/phone for a fintech-grade wallet)
     if not current_user.email_verified:
@@ -972,7 +991,11 @@ def flutterwave_deposit_callback():
 def send_page():
     """GET: Show send funds form"""
     from app.wallet.services.wallet_service import WalletService
-    
+
+    if not getattr(current_user, 'transaction_pin_hash', None):
+        flash('Set your transaction PIN before sending funds.', 'info')
+        return redirect(url_for('wallet.pin_page'))
+
     account = get_account(current_user.id)
     if not account:
         if request.args.get('_pane') == '1':
@@ -1016,6 +1039,23 @@ def send_funds():
         if amount <= 0:
             flash('Amount must be greater than zero', 'danger')
             return redirect(url_for('wallet.send'))
+
+        # The transaction PIN is mandatory to move money. Verify it here, before
+        # the transfer opens its own transaction: a failed attempt recorded
+        # inside that transaction would be rolled back with it, discarding the
+        # lockout counter and defeating brute-force protection.
+        from app.identity.models.user import User
+        from app.wallet.services.pin_service import verify_debit_pin
+
+        sender_user = User.get_by_private_id(current_user.id)
+        if not sender_user or not getattr(sender_user, 'transaction_pin_hash', None):
+            flash('Set your transaction PIN before sending funds.', 'info')
+            return redirect(url_for('wallet.pin_page'))
+
+        pin_ok, pin_error = verify_debit_pin(sender_user, request.form.get('pin'))
+        if not pin_ok:
+            flash(pin_error, 'danger')
+            return redirect(url_for('wallet.send'))
         
         # KYC limit check before processing
         from app.wallet.services.kyc_limit_service import KYCLimitService
@@ -1031,13 +1071,17 @@ def send_funds():
             return redirect(url_for('wallet.wallet_dashboard'))
         
         # Get receiver account (by user_id or public_id)
-        from app.identity.models.user import User
         receiver = User.query.filter(
             (User.id == receiver_id) | (User.public_id == receiver_id)
         ).first()
         
         if not receiver:
             flash('Receiver not found', 'danger')
+            return redirect(url_for('wallet.send'))
+
+        # Money may not land in a wallet that has no second factor protecting it.
+        if not getattr(receiver, 'transaction_pin_hash', None):
+            flash('This user has not set a transaction PIN, so they cannot receive funds yet.', 'warning')
             return redirect(url_for('wallet.send'))
         
         # Check if receiver has an account (do NOT auto-create)
@@ -1050,9 +1094,7 @@ def send_funds():
             )
             return redirect(url_for('wallet.send'))
         
-        # Get pin from form (optional) and call service.transfer using internal user ids
-        pin = request.form.get('pin')
-
+        # Call service.transfer using internal user ids; the PIN was verified above.
         service = WalletService()
         client_request_id = str(uuid4())
         transaction = service.transfer(
@@ -1069,6 +1111,9 @@ def send_funds():
         flash(f'Successfully sent {amount} {currency} to {receiver_id}', 'success')
         return redirect(url_for('wallet.wallet_dashboard'))
         
+    except TransactionPINError as e:
+        flash(e.message or 'Transaction PIN verification failed.', 'danger')
+        return redirect(url_for('wallet.send'))
     except InsufficientBalanceError:
         flash('Insufficient balance', 'danger')
         return redirect(url_for('wallet.send'))
@@ -1136,7 +1181,23 @@ def withdraw_funds():
         if amount <= 0:
             flash('Amount must be greater than zero', 'danger')
             return redirect(url_for('wallet.withdraw'))
-        
+
+        # The transaction PIN is mandatory to move money out of the wallet.
+        # Verify before the debit service opens its own transaction so a failed
+        # attempt (and any lockout) is persisted rather than rolled back.
+        from app.identity.models.user import User
+        from app.wallet.services.pin_service import verify_debit_pin
+
+        withdrawer = User.get_by_private_id(current_user.id)
+        if not withdrawer or not getattr(withdrawer, 'transaction_pin_hash', None):
+            flash('Set your transaction PIN before withdrawing funds.', 'info')
+            return redirect(url_for('wallet.pin_page'))
+
+        pin_ok, pin_error = verify_debit_pin(withdrawer, request.form.get('pin'))
+        if not pin_ok:
+            flash(pin_error, 'danger')
+            return redirect(url_for('wallet.withdraw'))
+
         # KYC limit check before processing
         from app.wallet.services.kyc_limit_service import KYCLimitService
         kyc_check = KYCLimitService.check_transaction_allowed(current_user.id, amount, 'withdraw', currency)
@@ -1157,12 +1218,20 @@ def withdraw_funds():
             amount=amount,
             currency=currency,
             client_request_id=str(uuid4()),
-            metadata={'method': method, 'agent_id': agent_id}
+            metadata={'method': method, 'agent_id': agent_id},
+            pin=request.form.get('pin'),
+            require_pin=True,
         )
         
         flash(f'Withdrawal of {amount} {currency} initiated successfully!', 'success')
         return redirect(url_for('wallet.wallet_dashboard'))
         
+    except TransactionPINError as e:
+        if e.code == 'pin_not_set':
+            flash(e.message, 'info')
+            return redirect(url_for('wallet.pin_page'))
+        flash(e.message, 'danger')
+        return redirect(url_for('wallet.withdraw'))
     except InsufficientBalanceError:
         flash('Insufficient balance', 'danger')
         return redirect(url_for('wallet.withdraw'))
@@ -1799,17 +1868,55 @@ def wallet_settings_update():
 # -----------------------------------------------------------------------------
 # Transaction PIN endpoints
 # -----------------------------------------------------------------------------
+def _mask_contact(value) -> str:
+    """Mask an email address or phone number for display."""
+    text = str(value or '').strip()
+    if not text:
+        return ''
+    if '@' in text:
+        local, _, domain = text.partition('@')
+        if len(local) <= 2:
+            return '*' * len(local) + '@' + domain
+        return local[0] + '*' * (len(local) - 2) + local[-1] + '@' + domain
+    return '*' * max(0, len(text) - 3) + text[-3:]
+
+
+def _pin_lock_seconds(user) -> int:
+    """Seconds remaining on a PIN lock, or 0 when it is not locked."""
+    locked_until = getattr(user, 'transaction_pin_locked_until', None)
+    if not locked_until:
+        return 0
+    remaining = (locked_until - datetime.now(timezone.utc)).total_seconds()
+    return max(0, int(remaining))
+
+
 @wallet_bp.route('/pin', methods=['GET'])
 @login_required
 def pin_page():
-    """Show PIN management page - forward to template if available."""
+    """Transaction PIN home: set, change, or recover via a verified contact."""
+    from app.identity.models.user import User
+
     try:
+        user = User.get_by_private_id(current_user.id)
+        if not user:
+            flash('User not found.', 'danger')
+            return redirect(url_for('user.dashboard'))
+
+        # A wallet is not required: the PIN must be set before one can be opened.
         account = get_account(current_user.id)
-        if not account:
-            flash('You need to create a wallet first.', 'warning')
-            return redirect(url_for('wallet.wallet_dashboard'))
-        has_pin = bool(getattr(current_user, 'transaction_pin_hash', None))
-        return render_template('wallet/pin.html', account=account, has_pin=has_pin)
+        email = getattr(user, 'email', None) or ''
+        phone = getattr(user, 'phone', None) or ''
+
+        return render_template(
+            'wallet/pin.html',
+            account=account,
+            has_pin=bool(getattr(user, 'transaction_pin_hash', None)),
+            locked_seconds=_pin_lock_seconds(user),
+            can_email=bool(email) and bool(getattr(user, 'email_verified', False)),
+            can_sms=bool(phone) and bool(getattr(user, 'phone_verified', False)),
+            masked_email=_mask_contact(email),
+            masked_phone=_mask_contact(phone),
+        )
     except Exception as e:
         from app.utils.error_handler import log_error_to_audit
         log_error_to_audit(
@@ -1825,31 +1932,51 @@ def pin_page():
 @wallet_bp.route('/pin/set', methods=['POST'])
 @login_required
 @require_fresh_user
+@limiter.limit("10 per hour", methods=["POST"])
 def set_pin():
-    """Set or update user's transaction PIN."""
+    """Set the PIN, or change an existing PIN by proving the current one."""
+    from app.identity.models.user import User
+
+    pin = (request.form.get('pin') or '').strip()
+    confirm = (request.form.get('confirm_pin') or '').strip()
+    current_pin = (request.form.get('current_pin') or '').strip()
+
+    if not pin or not confirm:
+        flash('PIN and confirmation are required', 'danger')
+        return redirect(url_for('wallet.pin_page'))
+
+    if pin != confirm:
+        flash('PINs do not match', 'danger')
+        return redirect(url_for('wallet.pin_page'))
+
+    user = User.get_by_private_id(current_user.id)
+    if not user:
+        flash('User not found.', 'danger')
+        return redirect(url_for('wallet.pin_page'))
+
     try:
-        pin = request.form.get('pin')
-        confirm = request.form.get('confirm_pin')
+        # An existing PIN may only be replaced by someone who knows it.
+        if getattr(user, 'transaction_pin_hash', None):
+            if not current_pin:
+                flash('Enter your current PIN to change it.', 'warning')
+                return redirect(url_for('wallet.pin_page'))
+            if not user.verify_transaction_pin(current_pin, session=db.session):
+                db.session.commit()
+                flash('Current PIN is incorrect or locked.', 'danger')
+                return redirect(url_for('wallet.pin_page'))
+            db.session.commit()
 
-        if not pin or not confirm:
-            flash('PIN and confirmation are required', 'danger')
-            return redirect(url_for('wallet.pin_page'))
-
-        if pin != confirm:
-            flash('PINs do not match', 'danger')
-            return redirect(url_for('wallet.pin_page'))
-
-        # Persist via current_user and DB session
-        from app.extensions import db
-        current_user.set_transaction_pin(pin, session=db.session)
+        user.set_transaction_pin(pin, session=db.session)
         db.session.commit()
 
         flash('Transaction PIN set successfully', 'success')
-        return redirect(url_for('wallet.wallet_settings'))
+        return redirect(url_for('wallet.pin_page'))
     except ValueError as e:
+        db.session.rollback()
         flash(str(e), 'danger')
         return redirect(url_for('wallet.pin_page'))
     except Exception as e:
+        db.session.rollback()
         from app.utils.error_handler import log_error_to_audit
         log_error_to_audit(
             user_id=current_user.id if current_user.is_authenticated else None,
@@ -1859,6 +1986,50 @@ def set_pin():
         )
         flash('Unable to set PIN. Please try again later.', 'warning')
         return redirect(url_for('wallet.pin_page'))
+
+
+@wallet_bp.route('/pin/forgot', methods=['POST'])
+@login_required
+@limiter.limit("5 per hour", methods=["POST"])
+def pin_forgot():
+    """Send a PIN reset code to the account's verified email or phone."""
+    from app.identity.models.user import User
+    from app.wallet.services.pin_service import send_pin_reset_otp
+
+    user = User.get_by_private_id(current_user.id)
+    if not user:
+        flash('User not found.', 'danger')
+        return redirect(url_for('wallet.pin_page'))
+
+    result = send_pin_reset_otp(user, request.form.get('method', 'email'))
+    flash(
+        result.get('message') or 'Could not send a reset code.',
+        'info' if result.get('success') else 'danger',
+    )
+    return redirect(url_for('wallet.pin_page'))
+
+
+@wallet_bp.route('/pin/reset/submit', methods=['POST'])
+@login_required
+@limiter.limit("10 per 15 minutes", methods=["POST"])
+def pin_reset():
+    """Confirm a reset code and set a new transaction PIN."""
+    from app.identity.models.user import User
+    from app.wallet.services.pin_service import reset_pin_with_otp
+
+    user = User.get_by_private_id(current_user.id)
+    if not user:
+        flash('User not found.', 'danger')
+        return redirect(url_for('wallet.pin_page'))
+
+    ok, message = reset_pin_with_otp(
+        user,
+        request.form.get('otp', ''),
+        request.form.get('pin', ''),
+        request.form.get('confirm_pin', ''),
+    )
+    flash(message, 'success' if ok else 'danger')
+    return redirect(url_for('wallet.pin_page'))
 
 
 @wallet_bp.route('/fx-rates')

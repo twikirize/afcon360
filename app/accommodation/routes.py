@@ -2083,7 +2083,9 @@ def guest_checkout():
             balance_due_date = datetime.now(timezone.utc).date() + timedelta(days=30)
 
         # Check wallet balance if needed
-        if payment_method == 'wallet' and charge_amount > 0:
+        wallet_pin = None
+        wallet_debit = payment_method in ('wallet', 'mock_gateway') and charge_amount > 0
+        if wallet_debit:
             from app.wallet.repositories.ledger_repository import LedgerRepository
             from app.wallet.services.wallet_service import WalletService
             account = WalletService.get_wallet_by_user_id(current_user.id, property_obj.currency)
@@ -2097,6 +2099,12 @@ def guest_checkout():
                 AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
                 flash(f'Insufficient wallet balance. Your balance is {balance} {property_obj.currency} but the required amount is {charge_amount} {property_obj.currency}.', 'danger')
                 return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
+
+            # The wallet debit is user-initiated, but the wallet is the only
+            # owner of PIN policy and verification. Accommodation just carries
+            # the PIN the guest submitted and surfaces the wallet's decision.
+            wallet_pin = data.get('transaction_pin')
+
 
         # ============================================================
         # STEP 3.5: Compute idempotency_key once, create booking as pending
@@ -2229,21 +2237,39 @@ def guest_checkout():
 
         if charge_amount > 0:
             current_app.logger.info(f"💳 Processing payment: {charge_amount} {property_obj.currency} via {payment_method}")
-            success, txn_id, payment_error = processor.charge(
-                user_id=current_user.id,
-                amount=charge_amount,
-                currency=property_obj.currency,
-                description=f"Accommodation booking: {property_obj.title} - for {primary_guest_name}",
-                idempotency_key=idempotency_key,
-                metadata={
-                    'property_id': property_obj.id,
-                    'check_in': check_in.isoformat(),
-                    'check_out': check_out.isoformat(),
-                    'guest_name': primary_guest_name,
-                    'guest_email': primary_guest_email,
-                    'payment_timing': payment_timing,
-                }
-            )
+            try:
+                success, txn_id, payment_error = processor.charge(
+                    user_id=current_user.id,
+                    amount=charge_amount,
+                    currency=property_obj.currency,
+                    description=f"Accommodation booking: {property_obj.title} - for {primary_guest_name}",
+                    idempotency_key=idempotency_key,
+                    metadata={
+                        'property_id': property_obj.id,
+                        'check_in': check_in.isoformat(),
+                        'check_out': check_out.isoformat(),
+                        'guest_name': primary_guest_name,
+                        'guest_email': primary_guest_email,
+                        'payment_timing': payment_timing,
+                    },
+                    **({'pin': wallet_pin} if wallet_debit else {}),
+                )
+            except Exception as exc:
+                from app.wallet.exceptions import TransactionPINError
+
+                if not isinstance(exc, TransactionPINError):
+                    raise
+
+                db.session.rollback()
+                booking.payment_status = AccommodationPaymentStatus.FAILED.value
+                db.session.commit()
+                AvailabilityService.release_hold(property_obj.id, check_in, check_out, current_user.id)
+
+                if exc.code == 'pin_not_set':
+                    flash(exc.message, 'info')
+                    return redirect(url_for('wallet.pin_page'))
+                flash(f'Payment failed: {exc.message}. Your hold has been released. Please try again.', 'danger')
+                return redirect(url_for('accommodation.guest_detail', identifier=data['property_id']))
 
             if not success:
                 payment_success = False
@@ -4298,6 +4324,7 @@ def guest_pay_booking(booking_id):
 
     # Use a fresh idempotency key for this balance capture.
     idempotency_key = f"bal-{booking.booking_reference}-{uuid.uuid4().hex[:8]}"
+
     booking.idempotency_key = idempotency_key
     db.session.commit()
 
@@ -4311,6 +4338,7 @@ def guest_pay_booking(booking_id):
             description=f"Balance payment for booking {booking.booking_reference}",
             idempotency_key=idempotency_key,
             metadata={"balance_payment": True, "booking_id": booking.id},
+            pin=request.form.get('pin'),
         )
         if not success:
             db.session.rollback()
@@ -4339,7 +4367,16 @@ def guest_pay_booking(booking_id):
 
         flash(f"Balance of {amount_due} {currency} paid successfully.", "success")
     except Exception as exc:
+        from app.wallet.exceptions import TransactionPINError
+
         db.session.rollback()
+        if isinstance(exc, TransactionPINError):
+            if exc.code == 'pin_not_set':
+                flash(exc.message, 'info')
+                return redirect(url_for('wallet.pin_page'))
+            flash(exc.message, 'danger')
+            return redirect(url_for('accommodation.guest_dashboard'))
+
         current_app.logger.error(f"Guest balance payment failed: {exc}")
         flash("Payment could not be processed. Please try again.", "danger")
 

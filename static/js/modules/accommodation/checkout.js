@@ -525,7 +525,30 @@
     // "how many rooms" with "which room," which is exactly what the deferred
     // room-assignment design was built to avoid.
 
+    // ---- Wallet transaction PIN ----
+    // A wallet debit needs the transaction PIN; the field is only shown (and
+    // required) when the selected method is the wallet and the selected timing
+    // actually charges now.
+    function syncWalletPin() {
+        var section = document.getElementById('wallet-pin-section');
+        var input = document.getElementById('checkout_transaction_pin');
+        if (!section || !input) return;
+        var method = document.querySelector('[name="payment_method"]:checked');
+        var timing = document.querySelector('[name="payment_timing"]:checked');
+        var needsPin = !!method && method.value === 'wallet' && !!timing &&
+            (timing.value === 'pay_now' || timing.value === 'deposit');
+        section.hidden = !needsPin;
+        input.required = needsPin;
+        if (!needsPin) input.value = '';
+    }
+
     // ---- Initialise ----
+    document.addEventListener('change', function(ev) {
+        if (ev.target && (ev.target.name === 'payment_method' || ev.target.name === 'payment_timing')) {
+            syncWalletPin();
+        }
+    });
+
     document.addEventListener('DOMContentLoaded', function() {
         var savedStep = Math.min(3, Math.max(1, parseInt(sessionStorage.getItem('checkoutWizardStep') || '1', 10)));
         showStep(savedStep);
@@ -546,5 +569,6 @@
         if (firstBooking && !document.querySelector('[name="booking_type"]:checked')) {
             selectBookingType('self');
         }
+        syncWalletPin();
     });
 })();
