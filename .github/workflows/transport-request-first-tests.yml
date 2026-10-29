@@ -12,6 +12,8 @@ on:
       - "templates/transport/**"
       - "templates/admin/transport_admin_*.html"
       - "tests/test_transport_booking_route_path.py"
+      - "tests/test_transport_ride_options.py"
+      - "tests/test_ui11_booking_flash_copy.py"
       - "tests/test_transport_cash_confirmation_semantics.py"
       - "tests/test_transport_admin_canonical_overview.py"
       - "tests/transport/test_ride_request_create.py"
@@ -103,6 +105,8 @@ jobs:
           app/tasks/transport_recovery.py
           app/utils/validators.py
           tests/test_transport_booking_route_path.py
+          tests/test_transport_ride_options.py
+          tests/test_ui11_booking_flash_copy.py
           tests/test_transport_cash_confirmation_semantics.py
           tests/test_transport_admin_canonical_overview.py
           tests/transport/test_ride_request_create.py
@@ -148,10 +152,12 @@ jobs:
       - name: Build the disposable test schema from reviewed migrations
         run: python -m flask --app 'app:create_app()' db upgrade
 
-      - name: Run request lifecycle, payment, and admin regression tests
+      - name: Run fare confirmation, request lifecycle, payment, and admin regressions
         run: >-
           python -m pytest -q
+          tests/test_transport_ride_options.py
           tests/test_transport_booking_route_path.py
+          tests/test_ui11_booking_flash_copy.py
           tests/test_transport_cash_confirmation_semantics.py
           tests/test_transport_admin_canonical_overview.py
           tests/transport/test_ride_request_create.py
