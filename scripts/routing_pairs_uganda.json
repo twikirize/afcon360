@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "note": "Approximate public coordinates for routing-engine comparison only. Not booking records.",
+  "pairs": [
+    {
+      "id": "kam-cbd-entebbe-airport",
+      "origin": {"name": "Kampala CBD", "lat": 0.3136, "lon": 32.5811},
+      "destination": {"name": "Entebbe International Airport", "lat": 0.0424, "lon": 32.4435},
+      "profile": "auto"
+    },
+    {
+      "id": "kam-cbd-namboole",
+      "origin": {"name": "Kampala CBD", "lat": 0.3136, "lon": 32.5811},
+      "destination": {"name": "Namboole Stadium", "lat": 0.3667, "lon": 32.65},
+      "profile": "auto"
+    },
+    {
+      "id": "kam-cbd-mukono",
+      "origin": {"name": "Kampala CBD", "lat": 0.3136, "lon": 32.5811},
+      "destination": {"name": "Mukono", "lat": 0.3533, "lon": 32.7553},
+      "profile": "auto"
+    },
+    {
+      "id": "kam-cbd-jinja",
+      "origin": {"name": "Kampala CBD", "lat": 0.3136, "lon": 32.5811},
+      "destination": {"name": "Jinja", "lat": 0.4244, "lon": 33.2041},
+      "profile": "auto"
+    },
+    {
+      "id": "kam-cbd-mbarara",
+      "origin": {"name": "Kampala CBD", "lat": 0.3136, "lon": 32.5811},
+      "destination": {"name": "Mbarara", "lat": -0.6072, "lon": 30.6545},
+      "profile": "auto"
+    },
+    {
+      "id": "kam-cbd-gulu",
+      "origin": {"name": "Kampala CBD", "lat": 0.3136, "lon": 32.5811},
+      "destination": {"name": "Gulu", "lat": 2.7749, "lon": 32.299},
+      "profile": "auto"
+    },
+    {
+      "id": "kam-cbd-kigali",
+      "origin": {"name": "Kampala CBD", "lat": 0.3136, "lon": 32.5811},
+      "destination": {"name": "Kigali", "lat": -1.9441, "lon": 30.0619},
+      "profile": "auto"
+    },
+    {
+      "id": "kam-cbd-nairobi",
+      "origin": {"name": "Kampala CBD", "lat": 0.3136, "lon": 32.5811},
+      "destination": {"name": "Nairobi", "lat": -1.2921, "lon": 36.8219},
+      "profile": "auto"
+    },
+    {
+      "id": "acacia-makerere",
+      "origin": {"name": "Acacia Mall", "lat": 0.331, "lon": 32.59},
+      "destination": {"name": "Makerere University", "lat": 0.334, "lon": 32.57},
+      "profile": "motorcycle"
+    },
+    {
+      "id": "bwaise-kasangati",
+      "origin": {"name": "Bwaise", "lat": 0.36, "lon": 32.56},
+      "destination": {"name": "Kasangati", "lat": 0.438, "lon": 32.6},
+      "profile": "motorcycle"
+    },
+    {
+      "id": "kibuye-nateete",
+      "origin": {"name": "Kibuye", "lat": 0.3, "lon": 32.57},
+      "destination": {"name": "Nateete", "lat": 0.305, "lon": 32.53},
+      "profile": "motorcycle"
+    },
+    {
+      "id": "kireka-seeta",
+      "origin": {"name": "Kireka", "lat": 0.345, "lon": 32.66},
+      "destination": {"name": "Seeta", "lat": 0.365, "lon": 32.71},
+      "profile": "motorcycle"
+    },
+    {
+      "id": "entebbe-town-airport",
+      "origin": {"name": "Entebbe town", "lat": 0.0512, "lon": 32.4637},
+      "destination": {"name": "Entebbe International Airport", "lat": 0.0424, "lon": 32.4435},
+      "profile": "auto"
+    },
+    {
+      "id": "kam-cbd-lugazi",
+      "origin": {"name": "Kampala CBD", "lat": 0.3136, "lon": 32.5811},
+      "destination": {"name": "Lugazi", "lat": 0.369, "lon": 32.94},
+      "profile": "auto"
+    }
+  ]
+}

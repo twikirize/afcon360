@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Transport Routing Engine - Owner{% endblock %}
+
+{% block styles %}
+<style nonce="{{ csp_nonce }}">
+  .routing-page { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem; }
+  .routing-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+  .routing-card h2 { font-size: 1.2rem; font-weight: 700; color: #111827; margin: 0 0 0.35rem; }
+  .routing-muted { color: #6b7280; font-size: 0.875rem; }
+  .routing-table { width: 100%; border-collapse: collapse; }
+  .routing-table th, .routing-table td { padding: 0.7rem 0.5rem; border-bottom: 1px solid #f1f5f9; text-align: left; font-size: 0.875rem; }
+  .routing-table th { color: #475569; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  .routing-badge { display: inline-block; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.7rem; font-weight: 700; }
+  .routing-badge.ok { background: #dcfce7; color: #166534; }
+  .routing-badge.no { background: #fee2e2; color: #991b1b; }
+  .routing-badge.active { background: #dbeafe; color: #1e40af; }
+  .routing-actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
+  .routing-note { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 9px; padding: 0.9rem 1rem; color: #475569; font-size: 0.84rem; line-height: 1.5; }
+  .routing-fallbacks { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.55rem; margin-top: 0.75rem; }
+  .routing-fallback { display: flex; align-items: center; gap: 0.55rem; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.55rem 0.7rem; }
+  .routing-fallback input { width: 17px; height: 17px; }
+  .routing-warning { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; border-radius: 9px; padding: 0.9rem 1rem; margin-bottom: 1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="routing-page">
+  <div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+      <h1 class="h3 font-weight-bold mb-1">Transport Routing Engine</h1>
+      <p class="routing-muted mb-0">
+        Owner / Super Admin control. API keys remain in the server environment and are never stored or displayed here.
+      </p>
+    </div>
+    <a href="{{ url_for('admin.owner.settings') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left"></i> Owner Settings
+    </a>
+  </div>
+
+  {% if active_provider == 'unresolved' %}
+  <div class="routing-warning">
+    <strong>No road routing is active.</strong>
+    Quotes will use the labelled straight-line fallback until a configured provider is selected.
+  </div>
+  {% endif %}
+
+  <div class="routing-card">
+    <h2>Current effective chain</h2>
+    <p class="routing-muted mb-3">
+      Active provider: <strong>{{ active_provider }}</strong>
+      {% if active_chain %}(attempt order: {{ active_chain|join(' → ') }}){% endif %}.
+      Selection source: <strong>{{ selection.source }}</strong>.
+      Environment default: <strong>{{ env_provider }}</strong>.
+    </p>
+
+    <table class="routing-table">
+      <thead>
+        <tr>
+          <th>Provider</th>
+          <th>Enabled</th>
+          <th>Credential / endpoint</th>
+          <th>Role</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for name, label, state in providers %}
+        <tr>
+          <td><strong>{{ label }}</strong><div class="routing-muted">{{ name }}</div></td>
+          <td>
+            {% if name == 'unresolved' %}
+              <span class="routing-muted">—</span>
+            {% else %}
+              <span class="routing-badge {{ 'ok' if state.enabled else 'no' }}">
+                {{ 'Enabled' if state.enabled else 'Disabled' }}
+              </span>
+            {% endif %}
+          </td>
+          <td>
+            {% if name == 'unresolved' %}
+              <span class="routing-muted">No external service</span>
+            {% else %}
+              <span class="routing-badge {{ 'ok' if state.configured else 'no' }}">
+                {{ 'Configured' if state.configured else 'Missing env key/URL' }}
+              </span>
+            {% endif %}
+          </td>
+          <td>
+            {% if name == active_provider %}
+              <span class="routing-badge active">Active</span>
+            {% elif name == selection.provider %}
+              <span class="routing-badge no">Selected — unavailable</span>
+            {% elif name in selection.fallbacks %}
+              <span class="routing-muted">Fallback</span>
+            {% else %}
+              <span class="routing-muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <form method="POST" action="{{ url_for('admin.owner.transport_routing') }}" class="routing-card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2>Selection</h2>
+    <p class="routing-muted mb-3">
+      Choose one primary engine and an ordered set of fallbacks. If the primary fails or is not configured, the chain tries fallbacks in order.
+    </p>
+
+    <div class="mb-3">
+      <label for="provider" class="form-label font-weight-bold">Primary provider</label>
+      <select id="provider" name="provider" class="form-select" required>
+        {% for name, label, state in providers %}
+        <option value="{{ name }}" {{ 'selected' if selection.provider == name }}>
+          {{ label }}{% if not state.configured and name != 'unresolved' %} — not configured{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="mb-3">
+      <div class="font-weight-bold">Fallbacks</div>
+      <div class="routing-muted">Order is preserved from top to bottom. The primary cannot also be a fallback. Clear all fallbacks when selecting “No road routing”.</div>
+      <div class="routing-fallbacks">
+        {% for name, label in fallback_options %}
+        <label class="routing-fallback">
+          <input type="checkbox" name="fallbacks" value="{{ name }}"
+                 {{ 'checked' if name in selection.fallbacks }}>
+          <span>{{ label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label for="profile" class="form-label font-weight-bold">Travel profile</label>
+      <select id="profile" name="profile" class="form-select">
+        {% for profile in profiles %}
+        <option value="{{ profile }}" {{ 'selected' if selection.profile == profile }}>
+          {{ profile|title }}
+        </option>
+        {% endfor %}
+      </select>
+      <div class="routing-muted mt-1">
+        Motorcycle support depends on the chosen engine. Unsupported profiles return a truthful unresolved result, never a silent car route.
+      </div>
+    </div>
+
+    <div class="routing-note">
+      <strong>Environment keys (never stored in the database):</strong>
+      <code>GEO_VALHALLA_URL</code>,
+      <code>GEO_OSRM_URL</code>,
+      <code>GEOAPIFY_API_KEY</code>,
+      <code>GEO_GRAPHHOPPER_KEY</code>,
+      <code>GEO_ORS_KEY</code>,
+      <code>GEO_GOOGLE_MAPS_KEY</code>.
+      Changing this page never writes a credential.
+    </div>
+
+    <div class="routing-actions">
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-check2-circle"></i> Save routing selection
+      </button>
+      <span class="routing-muted">Takes effect immediately in this worker; other workers may need a restart.</span>
+    </div>
+  </form>
+</div>
+{% endblock %}
