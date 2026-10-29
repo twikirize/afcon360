@@ -136,6 +136,26 @@ class MarketplaceInvoiceService:
             for account in accounts
         )
 
+    @staticmethod
+    def _get_transport_escrow_account(currency: str):
+        """Resolve a configured Transport escrow account; never create one at checkout."""
+        from app.wallet.models.ledger import AccountModel, AccountType
+
+        account = AccountModel.query.filter(
+            AccountModel.platform_account.is_(True),
+            AccountModel.account_type == AccountType.ESCROW.value,
+            AccountModel.currency == currency,
+            AccountModel.status == "active",
+            AccountModel.is_frozen.is_(False),
+            AccountModel.extra_data.contains({"service_type": "transport"}),
+        ).first()
+        if account is None:
+            raise MarketplaceInvoiceError(
+                "transport_escrow_unavailable",
+                "Transport Wallet escrow is not configured for this currency. Payment remains pending.",
+            )
+        return account
+
     @classmethod
     def list_available_methods(
         cls,
@@ -499,32 +519,42 @@ class MarketplaceInvoiceService:
                 "wallet_account_missing",
                 "No Wallet account exists in the invoice currency.",
             )
+        if (
+            _status_value(account.status) != "active"
+            or bool(account.is_frozen)
+            or _status_value(account.owner_type) != "user"
+        ):
+            raise MarketplaceInvoiceError(
+                "wallet_account_unavailable",
+                "The payer Wallet account is not active for this payment.",
+            )
 
-        # The Wallet transaction idempotency key is derived from the immutable
-        # invoice UUID, so retrying after a worker/request failure cannot debit
-        # the rider twice.
+        # Collection must have a real destination inside Wallet's ledger.
+        # A debit-only withdraw is not marketplace settlement: that would make
+        # the invoice appear paid without holding the fare for later payout.
+        escrow = cls._get_transport_escrow_account(invoice.currency)
         wallet_key = "MARKETPLACE-INVOICE-" + str(invoice.id)
+        transfer_metadata = {
+            "marketplace_invoice_id": str(invoice.id),
+            "service_code": invoice.service_code,
+            "service_reference": invoice.service_reference,
+            "settlement_timing": invoice.settlement_timing,
+            "request_id": request_id,
+            "escrow_account_id": str(escrow.id),
+            "escrow_service_type": "transport",
+        }
         try:
-            result = wallet_service.withdraw(
-                account_id=str(account.id),
+            result = wallet_service.transfer(
+                from_account_id=str(account.id),
+                to_account_id=str(escrow.id),
                 amount=Decimal(str(invoice.amount)),
                 currency=invoice.currency,
                 client_request_id=wallet_key,
-                metadata={
-                    "marketplace_invoice_id": str(invoice.id),
-                    "service_code": invoice.service_code,
-                    "service_reference": invoice.service_reference,
-                    "settlement_timing": invoice.settlement_timing,
-                    "request_id": request_id,
-                },
-                payment_method="wallet",
-                payment_provider="afcon360_wallet",
-                actor_id=invoice.payer_user_id,
+                note=f"Transport marketplace invoice {invoice.service_reference}",
+                metadata=transfer_metadata,
                 system_initiated=True,
             )
         except InsufficientBalanceError as exc:
-            # Invoice stays due. A rider can top up and retry; there is no
-            # fabricated paid status and no second invoice.
             raise MarketplaceInvoiceError(
                 "insufficient_funds",
                 "Your Wallet balance is too low. Add funds, then retry payment.",
@@ -532,7 +562,7 @@ class MarketplaceInvoiceService:
         except WalletNotFoundError as exc:
             raise MarketplaceInvoiceError(
                 "wallet_account_missing",
-                "No Wallet account exists in the invoice currency.",
+                "The payer or Transport escrow Wallet account could not be found.",
             ) from exc
         except Exception as exc:
             logger.exception("Wallet collection failed for marketplace invoice %s", invoice.id)
@@ -555,21 +585,28 @@ class MarketplaceInvoiceService:
             ) from exc
 
         transaction = TransactionModel.query.filter_by(id=transaction_id).first()
+        tx_metadata = transaction.tx_metadata if transaction is not None else {}
         if (
             transaction is None
             or _status_value(transaction.status) != "completed"
+            or _status_value(transaction.tx_type) != "transfer"
             or Decimal(str(transaction.amount)).quantize(_MONEY_QUANTUM)
             != Decimal(str(invoice.amount)).quantize(_MONEY_QUANTUM)
             or str(transaction.currency).upper() != invoice.currency
             or (transaction.user_id is not None and int(transaction.user_id) != int(invoice.payer_user_id))
+            or (transaction.recipient_user_id is not None and int(transaction.recipient_user_id) != int(escrow.user_id))
+            or not isinstance(tx_metadata, dict)
+            or tx_metadata.get("marketplace_invoice_id") != str(invoice.id)
+            or tx_metadata.get("escrow_account_id") != str(escrow.id)
         ):
             raise MarketplaceInvoiceError(
                 "settlement_unverified",
                 "Wallet's canonical transaction does not match this invoice.",
             )
 
-        # WalletService commits its canonical transaction before returning.
-        # Re-lock the invoice and mark it paid only after verifying that record.
+        # Wallet transfer commits the canonical double-entry transaction before
+        # returning. Re-lock the invoice and mark it paid only after verifying
+        # the transaction, payer, invoice, and configured Transport escrow destination.
         invoice = cls.get_invoice(invoice.id, for_update=True)
         if invoice.status == "paid":
             if invoice.transaction_id != transaction_id:
