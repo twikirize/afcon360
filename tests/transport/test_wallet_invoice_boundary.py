@@ -173,6 +173,63 @@ def test_cash_invoice_stays_unpaid_until_wallet_records_driver_receipt(app, test
         assert raised.value.code == "cash_already_confirmed"
 
 
+def test_wallet_collection_fails_closed_without_transport_escrow(app, test_user, monkeypatch):
+    from app.wallet.repositories.account_repository import AccountRepository
+    from app.wallet.services.wallet_service import WalletService
+
+    with app.app_context():
+        payer_id = db.session.merge(test_user).id
+        _configure_wallet_methods()
+        monkeypatch.setattr(
+            MarketplaceInvoiceService,
+            "_wallet_account_available",
+            staticmethod(lambda _user_id, _currency: True),
+        )
+        invoice = _create_invoice(payer_id, method="wallet", amount="25.00")
+        account = SimpleNamespace(
+            id=uuid.uuid4(), currency="USD", status="active",
+            is_frozen=False, owner_type="user",
+        )
+        monkeypatch.setattr(
+            AccountRepository,
+            "get_by_user_id",
+            lambda self, user_id, currency="USD", for_update=False: account,
+        )
+
+        def no_escrow(_currency):
+            raise MarketplaceInvoiceError(
+                "transport_escrow_unavailable",
+                "Transport Wallet escrow is not configured for this currency.",
+            )
+
+        monkeypatch.setattr(
+            MarketplaceInvoiceService, "_get_transport_escrow_account",
+            staticmethod(no_escrow),
+        )
+        transfer_calls = []
+        monkeypatch.setattr(
+            WalletService, "transfer",
+            lambda *args, **kwargs: transfer_calls.append(kwargs),
+        )
+
+        with pytest.raises(MarketplaceInvoiceError) as raised:
+            MarketplaceInvoiceService.settle_after_completion(
+                invoice_id=invoice.id,
+                payer_user_id=payer_id,
+                service_code="transport",
+                service_reference=invoice.service_reference,
+                amount="25.00",
+                currency="USD",
+                request_id="test-no-escrow",
+            )
+
+        assert raised.value.code == "transport_escrow_unavailable"
+        assert transfer_calls == []
+        invoice = MarketplaceInvoiceService.get_invoice(invoice.id)
+        assert invoice.status == "due"
+        assert invoice.transaction_id is None
+
+
 def test_configured_but_unintegrated_provider_fails_closed(app, test_user):
     with app.app_context():
         payer_id = db.session.merge(test_user).id
