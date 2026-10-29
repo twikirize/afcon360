@@ -34,6 +34,7 @@ Legacy models remain in legacy_models.py for existing services to import directl
 # New ledger-based models
 from .ledger import LedgerEntryModel, AccountModel
 from .transaction import TransactionModel
+from .marketplace_invoice import MarketplaceInvoice
 from .audit import AuditLogModel
 from .fx import FXRateModel, FXTransactionModel
 from .commission import AgentCommission
@@ -54,6 +55,7 @@ __all__ = [
     'LedgerEntryModel',
     'AccountModel',
     'TransactionModel',
+    'MarketplaceInvoice',
     'AuditLogModel',
     'FXRateModel',
     'FXTransactionModel',
