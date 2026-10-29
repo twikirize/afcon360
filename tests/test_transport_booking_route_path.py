@@ -398,10 +398,11 @@ class TestRequestFirstStaleVehicleOffer:
             db.session.commit()
             offer_id = offer.id
 
-        with pytest.raises(RideRequestDispatchError) as exc:
-            RideRequestDispatchService.accept_offer(
-                reference, driver_id, vehicle_id, actor=None
-            )
+        with app.app_context():
+            with pytest.raises(RideRequestDispatchError) as exc:
+                RideRequestDispatchService.accept_offer(
+                    reference, driver_id, vehicle_id, actor=None
+                )
         assert exc.value.code == "vehicle_assignment_changed"
 
         with app.app_context():
@@ -540,9 +541,10 @@ class TestRealRideTransactionPath:
         from app.transport.services.ride_request_dispatch_service import (
             RideRequestDispatchService,
         )
-        result = RideRequestDispatchService.accept_offer(
-            reference, driver_id, vehicle_id, actor=None
-        )
+        with app.app_context():
+            result = RideRequestDispatchService.accept_offer(
+                reference, driver_id, vehicle_id, actor=None
+            )
         assert result["status"] == BookingStatus.ASSIGNED.value
 
         with app.app_context():
