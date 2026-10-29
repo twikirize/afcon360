@@ -462,22 +462,6 @@ class PaymentService:
 
 
     @staticmethod
-    def _process_online_payment(amount: Decimal, payment_data: Dict[str, Any]) -> bool:
-        """Process online payment with production safety checks"""
-        # Check if payment processing is enabled
-        if not current_app.config.get('PAYMENT_PROCESSING_ENABLED', False):
-            raise RuntimeError("Payment processing is disabled in production. Configure PAYMENT_PROCESSING_ENABLED and integrate with a real payment gateway.")
-
-        # No transport card/mobile-money capture is implemented in this
-        # service yet. Fail closed rather than fabricating a successful payment.
-        raise ServiceUnavailableError(
-            message=(
-                "The selected payment provider is not yet integrated for "
-                "transport settlement. The trip remains completed and unpaid."
-            )
-        )
-
-    @staticmethod
     def _generate_payment_reference(booking: Optional[Booking] = None) -> str:
         """Stable payment reference scoped to one trip."""
         if booking is not None and booking.booking_reference:
