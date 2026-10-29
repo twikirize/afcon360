@@ -5,6 +5,7 @@ matching history are persisted in SearchCycle / OfferAttempt. A Booking
 is created only inside the successful acceptance transaction.
 """
 from datetime import datetime, timedelta, timezone
+import uuid
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
@@ -699,6 +700,41 @@ class RideRequestDispatchService:
             raise RideRequestDispatchError("invalid_currency", "The quoted fare currency is not supported") from exc
 
         metadata = request.request_metadata or {}
+        raw_invoice_id = metadata.get("wallet_invoice_id")
+        wallet_invoice_uuid = None
+        if raw_invoice_id:
+            try:
+                wallet_invoice_uuid = uuid.UUID(str(raw_invoice_id))
+                from app.wallet.services.marketplace_invoice_service import (
+                    MarketplaceInvoiceService,
+                )
+                invoice = MarketplaceInvoiceService.get_invoice(
+                    wallet_invoice_uuid, for_update=True
+                )
+            except (ValueError, TypeError) as exc:
+                raise RideRequestDispatchError(
+                    "wallet_invoice_invalid",
+                    "This ride has an invalid Wallet invoice reference.",
+                ) from exc
+            except Exception as exc:
+                raise RideRequestDispatchError(
+                    "wallet_invoice_unavailable",
+                    "Wallet could not validate the ride invoice. Please retry.",
+                ) from exc
+            if (
+                invoice.service_code != "transport"
+                or invoice.service_reference != request.public_id
+                or int(invoice.payer_user_id) != int(request.user_id)
+                or Decimal(str(invoice.amount)).quantize(Decimal("0.01"))
+                    != Decimal(str(request.fare_estimate_amount)).quantize(Decimal("0.01"))
+                or str(invoice.currency).upper() != str(request.currency_code).upper()
+                or str(invoice.payment_method).lower() != str(request.payment_method).lower()
+                or invoice.status != "pending"
+            ):
+                raise RideRequestDispatchError(
+                    "wallet_invoice_mismatch",
+                    "This ride's Wallet invoice does not match its confirmed fare and payment choice.",
+                )
         booking_mode = str(metadata.get("booking_mode") or "instant").lower()
         pickup_time = request.requested_pickup_time or now
         booking = Booking(
@@ -737,6 +773,8 @@ class RideRequestDispatchService:
                 "trip_fingerprint": metadata.get("trip_hash"),
                 "payment_timing": "pay_on_completion",
                 "ride_request_public_id": request.public_id,
+                "wallet_invoice_id": str(wallet_invoice_uuid) if wallet_invoice_uuid else None,
+                "wallet_invoice_status": "pending" if wallet_invoice_uuid else None,
             },
         )
         db.session.add(booking)
@@ -759,7 +797,9 @@ class RideRequestDispatchService:
                     payment_method_details={
                         "timing": "pay_on_completion",
                         "request_reference": request.public_id,
+                        "wallet_invoice_id": str(wallet_invoice_uuid) if wallet_invoice_uuid else None,
                     },
+                    wallet_invoice_id=wallet_invoice_uuid,
                     payment_status=PaymentStatus.PENDING,
                     initiated_at=now,
                 )
