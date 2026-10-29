@@ -336,7 +336,12 @@ class RideRequestService:
         )
         offered = {
             str(m.get("code") or "").strip().lower()
-            for m in get_available_transport_payment_methods(owner_user_id)
+            for m in get_available_transport_payment_methods(
+                owner_user_id,
+                currency_code=currency_code,
+                amount=estimate.get("total"),
+                payment_timing="pay_on_completion",
+            )
         }
         if payment_method not in offered:
             raise ValidationError(
@@ -473,6 +478,40 @@ class RideRequestService:
             )
             db.session.add(ride_request)
             db.session.flush()
+
+            # Create a Wallet-owned invoice before dispatch begins. This is an
+            # obligation only: it does not debit the rider or imply payment.
+            from app.wallet.services.marketplace_invoice_service import (
+                MarketplaceInvoiceError,
+                MarketplaceInvoiceService,
+            )
+            try:
+                wallet_invoice = MarketplaceInvoiceService.create_invoice(
+                    idempotency_key="transport-ride:%s:%s" % (owner_user_id, key),
+                    service_code="transport",
+                    service_reference=ride_request.public_id,
+                    payer_user_id=owner_user_id,
+                    amount=accepted_fare_amount,
+                    currency=currency_code,
+                    payment_method=payment_method,
+                    settlement_timing="pay_on_completion",
+                    metadata={
+                        "ride_request_public_id": ride_request.public_id,
+                        "fare_version": estimate.get("version"),
+                        "trip_hash": trip_hash,
+                    },
+                    commit=False,
+                )
+            except MarketplaceInvoiceError as exc:
+                db.session.rollback()
+                raise ValidationError(message=exc.message, field="payment_method") from exc
+
+            request_meta = dict(ride_request.request_metadata or {})
+            request_meta["wallet_invoice_id"] = str(wallet_invoice.id)
+            request_meta["wallet_invoice_status"] = wallet_invoice.status
+            ride_request.request_metadata = request_meta
+            db.session.flush()
+
             cycle = SearchCycle(
                 ride_request_id=ride_request.id,
                 cycle_number=1,
