@@ -117,7 +117,7 @@ class PaymentMethodConfig(BaseModel):
                 'is_active': True,
                 'requires_phone': False,
                 'supported_currencies': ['UGX', 'KES', 'NGN', 'USD', 'EUR', 'GBP'],
-                'allowed_timings': ['pay_now', 'deposit'],
+                'allowed_timings': ['pay_now', 'deposit', 'pay_on_completion'],
                 'min_amount': 0.00,
                 'max_amount': 10000000.00,
                 'transaction_fee': 0.0000
@@ -128,11 +128,11 @@ class PaymentMethodConfig(BaseModel):
                 'method_type': 'cash',
                 'provider_name': 'afcon360',
                 'country_code': 'UG',
-                'is_enabled': False,
+                'is_enabled': True,
                 'is_active': True,
                 'requires_phone': False,
                 'supported_currencies': ['UGX', 'KES', 'NGN', 'USD', 'EUR', 'GBP'],
-                'allowed_timings': ['pay_on_arrival'],
+                'allowed_timings': ['pay_on_arrival', 'pay_on_completion'],
                 'min_amount': 0.00,
                 'max_amount': 10000000.00,
                 'transaction_fee': 0.0000
