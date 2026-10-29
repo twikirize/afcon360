@@ -506,6 +506,7 @@ class MarketplaceInvoiceService:
 
         from app.wallet.exceptions import (
             InsufficientBalanceError,
+            TransactionPINError,
             WalletNotFoundError,
         )
         from app.wallet.models.transaction import TransactionModel
@@ -555,6 +556,14 @@ class MarketplaceInvoiceService:
                 metadata=transfer_metadata,
                 system_initiated=True,
             )
+        except TransactionPINError as exc:
+            # Never bypass Wallet's transaction-PIN controls for a deferred
+            # marketplace transfer. A future rider pre-authorization step must
+            # provide the explicit Wallet authorization before this can settle.
+            raise MarketplaceInvoiceError(
+                "transaction_pin_required",
+                "Wallet requires transaction PIN authorization. This invoice remains due; no payment was confirmed.",
+            ) from exc
         except InsufficientBalanceError as exc:
             raise MarketplaceInvoiceError(
                 "insufficient_funds",
