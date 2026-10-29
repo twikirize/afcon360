@@ -246,9 +246,9 @@ def test_ride_options_prices_every_class_without_driver_lookup(
         GeoPoint(0.3136, 32.5811), GeoPoint(0.32, 32.59)
     ) / 1000.0
     assert data["distance_km"] == pytest.approx(expected_km)
-    assert {o["vehicle_class"] for o in data["options"]} == {
-        str(vc.value) for vc in VehicleClass
-    }
+    # The endpoint intentionally omits enum classes that have no
+    # explicit configured price multiplier (for example, an unpriced bus).
+    assert {o["vehicle_class"] for o in data["options"]} == _priced_vehicle_classes(app)
     comfort = next(o for o in data["options"] if o["vehicle_class"] == "comfort")
     with app.app_context():
         quote = load_fare_quote(comfort["quote_token"])
