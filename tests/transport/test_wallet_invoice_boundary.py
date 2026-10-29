@@ -90,6 +90,62 @@ def test_invoice_is_idempotent_and_creation_does_not_move_money(app, test_user):
         ).one_or_none() is None
 
 
+def test_concurrent_invoice_creation_converges_on_one_wallet_invoice(
+    app, test_user, monkeypatch
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    with app.app_context():
+        payer_id = db.session.merge(test_user).id
+        _configure_wallet_methods()
+
+    reference = "ride-concurrent-" + uuid.uuid4().hex
+    idempotency_key = "test-invoice:" + reference
+    barrier = Barrier(2)
+    original_method_config = MarketplaceInvoiceService._method_config
+
+    def synchronize_after_validation(method_id, **kwargs):
+        result = original_method_config(method_id, **kwargs)
+        barrier.wait(timeout=15)
+        return result
+
+    monkeypatch.setattr(
+        MarketplaceInvoiceService,
+        "_method_config",
+        staticmethod(synchronize_after_validation),
+    )
+
+    def create_in_worker(_):
+        with app.app_context():
+            try:
+                invoice = MarketplaceInvoiceService.create_invoice(
+                    idempotency_key=idempotency_key,
+                    service_code="transport",
+                    service_reference=reference,
+                    payer_user_id=payer_id,
+                    amount="25.00",
+                    currency="USD",
+                    payment_method="cash",
+                    settlement_timing="pay_on_completion",
+                    metadata={"test_only": True},
+                    commit=True,
+                )
+                return str(invoice.id)
+            finally:
+                db.session.remove()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        invoice_ids = list(pool.map(create_in_worker, (1, 2)))
+
+    assert invoice_ids[0] == invoice_ids[1]
+    with app.app_context():
+        assert MarketplaceInvoice.query.filter_by(
+            service_code="transport",
+            service_reference=reference,
+        ).count() == 1
+
+
 def test_invoice_terms_cannot_be_changed_by_reusing_an_idempotency_key(app, test_user):
     with app.app_context():
         payer_id = db.session.merge(test_user).id
