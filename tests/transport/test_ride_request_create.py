@@ -158,6 +158,15 @@ class TestRequestCreate:
         assert data["cycle"]["status"] == "searching"
         assert data["cycle"]["deadline"]
         assert data["fare_estimate"]["amount"] > 0
+        from app.wallet.models.marketplace_invoice import MarketplaceInvoice
+        with app.app_context():
+            invoice = MarketplaceInvoice.query.filter_by(
+                service_code="transport",
+                service_reference=data["request_id"],
+            ).one()
+            assert invoice.payer_user_id == rider_id
+            assert invoice.status == "pending"
+            assert invoice.transaction_id is None
         # Safe serialization: opaque id only.
         assert set(data) <= {"request_id", "status", "cycle", "service_type",
                              "vehicle_class", "passenger_count", "pickup_time",
