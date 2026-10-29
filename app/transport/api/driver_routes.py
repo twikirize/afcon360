@@ -997,6 +997,10 @@ class DriverTripPaymentResource(Resource):
         now = datetime.now(timezone.utc)
         amount = Decimal(str(booking.final_price or booking.total_amount or 0))
         currency = str(getattr(booking.currency, "value", booking.currency))
+        from app.wallet.services.marketplace_invoice_service import (
+            MarketplaceInvoiceError,
+            MarketplaceInvoiceService,
+        )
         try:
             payment_record = (
                 BookingPayment.query.filter_by(booking_id=booking.id)
@@ -1021,10 +1025,6 @@ class DriverTripPaymentResource(Resource):
 
             # Wallet owns the receipt record. Transport may update its cache only
             # after Wallet accepts the cash receipt for the matching invoice.
-            from app.wallet.services.marketplace_invoice_service import (
-                MarketplaceInvoiceError,
-                MarketplaceInvoiceService,
-            )
             metadata = dict(booking.booking_metadata or {})
             raw_invoice_id = payment_record.wallet_invoice_id or metadata.get("wallet_invoice_id")
             if raw_invoice_id:
