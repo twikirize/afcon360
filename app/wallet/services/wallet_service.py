@@ -1113,6 +1113,7 @@ class WalletService:
                     "marketplace_invoice_id",
                     "service_code",
                     "service_reference",
+                    "settlement_timing",
                     "escrow_account_id",
                     "escrow_service_type",
                 )
