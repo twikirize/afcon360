@@ -806,13 +806,14 @@ def _execute_driver_trip_action(booking, profile, action, actor):
             }
 
         if action == "complete":
-            # The trip is complete independently of payment. Cash remains
-            # pending until the driver explicitly confirms receipt. Wallet
-            # may be debited now, using a deterministic idempotency key.
+            # The trip is complete independently of payment. Notify Wallet
+            # for every currently supported market method: cash becomes due
+            # but stays unpaid until the driver's explicit receipt confirmation;
+            # Wallet balance collection is performed only inside Wallet.
             refreshed = db.session.get(Booking, booking_id)
             if refreshed is not None:
                 method = str(refreshed.payment_method or "").strip().lower()
-                if method == "wallet":
+                if method in ("wallet", "cash"):
                     try:
                         from app.transport.services.payment_service import PaymentService
                         PaymentService.process_payment(
@@ -833,7 +834,7 @@ def _execute_driver_trip_action(booking, profile, action, actor):
                     except Exception:
                         db.session.rollback()
                         logger.warning(
-                            "Trip %s completed but wallet settlement remains pending",
+                            "Trip %s completed but Wallet settlement/receipt remains pending",
                             refreshed.booking_reference, exc_info=True,
                         )
                 db.session.expire_all()
