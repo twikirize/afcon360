@@ -203,38 +203,49 @@ def test_wallet_invoice_is_paid_only_after_canonical_completed_transaction(
         invoice = _create_invoice(
             payer_id, method="wallet", amount="25.00"
         )
-        account = SimpleNamespace(id=uuid.uuid4(), currency="USD")
+        account = SimpleNamespace(
+            id=uuid.uuid4(), currency="USD", status="active",
+            is_frozen=False, owner_type="user",
+        )
+        escrow = SimpleNamespace(
+            id=uuid.uuid4(), user_id=987650, currency="USD",
+        )
         monkeypatch.setattr(
             AccountRepository,
             "get_by_user_id",
             lambda self, user_id, currency="USD", for_update=False: account,
         )
+        monkeypatch.setattr(
+            MarketplaceInvoiceService, "_get_transport_escrow_account",
+            staticmethod(lambda currency: escrow),
+        )
         calls = []
         transaction_id = uuid.uuid4()
 
-        def fake_withdraw(
-            self, *, account_id, amount, currency, client_request_id, metadata,
-            payment_method, payment_provider, actor_id, system_initiated,
+        def fake_transfer(
+            self, *, from_account_id, to_account_id, amount, currency,
+            client_request_id, note, metadata, system_initiated,
         ):
             calls.append({
-                "account_id": account_id,
+                "from_account_id": from_account_id,
+                "to_account_id": to_account_id,
                 "amount": amount,
                 "currency": currency,
                 "client_request_id": client_request_id,
+                "note": note,
                 "metadata": metadata,
-                "payment_method": payment_method,
-                "payment_provider": payment_provider,
-                "actor_id": actor_id,
                 "system_initiated": system_initiated,
             })
             tx = TransactionModel(
                 id=transaction_id,
                 client_request_id=client_request_id,
-                tx_type="withdraw",
+                tx_type="transfer",
                 status="completed",
                 amount=Decimal("25.00"),
                 currency="USD",
                 user_id=payer_id,
+                recipient_user_id=escrow.user_id,
+                tx_metadata=metadata,
             )
             db.session.add(tx)
             db.session.commit()
@@ -245,7 +256,7 @@ def test_wallet_invoice_is_paid_only_after_canonical_completed_transaction(
                 "currency": "USD",
             }
 
-        monkeypatch.setattr(WalletService, "withdraw", fake_withdraw)
+        monkeypatch.setattr(WalletService, "transfer", fake_transfer)
         first = MarketplaceInvoiceService.settle_after_completion(
             invoice_id=invoice.id,
             payer_user_id=payer_id,
@@ -258,20 +269,21 @@ def test_wallet_invoice_is_paid_only_after_canonical_completed_transaction(
         assert first["status"] == "paid"
         assert first["transaction_id"] == str(transaction_id)
         assert calls == [{
-            "account_id": str(account.id),
+            "from_account_id": str(account.id),
+            "to_account_id": str(escrow.id),
             "amount": Decimal("25.00"),
             "currency": "USD",
             "client_request_id": "MARKETPLACE-INVOICE-" + str(invoice.id),
+            "note": f"Transport marketplace invoice {invoice.service_reference}",
             "metadata": {
                 "marketplace_invoice_id": str(invoice.id),
                 "service_code": "transport",
                 "service_reference": invoice.service_reference,
                 "settlement_timing": "pay_on_completion",
                 "request_id": "test-wallet-settlement",
+                "escrow_account_id": str(escrow.id),
+                "escrow_service_type": "transport",
             },
-            "payment_method": "wallet",
-            "payment_provider": "afcon360_wallet",
-            "actor_id": payer_id,
             "system_initiated": True,
         }]
 
