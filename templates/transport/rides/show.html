@@ -232,13 +232,13 @@
 <div class="card" id="riderNoMatch">
   <div class="card-header">
     <span class="card-title">
-      {% if no_match_reason == 'all_rejected' %}Couldn't match this ride right now{% else %}No cars available right now{% endif %}
+      {% if no_match_cause == 'driver_cancelled' %}Your driver cancelled{% elif no_match_reason == 'all_rejected' %}Couldn't match this ride right now{% else %}No cars available right now{% endif %}
     </span>
-    <span class="badge pay-pill-fail" role="status" aria-live="polite">No match found</span>
+    <span class="badge pay-pill-fail" role="status" aria-live="polite">{% if no_match_cause == 'driver_cancelled' %}Search again{% else %}No match found{% endif %}</span>
   </div>
   <div class="card-body">
     <p>
-      {% if no_match_reason == 'all_rejected' %}We asked the drivers near you and none could take this ride.{% else %}Drivers come online all the time. Try again in a few minutes.{% endif %}
+      {% if no_match_cause == 'driver_cancelled' %}The driver cancelled this ride before pickup. Search again to find another driver.{% elif no_match_reason == 'all_rejected' %}We asked the drivers near you and none could take this ride.{% else %}Drivers come online all the time. Try again in a few minutes.{% endif %}
     </p>
     <div class="action-stack">
       <form method="post" action="{{ url_for('transport.rides_retry_matching', booking_reference=booking_reference) }}">

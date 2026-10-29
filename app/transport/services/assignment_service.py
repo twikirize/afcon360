@@ -569,6 +569,172 @@ class AssignmentService:
             "released": assigned,
         }
 
+    @staticmethod
+    def release_to_no_match(
+        booking_id: int,
+        reason: str,
+        *,
+        actor=None,
+        audit_extra: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Close a pre-trip assignment as NO_MATCH (driver cancelled).
+
+        This is deliberately NOT a cancellation: the booking is a failed
+        match and the rider is prompted to search again. No cancellation_*
+        field, fee, wallet, or earnings write occurs. The no_match_reason is
+        written in the SAME guarded UPDATE as the status so
+        ``chk_no_match_reason`` never observes an intermediate invalid row.
+
+        Only ASSIGNED / DRIVER_EN_ROUTE / PICKUP_ARRIVED are eligible.
+        IN_PROGRESS and DISPUTED are refused: once the trip starts, the
+        normal completion/support path owns the outcome.
+        """
+        from app.transport.services.matching_service import NO_MATCH_REASONS
+
+        if reason not in NO_MATCH_REASONS:
+            raise DispatchClaimError(
+                "invalid_state", f"{reason} is not a no-match reason"
+            )
+
+        driver_cancellable = frozenset({
+            BookingStatus.ASSIGNED.value,
+            BookingStatus.DRIVER_EN_ROUTE.value,
+            BookingStatus.PICKUP_ARRIVED.value,
+        })
+
+        row = db.session.execute(
+            sa.select(
+                Booking.__table__.c.id,
+                Booking.__table__.c.status,
+                Booking.__table__.c.no_match_reason,
+                Booking.__table__.c.assigned_driver_id,
+                Booking.__table__.c.assigned_vehicle_id,
+                Booking.__table__.c.booking_reference,
+            ).where(Booking.__table__.c.id == booking_id).with_for_update()
+        ).first()
+        if row is None:
+            raise DispatchClaimError("booking_unavailable", "booking not found")
+
+        if row.status == BookingStatus.NO_MATCH.value:
+            return {
+                "booking_id": booking_id,
+                "booking_reference": row.booking_reference,
+                "status": BookingStatus.NO_MATCH.value,
+                "no_match_reason": row.no_match_reason,
+                "released": False,
+                "replayed": True,
+            }
+
+        if (row.assigned_driver_id is None
+                and row.assigned_vehicle_id is None):
+            raise DispatchClaimError(
+                "invalid_state", "booking has no active assignment to release"
+            )
+        if row.status not in driver_cancellable:
+            raise DispatchClaimError(
+                "invalid_state",
+                "booking is not in a pre-trip assignment state",
+                booking_id=booking_id,
+            )
+
+        transition = db.session.execute(
+            sa.update(Booking.__table__)
+            .where(
+                Booking.__table__.c.id == booking_id,
+                Booking.__table__.c.status.in_(driver_cancellable),
+                Booking.__table__.c.assigned_driver_id
+                == row.assigned_driver_id,
+                Booking.__table__.c.is_deleted.is_(False),
+            )
+            .values(
+                status=BookingStatus.NO_MATCH.value,
+                no_match_reason=reason,
+                assigned_driver_id=None,
+                assigned_vehicle_id=None,
+                driver_assigned_at=None,
+                driver_en_route_at=None,
+                driver_arrived_at=None,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if transition.rowcount != 1:
+            db.session.rollback()
+            raise DispatchClaimError(
+                "invalid_state",
+                "booking is no longer in the assigned state",
+                booking_id=booking_id,
+            )
+
+        if row.assigned_vehicle_id is not None:
+            db.session.execute(
+                sa.update(Vehicle.__table__)
+                .where(
+                    Vehicle.__table__.c.id == row.assigned_vehicle_id,
+                    Vehicle.__table__.c.is_available.is_(False),
+                    Vehicle.__table__.c.is_deleted.is_(False),
+                    ~sa.exists(
+                        sa.select(sa.literal(1))
+                        .select_from(Booking.__table__)
+                        .where(
+                            Booking.__table__.c.assigned_vehicle_id
+                            == row.assigned_vehicle_id,
+                            Booking.__table__.c.id != booking_id,
+                            Booking.__table__.c.status.in_(
+                                ACTIVE_ASSIGNMENT_STATUSES
+                            ),
+                            Booking.__table__.c.is_deleted.is_(False),
+                        )
+                    ),
+                )
+                .values(is_available=True)
+                .execution_options(synchronize_session=False)
+            )
+
+        audit_log(
+            action="dispatch_release",
+            resource_type="booking",
+            resource_id=booking_id,
+            user_id=getattr(actor, "id", None),
+            details={
+                "status": BookingStatus.NO_MATCH.value,
+                "reason": reason,
+                "cancelled_by": "driver",
+                **(audit_extra or {}),
+            },
+            db_session=db.session,
+        )
+
+        db.session.commit()
+        db.session.expire_all()
+
+        _invalidate_booking_read_cache(booking_id)
+
+        logger.info(
+            "Driver-cancel release committed for booking %s -> no_match (%s)",
+            row.booking_reference, reason,
+        )
+
+        # D-15 parity with release(): transient offer state is
+        # non-authoritative and must never roll back a committed close.
+        try:
+            from app.transport.services.offer_service import OfferService
+            OfferService.cleanup_offer(row.booking_reference)
+        except Exception:
+            logger.warning(
+                "offer cleanup failed after driver-cancel release for %s",
+                row.booking_reference,
+                exc_info=True,
+            )
+
+        return {
+            "booking_id": booking_id,
+            "booking_reference": row.booking_reference,
+            "status": BookingStatus.NO_MATCH.value,
+            "no_match_reason": reason,
+            "released": True,
+            "replayed": False,
+        }
+
 
 def get_assignment_service():
     """Service-locator helper consistent with the transport module pattern."""

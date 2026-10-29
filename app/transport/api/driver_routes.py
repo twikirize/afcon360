@@ -478,17 +478,13 @@ class DriverOfferAcceptResource(Resource):
         # creation time. Accept the exact server-recorded offer, not merely
         # DriverProfile.current_vehicle (which can be unset or differ from the
         # vehicle offered). The driver cannot substitute an arbitrary vehicle.
-        from app.transport.models import RideRequest, OfferAttempt, SearchCycle
+        from app.transport.models import (
+            Booking, RideRequest, OfferAttempt, SearchCycle,
+        )
         request_first = RideRequest.query.filter_by(
             public_id=booking_reference, is_deleted=False
         ).first()
-        if request_first is not None:
-            if request_first.status == "converted":
-                return {
-                    "success": False,
-                    "error": "This ride has already been assigned to another driver",
-                    "code": "already_accepted",
-                }, 409
+        if request_first is not None and request_first.status != "converted":
             from app.transport.services.ride_request_dispatch_service import (
                 RideRequestDispatchService, RideRequestDispatchError,
             )
@@ -535,6 +531,28 @@ class DriverOfferAcceptResource(Resource):
                 },
             }
 
+        if request_first is not None:
+            # Driver-cancel retry bridge: the request-first request stays
+            # "converted" for its ledger, but a driver cancellation closes
+            # the linked Booking as no_match and the rider's retry puts it
+            # back to confirmed with LEGACY offers. Accept those offers only
+            # while the linked Booking is still claimable; anything else
+            # keeps the original already-assigned answer.
+            linked_booking = Booking.query.filter_by(
+                ride_request_id=request_first.id, is_deleted=False
+            ).first()
+            if (
+                linked_booking is None
+                or linked_booking.booking_reference != booking_reference
+                or linked_booking.status != BookingStatus.CONFIRMED.value
+                or linked_booking.assigned_driver_id is not None
+            ):
+                return {
+                    "success": False,
+                    "error": "This ride has already been assigned to another driver",
+                    "code": "already_accepted",
+                }, 409
+
         vehicle_id = profile.current_vehicle.id if profile.current_vehicle else None
         if not vehicle_id:
             return {
@@ -578,7 +596,7 @@ class DriverOfferDeclineResource(Resource):
     @login_required
     def post(self, booking_reference):
         from app.transport.services.offer_service import OfferService
-        from app.transport.models import RideRequest
+        from app.transport.models import Booking, RideRequest
 
         profile, error, status = _current_driver_profile()
         if error:
@@ -586,13 +604,7 @@ class DriverOfferDeclineResource(Resource):
         request_first = RideRequest.query.filter_by(
             public_id=booking_reference, is_deleted=False
         ).first()
-        if request_first is not None:
-            if request_first.status == "converted":
-                return {
-                    "success": False,
-                    "error": "This ride has already been assigned",
-                    "code": "already_accepted",
-                }, 409
+        if request_first is not None and request_first.status != "converted":
             from app.transport.services.ride_request_dispatch_service import (
                 RideRequestDispatchService,
             )
@@ -609,6 +621,23 @@ class DriverOfferDeclineResource(Resource):
                 "success": True,
                 "data": {"booking_reference": booking_reference, "declined": True},
             }
+        if request_first is not None:
+            # Same driver-cancel retry bridge as accept: only a still
+            # claimable linked Booking may use the legacy offer path.
+            linked_booking = Booking.query.filter_by(
+                ride_request_id=request_first.id, is_deleted=False
+            ).first()
+            if (
+                linked_booking is None
+                or linked_booking.booking_reference != booking_reference
+                or linked_booking.status != BookingStatus.CONFIRMED.value
+                or linked_booking.assigned_driver_id is not None
+            ):
+                return {
+                    "success": False,
+                    "error": "This ride has already been assigned",
+                    "code": "already_accepted",
+                }, 409
         declined = OfferService.decline_offer(booking_reference, profile.id)
         return {
             "success": True,
@@ -645,12 +674,40 @@ def _execute_driver_trip_action(booking, profile, action, actor):
     from app.transport.models import LocationLifecycleEvent
     from app.geo.models import LocationObservation
 
+    if action == "cancel":
+        # Driver-cancel before trip start: the booking closes as no_match
+        # (rider is prompted to search again), never as a paid cancellation.
+        # BookingService owns the stage rules, release, audit and rider
+        # notification; this resource only maps the outcome.
+        from app.transport.services.booking_service import get_booking_service
+        from app.utils.exceptions import (
+            NotFoundError,
+            PermissionError as AppPermissionError,
+            ValidationError,
+        )
+
+        try:
+            result = get_booking_service().driver_cancel(
+                booking.id, profile.user_id
+            )
+            return {
+                "success": True,
+                "message": result.get("message"),
+                "data": result.get("data", {}),
+            }, 200
+        except NotFoundError as e:
+            return {"success": False, "error": str(e)}, 404
+        except AppPermissionError as e:
+            return {"success": False, "error": str(e)}, 403
+        except ValidationError as e:
+            return {"success": False, "error": str(e)}, 409
+
     if action not in _DRIVER_TRIP_ACTIONS:
         return {
             "success": False,
             "error": (
                 "action must be one of: "
-                "en_route|arrive|start|complete|no_show"
+                "en_route|arrive|start|complete|no_show|cancel"
             ),
         }, 400
 

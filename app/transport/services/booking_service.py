@@ -1359,6 +1359,191 @@ class BookingService:
             )
             raise ServiceUnavailableError("Could not record rider no-show")
 
+    @monitor_endpoint("driver_cancel")
+    def driver_cancel(self, booking_id: int, driver_user_id: int,
+                      reason: Optional[str] = None) -> Dict[str, Any]:
+        """Driver cancels an accepted trip before it starts.
+
+        The ride becomes NO_MATCH so the rider is prompted to search again;
+        the driver/vehicle assignment is released atomically and the rider
+        is notified. This is deliberately NOT a paid cancellation: no
+        cancellation_* field, fee, wallet, or earnings write occurs. Driver
+        accountability is recorded as booking metadata plus the canonical
+        ``dispatch_release`` audit row.
+
+        Allowed only in ASSIGNED / DRIVER_EN_ROUTE / PICKUP_ARRIVED. Once
+        IN_PROGRESS, the driver must complete the trip (or support must
+        intervene); a started trip is never cancelled by this path.
+        """
+        from app.transport.services.assignment_service import (
+            AssignmentService,
+            DispatchClaimError,
+        )
+
+        try:
+            booking = db.session.get(
+                Booking, booking_id, with_for_update=True
+            )
+            if not booking or booking.is_deleted:
+                raise NotFoundError(
+                    "Booking not found", resource_type="booking",
+                    resource_id=booking_id,
+                )
+
+            driver = DriverProfile.query.filter_by(
+                user_id=driver_user_id, is_deleted=False
+            ).first()
+            if driver is None:
+                raise PermissionError(
+                    "Only the assigned driver may cancel this trip"
+                )
+
+            current_status = (
+                booking.status.value
+                if hasattr(booking.status, "value")
+                else str(booking.status)
+            )
+            metadata = dict(booking.booking_metadata or {})
+            existing = metadata.get("driver_cancellations")
+            if not isinstance(existing, list):
+                existing = []
+
+            if current_status == BookingStatusPy.NO_MATCH.value:
+                if metadata.get("no_match_cause") != "driver_cancelled":
+                    raise ValidationError(
+                        "This ride is already closed as no match"
+                    )
+                recorded = existing[-1] if existing else {}
+                if recorded.get("driver_code") != driver.driver_code:
+                    raise PermissionError(
+                        "Only the driver who cancelled this trip may replay it"
+                    )
+                return {
+                    "success": True,
+                    "message": "Trip cancellation already recorded",
+                    "data": {
+                        "booking_reference": booking.booking_reference,
+                        "status": BookingStatusPy.NO_MATCH.value,
+                        "no_match_reason": booking.no_match_reason,
+                        "cancelled_stage": recorded.get("stage"),
+                        "idempotent": True,
+                    },
+                }
+
+            if current_status == BookingStatusPy.IN_PROGRESS.value:
+                raise ValidationError(
+                    "This trip has already started. Complete the trip or "
+                    "contact support; drivers cannot cancel an in-progress "
+                    "trip."
+                )
+            if current_status not in {
+                BookingStatusPy.ASSIGNED.value,
+                BookingStatusPy.DRIVER_EN_ROUTE.value,
+                BookingStatusPy.PICKUP_ARRIVED.value,
+            }:
+                raise ValidationError(
+                    f"Cannot cancel a trip in {current_status} stage"
+                )
+            if booking.assigned_driver_id != driver.id:
+                raise PermissionError(
+                    "Only the assigned driver may cancel this trip"
+                )
+
+            now = datetime.now(timezone.utc)
+            driver_user_public_id = getattr(
+                getattr(driver, "user", None), "public_id", None
+            )
+            record = {
+                "driver_code": driver.driver_code,
+                "driver_user_public_id": (
+                    str(driver_user_public_id)
+                    if driver_user_public_id is not None else None
+                ),
+                "stage": current_status,
+                "reason": reason or "driver_cancelled",
+                "at": now.isoformat(),
+                "booking_reference": booking.booking_reference,
+            }
+            metadata["no_match_cause"] = "driver_cancelled"
+            metadata["driver_cancellations"] = list(existing) + [record]
+            booking.booking_metadata = metadata
+            booking.audit_log = (booking.audit_log or []) + [{
+                "action": "driver_cancelled_before_start",
+                "from": current_status,
+                "to": BookingStatusPy.NO_MATCH.value,
+                "at": now.isoformat(),
+                "reason": record["reason"],
+                "driver_code": driver.driver_code,
+                "driver_user_public_id": record["driver_user_public_id"],
+            }]
+            db.session.flush()
+
+            release_result = AssignmentService.release_to_no_match(
+                booking_id,
+                "all_rejected",
+                actor=None,
+                audit_extra={
+                    "from": current_status,
+                    "cancelled_by": "driver",
+                    "driver_code": driver.driver_code,
+                    "driver_user_public_id": record["driver_user_public_id"],
+                },
+            )
+            self._invalidate_booking_caches(booking_id)
+
+            try:
+                from app.transport.services.notification_service import (
+                    NotificationService,
+                )
+                NotificationService.send_booking_notification(
+                    booking_id,
+                    "driver_cancelled",
+                    {
+                        "driver_cancelled_stage": current_status,
+                        "reason": record["reason"],
+                    },
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Driver-cancel notification failed for booking "
+                    f"{booking_id}: {e}"
+                )
+
+            record_metric(
+                "driver_trip_cancelled",
+                tags={"stage": current_status, "status": "success"},
+                value=1,
+            )
+            return {
+                "success": True,
+                "message": (
+                    "Trip cancelled. The rider has been notified and asked "
+                    "to search again."
+                ),
+                "data": {
+                    "booking_reference": booking.booking_reference,
+                    "status": BookingStatusPy.NO_MATCH.value,
+                    "no_match_reason": "all_rejected",
+                    "cancelled_stage": current_status,
+                    "idempotent": False,
+                    "release": release_result,
+                },
+            }
+
+        except DispatchClaimError as e:
+            db.session.rollback()
+            raise ValidationError(e.message)
+        except (NotFoundError, PermissionError, ValidationError):
+            db.session.rollback()
+            raise
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            logger.error(
+                f"Database error cancelling trip {booking_id} by driver: {e}",
+                exc_info=True,
+            )
+            raise ServiceUnavailableError("Could not cancel the trip")
+
     @staticmethod
     def transition_status(booking_id: int, new_status: "BookingStatusPy",
                           *, reason: Optional[str] = None,
@@ -1605,6 +1790,11 @@ class BookingService:
         now = datetime.now(timezone.utc)
         booking.status = BookingStatusPy.CONFIRMED
         booking.no_match_reason = None
+        # Driver-cancel provenance is closed by the retry: a new match
+        # attempt must not inherit the previous close cause.
+        metadata = dict(booking.booking_metadata or {})
+        metadata.pop("no_match_cause", None)
+        booking.booking_metadata = metadata
         # Fresh window cursor (Condition 1): metadata cursor reset in the
         # same transaction as the status change. confirmed_at is left
         # untouched as immutable first-confirmation audit history.

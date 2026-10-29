@@ -572,8 +572,10 @@ class TestRealRideTransactionPath:
             cycle = SearchCycle.query.filter_by(
                 ride_request_id=request_row.id, cycle_number=1
             ).one()
+            # Booking now has a fresh TR... reference generated at contract formation
+            booking_ref = result["booking_reference"]
             booking = Booking.query.filter_by(
-                booking_reference=reference, ride_request_id=request_row.id
+                booking_reference=booking_ref, ride_request_id=request_row.id
             ).one()
             assert request_row.status == "converted"
             assert request_row.converted_at is not None

@@ -73,6 +73,17 @@ class NotificationService:
                     recipients.append(booking.assigned_driver_id)
                 message_template = "Booking #{booking_reference} has been cancelled. Reason: {cancellation_reason}."
 
+            elif notification_type == 'driver_cancelled':
+                # The rider is the only recipient: assigned_driver_id is a
+                # DriverProfile id, not a user id, and the cancelling driver
+                # already knows. Driver accountability lives on the booking
+                # metadata and the dispatch_release audit row.
+                recipients = [booking.user_id]
+                message_template = (
+                    "Your driver cancelled booking #{booking_reference} "
+                    "before pickup. Search again to find another driver."
+                )
+
             # Format message
             message = NotificationService._format_message(
                 template=message_template,
@@ -338,6 +349,7 @@ class NotificationService:
                 'booking_confirmed': NotificationType.BOOKING_CONFIRMED,
                 'booking_cancelled': NotificationType.BOOKING_CANCELLED,
                 'cancelled': NotificationType.BOOKING_CANCELLED,
+                'driver_cancelled': NotificationType.BOOKING_UPDATE,
                 # Driver offer ping: an offer is not an assignment, so
                 # the explicit existing BOOKING_UPDATE (not the
                 # fallthrough, not DRIVER_ASSIGNED). No new enum value:

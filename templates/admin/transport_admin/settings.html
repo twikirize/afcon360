@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Transport Settings - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="row">
+    <div class="col-12">
+      <div class="card mb-4">
+        <div class="card-header bg-warning text-dark">
+          <h4 class="mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>Important: Fare Configuration Access Changed</h4>
+        </div>
+        <div class="card-body">
+          <div class="alert alert-warning mb-0">
+            <h5 class="alert-heading">Fare Configuration Now Restricted</h5>
+            <p class="mb-2">
+              As of the latest update, <strong>fare configuration (base fares, distance rates, class multipliers, peak pricing, minimum fare, and base currency)</strong> 
+              has been moved to the <strong>Owner / Super Admin settings page</strong> only.
+            </p>
+            <hr>
+            <p class="mb-1"><strong>What this means for Transport Admins:</strong></p>
+            <ul class="mb-0">
+              <li>You can no longer create or modify fare tables via this interface</li>
+              <li>The <code>fare.tables</code> TransportSetting is now governed by Owner/Super Admin role</li>
+              <li>Any changes to fare configuration will be made by Owner or Super Admin</li>
+              <li>You will be notified (via audit log / system notification) when fare changes occur</li>
+            </ul>
+            <hr>
+            <p class="mb-0">
+              <i class="bi bi-info-circle me-1"></i>
+              This Transport Admin settings page remains available for other transport configuration 
+              (module toggles, provider settings, booking rules, safety features, etc.).
+              Fare pricing is now a platform-level financial control.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0">Transport Module Settings</h5>
+        </div>
+        <div class="card-body">
+          <p class="text-muted">
+            Configure transport module features, provider onboarding, booking rules, payment processing, 
+            safety features, and integrations using the settings API.
+          </p>
+          <div class="d-flex gap-2">
+            <a href="{{ url_for('admin.transport_admin_dashboard') }}" class="btn btn-secondary">
+              <i class="bi bi-arrow-left me-1"></i> Back to Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

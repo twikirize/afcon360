@@ -519,6 +519,10 @@ def test_wallet_collection_fails_closed_without_transport_escrow(app, test_user,
 
 def test_configured_but_unintegrated_provider_fails_closed(app, test_user):
     with app.app_context():
+        # Clean up any leftover invoices from other tests
+        MarketplaceInvoice.query.filter_by(service_code="transport").delete(synchronize_session=False)
+        db.session.commit()
+        
         payer_id = db.session.merge(test_user).id
         _configure_wallet_methods()
         with pytest.raises(MarketplaceInvoiceError) as raised:

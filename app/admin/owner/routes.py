@@ -940,7 +940,7 @@ def audit_logs():
         return redirect(url_for('admin.owner.dashboard'))
 
 @owner_bp.route('/settings', methods=['GET', 'POST'])
-@owner_login_required
+@owner_or_superadmin_required
 @audit_owner_action('viewed_settings', 'settings')
 def settings():
     """Owner settings page - includes system security settings"""
@@ -1022,6 +1022,14 @@ def settings():
         socketio_enabled_stored = bool(SystemConfig.get('SOCKETIO_ENABLED', True))
         socketio_enabled_effective = bool(current_app.config.get('SOCKETIO_ENABLED', True))
 
+        # Load fare configuration for owner/super_admin
+        try:
+            from app.transport.services.fare_service import read_configuration
+            fare_config = read_configuration()
+        except Exception as e:
+            logger.warning(f"Could not load fare configuration: {e}")
+            fare_config = None
+
         logger.info(f"Rendering settings template with org_registration_mode={org_registration_mode}")
         return render_template('owner/settings.html',
                              settings=owner_settings,
@@ -1032,7 +1040,8 @@ def settings():
                              wallet_adjustment_workflow=wallet_adjustment_workflow,
                              wallet_adjustment_threshold=wallet_adjustment_threshold,
                              socketio_enabled_stored=socketio_enabled_stored,
-                             socketio_enabled_effective=socketio_enabled_effective)
+                             socketio_enabled_effective=socketio_enabled_effective,
+                             fare_config=fare_config)
     except Exception as e:
         current_app.logger.exception(
             "❌ Owner settings page crashed"

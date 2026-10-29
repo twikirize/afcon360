@@ -73,7 +73,7 @@ OFFPEAK_MULTIPLIER = Decimal("1.0")
 MINIMUM_FARE = Decimal("5.00")
 
 REQUIRED_TABLE_KEYS = ("base_fares", "distance_rate_per_km",
-                       "class_multipliers", "minimum_fare", "peak")
+                       "class_multipliers", "minimum_fare", "peak", "currency")
 
 
 def _default_tables():
@@ -84,6 +84,7 @@ def _default_tables():
         "minimum_fare": float(MINIMUM_FARE),
         "peak": {"hours": [[7, 10], [17, 20]],
                  "multiplier": float(PEAK_MULTIPLIER)},
+        "currency": CURRENCY_DEFAULT,
     }
 
 
@@ -130,6 +131,16 @@ def validate_tables(tables):
             for pair in hours)):
         raise ValueError("peak.hours must be [[start, end], ...] hour pairs")
     _num(peak.get("multiplier"), "peak.multiplier", minimum=1.0)
+    # Validate currency
+    currency = tables.get("currency")
+    if currency is not None:
+        if not isinstance(currency, str) or len(currency) != 3:
+            raise ValueError("currency must be a 3-letter ISO code")
+        try:
+            from app.transport.models import Currency
+            Currency(currency.upper())
+        except ValueError:
+            raise ValueError(f"Unknown currency: {currency}")
     return True
 
 
@@ -391,8 +402,9 @@ def calculate_estimate(service_type: Any = None,
     distance_charge = distance * rate
     subtotal = base + distance_charge
     total = (subtotal * multiplier) * surge
+    currency = tables.get("currency", CURRENCY_DEFAULT)
     return {
-        "currency": CURRENCY_DEFAULT,
+        "currency": currency,
         "version": version,
         "effective_from": effective_from,
         "inputs": {

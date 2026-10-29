@@ -384,6 +384,188 @@ document.addEventListener('DOMContentLoaded', function() {
     </a>
   </div>
 
+  <!-- Transport Fare Configuration Section -->
+  <h3 class="section-title">Transport Fare Configuration</h3>
+  <div class="settings-grid">
+    <div class="settings-card" style="border-left:4px solid #0ea5e9; grid-column: 1 / -1;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;flex-wrap:wrap;gap:1rem;">
+        <div>
+          <div class="card-icon">🚌</div>
+          <div class="card-title">Transport Fare Settings</div>
+          <div class="card-description" style="margin-top:0.5rem;">
+            Configure base fares, distance rates, class multipliers, peak hour surge pricing, and minimum fare. 
+            Changes are versioned and audited. Only Owner and Super Admin can modify these settings.
+          </div>
+        </div>
+        <span class="card-badge" style="background:#e0f2fe;color:#0369a1;">Transport Pricing</span>
+      </div>
+
+      {% if fare_config %}
+      <div id="fareConfigForm" style="margin-top:1.5rem;">
+        <div style="background:#f8fafc;border-radius:8px;padding:1.5rem;margin-bottom:1rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:1rem;">
+            <div>
+              <strong style="color:#1a1a1a;">Current Version:</strong>
+              <span style="margin-left:0.5rem;padding:0.25rem 0.75rem;background:#dbeafe;color:#1e40af;border-radius:20px;font-size:0.875rem;font-weight:600;">
+                v{{ fare_config.version }}
+              </span>
+              {% if fare_config.effective_from %}
+              <span style="margin-left:1rem;color:#6b7280;font-size:0.875rem;">
+                Effective: {{ fare_config.effective_from }}
+              </span>
+              {% endif %}
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="toggleFareConfigEdit()">
+              <i class="bi bi-pencil-square"></i> Edit Fare Tables
+            </button>
+          </div>
+
+          <div id="fareConfigView" style="display:block;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem;">
+              <div style="background:white;padding:1rem;border-radius:6px;border:1px solid #e5e7eb;">
+                <div style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Base Fares (per service type)</div>
+                <div style="font-family:monospace;font-size:0.8125rem;">
+                  {% for service, amount in fare_config.tables.base_fares.items() %}
+                  <div>{{ service|title }}: <strong>{{ amount }}</strong></div>
+                  {% endfor %}
+                </div>
+              </div>
+              <div style="background:white;padding:1rem;border-radius:6px;border:1px solid #e5e7eb;">
+                <div style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Distance Rate</div>
+                <div style="font-size:1.5rem;font-weight:600;color:#1a1a1a;">{{ fare_config.tables.distance_rate_per_km }} / km</div>
+              </div>
+              <div style="background:white;padding:1rem;border-radius:6px;border:1px solid #e5e7eb;">
+                <div style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Base Currency</div>
+                <div style="font-size:1.5rem;font-weight:600;color:#1a1a1a;">{{ fare_config.tables.currency }}</div>
+              </div>
+              <div style="background:white;padding:1rem;border-radius:6px;border:1px solid #e5e7eb;">
+                <div style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Minimum Fare</div>
+                <div style="font-size:1.5rem;font-weight:600;color:#1a1a1a;">{{ fare_config.tables.minimum_fare }}</div>
+              </div>
+              <div style="background:white;padding:1rem;border-radius:6px;border:1px solid #e5e7eb;">
+                <div style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.25rem;">Peak Multiplier</div>
+                <div style="font-size:1.5rem;font-weight:600;color:#1a1a1a;">{{ fare_config.tables.peak.multiplier }}x</div>
+                <div style="font-size:0.75rem;color:#6b7280;margin-top:0.25rem;">
+                  Hours: {% for range in fare_config.tables.peak.hours %}{{ range[0] }}-{{ range[1] }}{% if not loop.last %}, {% endif %}{% endfor %}
+                </div>
+              </div>
+            </div>
+            <div style="margin-top:1rem;">
+              <div style="font-size:0.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">Class Multipliers</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.75rem;">
+                {% for class_name, multiplier in fare_config.tables.class_multipliers.items() %}
+                <div style="background:white;padding:0.75rem;border-radius:6px;border:1px solid #e5e7eb;text-align:center;">
+                  <div style="font-weight:600;text-transform:capitalize;">{{ class_name }}</div>
+                  <div style="font-size:1.25rem;font-weight:700;color:#0ea5e9;">{{ multiplier }}x</div>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+
+          <div id="fareConfigEdit" style="display:none;">
+            <form id="fareEditForm" novalidate>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              
+              <div style="margin-bottom:1.5rem;">
+                <label class="form-label" style="font-weight:600;color:#1a1a1a;">Effective From (ISO-8601, optional for immediate)</label>
+                <input type="datetime-local" name="effective_from" class="form-control" style="max-width:300px;">
+                <small class="text-muted">Leave empty for immediate activation. Future date stages the version.</small>
+              </div>
+
+              <div style="margin-bottom:1.5rem;">
+                <label class="form-label" style="font-weight:600;color:#1a1a1a;">Base Fares (JSON object, keys = service types)</label>
+                <textarea name="base_fares" class="form-control" rows="6" style="font-family:monospace;font-size:0.8125rem;" required>{{ fare_config.tables.base_fares | tojson(indent=2) }}</textarea>
+                <small class="text-muted">Example: {"on_demand": 10, "airport_transfer": 25, "stadium_shuttle": 15, "hotel_transfer": 20, "city_tour": 30}</small>
+              </div>
+
+              <div style="margin-bottom:1.5rem;">
+                <label class="form-label" style="font-weight:600;color:#1a1a1a;">Distance Rate per km</label>
+                <input type="number" name="distance_rate_per_km" class="form-control" style="max-width:200px;" step="0.01" min="0" value="{{ fare_config.tables.distance_rate_per_km }}" required>
+              </div>
+
+              <div style="margin-bottom:1.5rem;">
+                <label class="form-label" style="font-weight:600;color:#1a1a1a;">Minimum Fare</label>
+                <input type="number" name="minimum_fare" class="form-control" style="max-width:200px;" step="0.01" min="0" value="{{ fare_config.tables.minimum_fare }}" required>
+              </div>
+
+              <div style="margin-bottom:1.5rem;">
+                <label class="form-label" style="font-weight:600;color:#1a1a1a;">Base Currency (ISO 4217)</label>
+                <input type="text" name="currency" class="form-control" style="max-width:150px;text-transform:uppercase;" maxlength="3" value="{{ fare_config.tables.currency }}" required>
+                <small class="text-muted">3-letter currency code (e.g., USD, UGX, KES, EUR)</small>
+              </div>
+
+              <div style="margin-bottom:1.5rem;">
+                <label class="form-label" style="font-weight:600;color:#1a1a1a;">Peak Hours & Multiplier</label>
+                <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:end;">
+                  <div style="flex:1;min-width:200px;">
+                    <label class="form-label" style="font-weight:600;color:#1a1a1a;">Peak Multiplier</label>
+                    <input type="number" name="peak_multiplier" class="form-control" step="0.01" min="1" value="{{ fare_config.tables.peak.multiplier }}" required>
+                  </div>
+                  <div style="flex:1;min-width:300px;">
+                    <label class="form-label" style="font-weight:600;color:#1a1a1a;">Peak Hour Ranges (comma-separated, format: start-end in 24h)</label>
+                    <input type="text" name="peak_hours" class="form-control" value="{% for range in fare_config.tables.peak.hours %}{{ range[0] }}-{{ range[1] }}{% if not loop.last %}, {% endif %}{% endfor %}" placeholder="7-10, 17-20" required>
+                    <small class="text-muted">Example: 7-10, 17-20 (means 07:00-10:00 and 17:00-20:00)</small>
+                  </div>
+                </div>
+              </div>
+
+              <div style="margin-bottom:1.5rem;">
+                <label class="form-label" style="font-weight:600;color:#1a1a1a;">Class Multipliers (JSON object)</label>
+                <textarea name="class_multipliers" class="form-control" rows="6" style="font-family:monospace;font-size:0.8125rem;" required>{{ fare_config.tables.class_multipliers | tojson(indent=2) }}</textarea>
+                <small class="text-muted">Example: {"economy": 1.0, "comfort": 1.2, "premium": 1.5, "van": 1.8, "luxury": 2.0}</small>
+              </div>
+
+              <div style="display:flex;gap:1rem;">
+                <button type="submit" class="btn btn-primary">
+                  <i class="bi bi-save"></i> Save Fare Configuration
+                </button>
+                <button type="button" class="btn btn-outline-secondary" onclick="toggleFareConfigEdit()">
+                  <i class="bi bi-x-lg"></i> Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        {% if fare_config.history %}
+        <div style="margin-top:1.5rem;">
+          <h5 style="color:#374151;margin-bottom:1rem;">Audit History</h5>
+          <div style="overflow-x:auto;">
+            <table class="table table-sm table-hover" style="font-size:0.8125rem;">
+              <thead>
+                <tr>
+                  <th>Version</th>
+                  <th>Changed At</th>
+                  <th>Changed By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for entry in fare_config.history %}
+                <tr>
+                  <td><code>v{{ entry.version }}</code></td>
+                  <td>{{ entry.changed_at }}</td>
+                  <td>{{ entry.changed_by or 'Unknown' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+      {% else %}
+      <div style="text-align:center;padding:2rem;color:#6b7280;">
+        <i class="bi bi-exclamation-triangle" style="font-size:2rem;margin-bottom:1rem;color:#f59e0b;"></i>
+        <p>Fare configuration not available. Using code defaults (v1).</p>
+        <button class="btn btn-primary mt-2" onclick="createInitialFareConfig()">
+          <i class="bi bi-plus-circle"></i> Initialize Fare Tables
+        </button>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
   <!-- KYC Section -->
   <h3 class="section-title">KYC & Compliance</h3>
   <div class="settings-grid">
@@ -919,6 +1101,116 @@ function showOrgRegistrationDetails() {
         refreshMediaHealth();
         // Auto-refresh every 30 seconds
         setInterval(refreshMediaHealth, 30000);
+    });
+
+    // Fare Configuration Functions
+    function toggleFareConfigEdit() {
+        const view = document.getElementById('fareConfigView');
+        const edit = document.getElementById('fareConfigEdit');
+        if (view && edit) {
+            const isEditing = edit.style.display !== 'none';
+            view.style.display = isEditing ? 'block' : 'none';
+            edit.style.display = isEditing ? 'none' : 'block';
+        }
+    }
+
+    function createInitialFareConfig() {
+        const defaultTables = {
+            base_fares: {
+                "on_demand": 10,
+                "airport_transfer": 25,
+                "stadium_shuttle": 15,
+                "hotel_transfer": 20,
+                "city_tour": 30
+            },
+            distance_rate_per_km: 2.5,
+            class_multipliers: {
+                "economy": 1.0,
+                "comfort": 1.2,
+                "premium": 1.5,
+                "van": 1.8,
+                "luxury": 2.0
+            },
+            minimum_fare: 5.0,
+            peak: {
+                hours: [[7, 10], [17, 20]],
+                multiplier: 1.3
+            },
+            currency: "USD"
+        };
+        saveFareConfig(defaultTables);
+    }
+
+    async function saveFareConfig(tables) {
+        const effectiveFrom = document.querySelector('input[name="effective_from"]')?.value || null;
+        
+        const payload = {
+            tables: tables,
+            effective_from: effectiveFrom
+        };
+        
+        try {
+            const response = await fetch('/api/transport/fare/config', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            if (response.ok && result.success) {
+                alert('Fare configuration saved successfully! Version: ' + result.data.version);
+                location.reload();
+            } else {
+                alert('Failed to save: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    // Form submission handler
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('fareEditForm');
+        if (form) {
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(form);
+                
+                // Parse JSON fields
+                let baseFares, classMultipliers;
+                try {
+                    baseFares = JSON.parse(formData.get('base_fares'));
+                    classMultipliers = JSON.parse(formData.get('class_multipliers'));
+                } catch (err) {
+                    alert('Invalid JSON in base_fares or class_multipliers: ' + err.message);
+                    return;
+                }
+                
+                // Parse peak hours
+                const peakHoursStr = formData.get('peak_hours') || '';
+                const peakHours = peakHoursStr.split(',').map(s => {
+                    const [start, end] = s.trim().split('-').map(Number);
+                    return [start, end];
+                }).filter(p => p.length === 2 && !isNaN(p[0]) && !isNaN(p[1]));
+                
+                const tables = {
+                    base_fares: baseFares,
+                    distance_rate_per_km: parseFloat(formData.get('distance_rate_per_km')),
+                    class_multipliers: classMultipliers,
+                    minimum_fare: parseFloat(formData.get('minimum_fare')),
+                    peak: {
+                        hours: peakHours,
+                        multiplier: parseFloat(formData.get('peak_multiplier'))
+                    },
+                    currency: formData.get('currency').toUpperCase()
+                };
+                
+                await saveFareConfig(tables);
+            });
+        }
     });
 </script>
 

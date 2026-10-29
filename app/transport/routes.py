@@ -1300,7 +1300,16 @@ def rides_show(booking_reference):
 
     # Once converted, the exact same public reference resolves to the Booking
     # and the established full trip management/tracking page.
-    booking_model = _load_owned_ride(booking_reference)
+    # First try to find a converted RideRequest with this public_id, then use its booking.
+    if ride_request is not None and ride_request.status == "converted":
+        booking_model = Booking.query.filter_by(
+            ride_request_id=ride_request.id, is_deleted=False
+        ).first()
+        if not booking_model:
+            abort(404)
+        _require_ownership(booking_model, "user_id")
+    else:
+        booking_model = _load_owned_ride(booking_reference)
 
     try:
         booking = get_booking_service().get_booking(booking_model.id)
@@ -1413,6 +1422,13 @@ def rides_show(booking_reference):
         # input). Also passed explicitly because cached service dicts may
         # predate the column.
         no_match_reason=getattr(booking_model, "no_match_reason", None),
+        # Driver-cancel provenance (booking metadata, not rider input):
+        # distinguishes "the assigned driver cancelled" from a plain
+        # supply/all-rejected close on the same all_rejected reason.
+        no_match_cause=(
+            (booking_model.booking_metadata or {}).get("no_match_cause")
+            if isinstance(booking_model.booking_metadata, dict) else None
+        ),
         # MATCH-01-owned: "Adjust request" prefill (all_rejected only).
         # Computed server-side from the model (the `booking` context var is
         # a service dict, so model properties are read here, not in Jinja).
@@ -2326,6 +2342,11 @@ def _driver_active_trip(bookings):
     )
     trip = dict(active[0])
     trip["next_action"] = _DRIVER_TRIP_ACTION_BY_STATUS.get(trip["status"])
+    # Driver-cancel is pre-start only; an in-progress trip must be completed
+    # (or support must intervene) -- never self-cancelled.
+    trip["can_cancel"] = trip["status"] in {
+        "assigned", "driver_en_route", "pickup_arrived",
+    }
     return trip
 
 

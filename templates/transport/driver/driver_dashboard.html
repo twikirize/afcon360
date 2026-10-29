@@ -239,7 +239,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
       <span style="color:var(--green);font-weight:600;">{{ (active_trip.currency.value if active_trip.currency.value is defined else active_trip.currency)|default('UGX', true) }} {{ '%.0f'|format(active_trip.final_price|float) }}</span>
       {% endif %}
     </div>
-    {% if active_trip.next_action or active_trip.can_mark_no_show %}
+    {% if active_trip.next_action or active_trip.can_mark_no_show or active_trip.can_cancel %}
     <div class="ck-focus-actions">
       {% if active_trip.next_action %}
       <button type="button" class="btn btn-primary btn-sm trip-action"
@@ -253,6 +253,13 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
               data-url="/api/transport/drivers/me/trips/{{ active_trip.booking_reference }}/status"
               data-action="no_show" style="color:#b91c1c;">
         <i class="fa-solid fa-user-slash"></i> Rider no-show
+      </button>
+      {% endif %}
+      {% if active_trip.can_cancel %}
+      <button type="button" class="btn btn-secondary btn-sm trip-action"
+              data-url="/api/transport/drivers/me/trips/{{ active_trip.booking_reference }}/status"
+              data-action="cancel" style="color:#b91c1c;">
+        <i class="fa-solid fa-ban"></i> Cancel trip
       </button>
       {% endif %}
     </div>
@@ -651,6 +658,13 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
               data-url="/api/transport/drivers/me/trips/{{ active_trip.booking_reference }}/status"
               data-action="{{ active_trip.next_action }}">
         Advance
+      </button>
+      {% endif %}
+      {% if active_trip.can_cancel %}
+      <button type="button" class="btn btn-secondary btn-sm trip-action"
+              data-url="/api/transport/drivers/me/trips/{{ active_trip.booking_reference }}/status"
+              data-action="cancel" style="color:#b91c1c;">
+        Cancel
       </button>
       {% endif %}
     </div>
@@ -1575,10 +1589,12 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
   document.querySelectorAll('.trip-action').forEach(function (btn) {
     btn.addEventListener('click', async function () {
       const action = this.dataset.action;
-      const labels = {en_route: 'mark en route', arrive: 'mark arrived', start: 'start this trip', complete: 'complete this trip', no_show: 'record the rider as a no-show'};
+      const labels = {en_route: 'mark en route', arrive: 'mark arrived', start: 'start this trip', complete: 'complete this trip', no_show: 'record the rider as a no-show', cancel: 'cancel this trip'};
       const prompt = action === 'no_show'
         ? 'Confirm the rider did not show up after the 15-minute grace period? A no-show fee will be recorded.'
-        : 'Confirm to ' + (labels[action] || action) + '?';
+        : action === 'cancel'
+          ? 'Cancel this trip? The rider will be notified and asked to search again. No fee is charged.'
+          : 'Confirm to ' + (labels[action] || action) + '?';
       if (!confirm(prompt)) return;
       const prev = this.innerHTML; this.disabled = true;
       this.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
@@ -1586,7 +1602,7 @@ html.ck-js .ck-panel:not(.ck-active) { display: none; }
         const r = await fetchWithTimeout(this.dataset.url, {method: 'POST', headers: csrfHeaders(), body: JSON.stringify({action: action})});
         const d = await r.json();
         if (d.success) {
-          flashMsg('Trip updated', true);
+          flashMsg(action === 'cancel' ? 'Trip cancelled — the rider has been asked to search again' : 'Trip updated', true);
           setTimeout(() => location.reload(), 800);
         } else {
           flashMsg(d.error || 'Could not update trip', false);

@@ -14,7 +14,11 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.extensions import db
-from app.wallet.models.marketplace_invoice import MarketplaceInvoice
+from app.wallet.models.marketplace_invoice import (
+    MarketplaceInvoice,
+    MarketplacePaymentAttempt,
+    MarketplaceAllocation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +26,7 @@ logger = logging.getLogger(__name__)
 # allowlist. A configured method remains unavailable until its marketplace
 # collection/verification lifecycle is implemented here.
 _MARKETPLACE_COLLECTION_METHODS = frozenset({"cash", "wallet"})
-_SUPPORTED_SETTLEMENT_TIMINGS = frozenset({"pay_on_completion"})
+_SUPPORTED_SETTLEMENT_TIMINGS = frozenset({"pay_on_completion", "pay_now", "deposit", "pay_on_arrival"})
 _MONEY_QUANTUM = Decimal("0.01")
 _SETTLED_STATES = frozenset({"paid", "cash_received"})
 
@@ -814,3 +818,326 @@ class MarketplaceInvoiceService:
             "status": "cash_received",
             "already_processed": False,
         }
+
+    @classmethod
+    def create_payment_attempt(
+        cls,
+        *,
+        invoice_id: Any,
+        amount: Any,
+        currency: str,
+        payment_method: str,
+        provider_name: Optional[str] = None,
+        provider_reference: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        commit: bool = True,
+    ) -> MarketplacePaymentAttempt:
+        """Create a new payment attempt record for an invoice."""
+        invoice = cls.get_invoice(invoice_id, for_update=True)
+        normalized_amount = _money(amount)
+        normalized_currency = _currency(currency)
+        method = str(payment_method or "").strip().lower()
+
+        if invoice.status in _SETTLED_STATES:
+            raise MarketplaceInvoiceError(
+                "invoice_already_settled",
+                "This invoice is already settled.",
+            )
+        if normalized_currency != invoice.currency:
+            raise MarketplaceInvoiceError(
+                "currency_mismatch",
+                "Payment amount currency must match invoice currency.",
+            )
+        if normalized_amount > invoice.outstanding_amount:
+            raise MarketplaceInvoiceError(
+                "amount_exceeds_outstanding",
+                "Payment amount exceeds remaining balance.",
+            )
+
+        # Determine attempt number
+        last_attempt = invoice.payment_attempts.order_by(
+            MarketplacePaymentAttempt.attempt_number.desc()
+        ).first()
+        attempt_number = (last_attempt.attempt_number + 1) if last_attempt else 1
+
+        attempt = MarketplacePaymentAttempt(
+            invoice_id=invoice.id,
+            attempt_number=attempt_number,
+            amount=normalized_amount,
+            currency=normalized_currency,
+            payment_method=method,
+            provider_name=provider_name,
+            provider_reference=provider_reference,
+            status="created",
+            idempotency_key=idempotency_key,
+        )
+        db.session.add(attempt)
+        db.session.flush()
+
+        # Update invoice status to partially_paid if there are previous partial payments
+        if invoice.status == "due" and invoice.outstanding_amount < invoice.amount:
+            invoice.status = "partially_paid"
+        elif invoice.status == "pending":
+            # For pay_now/deposit, mark as due immediately
+            if invoice.settlement_timing in {"pay_now", "deposit", "pay_on_arrival"}:
+                invoice.status = "due"
+                invoice.due_at = datetime.now(timezone.utc)
+
+        if commit:
+            db.session.commit()
+        return attempt
+
+    @classmethod
+    def complete_payment_attempt(
+        cls,
+        *,
+        attempt_id: Any,
+        transaction_id: Any,
+        provider_reference: Optional[str] = None,
+        status: str = "succeeded",
+        error_code: Optional[str] = None,
+        error_message: Optional[str] = None,
+        commit: bool = True,
+    ) -> Dict[str, Any]:
+        """Mark a payment attempt as completed and create allocation."""
+        try:
+            parsed_attempt_id = uuid.UUID(str(attempt_id))
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise MarketplaceInvoiceError("attempt_not_found", "Payment attempt not found") from exc
+
+        attempt = MarketplacePaymentAttempt.query.filter_by(id=parsed_attempt_id).with_for_update().first()
+        if attempt is None:
+            raise MarketplaceInvoiceError("attempt_not_found", "Payment attempt not found")
+
+        if attempt.status not in {"created", "pending", "requires_action"}:
+            raise MarketplaceInvoiceError(
+                "attempt_already_completed",
+                "This payment attempt has already been completed.",
+            )
+
+        if status == "succeeded":
+            # Verify the transaction exists and matches
+            try:
+                parsed_txn_id = uuid.UUID(str(transaction_id))
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise MarketplaceInvoiceError("invalid_transaction", "Invalid transaction ID") from exc
+
+            from app.wallet.models.transaction import TransactionModel
+            transaction = TransactionModel.query.filter_by(id=parsed_txn_id).first()
+            if transaction is None:
+                raise MarketplaceInvoiceError("transaction_not_found", "Wallet transaction not found")
+            if _status_value(transaction.status) != "completed":
+                raise MarketplaceInvoiceError("transaction_not_completed", "Transaction is not completed")
+            if Decimal(str(transaction.amount)).quantize(_MONEY_QUANTUM) != attempt.amount:
+                raise MarketplaceInvoiceError("amount_mismatch", "Transaction amount does not match attempt amount")
+            if str(transaction.currency).upper() != attempt.currency:
+                raise MarketplaceInvoiceError("currency_mismatch", "Transaction currency does not match attempt currency")
+
+            # Create allocation linking transaction to invoice
+            allocation = MarketplaceAllocation(
+                transaction_id=parsed_txn_id,
+                invoice_id=attempt.invoice_id,
+                amount=attempt.amount,
+                currency=attempt.currency,
+            )
+            db.session.add(allocation)
+
+            attempt.status = "succeeded"
+            attempt.completed_at = datetime.now(timezone.utc)
+            if provider_reference:
+                attempt.provider_reference = provider_reference
+
+            # Update invoice status based on allocations
+            invoice = attempt.invoice
+            paid_amount = sum(
+                Decimal(str(a.amount)) for a in invoice.allocations
+            ) + attempt.amount
+            if paid_amount >= invoice.amount:
+                invoice.status = "paid"
+                invoice.paid_at = datetime.now(timezone.utc)
+                invoice.transaction_id = parsed_txn_id
+            else:
+                invoice.status = "partially_paid"
+
+        else:
+            attempt.status = status
+            attempt.error_code = error_code
+            attempt.error_message = error_message
+            attempt.completed_at = datetime.now(timezone.utc)
+            if provider_reference:
+                attempt.provider_reference = provider_reference
+
+        if commit:
+            db.session.commit()
+
+        return {
+            "attempt_id": str(attempt.id),
+            "status": attempt.status,
+            "invoice_status": attempt.invoice.status,
+        }
+
+    @classmethod
+    def process_refund(
+        cls,
+        *,
+        invoice_id: Any,
+        amount: Any,
+        currency: str,
+        reason: str,
+        initiated_by_user_id: int,
+        original_transaction_id: Optional[Any] = None,
+        commit: bool = True,
+    ) -> Dict[str, Any]:
+        """Process a refund for a marketplace invoice."""
+        invoice = cls.get_invoice(invoice_id, for_update=True)
+        normalized_amount = _money(amount)
+        normalized_currency = _currency(currency)
+
+        if invoice.status not in {"paid", "partially_paid", "cash_received"}:
+            raise MarketplaceInvoiceError(
+                "invoice_not_refundable",
+                "This invoice cannot be refunded in its current state.",
+            )
+        if normalized_currency != invoice.currency:
+            raise MarketplaceInvoiceError(
+                "currency_mismatch",
+                "Refund currency must match invoice currency.",
+            )
+
+        # Calculate eligible refund amount
+        if invoice.status == "cash_received":
+            # Cash refunds are handled differently - mark as partially_refunded
+            eligible = invoice.amount
+        else:
+            eligible = invoice.outstanding_amount + sum(
+                Decimal(str(a.amount)) for a in invoice.allocations
+            )
+        if normalized_amount > eligible:
+            raise MarketplaceInvoiceError(
+                "refund_exceeds_eligible",
+                "Refund amount exceeds eligible amount.",
+            )
+
+        # For wallet payments, process through Wallet service
+        if invoice.payment_method == "wallet" and invoice.status != "cash_received":
+            from app.wallet.services.wallet_service import WalletService
+            from app.wallet.exceptions import InsufficientBalanceError, WalletNotFoundError
+
+            wallet_service = WalletService()
+            # Refund goes back to payer's wallet
+            payer_account = wallet_service.account_repo.get_by_user_id(
+                invoice.payer_user_id, invoice.currency
+            )
+            if payer_account is None:
+                raise MarketplaceInvoiceError(
+                    "payer_wallet_missing",
+                    "Payer Wallet account not found for refund.",
+                )
+
+            # Source is the escrow account
+            escrow = cls._get_transport_escrow_account(invoice.currency)
+            wallet_key = f"MARKETPLACE-REFUND-{invoice.id}-{uuid.uuid4().hex[:8]}"
+            try:
+                result = wallet_service.transfer(
+                    from_account_id=str(escrow.id),
+                    to_account_id=str(payer_account.id),
+                    amount=normalized_amount,
+                    currency=invoice.currency,
+                    client_request_id=wallet_key,
+                    note=f"Marketplace refund for {invoice.service_reference}",
+                    metadata={
+                        "marketplace_invoice_id": str(invoice.id),
+                        "refund_reason": reason,
+                        "original_transaction_id": str(original_transaction_id) if original_transaction_id else None,
+                    },
+                    system_initiated=True,
+                )
+            except InsufficientBalanceError as exc:
+                raise MarketplaceInvoiceError(
+                    "escrow_insufficient_funds",
+                    "Escrow account has insufficient funds for refund.",
+                ) from exc
+            except WalletNotFoundError as exc:
+                raise MarketplaceInvoiceError(
+                    "escrow_missing",
+                    "Escrow account not found for refund.",
+                ) from exc
+            except Exception as exc:
+                logger.exception("Wallet refund failed for marketplace invoice %s", invoice.id)
+                raise MarketplaceInvoiceError(
+                    "refund_unavailable",
+                    "Wallet could not process refund.",
+                ) from exc
+
+            if not isinstance(result, dict) or result.get("status") != "success" or not result.get("transaction_id"):
+                raise MarketplaceInvoiceError("refund_unverified", "Wallet refund did not complete.")
+
+            try:
+                refund_txn_id = uuid.UUID(str(result["transaction_id"]))
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise MarketplaceInvoiceError("refund_unverified", "Invalid refund transaction reference.") from exc
+
+            # Create a negative allocation for the refund
+            refund_allocation = MarketplaceAllocation(
+                transaction_id=refund_txn_id,
+                invoice_id=invoice.id,
+                amount=-normalized_amount,
+                currency=invoice.currency,
+                allocation_metadata={"type": "refund", "reason": reason},
+            )
+            db.session.add(refund_allocation)
+
+        # Update invoice status
+        remaining_paid = sum(
+            Decimal(str(a.amount)) for a in invoice.allocations if a.amount > 0
+        ) - sum(
+            abs(Decimal(str(a.amount))) for a in invoice.allocations if a.amount < 0
+        )
+
+        if remaining_paid <= Decimal("0"):
+            invoice.status = "refunded"
+            invoice.cancelled_at = datetime.now(timezone.utc)
+        elif remaining_paid < invoice.amount:
+            invoice.status = "partially_refunded"
+        else:
+            invoice.status = "paid"
+
+        invoice.invoice_metadata = {
+            **(invoice.invoice_metadata or {}),
+            "last_refund": {
+                "amount": str(normalized_amount),
+                "reason": reason,
+                "initiated_by": initiated_by_user_id,
+                "at": datetime.now(timezone.utc).isoformat(),
+            },
+        }
+
+        if commit:
+            db.session.commit()
+
+        return {
+            "invoice_id": str(invoice.id),
+            "status": invoice.status,
+            "refunded_amount": str(normalized_amount),
+        }
+
+    @classmethod
+    def update_invoice_status_from_allocations(cls, invoice: MarketplaceInvoice) -> None:
+        """Recalculate invoice status based on current allocations."""
+        paid = sum(Decimal(str(a.amount)) for a in invoice.allocations if a.amount > 0)
+        refunded = sum(abs(Decimal(str(a.amount))) for a in invoice.allocations if a.amount < 0)
+        net_paid = paid - refunded
+
+        if net_paid <= Decimal("0"):
+            if invoice.status in {"paid", "partially_paid", "partially_refunded"}:
+                invoice.status = "refunded"
+        elif net_paid >= invoice.amount:
+            if invoice.status != "paid":
+                invoice.status = "paid"
+                if not invoice.paid_at:
+                    invoice.paid_at = datetime.now(timezone.utc)
+        else:
+            if invoice.status in {"paid", "refunded"}:
+                invoice.status = "partially_paid" if net_paid > 0 else "due"
+            elif invoice.status == "due" and net_paid > 0:
+                invoice.status = "partially_paid"

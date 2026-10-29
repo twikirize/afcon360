@@ -34,8 +34,10 @@
     /* app/transport/routes.py _MATCHING_STATUSES */
     var MATCHING = { pending_payment: true, confirmed: true };
     /* app/transport/services/booking_service.py STATUS_TRANSITIONS (out == []) */
-    /* MATCH-01-owned: no_match is terminal for matching (single outbound
-       edge = manual rider retry, which reloads the page server-side). */
+    /* MATCH-01-owned: no_match is terminal for matching (outbound edges =
+       manual rider retry, which reloads the page server-side, and a live
+       driver cancellation, which also reloads so the server-rendered
+       cancel copy + retry form replace the stale in-flight UI). */
     var TERMINAL = { completed: true, cancelled: true, no_show: true, no_match: true };
     /* show.html badge class map `sc` (unknown -> pay-pill-pending) */
     var BADGE_CLASS = {
@@ -433,7 +435,18 @@
             var status = normStatus(b.status);
             /* Terminality comes from the server status, never from
              * elapsed time or poll count. */
-            if (TERMINAL[status]) { stop(); return; }
+            if (TERMINAL[status]) {
+                stop();
+                /* A live trip closed as no_match (driver cancelled before
+                 * pickup) needs the server-rendered cancel copy + retry
+                 * form. A page already terminal at load has nothing new. */
+                if (status === 'no_match' &&
+                        String(mount.getAttribute('data-initial-status') || '')
+                            .toLowerCase() !== 'no_match') {
+                    window.location.reload();
+                }
+                return;
+            }
             /* Booking back in matching: rider_matching.js owns the loop. */
             if (MATCHING[status]) { stop(); return; }
             schedule(POLL_MS);

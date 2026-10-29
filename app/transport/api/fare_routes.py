@@ -130,26 +130,33 @@ def _straight_line_km(data):
 class FareConfigResource(Resource):
     """GET/PUT /api/transport/fare/config — governed fare tables.
 
-    Both methods require the ``transport.settings`` permission: the
-    platform owner holds it unconditionally; a super-admin (or any
-    role) holds it only through explicit delegation; everyone else
-    is denied. Reads expose the active version plus audit trail;
+    Both methods require the ``owner`` or ``super_admin`` global role.
+    The platform owner holds this unconditionally; super_admin is
+    explicitly granted. Transport admins and other roles are denied.
+    Reads expose the active version plus audit trail;
     writes validate completeness, assign the next version, and persist
     through the TransportSetting audit trail (old/new/at/by) with
-    cache invalidation. No admin UI is built in this node; the
-    contract is API-proven and browser-proven via authenticated calls.
+    cache invalidation. UI available on Owner/Super Admin settings page.
     """
 
     @staticmethod
     def _guard():
         from flask_login import current_user
-        from app.auth.policy import can_configure_transport
         if not current_user.is_authenticated:
             return {"success": False,
                     "error": "Authentication required"}, 401
-        if not can_configure_transport(current_user):
+        # Only Owner or Super Admin can configure fare tables
+        is_owner = False
+        is_super = False
+        if hasattr(current_user, 'has_global_role'):
+            try:
+                is_owner = current_user.has_global_role('owner')
+                is_super = current_user.has_global_role('super_admin')
+            except Exception:
+                pass
+        if not (is_owner or is_super):
             return {"success": False,
-                    "error": "transport.settings permission required"}, 403
+                    "error": "Owner or Super Admin role required"}, 403
         return None
 
     def get(self):
