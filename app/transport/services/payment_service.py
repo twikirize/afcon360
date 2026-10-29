@@ -14,7 +14,6 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.transport.models import Booking, BookingPayment, BookingStatus, PaymentStatus
-from app.wallet.services.wallet_service import WalletService
 from app.utils.exceptions import ValidationError, NotFoundError, ServiceUnavailableError
 from app.utils.monitoring import monitor_endpoint, record_metric
 from app.utils.validators import validate_payment
@@ -114,8 +113,7 @@ class PaymentService:
                     field="payment_method",
                 )
             payment_method = stored_method
-            PaymentService._validate_payment_method(booking, payment_method)
-
+            # The previously confirmed Wallet invoice is the payment contract.\n
             final_price = PaymentService._calculate_final_price(booking)
             now = datetime.now(timezone.utc)
             payment_record = PaymentService._get_or_create_payment_record(
@@ -125,12 +123,40 @@ class PaymentService:
             # booking. Provider retries must not invent a new payment identity.
             payment_ref = payment_record.payment_reference
 
+            # Reuse the invoice created at ride confirmation. Legacy bookings
+            # without one receive an idempotent Wallet invoice here before any
+            # settlement attempt.
+            try:
+                invoice = PaymentService._ensure_wallet_invoice_for_booking(
+                    booking, payment_record, final_price, payment_method
+                )
+            except Exception as exc:
+                from app.wallet.services.marketplace_invoice_service import MarketplaceInvoiceError
+                if isinstance(exc, MarketplaceInvoiceError):
+                    raise ValidationError(message=exc.message, field="payment_method") from exc
+                raise
+
             wallet_txn_id = None
             payment_processed = False
             if payment_method == "cash":
-                # Trip completion is not evidence that the driver received
-                # cash. Keep the payment index pending until explicit receipt.
+                try:
+                    settlement = MarketplaceInvoiceService.settle_after_completion(
+                        invoice_id=invoice.id,
+                        payer_user_id=booking.user_id,
+                        service_code="transport",
+                        service_reference=booking.booking_reference,
+                        amount=final_price,
+                        currency=str(getattr(booking.currency, "value", booking.currency)),
+                        request_id=request_id,
+                    )
+                except MarketplaceInvoiceError as exc:
+                    raise ValidationError(message=exc.message, field="payment_method") from exc
+
+                # A driver's cash receipt is still required. The invoice is due,
+                # not paid, and no transport code asserts receipt of cash.
                 payment_record.amount = final_price
+                payment_record.currency = booking.currency
+                payment_record.wallet_invoice_id = invoice.id
                 payment_record.payment_method = payment_method
                 payment_record.payment_status = PaymentStatus.PENDING
                 payment_record.captured_at = None
@@ -138,6 +164,11 @@ class PaymentService:
                 booking.payment_status = PaymentStatus.PENDING
                 booking.payment_gateway_reference = None
                 booking.payment_captured_at = None
+                booking_meta = dict(booking.booking_metadata or {})
+                booking_meta["wallet_invoice_id"] = str(invoice.id)
+                booking_meta["wallet_invoice_status"] = settlement["status"]
+                booking.booking_metadata = booking_meta
+                db.session.add(booking)
                 db.session.commit()
                 return {
                     "success": True,
@@ -145,52 +176,41 @@ class PaymentService:
                     "data": {
                         "booking_reference": booking.booking_reference,
                         "amount": float(final_price),
+                        "currency": str(getattr(booking.currency, "value", booking.currency)),
                         "payment_method": payment_method,
                         "payment_status": "pending",
                         "payment_reference": payment_record.payment_reference,
+                        "wallet_invoice_id": str(invoice.id),
                         "booking_status": str(getattr(booking.status, "value", booking.status)),
                         "requires_cash_receipt_confirmation": True,
                     },
                 }
             elif payment_method == "wallet":
-                wallet_service = WalletService()
-                account = wallet_service.account_repo.get_by_user_id(
-                    booking.user_id, booking.currency
-                )
-                if not account:
-                    raise ValidationError(message="No wallet account found")
-                balance = wallet_service.ledger_repo.get_balance(account.id, booking.currency)
-                if balance < final_price:
-                    raise ValidationError(message="Insufficient wallet balance")
-                client_request_id = "TRN-PAY-%s" % booking.booking_reference
-                result = wallet_service.withdraw(
-                    account_id=str(account.id),
-                    amount=final_price,
-                    currency=booking.currency,
-                    client_request_id=client_request_id,
-                    metadata={
-                        "transport_booking_id": str(booking_id),
-                        "booking_reference": booking.booking_reference,
-                        "payment_reference": payment_ref,
-                        "settlement_timing": "after_trip_completion",
-                    },
-                    # The rider selected Wallet when requesting the ride.
-                    # Settlement runs from either the driver completion action
-                    # or the owner's retry endpoint, so the transport service is
-                    # the authorized system actor for this pre-consented debit.
-                    system_initiated=True,
-                )
-                if result.get("status") != "success":
-                    raise ValidationError(message=result.get("error", "Wallet payment failed"))
-                wallet_txn_id = result.get("transaction_id")
+                try:
+                    settlement = MarketplaceInvoiceService.settle_after_completion(
+                        invoice_id=invoice.id,
+                        payer_user_id=booking.user_id,
+                        service_code="transport",
+                        service_reference=booking.booking_reference,
+                        amount=final_price,
+                        currency=str(getattr(booking.currency, "value", booking.currency)),
+                        request_id=request_id,
+                    )
+                except MarketplaceInvoiceError as exc:
+                    if exc.code == "insufficient_funds":
+                        raise ValidationError(message=exc.message, field="payment_method") from exc
+                    raise ServiceUnavailableError(message=exc.message) from exc
+
+                if settlement.get("status") != "paid" or not settlement.get("transaction_id"):
+                    raise ServiceUnavailableError(
+                        message="Wallet has not confirmed completed settlement; this trip remains unpaid."
+                    )
+                wallet_txn_id = settlement["transaction_id"]
                 payment_status = "captured"
                 payment_processed = True
-                # WalletService owns its own atomic transaction and deliberately
-                # rolls back any caller-side read transaction before beginning.
-                # Re-lock the Booking after the wallet transaction. Concurrent
-                # retries share the wallet idempotency key; this row lock ensures
-                # one transport payment-index row is finalized and all retries
-                # return that same authoritative payment reference.
+
+                # Wallet's atomic transaction is committed independently. Re-lock
+                # Transport rows and only refresh its status cache afterwards.
                 locked_booking = Booking.query.filter_by(
                     id=booking_id, is_deleted=False
                 ).with_for_update().first()
@@ -201,7 +221,6 @@ class PaymentService:
                         resource_id=booking_id,
                     )
                 booking = locked_booking
-
                 if booking.payment_status == PaymentStatus.CAPTURED:
                     captured_amount = Decimal(str(
                         booking.final_price or booking.total_amount or final_price
@@ -213,14 +232,11 @@ class PaymentService:
                         booking.payment_captured_at or now,
                         payment_reference=booking.payment_gateway_reference,
                     )
-                    payment_record.amount = captured_amount
-                    payment_record.payment_method = payment_method
                     payment_record.payment_status = PaymentStatus.CAPTURED
+                    payment_record.wallet_invoice_id = invoice.id
+                    payment_record.wallet_txn_id = booking.wallet_transaction_id or wallet_txn_id
                     payment_record.captured_at = (
                         booking.payment_captured_at or payment_record.captured_at or now
-                    )
-                    payment_record.wallet_txn_id = (
-                        booking.wallet_transaction_id or payment_record.wallet_txn_id
                     )
                     db.session.commit()
                     return {
@@ -232,30 +248,28 @@ class PaymentService:
                             "payment_method": booking.payment_method,
                             "payment_status": "captured",
                             "payment_reference": payment_record.payment_reference,
-                            "booking_status": str(
-                                getattr(booking.status, "value", booking.status)
-                            ),
+                            "wallet_invoice_id": str(invoice.id),
+                            "wallet_txn_id": str(payment_record.wallet_txn_id),
+                            "booking_status": str(getattr(booking.status, "value", booking.status)),
                             "idempotent_replay": True,
                         },
                     }
 
                 payment_record = PaymentService._get_or_create_payment_record(
-                    booking,
-                    final_price,
-                    payment_method,
-                    now,
+                    booking, final_price, payment_method, now,
                     payment_reference=payment_ref,
                 )
-                # Reuse an already-created record's ref, e.g. from request-first
-                # assignment; never let a retry publish a competing payment ref.
+                payment_record.wallet_invoice_id = invoice.id
                 payment_ref = payment_record.payment_reference
+                booking_meta = dict(booking.booking_metadata or {})
+                booking_meta["wallet_invoice_id"] = str(invoice.id)
+                booking_meta["wallet_invoice_status"] = "paid"
+                booking.booking_metadata = booking_meta
             else:
-                # Card/mobile-money methods remain pending until an integrated
-                # provider returns a verifiable success. Never simulate capture.
-                payment_status = "pending"
-                payment_processed = PaymentService._process_online_payment(
-                    amount=final_price,
-                    payment_data=sanitized_data,
+                # MarketplaceInvoiceService rejects methods without a real
+                # Wallet-owned collection and verification implementation.
+                raise ServiceUnavailableError(
+                    message="Wallet has not enabled this payment method for marketplace settlement."
                 )
 
             booking.final_price = final_price
@@ -351,6 +365,51 @@ class PaymentService:
 
 
     @staticmethod
+    def _ensure_wallet_invoice_for_booking(
+        booking: Booking,
+        payment_record: BookingPayment,
+        amount: Decimal,
+        payment_method: str,
+    ):
+        """Resolve/create the Wallet invoice and persist only its transport reference."""
+        from app.wallet.services.marketplace_invoice_service import (
+            MarketplaceInvoiceService,
+        )
+
+        metadata = dict(booking.booking_metadata or {})
+        raw_invoice_id = payment_record.wallet_invoice_id or metadata.get("wallet_invoice_id")
+        key = "transport-booking:%s" % booking.booking_reference
+        if raw_invoice_id:
+            invoice = MarketplaceInvoiceService.get_invoice(raw_invoice_id)
+            key = invoice.idempotency_key
+
+        invoice = MarketplaceInvoiceService.create_invoice(
+            idempotency_key=key,
+            service_code="transport",
+            service_reference=booking.booking_reference,
+            payer_user_id=booking.user_id,
+            amount=amount,
+            currency=str(getattr(booking.currency, "value", booking.currency)),
+            payment_method=payment_method,
+            settlement_timing="pay_on_completion",
+            metadata={
+                "booking_reference": booking.booking_reference,
+                "booking_id": str(booking.id),
+            },
+            commit=True,
+        )
+        payment_record.wallet_invoice_id = invoice.id
+        payment_details = dict(payment_record.payment_method_details or {})
+        payment_details["wallet_invoice_id"] = str(invoice.id)
+        payment_record.payment_method_details = payment_details
+        metadata["wallet_invoice_id"] = str(invoice.id)
+        metadata["wallet_invoice_status"] = invoice.status
+        booking.booking_metadata = metadata
+        db.session.add(payment_record)
+        db.session.add(booking)
+        return invoice
+
+    @staticmethod
     def _get_or_create_payment_record(
         booking: Booking,
         amount: Decimal,
@@ -423,48 +482,24 @@ class PaymentService:
 
     @staticmethod
     def _validate_payment_method(booking: Booking, payment_method: str) -> None:
-        """Validate that the payment method is allowed for this booking."""
-        try:
-            from app.transport.services.payment_config import (
-                get_payment_config_service,
-                get_user_country,
-                get_user_wallet_status,
+        """Compatibility adapter to Wallet's market-collection eligibility."""
+        from app.wallet.services.marketplace_invoice_service import (
+            MarketplaceInvoiceService,
+        )
+        methods = MarketplaceInvoiceService.list_available_methods(
+            payer_user_id=booking.user_id,
+            currency=str(getattr(booking.currency, "value", booking.currency)),
+            amount=getattr(booking, "final_price", None) or getattr(booking, "total_amount", None),
+            settlement_timing="pay_on_completion",
+        )
+        allowed_codes = {
+            str(method.get("code") or "").strip().lower() for method in methods
+        }
+        if str(payment_method or "").strip().lower() not in allowed_codes:
+            raise ValidationError(
+                message="This payment method is not available for Wallet marketplace settlement.",
+                field="payment_method",
             )
-
-            config_service = get_payment_config_service()
-            country = get_user_country(booking.user_id)
-            user_has_wallet = get_user_wallet_status(
-                booking.user_id,
-                currency_code=str(
-                    getattr(booking.currency, "value", booking.currency)
-                ),
-            )
-
-            allowed_methods = config_service.get_methods_for_country(
-                country_code=country,
-                user_has_wallet=user_has_wallet,
-            )
-            allowed_codes = {m.code for m in allowed_methods}
-
-            # Cash is always allowed as fallback
-            allowed_codes.add('cash')
-
-            if payment_method not in allowed_codes:
-                raise ValidationError(
-                    message=f"Payment method '{payment_method}' is not available in your region. "
-                            f"Available methods: {', '.join(sorted(allowed_codes))}",
-                    field="payment_method",
-                )
-        except ValidationError:
-            raise
-        except Exception as exc:
-            logging.getLogger(__name__).error(
-                "Payment method validation could not reach configuration: %s",
-                exc, exc_info=True,
-            )
-            raise ServiceUnavailableError(
-                message="Payment-method configuration is unavailable; payment was not processed"
-            ) from exc
 
     @staticmethod
     def _get_amount_range(amount: Decimal) -> str:
