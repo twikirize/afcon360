@@ -173,6 +173,159 @@ def test_cash_invoice_stays_unpaid_until_wallet_records_driver_receipt(app, test
         assert raised.value.code == "cash_already_confirmed"
 
 
+def test_wallet_transfer_replay_returns_committed_transaction_before_balance_checks(
+    app, test_user, monkeypatch
+):
+    """A post-transfer crash must not turn an already-paid invoice into insufficient funds."""
+    from app.identity.models.user import User
+    from app.wallet.exceptions import DuplicateTransactionError
+    from app.wallet.models.transaction import TransactionStatus, TransactionType
+    from app.wallet.services.wallet_service import WalletService
+
+    with app.app_context():
+        payer_id = db.session.merge(test_user).id
+        source_id = uuid.uuid4()
+        escrow_id = uuid.uuid4()
+        transaction_id = uuid.uuid4()
+        metadata = {
+            "marketplace_invoice_id": str(uuid.uuid4()),
+            "service_code": "transport",
+            "service_reference": "ride-idempotent-replay",
+            "escrow_account_id": str(escrow_id),
+            "escrow_service_type": "transport",
+            "request_id": "first-attempt",
+        }
+        source = SimpleNamespace(
+            id=source_id, user_id=payer_id, currency="USD", is_frozen=False,
+            frozen_reason=None,
+        )
+        escrow = SimpleNamespace(
+            id=escrow_id, user_id=987650, currency="USD", is_frozen=False,
+            frozen_reason=None,
+        )
+        existing = SimpleNamespace(
+            id=transaction_id,
+            tx_type=TransactionType.TRANSFER.value,
+            status=TransactionStatus.COMPLETED.value,
+            amount=Decimal("25.00"),
+            currency="USD",
+            user_id=payer_id,
+            recipient_user_id=escrow.user_id,
+            tx_metadata=metadata,
+        )
+
+        monkeypatch.setattr(
+            User,
+            "get_by_private_id",
+            staticmethod(lambda user_id: SimpleNamespace(transaction_pin_hash=None)),
+        )
+        service = WalletService()
+        service._validate_currency = lambda currency: None
+        service._check_transaction_limit = lambda *args, **kwargs: pytest.fail(
+            "a committed idempotent replay must not be blocked by a changed limit"
+        )
+        service.account_repo.get_by_id = lambda account_id, for_update=False: {
+            str(source_id): source,
+            str(escrow_id): escrow,
+        }.get(str(account_id))
+        service.tx_repo.get_by_client_request_id = lambda key: existing
+        service.ledger_repo.get_balance = lambda account_id, currency: (
+            Decimal("0.00") if str(account_id) == str(source_id) else Decimal("25.00")
+        )
+        service._check_daily_limit = lambda *args, **kwargs: pytest.fail(
+            "completed idempotent replay must not re-check daily limits"
+        )
+        service._check_monthly_limit = lambda *args, **kwargs: pytest.fail(
+            "completed idempotent replay must not re-check monthly limits"
+        )
+        service._check_kyc_limits = lambda *args, **kwargs: pytest.fail(
+            "completed idempotent replay must not re-run collection eligibility"
+        )
+        service._check_fraud_risk = lambda *args, **kwargs: pytest.fail(
+            "completed idempotent replay must not re-run collection eligibility"
+        )
+
+        result = service.transfer(
+            from_account_id=str(source_id),
+            to_account_id=str(escrow_id),
+            amount=Decimal("25.00"),
+            currency="USD",
+            client_request_id="MARKETPLACE-INVOICE-REPLAY",
+            metadata={**metadata, "request_id": "retry-attempt"},
+            system_initiated=True,
+        )
+        assert result["status"] == "success"
+        assert result["already_processed"] is True
+        assert result["transaction_id"] == str(transaction_id)
+        assert result["new_balance_from"] == "0.00"
+        assert result["new_balance_to"] == "25.00"
+
+
+def test_wallet_transfer_idempotency_key_cannot_be_reused_for_another_invoice(
+    app, test_user, monkeypatch
+):
+    from app.identity.models.user import User
+    from app.wallet.exceptions import DuplicateTransactionError
+    from app.wallet.models.transaction import TransactionStatus, TransactionType
+    from app.wallet.services.wallet_service import WalletService
+
+    with app.app_context():
+        payer_id = db.session.merge(test_user).id
+        source_id, escrow_id = uuid.uuid4(), uuid.uuid4()
+        source = SimpleNamespace(
+            id=source_id, user_id=payer_id, currency="USD", is_frozen=False,
+            frozen_reason=None,
+        )
+        escrow = SimpleNamespace(
+            id=escrow_id, user_id=987650, currency="USD", is_frozen=False,
+            frozen_reason=None,
+        )
+        existing = SimpleNamespace(
+            id=uuid.uuid4(),
+            tx_type=TransactionType.TRANSFER.value,
+            status=TransactionStatus.COMPLETED.value,
+            amount=Decimal("25.00"),
+            currency="USD",
+            user_id=payer_id,
+            recipient_user_id=escrow.user_id,
+            tx_metadata={
+                "marketplace_invoice_id": str(uuid.uuid4()),
+                "service_code": "transport",
+                "service_reference": "ride-original",
+                "escrow_account_id": str(escrow_id),
+                "escrow_service_type": "transport",
+            },
+        )
+        monkeypatch.setattr(
+            User,
+            "get_by_private_id",
+            staticmethod(lambda user_id: SimpleNamespace(transaction_pin_hash=None)),
+        )
+        service = WalletService()
+        service._validate_currency = lambda currency: None
+        service.account_repo.get_by_id = lambda account_id, for_update=False: {
+            str(source_id): source,
+            str(escrow_id): escrow,
+        }.get(str(account_id))
+        service.tx_repo.get_by_client_request_id = lambda key: existing
+        with pytest.raises(DuplicateTransactionError):
+            service.transfer(
+                from_account_id=str(source_id),
+                to_account_id=str(escrow_id),
+                amount=Decimal("25.00"),
+                currency="USD",
+                client_request_id="MARKETPLACE-INVOICE-REPLAY",
+                metadata={
+                    "marketplace_invoice_id": str(uuid.uuid4()),
+                    "service_code": "transport",
+                    "service_reference": "ride-another",
+                    "escrow_account_id": str(escrow_id),
+                    "escrow_service_type": "transport",
+                },
+                system_initiated=True,
+            )
+
+
 def test_wallet_collection_fails_closed_without_transport_escrow(app, test_user, monkeypatch):
     from app.wallet.repositories.account_repository import AccountRepository
     from app.wallet.services.wallet_service import WalletService
