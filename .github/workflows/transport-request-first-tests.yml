@@ -154,6 +154,8 @@ jobs:
       - name: Build the disposable test schema from reviewed migrations
         run: python -m flask --app 'app:create_app()' db upgrade
 
+      # Include pre-confirmation no-dispatch assertions and rider-facing confirmed-fare copy,
+      # not only the downstream request, assignment, and payment lifecycle tests.
       - name: Run fare confirmation, request lifecycle, payment, and admin regressions
         run: >-
           python -m pytest -q
