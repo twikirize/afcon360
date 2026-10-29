@@ -20,8 +20,14 @@ def get_available_transport_payment_methods(
 ) -> List[Dict[str, Any]]:
     """Delegate method eligibility to Wallet; never invent a fallback method."""
     if not currency_code:
-        # A method is only selectable against a concrete server-issued quote.
-        return []
+        # Pre-quote pages use the fare engine's server-side display denomination.
+        # The signed fare quote and Wallet invoice still bind the actual amount
+        # and currency before dispatch; the browser does not choose the currency.
+        try:
+            from app.transport.services.fare_service import CURRENCY_DEFAULT
+            currency_code = str(CURRENCY_DEFAULT).strip().upper()
+        except Exception:
+            return []
     from app.wallet.services.marketplace_invoice_service import MarketplaceInvoiceService
 
     return MarketplaceInvoiceService.list_available_methods(
