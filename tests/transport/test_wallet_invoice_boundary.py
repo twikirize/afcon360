@@ -417,8 +417,20 @@ def test_wallet_invoice_is_paid_only_after_canonical_completed_transaction(
             id=uuid.uuid4(), currency="USD", status="active",
             is_frozen=False, owner_type="user",
         )
+        from app.identity.models.user import User
+        escrow_user = User(
+            email=f"escrow-{uuid.uuid4().hex[:8]}@example.com",
+            username=f"escrow-{uuid.uuid4().hex[:8]}",
+            password_hash="not-a-real-hash",
+            email_verified=True,
+            phone_verified=True,
+            kyc_level=2,
+            is_active=True,
+        )
+        db.session.add(escrow_user)
+        db.session.commit()
         escrow = SimpleNamespace(
-            id=uuid.uuid4(), user_id=987650, currency="USD",
+            id=uuid.uuid4(), user_id=escrow_user.id, currency="USD",
         )
         monkeypatch.setattr(
             AccountRepository,
