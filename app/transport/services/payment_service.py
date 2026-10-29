@@ -13,6 +13,10 @@ from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
+from app.wallet.services.marketplace_invoice_service import (
+    MarketplaceInvoiceError,
+    MarketplaceInvoiceService,
+)
 from app.transport.models import Booking, BookingPayment, BookingStatus, PaymentStatus
 from app.utils.exceptions import ValidationError, NotFoundError, ServiceUnavailableError
 from app.utils.monitoring import monitor_endpoint, record_metric
