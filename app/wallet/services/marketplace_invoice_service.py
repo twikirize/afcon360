@@ -677,7 +677,8 @@ class MarketplaceInvoiceService:
             or Decimal(str(transaction.amount)).quantize(_MONEY_QUANTUM)
             != Decimal(str(invoice.amount)).quantize(_MONEY_QUANTUM)
             or str(transaction.currency).upper() != invoice.currency
-            or (transaction.user_id is not None and int(transaction.user_id) != int(invoice.payer_user_id))
+            or transaction.user_id is None
+            or int(transaction.user_id) != int(invoice.payer_user_id)
             or transaction.recipient_user_id is None
             or int(transaction.recipient_user_id) != int(escrow.user_id)
             or not isinstance(tx_metadata, dict)
