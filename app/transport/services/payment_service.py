@@ -117,7 +117,8 @@ class PaymentService:
                     field="payment_method",
                 )
             payment_method = stored_method
-            # The previously confirmed Wallet invoice is the payment contract.\n
+            # The previously confirmed Wallet invoice is the payment contract.
+
             final_price = PaymentService._calculate_final_price(booking)
             now = datetime.now(timezone.utc)
             payment_record = PaymentService._get_or_create_payment_record(
