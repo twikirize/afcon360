@@ -1664,7 +1664,20 @@ class BookingPayment(TransportBase):
     payment_method = db.Column(db.String(50), nullable=False)  # card, wallet, cash, bank_transfer
     payment_method_details = db.Column(JSONB, default=lambda: {})
 
-    # Canonical wallet reference
+    # Canonical Wallet references. wallet_invoice_id points to the Wallet-owned
+    # payment obligation; wallet_txn_id points to a canonical transaction only
+    # after Wallet confirms a financial event. This transport row is a status
+    # cache/reconciliation index, not a separate financial ledger.
+    wallet_invoice_id = db.Column(
+        UUID(as_uuid=True),
+        db.ForeignKey(
+            "wallet_marketplace_invoices.id",
+            name="fk_transport_payment_wallet_invoice",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+        index=True,
+    )
     wallet_txn_id = db.Column(db.String(255), nullable=True, index=True)
 
     # Gateway integration
