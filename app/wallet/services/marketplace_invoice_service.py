@@ -506,6 +506,7 @@ class MarketplaceInvoiceService:
         service_reference: str,
         amount: Any,
         currency: str,
+        commit: bool = True,
     ) -> MarketplaceInvoice:
         """Record the service-completion fact. This does not mean it was paid."""
         invoice = cls.get_invoice(invoice_id, for_update=True)
@@ -521,7 +522,8 @@ class MarketplaceInvoiceService:
             invoice.status = "due"
             invoice.due_at = datetime.now(timezone.utc)
             db.session.add(invoice)
-            db.session.commit()
+            if commit:
+                db.session.commit()
             return invoice
         if invoice.status in {"due", "paid", "cash_received"}:
             return invoice
@@ -738,6 +740,7 @@ class MarketplaceInvoiceService:
         driver_user_id: int,
         driver_profile_id: int,
         driver_code: Optional[str] = None,
+        commit: bool = True,
     ) -> Dict[str, Any]:
         """Wallet-owned receipt record for cash collected directly by a driver."""
         from app.wallet.models.audit import AuditLogModel
@@ -803,7 +806,8 @@ class MarketplaceInvoiceService:
             },
             request_id=invoice.idempotency_key[:100],
         ))
-        db.session.commit()
+        if commit:
+            db.session.commit()
         return {
             "invoice_id": str(invoice.id),
             "status": "cash_received",
