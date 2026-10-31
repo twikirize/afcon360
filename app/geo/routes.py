@@ -678,6 +678,13 @@ def booking_location_snapshot(booking_reference):
     from app.transport.services.tracking_service import TrackingService
     from app.utils.exceptions import NotFoundError
 
+    def _private_snapshot_response(payload, status=200):
+        response = jsonify(payload)
+        response.status_code = status
+        response.headers["Cache-Control"] = "private, no-store, max-age=0"
+        response.headers["Vary"] = "Cookie"
+        return response
+
     if (not isinstance(booking_reference, str)
             or not booking_reference.strip()
             or len(booking_reference) > 64):
@@ -692,10 +699,10 @@ def booking_location_snapshot(booking_reference):
     if subject["reason"] == "not_authorized":
         abort(403)
     if not subject["allowed"]:
-        return jsonify({
+        return _private_snapshot_response({
             "success": True,
             "data": {"status": "closed", "reason": subject["reason"]},
-        }), 200
+        }, 200)
 
     driver_public_ref = subject["driver_public_ref"]
     internal_id = _resolve_location_subject("driver", driver_public_ref)
@@ -719,7 +726,7 @@ def booking_location_snapshot(booking_reference):
             "success": False,
             "error": "Location snapshot temporarily unavailable",
             "code": "LOCATION_UNAVAILABLE",
-        }), 503
+        }, 503)
 
     try:
         event = build_location_event(
