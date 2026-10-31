@@ -19,6 +19,10 @@ on:
       - "templates/transport/**"
       - "templates/admin/transport_admin_*.html"
       - "tests/test_transport_booking_route_path.py"
+      - "tests/test_transport_fare_engine.py"
+      - "tests/test_transport_booking_geocoding.py"
+      - "tests/test_ui_loc_02a_closure.py"
+      - "tests/transport/test_scheduled_release_p1.py"
       - "tests/test_transport_tracking_live.py"
       - "tests/test_geo_foundation.py"
       - "tests/test_geo_realtime.py"
@@ -129,6 +133,14 @@ jobs:
           app/tasks/transport_recovery.py
           app/utils/validators.py
           tests/test_transport_booking_route_path.py
+          tests/test_transport_fare_engine.py
+          tests/test_transport_booking_geocoding.py
+          tests/test_ui_loc_02a_closure.py
+          tests/transport/test_scheduled_release_p1.py
+          tests/test_transport_fare_engine.py
+          tests/test_transport_booking_geocoding.py
+          tests/test_ui_loc_02a_closure.py
+          tests/transport/test_scheduled_release_p1.py
           tests/test_transport_ride_options.py
           tests/test_ui11_booking_flash_copy.py
           tests/test_transport_request_tracker_copy.py
