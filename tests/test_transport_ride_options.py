@@ -425,3 +425,18 @@ def test_driver_offer_poller_uses_nested_api_offers_for_backoff():
     ).read_text(encoding="utf-8")
     assert "res.data && Array.isArray(res.data.offers)" in source
     assert "const n = offers.length;" in source
+
+
+def test_request_first_tracker_polling_is_single_flight_bounded_and_visibility_aware():
+    from pathlib import Path
+
+    source = Path(
+        "static/js/modules/transport/ride-request-tracker.js"
+    ).read_text(encoding="utf-8")
+    assert "var pending = false;" in source
+    assert "var REQUEST_TIMEOUT_MS = 15000;" in source
+    assert "var MAX_DELAY_MS = 30000;" in source
+    assert "document.addEventListener('visibilitychange'" in source
+    assert "window.addEventListener('pagehide'" in source
+    assert "if (stopped || document.hidden || pending || !url) return;" in source
+    assert "window.setInterval" not in source
