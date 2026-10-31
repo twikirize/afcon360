@@ -182,6 +182,7 @@ def test_anonymous_transport_choices_do_not_advertise_wallet(monkeypatch):
     configured = [
         SimpleNamespace(
             method_id=code, display_name=label, method_type="offline",
+            marketplace_collection_implemented=True,
             allowed_timings=["pay_on_completion"],
             supports_currency=lambda currency: currency == "USD",
         )
