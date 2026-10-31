@@ -106,7 +106,9 @@ def test_transport_choices_delegate_to_wallet_and_hide_unintegrated_methods(monk
     configured = [
         SimpleNamespace(
             method_id=code, display_name=label, provider_name="afcon360",
-            country_code="UG", allowed_timings=["pay_on_completion"],
+            country_code="UG", method_type=code,
+            allowed_timings=["pay_on_completion"],
+            marketplace_collection_implemented=code in {"cash", "wallet"},
             min_amount=0, max_amount=1000000,
             supports_currency=lambda currency: currency == "USD",
         )
@@ -139,31 +141,31 @@ def test_transport_choices_delegate_to_wallet_and_hide_unintegrated_methods(monk
         123, currency_code="USD", amount=25
     )
     assert [method["code"] for method in methods] == ["cash", "wallet"]
-    assert methods[1]["description"].startswith("Pay from your USD Wallet balance")
-    assert "No automatic currency conversion" in methods[1]["description"]
+    assert methods[1]["status"] in {"needs_setup", "needs_kyc", "needs_pin", "low_balance", "ready"}
+    assert methods[1]["code"] == "wallet"
 
 
 def test_wallet_choice_currency_and_timing_are_delegated_unchanged(monkeypatch):
     from app.transport.services import payment_methods
-    from app.wallet.services.marketplace_invoice_service import MarketplaceInvoiceService
+    from app.wallet.services.wallet_service import WalletService
 
     seen = []
 
-    def wallet_methods(**kwargs):
+    def wallet_status(self, **kwargs):
         seen.append(kwargs)
         methods = [
-            {"code": "cash", "label": "Cash", "description": f"Pay in {kwargs['currency']}"},
+            {"code": "cash", "label": "Cash", "status": "ready"},
         ]
         if kwargs["currency"] == "USD":
             methods.append({
                 "code": "wallet",
                 "label": "Wallet",
-                "description": "Pay from your USD Wallet balance. No automatic currency conversion",
+                "status": "ready",
             })
         return methods
 
     monkeypatch.setattr(
-        MarketplaceInvoiceService, "list_available_methods", staticmethod(wallet_methods)
+        WalletService, "get_user_payment_method_status", wallet_status
     )
 
     methods = payment_methods.get_available_transport_payment_methods(
@@ -187,18 +189,41 @@ def test_wallet_choice_currency_and_timing_are_delegated_unchanged(monkeypatch):
 
 
 def test_anonymous_transport_choices_do_not_advertise_wallet(monkeypatch):
+    from types import SimpleNamespace
     from app.transport.services import payment_methods
-    from app.wallet.services.marketplace_invoice_service import MarketplaceInvoiceService
+    from app.wallet.models.payment_method import PaymentMethodConfig
 
-    def wallet_methods(**kwargs):
-        if kwargs["payer_user_id"] is None:
-            return [{"code": "cash", "label": "Cash"}]
-        return [{"code": "cash", "label": "Cash"}, {"code": "wallet", "label": "Wallet"}]
+    configured = [
+        SimpleNamespace(
+            method_id="cash", display_name="Cash", method_type="cash",
+            marketplace_collection_implemented=True,
+            allowed_timings=["pay_on_completion"],
+            supports_currency=lambda currency: currency == "USD",
+        ),
+        SimpleNamespace(
+            method_id="wallet", display_name="Wallet", method_type="wallet",
+            marketplace_collection_implemented=True,
+            allowed_timings=["pay_on_completion"],
+            supports_currency=lambda currency: currency == "USD",
+        ),
+        SimpleNamespace(
+            method_id="mobile_money_mtn_ug", display_name="MTN Mobile Money",
+            method_type="mobile_money", marketplace_collection_implemented=False,
+            allowed_timings=["pay_on_completion"],
+            supports_currency=lambda currency: currency == "USD",
+        ),
+    ]
 
-    monkeypatch.setattr(
-        MarketplaceInvoiceService, "list_available_methods", staticmethod(wallet_methods)
+    class Query:
+        def filter_by(self, **kwargs):
+            return self
+        def all(self):
+            return configured
+
+    monkeypatch.setattr(PaymentMethodConfig, "query", Query())
+    methods = payment_methods.get_available_transport_payment_methods(
+        None, currency_code="USD"
     )
-    methods = payment_methods.get_available_transport_payment_methods(None, currency_code="USD")
     assert [method["code"] for method in methods] == ["cash"]
 
 
