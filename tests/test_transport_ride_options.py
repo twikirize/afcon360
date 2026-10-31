@@ -396,3 +396,22 @@ def test_ride_options_distance_has_no_preconfirmation_eta(
     assert comfort["quote_token"]
     assert "eta_minutes" not in comfort and "eta_basis" not in comfort
 
+
+
+
+def test_committed_booking_matching_does_not_poll_fare_quotes_as_supply():
+    """Post-confirmation matching must not interpret quote data as fleet availability."""
+    from pathlib import Path
+
+    template = Path("templates/transport/bookings/show.html").read_text(encoding="utf-8")
+    client = Path("static/js/modules/transport/rider_matching.js").read_text(encoding="utf-8")
+
+    assert 'data-status-url="/api/transport/bookings/' in template
+    assert "data-options-url" not in template
+    assert "/api/transport/ride-options" not in template
+    assert "Your fare is already confirmed" in template
+    assert "available_count" not in client
+    assert "eta_minutes" not in client
+    assert "ride-options" not in client
+    assert "statusUrl" in client
+
