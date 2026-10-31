@@ -415,3 +415,13 @@ def test_committed_booking_matching_does_not_poll_fare_quotes_as_supply():
     assert "ride-options" not in client
     assert "statusUrl" in client
 
+
+
+def test_driver_offer_poller_uses_nested_api_offers_for_backoff():
+    from pathlib import Path
+
+    source = Path(
+        "static/js/modules/transport/offer-poller.js"
+    ).read_text(encoding="utf-8")
+    assert "res.data && Array.isArray(res.data.offers)" in source
+    assert "const n = offers.length;" in source
