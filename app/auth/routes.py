@@ -932,7 +932,7 @@ def login():
                 flash(f"Account locked due to too many failed attempts. Try again in {minutes} minute(s).", "danger")
             else:
                 flash("Account locked due to too many failed attempts. Try again later.", "danger")
-            return redirect(url_for("auth.login"))
+            return render_template("login.html", username=identifier)
 
         if result == AuthResult.INVALID_CREDENTIALS:
             user = payload.get("user")
@@ -945,15 +945,15 @@ def login():
                     flash("Invalid username or password. Account will be locked.", "danger")
             else:
                 flash("Invalid username or password.", "danger")
-            return redirect(url_for("auth.login"))
+            return render_template("login.html", username=identifier)
 
         if result == AuthResult.NOT_FOUND:
             flash("Invalid username or password.", "danger")
-            return redirect(url_for("auth.login"))
+            return render_template("login.html", username=identifier)
 
         if result == AuthResult.INACTIVE:
             flash("This account has been deactivated. Please contact support.", "danger")
-            return redirect(url_for("auth.login"))
+            return render_template("login.html", username=identifier)
 
         if result == AuthResult.SUCCESS:
             user       = payload["user"]
