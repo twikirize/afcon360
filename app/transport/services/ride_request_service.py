@@ -335,13 +335,14 @@ class RideRequestService:
             get_available_transport_payment_methods,
         )
         offered = {
-            str(m.get("code") or "").strip().lower()
-            for m in get_available_transport_payment_methods(
+            str(method.get("code") or "").strip().lower()
+            for method in get_available_transport_payment_methods(
                 owner_user_id,
                 currency_code=currency_code,
                 amount=estimate.get("total"),
                 payment_timing="pay_on_completion",
             )
+            if str(method.get("status") or "").strip().lower() == "ready"
         }
         if payment_method not in offered:
             raise ValidationError(
