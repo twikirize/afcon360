@@ -1713,7 +1713,7 @@
                 try {
                     var response = await request(this.dataset.url, {});
                     // request() returns the server body flat, not wrapped in .data
-                    if (!response.success || response.declined === false) {
+                    if (!response.success || (response.data && response.data.declined === false)) {
                         flashMsg((response && response.error) || 'This offer is no longer active', false);
                         this.disabled = false;
                         this.innerHTML = previous;
