@@ -20,6 +20,18 @@
 
     /* While status is one of these, the rider is still being matched. */
     var MATCHING = { pending_payment: true, confirmed: true };
+    /* Only these canonical lifecycle states prove a driver accepted and
+       the assignment path advanced. Unknown states must never be rendered
+       as a successful driver assignment. */
+    var DRIVER_ACCEPTED = {
+        assigned: true,
+        driver_en_route: true,
+        pickup_arrived: true,
+        in_progress: true,
+        disputed: true,
+        completed: true,
+        no_show: true
+    };
     /* Bounded search budget (FS-6b): max MATCHING status polls before the
        panel tells the rider the search is taking longer than expected.
        At the 3.5s cadence below, 60 polls = ~3.5 minutes. Named and
@@ -129,7 +141,7 @@
         finished = false;
         polls = 0;
         if (pingEl) pingEl.className = 'rm-step active';
-        if (availEl) availEl.textContent = 'Checking available vehicles…';
+        if (availEl) availEl.textContent = 'Still contacting eligible drivers…';
         if (optsEl) optsEl.innerHTML = '';
         tick();
     }
@@ -153,7 +165,15 @@
                        Try again / Adjust request). Never enterAssigned: no
                        driver accepted. */
                     if (st === 'no_match') { finished = true; window.location.reload(); return; }
-                    enterAssigned(st);
+                    if (DRIVER_ACCEPTED[st]) {
+                        enterAssigned(st);
+                    } else {
+                        /* An unexpected lifecycle state is not proof that a
+                           driver accepted. Let the server-rendered page own
+                           its explanation rather than showing false success. */
+                        finished = true;
+                        window.location.reload();
+                    }
                     return;
                 }
                 polls += 1;
@@ -179,6 +199,7 @@
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = {
             isMatchingStatus: isMatchingStatus,
+            isDriverAcceptedStatus: function (st) { return !!DRIVER_ACCEPTED[st]; },
             budgetExhausted: budgetExhausted,
             SEARCH_BUDGET_POLLS: SEARCH_BUDGET_POLLS
         };
