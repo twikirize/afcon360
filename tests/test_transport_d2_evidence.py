@@ -377,8 +377,12 @@ class TestDriverLocationRouteSecurity:
 
         resp = client.post(f'/api/transport/drivers/{driver_id}/location',
                            json={'latitude': 0.35, 'longitude': 32.5})
-        assert resp.status_code == 200, resp.get_data(as_text=True)
-        assert resp.get_json()['success'] is True
+        assert resp.status_code == 204, resp.get_data(as_text=True)
+        assert resp.data == b""
+        with app.app_context():
+            persisted = db.session.get(DriverProfile, driver_id)
+            assert persisted.last_location["latitude"] == 0.35
+            assert persisted.location_updated_at is not None
 
         from app.identity.models.user import User
         _delete(app, (DriverProfile, driver_id), (User, owner_uid))
