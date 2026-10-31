@@ -273,6 +273,22 @@ def test_commit_failure_rolls_back_booking_and_events(app, test_user,
     from app.transport.services.booking_service import BookingService
     from app.utils.exceptions import ServiceUnavailableError
     user_id = _user_id(app, test_user)
+    from app.wallet.models.payment_method import PaymentMethodConfig
+    with app.app_context():
+        PaymentMethodConfig.initialize_defaults()
+        cash = PaymentMethodConfig.query.filter_by(method_id="cash").one()
+        cash.is_enabled = True
+        cash.is_active = True
+        cash.marketplace_collection_implemented = True
+        currencies = list(cash.supported_currencies or [])
+        if "USD" not in {str(value).upper() for value in currencies}:
+            currencies.append("USD")
+        cash.supported_currencies = currencies
+        timings = list(cash.allowed_timings or [])
+        if "pay_on_completion" not in timings:
+            timings.append("pay_on_completion")
+        cash.allowed_timings = timings
+        db.session.commit()
     before = _event_count(app)
     data = _payload(pickup_source="gps", dropoff_source="map")
     key = data["idempotency_key"]
