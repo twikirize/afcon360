@@ -1,10 +1,11 @@
 # app/transport/api/driver_routes.py
+from __future__ import annotations
 from flask import request, jsonify
 from flask_restful import Resource
 from flask_login import current_user, login_required
 from app.extensions import db
-from app.transport.models import DriverProfile, DriverVehicleHistory, Booking, BookingPayment
-from app.utils.enums import BookingStatus, PaymentStatus
+from app.transport.models import DriverProfile, DriverVehicleHistory, Booking, BookingPayment, Vehicle
+from app.utils.enums import BookingStatus, PaymentStatus, ComplianceStatus
 from app.auth.decorators import admin_required
 from app.transport.decorator import transport_admin_required
 from app.transport.utils.helpers import paginate, filter_query, sort_query
@@ -13,6 +14,12 @@ from decimal import Decimal
 from sqlalchemy import or_, func
 import sqlalchemy as sa
 import logging
+import re
+from typing import TYPE_CHECKING, Any, Optional, cast
+
+if TYPE_CHECKING:
+    from app.identity.models.user import User
+    from sqlalchemy.engine import Result
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +29,54 @@ DRIVER_SORT_FIELDS = [
     "reliability_score", "safety_score", "total_trips",
     "compliance_status", "verification_tier"
 ]
+
+
+def parse_bool(value: Optional[str]) -> Optional[bool]:
+    """Parse boolean query parameter safely.
+    
+    Args:
+        value: String value from query parameter
+        
+    Returns:
+        bool or None
+        
+    Raises:
+        ValueError: If value is not a valid boolean string
+    """
+    if value is None:
+        return None
+    value = value.strip().lower()
+    if value in ("true", "1", "yes"):
+        return True
+    if value in ("false", "0", "no"):
+        return False
+    raise ValueError("Invalid boolean value")
+
+
+def parse_positive_int(value: Optional[str], max_value: Optional[int] = None) -> Optional[int]:
+    """Parse positive integer query parameter safely.
+    
+    Args:
+        value: String value from query parameter
+        max_value: Optional maximum allowed value
+        
+    Returns:
+        int or None
+        
+    Raises:
+        ValueError: If value is not a valid positive integer
+    """
+    if value is None:
+        return None
+    try:
+        result = int(value)
+        if result < 0:
+            raise ValueError("Must be non-negative")
+        if max_value is not None and result > max_value:
+            raise ValueError(f"Must not exceed {max_value}")
+        return result
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"Invalid integer value: {e}")
 
 
 class DriverListResource(Resource):
@@ -37,13 +92,19 @@ class DriverListResource(Resource):
         query = DriverProfile.query.filter_by(is_deleted=False)
 
         # ------------------------------------------------------------------
-        # Filter via helpers
+        # Filter via helpers - safe boolean parsing
         # ------------------------------------------------------------------
+        try:
+            is_online = parse_bool(request.args.get("is_online"))
+            is_available = parse_bool(request.args.get("is_available"))
+        except ValueError as e:
+            return {"success": False, "error": str(e)}, 400
+
         filters = {
             "verification_tier":  request.args.get("verification_tier"),
             "compliance_status":  request.args.get("compliance_status"),
-            "is_online":          request.args.get("is_online", type=bool),
-            "is_available":       request.args.get("is_available", type=bool),
+            "is_online":          is_online,
+            "is_available":       is_available,
             "average_rating__gte": request.args.get("min_rating", type=float),
         }
         query = filter_query(query, DriverProfile, filters)
@@ -95,17 +156,86 @@ class DriverListResource(Resource):
         if not data:
             return {"success": False, "error": "JSON body required"}, 400
 
+        # Input validation
+        user_id = data.get("user_id")
+        if not user_id:
+            return {"success": False, "error": "user_id is required"}, 400
+
+        from app.identity.models.user import User
+        user = User.query.get(user_id)
+        if not user:
+            return {"success": False, "error": "User not found"}, 404
+
+        # Check if user already has a driver profile
+        existing = DriverProfile.query.filter_by(user_id=user_id, is_deleted=False).first()
+        if existing:
+            return {"success": False, "error": "User already has a driver profile"}, 409
+
+        driver_code = data.get("driver_code")
+        if not driver_code:
+            return {"success": False, "error": "driver_code is required"}, 400
+        # Check driver_code uniqueness
+        if DriverProfile.query.filter_by(driver_code=driver_code, is_deleted=False).first():
+            return {"success": False, "error": "driver_code already exists"}, 409
+
+        license_number = data.get("license_number")
+
+        # Validate commission rate
+        commission_rate = data.get("commission_rate", 15.00)
+        try:
+            commission_rate = float(commission_rate)
+            if not (0 <= commission_rate <= 100):
+                return {"success": False, "error": "commission_rate must be between 0 and 100"}, 400
+        except (ValueError, TypeError):
+            return {"success": False, "error": "commission_rate must be a valid number"}, 400
+
+        # Validate passenger capacity
+        max_passenger_capacity = data.get("max_passenger_capacity", 4)
+        try:
+            max_passenger_capacity = int(max_passenger_capacity)
+            if not (1 <= max_passenger_capacity <= 50):
+                return {"success": False, "error": "max_passenger_capacity must be between 1 and 50"}, 400
+        except (ValueError, TypeError):
+            return {"success": False, "error": "max_passenger_capacity must be a valid integer"}, 400
+
+        # Validate luggage capacity
+        max_luggage_capacity = data.get("max_luggage_capacity", 2)
+        try:
+            max_luggage_capacity = int(max_luggage_capacity)
+            if not (0 <= max_luggage_capacity <= 20):
+                return {"success": False, "error": "max_luggage_capacity must be between 0 and 20"}, 400
+        except (ValueError, TypeError):
+            return {"success": False, "error": "max_luggage_capacity must be a valid integer"}, 400
+
+        # Validate vehicle classes
+        vehicle_classes = data.get("vehicle_classes", ["comfort"])
+        valid_vehicle_classes = {"economy", "comfort", "premium", "luxury", "van", "bus"}
+        if not isinstance(vehicle_classes, list) or not vehicle_classes:
+            return {"success": False, "error": "vehicle_classes must be a non-empty list"}, 400
+        for vc in vehicle_classes:
+            if vc.lower() not in valid_vehicle_classes:
+                return {"success": False, "error": f"Invalid vehicle class: {vc}. Valid: {sorted(valid_vehicle_classes)}"}, 400
+
+        # Validate service types
+        service_types = data.get("service_types", ["on_demand"])
+        valid_service_types = {"on_demand", "scheduled", "airport", "corporate"}
+        if not isinstance(service_types, list) or not service_types:
+            return {"success": False, "error": "service_types must be a non-empty list"}, 400
+        for st in service_types:
+            if st.lower() not in valid_service_types:
+                return {"success": False, "error": f"Invalid service type: {st}. Valid: {sorted(valid_service_types)}"}, 400
+
         try:
             driver = DriverProfile(
-                user_id=data.get("user_id"),
-                driver_code=data.get("driver_code"),
-                license_number=data.get("license_number"),
+                user_id=user_id,
+                driver_code=driver_code,
+                license_number=license_number,
                 languages_spoken=data.get("languages_spoken", ["en"]),
-                vehicle_classes=data.get("vehicle_classes", ["comfort"]),
-                service_types=data.get("service_types", ["on_demand"]),
-                max_passenger_capacity=data.get("max_passenger_capacity", 4),
-                max_luggage_capacity=data.get("max_luggage_capacity", 2),
-                commission_rate=data.get("commission_rate", 15.00),
+                vehicle_classes=[vc.lower() for vc in vehicle_classes],
+                service_types=[st.lower() for st in service_types],
+                max_passenger_capacity=max_passenger_capacity,
+                max_luggage_capacity=max_luggage_capacity,
+                commission_rate=commission_rate,
             )
             db.session.add(driver)
             db.session.commit()
@@ -118,7 +248,7 @@ class DriverListResource(Resource):
         except Exception as e:
             db.session.rollback()
             logger.error(f"Error creating driver: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}, 500
+            return {"success": False, "error": "Failed to create driver"}, 500
 
 
 class DriverDetailResource(Resource):
@@ -127,7 +257,10 @@ class DriverDetailResource(Resource):
     @admin_required
     def get(self, driver_id):
         """Get single driver with full detail"""
-        driver = DriverProfile.query.get_or_404(driver_id)
+        # Exclude soft-deleted drivers
+        driver = DriverProfile.query.filter_by(
+            id=driver_id, is_deleted=False
+        ).first_or_404()
 
         recent_trips = (
             Booking.query
@@ -139,7 +272,7 @@ class DriverDetailResource(Resource):
 
         total_earnings = (
             db.session.query(func.sum(Booking.final_price))
-            .filter(
+            .filter(  # type: ignore[arg-type]
                 Booking.assigned_driver_id == driver_id,
                 Booking.payment_status == PaymentStatus.CAPTURED,
                 Booking.is_deleted == False,
@@ -203,7 +336,10 @@ class DriverDetailResource(Resource):
     @admin_required
     def delete(self, driver_id):
         """Soft delete driver"""
-        driver = DriverProfile.query.get_or_404(driver_id)
+        # Exclude soft-deleted drivers
+        driver = DriverProfile.query.filter_by(
+            id=driver_id, is_deleted=False
+        ).first_or_404()
         driver.is_deleted = True
         driver.deleted_at = datetime.now(timezone.utc)
         driver.is_online = False
@@ -216,7 +352,7 @@ class DriverDetailResource(Resource):
         except Exception as e:
             db.session.rollback()
             logger.error(f"Error deleting driver {driver_id}: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}, 500
+            return {"success": False, "error": "Failed to delete driver"}, 500
 
 
 class DriverVerificationResource(Resource):
@@ -225,7 +361,11 @@ class DriverVerificationResource(Resource):
     @admin_required
     def post(self, driver_id):
         """Update driver verification status"""
-        driver = DriverProfile.query.get_or_404(driver_id)
+        # Exclude soft-deleted drivers
+        driver = DriverProfile.query.filter_by(
+            id=driver_id, is_deleted=False
+        ).first_or_404()
+        
         data = request.get_json()
         if not data:
             return {"success": False, "error": "JSON body required"}, 400
@@ -235,7 +375,8 @@ class DriverVerificationResource(Resource):
         if action == "verify_license":
             driver.license_verified = True
             driver.license_verified_at = datetime.now(timezone.utc)
-            driver.license_verified_by = data.get("verified_by")
+            # Use server-side actor identity, not client-supplied
+            driver.license_verified_by = current_user.id
 
         elif action == "verify_police":
             driver.police_clearance_verified = True
@@ -243,17 +384,29 @@ class DriverVerificationResource(Resource):
             driver.background_check_reference = data.get("reference")
 
         elif action == "verify_tier":
-            driver.verification_tier = data.get("tier")
+            # Validate tier against enum
+            tier = data.get("tier")
+            valid_tiers = {"bronze", "silver", "gold", "platinum"}
+            if tier not in valid_tiers:
+                return {"success": False, "error": f"Invalid tier. Valid: {sorted(valid_tiers)}"}, 400
+            driver.verification_tier = tier
 
         elif action == "update_compliance":
-            driver.compliance_status = data.get("status")
+            # Validate compliance status against enum
+            status = data.get("status")
+            try:
+                compliance_status = ComplianceStatus(status)
+            except ValueError:
+                valid_statuses = [s.value for s in ComplianceStatus]
+                return {"success": False, "error": f"Invalid compliance status. Valid: {valid_statuses}"}, 400
+            driver.compliance_status = compliance_status
 
         else:
             return {"success": False, "error": f"Unknown action: {action}"}, 400
 
         try:
             db.session.commit()
-            logger.info(f"Driver {driver_id} verification updated: action={action}")
+            logger.info(f"Driver {driver_id} verification updated: action={action}, by={current_user.id}")
             return {
                 "success": True,
                 "data": driver.to_dict(exclude=["license_number_encrypted"]),
@@ -261,7 +414,7 @@ class DriverVerificationResource(Resource):
         except Exception as e:
             db.session.rollback()
             logger.error(f"Error updating verification for driver {driver_id}: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}, 500
+            return {"success": False, "error": "Failed to update verification"}, 500
 
 
 class DriverLocationResource(Resource):
@@ -270,7 +423,11 @@ class DriverLocationResource(Resource):
     @admin_required
     def get(self, driver_id):
         """Get driver's last known location"""
-        driver = DriverProfile.query.get_or_404(driver_id)
+        # FIX 1: Exclude soft-deleted drivers
+        driver = DriverProfile.query.filter_by(
+            id=driver_id, is_deleted=False
+        ).first_or_404()
+        
         return {
             "success": True,
             "data": {
@@ -289,14 +446,14 @@ class DriverLocationResource(Resource):
 
     @login_required
     def post(self, driver_id):
-        """Update driver location (mobile app) — canonical TrackingService path.
-
-        TH-3-D2 security gate: only the driver who owns the profile (or an
-        admin) may publish a location for it.
-        """
+        """Update driver location (mobile app) — canonical TrackingService path."""
         from app.auth.helpers import has_global_role
 
-        driver = DriverProfile.query.get_or_404(driver_id)
+        # FIX 1: Exclude soft-deleted drivers
+        driver = DriverProfile.query.filter_by(
+            id=driver_id, is_deleted=False
+        ).first_or_404()
+        
         data = request.get_json()
         if not data:
             return {"success": False, "error": "JSON body required"}, 400
@@ -309,35 +466,88 @@ class DriverLocationResource(Resource):
             )
             return {"success": False, "error": "not allowed to update this driver's location"}, 403
 
-        if "latitude" not in data or "longitude" not in data:
-            return {"success": False, "error": "latitude and longitude are required"}, 400
+        # Explicit numeric/range validation at API boundary
+        try:
+            latitude = float(data.get("latitude"))
+            longitude = float(data.get("longitude"))
+        except (TypeError, ValueError):
+            return {"success": False, "error": "latitude and longitude must be valid numbers"}, 400
+
+        if not (-90 <= latitude <= 90):
+            return {"success": False, "error": "latitude must be between -90 and 90"}, 400
+        if not (-180 <= longitude <= 180):
+            return {"success": False, "error": "longitude must be between -180 and 180"}, 400
+
+        # Optional fields with validation
+        accuracy = data.get("accuracy")
+        if accuracy is not None:
+            try:
+                accuracy = float(accuracy)
+                if accuracy < 0:
+                    return {"success": False, "error": "accuracy must be non-negative"}, 400
+            except (TypeError, ValueError):
+                return {"success": False, "error": "accuracy must be a valid number"}, 400
+
+        speed = data.get("speed")
+        if speed is not None:
+            try:
+                speed = float(speed)
+                if speed < 0:
+                    return {"success": False, "error": "speed must be non-negative"}, 400
+            except (TypeError, ValueError):
+                return {"success": False, "error": "speed must be a valid number"}, 400
+
+        heading = data.get("heading")
+        if heading is not None:
+            try:
+                heading = float(heading)
+                if not (0 <= heading <= 360):
+                    return {"success": False, "error": "heading must be between 0 and 360"}, 400
+            except (TypeError, ValueError):
+                return {"success": False, "error": "heading must be a valid number"}, 400
+
+        client_ts = data.get("client_ts")
+        if client_ts is not None:
+            try:
+                client_ts = float(client_ts)
+                if client_ts < 0:
+                    return {"success": False, "error": "client_ts must be non-negative"}, 400
+            except (TypeError, ValueError):
+                return {"success": False, "error": "client_ts must be a valid number"}, 400
 
         try:
             from app.transport.services.tracking_service import get_tracking_service
             from app.utils.exceptions import ValidationError
             tracking_service = get_tracking_service()
+            
+            # FIX 2 & 3: Pass client_ts and do not fake accuracy as 0.0
             result = tracking_service.update_location('driver', driver.id, {
-                'latitude': data.get('latitude'),
-                'longitude': data.get('longitude'),
-                'accuracy': data.get('accuracy', 0.0),
-                'speed': data.get('speed', 0.0),
-                'heading': data.get('heading', 0.0),
+                'latitude': latitude,
+                'longitude': longitude,
+                'accuracy': accuracy,  # Let TrackingService handle None
+                'speed': speed,
+                'heading': heading,
+                'client_ts': client_ts,  # Pass the GPS observation time!
             })
+
+            # FIX 4: Check success BEFORE committing last_seen_at
+            if not result.get('success'):
+                db.session.rollback()
+                return {"success": False, "error": result.get('message', 'Location update failed')}, 500
 
             driver.last_seen_at = datetime.now(timezone.utc)
             db.session.commit()
 
-            if not result.get('success'):
-                return {"success": False, "error": result.get('message', 'Location update failed')}, 500
-
-            return {"success": True, "data": {"location": result['data']['location']}}
+            # 204 No Content — client doesn't read the body
+            return '', 204
+            
         except ValidationError as e:
             db.session.rollback()
             return {"success": False, "error": str(e)}, 400
         except Exception as e:
             db.session.rollback()
             logger.error(f"Error updating location for driver {driver_id}: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}, 500
+            return {"success": False, "error": "Failed to update location"}, 500
 
 
 class DriverCsrfTokenResource(Resource):
@@ -369,9 +579,20 @@ class DriverHistoryResource(Resource):
     @admin_required
     def get(self, driver_id):
         """Get driver's vehicle assignment history"""
-        DriverProfile.query.get_or_404(driver_id)  # 404 if driver doesn't exist
+        # Exclude soft-deleted drivers
+        driver = DriverProfile.query.filter_by(
+            id=driver_id, is_deleted=False
+        ).first_or_404()
 
-        days = min(request.args.get("days", 30, type=int), 365)  # cap at 1 year
+        # Validate days parameter
+        try:
+            days = parse_positive_int(request.args.get("days", "30"), max_value=365)
+        except ValueError as e:
+            return {"success": False, "error": str(e)}, 400
+        
+        if days is None:
+            days = 30
+            
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         history = (
@@ -1271,16 +1492,18 @@ class DriverStatusResource(Resource):
             }, 403
 
         data = request.get_json(silent=True) or {}
-        is_online = data.get("is_online")
-        is_available = data.get("is_available")
+        raw_is_online = data.get("is_online")
+        raw_is_available = data.get("is_available")
 
-        if is_online is None and is_available is None:
+        if raw_is_online is None and raw_is_available is None:
             return {"success": False, "error": "is_online or is_available required"}, 400
 
-        if is_online is not None:
-            is_online = bool(is_online)
-        if is_available is not None:
-            is_available = bool(is_available)
+        # Safe boolean parsing
+        try:
+            is_online = parse_bool(str(raw_is_online)) if raw_is_online is not None else None
+            is_available = parse_bool(str(raw_is_available)) if raw_is_available is not None else None
+        except ValueError as e:
+            return {"success": False, "error": str(e)}, 400
 
         # SUPPLY-00b: corrected invariant -- is_online => is_available.
         # Refuse the forbidden combination (online without qualification).
@@ -1508,16 +1731,22 @@ class DriverAdminOnlineOverrideResource(Resource):
             return {"success": False, "error": "not authorized"}, 403
 
         data = request.get_json(silent=True) or {}
-        enabled = data.get("enabled")
-        if enabled is None:
+        raw_enabled = data.get("enabled")
+        if raw_enabled is None:
             return {"success": False, "error": "enabled is required"}, 400
+
+        # Safe boolean parsing
+        try:
+            enabled = parse_bool(str(raw_enabled))
+        except ValueError as e:
+            return {"success": False, "error": str(e)}, 400
 
         reason = (data.get("reason") or "").strip()[:200]
 
         try:
             result = get_provider_service().set_admin_online_override(
                 driver_id=driver_id,
-                enabled=bool(enabled),
+                enabled=enabled,
                 actor_user_id=current_user.id,
                 reason=reason,
             )
