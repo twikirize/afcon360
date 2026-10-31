@@ -23,6 +23,9 @@ on:
       - "tests/test_transport_booking_geocoding.py"
       - "tests/test_ui_loc_02a_closure.py"
       - "tests/transport/test_scheduled_release_p1.py"
+      - "tests/transport/test_booking_mode_probe.py"
+      - "tests/transport/test_pickup_time_authority_p1.py"
+      - "tests/transport/test_location_lifecycle_booking_set.py"
       - "tests/test_transport_tracking_live.py"
       - "tests/test_geo_foundation.py"
       - "tests/test_geo_realtime.py"
@@ -137,6 +140,12 @@ jobs:
           tests/test_transport_booking_geocoding.py
           tests/test_ui_loc_02a_closure.py
           tests/transport/test_scheduled_release_p1.py
+          tests/transport/test_booking_mode_probe.py
+          tests/transport/test_pickup_time_authority_p1.py
+          tests/transport/test_location_lifecycle_booking_set.py
+          tests/transport/test_booking_mode_probe.py
+          tests/transport/test_pickup_time_authority_p1.py
+          tests/transport/test_location_lifecycle_booking_set.py
           tests/test_transport_fare_engine.py
           tests/test_transport_booking_geocoding.py
           tests/test_ui_loc_02a_closure.py
