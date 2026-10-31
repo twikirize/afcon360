@@ -462,3 +462,51 @@ class TestLegacyPathsUnchanged:
             "distance_km": 5})
         assert resp.status_code == 200, resp.get_data(as_text=True)
         assert resp.get_json()["success"] is True
+
+
+
+def test_wallet_method_must_be_ready_before_ride_request(app, client, monkeypatch):
+    """A listed Wallet method with low balance cannot cross the commit gate."""
+    from app.wallet.models.marketplace_invoice import MarketplaceInvoice
+    from app.wallet.services.wallet_service import WalletService
+
+    rider_id = _seed_rider(app, "lowbalance")
+    _promote_to_tier2(app, rider_id)
+    _login_as(app, client, rider_id)
+
+    seen = {}
+
+    def wallet_status(self, *, user_id, currency, amount, settlement_timing):
+        seen.update({
+            "user_id": user_id,
+            "currency": currency,
+            "amount": Decimal(str(amount)),
+            "settlement_timing": settlement_timing,
+        })
+        return [
+            {"code": "cash", "status": "ready"},
+            {
+                "code": "wallet",
+                "status": "low_balance",
+                "status_message": "Add funds to your Wallet before confirming this ride.",
+            },
+        ]
+
+    monkeypatch.setattr(WalletService, "get_user_payment_method_status", wallet_status)
+    response = client.post(
+        URL,
+        json=_payload(app, payment_method="wallet"),
+    )
+
+    assert response.status_code == 400, response.get_data(as_text=True)
+    assert "Add funds" in response.get_json()["error"]
+    assert seen["user_id"] == rider_id
+    assert seen["currency"] == "USD"
+    assert seen["amount"] > 0
+    assert seen["settlement_timing"] == "pay_on_completion"
+    assert _counts(app, rider_id) == (0, 0, 0)
+    with app.app_context():
+        assert MarketplaceInvoice.query.filter_by(
+            service_code="transport", payer_user_id=rider_id
+        ).count() == 0
+

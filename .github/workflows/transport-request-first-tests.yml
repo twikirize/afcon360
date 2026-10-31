@@ -6,6 +6,11 @@ on:
     paths:
       - "app/transport/**"
       - "app/wallet/**"
+      - "app/geo/**"
+      - "static/js/modules/transport/**"
+      - "static/js/geo/**"
+      - "static/transport/**"
+      - "static/offline.html"
       - "scripts/seed_payment_methods.py"
       - "app/tasks/transport_recovery.py"
       - "app/utils/validators.py"
@@ -14,6 +19,18 @@ on:
       - "templates/transport/**"
       - "templates/admin/transport_admin_*.html"
       - "tests/test_transport_booking_route_path.py"
+      - "tests/test_transport_fare_engine.py"
+      - "tests/test_transport_booking_geocoding.py"
+      - "tests/test_ui_loc_02a_closure.py"
+      - "tests/transport/test_scheduled_release_p1.py"
+      - "tests/test_transport_tracking_live.py"
+      - "tests/test_geo_foundation.py"
+      - "tests/test_geo_realtime.py"
+      - "tests/test_driver_location_csrf_refresh.py"
+      - "tests/test_transport_d2_evidence.py"
+      - "tests/test_transport_pwa_shell.py"
+      - "tests/test_transport_restful_auth.py"
+      - "tests/transport/test_driver_console.py"
       - "tests/test_transport_ride_options.py"
       - "tests/test_ui11_booking_flash_copy.py"
       - "tests/test_transport_request_tracker_copy.py"
@@ -78,6 +95,11 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
+      - name: Set up Node for browser-module syntax checks
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Install project and test dependencies
         run: |
           python -m pip install --upgrade pip
@@ -111,6 +133,14 @@ jobs:
           app/tasks/transport_recovery.py
           app/utils/validators.py
           tests/test_transport_booking_route_path.py
+          tests/test_transport_fare_engine.py
+          tests/test_transport_booking_geocoding.py
+          tests/test_ui_loc_02a_closure.py
+          tests/transport/test_scheduled_release_p1.py
+          tests/test_transport_fare_engine.py
+          tests/test_transport_booking_geocoding.py
+          tests/test_ui_loc_02a_closure.py
+          tests/transport/test_scheduled_release_p1.py
           tests/test_transport_ride_options.py
           tests/test_ui11_booking_flash_copy.py
           tests/test_transport_request_tracker_copy.py
@@ -118,6 +148,14 @@ jobs:
           tests/test_transport_admin_canonical_overview.py
           tests/transport/test_ride_request_create.py
           tests/transport/test_trip_end_payment_semantics.py
+          tests/test_transport_tracking_live.py
+          tests/test_geo_foundation.py
+          tests/test_geo_realtime.py
+          tests/test_driver_location_csrf_refresh.py
+          tests/test_transport_d2_evidence.py
+          tests/test_transport_pwa_shell.py
+          tests/test_transport_restful_auth.py
+          tests/transport/test_driver_console.py
           tests/transport/test_wallet_invoice_boundary.py
 
       - name: Parse changed Jinja templates without database access
@@ -157,6 +195,16 @@ jobs:
               print("JINJA_TEMPLATE_OK", template)
           PY
 
+      - name: Syntax-check transport browser modules
+        run: |
+          node --check static/js/modules/transport/rider_matching.js
+          node --check static/js/modules/transport/rider_status_sync.js
+          node --check static/js/modules/transport/driver-dashboard.js
+          node --check static/js/modules/transport/driver_offer_poll.js
+          node --input-type=module --check < static/js/modules/transport/offer-poller.js
+          node --check static/js/geo/geo-realtime.js
+          node --check static/transport/sw.js
+
       - name: Build the disposable test schema from reviewed migrations
         run: python -m flask --app 'app:create_app()' db upgrade
 
@@ -173,4 +221,12 @@ jobs:
           tests/test_transport_admin_canonical_overview.py
           tests/transport/test_ride_request_create.py
           tests/transport/test_trip_end_payment_semantics.py
+          tests/test_transport_tracking_live.py
+          tests/test_geo_foundation.py
+          tests/test_geo_realtime.py
+          tests/test_driver_location_csrf_refresh.py
+          tests/test_transport_d2_evidence.py
+          tests/test_transport_pwa_shell.py
+          tests/test_transport_restful_auth.py
+          tests/transport/test_driver_console.py
           tests/transport/test_wallet_invoice_boundary.py

@@ -103,6 +103,17 @@ def test_driver_service_worker_public(client):
     assert "no-store" in resp.headers.get("Cache-Control", "")
 
 
+def test_public_offline_fallback_page(client):
+    response = client.get("/static/offline.html")
+    assert response.status_code == 200
+    assert "text/html" in response.headers.get("Content-Type", "")
+    assert "You're offline" in response.get_data(as_text=True)
+
+    worker = client.get("/transport/sw.js").get_data(as_text=True)
+    assert "isSafeOfflineResponse" in worker
+    assert "const VERSION = '2.0.5'" in worker
+
+
 def test_global_shortcuts_resolve(client):
     assert client.get("/wallet/dashboard", follow_redirects=False).status_code in (
         200, 302,

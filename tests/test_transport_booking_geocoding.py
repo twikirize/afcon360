@@ -42,6 +42,7 @@ def _payload(**over):
         "pickup_time": (datetime.now(timezone.utc)
                         + timedelta(hours=1)).isoformat(),
         "service_type": "on_demand", "passenger_count": 1,
+        "currency": "USD", "payment_method": "cash",
     }
     data.update(over)
     return data
@@ -50,6 +51,8 @@ def _payload(**over):
 def _create(app, user_id, **over):
     from app.transport.services.booking_service import get_booking_service
     with app.app_context():
+        from app.wallet.models.payment_method import PaymentMethodConfig
+        PaymentMethodConfig.initialize_defaults()
         result = get_booking_service().create_booking(
             user_id, _payload(**over))
     assert result["success"] is True, result

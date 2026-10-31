@@ -626,6 +626,48 @@ class BookingService:
                 distance_km=distance_for_fare,
             )
             estimated_price = _estimate["total"]
+            # The fare engine owns denomination. Payment eligibility is checked
+            # against the exact server-calculated amount, never a client hint or
+            # a zero-amount catalogue lookup.
+            fare_currency_code = str(_estimate.get("currency") or "USD").strip().upper()
+            try:
+                fare_currency = Currency(fare_currency_code)
+            except ValueError as exc:
+                raise ServiceUnavailableError(
+                    "Fare service returned an unsupported currency"
+                ) from exc
+
+            requested_currency = sanitized_data.get("currency")
+            if requested_currency and str(requested_currency).strip().upper() != fare_currency_code:
+                raise ValidationError(
+                    message=(
+                        "This fare is quoted in %s. No automatic currency "
+                        "conversion is applied." % fare_currency_code
+                    ),
+                    field="currency",
+                )
+
+            payment_method = str(
+                sanitized_data.get("payment_method") or ""
+            ).strip().lower()
+            if not payment_method:
+                raise ValidationError(
+                    message="Choose a payment method before requesting the ride",
+                    field="payment_method",
+                )
+            from app.transport.services.payment_methods import (
+                get_available_transport_payment_methods,
+                require_ready_transport_payment_method,
+            )
+            eligible_methods = get_available_transport_payment_methods(
+                customer_id,
+                currency_code=fare_currency_code,
+                amount=estimated_price,
+                payment_timing="pay_on_completion",
+            )
+            require_ready_transport_payment_method(
+                eligible_methods, payment_method
+            )
             # Record the applied surge alongside the price (fare node):
             # the surge_multiplier column previously stayed at its 1.00
             # default even when rush pricing applied, making estimates
@@ -714,10 +756,10 @@ class BookingService:
                 surge_multiplier=_applied_surge,
                 estimated_distance_km=distance_for_fare,
                 estimated_duration_minutes=sanitized_data.get("estimated_duration"),
-                payment_method=sanitized_data.get("payment_method", "cash"),
+                payment_method=payment_method,
                 payment_status=PaymentStatus.PENDING,
                 status=BookingStatusPy.PENDING_PAYMENT,
-                currency=Currency(sanitized_data.get("currency") or "USD"),
+                currency=fare_currency,
                 service_subtype=chosen_class,
                 idempotency_key=key,
                 booking_metadata={

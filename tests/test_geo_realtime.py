@@ -53,6 +53,16 @@ def test_envelope_carries_public_ref_and_lat_first_coords():
     assert event["observed_at"]
 
 
+def test_envelope_allows_unknown_accuracy():
+    event = build_location_event(
+        "driver", "DRV-UNKNOWN-ACC",
+        _location(accuracy=None),
+    )
+    assert event["accuracy"] is None
+    assert event["latitude"] == LAT
+    assert event["longitude"] == LNG
+
+
 def test_envelope_marks_stale_reading_without_refreshing_it():
     old = datetime.now(timezone.utc) - timedelta(seconds=400)
     event = build_location_event("driver", "DRV-ABC123", _location(ts=old))
@@ -487,3 +497,14 @@ def test_drivers_location_page_renders_driver(app, admin_client):
     # stream URL is assembled in JS (encodeURIComponent), so pin both parts
     assert "/geo/stream/location/driver/" in html
     assert driver_code in html
+
+
+
+def test_browser_geo_realtime_preserves_unknown_accuracy_and_native_retry():
+    from pathlib import Path
+
+    source = Path("static/js/geo/geo-realtime.js").read_text(encoding="utf-8")
+    assert "accuracy: toFinite(data.accuracy)," in source
+    assert "MAX_ERRORS" not in source
+    assert "emitState('reconnecting', { attempt: errors });" in source
+

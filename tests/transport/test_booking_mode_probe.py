@@ -41,6 +41,8 @@ def probe_user(app):
     # password_hash is NOT NULL with no default (user.py); use the model's
     # own setter rather than writing the hash column directly.
     user.set_password(f"Probe!{uuid.uuid4().hex[:12]}")
+    from app.wallet.models.payment_method import PaymentMethodConfig
+    PaymentMethodConfig.initialize_defaults()
     db.session.add(user)
     db.session.commit()
     yield user

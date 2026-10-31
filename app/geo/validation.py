@@ -14,6 +14,7 @@ so domain callers get the same error contract they already handle.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import math
 from typing import Any, Dict, Optional, Tuple
 
 from app.geo.interfaces import GeoPoint
@@ -60,13 +61,21 @@ def normalize_point(latitude: Any, longitude: Any,
             "longitude within [-180, 180]",
             field="coordinates",
         )
-    try:
-        acc = max(0.0, float(accuracy))
-    except (TypeError, ValueError):
-        raise ValidationError(
-            f"Invalid accuracy: must be numeric, got {accuracy!r}",
-            field="accuracy",
-        )
+    if accuracy is None:
+        acc = None
+    else:
+        try:
+            acc = float(accuracy)
+        except (TypeError, ValueError):
+            raise ValidationError(
+                f"Invalid accuracy: must be numeric, got {accuracy!r}",
+                field="accuracy",
+            )
+        if not math.isfinite(acc) or acc < 0:
+            raise ValidationError(
+                "Invalid accuracy: must be a finite non-negative number",
+                field="accuracy",
+            )
     return GeoPoint(
         latitude=round(lat, MAX_COORDINATE_DECIMALS),
         longitude=round(lng, MAX_COORDINATE_DECIMALS),
@@ -109,18 +118,24 @@ def normalize_location_payload(payload: Dict[str, Any]) -> GeoPoint:
         else (ts if isinstance(ts, datetime) else None),
     )
     for key in ("speed", "heading"):
-        if key in payload:
-            try:
-                value = float(payload[key])
-            except (TypeError, ValueError):
-                raise ValidationError(
-                    f"Invalid {key}: must be numeric, got {payload[key]!r}",
-                    field=key,
-                )
-            if value < 0:
-                raise ValidationError(
-                    f"Invalid {key}: must be >= 0", field=key
-                )
+        # These telemetry fields are optional: a browser may not expose them.
+        if key not in payload or payload[key] is None:
+            continue
+        try:
+            value = float(payload[key])
+        except (TypeError, ValueError):
+            raise ValidationError(
+                f"Invalid {key}: must be numeric, got {payload[key]!r}",
+                field=key,
+            )
+        if not math.isfinite(value) or value < 0:
+            raise ValidationError(
+                f"Invalid {key}: must be finite and >= 0", field=key
+            )
+        if key == "heading" and value > 360:
+            raise ValidationError(
+                "Invalid heading: must be between 0 and 360", field=key
+            )
     return point
 
 

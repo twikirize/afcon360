@@ -27,7 +27,7 @@ class GeoPoint:
     """Validated geographic point. Use app.geo.validation.normalize_point()."""
     latitude: float
     longitude: float
-    accuracy: float = 0.0
+    accuracy: Optional[float] = 0.0
     timestamp: Optional[datetime] = None
 
 
