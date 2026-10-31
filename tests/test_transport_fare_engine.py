@@ -104,9 +104,12 @@ def _seed_booking(app, **over):
         "pickup_time": (datetime.now(timezone.utc)
                         + timedelta(hours=1)).isoformat(),
         "service_type": "on_demand", "passenger_count": 1,
+        "currency": "USD", "payment_method": "cash",
     }
     payload.update(over)
     with app.app_context():
+        from app.wallet.models.payment_method import PaymentMethodConfig
+        PaymentMethodConfig.initialize_defaults()
         result = get_booking_service().create_booking(user_id, payload)
     assert result["success"] is True
     return result["data"]["booking_id"]
