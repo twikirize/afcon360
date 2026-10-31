@@ -154,11 +154,21 @@
     }
 
     // ============================================================
+    // PAGE ALLOWLIST
+    // ============================================================
+    function isAllowedPage() {
+        // Only send telemetry when the user is on the production console page.
+        // This prevents noise from other tabs (e.g., driver dashboard) that also load this script.
+        return window.location.pathname.startsWith('/admin/owner/production-console');
+    }
+
+    // ============================================================
     // SEND
     // ============================================================
     function sendEvent(data) {
         // FIX: respect circuit breaker first.
         if (disabled) return;
+        if (!isAllowedPage()) return;
         if (!nativeFetch) return;
         if (!isAuthenticated()) return;
         if (inFlight >= CONFIG.maxInflight) return;

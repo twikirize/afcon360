@@ -3,8 +3,6 @@ import sys
 import time
 import logging
 
-import os
-
 print("APP_ENV =", os.getenv("APP_ENV"))
 print("FLASK_ENV =", os.getenv("FLASK_ENV"))
 #print("DATABASE_URL =", os.getenv("DATABASE_URL"))
@@ -98,13 +96,18 @@ if __name__ == "__main__":
                 logger.error("FLASK_SSL=cert requires FLASK_SSL_CERT and FLASK_SSL_KEY to be set.")
                 raise SystemExit(2)
         # Only passed when TLS is on: gevent 26.x crashes on ssl_context=None.
-        ssl_run_kwargs['ssl_context'] = build_ssl_context(ssl_cert, ssl_key)
+        ssl_run_kwargs['ssl_context'] = build_ssl_context(ssl_cert, ssl_key, async_mode=socketio.async_mode)
 
     # With TLS enabled and FLASK_HOST unset, bind all interfaces so a phone on
     # the LAN/hotspot can reach this machine (requirement: reachable, not 127.0.0.1).
+    # SECURITY: When debug=True, never bind 0.0.0.0 unless explicitly allowed via
+    # ALLOW_LAN_DEBUG=1 — Werkzeug debugger exposes RCE on LAN.
     host = os.getenv('FLASK_HOST', '').strip()
     if not host:
-        host = '0.0.0.0' if ssl_enabled else '127.0.0.1'
+        if debug_mode and os.getenv('ALLOW_LAN_DEBUG', '').strip().lower() not in ('1', 'true', 'yes'):
+            host = '127.0.0.1'
+        else:
+            host = '0.0.0.0' if ssl_enabled else '127.0.0.1'
     port = int(os.getenv('FLASK_PORT', '5000'))
 
     if ssl_enabled and host in ('127.0.0.1', 'localhost', '::1'):
@@ -139,6 +142,7 @@ if __name__ == "__main__":
             use_reloader=False,
             host=host,
             port=port,
+            allow_unsafe_werkzeug=True,
             **ssl_run_kwargs
         )
     except Exception as e:

@@ -428,7 +428,7 @@
         {% endif %}
         {% set cancellable_statuses = ['pending_payment', 'confirmed', 'assigned', 'driver_en_route', 'pickup_arrived'] %}
         {% if status_value in cancellable_statuses %}
-        <button class="btn btn-danger" onclick="openCancelModal()"><i class="fa-solid fa-ban"></i> Cancel Ride</button>
+        <button class="btn btn-danger" onclick="openCancelModal()" id="cancelRideBtn"><i class="fa-solid fa-ban"></i> Cancel Ride</button>
         {% endif %}
         <button class="btn btn-secondary" disabled aria-disabled="true" title="Chat is coming soon">
           <i class="fa-solid fa-comment"></i> Chat with driver
@@ -723,6 +723,25 @@
   modal.addEventListener('click', function (e) {
     if (e.target === modal) closeCancelModal();
   });
+})();
+</script>
+
+<script nonce="{{ csp_nonce }}">
+// Fallback: ensure cancel button works even if main script fails
+(function () {
+  'use strict';
+  var btn = document.getElementById('cancelRideBtn');
+  var modal = document.getElementById('cancelModal');
+  if (btn && modal) {
+    // Remove any existing handler
+    btn.onclick = null;
+    btn.addEventListener('click', function () {
+      modal.hidden = false;
+      modal.removeAttribute('hidden');
+      var firstRadio = modal.querySelector('input[name="cancelReason"]');
+      if (firstRadio) firstRadio.focus();
+    });
+  }
 })();
 </script>
 <script nonce="{{ csp_nonce }}" src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
