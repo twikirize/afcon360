@@ -49,7 +49,8 @@ def test_geo_tracking_has_owner_scoped_http_fallback():
     assert "pollUrl: '/geo/api/booking/'" in template
     assert "function startPolling()" in client
     assert "sse-retry-budget-exhausted" in client
-    assert "data['driver_id']" not in route
+    assert 'response.headers["Cache-Control"] = "private, no-store, max-age=0"' in route
+    assert 'response.headers["Vary"] = "Cookie"' in route
 
 
 def test_rider_progress_includes_no_show_and_dispute_states():
