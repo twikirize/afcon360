@@ -474,6 +474,8 @@ class DriverLocationResource(Resource):
 
         # Explicit numeric/range validation at API boundary
         try:
+            if isinstance(data.get("latitude"), bool) or isinstance(data.get("longitude"), bool):
+                raise ValueError("boolean coordinates are invalid")
             latitude = float(data.get("latitude"))
             longitude = float(data.get("longitude"))
         except (TypeError, ValueError):
@@ -488,6 +490,8 @@ class DriverLocationResource(Resource):
         accuracy = data.get("accuracy")
         if accuracy is not None:
             try:
+                if isinstance(accuracy, bool):
+                    raise ValueError("boolean telemetry is invalid")
                 accuracy = float(accuracy)
                 if not math.isfinite(accuracy) or accuracy < 0:
                     return {"success": False, "error": "accuracy must be non-negative"}, 400
@@ -497,6 +501,8 @@ class DriverLocationResource(Resource):
         speed = data.get("speed")
         if speed is not None:
             try:
+                if isinstance(speed, bool):
+                    raise ValueError("boolean telemetry is invalid")
                 speed = float(speed)
                 if not math.isfinite(speed) or speed < 0:
                     return {"success": False, "error": "speed must be non-negative"}, 400
@@ -506,6 +512,8 @@ class DriverLocationResource(Resource):
         heading = data.get("heading")
         if heading is not None:
             try:
+                if isinstance(heading, bool):
+                    raise ValueError("boolean telemetry is invalid")
                 heading = float(heading)
                 if not math.isfinite(heading) or not (0 <= heading <= 360):
                     return {"success": False, "error": "heading must be between 0 and 360"}, 400
@@ -515,6 +523,8 @@ class DriverLocationResource(Resource):
         client_ts = data.get("client_ts")
         if client_ts is not None:
             try:
+                if isinstance(client_ts, bool):
+                    raise ValueError("boolean telemetry is invalid")
                 client_ts = float(client_ts)
                 if not math.isfinite(client_ts) or client_ts < 0:
                     return {"success": False, "error": "client_ts must be non-negative"}, 400
@@ -544,8 +554,11 @@ class DriverLocationResource(Resource):
             driver.last_seen_at = datetime.now(timezone.utc)
             db.session.commit()
 
-            # 204 No Content — client doesn't read the body
-            return '', 204
+            # Standard API envelope: callers can confirm a durable write.
+            return {
+                "success": True,
+                "data": result.get("data", {}),
+            }, 200
             
         except ValidationError as e:
             db.session.rollback()
