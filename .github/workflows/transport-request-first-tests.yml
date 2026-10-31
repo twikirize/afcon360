@@ -9,6 +9,8 @@ on:
       - "app/geo/**"
       - "static/js/geo/**"
       - "static/js/modules/transport/**"
+      - "static/offline.html"
+      - "static/transport/sw.js"
       - "scripts/seed_payment_methods.py"
       - "app/tasks/transport_recovery.py"
       - "app/utils/validators.py"
@@ -28,6 +30,11 @@ on:
       - "tests/test_geo_realtime.py"
       - "tests/test_geo_foundation.py"
       - "tests/transport/test_driver_console.py"
+      - "tests/test_driver_location_csrf_refresh.py"
+      - "tests/test_transport_d2_evidence.py"
+      - "tests/test_transport_pwa_shell.py"
+      - "tests/test_transport_restful_auth.py"
+      - "tests/test_transport_tracking_live.py"
       - "tests/test_transport_frontend_contracts.py"
       - "tests/test_geo_realtime_fallback.cjs"
       - "tests/test_rider_sync_driver_card.cjs"
@@ -132,6 +139,11 @@ jobs:
           tests/test_geo_realtime.py
           tests/test_geo_foundation.py
           tests/transport/test_driver_console.py
+          tests/test_driver_location_csrf_refresh.py
+          tests/test_transport_d2_evidence.py
+          tests/test_transport_pwa_shell.py
+          tests/test_transport_restful_auth.py
+          tests/test_transport_tracking_live.py
           tests/test_transport_frontend_contracts.py
 
       - name: Parse changed Jinja templates without database access
@@ -207,4 +219,9 @@ jobs:
           tests/test_geo_realtime.py
           tests/test_geo_foundation.py
           tests/transport/test_driver_console.py
+          tests/test_driver_location_csrf_refresh.py
+          tests/test_transport_d2_evidence.py
+          tests/test_transport_pwa_shell.py
+          tests/test_transport_restful_auth.py
+          tests/test_transport_tracking_live.py
           tests/test_transport_frontend_contracts.py
