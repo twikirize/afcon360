@@ -44,6 +44,7 @@ def _payload(**over):
         "pickup_time": (datetime.now(timezone.utc)
                         + timedelta(hours=1)).isoformat(),
         "service_type": "on_demand", "passenger_count": 1,
+        "currency": "USD", "payment_method": "cash",
     }
     data.update(over)
     return data
@@ -123,6 +124,8 @@ def test_booking_valid_coordinates_still_books(app):
     from app.transport.services.booking_service import get_booking_service
     user_id = _user(app)
     with app.app_context():
+        from app.wallet.models.payment_method import PaymentMethodConfig
+        PaymentMethodConfig.initialize_defaults()
         result = get_booking_service().create_booking(user_id, _payload(
             pickup_latitude=LAT_A, pickup_longitude=LNG_A,
             dropoff_latitude=LAT_B, dropoff_longitude=LNG_B))
