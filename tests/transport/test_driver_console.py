@@ -355,3 +355,29 @@ def test_cli_ping_publishes_location(app, db_session):
     db_session.expire_all()
     profile = db_session.get(DriverProfile, driver.driver_profile_id)
     assert profile.location_updated_at is not None
+
+
+
+def test_driver_verification_accepts_only_canonical_tiers(
+        app, admin_client, db_session):
+    from app.transport.models import DriverProfile, VerificationTier
+
+    driver = _seed_driver(app)
+    url = f"/api/transport/drivers/{driver.driver_profile_id}/verification"
+
+    valid = admin_client.post(
+        url, json={"action": "verify_tier", "tier": "platform_verified"}
+    )
+    assert valid.status_code == 200, valid.get_data(as_text=True)
+    db_session.expire_all()
+    profile = db_session.get(DriverProfile, driver.driver_profile_id)
+    assert profile.verification_tier == VerificationTier.PLATFORM_VERIFIED
+
+    invalid = admin_client.post(
+        url, json={"action": "verify_tier", "tier": "gold"}
+    )
+    assert invalid.status_code == 400, invalid.get_data(as_text=True)
+    db_session.expire_all()
+    profile = db_session.get(DriverProfile, driver.driver_profile_id)
+    assert profile.verification_tier == VerificationTier.PLATFORM_VERIFIED
+
