@@ -258,3 +258,26 @@ class TestClientTsPassthrough:
         ):
             recorded = self._recorded(app, live_driver, monkeypatch, payload)
             assert "client_ts" not in recorded
+
+
+
+def test_missing_optional_gps_telemetry_remains_unknown(app, live_driver, monkeypatch):
+    """Normal browser GPS payloads need only coordinates; omitted telemetry is not zero."""
+    monkeypatch.setattr(
+        "app.transport.services.tracking_service.redis_client",
+        _StoreRedis(),
+    )
+    result = TrackingService.update_location(
+        "driver",
+        live_driver.id,
+        {"latitude": -1.2833, "longitude": 36.8167},
+    )
+    assert result["success"] is True
+    location = result["data"]["location"]
+    assert location["accuracy"] is None
+    assert location["speed"] is None
+    assert location["heading"] is None
+    from app.geo.validation import normalize_location_payload
+    point = normalize_location_payload(location)
+    assert point.accuracy is None
+
