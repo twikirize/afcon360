@@ -144,14 +144,6 @@ jobs:
           tests/test_transport_pwa_shell.py
           tests/test_transport_restful_auth.py
           tests/transport/test_driver_console.py
-          tests/test_transport_tracking_live.py
-          tests/test_geo_foundation.py
-          tests/test_geo_realtime.py
-          tests/test_driver_location_csrf_refresh.py
-          tests/test_transport_d2_evidence.py
-          tests/test_transport_pwa_shell.py
-          tests/test_transport_restful_auth.py
-          tests/transport/test_driver_console.py
           tests/transport/test_wallet_invoice_boundary.py
 
       - name: Parse changed Jinja templates without database access
@@ -217,4 +209,12 @@ jobs:
           tests/test_transport_admin_canonical_overview.py
           tests/transport/test_ride_request_create.py
           tests/transport/test_trip_end_payment_semantics.py
+          tests/test_transport_tracking_live.py
+          tests/test_geo_foundation.py
+          tests/test_geo_realtime.py
+          tests/test_driver_location_csrf_refresh.py
+          tests/test_transport_d2_evidence.py
+          tests/test_transport_pwa_shell.py
+          tests/test_transport_restful_auth.py
+          tests/transport/test_driver_console.py
           tests/transport/test_wallet_invoice_boundary.py
