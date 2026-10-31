@@ -123,6 +123,56 @@ def _booking_count(app, key, user_id):
         return count
 
 
+def test_legacy_booking_rejects_wallet_that_cannot_cover_exact_fare(
+        app, test_user, monkeypatch):
+    from app.transport.services import payment_methods
+    from app.transport.services.booking_service import BookingService
+    from app.utils.exceptions import ValidationError
+    from app.transport.models import Booking
+
+    user_id = _user_id(app, test_user)
+    data = _payload(
+        booking_mode="scheduled",
+        pickup_time="2026-12-31T10:00:00+03:00",
+        payment_method="wallet",
+    )
+    seen = []
+
+    def wallet_status(user_id, *, currency_code, amount, payment_timing):
+        seen.append({
+            "user_id": user_id,
+            "currency_code": currency_code,
+            "amount": amount,
+            "payment_timing": payment_timing,
+        })
+        return [
+            {"code": "cash", "status": "ready"},
+            {"code": "wallet", "status": "low_balance"},
+        ]
+
+    monkeypatch.setattr(
+        payment_methods, "get_available_transport_payment_methods",
+        wallet_status,
+    )
+    with app.app_context():
+        with pytest.raises(ValidationError) as raised:
+            BookingService().create_booking(
+                user_id, data, request_id="test-wallet-ready"
+            )
+        assert raised.value.field == "payment_method"
+        assert Booking.query.filter_by(
+            idempotency_key=data["idempotency_key"],
+            user_id=user_id,
+            is_deleted=False,
+        ).one_or_none() is None
+
+    assert len(seen) == 1
+    assert seen[0]["user_id"] == user_id
+    assert seen[0]["currency_code"] == "USD"
+    assert seen[0]["amount"] > 0
+    assert seen[0]["payment_timing"] == "pay_on_completion"
+
+
 def test_success_creates_exactly_two_lifecycle_events(app, test_user):
     """One booking -> exactly {pickup, dropoff} x BOOKING_LOCATION_SET,
     same commit, canonical snapshots verbatim."""
