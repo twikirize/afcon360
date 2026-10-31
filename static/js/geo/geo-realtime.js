@@ -44,7 +44,8 @@
       publicRef: data.public_ref || '',
       latitude: lat,
       longitude: lng,
-      accuracy: toFinite(data.accuracy) || 0,
+      accuracy: (data.accuracy === null || data.accuracy === undefined)
+        ? null : toFinite(data.accuracy),
       observedAt: data.observed_at || '',
       ageS: toFinite(data.age_s),
       fresh: data.fresh === true,
