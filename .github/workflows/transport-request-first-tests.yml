@@ -203,6 +203,7 @@ jobs:
           node --check static/js/modules/transport/rider_status_sync.js
           node --check static/js/modules/transport/driver-dashboard.js
           node --check static/js/modules/transport/driver_offer_poll.js
+          node --check static/js/modules/transport/ride-request-tracker.js
           node --input-type=module --check < static/js/modules/transport/offer-poller.js
           node --check static/js/geo/geo-realtime.js
           node --check static/transport/sw.js
