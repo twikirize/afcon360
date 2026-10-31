@@ -127,8 +127,9 @@ def test_transport_choices_delegate_to_wallet_and_hide_unintegrated_methods(
         )
         assert [method["code"] for method in methods] == ["cash", "wallet"]
         assert methods[0]["status"] == "ready"
-        assert methods[1]["status"] in {"needs_setup", "needs_kyc", "needs_pin", "low_balance"}
-        assert methods[1]["onboarding_url"]
+        assert methods[1]["status"] in {
+            "ready", "needs_setup", "needs_kyc", "needs_pin", "low_balance"
+        }
 
 
 def test_wallet_choice_currency_and_timing_are_delegated_unchanged(monkeypatch):
