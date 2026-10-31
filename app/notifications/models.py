@@ -212,6 +212,8 @@ class Notification(BaseModel):
         Index('idx_notifications_status', 'status'),
         # Per-module dashboard queries: "unread transport notifications for me"
         Index('idx_notifications_user_module', 'user_id', 'module', 'is_read'),
+        # For GROUP BY unread counts by module: (user_id, is_read, module)
+        Index('idx_notifications_user_read_module', 'user_id', 'is_read', 'module'),
         CheckConstraint(
             _notification_status_check(),
             name='ck_notifications_status',

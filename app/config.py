@@ -315,6 +315,11 @@ class Config:
         "retention_days": int(os.getenv("AUDIT_RETENTION_DAYS", "3650")),
     }
 
+    # ---- Observability --------------------------------------------------------
+    SENTRY_DSN                    = os.getenv("SENTRY_DSN")
+    OBSERVABILITY_ENABLED         = os.getenv("OBSERVABILITY_ENABLED", "true").lower() == "true"
+    OTEL_EXPORTER_OTLP_ENDPOINT   = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+
     BOOKING_HOLD_MINUTES      = int(os.getenv("BOOKING_HOLD_MINUTES", "15"))
     PLATFORM_COMMISSION_PCT   = Decimal(os.getenv("PLATFORM_COMMISSION_PCT", "10.0"))
 
