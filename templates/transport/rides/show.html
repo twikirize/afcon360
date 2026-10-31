@@ -784,12 +784,15 @@ window.AFCONTrackDriver = function (bookingRef, driverLabel, tileUrl, tileAttr, 
   }
   if (!window.GeoRealtime) { setLiveState('Live updates unavailable'); return; }
   window.GeoRealtime.connect(resolveBase(streamBase) + encodeURIComponent(bookingRef), {
+    pollUrl: '/geo/api/booking/' + encodeURIComponent(bookingRef) + '/location',
+    pollIntervalMs: 5000,
     onSnapshot: applyEvent, onLocation: applyEvent,
     onState: function (s) {
       if (s === 'missing') setLiveState('No live data');
-      else if (s === 'degraded') setLiveState('Snapshot only');
+      else if (s === 'degraded') setLiveState('Using backup location updates');
       else if (s === 'closed') setLiveState('Trip ended');
-      else if (s === 'disconnected' || s === 'reconnecting') setLiveState('Disconnected');
+      else if (s === 'disconnected' || s === 'reconnecting') setLiveState('Reconnecting');
+      else if (s === 'unsupported') setLiveState('Using backup location updates');
     }
   });
 };
