@@ -495,7 +495,6 @@ def _seed_assigned_booking(app, owner_id, driver_id):
 def test_booking_snapshot_fallback_is_available_to_booking_owner(
         app, authenticated_client, test_user):
     from app.extensions import db
-    from app.identity.models.user import User
     from app.transport.services.tracking_service import TrackingService
 
     driver_id, driver_code = _seed_driver_with_user(app)
