@@ -98,38 +98,50 @@ def test_cash_stays_pending_after_trip_completion_until_receipt_confirmed(
 
 
 def test_transport_choices_delegate_to_wallet_and_hide_unintegrated_methods(
-        app, test_user):
+        app, test_user, monkeypatch):
+    from types import SimpleNamespace
     from app.transport.services import payment_methods
     from app.wallet.models.payment_method import PaymentMethodConfig
+    from app.wallet.models.ledger import AccountModel
     from app.extensions import db
 
     with app.app_context():
         payer_id = db.session.merge(test_user).id
-        PaymentMethodConfig.initialize_defaults()
-        cash = PaymentMethodConfig.query.filter_by(method_id="cash").one()
-        wallet = PaymentMethodConfig.query.filter_by(method_id="wallet").one()
-        unsupported = PaymentMethodConfig.query.filter_by(
-            method_id="mobile_money_mtn_ug"
-        ).one()
+        configured = [
+            SimpleNamespace(
+                method_id=code, display_name=label, method_type=kind,
+                marketplace_collection_implemented=implemented,
+                allowed_timings=["pay_on_completion"],
+                supports_currency=lambda currency: currency == "USD",
+            )
+            for code, label, kind, implemented in (
+                ("cash", "Cash", "cash", True),
+                ("wallet", "AFCON360 Wallet", "wallet", True),
+                ("mobile_money_mtn_ug", "MTN Mobile Money", "mobile_money", False),
+            )
+        ]
 
-        for config in (cash, wallet, unsupported):
-            config.is_enabled = True
-            config.is_active = True
-            config.supported_currencies = ["USD"]
-            config.allowed_timings = ["pay_on_completion"]
-        cash.marketplace_collection_implemented = True
-        wallet.marketplace_collection_implemented = True
-        unsupported.marketplace_collection_implemented = False
-        db.session.commit()
+        class ConfigQuery:
+            def filter_by(self, **kwargs):
+                return self
+            def all(self):
+                return configured
+
+        class NoWalletAccountQuery:
+            def filter_by(self, **kwargs):
+                return self
+            def first(self):
+                return None
+
+        monkeypatch.setattr(PaymentMethodConfig, "query", ConfigQuery())
+        monkeypatch.setattr(AccountModel, "query", NoWalletAccountQuery())
 
         methods = payment_methods.get_available_transport_payment_methods(
             payer_id, currency_code="USD", amount=25
         )
         assert [method["code"] for method in methods] == ["cash", "wallet"]
         assert methods[0]["status"] == "ready"
-        assert methods[1]["status"] in {
-            "ready", "needs_setup", "needs_kyc", "needs_pin", "low_balance"
-        }
+        assert methods[1]["status"] == "needs_setup"
 
 
 def test_wallet_choice_currency_and_timing_are_delegated_unchanged(monkeypatch):
