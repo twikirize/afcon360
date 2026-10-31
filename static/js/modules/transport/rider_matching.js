@@ -1,8 +1,8 @@
 /* ============================================================ */
 /* BOOKING SHOW - RIDER MATCHING PANEL (post-confirm live search) */
-/* Polls booking status; refreshes live availability + fares.    */
-/* On assignment flips the panel to "Driver assigned" then       */
-/* reloads so the canonical driver/tracking view renders.        */
+/* Polls canonical booking status only. Fare discovery remains   */
+/* quote-only and never supplies live availability or ETA.       */
+/* On assignment, hand off to the canonical rider status client. */
 /* ============================================================ */
 
 (function () {
