@@ -28,6 +28,7 @@ on:
       - "tests/transport/test_trip_end_payment_semantics.py"
       - "tests/transport/test_wallet_invoice_boundary.py"
       - "tests/transport/test_location_lifecycle_booking_set.py"
+      - "tests/transport/test_cancel_fee_scheduled_p1.py"
       - "tests/test_geo_realtime.py"
       - "tests/test_geo_foundation.py"
       - "tests/transport/test_driver_console.py"
@@ -138,6 +139,7 @@ jobs:
           tests/transport/test_trip_end_payment_semantics.py
           tests/transport/test_wallet_invoice_boundary.py
           tests/transport/test_location_lifecycle_booking_set.py
+          tests/transport/test_cancel_fee_scheduled_p1.py
           tests/test_geo_realtime.py
           tests/test_geo_foundation.py
           tests/transport/test_driver_console.py
@@ -219,6 +221,7 @@ jobs:
           tests/transport/test_trip_end_payment_semantics.py
           tests/transport/test_wallet_invoice_boundary.py
           tests/transport/test_location_lifecycle_booking_set.py
+          tests/transport/test_cancel_fee_scheduled_p1.py
           tests/test_geo_realtime.py
           tests/test_geo_foundation.py
           tests/transport/test_driver_console.py
