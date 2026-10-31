@@ -56,6 +56,16 @@ def test_geo_tracking_has_owner_scoped_http_fallback():
     assert 'response.headers["Vary"] = "Cookie"' in route
 
 
+def test_request_first_tracker_polls_single_flight_and_stops_cleanly():
+    template = _read("templates/transport/rides/request_show.html")
+    assert "var inFlight = false;" in template
+    assert "REQUEST_TIMEOUT_MS = 10000" in template
+    assert "signal: controller ? controller.signal : undefined" in template
+    assert "document.addEventListener('visibilitychange'" in template
+    assert "window.setInterval(poll, 4000)" not in template
+    assert "if (!stopped && !document.hidden) schedulePoll(nextDelay);" in template
+
+
 def test_cancellation_copy_never_claims_a_refund_was_processed():
     template = _read("templates/transport/rides/show.html")
     assert "Calculated potential refund:" in template
