@@ -19,7 +19,13 @@ import os
 import logging
 import time
 import threading
+import hashlib
 from datetime import datetime, timezone
+from flask_wtf.csrf import CSRFError
+
+# Custom TRACE level (lower than DEBUG)
+TRACE = 5
+logging.addLevelName(TRACE, 'TRACE')
 
 # ============================================================================
 # ENVIRONMENT LOADING — layered: .env (base defaults) → .env.{APP_ENV} (overrides)
@@ -81,13 +87,44 @@ except ImportError:
 
 from flask_wtf.csrf import CSRFError
 from flask_limiter.errors import RateLimitExceeded
+from flask_compress import Compress
 from typing import Dict
 from app.config import get_config  # layered config with env validation
 from app.extensions import db, migrate, login_manager, csrf, limiter, cache, redis_client, mail, socketio
 from app.utils.module_toggle_service import ModuleToggleService
 
+# Module-level stable callbacks for SQLAlchemy timing (registered once per engine)
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+from flask import g, has_request_context
 
-# Configure logging globally at the entry point
+
+def _sqla_before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    if not has_request_context():
+        return
+    if not hasattr(g, 'query_start'):
+        g.query_start = []
+    from time import perf_counter
+    g.query_start.append(perf_counter())
+
+
+def _sqla_after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    if not has_request_context():
+        return
+    if hasattr(g, 'query_start') and g.query_start:
+        from time import perf_counter
+        elapsed = (perf_counter() - g.query_start.pop()) * 1000
+        g.db_ms = g.get('db_ms', 0) + elapsed
+
+
+def _sqla_handle_error(exception_context):
+    if not has_request_context():
+        return
+    if hasattr(g, 'query_start') and g.query_start:
+        # Pop only the matching entry (LIFO) - don't clear entire stack
+        g.query_start.pop()
+
+
 def configure_logging():
     root = logging.getLogger()
     if root.handlers:
@@ -100,6 +137,8 @@ def configure_logging():
     # Determine logging level
     if log_level_str == 'DEBUG':
         root.setLevel(logging.DEBUG)
+    elif log_level_str == 'TRACE':
+        root.setLevel(TRACE)
     elif log_level_str == 'INFO':
         root.setLevel(logging.INFO)
     elif log_level_str == 'WARNING':
@@ -124,6 +163,32 @@ def configure_logging():
 
 configure_logging()
 logger = logging.getLogger("app")
+
+
+class ReqFormatter(logging.Formatter):
+    """Format structured 'req' log records as key=value pairs.
+    Non-req messages use the standard format."""
+    
+    _std_fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    _std_formatter = logging.Formatter(_std_fmt)
+
+    def format(self, record: logging.LogRecord) -> str:
+        # Check if this is a structured 'req' log record
+        if getattr(record, 'msg', '') == 'req' and hasattr(record, 'request_id'):
+            # Format: timestamp req id=... user=... METHOD route STATUS bytes=... dur=...ms db=...ms
+            return (
+                f"{self.formatTime(record)} req "
+                f"id={getattr(record, 'request_id', '-')} "
+                f"user={getattr(record, 'user', 'anon')} "
+                f"{getattr(record, 'method', '-')} "
+                f"{getattr(record, 'route', '-')} "
+                f"{getattr(record, 'status', '-')} "
+                f"bytes={getattr(record, 'bytes', '-')} "
+                f"dur={getattr(record, 'dur_ms', '-')}ms "
+                f"db={getattr(record, 'db_ms', '-')}ms"
+            )
+        # Non-req messages: use standard format
+        return self._std_formatter.format(record)
 
 
 def should_upgrade_insecure():
@@ -299,6 +364,20 @@ def _socketio_async_mode() -> str:
     driver wins, in ``async_modes()`` order. Kept as a separate helper so the
     Redis-queue gate below can be tested without booting the whole app.
     """
+    # Prefer the explicit constructor value over auto-detection
+    from app.extensions import socketio
+    # Check server_options dict (where Flask-SocketIO stores async_mode)
+    server_opts = getattr(socketio, 'server_options', {})
+    explicit_mode = server_opts.get('async_mode')
+    if explicit_mode:
+        return explicit_mode
+    # Also check property and internal attribute
+    explicit_mode = getattr(socketio, 'async_mode', None)
+    if explicit_mode:
+        return explicit_mode
+    explicit_mode = getattr(socketio, '_async_mode', None)
+    if explicit_mode:
+        return explicit_mode
     import importlib
 
     for mode in ("eventlet", "gevent_uwsgi", "gevent", "threading"):
@@ -447,7 +526,7 @@ def create_app(config_object=None) -> Flask:
             )
         else:
             # Development fallback - generate a deterministic key for development
-            import hashlib
+            #import hashlib
             dev_secret = hashlib.sha256(b"afcon360_dev_secret_do_not_use_in_prod").hexdigest()[:32]
             secret_key = dev_secret
             logger.warning("Using development SECRET_KEY. Set SECRET_KEY environment variable for production.")
@@ -533,6 +612,42 @@ def create_app(config_object=None) -> Flask:
     if not redis_session_client:
         redis_session_client = require_redis(redis_url, "sessions")
 
+    # ============================================================
+    # SENTRY INITIALIZATION (guarded by feature flag)
+    # ============================================================
+    sentry_dsn = app.config.get('SENTRY_DSN') or os.getenv('SENTRY_DSN')
+    observability_enabled = app.config.get('OBSERVABILITY_ENABLED', True)
+    
+    if sentry_dsn and observability_enabled:
+        try:
+            import sentry_sdk
+            from sentry_sdk.integrations.flask import FlaskIntegration
+            from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+            from sentry_sdk.integrations.redis import RedisIntegration
+            from sentry_sdk.integrations.celery import CeleryIntegration
+            
+            sentry_sdk.init(
+                dsn=sentry_dsn,
+                integrations=[
+                    FlaskIntegration(),
+                    SqlalchemyIntegration(),
+                    RedisIntegration(),
+                    CeleryIntegration(),
+                ],
+                traces_sample_rate=0.2,
+                send_default_pii=False,
+                environment=app.config.get('APP_ENV', 'local'),
+                release=app.config.get('VERSION', '0.1.0'),
+            )
+            logger.info("✅ Sentry initialized")
+        except Exception as e:
+            logger.warning(f"⚠️ Sentry initialization failed: {e}")
+    else:
+        if not sentry_dsn:
+            logger.info("ℹ️ Sentry DSN not configured; skipping Sentry init")
+        if not observability_enabled:
+            logger.info("ℹ️ Observability disabled via OBSERVABILITY_ENABLED flag")
+
     if REDIS_AVAILABLE and redis_session_client and FLASK_SESSION_AVAILABLE:
         app.config["SESSION_TYPE"] = "redis"
         app.config["SESSION_REDIS"] = redis_session_client
@@ -549,6 +664,12 @@ def create_app(config_object=None) -> Flask:
 
     # Initialize limiter with app
     limiter.init_app(app)
+
+    # Rate-limit exemptions for high-frequency authenticated endpoints
+    # These are the app's heartbeat — already authenticated, must not be throttled
+    limiter.exempt(app.view_functions.get('transport_api.driver_location'))
+    limiter.exempt(app.view_functions.get('transport_api.driver_me_offers'))
+    limiter.exempt(app.view_functions.get('notifications_api.unread_count'))
 
     # Configure Flask error logging
     if not app.debug:
@@ -569,13 +690,35 @@ def create_app(config_object=None) -> Flask:
     flask_loggers = ['app', 'flask', 'admin', 'admin.owner', 'admin.trust_settings']
     for logger_name in flask_loggers:
         log = logging.getLogger(logger_name)
-        log.setLevel(logging.DEBUG)
+        # Set level based on LOG_LEVEL env var (same logic as configure_logging)
+        log_level_str = os.getenv('LOG_LEVEL', '').upper()
+        flask_env = os.getenv('FLASK_ENV', 'development').lower()
+        if log_level_str == 'DEBUG':
+            log.setLevel(logging.DEBUG)
+        elif log_level_str == 'TRACE':
+            log.setLevel(TRACE)
+        elif log_level_str == 'INFO':
+            log.setLevel(logging.INFO)
+        elif log_level_str == 'WARNING':
+            log.setLevel(logging.WARNING)
+        elif log_level_str == 'ERROR':
+            log.setLevel(logging.ERROR)
+        elif log_level_str == 'CRITICAL':
+            log.setLevel(logging.CRITICAL)
+        else:
+            if flask_env == 'production':
+                log.setLevel(logging.INFO)
+            else:
+                log.setLevel(logging.DEBUG)
         log.propagate = False
         if not log.handlers:
             handler = logging.StreamHandler()
-            handler.setFormatter(logging.Formatter(
-                "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-            ))
+            if logger_name == 'app':
+                handler.setFormatter(ReqFormatter())
+            else:
+                handler.setFormatter(logging.Formatter(
+                    "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+                ))
             log.addHandler(handler)
 
     # Restore werkzeug INFO so the startup URL link and dev-server warning are visible.
@@ -593,27 +736,72 @@ def create_app(config_object=None) -> Flask:
         werkzeug_logger.handlers = werkzeug_logger.handlers[:1]
 
     @app.before_request
+    def set_correlation_id():
+        """Extract or generate correlation ID for request tracing."""
+        from flask import g
+        from time import perf_counter
+        import uuid
+        corr_id = request.headers.get('X-Correlation-ID')
+        # Validate: only accept canonical UUID format
+        if corr_id:
+            try:
+                uuid.UUID(corr_id)  # raises ValueError if invalid
+            except ValueError:
+                corr_id = None
+        if not corr_id:
+            corr_id = str(uuid.uuid4())
+        g.correlation_id = corr_id
+        g.t0 = perf_counter()
+        g.db_ms = 0.0
+        # Make it available for logging formatters
+        request.correlation_id = corr_id
+
+    @app.before_request
     def log_request():
         """Clean request logging - one line per request"""
         # Skip static assets and favicon
-        if request.path.startswith(('/static/', '/favicon.ico', '/theme/css/')):
+        if request.path.startswith(('/static/', '/favicon.ico', '/theme/css/')) or request.path == '/transport/sw.js':
             return
 
         # Determine log level based on method
         if request.method == 'GET':
-            log_func = logger.debug
+            log_func = lambda msg: logger.log(TRACE, msg)
         else:
             log_func = logger.info
 
-        # Log in a clean format
-        log_func(f"📡 {request.method} {request.path}")
+        # Log in a clean format with correlation ID
+        log_func(f"📡 {request.method} {request.path} [corr:{g.correlation_id}]")
 
     # ── Combined after_request pipeline ──────────────────────────────
     @app.after_request
     def after_request_pipeline(response):
         """Single after_request handler that runs logging then security headers."""
+        from flask import g
+        from time import perf_counter
+        # 1. Structured access log (INFO level, always visible)
+        if not request.path.startswith(('/static/', '/favicon.ico', '/theme/css/')) and request.path != '/transport/sw.js':
+            dur_ms = round((perf_counter() - g.get('t0', perf_counter())) * 1000, 1)
+            db_ms = round(g.get('db_ms', 0), 1)
+            uid = None
+            try:
+                from flask_login import current_user
+                if current_user.is_authenticated:
+                    uid = str(current_user.public_id)
+            except Exception:
+                pass
+            uid_short = hashlib.sha256(str(uid).encode()).hexdigest()[:12] if uid else "anon"
+            content_length = response.calculate_content_length()
+            logger.info("req", extra={
+                "request_id": g.get('correlation_id', "-"),
+                "user": uid_short,
+                "method": request.method,
+                "route": request.endpoint or "-",
+                "status": response.status_code,
+                "bytes": content_length if content_length is not None else -1,
+                "dur_ms": dur_ms,
+                "db_ms": db_ms,
+            })
         # 1. Logging
-        if not request.path.startswith(('/static/', '/favicon.ico', '/theme/css/')):
             if response.status_code >= 500:
                 icon = "💥"
                 log_func = logger.error
@@ -622,11 +810,13 @@ def create_app(config_object=None) -> Flask:
                 log_func = logger.warning
             else:
                 icon = "✅"
-                log_func = logger.debug
+                log_func = lambda msg: logger.log(TRACE, msg)
             if response.status_code != 200 or app.debug:
                 log_func(f"{icon} {request.method} {request.path} → {response.status_code}")
 
         # 2. Security headers (CSP, HSTS, etc.)
+        # Skip heavy CSP headers for API responses
+        is_api = request.path.startswith('/api/')
         from flask import g
         nonce = getattr(g, "csp_nonce", "")
         upgrade_directive = "upgrade-insecure-requests;" if should_upgrade_insecure() else ""
@@ -636,68 +826,72 @@ def create_app(config_object=None) -> Flask:
         # The report-only header always carries the strict policy so
         # violations are logged regardless of the flag.
         strict = is_csp_strict_enforce()
-        csp_common_tail = (
-            "img-src 'self' data: https:; "
-            "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com https://use.fontawesome.com https://cdn.jsdelivr.net; "
-            "connect-src 'self' https://cdn.jsdelivr.net; "
-            "object-src 'none'; "
-            "frame-ancestors 'none'; "
-            "form-action 'self'; "
-            "base-uri 'self'; "
-            + upgrade_directive
-        )
-        csp_script = f"script-src 'self' 'nonce-{nonce}' 'unsafe-eval' https://cdn.jsdelivr.net; "
-        if strict:
-            csp_enforce = (
+        if not is_api:
+            csp_common_tail = (
+                "img-src 'self' data: https:; "
+                "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com https://use.fontawesome.com https://cdn.jsdelivr.net; "
+                "connect-src 'self' https://cdn.jsdelivr.net; "
+                "object-src 'none'; "
+                "frame-ancestors 'none'; "
+                "form-action 'self'; "
+                "base-uri 'self'; "
+                + upgrade_directive
+            )
+            csp_script = f"script-src 'self' 'nonce-{nonce}' 'unsafe-eval' https://cdn.jsdelivr.net; "
+            if strict:
+                csp_enforce = (
+                    "default-src 'self'; "
+                    + csp_script +
+                    "script-src-attr 'unsafe-inline'; "
+                    f"style-src-elem 'self' 'nonce-{nonce}' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://use.fontawesome.com; "
+                    "style-src-attr 'unsafe-inline'; "
+                    + csp_common_tail
+                )
+            else:
+                csp_enforce = (
+                    "default-src 'self'; "
+                    + csp_script +
+                    "script-src-attr 'unsafe-inline'; "
+                    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://use.fontawesome.com; "
+                    "style-src-attr 'unsafe-inline'; "
+                    + csp_common_tail
+                )
+            response.headers["Content-Security-Policy"] = csp_enforce
+
+            csp_report_only = (
                 "default-src 'self'; "
                 + csp_script +
                 "script-src-attr 'unsafe-inline'; "
                 f"style-src-elem 'self' 'nonce-{nonce}' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://use.fontawesome.com; "
                 "style-src-attr 'unsafe-inline'; "
                 + csp_common_tail
+                + "report-to csp-endpoint; report-uri /csp-report"
             )
-        else:
-            csp_enforce = (
-                "default-src 'self'; "
-                + csp_script +
-                "script-src-attr 'unsafe-inline'; "
-                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://use.fontawesome.com; "
-                "style-src-attr 'unsafe-inline'; "
-                + csp_common_tail
+            response.headers["Content-Security-Policy-Report-Only"] = csp_report_only
+
+            response.headers["Report-To"] = (
+                '{"group":"csp-endpoint","max_age":10886400,'
+                '"endpoints":[{"url":"/csp-report"}],"include_subdomains":true}'
             )
-        response.headers["Content-Security-Policy"] = csp_enforce
+            response.headers["Reporting-Endpoints"] = "csp-endpoint=\"/csp-report\""
 
-        csp_report_only = (
-            "default-src 'self'; "
-            + csp_script +
-            "script-src-attr 'unsafe-inline'; "
-            f"style-src-elem 'self' 'nonce-{nonce}' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://use.fontawesome.com; "
-            "style-src-attr 'unsafe-inline'; "
-            + csp_common_tail
-            + "report-to csp-endpoint; report-uri /csp-report"
-        )
-        response.headers["Content-Security-Policy-Report-Only"] = csp_report_only
-
-        response.headers["Report-To"] = (
-            '{"group":"csp-endpoint","max_age":10886400,'
-            '"endpoints":[{"url":"/csp-report"}],"include_subdomains":true}'
-        )
-        response.headers["Reporting-Endpoints"] = "csp-endpoint=\"/csp-report\""
+            if request.path.startswith("/kyc/"):
+                response.headers["Permissions-Policy"] = "geolocation=(self), microphone=(), camera=(self), payment=()"
+            else:
+                response.headers["Permissions-Policy"] = "geolocation=(self), microphone=(), camera=(), payment=()"
+            response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+            response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+            response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+        # End of non-API headers
 
         if request.is_secure:
             response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        # Camera is enabled only for the KYC selfie capture flow (same-origin);
-        # every other page keeps camera denied. See BACKLOG.md Permissions-Policy.
-        if request.path.startswith("/kyc/"):
-            response.headers["Permissions-Policy"] = "geolocation=(self), microphone=(), camera=(self), payment=()"
-        else:
-            response.headers["Permissions-Policy"] = "geolocation=(self), microphone=(), camera=(), payment=()"
-        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
-        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+        # Propagate correlation ID to frontend
+        if hasattr(g, 'correlation_id'):
+            response.headers["X-Correlation-ID"] = g.correlation_id
         if session.get("user_id"):
             # Don't override Cache-Control on routes that deliberately set their own
             # (theme preferences API uses private short-lived cache for performance)
@@ -710,7 +904,7 @@ def create_app(config_object=None) -> Flask:
     def handle_404(error):
         """Clean 404 handler"""
         # Static file 404s: return bare response — no template, no user_loader
-        if request.path.startswith(('/favicon.ico', '/static/')):
+        if request.path.startswith(('/favicon.ico', '/static/')) or request.path == '/transport/sw.js':
             return '', 404
 
         # Log once, clearly
@@ -838,6 +1032,16 @@ def create_app(config_object=None) -> Flask:
     _boot_t1 = time.time()
     db.init_app(app)
 
+    # Register SQLAlchemy timing on the actual engine instance (once per engine)
+    with app.app_context():
+        engine = db.engine
+        if not event.contains(engine, 'before_cursor_execute', _sqla_before_cursor_execute):
+            event.listen(engine, 'before_cursor_execute', _sqla_before_cursor_execute)
+        if not event.contains(engine, 'after_cursor_execute', _sqla_after_cursor_execute):
+            event.listen(engine, 'after_cursor_execute', _sqla_after_cursor_execute)
+        if not event.contains(engine, 'handle_error', _sqla_handle_error):
+            event.listen(engine, 'handle_error', _sqla_handle_error)
+
     # Socket.IO is optional: never start it for Alembic/Flask CLI one-shots,
     # and honour the persisted owner switch. Without this, the production
     # console handler's emit tries to publish to Redis during `flask db`
@@ -876,6 +1080,10 @@ def create_app(config_object=None) -> Flask:
     # Initialize mail
     _boot_t2 = time.time()
     mail.init_app(app)
+
+    # Initialize compression
+    Compress(app)
+    logger.info("✅ Flask-Compress initialized")
 
     # Initialize socketio namespace
     if app.config['SOCKETIO_ENABLED']:
@@ -972,7 +1180,7 @@ def create_app(config_object=None) -> Flask:
     def load_identity_context():
         """Inject real actor and effective user into request context for every request.
         Uses flask.g to cache per-request to avoid duplicate DB queries."""
-        if request.path.startswith('/static/'):
+        if request.path.startswith('/static/') or request.path == '/transport/sw.js':
             return
         try:
             from flask import g as _g
@@ -1082,7 +1290,7 @@ def create_app(config_object=None) -> Flask:
     # ------------------------------------------------------------------
     @app.before_request
     def ensure_clean_transaction():
-        if request.path.startswith('/static/'):
+        if request.path.startswith('/static/') or request.path == '/transport/sw.js':
             return
         # A previous request may have swallowed a database exception.  A
         # scoped session can then still be present but unusable until its
@@ -1135,7 +1343,7 @@ def create_app(config_object=None) -> Flask:
     @app.before_request
     def _run_deferred_startup():
         """Safe idempotent startup guard – never blocks the request."""
-        if request.path.startswith('/static/'):
+        if request.path.startswith('/static/') or request.path == '/transport/sw.js':
             return
         if app.config.get("STARTUP_DONE"):
             return
@@ -2194,7 +2402,7 @@ def create_app(config_object=None) -> Flask:
         # Flask-Login sessions must contain User.get_id() (public_id).
         if not public_id:
             return None
-        current_app.logger.debug(
+        current_app.logger.log(TRACE,
             f"USER_LOADER called path={request.path} public_id={public_id}"
         )
         # Check per-request cache first to avoid redundant DB queries
@@ -2212,7 +2420,7 @@ def create_app(config_object=None) -> Flask:
                 if user:
                     _g._cached_user = user
                     _g._cached_user_pubid = str(user.public_id)
-                    current_app.logger.debug(f"USER_LOADER cache hit for {public_id}")
+                    current_app.logger.log(TRACE, f"USER_LOADER cache hit for {public_id}")
                     return user
             except Exception:
                 pass  # Fall through to full query on cache reconstruction failure
@@ -2309,6 +2517,15 @@ def create_app(config_object=None) -> Flask:
                 right_ads=[],
             )
 
+    @app.route('/api/csrf-token', methods=['GET'])
+    @csrf.exempt
+    def issue_csrf_token():
+        """Issue a fresh CSRF token. Client calls this when told its token expired."""
+        from flask_wtf.csrf import generate_csrf
+        from flask import session
+        session.pop('csrf_token', None)   # delete the cached expired token
+        return jsonify({"csrf_token": generate_csrf()})
+
     @app.errorhandler(CSRFError)
     def handle_csrf_error(e):
         if request.is_json:
@@ -2325,6 +2542,7 @@ def create_app(config_object=None) -> Flask:
             return jsonify({
                 "status": "error",
                 "code": code,
+                "refresh_url": "/api/csrf-token",
                 "message": "CSRF token missing or invalid",
             }), 400
         session.clear()
@@ -2352,6 +2570,9 @@ def create_app(config_object=None) -> Flask:
     def touch_device_session():
         """Sliding expiry: extend device session on authenticated requests.
         Throttled to ~1/hour per session via touch_device_session()."""
+        # Skip static files - no auth needed
+        if request.path.startswith('/static/'):
+            return
         from flask import session, current_app
         from flask_login import current_user
         
@@ -2511,7 +2732,7 @@ def create_app(config_object=None) -> Flask:
         from app.utils.module_guard import module_enabled
 
         # Skip checks for static files, health checks, and admin routes
-        if request.path.startswith('/static') or request.path.startswith('/health') or request.path.startswith(
+        if request.path.startswith('/static') or request.path == '/transport/sw.js' or request.path.startswith('/health') or request.path.startswith(
                 '/admin'):
             return
 

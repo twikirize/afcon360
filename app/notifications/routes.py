@@ -108,17 +108,33 @@ def unread_count():
     Pass `?module=transport` to scope the badge to one business, or
     `?by_module=true` to get the full per-module breakdown for tabbed UIs.
     """
+    import hashlib
     module = request.args.get('module')
     if module and module not in {m.value for m in NotificationModule}:
         return jsonify({'error': 'Invalid module'}), 400
 
+    unread_count = NotificationService.get_unread_count(current_user.id, module=module)
+    
     payload = {
-        'unread_count': NotificationService.get_unread_count(current_user.id, module=module),
+        'unread_count': unread_count,
         'module': module,
     }
     if request.args.get('by_module', 'false').lower() == 'true' or not module:
-        payload['unread_by_module'] = NotificationService.get_unread_counts_by_module(current_user.id)
-    return jsonify(payload)
+        by_module = NotificationService.get_unread_counts_by_module(current_user.id)
+        payload['unread_by_module'] = by_module
+    else:
+        by_module = {}
+
+    # ETag for conditional requests
+    etag = hashlib.md5(f"{unread_count}:{hash(frozenset(by_module.items()))}".encode()).hexdigest()
+
+    if request.headers.get('If-None-Match') == etag:
+        return '', 304
+
+    resp = jsonify(payload)
+    resp.headers['ETag'] = etag
+    resp.headers['Cache-Control'] = 'private, max-age=5'
+    return resp
 
 
 @notifications_api.route('/<int:notification_id>/read', methods=['POST'])
