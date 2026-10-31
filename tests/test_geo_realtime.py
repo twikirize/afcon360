@@ -497,3 +497,14 @@ def test_drivers_location_page_renders_driver(app, admin_client):
     # stream URL is assembled in JS (encodeURIComponent), so pin both parts
     assert "/geo/stream/location/driver/" in html
     assert driver_code in html
+
+
+
+def test_browser_geo_realtime_preserves_unknown_accuracy_and_native_retry():
+    from pathlib import Path
+
+    source = Path("static/js/geo/geo-realtime.js").read_text(encoding="utf-8")
+    assert "accuracy: toFinite(data.accuracy)," in source
+    assert "MAX_ERRORS" not in source
+    assert "emitState('reconnecting', { attempt: errors });" in source
+
