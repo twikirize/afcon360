@@ -334,20 +334,16 @@ class RideRequestService:
         from app.transport.services.payment_methods import (
             get_available_transport_payment_methods,
         )
-        offered = {
-            str(m.get("code") or "").strip().lower()
-            for m in get_available_transport_payment_methods(
-                owner_user_id,
-                currency_code=currency_code,
-                amount=estimate.get("total"),
-                payment_timing="pay_on_completion",
-            )
-        }
-        if payment_method not in offered:
-            raise ValidationError(
-                message="payment_method must be one of: %s" % sorted(offered),
-                field="payment_method",
-            )
+        eligible_methods = get_available_transport_payment_methods(
+            owner_user_id,
+            currency_code=currency_code,
+            amount=estimate.get("total"),
+            payment_timing="pay_on_completion",
+        )
+        from app.transport.services.payment_methods import (
+            require_ready_transport_payment_method,
+        )
+        require_ready_transport_payment_method(eligible_methods, payment_method)
 
         accepted_fare_amount = validate_fare_quote(
             fare_quote,
