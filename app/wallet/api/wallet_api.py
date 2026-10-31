@@ -35,14 +35,19 @@ from app.wallet.exceptions import (
 from app.wallet.exceptions import TransactionPINError
 from app.wallet.services.commission_service import CommissionService
 from app.wallet.services.payout_service import PayoutService
-from app.wallet.services.commission_service import CommissionService
-from app.wallet.services.payout_service import PayoutService
 from app.wallet.services.payment_identity_service import resolve_payment_recipient
+from app.wallet.services.marketplace_invoice_service import (
+    MarketplaceInvoiceService,
+    MarketplaceInvoiceError,
+)
 
 # Create blueprint
 wallet_api_bp = Blueprint('wallet_api', __name__, url_prefix='/api/wallet')
 
 
+
+
+# ============================================================================
 # ============================================================================
 # SECURITY DECORATORS
 # ============================================================================
@@ -115,6 +120,199 @@ def validate_csrf_token(f):
         
         return f(*args, **kwargs)
     return decorated_function
+
+
+
+
+# MARKETPLACE INVOICE CERTIFICATE ENDPOINTS
+# ============================================================================
+
+@wallet_api_bp.route('/marketplace/invoices/<invoice_id>/certificate', methods=['GET'])
+@login_required
+@require_not_frozen
+def get_marketplace_payment_certificate(invoice_id):
+    """
+    Get authoritative payment certificate for a marketplace invoice.
+
+    GET /api/wallet/marketplace/invoices/<invoice_id>/certificate
+
+    Returns a tamper-evident, comprehensive payment certificate containing:
+    * Core payment facts (amount, currency, method, status, dates)
+    * All parties (payer, payee/driver, platform escrow)
+    * Method-specific details (cash collection info, wallet escrow, MoMo provider, etc.)
+    * Full ledger trail (canonical transactions, refunds)
+    * All payment attempts with provider references
+    * All allocations linking transactions to the invoice
+    * Context (service, country, metadata, idempotency key)
+    * Verification checksum for tamper detection
+
+    Access Control (enforced by Wallet):
+    * Payer (invoice.payer_user_id) -> full certificate
+    * Payee (cash_received_by_user_id OR driver linked via service_reference) -> full certificate
+    * Platform roles: owner, super_admin, finance, auditor -> full certificate
+    * Third-party auditor with explicit scope -> full certificate
+    * Others -> 403
+
+    Response:
+    {
+        "status": "success",
+        "data": {
+            "certificate_id": "PAY-CERT-uuid",
+            "issued_at": "2026-10-29T14:30:00Z",
+            "version": 1,
+            "payment": {...},
+            "parties": {...},
+            "method_details": {...},
+            "ledger": {...},
+            "attempts": [...],
+            "allocations": [...],
+            "context": {...},
+            "verification": {...}
+        }
+    }
+    """
+    try:
+        # Parse UUID
+        try:
+            parsed_invoice_id = uuid.UUID(str(invoice_id))
+        except (ValueError, TypeError, AttributeError):
+            return jsonify({
+                "status": "error",
+                "code": "INVALID_INVOICE_ID",
+                "message": "Invalid invoice ID format"
+            }), 400
+
+        # Get certificate - service enforces access control
+        result = MarketplaceInvoiceService.get_payment_certificate(
+            invoice_id=parsed_invoice_id,
+            requesting_user_id=current_user.id
+        )
+
+        return jsonify(result), 200
+
+    except MarketplaceInvoiceError as e:
+        return jsonify({
+            "status": "error",
+            "code": e.code,
+            "message": e.message
+        }), 403 if e.code == "access_denied" else 404
+
+    except Exception as e:
+        current_app.logger.error(f"Marketplace invoice certificate error: {e}")
+        return jsonify({
+            "status": "error",
+            "code": "INTERNAL_ERROR",
+            "message": "Unable to retrieve payment certificate"
+        }), 500
+
+
+# ============================================================================
+# MARKETPLACE INVOICE LIST (Admin/Finance)
+# ============================================================================
+
+@wallet_api_bp.route('/marketplace/invoices', methods=['GET'])
+@login_required
+@require_not_frozen
+def list_marketplace_invoices():
+    """
+    List marketplace invoices (Admin/Finance/Owner only).
+
+    GET /api/wallet/marketplace/invoices?service_code=transport&status=paid&limit=50&offset=0
+
+    Requires: owner, super_admin, finance, or auditor global role.
+    """
+    try:
+        # Check admin roles
+        allowed = False
+        if hasattr(current_user, 'has_global_role'):
+            try:
+                if (current_user.has_global_role('owner') or
+                    current_user.has_global_role('super_admin') or
+                    current_user.has_global_role('finance') or
+                    current_user.has_global_role('auditor')):
+                    allowed = True
+            except Exception:
+                pass
+
+        if not allowed:
+            return jsonify({
+                "status": "error",
+                "code": "FORBIDDEN",
+                "message": "Admin/Finance role required"
+            }), 403
+
+        # Parse filters
+        service_code = request.args.get('service_code')
+        status = request.args.get('status')
+        payment_method = request.args.get('payment_method')
+        payer_id = request.args.get('payer_id', type=int)
+        date_from = request.args.get('date_from')
+        date_to = request.args.get('date_to')
+        limit = min(request.args.get('limit', 50, type=int), 200)
+        offset = request.args.get('offset', 0, type=int)
+
+        # Build query
+        from app.wallet.models.marketplace_invoice import MarketplaceInvoice
+        query = MarketplaceInvoice.query.filter_by(is_deleted=False)
+
+        if service_code:
+            query = query.filter(MarketplaceInvoice.service_code == service_code)
+        if status:
+            query = query.filter(MarketplaceInvoice.status == status)
+        if payment_method:
+            query = query.filter(MarketplaceInvoice.payment_method == payment_method)
+        if payer_id:
+            query = query.filter(MarketplaceInvoice.payer_user_id == payer_id)
+        if date_from:
+            try:
+                dt_from = datetime.fromisoformat(date_from.replace('Z', '+00:00'))
+                query = query.filter(MarketplaceInvoice.created_at >= dt_from)
+            except:
+                pass
+        if date_to:
+            try:
+                dt_to = datetime.fromisoformat(date_to.replace('Z', '+00:00'))
+                query = query.filter(MarketplaceInvoice.created_at <= dt_to)
+            except:
+                pass
+
+        total = query.count()
+        invoices = query.order_by(MarketplaceInvoice.created_at.desc()).offset(offset).limit(limit).all()
+
+        return jsonify({
+            "status": "success",
+            "data": {
+                "invoices": [
+                    {
+                        "invoice_id": str(inv.id),
+                        "service_code": inv.service_code,
+                        "service_reference": inv.service_reference,
+                        "payer_user_id": inv.payer_user_id,
+                        "amount": str(inv.amount),
+                        "currency": inv.currency,
+                        "payment_method": inv.payment_method,
+                        "status": inv.status,
+                        "created_at": inv.created_at.isoformat(),
+                        "paid_at": inv.paid_at.isoformat() if inv.paid_at else None,
+                    }
+                    for inv in invoices
+                ],
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "has_more": (offset + limit) < total
+            }
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Marketplace invoice list error: {e}")
+        return jsonify({
+            "status": "error",
+            "code": "INTERNAL_ERROR",
+            "message": "Unable to list marketplace invoices"
+        }), 500
+
+
 
 
 # ============================================================================
@@ -1223,3 +1421,5 @@ def add_cors_headers(response):
     response.headers['Access-Control-Allow-Credentials'] = 'true'
     
     return response
+
+

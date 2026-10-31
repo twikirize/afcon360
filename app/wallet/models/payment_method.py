@@ -51,6 +51,10 @@ class PaymentMethodConfig(BaseModel):
         server_default="[]",
         nullable=False,
     )
+    # Whether Wallet has implemented the marketplace collection/settlement
+    # lifecycle for this method. Only methods with this=True will surface
+    # in marketplace modules (transport, accommodation, events).
+    marketplace_collection_implemented = Column(Boolean, default=False, nullable=False)
 
     # Limits and fees
     min_amount = Column(Numeric(10, 2), default=0.00)
@@ -120,7 +124,8 @@ class PaymentMethodConfig(BaseModel):
                 'allowed_timings': ['pay_now', 'deposit', 'pay_on_completion'],
                 'min_amount': 0.00,
                 'max_amount': 10000000.00,
-                'transaction_fee': 0.0000
+                'transaction_fee': 0.0000,
+                'marketplace_collection_implemented': True
             },
             {
                 'method_id': 'cash',
@@ -135,7 +140,8 @@ class PaymentMethodConfig(BaseModel):
                 'allowed_timings': ['pay_on_arrival', 'pay_on_completion'],
                 'min_amount': 0.00,
                 'max_amount': 10000000.00,
-                'transaction_fee': 0.0000
+                'transaction_fee': 0.0000,
+                'marketplace_collection_implemented': True
             },
             {
                 'method_id': 'mobile_money_mtn_ug',

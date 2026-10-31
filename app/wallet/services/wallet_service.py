@@ -11,7 +11,7 @@ RULE #3 - Every financial op = ONE db.session.begin() block, zero compensation.
 
 from decimal import Decimal, ROUND_DOWN, getcontext
 from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from uuid import UUID
 from flask import current_app, request
 from flask_login import current_user
@@ -1813,6 +1813,240 @@ class WalletService:
     def toggle_gateway(gateway_id: int, new_status: bool, toggled_by: int) -> bool:
         """Enable or disable a payment gateway."""
         return True
+
+    # ========================================================================
+    # PAYMENT METHOD CERTIFICATION FOR MARKETPLACE MODULES
+    # ========================================================================
+
+    def get_user_payment_method_status(
+        self,
+        user_id: int,
+        currency: str,
+        amount: Decimal,
+        settlement_timing: str = "pay_on_completion"
+    ) -> List[Dict[str, Any]]:
+        """
+        Returns ALL configured payment methods with per-method eligibility status.
+        
+        Transport/Accommodation/Events call this to render the payment selector.
+        Wallet certifies; marketplace modules only display.
+        
+        Args:
+            user_id: Internal user ID (BigInteger)
+            currency: Currency code (e.g., 'UGX', 'USD')
+            amount: Transaction amount for balance checks
+            settlement_timing: 'pay_on_completion', 'pay_now', 'deposit', 'pay_on_arrival'
+        
+        Returns:
+            List of dicts with keys:
+            - code: method_id from PaymentMethodConfig
+            - label: display_name
+            - status: 'ready' | 'needs_setup' | 'needs_kyc' | 'needs_pin' | 'low_balance' | 'unavailable'
+            - status_message: Human-readable explanation
+            - category: method_type (wallet, cash, mobile_money, card, etc.)
+            - is_default: bool (cash is default)
+            - onboarding_url: URL to fix the issue
+            - balance: wallet balance (only for wallet method)
+        """
+        from app.wallet.models.payment_method import PaymentMethodConfig
+        from app.wallet.models.ledger import AccountModel
+        from app.wallet.models.payment_identity import PaymentIdentityModel, PaymentIdentityType
+        from app.identity.models.user import User
+
+        configs = PaymentMethodConfig.query.filter_by(
+            is_enabled=True, is_active=True
+        ).all()
+
+        # Get user's wallet account in this currency
+        wallet_account = AccountModel.query.filter_by(
+            user_id=user_id, owner_type="user", currency=currency
+        ).first()
+
+        wallet_active = (
+            wallet_account
+            and wallet_account.status == "active"
+            and not wallet_account.is_frozen
+        )
+        wallet_balance = Decimal("0")
+        if wallet_active:
+            # Balance is derived from ledger
+            wallet_balance = self.ledger_repo.get_balance(wallet_account.id, currency)
+
+        # Get user KYC/PIN status
+        user = User.query.get(user_id)
+        has_pin = bool(user and user.transaction_pin_hash)
+        kyc_verified = bool(user and getattr(user, "kyc_status", None) == "verified")
+
+        # Map method_id to provider for mobile money
+        momo_provider_map = {
+            "mobile_money_mtn_ug": "mtn",
+            "mobile_money_airtel_ug": "airtel",
+            "mobile_money_mpesa_ke": "safaricom",
+            "mobile_money_mtn_ng": "mtn",
+            "mobile_money_airtel_ng": "airtel",
+        }
+
+        # Map method_id to provider for card/online
+        card_provider_map = {
+            "flutterwave": "flutterwave",
+            "paystack": "paystack",
+            "paypal": "paypal",
+        }
+
+        results = []
+        for config in configs:
+            if not config.supports_currency(currency):
+                results.append({
+                    "code": config.method_id,
+                    "label": config.display_name,
+                    "status": "unavailable",
+                    "status_message": f"Not available for {currency}",
+                    "category": config.method_type,
+                    "is_default": config.method_id == "cash",
+                    "onboarding_url": None,
+                    "balance": None,
+                })
+                continue
+
+            # Check timing support
+            allowed_timings = [str(t).strip().lower() for t in (config.allowed_timings or [])]
+            if settlement_timing not in allowed_timings:
+                results.append({
+                    "code": config.method_id,
+                    "label": config.display_name,
+                    "status": "unavailable",
+                    "status_message": f"Not available for {settlement_timing}",
+                    "category": config.method_type,
+                    "is_default": config.method_id == "cash",
+                    "onboarding_url": None,
+                    "balance": None,
+                })
+                continue
+
+            # Per-method eligibility logic
+            method_id = config.method_id
+            
+            if method_id == "wallet":
+                if not wallet_active:
+                    status, msg = "needs_setup", "Create a Wallet account to use this method"
+                    url = "/wallet/setup"
+                elif not kyc_verified:
+                    status, msg = "needs_kyc", "Complete KYC verification to use Wallet"
+                    url = "/wallet/kyc"
+                elif has_pin:
+                    status, msg = "needs_pin", "Transaction PIN required - enable pre-authorization in Wallet settings"
+                    url = "/wallet/settings#pin"
+                elif wallet_balance < amount:
+                    shortfall = amount - wallet_balance
+                    status, msg = "low_balance", f"Add {currency} {shortfall:,.0f} to use Wallet"
+                    url = "/wallet/deposit"
+                else:
+                    status, msg = "ready", "Ready to pay"
+                    url = None
+                
+                results.append({
+                    "code": method_id,
+                    "label": config.display_name,
+                    "status": status,
+                    "status_message": msg,
+                    "category": config.method_type,
+                    "is_default": False,
+                    "onboarding_url": url,
+                    "balance": str(wallet_balance),
+                })
+
+            elif method_id == "cash":
+                results.append({
+                    "code": method_id,
+                    "label": config.display_name,
+                    "status": "ready",
+                    "status_message": "Pay driver directly after trip",
+                    "category": config.method_type,
+                    "is_default": True,
+                    "onboarding_url": None,
+                    "balance": None,
+                })
+
+            elif method_id in momo_provider_map:
+                provider = momo_provider_map[method_id]
+                # Check if user has linked this MoMo provider via PaymentIdentity (PHONE)
+                momo_identity = PaymentIdentityModel.query.filter_by(
+                    owner_type="user",
+                    owner_id=user_id,
+                    identity_type=PaymentIdentityType.PHONE,
+                    is_verified=True,
+                    is_active=True,
+                ).first()
+                
+                # Also check if the phone number matches the provider's country prefix
+                # For simplicity, we consider any verified phone as linked; provider-specific
+                # validation happens at deposit time via MobileMoneyService
+                if not momo_identity:
+                    status, msg = "needs_setup", f"Link your {config.display_name} account"
+                    url = f"/wallet/mobile-money/link?provider={provider}"
+                else:
+                    status, msg = "ready", "Ready to pay"
+                    url = None
+                
+                results.append({
+                    "code": method_id,
+                    "label": config.display_name,
+                    "status": status,
+                    "status_message": msg,
+                    "category": config.method_type,
+                    "is_default": False,
+                    "onboarding_url": url,
+                    "balance": None,
+                })
+
+            elif method_id in card_provider_map:
+                provider = card_provider_map[method_id]
+                # Check if user has saved payment method for this provider
+                # Using PaymentIdentity with provider-specific metadata or a future SavedPaymentMethod model
+                # For now, check PaymentIdentity with provider in normalized_value
+                saved_card = PaymentIdentityModel.query.filter_by(
+                    owner_type="user",
+                    owner_id=user_id,
+                    identity_type=PaymentIdentityType.MERCHANT_CODE,
+                    is_verified=True,
+                    is_active=True,
+                ).filter(
+                    PaymentIdentityModel.normalized_value.ilike(f"%{provider}%")
+                ).first()
+                
+                if not saved_card:
+                    status, msg = "needs_setup", f"Add a {config.display_name} payment method"
+                    url = f"/wallet/cards/add?provider={provider}"
+                else:
+                    status, msg = "ready", "Ready to pay"
+                    url = None
+                
+                results.append({
+                    "code": method_id,
+                    "label": config.display_name,
+                    "status": status,
+                    "status_message": msg,
+                    "category": config.method_type,
+                    "is_default": False,
+                    "onboarding_url": url,
+                    "balance": None,
+                })
+
+            else:
+                results.append({
+                    "code": method_id,
+                    "label": config.display_name,
+                    "status": "unavailable",
+                    "status_message": "Not yet implemented",
+                    "category": config.method_type,
+                    "is_default": False,
+                    "onboarding_url": None,
+                    "balance": None,
+                })
+
+        # Sort: default first, then by label
+        results.sort(key=lambda x: (not x["is_default"], x["label"].lower()))
+        return results
 
     @staticmethod
     def get_analytics_data() -> Dict[str, Any]:

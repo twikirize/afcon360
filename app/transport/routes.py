@@ -380,9 +380,17 @@ def home():
     ]
 
     # Booking form context (prefill from query params so the form works inline)
-    pickup_value = request.args.get("pickup_location", "").strip()
-    dropoff_value = request.args.get("dropoff_location", "").strip()
-    selected_service = request.args.get("service_type", "").strip()
+    # Also restore from session if user was redirected after validation error
+    saved_form = session.pop("transport_booking_form", None)
+    payment_method_issue = session.pop("transport_payment_method_issue", None)
+    if saved_form:
+        pickup_value = saved_form.get("pickup_location", "").strip()
+        dropoff_value = saved_form.get("dropoff_location", "").strip()
+        selected_service = saved_form.get("service_type", "").strip()
+    else:
+        pickup_value = request.args.get("pickup_location", "").strip()
+        dropoff_value = request.args.get("dropoff_location", "").strip()
+        selected_service = request.args.get("service_type", "").strip()
 
     # User-scoped recent rides. Only surfaced for an authenticated user; never
     # leaks another user's bookings. Anonymous visitors get an honest login CTA.
@@ -420,6 +428,8 @@ def home():
         ),
         tile_url=current_app.config["TILE_PROVIDER_URL_TEMPLATE"],
         tile_attribution=current_app.config["TILE_PROVIDER_ATTRIBUTION"],
+        saved_booking_form=saved_form,
+        payment_method_issue=payment_method_issue,
     )
 
     return render_template("transport/new_home.html", **ctx)
@@ -446,9 +456,18 @@ def new_home():
         for st in ServiceType
     ]
 
-    pickup_value = request.args.get("pickup_location", "").strip()
-    dropoff_value = request.args.get("dropoff_location", "").strip()
-    selected_service = request.args.get("service_type", "").strip()
+    # Booking form context (prefill from query params so the form works inline)
+    # Also restore from session if user was redirected after validation error
+    saved_form = session.pop("transport_booking_form", None)
+    payment_method_issue = session.pop("transport_payment_method_issue", None)
+    if saved_form:
+        pickup_value = saved_form.get("pickup_location", "").strip()
+        dropoff_value = saved_form.get("dropoff_location", "").strip()
+        selected_service = saved_form.get("service_type", "").strip()
+    else:
+        pickup_value = request.args.get("pickup_location", "").strip()
+        dropoff_value = request.args.get("dropoff_location", "").strip()
+        selected_service = request.args.get("service_type", "").strip()
 
     recent_rides = []
     ride_count = 0
@@ -482,6 +501,8 @@ def new_home():
         ),
         tile_url=current_app.config["TILE_PROVIDER_URL_TEMPLATE"],
         tile_attribution=current_app.config["TILE_PROVIDER_ATTRIBUTION"],
+        saved_booking_form=saved_form,
+        payment_method_issue=payment_method_issue,
     )
 
     return render_template("transport/new_home.html", **ctx)
@@ -964,7 +985,25 @@ def book_transport():
     }
     if not selected_payment_method or selected_payment_method not in allowed_payment_methods:
         flash("Choose an available payment method before requesting the ride.", "danger")
+        # Preserve form data for re-render
+        session["transport_booking_form"] = data
         return redirect(url_for("transport.home"))
+    
+    # Find the selected method's status for UX hints
+    selected_method_info = next((m for m in available_payment_methods if m.get("code") == selected_payment_method), None)
+    if selected_method_info and selected_method_info.get("status") != "ready":
+        # Method not ready - give rider options
+        session["transport_booking_form"] = data
+        session["transport_payment_method_issue"] = {
+            "code": selected_payment_method,
+            "label": selected_method_info.get("label"),
+            "status": selected_method_info.get("status"),
+            "message": selected_method_info.get("status_message"),
+            "onboarding_url": selected_method_info.get("onboarding_url"),
+        }
+        flash(f"{selected_method_info.get('label')} is not ready: {selected_method_info.get('status_message')}", "warning")
+        return redirect(url_for("transport.home"))
+    
     data["payment_method"] = selected_payment_method
 
     try:
@@ -1081,17 +1120,20 @@ def book_transport():
         logger.info("Transport booking rejected before request creation for user_id=%s: %s",
                     _uid(), e.message)
         flash(e.message, "warning")
+        session["transport_booking_form"] = data
         return redirect(url_for("transport.home"))
 
     except ServiceUnavailableError:
         logger.error(f"Booking service unavailable for user_id={_uid()}")
         flash("Booking service temporarily unavailable", "warning")
+        session["transport_booking_form"] = data
         return redirect(url_for("transport.home"))
 
     except Exception as e:
         db.session.rollback()
         logger.error(f"Booking error for user_id={_uid()}: {e}")
         flash(f"Booking error: {str(e)}", "danger")
+        session["transport_booking_form"] = data
         return redirect(url_for("transport.home"))
 
 

@@ -28,6 +28,7 @@ def register_api_resources(api):
         PaymentMethodsConfigResource,
         PaymentMethodsDefaultsResource,
         PaymentMethodsAvailableResource,
+        PaymentMethodsOptionsResource,
         PaymentMethodDetailResource,
         PaymentMethodToggleResource,
     )
@@ -239,6 +240,7 @@ def register_api_resources(api):
     safe_add_resource(PaymentMethodsConfigResource, "/payment-methods/config", endpoint="payment_methods_config")
     safe_add_resource(PaymentMethodsDefaultsResource, "/payment-methods/config/seed-defaults", endpoint="payment_methods_seed_defaults")
     safe_add_resource(PaymentMethodsAvailableResource, "/payment-methods/available", endpoint="payment_methods_available")
+    safe_add_resource(PaymentMethodsOptionsResource, "/payment-methods/options", endpoint="payment_methods_options")
     safe_add_resource(PaymentMethodDetailResource, "/payment-methods/config/<string:method_code>", endpoint="payment_method_detail")
     safe_add_resource(PaymentMethodToggleResource, "/payment-methods/config/<string:method_code>/toggle", endpoint="payment_method_toggle")
 

@@ -149,6 +149,50 @@ class PaymentMethodsAvailableResource(Resource):
         }
 
 
+class PaymentMethodsOptionsResource(Resource):
+    """GET /api/transport/payment-methods/options
+
+    Get ALL payment methods with Wallet-certified eligibility status.
+    Returns status: ready, needs_setup, needs_kyc, needs_pin, low_balance, unavailable.
+    This is what the frontend 'Change Payment' modal uses.
+    """
+
+    @login_required
+    def get(self):
+        """Get payment methods with eligibility status for current user"""
+        from flask_login import current_user
+        from decimal import Decimal
+
+        currency = request.args.get("currency", "UGX")
+        amount_str = request.args.get("amount", "0")
+        timing = request.args.get("timing", "pay_on_completion")
+
+        try:
+            amount = Decimal(amount_str)
+        except Exception:
+            amount = Decimal("0")
+
+        from app.transport.services.payment_methods import get_transport_payment_options
+        
+        methods = get_transport_payment_options(
+            user_id=current_user.id,
+            currency=currency,
+            amount=amount,
+            settlement_timing=timing,
+        )
+
+        return {
+            "success": True,
+            "data": {
+                "methods": methods,
+                "total": len(methods),
+                "currency": currency,
+                "amount": str(amount),
+                "timing": timing,
+            },
+        }
+
+
 class PaymentMethodDetailResource(Resource):
     """GET/PUT /api/transport/payment-methods/config/<method_code>
 

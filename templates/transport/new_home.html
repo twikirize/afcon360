@@ -788,6 +788,41 @@
   .sk{animation:none}
 }
 
+/* ---------- Payment method issue banner ---------- */
+.bolt-payment-issue{
+  position:relative;
+  margin:0 clamp(16px,4vw,40px) 16px;
+  padding:16px;
+  background:#FEF3C7;
+  border:1.5px solid #FCD34D;
+  border-radius:16px;
+  box-shadow:0 4px 14px rgba(245,158,11,.15);
+  animation:boltFade .22s ease;
+}
+.bolt-payment-issue-inner{
+  display:flex;align-items:flex-start;gap:12px;
+}
+.bolt-payment-issue-icon{
+  flex:none;width:28px;height:28px;
+  display:grid;place-items:center;
+  background:#FDE68A;border-radius:50%;
+  color:#92400E;font-size:1rem;
+}
+.bolt-payment-issue-content{
+  flex:1;min-width:0;
+  font-size:.85rem;color:#1F2937;line-height:1.4;
+}
+.bolt-payment-issue-content small{color:#6B7280;display:block;margin-top:2px}
+.bolt-payment-issue-actions{
+  display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;
+}
+.bolt-payment-issue-close{
+  position:absolute;top:8px;right:12px;
+  background:none;border:0;color:#6B7280;
+  font-size:1.4rem;line-height:1;cursor:pointer;padding:4px;
+}
+.bolt-payment-issue-close:hover{color:#1F2937}
+
 /* ---------- Dark mode ---------- */
 @media (prefers-color-scheme: dark){
   .bolt{background:#0E1412;color:#E8EDE9}
@@ -813,6 +848,18 @@
   .pickup-search-option.is-empty{background:#151C19;color:#94A3A0}
   .pickup-search-option.is-empty:hover{background:#151C19}
   .pickup-search-note{background:#2A1A1A;border-color:#7F1D1D;color:#FCA5A5}
+
+  /* ---------- Payment method issue banner ---------- */
+  .bolt-payment-issue{
+    background:#3B2A0A;
+    border-color:#92400E;
+    box-shadow:0 4px 14px rgba(245,158,11,.25);
+  }
+  .bolt-payment-issue-content{color:#F3F4F6}
+  .bolt-payment-issue-content small{color:#9CA3AF}
+  .bolt-payment-issue-icon{background:#92400E;color:#FDE68A}
+  .bolt-payment-issue-close{color:#9CA3AF}
+  .bolt-payment-issue-close:hover{color:#F3F4F6}
 }
 </style>
 {% endblock %}
@@ -951,6 +998,35 @@
         <span class="bolt-progress-num">4</span><span>Match</span>
       </div>
     </div>
+
+    {# ---------- Payment method issue banner ---------- #}
+    {% if payment_method_issue %}
+    <div class="bolt-payment-issue" id="paymentIssueBanner" role="alert" aria-live="polite">
+      <div class="bolt-payment-issue-inner">
+        <div class="bolt-payment-issue-icon">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+        </div>
+        <div class="bolt-payment-issue-content">
+          <strong>{{ payment_method_issue.label }}</strong> is not ready<br>
+          <small>{{ payment_method_issue.message }}</small>
+        </div>
+        <div class="bolt-payment-issue-actions">
+          {% if payment_method_issue.onboarding_url %}
+          <a href="{{ payment_method_issue.onboarding_url }}" class="btn btn-primary btn-sm" target="_blank" rel="noopener">
+            <i class="bi bi-gear"></i> Fix & Enable
+          </a>
+          {% endif %}
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="btnChooseOtherMethod">
+            <i class="bi bi-arrow-left-right"></i> Choose Another Method
+          </button>
+          <button type="button" class="btn btn-outline-danger btn-sm" id="btnCancelBooking">
+            <i class="bi bi-x-circle"></i> Cancel
+          </button>
+        </div>
+      </div>
+      <button type="button" class="bolt-payment-issue-close" aria-label="Dismiss">&times;</button>
+    </div>
+    {% endif %}
 
     {# ---------- Two-column grid: card + map ---------- #}
     <div class="bolt-grid">
@@ -2374,6 +2450,41 @@
   })();
   {% endif %}
 
+})();
+// ---------- Payment method issue banner handlers ----------
+(function(){
+  var banner = document.getElementById('paymentIssueBanner');
+  if (!banner) return;
+
+  var closeBtn = banner.querySelector('.bolt-payment-issue-close');
+  var chooseOtherBtn = banner.querySelector('#btnChooseOtherMethod');
+  var cancelBtn = banner.querySelector('#btnCancelBooking');
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', function() {
+      banner.style.display = 'none';
+    });
+  }
+
+  if (chooseOtherBtn) {
+    chooseOtherBtn.addEventListener('click', function() {
+      banner.style.display = 'none';
+      var paymentInput = document.getElementById('hPayment');
+      if (paymentInput) paymentInput.value = '';
+      var paymentChoices = document.querySelectorAll('input[name="payment_method_choice"]');
+      paymentChoices.forEach(function(cb) { cb.checked = false; });
+      var paymentSection = document.querySelector('.bolt-payment-choices');
+      if (paymentSection) paymentSection.scrollIntoView({behavior: 'smooth'});
+    });
+  }
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', function() {
+      if (confirm('Cancel this booking request?')) {
+        window.location.href = '{{ safe_url("transport.home") }}';
+      }
+    });
+  }
 })();
 </script>
 {% endblock %}

@@ -456,6 +456,183 @@ def add_payment_gateway():
         flash('Error adding payment gateway', 'danger')
         return redirect(url_for('admin.owner.dashboard'))
 
+
+# ============================================================================
+# Payment Method Configuration (Owner/Super Admin)
+# ============================================================================
+
+@owner_bp.route('/settings/payment-methods')
+@owner_or_superadmin_required
+def payment_methods_config():
+    """List all payment methods with their marketplace collection status"""
+    try:
+        from app.wallet.models.payment_method import PaymentMethodConfig
+        
+        methods = PaymentMethodConfig.query.order_by(PaymentMethodConfig.method_id).all()
+        
+        if request.headers.get('Accept') == 'application/json' or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            data = []
+            for m in methods:
+                data.append({
+                    'id': m.id,
+                    'method_id': m.method_id,
+                    'display_name': m.display_name,
+                    'method_type': m.method_type,
+                    'provider_name': m.provider_name,
+                    'country_code': m.country_code,
+                    'is_enabled': m.is_enabled,
+                    'is_active': m.is_active,
+                    'marketplace_collection_implemented': m.marketplace_collection_implemented,
+                    'supported_currencies': m.supported_currencies or [],
+                    'allowed_timings': m.allowed_timings or [],
+                    'min_amount': float(m.min_amount) if m.min_amount else 0,
+                    'max_amount': float(m.max_amount) if m.max_amount else 0,
+                    'transaction_fee': float(m.transaction_fee) if m.transaction_fee else 0,
+                })
+            return jsonify({'success': True, 'payment_methods': data})
+        
+        return render_template('owner/payment_methods_config.html', methods=methods)
+    except Exception as e:
+        current_app.logger.error(f"Payment methods config error: {e}")
+        flash('Error loading payment methods configuration', 'danger')
+        return redirect(url_for('admin.owner.dashboard'))
+
+
+@owner_bp.route('/settings/payment-methods/<int:method_id>/toggle', methods=['POST'])
+@owner_or_superadmin_required
+def toggle_payment_method(method_id):
+    """Toggle payment method marketplace collection, enabled, or active status"""
+    try:
+        from app.wallet.models.payment_method import PaymentMethodConfig
+        from app.wallet.services.admin_audit_service import AdminAuditService
+        from flask_login import current_user
+        
+        method = PaymentMethodConfig.query.get_or_404(method_id)
+        
+        data = request.get_json() or {}
+        field = data.get('field')
+        value = data.get('value')
+        
+        if field not in ['marketplace_collection_implemented', 'is_enabled', 'is_active']:
+            return jsonify({'success': False, 'error': 'Invalid field'}), 400
+        
+        old_value = getattr(method, field)
+        new_value = bool(value)
+        
+        if old_value == new_value:
+            return jsonify({'success': True, 'message': 'No change', 'value': new_value})
+        
+        setattr(method, field, new_value)
+        db.session.commit()
+        
+        # Audit log
+        try:
+            AdminAuditService.log_action(
+                admin_id=current_user.id,
+                admin_name=current_user.username,
+                admin_role='owner',
+                action_type='update',
+                action_category='payment_method_config',
+                target_type='payment_method',
+                target_id=str(method.id),
+                target_name=method.method_id,
+                old_value={field: old_value},
+                new_value={field: new_value},
+                reason=f'Toggled payment method {method.method_id} {field} to {new_value}'
+            )
+        except Exception as audit_e:
+            current_app.logger.error(f"Audit log error: {audit_e}")
+        
+        return jsonify({'success': True, 'value': new_value, 'message': f'{field} set to {new_value}'})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Toggle payment method error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@owner_bp.route('/settings/payment-methods/<int:method_id>', methods=['PUT'])
+@owner_or_superadmin_required
+def update_payment_method(method_id):
+    """Update payment method configuration (full update)"""
+    try:
+        from app.wallet.models.payment_method import PaymentMethodConfig
+        from app.wallet.services.admin_audit_service import AdminAuditService
+        from flask_login import current_user
+        
+        method = PaymentMethodConfig.query.get_or_404(method_id)
+        data = request.get_json()
+        
+        # Fields that can be updated
+        updatable_fields = [
+            'display_name', 'method_type', 'provider_name', 'country_code',
+            'is_enabled', 'is_active', 'requires_phone',
+            'supported_currencies', 'allowed_timings',
+            'min_amount', 'max_amount', 'transaction_fee',
+            'sandbox_url', 'production_url', 'use_sandbox',
+            'marketplace_collection_implemented',
+            'config_json'
+        ]
+        
+        old_values = {}
+        for field in updatable_fields:
+            if field in data:
+                old_values[field] = getattr(method, field)
+                new_value = data[field]
+                
+                # Type conversion for numeric fields
+                if field in ['min_amount', 'max_amount', 'transaction_fee']:
+                    new_value = float(new_value) if new_value is not None else None
+                elif field in ['is_enabled', 'is_active', 'requires_phone', 'use_sandbox', 'marketplace_collection_implemented']:
+                    new_value = bool(new_value)
+                
+                setattr(method, field, new_value)
+        
+        db.session.commit()
+        
+        # Audit log
+        try:
+            AdminAuditService.log_action(
+                admin_id=current_user.id,
+                admin_name=current_user.username,
+                admin_role='owner',
+                action_type='update',
+                action_category='payment_method_config',
+                target_type='payment_method',
+                target_id=str(method.id),
+                target_name=method.method_id,
+                old_value=old_values,
+                new_value={k: data[k] for k in old_values},
+                reason=f'Updated payment method {method.method_id} configuration'
+            )
+        except Exception as audit_e:
+            current_app.logger.error(f"Audit log error: {audit_e}")
+        
+        return jsonify({'success': True, 'message': 'Payment method updated successfully'})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Update payment method error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# Payment Method Configuration (Owner/Super Admin) - Template Route
+# ============================================================================
+
+@owner_bp.route('/payment-methods-config')
+@owner_or_superadmin_required
+def payment_methods_config_page():
+    """Render the payment methods configuration page"""
+    try:
+        from app.wallet.models.payment_method import PaymentMethodConfig
+        
+        methods = PaymentMethodConfig.query.order_by(PaymentMethodConfig.method_id).all()
+        return render_template('owner/payment_methods_config.html', methods=methods)
+    except Exception as e:
+        current_app.logger.error(f"Payment methods config page error: {e}")
+        flash('Error loading payment methods configuration page', 'danger')
+        return redirect(url_for('admin.owner.dashboard'))
+
+
 @owner_bp.route('/dashboard')
 @owner_login_required
 def dashboard():
