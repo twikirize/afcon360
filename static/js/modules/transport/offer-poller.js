@@ -22,7 +22,8 @@ export function createOfferPoller({ onOffers, baseMs = 4000, maxMs = 30000 }) {
       })
       .then(res => {
         if (!res) return;
-        const n = (res.offers || []).length;
+        const offers = res && res.data && Array.isArray(res.data.offers) ? res.data.offers : [];
+        const n = offers.length;
         onOffers(res);
         cur = n > 0 ? baseMs : Math.min(cur * 2, maxMs); // back off when idle
       })
