@@ -134,6 +134,11 @@
         if (!progressEl) return;
         var stage = stageOf(status);
         var steps = progressEl.querySelectorAll('.rp-step');
+        var labels = progressEl.querySelectorAll('.rp-label');
+        if (labels[2]) labels[2].textContent =
+            status === 'no_show' ? 'No-show' : 'Trip Started';
+        if (labels[3]) labels[3].textContent =
+            status === 'disputed' ? 'Under Review' : 'Arrived';
         for (var i = 0; i < steps.length; i++) {
             var cls = 'rp-step';
             if (i < stage) cls += ' done';
@@ -211,12 +216,16 @@
             'tl-step ' + (b.driver_arrived_at ? 'done' : 'skip'),
             tsText(b.driver_arrived_at));
         setRow('started',
-            'tl-step ' + (status === 'in_progress' ? 'active'
+            'tl-step ' + ((status === 'in_progress' || status === 'disputed') ? 'active'
                 : (b.completed_at ? 'done' : 'skip')),
             tsText(b.pickup_actual_time));
         setRow('completed',
             'tl-step ' + (b.completed_at ? 'done' : 'skip'),
             tsText(b.completed_at));
+        var noShowRow = timelineEl.querySelector('[data-tl="no_show"]');
+        if (noShowRow) noShowRow.hidden = status !== 'no_show';
+        var disputedRow = timelineEl.querySelector('[data-tl="disputed"]');
+        if (disputedRow) disputedRow.hidden = status !== 'disputed';
         var cancelRow = timelineEl.querySelector('[data-tl="cancelled"]');
         if (cancelRow) {
             var ct = cancelRow.querySelector('.tl-time');
