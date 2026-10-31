@@ -44,6 +44,10 @@ def get_available_transport_payment_methods(
         ).all()
         results = []
         for config in configs:
+            # Anonymous selectors must honour Wallet's marketplace integration
+            # flag just like authenticated selectors and invoice creation.
+            if not getattr(config, "marketplace_collection_implemented", False):
+                continue
             if not config.supports_currency(currency_code):
                 continue
             allowed_timings = [str(t).strip().lower() for t in (config.allowed_timings or [])]
