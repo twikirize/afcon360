@@ -1712,7 +1712,7 @@
                 var previous = this.innerHTML;
                 try {
                     var response = await request(this.dataset.url, {});
-                    // request() returns the server body flat, not wrapped in .data
+                    // Decline result follows the standard API envelope: response.data.declined.
                     if (!response.success || (response.data && response.data.declined === false)) {
                         flashMsg((response && response.error) || 'This offer is no longer active', false);
                         this.disabled = false;
