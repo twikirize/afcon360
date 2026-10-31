@@ -7,15 +7,18 @@
  * only - operational meaning stays with the owning domain.
  *
  * Contract:
- *   GeoRealtime.connect(streamUrl, { onSnapshot, onLocation, onState })
- *     -> { close(), state }.
+ *   GeoRealtime.connect(streamUrl, {
+ *     onSnapshot, onLocation, onState, pollUrl?, pollIntervalMs?
+ *   }) -> { close(), state }.
  * Events carry {latitude, longitude} (latitude-first, GeoPoint order).
  * A latitude/longitude swap upstream is consumer-visible, never corrected.
  *
  * Reconnect: the server sends `retry:` and every stream opens with the
  * current snapshot, so EventSource auto-reconnect recovers latest state
  * with no replay. Consecutive-error bounding prevents retry storms:
- * after MAX_ERRORS errors the client closes and reports `disconnected`.
+ * after MAX_ERRORS errors the SSE channel closes. When the caller supplies
+ * an authorized same-origin `pollUrl`, bounded HTTP snapshots take over;
+ * closing the returned handle stops both transports.
  */
 (function () {
   'use strict';
