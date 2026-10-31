@@ -603,3 +603,58 @@ class TestRealRideTransactionPath:
         trip_html = trip_page.get_data(as_text=True)
         assert "Ride Request Received" in trip_html
         assert "Driver Accepted" in trip_html
+
+
+
+def test_low_balance_wallet_is_rejected_for_scheduled_booking(
+        app, authenticated_client, test_user, monkeypatch
+):
+    """The legacy BookingService path must check Wallet against the computed fare."""
+    from decimal import Decimal
+    from app.wallet.services.wallet_service import WalletService
+
+    with app.app_context():
+        rider = db.session.merge(test_user)
+        rider_id = rider.id
+        _promote_user_to_tier3(app, rider_id)
+
+    calls = []
+
+    def wallet_status(self, *, user_id, currency, amount, settlement_timing):
+        amount = Decimal(str(amount))
+        calls.append(amount)
+        return [
+            {"code": "cash", "status": "ready"},
+            {
+                "code": "wallet",
+                "status": "ready" if amount == 0 else "low_balance",
+                "status_message": (
+                    "Wallet balance is below the confirmed fare."
+                    if amount > 0 else "Ready"
+                ),
+            },
+        ]
+
+    monkeypatch.setattr(WalletService, "get_user_payment_method_status", wallet_status)
+    form = _bolt_form(app, _new_pickup_time())
+    form["booking_mode"] = "scheduled"
+    form["payment_method"] = "wallet"
+
+    response = authenticated_client.post(
+        "/transport/book", data=form, follow_redirects=False
+    )
+    assert response.status_code in (301, 302), response.get_data(as_text=True)
+    assert Decimal("0") in calls
+    assert any(amount > 0 for amount in calls)
+    with app.app_context():
+        assert Booking.query.filter_by(
+            user_id=rider_id, is_deleted=False
+        ).count() == 0
+        assert RideRequest.query.filter_by(
+            user_id=rider_id, is_deleted=False
+        ).count() == 0
+        from app.wallet.models.marketplace_invoice import MarketplaceInvoice
+        assert MarketplaceInvoice.query.filter_by(
+            service_code="transport", payer_user_id=rider_id
+        ).count() == 0
+
