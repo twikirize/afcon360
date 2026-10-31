@@ -26,6 +26,8 @@ import time
 import pytest
 from itsdangerous import SignatureExpired, URLSafeTimedSerializer
 
+from app.extensions import db
+
 from tests.test_transport_restful_auth import _create_driver, _owner_id_in_context
 
 
