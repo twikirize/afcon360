@@ -973,37 +973,19 @@ def book_transport():
         else:
             data = request.form.to_dict()
 
-    # Payment choice is an explicit rider decision. Do not silently turn
-    # a missing/unavailable choice into Cash, even while schema enforcement
-    # remains in shadow mode.
-    selected_payment_method = str(data.get("payment_method") or "").strip().lower()
-    available_payment_methods = get_available_transport_payment_methods(current_user.id)
-    allowed_payment_methods = {
-        str(method.get("code") or "").strip().lower()
-        for method in available_payment_methods
-        if method.get("enabled", True)
-    }
-    if not selected_payment_method or selected_payment_method not in allowed_payment_methods:
-        flash("Choose an available payment method before requesting the ride.", "danger")
-        # Preserve form data for re-render
+    # Payment selection is explicit, but eligibility is not decided here:
+    # the domain service checks Wallet against its server-calculated fare
+    # currency + amount. A route-level zero-amount/default-currency lookup
+    # can both admit an underfunded Wallet and reject a valid foreign-currency
+    # Wallet account.
+    selected_payment_method = str(
+        data.get("payment_method") or ""
+    ).strip().lower()
+    if not selected_payment_method:
+        flash("Choose a payment method before requesting the ride.", "danger")
         session["transport_booking_form"] = data
         return redirect(url_for("transport.home"))
-    
-    # Find the selected method's status for UX hints
-    selected_method_info = next((m for m in available_payment_methods if m.get("code") == selected_payment_method), None)
-    if selected_method_info and selected_method_info.get("status") != "ready":
-        # Method not ready - give rider options
-        session["transport_booking_form"] = data
-        session["transport_payment_method_issue"] = {
-            "code": selected_payment_method,
-            "label": selected_method_info.get("label"),
-            "status": selected_method_info.get("status"),
-            "message": selected_method_info.get("status_message"),
-            "onboarding_url": selected_method_info.get("onboarding_url"),
-        }
-        flash(f"{selected_method_info.get('label')} is not ready: {selected_method_info.get('status_message')}", "warning")
-        return redirect(url_for("transport.home"))
-    
+
     data["payment_method"] = selected_payment_method
 
     try:
