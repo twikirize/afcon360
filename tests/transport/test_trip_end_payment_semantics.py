@@ -154,7 +154,7 @@ def test_wallet_choice_currency_and_timing_are_delegated_unchanged(monkeypatch):
         return methods
 
     monkeypatch.setattr(
-        WalletService, "get_user_payment_method_status", wallet_status
+        WalletService, "get_user_payment_method_status", staticmethod(wallet_status)
     )
     methods = payment_methods.get_available_transport_payment_methods(
         123, currency_code="USD", amount=25, payment_timing="pay_on_completion"
