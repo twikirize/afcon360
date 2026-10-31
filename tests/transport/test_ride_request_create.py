@@ -390,7 +390,7 @@ class TestRollbackAfterPartialFlush:
             app, payment_method="wallet"
         ))
         assert response.status_code == 400, response.get_data(as_text=True)
-        assert "payment_method" in response.get_json().get("field", "payment_method")
+        assert "payment method" in response.get_json().get("error", "").lower()
         assert _counts(app, rider_id) == (0, 0, 0)
 
     def test_payment_method_is_required(self, app, client):
