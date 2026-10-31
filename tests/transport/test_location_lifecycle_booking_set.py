@@ -67,6 +67,19 @@ def _create(app, user_id, data):
     from app.wallet.models.payment_method import PaymentMethodConfig
     with app.app_context():
         PaymentMethodConfig.initialize_defaults()
+        cash = PaymentMethodConfig.query.filter_by(method_id="cash").one()
+        cash.is_enabled = True
+        cash.is_active = True
+        cash.marketplace_collection_implemented = True
+        currencies = list(cash.supported_currencies or [])
+        if "USD" not in {str(value).upper() for value in currencies}:
+            currencies.append("USD")
+        cash.supported_currencies = currencies
+        timings = list(cash.allowed_timings or [])
+        if "pay_on_completion" not in timings:
+            timings.append("pay_on_completion")
+        cash.allowed_timings = timings
+        db.session.commit()
         return BookingService().create_booking(
             user_id, data, request_id=f"test-{data['idempotency_key']}"
         )["data"]["booking_reference"]
