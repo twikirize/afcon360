@@ -96,7 +96,7 @@ if __name__ == "__main__":
                 logger.error("FLASK_SSL=cert requires FLASK_SSL_CERT and FLASK_SSL_KEY to be set.")
                 raise SystemExit(2)
         # Only passed when TLS is on: gevent 26.x crashes on ssl_context=None.
-        ssl_run_kwargs['ssl_context'] = build_ssl_context(ssl_cert, ssl_key, async_mode=socketio.async_mode)
+        ssl_run_kwargs['ssl_context'] = build_ssl_context(ssl_cert, ssl_key)
 
     # With TLS enabled and FLASK_HOST unset, bind all interfaces so a phone on
     # the LAN/hotspot can reach this machine (requirement: reachable, not 127.0.0.1).

@@ -4394,3 +4394,33 @@ part of the pgcrypto closure, but as a distinct H3-B gate.
 - Constraints/red lines: this is the §20.3.1-class authorized-reconstruction operation — requires explicit owner approval per re-freeze, independent review, fresh-install reproducibility, and a catalog-parity gate against BOTH prod and test. Recording this entry authorizes nothing.
 - Owner/area: database reliability / owner decision
 - Links: README "Database migrations — architecture, how to use, and why", AGENTS.md §52.4, migrations/versions/h3a20261020_static_baseline.py, BACKLOG TZ-UNIFY-FOLLOWUPS
+
+---
+
+## SOCKETIO-ASYNC-TRIPWIRE — CI tripwire test asserts `threading` async mode (Not started)
+- Status: Not started
+- Raised: 2026-10-31
+- Context: The Socket.IO async mode decision (README "Socket.IO Async Mode Decision") enforces `threading` via `SOCKETIO_ASYNC_MODE` env var default. A CI tripwire test should assert `socketio.async_mode == 'threading'` at app startup to prevent accidental gevent/eventlet enablement.
+- What needs to happen: Add a test in `tests/` that creates the app and asserts `from app.extensions import socketio; assert socketio.async_mode == 'threading'`. Run in CI.
+- Owner/area: realtime / CI
+- Links: `app/extensions.py`, `README.md` (Socket.IO Async Mode Decision), `tests/test_socketio_async_mode.py` (new)
+
+---
+
+## SOCKETIO-DEV_TLS-TRACKING — `dev_tls.build_ssl_context` no longer needs async_mode (Not started)
+- Status: Not started
+- Raised: 2026-10-31
+- Context: `app.py` no longer passes `async_mode` to `build_ssl_context()`. The parameter remains in the function signature for backward compatibility but is unused. The docstring in `dev_tls.py` should note this.
+- What needs to happen: Update `dev_tls.py` docstring for `build_ssl_context()` to note `async_mode` parameter is retained for compatibility but unused (SocketIO async mode is now resolved via `SOCKETIO_ASYNC_MODE` env var in `extensions.py`).
+- Owner/area: realtime / dev tooling
+- Links: `dev_tls.py:690`, `app.py:99`, `app/extensions.py:28`
+
+---
+
+## SOCKETIO-CONNECTION-MONITORING — Connection count monitoring for threading ceiling (Not started)
+- Status: Not started
+- Raised: 2026-10-31
+- Context: The `threading` async mode has a practical ceiling of ~300–500 concurrent connections. Monitoring/alerting should be added to detect when approaching this limit.
+- What needs to happen: Add connection counting (e.g., via SocketIO connect/disconnect handlers or a periodic gauge) and log/alert when active connections exceed a threshold (e.g., 250). Consider exposing via `/api/health/ping` or a dedicated metrics endpoint.
+- Owner/area: realtime / monitoring
+- Links: `app/extensions.py`, `app/production_console/streaming.py`, `app/monitor/routes.py`

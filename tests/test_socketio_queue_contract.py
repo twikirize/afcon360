@@ -27,8 +27,10 @@ def _engineio_detected_mode():
     raise AssertionError("no engineio async driver importable")  # pragma: no cover
 
 
-def test_async_mode_detection_mirrors_engineio():
-    assert _socketio_async_mode() == _engineio_detected_mode()
+def test_async_mode_is_explicitly_threading():
+    # AFCON360 enforces threading mode via SOCKETIO_ASYNC_MODE env var (default threading)
+    # This prevents silent gevent cross-worker push failures under load
+    assert _socketio_async_mode() == 'threading'
 
 
 def test_unpatched_green_mode_blocks_the_queue(monkeypatch):

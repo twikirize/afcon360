@@ -604,6 +604,30 @@ proof), **never stamp a database to hide drift**, never rely on
 migration batch with an empty-database replay. See AGENTS.md §48, §51, and
 §52 for the enforceable forms.
 
+## Socket.IO Async Mode Decision
+
+**Decision:** `threading` (default, enforced via `SOCKETIO_ASYNC_MODE` env var)
+
+**Reasoning:**
+- AFCON360 is a synchronous codebase; no monkey-patching is performed
+- `gevent`/`eventlet` require monkey-patching `socket` for Redis message queue to work
+- Without monkey-patching, `socketio.redis_manager.RedisManager.initialize()` raises `RuntimeError` and every `/socket.io/` connect returns 401
+- Silent failures under load: cross-worker push never arrives (measured 58 ms local vs absent after 42 s cross-worker)
+
+**Enforcement:** `app/extensions.py` reads `SOCKETIO_ASYNC_MODE` (default `threading`); `app.py` no longer passes `async_mode` to `build_ssl_context()`
+
+**Migration path to gevent (four preconditions):**
+1. Explicit owner authorization for monkey-patching
+2. Verified gevent + Redis queue cross-worker delivery test (automated)
+3. Gunicorn worker config aligned (sync vs gevent workers)
+4. Connection ceiling monitoring in place
+
+**Ceiling:** ~300–500 concurrent connections on `threading`
+
+**Why not gevent:** Silent cross-worker push failures under load; no monkey-patching policy
+
+---
+
 ## Known limitations
 
 This is an active codebase, not a claim of production readiness. In particular,
