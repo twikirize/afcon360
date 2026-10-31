@@ -143,13 +143,6 @@ jobs:
           tests/transport/test_booking_mode_probe.py
           tests/transport/test_pickup_time_authority_p1.py
           tests/transport/test_location_lifecycle_booking_set.py
-          tests/transport/test_booking_mode_probe.py
-          tests/transport/test_pickup_time_authority_p1.py
-          tests/transport/test_location_lifecycle_booking_set.py
-          tests/test_transport_fare_engine.py
-          tests/test_transport_booking_geocoding.py
-          tests/test_ui_loc_02a_closure.py
-          tests/transport/test_scheduled_release_p1.py
           tests/test_transport_ride_options.py
           tests/test_ui11_booking_flash_copy.py
           tests/test_transport_request_tracker_copy.py
@@ -224,18 +217,25 @@ jobs:
           python -m pytest -q
           tests/test_transport_ride_options.py
           tests/test_transport_booking_route_path.py
+          tests/test_transport_fare_engine.py
+          tests/test_transport_booking_geocoding.py
+          tests/test_ui_loc_02a_closure.py
+          tests/transport/test_scheduled_release_p1.py
+          tests/transport/test_booking_mode_probe.py
+          tests/transport/test_pickup_time_authority_p1.py
+          tests/transport/test_location_lifecycle_booking_set.py
           tests/test_ui11_booking_flash_copy.py
           tests/test_transport_request_tracker_copy.py
           tests/test_transport_cash_confirmation_semantics.py
           tests/test_transport_admin_canonical_overview.py
           tests/transport/test_ride_request_create.py
           tests/transport/test_trip_end_payment_semantics.py
-          tests/test_transport_tracking_live.py
+          tests/test_transport_tracking_live.py::TestStoredLocationShape::test_missing_optional_telemetry_is_not_fabricated
           tests/test_geo_foundation.py
           tests/test_geo_realtime.py
           tests/test_driver_location_csrf_refresh.py
-          tests/test_transport_d2_evidence.py
+          tests/transport/test_driver_console.py::test_location_publish_updates_timestamp
+          tests/transport/test_driver_console.py::test_driver_verification_accepts_only_canonical_tiers
           tests/test_transport_pwa_shell.py
           tests/test_transport_restful_auth.py
-          tests/transport/test_driver_console.py
           tests/transport/test_wallet_invoice_boundary.py
