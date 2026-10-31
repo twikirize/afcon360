@@ -205,6 +205,8 @@ class TestPhaseBSchema:
 
     def test_create_booking_persists_mode_and_receipt_time(self, app):
         user_id = _create_user(app)
+        from app.wallet.models.payment_method import PaymentMethodConfig
+        PaymentMethodConfig.initialize_defaults()
         result = get_booking_service().create_booking(
             user_id,
             {
