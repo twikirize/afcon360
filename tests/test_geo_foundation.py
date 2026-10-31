@@ -81,6 +81,23 @@ def test_location_payload_missing_fields_raise():
                                     "speed": -1.0})
 
 
+def test_optional_gps_telemetry_preserves_unknown_values():
+    point = normalize_location_payload({
+        "latitude": 0.3476,
+        "longitude": 32.5825,
+        "accuracy": None,
+        "speed": None,
+        "heading": None,
+    })
+    assert point.accuracy is None
+
+
+@pytest.mark.parametrize("accuracy", [float("nan"), float("inf"), -1.0])
+def test_invalid_accuracy_is_rejected(accuracy):
+    with pytest.raises(ValidationError):
+        normalize_point(0.3476, 32.5825, accuracy=accuracy)
+
+
 def test_radius_guard():
     assert validate_radius_m(5000) == 5000.0
     with pytest.raises(ValidationError):
