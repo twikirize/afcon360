@@ -56,6 +56,13 @@ def test_geo_tracking_has_owner_scoped_http_fallback():
     assert 'response.headers["Vary"] = "Cookie"' in route
 
 
+def test_cancellation_copy_never_claims_a_refund_was_processed():
+    template = _read("templates/transport/rides/show.html")
+    assert "Calculated potential refund:" in template
+    assert "No refund was processed; any eligible refund requires separate Wallet processing." in template
+    assert "Refund due:" not in template
+
+
 def test_rider_progress_includes_no_show_and_dispute_states():
     sync = _read("static/js/modules/transport/rider_status_sync.js")
     assert "'no_show'" in sync
