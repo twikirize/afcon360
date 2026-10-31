@@ -62,6 +62,10 @@
             } else {
               window.location.reload(); // fallback
             }
+            // Advance after processing the latest complete server snapshot.
+            // Otherwise every subsequent poll repeats the same panel refresh.
+            baseline = nextKey;
+            baselineRefs = refsList(nextKey);
           }
         },
       baseMs: 4000,
