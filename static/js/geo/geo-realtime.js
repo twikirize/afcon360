@@ -14,13 +14,12 @@
  *
  * Reconnect: the server sends `retry:` and every stream opens with the
  * current snapshot, so EventSource auto-reconnect recovers latest state
- * with no replay. Consecutive-error bounding prevents retry storms:
- * after MAX_ERRORS errors the client closes and reports `disconnected`.
+ * with no replay. Native EventSource retry remains active across transient
+ * network/Redis errors; only an explicit close or terminal server frame
+ * ends the client handle.
  */
 (function () {
   'use strict';
-
-  var MAX_ERRORS = 3;
 
   function toFinite(value) {
     var n = Number(value);
@@ -44,7 +43,7 @@
       publicRef: data.public_ref || '',
       latitude: lat,
       longitude: lng,
-      accuracy: toFinite(data.accuracy) || 0,
+      accuracy: toFinite(data.accuracy),
       observedAt: data.observed_at || '',
       ageS: toFinite(data.age_s),
       fresh: data.fresh === true,
@@ -178,11 +177,10 @@
         return;
       }
       errors += 1;
-      if (errors >= MAX_ERRORS) {
-        handle.close();
-        return;
-      }
-      emitState('reconnecting', { attempt: errors, maxAttempts: MAX_ERRORS });
+      // Keep EventSource's native retry loop alive. The server controls the
+      // retry cadence; a transient outage must not permanently disable live
+      // tracking until the rider reloads the page.
+      emitState('reconnecting', { attempt: errors });
     };
 
     return handle;
