@@ -642,8 +642,6 @@ class AssignmentService:
             .where(
                 Booking.__table__.c.id == booking_id,
                 Booking.__table__.c.status.in_(driver_cancellable),
-                Booking.__table__.c.assigned_driver_id
-                == row.assigned_driver_id,
                 Booking.__table__.c.is_deleted.is_(False),
             )
             .values(
