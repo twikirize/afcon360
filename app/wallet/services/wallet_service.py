@@ -1895,6 +1895,14 @@ class WalletService:
 
         results = []
         for config in configs:
+            # Marketplace listing: a method that has no settlement implementation
+            # must not appear, even if enabled+active for deposit/withdraw flows.
+            # The flag is the authoritative signal — it's enforced by
+            # MarketplaceInvoiceService.list_available_methods() but was missing
+            # here.
+            if not config.marketplace_collection_implemented:
+                continue
+
             if not config.supports_currency(currency):
                 results.append({
                     "code": config.method_id,

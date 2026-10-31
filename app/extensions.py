@@ -26,7 +26,10 @@ csrf = CSRFProtect()
 # Email sending
 mail = Mail()
 _socketio_async_mode = os.getenv('SOCKETIO_ASYNC_MODE', 'threading')
-socketio = SocketIO(async_mode=_socketio_async_mode)
+socketio = SocketIO(
+    async_mode=_socketio_async_mode,
+    message_queue=os.getenv('SOCKETIO_MESSAGE_QUEUE') or None,
+)
 
 # Redis URL from environment - will be validated in create_app
 # Use a placeholder that will be replaced when app is initialized

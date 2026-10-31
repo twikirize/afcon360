@@ -7,6 +7,7 @@ Consumed by accommodation, events, and admin modules.
 """
 
 from datetime import datetime, timezone
+import sqlalchemy as sa
 from sqlalchemy import Column, BigInteger, String, Boolean, DateTime, Text, JSON, ForeignKey, Numeric
 from sqlalchemy.orm import relationship
 from app.extensions import db
@@ -54,7 +55,12 @@ class PaymentMethodConfig(BaseModel):
     # Whether Wallet has implemented the marketplace collection/settlement
     # lifecycle for this method. Only methods with this=True will surface
     # in marketplace modules (transport, accommodation, events).
-    marketplace_collection_implemented = Column(Boolean, default=False, nullable=False)
+    marketplace_collection_implemented = Column(
+        Boolean,
+        default=False,
+        server_default=sa.text('false'),
+        nullable=False,
+    )
 
     # Limits and fees
     min_amount = Column(Numeric(10, 2), default=0.00)
