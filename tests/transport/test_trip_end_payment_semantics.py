@@ -188,7 +188,7 @@ def test_wallet_choice_currency_and_timing_are_delegated_unchanged(monkeypatch):
     assert seen[-1]["currency"] == "UGX"
 
 
-def test_anonymous_transport_choices_do_not_advertise_wallet(monkeypatch):
+def test_anonymous_transport_choices_require_sign_in_and_hide_unintegrated_methods(monkeypatch):
     from types import SimpleNamespace
     from app.transport.services import payment_methods
     from app.wallet.models.payment_method import PaymentMethodConfig
@@ -224,7 +224,10 @@ def test_anonymous_transport_choices_do_not_advertise_wallet(monkeypatch):
     methods = payment_methods.get_available_transport_payment_methods(
         None, currency_code="USD"
     )
-    assert [method["code"] for method in methods] == ["cash"]
+    assert [method["code"] for method in methods] == ["cash", "wallet"]
+    assert methods[0]["status"] == "ready"
+    assert methods[1]["status"] == "needs_setup"
+    assert all(method["code"] != "mobile_money_mtn_ug" for method in methods)
 
 
 def test_payment_validation_accepts_canonical_ugx_for_east_africa():
