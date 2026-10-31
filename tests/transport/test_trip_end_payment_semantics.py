@@ -172,13 +172,12 @@ def test_wallet_choice_currency_and_timing_are_delegated_unchanged(monkeypatch):
         123, currency_code="USD", amount=25, payment_timing="pay_on_completion"
     )
     assert [method["code"] for method in methods] == ["cash", "wallet"]
+    from decimal import Decimal
     assert seen[-1] == {
-        "payer_user_id": 123,
+        "user_id": 123,
         "currency": "USD",
-        "amount": 25,
+        "amount": Decimal("25"),
         "settlement_timing": "pay_on_completion",
-        "service_country_code": None,
-        "payer_country_code": None,
     }
 
     methods_ugx = payment_methods.get_available_transport_payment_methods(
