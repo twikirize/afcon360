@@ -152,6 +152,21 @@
   var paymentStatus = document.getElementById('requestPaymentStatus');
   var cancelForm = document.getElementById('cancelRideRequestForm');
   var stopped = false;
+  var inFlight = false;
+  var pollTimer = null;
+  var requestController = null;
+  var failures = 0;
+  var POLL_MS = 4000;
+  var REQUEST_TIMEOUT_MS = 10000;
+
+  function schedulePoll(delay) {
+    if (stopped || document.hidden) return;
+    if (pollTimer) window.clearTimeout(pollTimer);
+    pollTimer = window.setTimeout(function () {
+      pollTimer = null;
+      poll();
+    }, delay);
+  }
 
   if (cancelForm) {
     cancelForm.addEventListener('submit', function(event){
@@ -198,14 +213,59 @@
     }
   }
   function poll(){
-    if (stopped || document.hidden) return;
-    fetch(url, {credentials:'same-origin',headers:{'Accept':'application/json'}})
-      .then(function(r){ if(!r.ok) throw new Error('Request status unavailable'); return r.json(); })
-      .then(function(body){ if(body && body.success && body.data) apply(body.data); })
-      .catch(function(){ /* next poll retries; never fabricate an accepted state */ });
+    if (stopped || document.hidden || inFlight) return;
+    inFlight = true;
+    var controller = (typeof AbortController !== 'undefined')
+      ? new AbortController() : null;
+    requestController = controller;
+    var timeout = controller ? window.setTimeout(function () {
+      controller.abort();
+    }, REQUEST_TIMEOUT_MS) : null;
+    var nextDelay = POLL_MS;
+    fetch(url, {
+      credentials: 'same-origin',
+      headers: {'Accept':'application/json'},
+      signal: controller ? controller.signal : undefined
+    })
+      .then(function(r){
+        if(!r.ok) throw new Error('Request status unavailable');
+        return r.json();
+      })
+      .then(function(body){
+        if(body && body.success && body.data) {
+          failures = 0;
+          apply(body.data);
+        } else {
+          throw new Error('Invalid request status response');
+        }
+      })
+      .catch(function(error){
+        if (error && error.name === 'AbortError') return;
+        failures += 1;
+        nextDelay = Math.min(POLL_MS * Math.pow(2, failures), 30000);
+        /* Connectivity errors never fabricate an assignment or terminal state. */
+      })
+      .finally(function(){
+        if (timeout) window.clearTimeout(timeout);
+        if (requestController === controller) requestController = null;
+        inFlight = false;
+        if (!stopped && !document.hidden) schedulePoll(nextDelay);
+      });
   }
+
+  document.addEventListener('visibilitychange', function(){
+    if (document.hidden) {
+      if (pollTimer) {
+        window.clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+      if (requestController) requestController.abort();
+    } else if (!stopped && !inFlight) {
+      schedulePoll(0);
+    }
+  });
+
   poll();
-  window.setInterval(poll, 4000);
 })();
 </script>
 {% endblock %}
