@@ -525,6 +525,24 @@ def test_configured_but_unintegrated_provider_fails_closed(app, test_user):
         
         payer_id = db.session.merge(test_user).id
         _configure_wallet_methods()
+        from app.wallet.models.payment_method import PaymentMethodConfig
+        mtn = PaymentMethodConfig.query.filter_by(
+            method_id="mobile_money_mtn_ug"
+        ).one()
+        # Model a configured provider that is enabled and supports these
+        # invoice terms, but has no marketplace collection implementation.
+        mtn.is_enabled = True
+        mtn.is_active = True
+        currencies = list(mtn.supported_currencies or [])
+        if "USD" not in {str(value).upper() for value in currencies}:
+            currencies.append("USD")
+        mtn.supported_currencies = currencies
+        timings = list(mtn.allowed_timings or [])
+        if "pay_on_completion" not in timings:
+            timings.append("pay_on_completion")
+        mtn.allowed_timings = timings
+        mtn.marketplace_collection_implemented = False
+        db.session.commit()
         with pytest.raises(MarketplaceInvoiceError) as raised:
             _create_invoice(payer_id, method="mobile_money_mtn_ug")
         assert raised.value.code == "method_not_integrated"
