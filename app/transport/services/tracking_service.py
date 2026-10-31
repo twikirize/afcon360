@@ -7,6 +7,7 @@ Handles real-time location tracking and updates
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 import json
+import math
 from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -17,6 +18,31 @@ from app.geo.services import straight_line_distance_m
 from app.transport.models import Booking, DriverProfile, Vehicle, BookingStatus
 from app.utils.exceptions import ValidationError, NotFoundError
 from app.utils.monitoring import monitor_endpoint, record_metric
+
+
+def _optional_location_number(value, field, maximum=None):
+    """Validate optional GPS telemetry without inventing a zero reading."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValidationError(
+            f"Invalid {field}: boolean is not a GPS measurement", field=field
+        )
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValidationError(
+            f"Invalid {field}: must be numeric", field=field
+        )
+    if not math.isfinite(number) or number < 0:
+        raise ValidationError(
+            f"Invalid {field}: must be finite and non-negative", field=field
+        )
+    if maximum is not None and number > maximum:
+        raise ValidationError(
+            f"Invalid {field}: must not exceed {maximum}", field=field
+        )
+    return number
 
 
 class TrackingService:
@@ -55,9 +81,15 @@ class TrackingService:
             location_update = {
                 'latitude': float(location_data['latitude']),
                 'longitude': float(location_data['longitude']),
-                'accuracy': float(location_data.get('accuracy', 0.0)),
-                'speed': float(location_data.get('speed', 0.0)),
-                'heading': float(location_data.get('heading', 0.0)),
+                'accuracy': _optional_location_number(
+                    location_data.get('accuracy'), 'accuracy'
+                ),
+                'speed': _optional_location_number(
+                    location_data.get('speed'), 'speed'
+                ),
+                'heading': _optional_location_number(
+                    location_data.get('heading'), 'heading', maximum=360
+                ),
                 'timestamp': datetime.now(timezone.utc).isoformat()
             }
             # D9 latency observability (additive, non-authoritative): carry
