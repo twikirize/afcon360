@@ -198,8 +198,6 @@
 </details>
 
 {% if is_matching %}
-{% set pu = booking.pickup_location if booking.pickup_location is mapping else {} %}
-{% set do = booking.dropoff_location if booking.dropoff_location is mapping else {} %}
 <div class="card" id="riderMatching"
      data-status-url="/api/transport/bookings/{{ booking_reference }}">
   <div class="card-header">
