@@ -53,6 +53,16 @@ def test_envelope_carries_public_ref_and_lat_first_coords():
     assert event["observed_at"]
 
 
+def test_envelope_allows_unknown_accuracy():
+    event = build_location_event(
+        "driver", "DRV-UNKNOWN-ACC",
+        _location(accuracy=None),
+    )
+    assert event["accuracy"] is None
+    assert event["latitude"] == LAT
+    assert event["longitude"] == LNG
+
+
 def test_envelope_marks_stale_reading_without_refreshing_it():
     old = datetime.now(timezone.utc) - timedelta(seconds=400)
     event = build_location_event("driver", "DRV-ABC123", _location(ts=old))
