@@ -47,40 +47,46 @@ class ThemeManager {
     }
 
     async loadUserPreferences() {
-        try {
-            const response = await fetch('/theme/api/preferences', {
-                credentials: 'same-origin',
-                redirect: 'error'
-            });
-
-            // Check if response is a redirect (3xx status)
-            if (response.redirected) {
-                console.warn('Theme API attempted redirect, using defaults');
+        // Use ThemeStore for single-flight, shared caching
+        if (window.ThemeStore) {
+            try {
+                const data = await window.ThemeStore.get();
+                this.savedPreferences = data || this.getDefaultPreferences();
+            } catch (e) {
+                console.warn('ThemeStore failed, falling back to defaults:', e);
                 this.savedPreferences = this.getDefaultPreferences();
-                this.workingPreferences = JSON.parse(JSON.stringify(this.savedPreferences));
-                return;
             }
+        } else {
+            // Fallback to direct fetch
+            try {
+                const response = await fetch('/theme/api/preferences', {
+                    credentials: 'same-origin',
+                    redirect: 'error'
+                });
 
-            if (response.ok) {
-                const contentType = response.headers.get('content-type');
-                if (contentType && contentType.includes('application/json')) {
-                    const data = await response.json();
-                    this.savedPreferences = data || this.getDefaultPreferences();
+                if (response.redirected) {
+                    console.warn('Theme API attempted redirect, using defaults');
+                    this.savedPreferences = this.getDefaultPreferences();
+                } else if (response.ok) {
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        const data = await response.json();
+                        this.savedPreferences = data || this.getDefaultPreferences();
+                    } else {
+                        console.warn('Theme API returned non-JSON response, using defaults');
+                        this.savedPreferences = this.getDefaultPreferences();
+                    }
+                } else if (response.status === 401 || response.status === 403) {
+                    console.log('User not authenticated for theme preferences, using defaults');
+                    this.savedPreferences = this.getDefaultPreferences();
                 } else {
-                    console.warn('Theme API returned non-JSON response, using defaults');
+                    console.warn(`Theme API returned status ${response.status}, using defaults`);
                     this.savedPreferences = this.getDefaultPreferences();
                 }
-            } else if (response.status === 401 || response.status === 403) {
-                // User is not authenticated or lacks permission - use defaults
-                console.log('User not authenticated for theme preferences, using defaults');
-                this.savedPreferences = this.getDefaultPreferences();
-            } else {
-                console.warn(`Theme API returned status ${response.status}, using defaults`);
+            } catch (e) {
+                console.warn('Could not load preferences, using defaults:', e);
                 this.savedPreferences = this.getDefaultPreferences();
             }
-        } catch (e) {
-            console.warn('Could not load preferences, using defaults:', e);
-            this.savedPreferences = this.getDefaultPreferences();
         }
 
         // Initialize working preferences as a copy of saved preferences

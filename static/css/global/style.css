@@ -6,6 +6,7 @@
    ============================================================= */
 
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Open+Sans:wght@300;400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -498,7 +499,6 @@ h3 { font-size: 1.2rem; font-weight: 600; }
     font-size: 0.75rem;
   }
 }
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
 :root{--sad-bg:#0d0f14;--sad-surface:#161920;--sad-surface2:#1e222b;--sad-surface3:#252a35;--sad-border:rgba(255,255,255,0.07);--sad-border2:rgba(255,255,255,0.13);--sad-text:#e8eaf0;--sad-text2:#8a8fa8;--sad-text3:#50546a;--sad-accent:#6c8fff;--sad-accent2:#3d5fc9;--sad-green:#3ecf8e;--sad-amber:#f5a623;--sad-red:#f06a6a;--sad-cyan:#30c9d6;--sad-purple:#a78bfa;--sad-r:10px;--sad-r2:14px;--sad-font:'DM Sans',system-ui,sans-serif;--sad-mono:'DM Mono','Courier New',monospace}
 .sad-shell{display:flex;min-height:100vh;background:var(--sad-bg);font-family:var(--sad-font);color:var(--sad-text);font-size:13px;line-height:1.5}
 .sad-sidebar{width:224px;min-width:224px;background:var(--sad-surface);border-right:1px solid var(--sad-border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}

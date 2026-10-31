@@ -498,12 +498,9 @@
 
   function poll() {
     if (document.hidden) return;
-    fetch(UNREAD_ENDPOINT, {
-      credentials: 'same-origin',
-      headers: { 'Accept': 'application/json' }
-    })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (d) {
+    // Use NotificationStore if available for shared polling
+    if (window.NotificationStore) {
+      window.NotificationStore.subscribe(function (d) {
         if (!d) return;
         var byModule = d.unread_by_module || {};
         var transportCount = byModule.transport || 0;
@@ -516,14 +513,39 @@
         }
         if (transportCount > baseline) ring();
         baseline = transportCount;
-      })
-      .catch(function () {
-        // Offline or transient failure — the next beat retries.
       });
+    } else {
+      // Fallback to direct fetch
+      fetch(UNREAD_ENDPOINT, {
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' }
+      })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (!d) return;
+          var byModule = d.unread_by_module || {};
+          var transportCount = byModule.transport || 0;
+          paintBadges(d.unread_count || 0, byModule);
+          // First response only sets the watermark — entering the workspace
+          // with unread items already there must not ring.
+          if (baseline === null) {
+            baseline = transportCount;
+            return;
+          }
+          if (transportCount > baseline) ring();
+          baseline = transportCount;
+        })
+        .catch(function () {
+          // Offline or transient failure — the next beat retries.
+        });
+    }
   }
 
   poll();
-  setInterval(poll, POLL_MS);
+  if (!window.NotificationStore) {
+    // Only set up interval if not using NotificationStore
+    setInterval(poll, POLL_MS);
+  }
 
   // Offer chime left behind by driver_offer_poll.js before its reload.
   try {

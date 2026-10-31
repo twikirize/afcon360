@@ -208,6 +208,12 @@
 <!-- Base functionality that uses utils -->
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/base.js') }}"></script>
 
+<!-- Theme Store (must load before ThemeManager) -->
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/global/theme-store.js') }}"></script>
+
+<!-- Notification Store (must load before driver_alerts.js) -->
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/global/notifications-store.js') }}"></script>
+
 <!-- Theme Manager -->
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/global/theme-manager.js') }}"></script>
 

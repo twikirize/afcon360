@@ -537,6 +537,12 @@ const AFCON_CONFIG = {
 };
 </script>
 
+<!-- Theme Store (must load before ThemeManager) -->
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/global/theme-store.js') }}"></script>
+
+<!-- Notification Store (must load before any notification consumers) -->
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/global/notifications-store.js') }}"></script>
+
 <!-- Theme Manager -->
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/global/theme-manager.js') }}"></script>
 <script nonce="{{ csp_nonce }}">

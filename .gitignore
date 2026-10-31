@@ -382,3 +382,6 @@ extract_sql.py
 baseline_schema.sql
 migration.sql
 migration_sql.txt
+marketplace_code.txt
+my_code_changes.txt
+run_with_otel.py

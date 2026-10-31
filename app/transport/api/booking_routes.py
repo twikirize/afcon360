@@ -53,20 +53,10 @@ def _booking_by_reference_or_404(booking_reference):
 
 
 def _current_user_is_admin():
-    from flask import session
     result = (
         current_user.is_authenticated
         and hasattr(current_user, "has_global_role")
         and current_user.has_global_role("admin", "super_admin", "owner")
-    )
-    logger.debug(
-        "_current_user_is_admin user_id=%s auth=%s has_global_role=%s "
-        "active_role=%s result=%s",
-        getattr(current_user, "id", None),
-        current_user.is_authenticated,
-        hasattr(current_user, "has_global_role"),
-        session.get("active_global_role"),
-        result,
     )
     return result
 

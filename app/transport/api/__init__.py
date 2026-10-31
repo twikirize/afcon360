@@ -7,12 +7,6 @@ Creates blueprint and API instance, then delegates registration to routes.py
 from flask import Blueprint
 from flask_restful import Api
 
-# Note: we create the Blueprint and Api inside init_api (not at module level)
-# to avoid reusing the same Blueprint object across multiple app factory
-# invocations (which causes Flask to consider the blueprint "finalized" and
-# refuse subsequent setup/registration). This prevents test-time failures
-# when create_app() is called more than once.
-
 
 def init_api(app):
     """

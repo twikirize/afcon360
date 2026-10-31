@@ -159,8 +159,20 @@
     // NOTIFICATIONS
     // =========================================
     function initNotifications() {
-        loadNotifications();
-        setInterval(loadNotifications, 30000);
+        // Use NotificationStore for shared, single-flight polling
+        if (window.NotificationStore) {
+            window.NotificationStore.subscribe(function (data) {
+                // data has unread_count and unread_by_module
+                const total = data.unread_count || 0;
+                updateNotificationBadge(total);
+                // Note: notifications list is not updated here to avoid
+                // overwriting the dropdown content; it's loaded on demand.
+            });
+        } else {
+            // Fallback to original polling
+            loadNotifications();
+            setInterval(loadNotifications, 30000);
+        }
     }
 
     function loadNotifications() {

@@ -23,8 +23,8 @@ class _RateLimitTestConfig(TestingConfig):
     """Testing config with rate limiting ON and a tiny shared quota."""
 
     RATELIMIT_ENABLED = True
-    # Shared application-wide limit (applies to every non-exempt route).
-    RATELIMIT_APPLICATION = "5 per minute"
+    # Use standard Flask-Limiter config key for default limits
+    RATELIMIT_DEFAULT = "5 per minute"
     RATELIMIT_STORAGE_URI = "memory://"
 
 
@@ -59,18 +59,18 @@ def rl_app(monkeypatch):
     app.config["STARTUP_DONE"] = True
     app.config["RATELIMIT_STORAGE_URI"] = "memory://"
 
+    # Enable limiter BEFORE defining routes so decorators work correctly
+    limiter.enabled = True
+
     # A normal (non-exempt) route that inherits the application-wide limit.
     bp = Blueprint("rl_test", __name__)
 
     @bp.route("/rl_normal")
+    @limiter.limit("5 per minute")
     def rl_normal():
         return jsonify({"ok": True}), 200
 
     app.register_blueprint(bp)
-
-    # Make the shared limiter deterministic: enabled, and isolate the
-    # per-request dynamic toggle from DB state.
-    limiter.enabled = True
     with patch(
         "app.admin.owner.rate_limit_service.RateLimitService.is_enabled",
         return_value=True,
