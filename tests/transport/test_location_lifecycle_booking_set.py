@@ -64,7 +64,9 @@ def _payload(**over):
 
 def _create(app, user_id, data):
     from app.transport.services.booking_service import BookingService
+    from app.wallet.models.payment_method import PaymentMethodConfig
     with app.app_context():
+        PaymentMethodConfig.initialize_defaults()
         return BookingService().create_booking(
             user_id, data, request_id=f"test-{data['idempotency_key']}"
         )["data"]["booking_reference"]
