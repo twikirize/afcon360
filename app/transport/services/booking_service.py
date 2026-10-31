@@ -646,33 +646,41 @@ class BookingService:
             selected_payment_method = str(
                 sanitized_data.get("payment_method") or "cash"
             ).strip().lower()
-            from app.transport.services.payment_methods import (
-                get_available_transport_payment_methods,
-            )
-            eligible_methods = get_available_transport_payment_methods(
-                customer_id,
-                currency_code=fare_currency,
-                amount=estimated_price,
-                payment_timing="pay_on_completion",
-            )
-            selected_eligibility = next(
-                (
-                    method for method in eligible_methods
-                    if str(method.get("code") or "").strip().lower()
-                    == selected_payment_method
-                ),
-                None,
-            )
-            if (selected_eligibility is None
-                    or str(selected_eligibility.get("status") or "").lower()
-                    != "ready"):
-                raise ValidationError(
-                    message=(
-                        "The selected payment method is not ready for this fare. "
-                        "Choose another available method or complete Wallet setup."
-                    ),
-                    field="payment_method",
+
+            # Cash is an offline, pay-on-completion choice and has no rider
+            # Wallet balance to authorize. The HTTP booking route has already
+            # confirmed that Cash is enabled. Every Wallet-backed/digital
+            # choice must be certified against the exact fare here as well,
+            # because this service also serves scheduled/non-instant rides.
+            if selected_payment_method != "cash":
+                from app.transport.services.payment_methods import (
+                    get_available_transport_payment_methods,
                 )
+                eligible_methods = get_available_transport_payment_methods(
+                    customer_id,
+                    currency_code=fare_currency,
+                    amount=estimated_price,
+                    payment_timing="pay_on_completion",
+                )
+                selected_eligibility = next(
+                    (
+                        method for method in eligible_methods
+                        if str(method.get("code") or "").strip().lower()
+                        == selected_payment_method
+                    ),
+                    None,
+                )
+                if (selected_eligibility is None
+                        or str(selected_eligibility.get("status") or "").lower()
+                        != "ready"):
+                    raise ValidationError(
+                        message=(
+                            "The selected payment method is not ready for this fare. "
+                            "Choose another available method or complete Wallet setup."
+                        ),
+                        field="payment_method",
+                    )
+
 
             # Record the applied surge alongside the price (fare node):
             # the surge_multiplier column previously stayed at its 1.00
