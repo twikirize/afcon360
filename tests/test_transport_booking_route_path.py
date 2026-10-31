@@ -644,8 +644,7 @@ def test_low_balance_wallet_is_rejected_for_scheduled_booking(
         "/transport/book", data=form, follow_redirects=False
     )
     assert response.status_code in (301, 302), response.get_data(as_text=True)
-    assert Decimal("0") in calls
-    assert any(amount > 0 for amount in calls)
+    assert calls and all(amount > 0 for amount in calls)
     with app.app_context():
         assert Booking.query.filter_by(
             user_id=rider_id, is_deleted=False
