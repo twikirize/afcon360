@@ -707,22 +707,22 @@ def booking_location_snapshot(booking_reference):
     driver_public_ref = subject["driver_public_ref"]
     internal_id = _resolve_location_subject("driver", driver_public_ref)
     if internal_id is None:
-        return jsonify({
+        return _private_snapshot_response({
             "success": True,
             "data": {"status": "closed", "reason": "no_driver"},
-        }), 200
+        }, 200)
 
     try:
         current = TrackingService.get_location("driver", internal_id)
     except NotFoundError:
-        return jsonify({
+        return _private_snapshot_response({
             "success": True,
             "data": {"status": "missing"},
-        }), 200
+        }, 200)
     if not current.get("success"):
         current_app.logger.warning(
             "Rider snapshot polling failed for booking %s", ref)
-        return jsonify({
+        return _private_snapshot_response({
             "success": False,
             "error": "Location snapshot temporarily unavailable",
             "code": "LOCATION_UNAVAILABLE",
@@ -734,12 +734,12 @@ def booking_location_snapshot(booking_reference):
     except Exception as exc:
         current_app.logger.warning(
             "Rider snapshot rejected for booking %s: %s", ref, exc)
-        return jsonify({
+        return _private_snapshot_response({
             "success": False,
             "error": "Location snapshot temporarily unavailable",
             "code": "LOCATION_UNAVAILABLE",
-        }), 503
-    return jsonify({"success": True, "data": event}), 200
+        }, 503)
+    return _private_snapshot_response({"success": True, "data": event}, 200)
 
 
 @geo_bp.get("/stream/booking/<booking_reference>")
