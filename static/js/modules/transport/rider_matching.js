@@ -1,6 +1,6 @@
 /* ============================================================ */
 /* BOOKING SHOW - RIDER MATCHING PANEL (post-confirm live search) */
-/* Polls booking status; refreshes live availability + fares.    */
+/* Polls only authoritative booking status after fare acceptance. */
 /* On assignment flips the panel to "Driver assigned" then       */
 /* reloads so the canonical driver/tracking view renders.        */
 /* ============================================================ */
@@ -12,10 +12,8 @@
     if (!panel) return;
 
     var statusUrl = panel.getAttribute('data-status-url');
-    var optionsUrl = panel.getAttribute('data-options-url');
-    var csrf = panel.getAttribute('data-csrf') || '';
     var availEl = document.getElementById('rmAvail');
-    var optsEl = document.getElementById('rmOptions');
+    var retryMountEl = document.getElementById('rmRetryActions');
     var pingEl = document.getElementById('rmPing');
     var assignedEl = document.getElementById('rmAssigned');
     var assignedSub = document.getElementById('rmAssignedSub');
@@ -31,8 +29,7 @@
     var SEARCH_BUDGET_POLLS = 60;
     var polls = 0;
     var finished = false;
-    var noSupply = false;
-    var optTimer = null;
+    var searchPaused = false;
     /* Bounded requests (FS-4): AbortController timeout so a stalled
        network retries on cadence instead of hanging a poll forever. */
     var REQ_TIMEOUT_MS = 15000;
@@ -63,7 +60,7 @@
         /* Truthful connectivity note after repeated failures — never a
            no-supply verdict (failures don't spend the search budget). */
         failures += 1;
-        if (failures >= 3 && availEl && !finished && !noSupply) {
+        if (failures >= 3 && availEl && !finished && !searchPaused) {
             availEl.textContent = 'Connection issue — still trying.';
         }
     }
@@ -83,82 +80,6 @@
         return String(s || '').toLowerCase();
     }
 
-    function optionBody() {
-        var body = {
-            service_type: panel.getAttribute('data-service-type') || 'on_demand',
-            currency: panel.getAttribute('data-currency') || 'USD'
-        };
-        var pl = panel.getAttribute('data-pickup-lat');
-        var pn = panel.getAttribute('data-pickup-lng');
-        var dl = panel.getAttribute('data-dropoff-lat');
-        var dn = panel.getAttribute('data-dropoff-lng');
-        if (pl && pn) { body.pickup_latitude = parseFloat(pl); body.pickup_longitude = parseFloat(pn); }
-        if (dl && dn) { body.dropoff_latitude = parseFloat(dl); body.dropoff_longitude = parseFloat(dn); }
-        return body;
-    }
-
-    function esc(s) {
-        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-        });
-    }
-
-    function fmtFare(o) {
-        var amt = Number(o.fare_total || 0).toFixed(2);
-        var cur = o.currency || 'USD';
-        return cur === 'USD' ? '$' + amt : amt + ' ' + cur;
-    }
-
-    function renderOptions(data) {
-        if (finished) return;
-        var opts = (data && data.options) || [];
-        if (!opts.length) {
-            if (availEl) {
-                availEl.textContent = 'No vehicles available nearby right now — we keep searching.';
-            }
-            if (optsEl) optsEl.innerHTML = '';
-            return;
-        }
-        var total = 0;
-        opts.forEach(function (o) { total += (o.available_count || 0); });
-        if (availEl) {
-            availEl.textContent = total + ' vehicle' + (total === 1 ? '' : 's') +
-                ' available nearby' +
-                (opts[0].eta_minutes != null ? ' · ETA ~' + opts[0].eta_minutes + ' min' : '');
-        }
-        if (optsEl) {
-            optsEl.innerHTML = '';
-            opts.slice(0, 3).forEach(function (o) {
-                var row = document.createElement('div');
-                row.className = 'rm-opt';
-                row.innerHTML =
-                    '<span>' + esc(o.display_name || o.vehicle_class) +
-                    ' <span style="color:var(--text-muted);">\u00d7' +
-                    (o.available_count || 0) + '</span></span>' +
-                    '<span style="font-weight:600;">' + esc(fmtFare(o)) + '</span>';
-                optsEl.appendChild(row);
-            });
-        }
-    }
-
-    function fetchOptions() {
-        if (finished || !optionsUrl) return;
-        fetchWithTimeout(optionsUrl, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-CSRFToken': csrf,
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify(optionBody())
-        })
-            .then(function (r) { if (!r.ok) throw new Error('options ' + r.status); return r.json(); })
-            .then(function (payload) { renderOptions(payload && payload.data); })
-            .catch(function () { /* availability is supplementary — poll continues */ });
-    }
-
     function enterAssigned(st) {
         finished = true;
         if (pingEl) pingEl.className = 'rm-step done';
@@ -172,60 +93,42 @@
             { detail: { status: st || '' } }));
     }
 
-    function enterNoSupply() {
+    function pauseSearchForSlowMatching() {
         /* UI-16-A: in-progress pause, NOT a terminal verdict. The client
            polling budget is exhausted while the backend booking is still
            genuinely matching, so the copy must keep describing an ongoing
            search — never "no drivers available". No backend change, no
            fake driver, no new booking; rider-facing polling pauses here
-           until the rider resumes it. (Internal names kept; only the
-           rider-visible copy and this comment changed.) */
+           until the rider explicitly resumes the same status check. */
         finished = true;
-        noSupply = true;
-        if (optTimer) { clearInterval(optTimer); optTimer = null; }
+        searchPaused = true;
         if (pingEl) pingEl.className = 'rm-step done';
         if (availEl) availEl.textContent =
             'Still checking for drivers. ' +
             'This is taking longer than expected.';
-        if (optsEl) {
-            optsEl.innerHTML = '';
+        if (retryMountEl) {
+            retryMountEl.innerHTML = '';
             var btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'btn btn-secondary rm-retry';
             btn.textContent = 'Keep checking';
             btn.addEventListener('click', retrySearch);
-            optsEl.appendChild(btn);
+            retryMountEl.appendChild(btn);
         }
     }
 
     function retrySearch() {
         /* Explicit rider resume of status polling against the SAME
-           booking: reset the frontend budget and restart the existing
-           pollers. statusUrl and optionsUrl are unchanged, no POST to
-           the server-side retry endpoint happens here, so no second
-           booking can result and no backend dispatch state is touched. */
-        if (!noSupply) return;
-        noSupply = false;
+           booking: reset the frontend budget and restart the same status
+           check. No new booking or backend dispatch state is created. */
+        if (!searchPaused) return;
+        searchPaused = false;
         finished = false;
         polls = 0;
         if (pingEl) pingEl.className = 'rm-step active';
-        if (availEl) availEl.textContent = 'Checking available vehicles…';
-        if (optsEl) optsEl.innerHTML = '';
-        fetchOptions();
-        startOptionPolling();
+        if (availEl) availEl.textContent = 'Checking for driver acceptance…';
+        if (retryMountEl) retryMountEl.innerHTML = '';
         tick();
-    }
-
-    function startOptionPolling() {
-        stopOptionPolling();
-        optTimer = setInterval(function () {
-            if (finished) { stopOptionPolling(); return; }
-            fetchOptions();
-        }, 20000);
-    }
-
-    function stopOptionPolling() {
-        if (optTimer) { clearInterval(optTimer); optTimer = null; }
     }
 
     function tick() {
@@ -253,7 +156,7 @@
                 polls += 1;
                 /* Budget is checked only after a confirmed MATCHING read,
                    so a legitimate assignment at the boundary always wins. */
-                if (budgetExhausted(polls)) { enterNoSupply(); return; }
+                if (budgetExhausted(polls)) { pauseSearchForSlowMatching(); return; }
                 setTimeout(tick, 3500);
             })
             .catch(function () {
@@ -265,7 +168,6 @@
             });
     }
 
-    fetchOptions();
     startOptionPolling();
     tick();
 
