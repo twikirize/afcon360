@@ -96,23 +96,18 @@
 {% set do = booking.dropoff_location if booking.dropoff_location is mapping else {} %}
 <div class="card" id="riderMatching"
      data-status-url="/api/transport/bookings/{{ booking.booking_reference }}"
-     data-options-url="/api/transport/ride-options"
-     data-csrf="{{ raw_csrf_token }}"
-     data-service-type="{{ booking.service_type.value if booking.service_type else 'on_demand' }}"
-     data-currency="{{ booking.currency.value if booking.currency else 'USD' }}"
-     {% if pu.get('latitude') is not none and pu.get('longitude') is not none %}data-pickup-lat="{{ pu.get('latitude') }}" data-pickup-lng="{{ pu.get('longitude') }}"{% endif %}
-     {% if do.get('latitude') is not none and do.get('longitude') is not none %}data-dropoff-lat="{{ do.get('latitude') }}" data-dropoff-lng="{{ do.get('longitude') }}"{% endif %}>
+     >
   <div class="card-header">
     <span class="card-title">Finding your driver</span>
     <span class="badge badge-amber" role="status" aria-live="polite">Pinging drivers…</span>
   </div>
   <div class="rm-steps">
     <div class="rm-step done"><span class="rm-dot" aria-hidden="true"></span><div><div class="rm-t">Request received</div><div class="rm-s">We have your ride details</div></div></div>
-    <div class="rm-step active" id="rmPing"><span class="rm-dot" aria-hidden="true"></span><div><div class="rm-t">Pinging nearby drivers</div><div class="rm-s" id="rmAvail">Checking available vehicles…</div></div></div>
+    <div class="rm-step active" id="rmPing"><span class="rm-dot" aria-hidden="true"></span><div><div class="rm-t">Pinging nearby drivers</div><div class="rm-s" id="rmAvail">Checking for driver acceptance…</div></div></div>
     <div class="rm-step" id="rmAssigned"><span class="rm-dot" aria-hidden="true"></span><div><div class="rm-t">Driver assigned</div><div class="rm-s" id="rmAssignedSub">Waiting for a driver to accept your ride</div></div></div>
   </div>
-  <div id="rmOptions" class="rm-options"></div>
-  <div class="rm-note">Availability and fares are live from the fare engine — they refresh while we search.</div>
+  <div id="rmRetryActions" class="rm-options"></div>
+  <div class="rm-note">Your fare is already confirmed. Driver availability is confirmed only when a driver accepts.</div>
 </div>
 {% endif %}
 
