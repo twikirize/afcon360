@@ -5,7 +5,7 @@ from flask_restful import Resource
 from flask_login import current_user, login_required
 from app.extensions import db
 from app.transport.models import DriverProfile, DriverVehicleHistory, Booking, BookingPayment, Vehicle
-from app.utils.enums import BookingStatus, PaymentStatus, ComplianceStatus
+from app.utils.enums import BookingStatus, PaymentStatus, ComplianceStatus, VerificationTier
 from app.auth.decorators import admin_required
 from app.transport.decorator import transport_admin_required
 from app.transport.utils.helpers import paginate, filter_query, sort_query
@@ -14,6 +14,7 @@ from decimal import Decimal
 from sqlalchemy import or_, func
 import sqlalchemy as sa
 import logging
+import math
 import re
 from typing import TYPE_CHECKING, Any, Optional, cast
 
@@ -384,19 +385,24 @@ class DriverVerificationResource(Resource):
             driver.background_check_reference = data.get("reference")
 
         elif action == "verify_tier":
-            # Validate tier against enum
+            # Use the canonical persisted enum values; invented display tiers
+            # do not exist in the PostgreSQL verificationtier enum.
             tier = data.get("tier")
-            valid_tiers = {"bronze", "silver", "gold", "platinum"}
-            if tier not in valid_tiers:
-                return {"success": False, "error": f"Invalid tier. Valid: {sorted(valid_tiers)}"}, 400
-            driver.verification_tier = tier
+            try:
+                verification_tier = VerificationTier(tier)
+            except (TypeError, ValueError):
+                return {
+                    "success": False,
+                    "error": f"Invalid tier. Valid: {VerificationTier.values()}",
+                }, 400
+            driver.verification_tier = verification_tier
 
         elif action == "update_compliance":
             # Validate compliance status against enum
             status = data.get("status")
             try:
                 compliance_status = ComplianceStatus(status)
-            except ValueError:
+            except (TypeError, ValueError):
                 valid_statuses = [s.value for s in ComplianceStatus]
                 return {"success": False, "error": f"Invalid compliance status. Valid: {valid_statuses}"}, 400
             driver.compliance_status = compliance_status
@@ -483,7 +489,7 @@ class DriverLocationResource(Resource):
         if accuracy is not None:
             try:
                 accuracy = float(accuracy)
-                if accuracy < 0:
+                if not math.isfinite(accuracy) or accuracy < 0:
                     return {"success": False, "error": "accuracy must be non-negative"}, 400
             except (TypeError, ValueError):
                 return {"success": False, "error": "accuracy must be a valid number"}, 400
@@ -492,7 +498,7 @@ class DriverLocationResource(Resource):
         if speed is not None:
             try:
                 speed = float(speed)
-                if speed < 0:
+                if not math.isfinite(speed) or speed < 0:
                     return {"success": False, "error": "speed must be non-negative"}, 400
             except (TypeError, ValueError):
                 return {"success": False, "error": "speed must be a valid number"}, 400
@@ -501,7 +507,7 @@ class DriverLocationResource(Resource):
         if heading is not None:
             try:
                 heading = float(heading)
-                if not (0 <= heading <= 360):
+                if not math.isfinite(heading) or not (0 <= heading <= 360):
                     return {"success": False, "error": "heading must be between 0 and 360"}, 400
             except (TypeError, ValueError):
                 return {"success": False, "error": "heading must be a valid number"}, 400
@@ -510,7 +516,7 @@ class DriverLocationResource(Resource):
         if client_ts is not None:
             try:
                 client_ts = float(client_ts)
-                if client_ts < 0:
+                if not math.isfinite(client_ts) or client_ts < 0:
                     return {"success": False, "error": "client_ts must be non-negative"}, 400
             except (TypeError, ValueError):
                 return {"success": False, "error": "client_ts must be a valid number"}, 400
@@ -860,9 +866,15 @@ class DriverOfferDeclineResource(Resource):
                     "code": "already_accepted",
                 }, 409
         declined = OfferService.decline_offer(booking_reference, profile.id)
+        if not declined:
+            return {
+                "success": False,
+                "error": "This offer is no longer active",
+                "code": "offer_unavailable",
+            }, 409
         return {
             "success": True,
-            "data": {"booking_reference": booking_reference, "declined": declined},
+            "data": {"booking_reference": booking_reference, "declined": True},
         }
 
 
