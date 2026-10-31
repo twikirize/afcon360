@@ -38,6 +38,7 @@ on:
       - "tests/test_transport_restful_auth.py"
       - "tests/test_transport_tracking_live.py"
       - "tests/test_transport_frontend_contracts.py"
+      - "tests/test_request_tracker_polling.cjs"
       - "tests/test_geo_realtime_fallback.cjs"
       - "tests/test_rider_sync_driver_card.cjs"
       - "migrations/**"
@@ -207,6 +208,7 @@ jobs:
           node --input-type=module --check < static/js/modules/transport/offer-poller.js
           node tests/test_rider_sync_driver_card.cjs
           node tests/test_geo_realtime_fallback.cjs
+          node tests/test_request_tracker_polling.cjs
 
       - name: Run fare confirmation, request lifecycle, payment, and admin regressions
         run: >-
