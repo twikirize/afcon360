@@ -554,11 +554,9 @@ class DriverLocationResource(Resource):
             driver.last_seen_at = datetime.now(timezone.utc)
             db.session.commit()
 
-            # Standard API envelope: callers can confirm a durable write.
-            return {
-                "success": True,
-                "data": result.get("data", {}),
-            }, 200
+            # No body: the dashboard only needs the committed HTTP success.
+            # Do not expose TrackingService's internal entity_id to clients.
+            return '', 204
             
         except ValidationError as e:
             db.session.rollback()
