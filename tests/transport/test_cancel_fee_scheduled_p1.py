@@ -230,7 +230,10 @@ class TestRiderCancellation:
         assert body["status"] == "success"
         assert body["data"]["booking_reference"] == ref
         assert body["data"]["cancellation_fee"] == 20.0
-        assert body["data"]["refund_amount"] == 80.0
+        assert body["data"]["refund_amount"] == 80.0  # legacy estimate field
+        assert body["data"]["refund_amount_estimate"] == 80.0
+        assert body["data"]["refund_processed"] is False
+        assert body["data"]["refund_status"] == "not_processed_by_transport"
         assert body["data"]["currency"] == "USD"
         assert _booking_field(app, booking_id, "status") == (
             BookingStatus.CANCELLED)
