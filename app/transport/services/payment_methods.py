@@ -12,6 +12,8 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
+from app.utils.exceptions import ValidationError
+
 
 def get_available_transport_payment_methods(
     user_id: Optional[int] = None,
@@ -74,6 +76,40 @@ def get_available_transport_payment_methods(
         amount=amount_decimal,
         settlement_timing=payment_timing,
     )
+
+
+
+def require_ready_transport_payment_method(
+    methods: Optional[List[Dict[str, Any]]],
+    method_code: str,
+) -> Dict[str, Any]:
+    """Fail closed unless Wallet certifies the selected marketplace method ready.
+
+    A method can be listed for explanation/onboarding while its status is
+    low_balance, needs_kyc, needs_pin, needs_setup or unavailable. Merely
+    appearing in the catalogue is never authority to accept a commitment.
+    """
+    code = str(method_code or "").strip().lower()
+    selected = next(
+        (
+            method for method in (methods or [])
+            if str(method.get("code") or "").strip().lower() == code
+        ),
+        None,
+    )
+    if selected is None:
+        raise ValidationError(
+            message="The selected payment method is not available for this fare.",
+            field="payment_method",
+        )
+    status = str(selected.get("status") or "").strip().lower()
+    if status != "ready":
+        message = str(
+            selected.get("status_message")
+            or "This payment method is not ready. Choose another available method."
+        )
+        raise ValidationError(message=message, field="payment_method")
+    return selected
 
 
 def get_transport_payment_options(
