@@ -65,6 +65,7 @@ def _payload(**over):
 def _create(app, user_id, data):
     from app.transport.services.booking_service import BookingService
     from app.wallet.models.payment_method import PaymentMethodConfig
+    from app.extensions import db
     with app.app_context():
         PaymentMethodConfig.initialize_defaults()
         cash = PaymentMethodConfig.query.filter_by(method_id="cash").one()
