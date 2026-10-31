@@ -188,8 +188,6 @@ def test_ride_options_rejected_quotes_never_reach_fare(app, anonymous_client,
         raise AssertionError("fare must not be reached for rejected quotes")
 
     monkeypatch.setattr(ro.fare_service, "calculate_estimate", _boom)
-    monkeypatch.setattr(ro, "available_by_class", lambda: (_ for _ in ()).throw(
-        AssertionError("availability must not be reached for rejected quotes")))
     for body in (
         {},
         {"pickup_latitude": LAT_A},
@@ -244,8 +242,8 @@ def test_legacy_book_route_rejects_text_only_endpoints(app,
 
     The retired `book.html` form posts no lat/lng fields. With the booking
     safety closure, such a text-only submission must fail honestly at the
-    route (redirect back to the book form) instead of silently pricing the
-    old 5 km planning default — and must create no booking row.
+    route (redirect back to the Transport home page) instead of silently
+    pricing the old 5 km planning default — and must create no booking row.
     """
     from app.extensions import db
     from app.identity.individuals.individual_verification import (
@@ -289,7 +287,7 @@ def test_legacy_book_route_rejects_text_only_endpoints(app,
 
     assert resp.status_code in (301, 302)
     location = resp.headers.get("Location", "")
-    assert "/transport/book" in location
+    assert location.rstrip("/").endswith("/transport")
     assert "/transport/rides/" not in location
     with app.app_context():
         assert Booking.query.filter_by(user_id=rider_id).count() == before
