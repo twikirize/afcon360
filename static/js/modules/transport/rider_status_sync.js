@@ -30,7 +30,8 @@
 
     /* Mirrors templates/transport/rides/show.html server rendering. */
     var STEPS = ['draft', 'pending_payment', 'confirmed', 'assigned',
-        'driver_en_route', 'pickup_arrived', 'in_progress', 'completed'];
+        'driver_en_route', 'pickup_arrived', 'no_show', 'in_progress',
+        'disputed', 'completed'];
     /* app/transport/routes.py _MATCHING_STATUSES */
     var MATCHING = { pending_payment: true, confirmed: true };
     /* app/transport/services/booking_service.py STATUS_TRANSITIONS (out == []) */
@@ -60,7 +61,9 @@
        fallback for every status NOT enumerated here. */
     var BADGE_LABEL = {
         confirmed: 'Finding your driver',
-        no_match: 'No match found'
+        no_match: 'No match found',
+        no_show: 'No-show',
+        disputed: 'Disputed — under review'
     };
 
     /* Bounded polling contract (repo patterns: 3.5s-30s intervals,
@@ -122,8 +125,8 @@
     function stageOf(status) {
         if (status === 'draft' || status === 'pending_payment') return 0;
         if (status === 'confirmed' || status === 'assigned') return 1;
-        if (status === 'driver_en_route' || status === 'pickup_arrived') return 2;
-        if (status === 'in_progress' || status === 'completed') return 3;
+        if (status === 'driver_en_route' || status === 'pickup_arrived' || status === 'no_show') return 2;
+        if (status === 'in_progress' || status === 'disputed' || status === 'completed') return 3;
         return 0;
     }
 
