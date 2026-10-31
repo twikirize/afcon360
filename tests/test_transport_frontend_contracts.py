@@ -32,6 +32,9 @@ def test_post_confirmation_matching_does_not_infer_live_supply_from_quotes():
     assert "data-options-url" not in template
     assert "Driver and vehicle details appear after acceptance." in template
     assert "A driver and vehicle are confirmed only after a driver accepts." in template
+    assert "var DRIVER_ACCEPTED =" in matching
+    assert "if (DRIVER_ACCEPTED[st])" in matching
+    assert "optionsUrl" not in matching
 
 
 def test_wallet_commitment_requires_ready_status():
