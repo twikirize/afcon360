@@ -181,6 +181,20 @@ class TestLocationEndpointAuthorization:
 # --- stored location JSON shape --------------------------------------------------
 
 class TestStoredLocationShape:
+    def test_missing_optional_telemetry_is_not_fabricated(
+            self, app, live_driver, monkeypatch):
+        monkeypatch.setattr(
+            "app.transport.services.tracking_service.redis_client",
+            _StoreRedis())
+        result = TrackingService.update_location(
+            "driver", live_driver.id,
+            {"latitude": -1.2833, "longitude": 36.8167})
+        assert result["success"] is True
+        location = result["data"]["location"]
+        assert location["accuracy"] is None
+        assert location["speed"] is None
+        assert location["heading"] is None
+
     def test_stored_payload_carries_telemetry_fields(
             self, app, live_driver, monkeypatch):
         recorded = {}
