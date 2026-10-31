@@ -627,8 +627,8 @@
           ? 'A cancellation fee of ' + formatMoney(fee, currency) +
             ' was recorded as uncollected.'
           : 'No cancellation fee applies.';
-        summary += ' Calculated amount for Wallet reconciliation: ' +
-          formatMoney(refund, currency) + '. No refund was processed by this cancellation action.';
+        summary += ' Calculated potential refund: ' +
+          formatMoney(refund, currency) + '. No refund was processed; any eligible refund requires separate Wallet processing.';
         closeCancelModal();
         alert(summary);
         location.reload();
