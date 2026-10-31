@@ -403,7 +403,7 @@ def test_committed_booking_matching_does_not_poll_fare_quotes_as_supply():
     """Post-confirmation matching must not interpret quote data as fleet availability."""
     from pathlib import Path
 
-    template = Path("templates/transport/bookings/show.html").read_text(encoding="utf-8")
+    template = Path("templates/transport/rides/show.html").read_text(encoding="utf-8")
     client = Path("static/js/modules/transport/rider_matching.js").read_text(encoding="utf-8")
 
     assert 'data-status-url="/api/transport/bookings/' in template
