@@ -168,7 +168,6 @@
             });
     }
 
-    startOptionPolling();
     tick();
 
     /* Node-test seam (zero browser effect): expose the pure matching
