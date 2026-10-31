@@ -162,6 +162,20 @@ def rider_with_kyc(app):
             user_id=user.id, status="verified",
             scope={"national_id": True, "biometric": True},
         ))
+        from app.wallet.models.payment_method import PaymentMethodConfig
+        PaymentMethodConfig.initialize_defaults()
+        cash = PaymentMethodConfig.query.filter_by(method_id="cash").one()
+        cash.is_enabled = True
+        cash.is_active = True
+        cash.marketplace_collection_implemented = True
+        currencies = list(cash.supported_currencies or [])
+        if "USD" not in {str(value).upper() for value in currencies}:
+            currencies.append("USD")
+        cash.supported_currencies = currencies
+        timings = list(cash.allowed_timings or [])
+        if "pay_on_completion" not in timings:
+            timings.append("pay_on_completion")
+        cash.allowed_timings = timings
         db.session.commit()
 
         assert calculate_kyc_tier(user.id)["tier"] >= 2
@@ -210,6 +224,28 @@ def _form(**over):
     return data
 
 
+def _attach_confirmed_quote(client, form):
+    """Mirror the rider's quote-first commit boundary for instant rides."""
+    response = client.post("/api/transport/ride-options", json={
+        "pickup_latitude": float(form["pickup_latitude"]),
+        "pickup_longitude": float(form["pickup_longitude"]),
+        "dropoff_latitude": float(form["dropoff_latitude"]),
+        "dropoff_longitude": float(form["dropoff_longitude"]),
+        "service_type": form["service_type"],
+        "vehicle_class": form["vehicle_class"],
+        "currency": form["currency"],
+    })
+    assert response.status_code == 200, response.get_data(as_text=True)
+    options = response.get_json()["data"]["options"]
+    selected = next(
+        option for option in options
+        if option["vehicle_class"] == form["vehicle_class"]
+    )
+    form["fare_quote_token"] = selected["quote_token"]
+    form["confirmed_fare_amount"] = str(selected["fare_total"])
+    return form
+
+
 class TestRouteCashGate:
 
     def test_scheduled_cash_ride_stays_pending_payment(
@@ -232,21 +268,31 @@ class TestRouteCashGate:
         assert booking is not None
         assert booking.status == BookingStatus.PENDING_PAYMENT.value
 
-    def test_instant_cash_ride_confirms_at_route(
+    def test_instant_cash_ride_starts_request_first_matching(
             self, client, rider_with_kyc):
-        """Control: the immediate confirm/dispatch for cash INSTANT rides
-        is unchanged."""
+        """An instant ride creates a RideRequest, not a Booking before accept."""
+        from app.transport.models import RideRequest, SearchCycle
+
         _login(client, rider_with_kyc)
-        resp = client.post("/transport/book", data=_form(),
+        form = _attach_confirmed_quote(client, _form())
+        resp = client.post("/transport/book", data=form,
                            follow_redirects=False)
         assert resp.status_code == 302
         location = resp.headers["Location"]
         assert "/transport/rides/" in location
         ref = location.rsplit("/", 1)[-1]
         with client.application.app_context():
-            booking = Booking.query.filter_by(booking_reference=ref).first()
-        assert booking is not None
-        assert booking.status == BookingStatus.CONFIRMED.value
+            request_row = RideRequest.query.filter_by(
+                public_id=ref
+            ).first()
+            assert request_row is not None
+            assert request_row.payment_method == "cash"
+            assert Booking.query.filter_by(
+                booking_reference=ref
+            ).first() is None
+            assert SearchCycle.query.filter_by(
+                ride_request_id=request_row.id
+            ).count() == 1
 
 
 # ---------------------------------------------------------------------------
