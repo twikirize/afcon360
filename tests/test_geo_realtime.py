@@ -515,6 +515,8 @@ def test_booking_snapshot_fallback_is_available_to_booking_owner(
     assert payload["data"]["public_ref"] == driver_code
     assert payload["data"]["latitude"] == pytest.approx(LAT)
     assert payload["data"]["longitude"] == pytest.approx(LNG)
+    assert response.headers["Cache-Control"] == "private, no-store, max-age=0"
+    assert response.headers["Vary"] == "Cookie"
     blob = response.get_data(as_text=True)
     assert "driver_id" not in blob
     assert "entity_id" not in blob
