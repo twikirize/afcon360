@@ -22,7 +22,7 @@
 
 'use strict';
 
-const VERSION = '2.0.4';
+const VERSION = '2.0.5';
 
 const CACHE_PREFIX = 'afcon360-static-';
 const CACHE_NAME = `${CACHE_PREFIX}v${VERSION}`;
@@ -114,6 +114,23 @@ function isSafeCacheableResponse(response) {
     return true;
 }
 
+// The sole HTML cache exception is this public, static, non-personalized page.
+// Authenticated dashboard HTML and all other HTML remain network-only.
+function isSafeOfflineResponse(response) {
+    if (!response || !response.ok) return false;
+    if (response.type !== 'basic' || response.redirected) return false;
+
+    const contentType =
+        response.headers.get('content-type') || '';
+    if (!/text\/html/i.test(contentType)) return false;
+
+    const cacheControl =
+        response.headers.get('cache-control') || '';
+    if (/\b(no-store|private)\b/i.test(cacheControl)) return false;
+
+    return true;
+}
+
 // ======================================================
 // INSTALL
 // ======================================================
@@ -130,7 +147,7 @@ self.addEventListener('install', event => {
                 credentials: 'same-origin'
             });
 
-            if (!isSafeCacheableResponse(offlineResponse)) {
+            if (!isSafeOfflineResponse(offlineResponse)) {
                 throw new Error('Offline page unavailable or unsafe.');
             }
 
