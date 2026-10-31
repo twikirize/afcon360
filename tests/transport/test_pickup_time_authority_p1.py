@@ -60,6 +60,8 @@ def probe_user(app):
     if hasattr(User, "public_id") and not getattr(user, "public_id", None):
         user.public_id = str(uuid.uuid4())
     user.set_password(f"P1!{uuid.uuid4().hex[:12]}")
+    from app.wallet.models.payment_method import PaymentMethodConfig
+    PaymentMethodConfig.initialize_defaults()
     db.session.add(user)
     db.session.commit()
     yield user
