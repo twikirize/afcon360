@@ -1057,6 +1057,8 @@ class BookingService:
                 "tier": fee_tier,
                 "policy": "scheduled_v1",
                 "recorded_uncollected": True,
+                "refund_amount_estimate": str(refund_amount),
+                "refund_status": "not_processed_by_transport",
                 "initiated_by": initiated_by,
                 "scheduled": policy["scheduled"],
                 "percentage": (
@@ -1210,7 +1212,13 @@ class BookingService:
                 "data": {
                     "booking_reference": booking_reference,
                     "cancellation_fee": float(cancellation_fee),
+                    # Backward-compatible estimate only. Transport
+                    # cancellation never moves funds or issues cash/provider
+                    # refunds; Wallet must own any later ledger refund.
                     "refund_amount": float(refund_amount),
+                    "refund_amount_estimate": float(refund_amount),
+                    "refund_processed": False,
+                    "refund_status": "not_processed_by_transport",
                     "currency": policy["currency"],
                     "fee_tier": fee_tier,
                     "recorded_uncollected": True,
