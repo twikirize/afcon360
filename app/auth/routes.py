@@ -1784,14 +1784,15 @@ def mfa_setup():
     existing = MFASecret.query.filter_by(
         user_id=target_user.id, mfa_type='totp', is_active=True
     ).first()
-    if existing and target_user.mfa_enabled and existing.last_used is not None:
-        if preauth_owner:
-            flash('An authenticator is already enrolled. Sign in with its code.', 'info')
+    if existing and target_user.mfa_enabled:
+        if not preauth_owner:
+            flash('MFA is already enabled for your account.', 'info')
+            return redirect(url_for('auth.mfa_status'))
+        if _owner_has_verified_totp(target_user):
+            flash('An authenticator is already verified. Sign in with its code.', 'info')
             session.pop("pending_owner_mfa_setup_user", None)
             session.pop("pending_owner_mfa_setup_expires_at", None)
             return redirect(url_for('auth.login'))
-        flash('MFA is already enabled for your account.', 'info')
-        return redirect(url_for('auth.mfa_status'))
 
     return render_template('auth/mfa_setup.html', preauth_owner=preauth_owner)
 
@@ -1818,8 +1819,9 @@ def mfa_enable():
     existing = MFASecret.query.filter_by(
         user_id=target_user.id, mfa_type='totp', is_active=True
     ).first()
-    if existing and target_user.mfa_enabled and existing.last_used is not None:
-        return jsonify({'success': False, 'error': 'An authenticator is already enabled.'}), 409
+    if existing and target_user.mfa_enabled:
+        if not preauth_owner or _owner_has_verified_totp(target_user):
+            return jsonify({'success': False, 'error': 'An authenticator is already enabled.'}), 409
 
     device_name = (request.form.get('device_name') or 'Primary Device').strip()[:100]
     secret = pyotp.random_base32()
@@ -1909,10 +1911,10 @@ def mfa_confirm():
         mfa_secret.is_active = True
 
     mfa_secret.store_backup_codes(pending.get('backup_codes') or [])
-    # Persist the time of a successful authenticator proof. This also lets the
-    # owner-wide policy reject legacy active secrets that were created before
-    # the former setup flow verified possession.
-    mfa_secret.last_used = datetime.now(timezone.utc)
+    verified_at = datetime.now(timezone.utc)
+    mfa_secret.last_used = verified_at
+    from app.auth.security_policy import record_totp_proof
+    record_totp_proof(target_user, verified_at, commit=False)
     target_user.mfa_enabled = True
     if not preauth_owner:
         # This session has now proved possession of its newly enrolled factor.
