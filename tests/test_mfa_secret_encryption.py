@@ -1,4 +1,5 @@
 """TOTP secret confidentiality and legacy plaintext upgrade contracts."""
+import os
 import pyotp
 import pytest
 from cryptography.fernet import Fernet
@@ -116,6 +117,42 @@ def test_missing_encryption_key_fails_closed_in_docker(monkeypatch):
 
     with pytest.raises(RuntimeError, match="ENCRYPTION_KEY"):
         get_encryption_key()
+
+
+def test_startup_key_guard_fails_closed_in_docker_even_with_development_flask_mode(monkeypatch):
+    from app.utils.security import ensure_encryption_key_configured
+
+    monkeypatch.delenv("ENCRYPTION_KEY", raising=False)
+    monkeypatch.setenv("APP_ENV", "docker")
+    monkeypatch.setenv("FLASK_ENV", "development")
+
+    with pytest.raises(RuntimeError, match="ENCRYPTION_KEY"):
+        ensure_encryption_key_configured()
+
+
+def test_startup_key_guard_rejects_placeholder_in_production(monkeypatch):
+    from app.utils.security import ensure_encryption_key_configured
+
+    monkeypatch.setenv("ENCRYPTION_KEY", "REPLACE_WITH_A_REAL_SECRET")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("FLASK_ENV", "production")
+
+    with pytest.raises(RuntimeError, match="ENCRYPTION_KEY"):
+        ensure_encryption_key_configured()
+
+
+def test_startup_key_guard_generates_unlogged_local_ephemeral_key(monkeypatch):
+    from app.utils.security import ensure_encryption_key_configured
+
+    monkeypatch.delenv("ENCRYPTION_KEY", raising=False)
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("FLASK_ENV", "development")
+
+    with pytest.warns(RuntimeWarning, match="temporary local-development key"):
+        key = ensure_encryption_key_configured()
+
+    assert len(key) >= 32
+    assert os.getenv("ENCRYPTION_KEY") == key
 
 
 def test_missing_encryption_key_allows_only_local_development_fallback(monkeypatch):
