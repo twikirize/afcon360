@@ -290,6 +290,7 @@ def test_enabling_global_owner_mfa_ends_existing_password_only_sessions(
     with app.app_context():
         owner = db.session.get(User, owner_pk)
         owner_username = owner.username
+        owner_public_id = owner.public_id
         owner.mfa_enabled = False
         SystemConfig.set(
             "REQUIRE_OWNER_MFA", False, value_type="bool",
@@ -305,7 +306,7 @@ def test_enabling_global_owner_mfa_ends_existing_password_only_sessions(
     )
     assert logged_in.status_code == 302
     with client.session_transaction() as browser_session:
-        assert browser_session.get("_user_id") == test_admin.public_id
+        assert browser_session.get("_user_id") == owner_public_id
         assert browser_session.get("mfa_verified") is False
 
     # Enabling the policy must apply to that already-open browser session,
