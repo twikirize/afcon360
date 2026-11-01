@@ -981,7 +981,6 @@ def login():
             user = payload["user"]
             locked_until = getattr(user, "locked_until", None)
             if locked_until:
-                from datetime import datetime, timezone
                 if locked_until.tzinfo is None:
                     locked_until = locked_until.replace(tzinfo=timezone.utc)
                 remaining = locked_until - datetime.now(timezone.utc)
