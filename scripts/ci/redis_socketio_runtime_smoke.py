@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 import uuid
 
 # These variables are set by the dedicated GitHub Actions step. Keep an
@@ -113,23 +114,54 @@ def main() -> int:
             f"{type(manager).__name__ if manager is not None else 'missing'}"
         )
 
-    socket_client = socketio.test_client(app)
-    if not socket_client.is_connected():
-        fail("Socket.IO test client could not connect")
+    # Attach a second, independent Socket.IO server to the same Redis
+    # channel. An emit from the application server must reach this peer via
+    # Redis pub/sub rather than an in-memory local manager.
+    from flask import Flask
+    from flask_socketio import SocketIO as PeerSocketIO
+
+    channel = getattr(manager, "channel", "flask-socketio")
+    peer_app = Flask("afcon360_ci_socketio_peer")
+    peer_app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
+    peer_socketio = PeerSocketIO(
+        peer_app,
+        async_mode="threading",
+        message_queue=redis_url,
+        channel=channel,
+    )
+    peer_manager = getattr(getattr(peer_socketio, "server", None), "manager", None)
+    if peer_manager is None or "redis" not in type(peer_manager).__name__.lower():
+        fail("independent Socket.IO peer did not initialize a Redis manager")
+
+    peer_client = peer_socketio.test_client(peer_app)
+    if not peer_client.is_connected():
+        fail("independent Socket.IO peer could not connect")
     event_nonce = uuid.uuid4().hex
     socketio.emit(
         "afcon360_ci_redis_probe",
         {"nonce": event_nonce},
         namespace="/",
     )
-    received = socket_client.get_received()
+
+    deadline = time.monotonic() + 5
+    received = []
+    while time.monotonic() < deadline:
+        received.extend(peer_client.get_received())
+        if any(
+            item.get("name") == "afcon360_ci_redis_probe"
+            and (item.get("args") or [{}])[0].get("nonce") == event_nonce
+            for item in received
+        ):
+            break
+        time.sleep(0.05)
+
     if not any(
         item.get("name") == "afcon360_ci_redis_probe"
         and (item.get("args") or [{}])[0].get("nonce") == event_nonce
         for item in received
     ):
-        fail("Socket.IO Redis-manager event was not delivered to its client")
-    socket_client.disconnect()
+        fail("Socket.IO event did not fan out to the independent Redis-backed peer")
+    peer_client.disconnect()
 
     # 5. Celery must establish a real connection to the configured Redis
     # broker. Do not enqueue or execute a wallet/payment task in this smoke test.
@@ -143,7 +175,7 @@ def main() -> int:
     print("READINESS_DATABASE_AND_REDIS=PASS")
     print("FLASK_SESSION_REDIS_PERSISTENCE=PASS")
     print("FLASK_LIMITER_REDIS_STORAGE=PASS")
-    print("SOCKETIO_REDIS_MANAGER_AND_EMIT=PASS")
+    print("SOCKETIO_REDIS_CROSS_INSTANCE_FANOUT=PASS")
     print("CELERY_REDIS_BROKER_CONNECTION=PASS")
     return 0
 
