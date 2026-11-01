@@ -323,8 +323,11 @@ def register_user(
     if not email and security_answer:
         # Generate recovery code
         recovery_code = secrets.token_urlsafe(16)
-        # Hash the security answer
-        hashed_security_answer = hashlib.sha256(security_answer.encode()).hexdigest()
+        # Security answers are low-entropy credentials; use a salted, slow
+        # password hash rather than a fast unsalted digest.
+        hashed_security_answer = generate_password_hash(
+            security_answer, method="scrypt"
+        )
 
     public_id = str(uuid.uuid4())
     user = User(public_id=public_id, username=username, email=email)
