@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Multi-factor authentication status{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 720px;">
+    <div class="card shadow-sm">
+        <div class="card-body p-4">
+            <h1 class="h3 mb-3">Multi-factor authentication</h1>
+            {% set active_mfa = mfa_secrets | selectattr('is_active') | list %}
+            {% if active_mfa %}
+                <div class="alert alert-success" role="status">
+                    Multi-factor authentication is enabled for this account.
+                </div>
+                <h2 class="h5">Active authenticator</h2>
+                {% for secret in active_mfa %}
+                    <dl class="row">
+                        <dt class="col-sm-4">Method</dt>
+                        <dd class="col-sm-8">{{ secret.mfa_type | upper }}</dd>
+                        <dt class="col-sm-4">Device</dt>
+                        <dd class="col-sm-8">{{ secret.device_name or 'Authenticator device' }}</dd>
+                        <dt class="col-sm-4">Last verified</dt>
+                        <dd class="col-sm-8">
+                            {{ secret.last_used.strftime('%Y-%m-%d %H:%M UTC') if secret.last_used else 'Not yet used for sign-in' }}
+                        </dd>
+                    </dl>
+                {% endfor %}
+                <p class="text-muted">
+                    Keep your backup codes in a secure place. AFCON360 will
+                    never display the authenticator secret or backup codes
+                    again after initial setup.
+                </p>
+            {% else %}
+                <div class="alert alert-warning" role="status">
+                    Multi-factor authentication is not enabled.
+                </div>
+                <a class="btn btn-primary" href="{{ url_for('auth.mfa_setup') }}">
+                    Set up an authenticator
+                </a>
+            {% endif %}
+            <a class="btn btn-outline-secondary ms-sm-2 mt-2 mt-sm-0"
+               href="{{ url_for('index') }}">Return to AFCON360</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
