@@ -80,18 +80,40 @@ def totp_proof_setting_key(user) -> str:
     return f"mfa_totp_verified:{user.public_id}"
 
 
-def record_totp_proof(user, verified_at=None, *, commit: bool = True) -> None:
-    """Persist evidence that this account completed a real TOTP verification."""
+def _totp_secret_fingerprint(secret: str) -> str:
+    import hashlib
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
+
+def totp_proof_matches(user, secret: str, stored_proof=None) -> bool:
+    """Check that recorded proof belongs to this exact TOTP secret."""
+    import hmac
+    from app.models.system_config import SystemConfig
+
+    proof = stored_proof
+    if proof is None:
+        proof = SystemConfig.get(totp_proof_setting_key(user), default=None)
+    if not isinstance(proof, str):
+        return False
+    fingerprint, separator, stamp = proof.partition("|")
+    if not separator or not stamp:
+        return False
+    return hmac.compare_digest(fingerprint, _totp_secret_fingerprint(secret))
+
+
+def record_totp_proof(user, verified_at=None, *, secret: str, commit: bool = True) -> None:
+    """Persist proof bound to the exact TOTP secret that was just verified."""
     from datetime import datetime, timezone
     from app.models.system_config import SystemConfig
 
     stamp = verified_at or datetime.now(timezone.utc)
+    value = f"{_totp_secret_fingerprint(secret)}|{stamp.astimezone(timezone.utc).isoformat()}"
     SystemConfig.set(
         key=totp_proof_setting_key(user),
-        value=stamp.astimezone(timezone.utc).isoformat(),
+        value=value,
         value_type="str",
         category="security",
-        description="Timestamp of the account's last successful TOTP proof",
+        description="Fingerprint and timestamp of the account's last successful TOTP proof",
         updated_by=user.id,
         commit=commit,
     )
