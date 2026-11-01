@@ -1171,8 +1171,9 @@ def settings():
         logger.info("Fetching owner settings from database")
         owner_settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
 
-        # Get current MFA requirement status
-        require_mfa = current_app.config.get('REQUIRE_OWNER_MFA', False)
+        # Get the effective, durable owner MFA policy.
+        from app.auth.security_settings import get_owner_mfa_required
+        require_mfa = get_owner_mfa_required()
 
         # Get super admin module toggle permission
         super_admin_can_toggle_modules = SystemSetting.get('SUPER_ADMIN_CAN_TOGGLE_MODULES', False)
