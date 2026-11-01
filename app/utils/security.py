@@ -16,6 +16,17 @@ from flask import g, request, current_app
 from functools import wraps
 from app.utils.exceptions import PermissionError
 
+def _is_deployed_environment() -> bool:
+    """Fail closed when deployment mode is explicit or environment is unspecified."""
+    app_env = os.getenv("APP_ENV", "").strip().lower()
+    flask_env = os.getenv("FLASK_ENV", "").strip().lower()
+    return (
+        app_env in ("docker", "prod", "production")
+        or flask_env == "production"
+        or not (app_env or flask_env)
+    )
+
+
 def ensure_encryption_key_configured() -> str:
     """Require a persistent key in deployed environments.
 
@@ -26,13 +37,7 @@ def ensure_encryption_key_configured() -> str:
     if key_env and not key_env.startswith("REPLACE_"):
         return key_env
 
-    app_env = os.getenv("APP_ENV", "local").strip().lower()
-    flask_env = os.getenv("FLASK_ENV", "production").strip().lower()
-    deployed = (
-        app_env in ("docker", "prod", "production")
-        or flask_env == "production"
-    )
-    if deployed:
+    if _is_deployed_environment():
         raise RuntimeError(
             "ENCRYPTION_KEY must be configured before starting a deployed "
             "AFCON360 application. Preserve the existing key; do not generate "
@@ -58,16 +63,8 @@ def get_encryption_key():
         key_env = None
 
     if not key_env:
-        # Docker is AFCON360's production deployment mode on the Oracle host;
-        # do not allow FLASK_ENV=development to silently activate the shared
-        # development key inside a deployed container.
-        app_env = os.getenv("APP_ENV", "local").strip().lower()
-        flask_env = os.getenv("FLASK_ENV", "production").strip().lower()
-        deployed = (
-            app_env in ("docker", "prod", "production")
-            or flask_env == "production"
-        )
-        if deployed:
+        # Docker is AFCON360's production deployment mode on the Oracle host.
+        if _is_deployed_environment():
             raise RuntimeError(
                 "ENCRYPTION_KEY must be configured for deployed environments. "
                 "Provide the existing protected key; do not generate a replacement "
