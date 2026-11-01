@@ -883,6 +883,31 @@ def login():
         if result == AuthResult.MFA_REQUIRED:
             user = payload["user"]
 
+            # Mandatory owner MFA is specifically TOTP. If a legacy owner has
+            # only an unsupported/never-verified method, allow only the limited
+            # password-verified enrollment path; do not issue an authenticated
+            # session and do not accept the unsupported method as proof.
+            if user.is_app_owner():
+                from app.auth.security_policy import owner_mfa_required
+                if owner_mfa_required():
+                    from app.identity.models.user import MFASecret
+                    verified_totp = MFASecret.query.filter_by(
+                        user_id=user.id,
+                        mfa_type='totp',
+                        is_active=True,
+                    ).filter(MFASecret.last_used.is_not(None)).first()
+                    if verified_totp is None:
+                        session.clear()
+                        session["pending_owner_mfa_setup_user"] = user.public_id
+                        session["pending_owner_mfa_setup_expires_at"] = int(time.time()) + 600
+                        session.permanent = True
+                        _rotate_session_id()
+                        flash(
+                            "Complete authenticator setup before signing in to your owner account.",
+                            "warning",
+                        )
+                        return redirect(url_for("auth.setup_mfa"))
+
             # First step: valid credentials + MFA enabled. Present the
             # challenge; the same form re-submits username/password +
             # mfa_code together (consistent with the owner inline-MFA flow).
@@ -1719,7 +1744,7 @@ def mfa_setup():
     existing = MFASecret.query.filter_by(
         user_id=target_user.id, mfa_type='totp', is_active=True
     ).first()
-    if existing and target_user.mfa_enabled:
+    if existing and target_user.mfa_enabled and existing.last_used is not None:
         if preauth_owner:
             flash('An authenticator is already enrolled. Sign in with its code.', 'info')
             session.pop("pending_owner_mfa_setup_user", None)
@@ -1753,7 +1778,7 @@ def mfa_enable():
     existing = MFASecret.query.filter_by(
         user_id=target_user.id, mfa_type='totp', is_active=True
     ).first()
-    if existing and target_user.mfa_enabled:
+    if existing and target_user.mfa_enabled and existing.last_used is not None:
         return jsonify({'success': False, 'error': 'An authenticator is already enabled.'}), 409
 
     device_name = (request.form.get('device_name') or 'Primary Device').strip()[:100]
