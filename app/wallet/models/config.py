@@ -319,12 +319,34 @@ class WalletSystemConfig(BaseModel):
     
     @classmethod
     def get_config(cls):
-        """Get or create system config"""
+        """Get the singleton config without committing the caller's transaction.
+
+        Wallet limit checks call this from inside WalletService's atomic money
+        movement transaction. Committing here expires ORM state and closes the
+        outer transaction, which can make a later limit check or ledger write
+        fail after some of the business operation has started.
+
+        If an older installation has no row yet, serialize default creation
+        with a transaction-scoped PostgreSQL advisory lock, recheck after the
+        lock, and flush (not commit) the default row. The caller owns commit or
+        rollback. This preserves settings writes made by owner routes and keeps
+        wallet ledger posting atomic.
+        """
         config = cls.query.first()
-        if not config:
+        if config is not None:
+            return config
+
+        # Stable, application-specific key for the one-row wallet config.
+        # Transaction-scoped lock releases automatically on commit/rollback.
+        db.session.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_key)"),
+            {"lock_key": 731946208415},
+        )
+        config = cls.query.first()
+        if config is None:
             config = cls()
             db.session.add(config)
-            db.session.commit()
+            db.session.flush()
         return config
     
     def to_dict(self):
