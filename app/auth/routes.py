@@ -1784,7 +1784,7 @@ def mfa_setup():
         user_id=target_user.id, mfa_type='totp', is_active=True
     ).first()
     replacing_existing = False
-    if existing and target_user.mfa_enabled:
+    if existing:
         from app.auth.security_policy import recent_session_mfa_proof
         if not current_user.is_authenticated or not recent_session_mfa_proof():
             if preauth_owner:
@@ -1826,7 +1826,7 @@ def mfa_enable():
     existing = MFASecret.query.filter_by(
         user_id=target_user.id, mfa_type='totp', is_active=True
     ).first()
-    if existing and target_user.mfa_enabled:
+    if existing:
         from app.auth.security_policy import recent_session_mfa_proof
         if not current_user.is_authenticated or not recent_session_mfa_proof():
             return jsonify({
@@ -1908,7 +1908,7 @@ def mfa_confirm():
     mfa_secret = MFASecret.query.filter_by(
         user_id=target_user.id, mfa_type='totp'
     ).first()
-    if mfa_secret is not None and target_user.mfa_enabled:
+    if mfa_secret is not None and mfa_secret.is_active:
         from app.auth.security_policy import recent_session_mfa_proof
         if not current_user.is_authenticated or not recent_session_mfa_proof():
             return jsonify({
