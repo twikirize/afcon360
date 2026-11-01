@@ -135,12 +135,23 @@
         var contentType = response.headers && response.headers.get
           ? (response.headers.get('Content-Type') || '') : '';
         var isJson = /^application\/(?:[a-z0-9.+-]+\+)?json\b/i.test(contentType);
-        if (response.redirected || !isJson ||
-            response.status === 401 || response.status === 403 ||
-            response.status === 404) {
-          var denied = new Error('tracking authorization ended');
-          denied.permanent = true;
-          throw denied;
+        if (response.redirected || response.status === 401) {
+          var authRequired = new Error('tracking session expired');
+          authRequired.permanent = true;
+          authRequired.terminalState = 'auth-required';
+          throw authRequired;
+        }
+        if (response.status === 403) {
+          var accessDenied = new Error('tracking access denied');
+          accessDenied.permanent = true;
+          accessDenied.terminalState = 'access-denied';
+          throw accessDenied;
+        }
+        if (!isJson || response.status === 404) {
+          var unavailable = new Error('tracking snapshot is not available');
+          unavailable.permanent = true;
+          unavailable.terminalState = 'unavailable';
+          throw unavailable;
         }
         if (!response.ok) throw new Error('snapshot ' + response.status);
         return response.json();
@@ -173,7 +184,13 @@
         if (error && error.permanent) {
           stopPolling();
           closed = true;
-          emitState('closed', { reason: 'tracking-authorization-ended' });
+          var terminalState = error.terminalState || 'unavailable';
+          var reason = terminalState === 'auth-required'
+            ? 'tracking-session-expired'
+            : terminalState === 'access-denied'
+              ? 'tracking-access-denied'
+              : 'tracking-snapshot-unavailable';
+          emitState(terminalState, { reason: reason });
           return;
         }
         pollErrors += 1;
