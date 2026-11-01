@@ -284,17 +284,19 @@ def test_mfa_setup_page_requires_a_valid_enrollment_identity(app, client):
 
 
 def test_recent_backup_code_login_can_safely_replace_legacy_authenticator(
-    app, admin_client, test_admin
+    app, client, test_admin
 ):
     from sqlalchemy import inspect as sa_inspect
     from app.identity.models.user import User
-    from app.auth.security_policy import totp_proof_setting_key
 
     owner_pk = sa_inspect(test_admin).identity[0]
     old_secret = pyotp.random_base32()
+    backup_code = "A1B2C3D4"
 
     with app.app_context():
         owner = db.session.get(User, owner_pk)
+        owner_username = owner.username
+        owner_public_id = owner.public_id
         owner.mfa_enabled = True
         old_record = MFASecret(
             user_id=owner.id,
@@ -302,45 +304,55 @@ def test_recent_backup_code_login_can_safely_replace_legacy_authenticator(
             secret=old_secret,
             is_active=True,
         )
+        old_record.set_totp_secret(old_secret)
+        old_record.store_backup_codes([backup_code])
         db.session.add(old_record)
         db.session.commit()
 
-    # An old active secret must not be replaced from a password-only session.
-    with admin_client.session_transaction() as browser_session:
-        browser_session.pop("mfa_verified", None)
-        browser_session.pop("mfa_verified_at", None)
-        browser_session.pop("mfa_verified_method", None)
-        browser_session["_fresh"] = True
+    # A password alone must not authenticate or grant replacement access.
+    password_only = client.post(
+        "/login",
+        data={"username": owner_username, "password": "TestPass123!"},
+        follow_redirects=False,
+    )
+    assert password_only.status_code == 200
+    assert b'name="mfa_code"' in password_only.data
+    with client.session_transaction() as browser_session:
+        assert "_user_id" not in browser_session
 
-    denied_page = admin_client.get("/mfa/setup", follow_redirects=False)
+    denied_page = client.get("/mfa/setup", follow_redirects=False)
     assert denied_page.status_code == 302
-    assert denied_page.headers["Location"].endswith("/mfa/status")
-    # The setup page denial must not silently log the user out.
-    assert admin_client.get("/mfa/status").status_code == 200
-    with admin_client.session_transaction() as browser_session:
-        assert browser_session.get("_user_id")
-        assert browser_session.get("_fresh") is True
+    assert denied_page.headers["Location"].endswith("/login")
 
-    denied_generate = admin_client.post(
+    denied_generate = client.post(
         "/mfa/enable",
         data={"device_name": "Replacement authenticator"},
     )
-    assert denied_generate.status_code == 403
+    assert denied_generate.status_code == 401
 
-    # A recent successful one-time backup-code login is a valid factor for
-    # replacing a lost authenticator, but does not count as TOTP proof for the
-    # platform-wide MFA policy toggle.
-    with admin_client.session_transaction() as browser_session:
-        browser_session["mfa_verified"] = True
-        browser_session["mfa_verified_at"] = datetime.now(timezone.utc).isoformat()
-        browser_session["mfa_verified_method"] = "backup"
-        browser_session["_fresh"] = True
+    # A real one-time backup code is a valid recovery factor for replacing a
+    # lost authenticator. It does not count as fresh TOTP proof for the global
+    # owner-MFA policy toggle.
+    backup_login = client.post(
+        "/login",
+        data={
+            "username": owner_username,
+            "password": "TestPass123!",
+            "mfa_code": backup_code,
+        },
+        follow_redirects=False,
+    )
+    assert backup_login.status_code == 302
+    with client.session_transaction() as browser_session:
+        assert browser_session.get("_user_id") == owner_public_id
+        assert browser_session.get("mfa_verified") is True
+        assert browser_session.get("mfa_verified_method") == "backup"
 
-    replacement_page = admin_client.get("/mfa/setup")
+    replacement_page = client.get("/mfa/setup")
     assert replacement_page.status_code == 200
     assert b"replace the old one only after" in replacement_page.data
 
-    generated = admin_client.post(
+    generated = client.post(
         "/mfa/enable",
         data={"device_name": "Replacement authenticator"},
     )
@@ -355,10 +367,10 @@ def test_recent_backup_code_login_can_safely_replace_legacy_authenticator(
         record = db.session.query(MFASecret).filter_by(
             user_id=owner.id, mfa_type="totp", is_active=True
         ).one()
-        assert record.secret == old_secret
+        assert record.get_totp_secret() == old_secret
 
     new_code = pyotp.TOTP(setup["secret"]).now()
-    confirmed = admin_client.post("/mfa/confirm", json={"code": new_code})
+    confirmed = client.post("/mfa/confirm", json={"code": new_code})
     assert confirmed.status_code == 200
     assert confirmed.get_json()["success"] is True
 
@@ -370,6 +382,11 @@ def test_recent_backup_code_login_can_safely_replace_legacy_authenticator(
         assert record.get_totp_secret() == setup["secret"]
         from app.auth.security_policy import totp_proof_matches
         assert totp_proof_matches(owner, setup["secret"]) is True
+
+    # A backup-code login is not an acceptable step-up for the platform-wide
+    # policy switch, even though it was accepted for recovery.
+    with client.session_transaction() as browser_session:
+        assert browser_session.get("mfa_verified_method") == "totp"
 
 
 def test_global_owner_policy_requires_recent_totp_not_backup_code(app):
