@@ -277,6 +277,64 @@ def test_new_owner_must_enroll_and_prove_totp_before_sign_in(
         assert browser_session.get("mfa_verified") is True
 
 
+
+
+
+def test_enabling_global_owner_mfa_ends_existing_password_only_sessions(
+    app, client, test_admin
+):
+    from sqlalchemy import inspect as sa_inspect
+    from app.identity.models.user import User
+
+    owner_pk = sa_inspect(test_admin).identity[0]
+    with app.app_context():
+        owner = db.session.get(User, owner_pk)
+        owner_username = owner.username
+        owner.mfa_enabled = False
+        SystemConfig.set(
+            "REQUIRE_OWNER_MFA", False, value_type="bool",
+            category="security", commit=True,
+        )
+        db.session.commit()
+
+    # Create a valid owner session while the global MFA policy is off.
+    logged_in = client.post(
+        "/login",
+        data={"username": owner_username, "password": "TestPass123!"},
+        follow_redirects=False,
+    )
+    assert logged_in.status_code == 302
+    with client.session_transaction() as browser_session:
+        assert browser_session.get("_user_id") == test_admin.public_id
+        assert browser_session.get("mfa_verified") is False
+
+    # Enabling the policy must apply to that already-open browser session,
+    # not only to future password logins.
+    with app.app_context():
+        SystemConfig.set(
+            "REQUIRE_OWNER_MFA", True, value_type="bool",
+            category="security", commit=True,
+        )
+
+    # The public liveness endpoint remains independent of an owner's browser session.
+    assert client.get("/api/health/ping").status_code == 200
+
+    blocked = client.get("/", follow_redirects=False)
+    assert blocked.status_code == 302
+    assert blocked.headers["Location"].endswith("/login")
+    with client.session_transaction() as browser_session:
+        assert "_user_id" not in browser_session
+
+    # Once signed out, the owner can still reach the restricted enrolment flow.
+    enrollment = client.post(
+        "/login",
+        data={"username": owner_username, "password": "TestPass123!"},
+        follow_redirects=False,
+    )
+    assert enrollment.status_code == 302
+    assert enrollment.headers["Location"].endswith("/mfa/setup")
+
+
 def test_mfa_setup_page_requires_a_valid_enrollment_identity(app, client):
     response = client.get("/mfa/setup", follow_redirects=False)
     assert response.status_code == 302
