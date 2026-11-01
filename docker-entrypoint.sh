@@ -42,17 +42,19 @@ fi
 echo "✅ Environment validation passed"
 
 # ---------------------------------------------------------------------------
-# Run migrations ONLY on the web container — never on celery/beat
+# Migrations are an explicit release operation, never an implicit side effect
+# of restarting a web container. Operators must review the live revision and
+# recovery point, then run "flask db upgrade" as a separate approved step.
 # ---------------------------------------------------------------------------
-if [ "${CONTAINER_ROLE}" = "web" ]; then
-    echo "🔄 Running database migrations..."
+if [ "${CONTAINER_ROLE}" = "web" ] && [ "${AUTO_MIGRATE_ON_START:-false}" = "true" ]; then
+    echo "🔄 AUTO_MIGRATE_ON_START=true; running explicitly enabled migrations..."
     flask db upgrade
     echo "✅ Migrations complete"
 
     echo "🌱 Seeding roles and permissions..."
     flask seed-roles 2>/dev/null || echo "ℹ️  Seed skipped (already seeded or not available)"
 else
-    echo "⏭️  Skipping migrations (role: ${CONTAINER_ROLE})"
+    echo "⏭️  Skipping automatic migrations (role: ${CONTAINER_ROLE:-web}); run a reviewed release migration separately"
 fi
 
 # ---------------------------------------------------------------------------
