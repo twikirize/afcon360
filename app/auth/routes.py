@@ -984,7 +984,7 @@ def login():
             # SECURITY: Owner login with optional MFA (configurable)
             if user.is_app_owner():
                 # Check if MFA is required for owners (configurable in settings)
-                require_mfa = current_app.config.get('REQUIRE_OWNER_MFA', False)
+                require_mfa = get_owner_mfa_required()
                 
                 if require_mfa:
                     # Owners MUST have MFA enabled when requirement is active
@@ -1030,7 +1030,7 @@ def login():
                 )
 
                 # Set up session for owner
-                require_mfa = current_app.config.get('REQUIRE_OWNER_MFA', False)
+                require_mfa = get_owner_mfa_required()
                 session.update({
                     "server_session_id": session_id,
                     "user_id": user.public_id,
