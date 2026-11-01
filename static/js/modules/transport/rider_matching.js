@@ -133,9 +133,9 @@
     function retrySearch() {
         /* Explicit rider resume of status polling against the SAME
            booking: reset the frontend budget and restart the existing
-           pollers. statusUrl and optionsUrl are unchanged, no POST to
-           the server-side retry endpoint happens here, so no second
-           booking can result and no backend dispatch state is touched. */
+           status poll loop. No POST to the server-side retry endpoint
+           happens here, so no second booking can result and no backend
+           dispatch state is touched. */
         if (!noSupply) return;
         noSupply = false;
         finished = false;
