@@ -100,3 +100,79 @@ def test_owner_mfa_setting_cannot_be_enabled_until_active_owners_are_enrolled(ap
                 for key, value in old_setting.items():
                     setattr(row, key, value)
             db.session.commit()
+
+
+@pytest.mark.usefixtures("db_session")
+def test_totp_enrollment_stays_pending_until_a_valid_code_is_confirmed(app):
+    import pyotp
+
+    from app.identity.models.user import MFASecret
+
+    with app.app_context():
+        role = get_or_create_role("user", level=6, commit=False)
+        suffix = uuid.uuid4().hex[:12]
+        user = User(
+            public_id=str(uuid.uuid4()),
+            username=f"mfa_enroll_{suffix}",
+            email=f"mfa_enroll_{suffix}@example.test",
+        )
+        user.set_password("StrongTestPassword123!")
+        user.is_active = True
+        user.is_verified = True
+        user.email_verified = True
+        user.mfa_enabled = False
+        db.session.add(user)
+        db.session.flush()
+        db.session.add(UserRole(user_id=user.id, role_id=role.id))
+        db.session.commit()
+        public_id = user.public_id
+        username = user.username
+
+    client = app.test_client()
+    login = client.post(
+        "/login",
+        data={"username": username, "password": "StrongTestPassword123!"},
+        follow_redirects=False,
+    )
+    assert login.status_code == 302
+
+    setup_page = client.get("/mfa/setup")
+    assert setup_page.status_code == 200
+
+    started = client.post("/mfa/enable", data={"mfa_type": "totp"})
+    assert started.status_code == 200
+    payload = started.get_json()
+    assert payload["success"] is True
+    secret = payload["secret"]
+
+    with app.app_context():
+        saved_user = User.query.filter_by(public_id=public_id).one()
+        pending = MFASecret.query.filter_by(
+            user_id=saved_user.id,
+            mfa_type="totp",
+        ).one()
+        assert pending.is_active is False
+        assert saved_user.mfa_enabled is False
+
+    rejected = client.post("/mfa/confirm", data={"mfa_code": "000000"})
+    assert rejected.status_code == 302
+    with app.app_context():
+        saved_user = User.query.filter_by(public_id=public_id).one()
+        pending = MFASecret.query.filter_by(
+            user_id=saved_user.id,
+            mfa_type="totp",
+        ).one()
+        assert pending.is_active is False
+        assert saved_user.mfa_enabled is False
+
+    valid_code = pyotp.TOTP(secret).now()
+    confirmed = client.post("/mfa/confirm", data={"mfa_code": valid_code})
+    assert confirmed.status_code == 302
+    with app.app_context():
+        saved_user = User.query.filter_by(public_id=public_id).one()
+        active = MFASecret.query.filter_by(
+            user_id=saved_user.id,
+            mfa_type="totp",
+        ).one()
+        assert active.is_active is True
+        assert saved_user.mfa_enabled is True
