@@ -790,7 +790,14 @@ def create_app(config_object=None) -> Flask:
             except Exception:
                 pass
             uid_short = hashlib.sha256(str(uid).encode()).hexdigest()[:12] if uid else "anon"
-            content_length = response.calculate_content_length()
+            # Never iterate a streamed response to calculate its length:
+            # SSE and other streaming bodies may be unbounded. Use a declared
+            # Content-Length for streams; calculate only for buffered bodies.
+            content_length = (
+                response.content_length
+                if response.is_streamed
+                else response.calculate_content_length()
+            )
             logger.info("req", extra={
                 "request_id": g.get('correlation_id', "-"),
                 "user": uid_short,
