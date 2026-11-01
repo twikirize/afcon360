@@ -24,6 +24,7 @@ on:
       - "docker-compose.yml"
       - ".codebuddy/docker-compose.prod.yml"
       - "templates/transport/**"
+      - "templates/auth/**"
       - "templates/admin/transport_admin_*.html"
       - "tests/test_transport_booking_route_path.py"
       - "tests/test_transport_ride_options.py"
@@ -184,6 +185,8 @@ jobs:
               "admin/transport_admin_dashboard.html",
               "admin/transport_admin_operations.html",
               "transport/admin/dashboard.html",
+              "auth/mfa_setup.html",
+              "auth/mfa_status.html",
           )
           env = Environment(
               loader=FileSystemLoader("templates"),
