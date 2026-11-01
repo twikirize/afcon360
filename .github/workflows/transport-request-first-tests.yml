@@ -52,6 +52,7 @@ on:
       - "app/auth/routes.py"
       - "app/auth/services.py"
       - "app/identity/models/user.py"
+      - "app/profile/routes.py"
       - "app/admin/owner/routes.py"
       - "templates/owner/settings.html"
       - "templates/auth/mfa_setup.html"
@@ -179,6 +180,7 @@ jobs:
           app/auth/otp_service.py
           app/auth/services.py
           app/identity/models/user.py
+          app/profile/routes.py
           app/admin/owner/routes.py
           app/models/system_config.py
           app/api/health.py
