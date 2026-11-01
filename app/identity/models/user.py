@@ -361,34 +361,47 @@ class User(UserMixin, ProtectedModel):
     def verify_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)
 
+    @staticmethod
+    def _normalise_security_answer(answer: str) -> str:
+        """Canonical form used for new recovery-answer hashes."""
+        return answer.strip().lower()
+
     def set_security_answer(self, answer: str) -> None:
         """Store a recovery answer using a salted, deliberately slow hash."""
         if not isinstance(answer, str) or not answer.strip():
             raise ValueError("A non-empty security answer is required")
+        normalised = self._normalise_security_answer(answer)
         self.security_answer_hash = generate_password_hash(
-            answer.strip(), method="scrypt"
+            normalised, method="scrypt"
         )
 
     def verify_security_answer(self, answer: str) -> bool:
-        """Verify a recovery answer and transparently upgrade legacy SHA-256.
+        """Verify a recovery answer and upgrade every supported legacy format.
 
-        Older accounts stored an unsalted SHA-256 digest. A successful legacy
-        match is immediately re-hashed using Werkzeug's salted scrypt format;
-        the caller's existing transaction persists that upgrade together with
-        the password reset.
+        Historical writers stored either SHA-256(answer) or
+        SHA-256(answer.lower()). New records use salted Werkzeug scrypt hashes.
+        A successful verification transparently upgrades the stored value.
+        The caller's transaction persists that upgrade together with its
+        password reset or identity-verification operation.
         """
         if not self.security_answer_hash or not isinstance(answer, str):
             return False
-        candidate = answer.strip()
-        if not candidate:
+
+        normalised = self._normalise_security_answer(answer)
+        if not normalised:
             return False
 
         stored_hash = self.security_answer_hash
+        # Accept scrypt hashes written by both the first MFA/security branch
+        # (case-preserving) and the canonical lowercase writer.
         try:
-            if check_password_hash(stored_hash, candidate):
+            if (
+                check_password_hash(stored_hash, normalised)
+                or check_password_hash(stored_hash, answer.strip())
+            ):
                 return True
         except (TypeError, ValueError):
-            # The value may be a pre-migration legacy SHA-256 digest.
+            # Historical unsalted SHA-256 digests are not Werkzeug hashes.
             pass
 
         import hashlib
@@ -397,23 +410,23 @@ class User(UserMixin, ProtectedModel):
 
         if not re.fullmatch(r"[0-9a-fA-F]{64}", stored_hash):
             return False
-        # The legacy registration path hashed the exact submitted string
-        # without trimming it. Check that original representation as well as
-        # the normalized form so existing accounts with accidental outer
-        # whitespace can still recover.
-        legacy_candidates = (answer, candidate) if answer != candidate else (candidate,)
-        matched = any(
-            hmac.compare_digest(
-                hashlib.sha256(value.encode("utf-8")).hexdigest().lower(),
-                stored_hash.lower(),
-            )
-            for value in legacy_candidates
-        )
-        if not matched:
+
+        legacy_candidates = {
+            answer,
+            answer.strip(),
+            answer.lower(),
+            answer.strip().lower(),
+        }
+        matches = []
+        for legacy_candidate in legacy_candidates:
+            digest = hashlib.sha256(legacy_candidate.encode("utf-8")).hexdigest()
+            matches.append(hmac.compare_digest(digest.lower(), stored_hash.lower()))
+
+        if not any(matches):
             return False
 
         self.security_answer_hash = generate_password_hash(
-            candidate, method="scrypt"
+            normalised, method="scrypt"
         )
         return True
 
