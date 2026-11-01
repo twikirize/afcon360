@@ -43,6 +43,8 @@ on:
       - "tests/test_mfa_secret_encryption.py"
       - "app/auth/deletion_guard.py"
       - "app/auth/security_policy.py"
+      - "app/api/health.py"
+      - "tests/test_health_rate_limit.py"
       - "app/auth/otp_service.py"
       - "app/models/system_config.py"
       - "env.example"
@@ -178,6 +180,8 @@ jobs:
           app/identity/models/user.py
           app/admin/owner/routes.py
           app/models/system_config.py
+          app/api/health.py
+          tests/test_health_rate_limit.py
 
       - name: Parse changed Jinja templates without database access
         run: |
@@ -266,4 +270,5 @@ jobs:
             tests/test_transport_frontend_contracts.py \
             tests/test_owner_mfa_security.py \
             tests/test_security_answer_hashing.py
+            tests/test_health_rate_limit.py
             tests/test_mfa_secret_encryption.py
