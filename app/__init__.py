@@ -1322,6 +1322,69 @@ def create_app(config_object=None) -> Flask:
             except Exception:
                 pass
 
+    @app.before_request
+    def enforce_owner_mfa_on_existing_sessions():
+        """Apply newly enabled owner MFA to sessions created before the policy.
+
+        Login remains available so an owner without MFA can enter the restricted
+        password-verified enrollment path. Logout and public health probes are
+        also exempt so neither recovery nor orchestration is blocked.
+        """
+        if (
+            request.path.startswith("/static/")
+            or request.path == "/transport/sw.js"
+            or request.path.startswith("/api/health/")
+            or request.endpoint in ("auth.login", "auth.logout")
+        ):
+            return
+
+        from flask_login import current_user, logout_user
+
+        if not current_user.is_authenticated:
+            return
+
+        try:
+            if not current_user.is_app_owner():
+                return
+
+            from app.auth.security_policy import owner_mfa_required
+            if not owner_mfa_required():
+                return
+
+            factor_verified = (
+                session.get("mfa_verified") is True
+                and session.get("mfa_verified_method") in ("totp", "backup")
+            )
+            if factor_verified:
+                return
+        except Exception:
+            # A policy/identity lookup failure must not grant an owner
+            # password-only access in a deployed environment.
+            current_app.logger.exception(
+                "Unable to validate owner MFA on an existing session; forcing sign-in"
+            )
+
+        server_session_id = session.get("server_session_id")
+        if server_session_id:
+            try:
+                from app.auth.sessions import revoke_session
+                revoke_session(server_session_id)
+            except Exception:
+                current_app.logger.exception(
+                    "Failed to revoke owner server session after MFA policy enforcement"
+                )
+
+        logout_user()
+        session.clear()
+        flash(
+            "Platform owner access now requires multi-factor authentication. "
+            "Please sign in again and complete authenticator verification.",
+            "warning",
+        )
+        if request.path.startswith("/api/") or request.is_json:
+            return jsonify({"error": "owner_mfa_required"}), 401
+        return redirect(url_for("auth.login", next=request.full_path))
+
     @app.teardown_request
     def handle_transaction(exception=None):
         try:
