@@ -1740,6 +1740,42 @@ def complete_profile():
 # Enhanced MFA Routes
 # ---------------------------------------------------------------------------
 
+_PENDING_TOTP_SESSION_KEY = "pending_totp_enrollment_enc"
+
+
+def _store_pending_totp_enrollment(payload: dict) -> None:
+    """Encrypt pending authenticator material before placing it in server-side session storage."""
+    from app.utils.security import _get_fernet
+
+    encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    token = _get_fernet().encrypt(encoded).decode("ascii")
+    session[_PENDING_TOTP_SESSION_KEY] = token
+    # Do not retain or accept the former plaintext session representation.
+    session.pop("pending_totp_enrollment", None)
+
+
+def _load_pending_totp_enrollment():
+    """Decrypt the short-lived pending authenticator material; fail closed on corruption."""
+    from app.utils.security import _get_fernet
+
+    token = session.get(_PENDING_TOTP_SESSION_KEY)
+    if not isinstance(token, str) or not token:
+        return None
+    try:
+        decoded = _get_fernet().decrypt(token.encode("ascii"))
+        payload = json.loads(decoded.decode("utf-8"))
+        return payload if isinstance(payload, dict) else None
+    except Exception:
+        session.pop(_PENDING_TOTP_SESSION_KEY, None)
+        current_app.logger.warning("Pending TOTP enrollment could not be decrypted; requiring setup again")
+        return None
+
+
+def _clear_pending_totp_enrollment() -> None:
+    session.pop(_PENDING_TOTP_SESSION_KEY, None)
+    session.pop("pending_totp_enrollment", None)
+
+
 def _mfa_enrollment_identity():
     """Resolve an authenticated user or a short-lived password-verified owner."""
     from app.identity.models.user import User
@@ -1842,14 +1878,14 @@ def mfa_enable():
 
     # Pending credentials live only in the server-side session until the user
     # proves possession by entering a valid code from the authenticator app.
-    session['pending_totp_enrollment'] = {
+    _store_pending_totp_enrollment({
         'user_public_id': target_user.public_id,
         'secret': secret,
         'device_name': device_name or 'Primary Device',
         'backup_codes': backup_codes,
         'expires_at': int(time.time()) + 600,
         'preauth_owner': bool(preauth_owner),
-    }
+    })
 
     totp_uri = pyotp.TOTP(secret).provisioning_uri(
         name=target_user.email or target_user.public_id,
@@ -1883,7 +1919,7 @@ def mfa_confirm():
     if current_user.is_authenticated and not session.get('_fresh'):
         return jsonify({'success': False, 'error': 'Please sign in again before changing MFA.'}), 401
 
-    pending = session.get('pending_totp_enrollment')
+    pending = _load_pending_totp_enrollment()
     if not isinstance(pending, dict):
         return jsonify({'success': False, 'error': 'Start authenticator setup again.'}), 400
 
@@ -1896,7 +1932,7 @@ def mfa_confirm():
         or expired
         or bool(pending.get('preauth_owner')) != bool(preauth_owner)
     ):
-        session.pop('pending_totp_enrollment', None)
+        _clear_pending_totp_enrollment()
         return jsonify({'success': False, 'error': 'Authenticator setup expired. Start again.'}), 400
 
     payload = request.get_json(silent=True) or {}
@@ -1945,7 +1981,7 @@ def mfa_confirm():
     db.session.add(target_user)
     db.session.commit()
 
-    session.pop('pending_totp_enrollment', None)
+    _clear_pending_totp_enrollment()
     if preauth_owner:
         session.pop('pending_owner_mfa_setup_user', None)
         session.pop('pending_owner_mfa_setup_expires_at', None)
