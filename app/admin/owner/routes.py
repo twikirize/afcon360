@@ -1130,13 +1130,6 @@ def settings():
             # Update settings
             session_timeout = request.form.get('session_timeout', type=int, default=120)
 
-            # SECURITY: Update MFA requirement toggle
-            require_owner_mfa = request.form.get('require_owner_mfa') == 'on'
-
-            # Update config (this is a system-wide setting)
-            # In production, this should update a SystemSetting in DB
-            current_app.config['REQUIRE_OWNER_MFA'] = require_owner_mfa
-
             # Also update OwnerSettings
             owner_settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
             if not owner_settings:
@@ -1151,8 +1144,7 @@ def settings():
                 action='updated_settings',
                 category='settings',
                 details={
-                    'session_timeout': session_timeout,
-                    'require_owner_mfa': require_owner_mfa
+                    'session_timeout': session_timeout
                 }
             )
             return redirect(url_for('admin.owner.settings'))
@@ -1161,8 +1153,10 @@ def settings():
         logger.info("Fetching owner settings from database")
         owner_settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
 
-        # Get current MFA requirement status
-        require_mfa = current_app.config.get('REQUIRE_OWNER_MFA', False)
+        # Get the database-persisted MFA policy (environment is only bootstrap fallback).
+        require_mfa = bool(SystemConfig.get(
+            'REQUIRE_OWNER_MFA', current_app.config.get('REQUIRE_OWNER_MFA', False)
+        ))
 
         # Get super admin module toggle permission
         super_admin_can_toggle_modules = SystemSetting.get('SUPER_ADMIN_CAN_TOGGLE_MODULES', False)
@@ -1231,6 +1225,99 @@ def settings():
         )
         flash("Unable to load settings. Please try again later.", "warning")
         return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/settings/owner-mfa', methods=['POST'])
+@owner_login_required
+@audit_owner_action('updated_owner_mfa_requirement', 'security')
+def update_owner_mfa_requirement():
+    """Persist the owner MFA requirement after safe enrollment preconditions."""
+    from app.identity.models import User, UserRole
+    from app.identity.models.user import MFASecret
+    from app.models.system_config import SystemConfig
+
+    try:
+        if not current_user.is_app_owner():
+            flash("Only the platform owner can change the owner MFA policy.", "danger")
+            return redirect(url_for('admin.owner.settings'))
+
+        enabled = request.form.get('require_owner_mfa') == 'on'
+
+        if enabled:
+            owner_role = Role.query.filter_by(name='owner', scope='global').first()
+            if owner_role is None:
+                flash("Owner MFA could not be enabled: the global owner role was not found.", "danger")
+                return redirect(url_for('admin.owner.settings'))
+
+            active_owners = (
+                User.query.join(UserRole, UserRole.user_id == User.id)
+                .filter(
+                    UserRole.role_id == owner_role.id,
+                    User.is_active.is_(True),
+                    User.is_deleted.is_(False),
+                )
+                .all()
+            )
+            owner_ids = [owner.id for owner in active_owners]
+            enrolled_ids = set()
+            if owner_ids:
+                enrolled_ids = {
+                    row[0]
+                    for row in db.session.query(MFASecret.user_id)
+                    .filter(
+                        MFASecret.user_id.in_(owner_ids),
+                        MFASecret.is_active.is_(True),
+                        MFASecret.mfa_type == 'totp',
+                    )
+                    .distinct()
+                    .all()
+                }
+
+            missing = [
+                owner for owner in active_owners
+                if not owner.mfa_enabled or owner.id not in enrolled_ids
+            ]
+            if not active_owners or missing:
+                names = ", ".join(
+                    (owner.username or owner.public_id) for owner in missing[:5]
+                )
+                suffix = f" Not enrolled: {names}." if names else ""
+                flash(
+                    "Owner MFA was not enabled. Every active platform owner must first "
+                    "enable an authenticator app (TOTP) and verify their enrollment."
+                    + suffix,
+                    "warning",
+                )
+                return redirect(url_for('admin.owner.settings'))
+
+        SystemConfig.set(
+            key='REQUIRE_OWNER_MFA',
+            value=enabled,
+            value_type='bool',
+            category='security',
+            description='Require authenticator-based MFA for every active platform owner',
+            updated_by=current_user.id,
+            commit=False,
+        )
+        db.session.commit()
+
+        log_owner_action(
+            action='updated_owner_mfa_requirement',
+            category='security',
+            details={'require_owner_mfa': enabled},
+        )
+        flash(
+            "Owner MFA enforcement is now enabled for all enrolled platform owners."
+            if enabled else
+            "Owner MFA enforcement has been disabled. Enrolled users still need MFA to log in.",
+            "success",
+        )
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Failed to update owner MFA enforcement")
+        flash("Unable to update owner MFA enforcement. No change was saved.", "danger")
+
+    return redirect(url_for('admin.owner.settings'))
+
 
 @owner_bp.route('/settings/toggle-org-registration-mode', methods=['POST'])
 @owner_login_required
