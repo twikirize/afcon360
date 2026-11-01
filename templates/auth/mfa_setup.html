@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Set up multi-factor authentication{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 720px;">
+    <div class="card shadow-sm">
+        <div class="card-body p-4">
+            <h1 class="h3 mb-3">Set up multi-factor authentication</h1>
+            <p class="text-muted">
+                Protect your AFCON360 account with an authenticator app. Your
+                account will not be marked as MFA-enabled until you enter a
+                valid code from the app.
+            </p>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category if category in ['success', 'danger', 'warning', 'info'] else 'info' }}" role="alert">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div id="mfaSetupError" class="alert alert-danger" role="alert" hidden></div>
+
+            <form id="mfaStartForm" method="post" action="{{ url_for('auth.mfa_enable') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="mfa_type" value="totp">
+                <div class="mb-3">
+                    <label class="form-label" for="device_name">Device name</label>
+                    <input class="form-control" id="device_name" name="device_name"
+                           maxlength="100" value="Primary authenticator" required>
+                </div>
+                <button class="btn btn-primary" id="mfaStartButton" type="submit">
+                    Generate authenticator setup
+                </button>
+            </form>
+
+            <section id="mfaPendingSetup" class="mt-4" hidden>
+                <hr>
+                <h2 class="h5">1. Scan this QR code</h2>
+                <p>Open your authenticator app and scan the QR code below.</p>
+                <img id="mfaQrCode" alt="Authenticator setup QR code"
+                     class="img-fluid border rounded p-2 mb-3"
+                     style="max-width: 260px;">
+
+                <h3 class="h6">Or enter the setup key manually</h3>
+                <p><code id="mfaManualSecret" class="user-select-all"></code></p>
+
+                <h3 class="h6 mt-4">2. Save your one-time backup codes</h3>
+                <p class="text-warning">
+                    Store these codes somewhere private. Each code can be used
+                    once if you lose access to your authenticator.
+                </p>
+                <pre id="mfaBackupCodes" class="border rounded bg-light p-3 user-select-all"></pre>
+
+                <h3 class="h6 mt-4">3. Verify your authenticator</h3>
+                <p>Enter the current six-digit code shown by your authenticator.</p>
+                <form method="post" action="{{ url_for('auth.mfa_confirm') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="mb-3">
+                        <label class="form-label" for="mfa_code">Authenticator code</label>
+                        <input class="form-control" id="mfa_code" name="mfa_code"
+                               inputmode="numeric" autocomplete="one-time-code"
+                               pattern="[0-9]{6}" minlength="6" maxlength="6"
+                               required>
+                    </div>
+                    <button class="btn btn-success" type="submit">
+                        Verify and enable MFA
+                    </button>
+                </form>
+            </section>
+
+            <noscript>
+                <div class="alert alert-warning mt-3">
+                    JavaScript is required to generate and display your secure
+                    authenticator setup. Enable JavaScript and reload this page.
+                </div>
+            </noscript>
+        </div>
+    </div>
+</div>
+
+<script nonce="{{ csp_nonce }}">
+(function () {
+    "use strict";
+    const form = document.getElementById("mfaStartForm");
+    const button = document.getElementById("mfaStartButton");
+    const errorBox = document.getElementById("mfaSetupError");
+    const pending = document.getElementById("mfaPendingSetup");
+
+    form.addEventListener("submit", async function (event) {
+        event.preventDefault();
+        errorBox.hidden = true;
+        button.disabled = true;
+        button.textContent = "Generating…";
+
+        try {
+            const response = await fetch(form.action, {
+                method: "POST",
+                body: new FormData(form),
+                credentials: "same-origin",
+                headers: { "X-Requested-With": "XMLHttpRequest" }
+            });
+            const payload = await response.json();
+            if (!response.ok || !payload.success) {
+                throw new Error(payload.error || "Unable to generate MFA setup.");
+            }
+
+            document.getElementById("mfaQrCode").src = payload.qr_code;
+            document.getElementById("mfaManualSecret").textContent = payload.secret;
+            document.getElementById("mfaBackupCodes").textContent =
+                (payload.backup_codes || []).join("\n");
+            pending.hidden = false;
+            button.textContent = "Regenerate setup";
+        } catch (error) {
+            errorBox.textContent = error.message || "Unable to generate MFA setup.";
+            errorBox.hidden = false;
+            button.textContent = "Try again";
+        } finally {
+            button.disabled = false;
+        }
+    });
+}());
+</script>
+{% endblock %}
