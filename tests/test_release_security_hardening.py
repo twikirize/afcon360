@@ -176,3 +176,5 @@ def test_totp_enrollment_stays_pending_until_a_valid_code_is_confirmed(app):
         ).one()
         assert active.is_active is True
         assert saved_user.mfa_enabled is True
+    status_page = client.get("/mfa/status")
+    assert status_page.status_code == 200
