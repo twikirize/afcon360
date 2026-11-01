@@ -51,22 +51,20 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
         current_owner = db.session.get(User, admin_pk)
         current_owner.mfa_enabled = True
         current_owner_verified_at = datetime.now(timezone.utc)
-        db.session.add(
-            MFASecret(
-                user_id=current_owner.id,
-                mfa_type="totp",
-                secret=pyotp.random_base32(),
-                is_active=True,
-                last_used=current_owner_verified_at,
-            )
+        current_owner_secret = pyotp.random_base32()
+        current_owner_mfa = MFASecret(
+            user_id=current_owner.id,
+            mfa_type="totp",
+            secret=current_owner_secret,
+            is_active=True,
+            last_used=current_owner_verified_at,
         )
-        from app.auth.security_policy import totp_proof_setting_key
-        SystemConfig.set(
-            totp_proof_setting_key(current_owner),
-            current_owner_verified_at.isoformat(),
-            value_type="str",
-            category="security",
-            commit=False,
+        current_owner_mfa.set_totp_secret(current_owner_secret)
+        db.session.add(current_owner_mfa)
+        from app.auth.security_policy import record_totp_proof
+        record_totp_proof(
+            current_owner, current_owner_verified_at,
+            secret=current_owner_secret, commit=False,
         )
 
         # A second active owner has not yet enrolled.
@@ -101,21 +99,19 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
         other_owner = db.session.get(User, other_owner_id)
         other_owner.mfa_enabled = True
         other_owner_verified_at = datetime.now(timezone.utc)
-        db.session.add(
-            MFASecret(
-                user_id=other_owner.id,
-                mfa_type="totp",
-                secret=pyotp.random_base32(),
-                is_active=True,
-                last_used=other_owner_verified_at,
-            )
+        other_owner_secret = pyotp.random_base32()
+        other_owner_mfa = MFASecret(
+            user_id=other_owner.id,
+            mfa_type="totp",
+            secret=other_owner_secret,
+            is_active=True,
+            last_used=other_owner_verified_at,
         )
-        SystemConfig.set(
-            totp_proof_setting_key(other_owner),
-            other_owner_verified_at.isoformat(),
-            value_type="str",
-            category="security",
-            commit=False,
+        other_owner_mfa.set_totp_secret(other_owner_secret)
+        db.session.add(other_owner_mfa)
+        record_totp_proof(
+            other_owner, other_owner_verified_at,
+            secret=other_owner_secret, commit=False,
         )
         db.session.commit()
 
@@ -210,8 +206,8 @@ def test_new_owner_must_enroll_and_prove_totp_before_sign_in(
             .one()
         )
         assert record.last_used is not None
-        from app.auth.security_policy import totp_proof_setting_key
-        assert SystemConfig.get(totp_proof_setting_key(owner)) is not None
+        from app.auth.security_policy import totp_proof_matches
+        assert totp_proof_matches(owner, record.get_totp_secret())
         assert len(record.get_backup_codes()) == 10
 
     with client.session_transaction() as session:
