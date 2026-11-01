@@ -269,6 +269,6 @@ jobs:
             tests/test_transport_tracking_live.py \
             tests/test_transport_frontend_contracts.py \
             tests/test_owner_mfa_security.py \
-            tests/test_security_answer_hashing.py
-            tests/test_health_rate_limit.py
+            tests/test_security_answer_hashing.py \
+            tests/test_health_rate_limit.py \
             tests/test_mfa_secret_encryption.py
