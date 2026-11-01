@@ -7,7 +7,10 @@
     <div class="card shadow-sm">
         <div class="card-body p-4">
             <h1 class="h3 mb-3">Multi-factor authentication</h1>
-            {% set active_mfa = mfa_secrets | selectattr('is_active') | list %}
+            {% set active_mfa = mfa_secrets
+                | selectattr('is_active')
+                | selectattr('last_used')
+                | list %}
             {% if active_mfa %}
                 <div class="alert alert-success" role="status">
                     Multi-factor authentication is enabled for this account.
