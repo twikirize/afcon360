@@ -6,6 +6,7 @@ import pyotp
 from app.extensions import db
 from app.identity.models.user import MFASecret
 from app.models.system_config import SystemConfig
+from sqlalchemy import inspect as sa_inspect
 
 
 def test_persisted_owner_mfa_policy_overrides_process_config(app):
@@ -34,6 +35,7 @@ def test_persisted_owner_mfa_policy_overrides_process_config(app):
 def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
     app, admin_client, test_admin
 ):
+    admin_pk = sa_inspect(test_admin).identity[0]
     from app.identity.models.user import User, UserRole
     from app.identity.models.roles_permission import get_or_create_role
 
@@ -43,7 +45,7 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
             category="security", commit=True,
         )
         owner_role = get_or_create_role("owner", scope="global", level=1)
-        current_owner = db.session.get(User, test_admin.id)
+        current_owner = db.session.get(User, admin_pk)
         current_owner.mfa_enabled = True
         current_owner_verified_at = datetime.now(timezone.utc)
         db.session.add(
@@ -66,8 +68,8 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
 
         # A second active owner has not yet enrolled.
         other_owner = User(
-            username=f"not_enrolled_{test_admin.id}",
-            email=f"not_enrolled_{test_admin.id}@test.example.com",
+            username=f"not_enrolled_{admin_pk}",
+            email=f"not_enrolled_{admin_pk}@test.example.com",
             is_active=True,
             is_verified=True,
         )
@@ -127,12 +129,15 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
 def test_new_owner_must_enroll_and_prove_totp_before_sign_in(
     app, client, test_admin
 ):
+    admin_pk = sa_inspect(test_admin).identity[0]
     with app.app_context():
         SystemConfig.set(
             "REQUIRE_OWNER_MFA", True, value_type="bool",
             category="security", commit=True,
         )
-        owner = db.session.get(type(test_admin), test_admin.id)
+        owner = db.session.get(type(test_admin), admin_pk)
+        owner_username = owner.username
+        owner_public_id = owner.public_id
         owner.mfa_enabled = False
         db.session.query(MFASecret).filter_by(user_id=owner.id).delete()
         db.session.commit()
@@ -140,14 +145,14 @@ def test_new_owner_must_enroll_and_prove_totp_before_sign_in(
     # A correct password earns only a limited, short-lived enrollment session.
     response = client.post(
         "/login",
-        data={"username": test_admin.username, "password": "TestPass123!"},
+        data={"username": owner_username, "password": "TestPass123!"},
         follow_redirects=False,
     )
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/mfa/setup")
     with client.session_transaction() as session:
         assert "_user_id" not in session
-        assert session.get("pending_owner_mfa_setup_user") == test_admin.public_id
+        assert session.get("pending_owner_mfa_setup_user") == owner_public_id
 
     setup_page = client.get("/mfa/setup")
     assert setup_page.status_code == 200
@@ -165,7 +170,7 @@ def test_new_owner_must_enroll_and_prove_totp_before_sign_in(
 
     # The account and database must not claim MFA is enabled before proof.
     with app.app_context():
-        owner = db.session.get(type(test_admin), test_admin.id)
+        owner = db.session.get(type(test_admin), admin_pk)
         assert owner.mfa_enabled is False
         assert (
             db.session.query(MFASecret)
@@ -177,7 +182,7 @@ def test_new_owner_must_enroll_and_prove_totp_before_sign_in(
     invalid = client.post("/mfa/confirm", json={"code": "ABC123"})
     assert invalid.status_code == 400
     with app.app_context():
-        owner = db.session.get(type(test_admin), test_admin.id)
+        owner = db.session.get(type(test_admin), admin_pk)
         assert owner.mfa_enabled is False
         assert (
             db.session.query(MFASecret)
@@ -194,7 +199,7 @@ def test_new_owner_must_enroll_and_prove_totp_before_sign_in(
     assert confirmed.get_json()["next_url"].endswith("/login")
 
     with app.app_context():
-        owner = db.session.get(type(test_admin), test_admin.id)
+        owner = db.session.get(type(test_admin), admin_pk)
         assert owner.mfa_enabled is True
         record = (
             db.session.query(MFASecret)
@@ -213,7 +218,7 @@ def test_new_owner_must_enroll_and_prove_totp_before_sign_in(
     # The owner must now sign in again with both factors.
     challenge = client.post(
         "/login",
-        data={"username": test_admin.username, "password": "TestPass123!"},
+        data={"username": owner_username, "password": "TestPass123!"},
         follow_redirects=False,
     )
     assert challenge.status_code == 200
@@ -223,7 +228,7 @@ def test_new_owner_must_enroll_and_prove_totp_before_sign_in(
     completed = client.post(
         "/login",
         data={
-            "username": test_admin.username,
+            "username": owner_username,
             "password": "TestPass123!",
             "mfa_code": code,
         },
@@ -231,7 +236,7 @@ def test_new_owner_must_enroll_and_prove_totp_before_sign_in(
     )
     assert completed.status_code == 302
     with client.session_transaction() as session:
-        assert session.get("_user_id") == test_admin.public_id
+        assert session.get("_user_id") == owner_public_id
         assert session.get("mfa_verified") is True
 
 
