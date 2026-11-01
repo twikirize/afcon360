@@ -361,14 +361,50 @@ class User(UserMixin, ProtectedModel):
     def verify_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)
 
+    def set_security_answer(self, answer: str) -> None:
+        """Store a recovery answer using a salted, deliberately slow hash."""
+        if not isinstance(answer, str) or not answer.strip():
+            raise ValueError("A non-empty security answer is required")
+        self.security_answer_hash = generate_password_hash(
+            answer.strip(), method="scrypt"
+        )
+
     def verify_security_answer(self, answer: str) -> bool:
-        """Verify security answer for password recovery without email."""
-        if not self.security_answer_hash or not answer:
+        """Verify a recovery answer and transparently upgrade legacy SHA-256.
+
+        Older accounts stored an unsalted SHA-256 digest. A successful legacy
+        match is immediately re-hashed using Werkzeug's salted scrypt format;
+        the caller's existing transaction persists that upgrade together with
+        the password reset.
+        """
+        if not self.security_answer_hash or not isinstance(answer, str):
             return False
-        # Hash the provided answer and compare with stored hash
+        candidate = answer.strip()
+        if not candidate:
+            return False
+
+        stored_hash = self.security_answer_hash
+        try:
+            if check_password_hash(stored_hash, candidate):
+                return True
+        except (TypeError, ValueError):
+            # The value may be a pre-migration legacy SHA-256 digest.
+            pass
+
         import hashlib
-        answer_hash = hashlib.sha256(answer.encode()).hexdigest()
-        return answer_hash == self.security_answer_hash
+        import hmac
+        import re
+
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", stored_hash):
+            return False
+        legacy_hash = hashlib.sha256(candidate.encode("utf-8")).hexdigest()
+        if not hmac.compare_digest(legacy_hash.lower(), stored_hash.lower()):
+            return False
+
+        self.security_answer_hash = generate_password_hash(
+            candidate, method="scrypt"
+        )
+        return True
 
     # ---------------------------
     # Login helpers
