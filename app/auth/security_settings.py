@@ -48,6 +48,7 @@ def set_owner_mfa_required(*, required: bool, updated_by: int) -> None:
             (MFASecret.user_id == User.id)
             & (MFASecret.mfa_type == "totp")
             & MFASecret.is_active.is_(True)
+            & MFASecret.last_used.is_not(None)
         )
         unenrolled_count = (
             db.session.query(User.id)
