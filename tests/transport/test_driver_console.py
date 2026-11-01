@@ -1,6 +1,6 @@
-"""Driver PWA console (Phase 1) behavioral proof.
+"""Driver workspace (Phase 1) behavioral proof.
 
-Covers the console route guards/rendering and every driver action
+Covers the canonical workspace route guards/rendering and every driver action
 through the EXISTING endpoints (no endpoint modified here):
   POST /api/transport/drivers/<id>/status
   POST /api/transport/drivers/<id>/location
@@ -167,20 +167,20 @@ def _make_booking(app, rider_id, status="confirmed", ref=None):
         return booking.id, booking.booking_reference
 
 
-def test_console_requires_login(app, anonymous_client):
-    resp = anonymous_client.get("/transport/driver-console",
+def test_driver_dashboard_requires_login(app, anonymous_client):
+    resp = anonymous_client.get("/transport/driver-dashboard",
                                 follow_redirects=False)
     assert resp.status_code == 302, resp.status_code
 
 
-def test_console_redirects_to_driver_dashboard(app, client, db_session):
-    driver = _seed_driver(app)
-    _enter_driver_context(client, driver)
-
-    resp = client.get("/transport/driver-console", follow_redirects=False)
-    assert resp.status_code == 302, resp.status_code
-    assert resp.headers.get("Location", "").endswith(
-        "/transport/driver-dashboard")
+def test_removed_legacy_driver_console_url_is_not_registered(
+        app, anonymous_client):
+    # The old /driver-console alias was deliberately removed during
+    # workspace consolidation. Keep the canonical /driver-dashboard route
+    # as the only supported driver workspace entry.
+    resp = anonymous_client.get("/transport/driver-console",
+                                follow_redirects=False)
+    assert resp.status_code == 404, resp.status_code
 
 
 def test_driver_dashboard_carries_console_location_feature(
@@ -200,8 +200,8 @@ def test_driver_dashboard_carries_console_location_feature(
         'data-panel="status"')
 
 
-def test_console_redirects_without_profile(app, client, db_session,
-                                           monkeypatch):
+def test_driver_dashboard_shows_registration_path_without_profile(
+        app, client, db_session, monkeypatch):
     from app.transport.services import provider_service
 
     driver = _seed_driver(app)
@@ -212,10 +212,12 @@ def test_console_redirects_without_profile(app, client, db_session,
         lambda self, user_id: None,
     )
 
-    resp = client.get("/transport/driver-console", follow_redirects=False)
-    assert resp.status_code == 302, resp.status_code
-    assert resp.headers.get("Location", "").endswith(
-        "/transport/become-driver")
+    resp = client.get("/transport/driver-dashboard", follow_redirects=False)
+    assert resp.status_code == 200, resp.status_code
+    body = resp.get_data(as_text=True)
+    assert "No driver profile found" in body
+    assert "Register as a driver to start accepting trips." in body
+    assert "Become a Driver" in body
 
 
 def test_status_toggle_flips_online(app, client, db_session):
