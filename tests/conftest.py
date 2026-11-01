@@ -318,6 +318,28 @@ def app(setup_database):
         table_count = assert_migrated_postgres_database(db.engine)
         print(f"[OK] PostgreSQL test database verified (tables count: {table_count})")
 
+        # Seed frozen organisation classification catalogues before the
+        # row-tracking isolation baseline is captured by the first test.
+        # Production seeds these idempotently on the first request in a
+        # background thread; doing it synchronously here prevents the test
+        # cleanup baseline from misclassifying reference rows as test data.
+        from app.identity.services.organisation_classification_service import (
+            seed_organisation_catalogues,
+        )
+        seed_organisation_catalogues(force=True, verbose=False)
+        from app.identity.models.organisation_catalogues import (
+            OrganisationCategory,
+            OrganisationTypeCatalogue,
+        )
+        category_count = OrganisationCategory.query.count()
+        type_count = OrganisationTypeCatalogue.query.count()
+        if category_count != 8 or type_count != 39:
+            raise RuntimeError(
+                "Organisation classification catalogue seed is incomplete: "
+                f"{category_count} categories, {type_count} types; expected 8/39."
+            )
+        print("[OK] Seeded canonical organisation classification catalogues (8/39)")
+
         from app.auth.seed_roles import seed_all
         seed_all(verbose=False)
         print("[OK] Seeded global RBAC (roles/permissions/links) at session bootstrap")
