@@ -41,17 +41,23 @@ def set_owner_mfa_required(*, required: bool, updated_by: int) -> None:
     out of the platform by enabling the policy prematurely.
     """
     if required:
-        from app.identity.models.user import User, UserRole
+        from app.identity.models.user import User, UserRole, MFASecret
         from app.identity.models.roles_permission import Role
 
+        active_totp = (
+            (MFASecret.user_id == User.id)
+            & (MFASecret.mfa_type == "totp")
+            & MFASecret.is_active.is_(True)
+        )
         unenrolled_count = (
             db.session.query(User.id)
             .join(UserRole, UserRole.user_id == User.id)
             .join(Role, Role.id == UserRole.role_id)
+            .outerjoin(MFASecret, active_totp)
             .filter(
                 Role.name == "owner",
                 User.is_active.is_(True),
-                User.mfa_enabled.is_(False),
+                (User.mfa_enabled.is_(False)) | (MFASecret.id.is_(None)),
             )
             .distinct()
             .count()
