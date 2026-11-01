@@ -339,3 +339,23 @@ def test_recent_backup_code_login_can_safely_replace_legacy_authenticator(
         ).one()
         assert record.secret == setup["secret"]
         assert SystemConfig.get(totp_proof_setting_key(owner)) is not None
+
+
+def test_global_owner_policy_requires_recent_totp_not_backup_code(app):
+    from flask import session
+    from app.auth.security_policy import recent_owner_totp_proof
+
+    with app.test_request_context():
+        session["mfa_verified"] = True
+        session["mfa_verified_at"] = datetime.now(timezone.utc).isoformat()
+        session["mfa_verified_method"] = "totp"
+        assert recent_owner_totp_proof(max_age_seconds=300) is True
+
+        session["mfa_verified_method"] = "backup"
+        assert recent_owner_totp_proof(max_age_seconds=300) is False
+
+        session["mfa_verified_method"] = "totp"
+        session["mfa_verified_at"] = (
+            datetime.now(timezone.utc).replace(year=2020).isoformat()
+        )
+        assert recent_owner_totp_proof(max_age_seconds=300) is False
