@@ -15,7 +15,14 @@ on:
       - "app/tasks/transport_recovery.py"
       - "app/utils/validators.py"
       - "app/config.py"
+      - "app/auth/**"
+      - "app/identity/models/user.py"
+      - "app/admin/owner/routes.py"
+      - "app/models/system_config.py"
       - "app/__init__.py"
+      - "docker-entrypoint.sh"
+      - "docker-compose.yml"
+      - ".codebuddy/docker-compose.prod.yml"
       - "templates/transport/**"
       - "templates/admin/transport_admin_*.html"
       - "tests/test_transport_booking_route_path.py"
@@ -38,6 +45,12 @@ on:
       - "tests/test_transport_restful_auth.py"
       - "tests/test_transport_tracking_live.py"
       - "tests/test_transport_frontend_contracts.py"
+      - "tests/test_backlog1179_auth_security.py"
+      - "tests/test_release_security_hardening.py"
+      - "tests/wallet/test_f02_cancellation_refund.py"
+      - "tests/wallet/test_f03b_refund_payout_idempotency.py"
+      - "tests/wallet/test_ledger_concurrency.py"
+      - "tests/wallet/test_withdraw_api.py"
       - "tests/test_request_tracker_polling.cjs"
       - "tests/test_geo_realtime_fallback.cjs"
       - "tests/test_rider_sync_driver_card.cjs"
@@ -128,6 +141,10 @@ jobs:
           app/transport
           app/wallet
           app/geo
+          app/auth
+          app/admin/owner/routes.py
+          app/identity/models/user.py
+          app/models/system_config.py
           scripts/seed_payment_methods.py
           app/tasks/transport_recovery.py
           app/utils/validators.py
@@ -211,7 +228,10 @@ jobs:
           node tests/test_geo_realtime_fallback.cjs
           node tests/test_request_tracker_polling.cjs
 
-      - name: Run fare confirmation, request lifecycle, payment, and admin regressions
+      - name: Validate container entrypoint shell syntax
+        run: bash -n docker-entrypoint.sh
+
+      - name: Run release hardening, wallet, fare confirmation, request lifecycle, payment, and admin regressions
         run: |
           python -m pytest -vv -x --timeout=120 --timeout-method=signal --durations=20 \
             tests/test_transport_ride_options.py \
@@ -233,4 +253,10 @@ jobs:
             tests/test_transport_pwa_shell.py \
             tests/test_transport_restful_auth.py \
             tests/test_transport_tracking_live.py \
-            tests/test_transport_frontend_contracts.py
+            tests/test_transport_frontend_contracts.py \
+            tests/test_backlog1179_auth_security.py \
+            tests/test_release_security_hardening.py \
+            tests/wallet/test_f02_cancellation_refund.py \
+            tests/wallet/test_f03b_refund_payout_idempotency.py \
+            tests/wallet/test_ledger_concurrency.py \
+            tests/wallet/test_withdraw_api.py
