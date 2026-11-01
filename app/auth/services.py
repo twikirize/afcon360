@@ -13,6 +13,7 @@ import hashlib
 import secrets
 import uuid
 from functools import wraps
+from werkzeug.security import generate_password_hash
 
 from app.extensions import db, cache
 from app.identity.models.user import User, UserRole
