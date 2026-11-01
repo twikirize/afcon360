@@ -42,3 +42,13 @@ def test_security_answer_setter_rejects_empty_values():
         pass
     else:
         raise AssertionError("empty security answers must not be stored")
+
+
+def test_legacy_sha256_answer_with_outer_whitespace_still_upgrades():
+    user = _user()
+    legacy = hashlib.sha256(b" First school ").hexdigest()
+    user.security_answer_hash = legacy
+
+    assert user.verify_security_answer(" First school ")
+    assert user.security_answer_hash != legacy
+    assert user.verify_security_answer("First school")
