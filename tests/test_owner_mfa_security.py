@@ -338,6 +338,49 @@ def test_enabling_global_owner_mfa_ends_existing_password_only_sessions(
     assert enrollment.headers["Location"].endswith("/mfa/setup")
 
 
+
+
+
+def test_global_owner_mfa_gate_does_not_exempt_private_health_module_endpoint(
+    app, client, test_admin
+):
+    from sqlalchemy import inspect as sa_inspect
+    from app.identity.models.user import User
+
+    owner_pk = sa_inspect(test_admin).identity[0]
+    with app.app_context():
+        owner = db.session.get(User, owner_pk)
+        owner_username = owner.username
+        owner.mfa_enabled = False
+        SystemConfig.set(
+            "REQUIRE_OWNER_MFA", False, value_type="bool",
+            category="security", commit=True,
+        )
+        db.session.commit()
+
+    logged_in = client.post(
+        "/login",
+        data={"username": owner_username, "password": "TestPass123!"},
+        follow_redirects=False,
+    )
+    assert logged_in.status_code == 302
+    with app.test_request_context():
+        from flask import url_for as build_url
+        health_modules_url = build_url("health.module_health")
+
+    with app.app_context():
+        SystemConfig.set(
+            "REQUIRE_OWNER_MFA", True, value_type="bool",
+            category="security", commit=True,
+        )
+
+    response = client.get(health_modules_url)
+    assert response.status_code == 401
+    assert response.get_json() == {"error": "owner_mfa_required"}
+    with client.session_transaction() as browser_session:
+        assert "_user_id" not in browser_session
+
+
 def test_mfa_setup_page_requires_a_valid_enrollment_identity(app, client):
     response = client.get("/mfa/setup", follow_redirects=False)
     assert response.status_code == 302
