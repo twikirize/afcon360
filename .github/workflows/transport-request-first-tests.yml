@@ -77,13 +77,17 @@ concurrency:
 
 jobs:
   postgres-regression:
-    name: PostgreSQL 18 — request lifecycle, payments, admin queues
+    name: PostgreSQL ${{ matrix.postgres-version }} — request lifecycle, payments, admin queues
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres-version: ["15", "18"]
 
     services:
       postgres:
-        image: postgres:18
+        image: postgres:${{ matrix.postgres-version }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
