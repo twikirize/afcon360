@@ -4,7 +4,7 @@ Stores API keys and settings securely in database with encryption
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, JSON, BigInteger
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, JSON, BigInteger, text
 from app.extensions import db
 from app.models.base import BaseModel
 from cryptography.fernet import Fernet
