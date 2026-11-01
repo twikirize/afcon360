@@ -83,7 +83,7 @@ def _verify_mfa_token(user, token: str, backup_code: bool = False) -> bool:
                     mfa_secret.set_totp_secret(plaintext_secret)
                 mfa_secret.last_used = verified_at
                 from app.auth.security_policy import record_totp_proof
-                record_totp_proof(user, verified_at, commit=False)
+                record_totp_proof(user, verified_at, secret=plaintext_secret, commit=False)
                 db.session.commit()
                 return True
         
@@ -116,28 +116,6 @@ def _owner_has_active_totp(user) -> bool:
     except Exception:
         db.session.rollback()
         current_app.logger.exception("Could not inspect active owner TOTP enrollment")
-        return False
-
-
-def _owner_has_verified_totp(user) -> bool:
-    """Return whether this account has an active TOTP and durable proof of use."""
-    from app.identity.models.user import MFASecret
-    from app.auth.security_policy import totp_proof_setting_key
-    from app.models.system_config import SystemConfig
-
-    try:
-        active_totp = MFASecret.query.filter_by(
-            user_id=user.id,
-            mfa_type="totp",
-            is_active=True,
-        ).first()
-        if active_totp is None:
-            return False
-        proof = SystemConfig.get(totp_proof_setting_key(user), default=None)
-        return isinstance(proof, str) and bool(proof.strip())
-    except Exception:
-        db.session.rollback()
-        current_app.logger.exception("Could not verify durable TOTP enrollment evidence")
         return False
 
 
@@ -1822,6 +1800,7 @@ auth_bp.add_url_rule('/mfa/setup', endpoint='setup_mfa', view_func=mfa_setup)
 
 
 @auth_bp.route('/mfa/enable', methods=['POST'])
+@limiter.limit("5 per hour")
 def mfa_enable():
     """Generate pending TOTP credentials; do not mark MFA enabled yet."""
     import base64
@@ -1880,6 +1859,7 @@ def mfa_enable():
 
 
 @auth_bp.route('/mfa/confirm', methods=['POST'])
+@limiter.limit("5 per minute")
 def mfa_confirm():
     """Verify TOTP possession, then persist and activate the authenticator."""
     import pyotp
@@ -1934,7 +1914,7 @@ def mfa_confirm():
     verified_at = datetime.now(timezone.utc)
     mfa_secret.last_used = verified_at
     from app.auth.security_policy import record_totp_proof
-    record_totp_proof(target_user, verified_at, commit=False)
+    record_totp_proof(target_user, verified_at, secret=pending['secret'], commit=False)
     target_user.mfa_enabled = True
     if not preauth_owner:
         # This session has now proved possession of its newly enrolled factor.
