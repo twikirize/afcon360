@@ -1771,6 +1771,7 @@ def _mfa_enrollment_identity():
 
 
 @auth_bp.route('/mfa/setup')
+@limiter.limit("10 per hour")
 def mfa_setup():
     """Render TOTP enrollment for an authenticated user or verified owner login."""
     target_user, preauth_owner = _mfa_enrollment_identity()
@@ -1871,7 +1872,7 @@ def mfa_enable():
 
 
 @auth_bp.route('/mfa/confirm', methods=['POST'])
-@limiter.limit("5 per minute")
+@limiter.limit("5 per 5 minutes")
 def mfa_confirm():
     """Verify TOTP possession, then persist and activate the authenticator."""
     import pyotp
