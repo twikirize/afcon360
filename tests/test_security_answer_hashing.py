@@ -52,3 +52,47 @@ def test_legacy_sha256_answer_with_outer_whitespace_still_upgrades():
     assert user.verify_security_answer(" First school ")
     assert user.security_answer_hash != legacy
     assert user.verify_security_answer("First school")
+
+
+
+def test_legacy_profile_lowercase_sha256_upgrades_case_insensitively():
+    """The older profile editor lowercased answers before storing SHA-256."""
+    user = _user()
+    legacy = hashlib.sha256(b"first school").hexdigest()
+    user.security_answer_hash = legacy
+
+    assert user.verify_security_answer("First School")
+    assert user.security_answer_hash.startswith("scrypt:")
+    assert user.verify_security_answer("FIRST SCHOOL")
+
+
+def test_legacy_registration_sha256_with_outer_spaces_upgrades():
+    """The old registration writer hashed the raw submitted answer."""
+    user = _user()
+    legacy = hashlib.sha256(b" First School ").hexdigest()
+    user.security_answer_hash = legacy
+
+    assert user.verify_security_answer(" First School ")
+    assert user.security_answer_hash.startswith("scrypt:")
+    assert user.verify_security_answer("first school")
+
+
+def test_wallet_identity_verification_uses_shared_recovery_answer_verifier(
+    app, monkeypatch
+):
+    from app.wallet.services.identity_verification_service import (
+        IdentityVerificationService,
+    )
+    from app.extensions import db
+
+    user = _user()
+    user.set_security_answer("First School")
+
+    monkeypatch.setattr(db.session, "get", lambda model, user_id: user)
+    with app.app_context():
+        result = IdentityVerificationService.verify_security_question(
+            user_id=123,
+            answer="FIRST SCHOOL",
+        )
+
+    assert result == {"success": True, "method": "security_question"}
