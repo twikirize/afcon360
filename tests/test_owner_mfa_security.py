@@ -33,6 +33,30 @@ def test_persisted_owner_mfa_policy_overrides_process_config(app):
         assert owner_mfa_required() is False
 
 
+
+
+
+def test_owner_mfa_policy_fails_closed_when_database_unavailable_in_docker(app, monkeypatch):
+    from app.auth.security_policy import owner_mfa_required
+    from app.models.system_config import SystemConfig
+
+    with app.app_context():
+        original_app_env = app.config.get("APP_ENV")
+        original_flask_env = app.config.get("FLASK_ENV")
+        app.config["APP_ENV"] = "docker"
+        app.config["FLASK_ENV"] = "development"
+        app.config["REQUIRE_OWNER_MFA"] = False
+
+        def unavailable(*args, **kwargs):
+            raise RuntimeError("settings store unavailable")
+
+        monkeypatch.setattr(SystemConfig, "get", classmethod(lambda cls, *a, **k: unavailable()))
+        assert owner_mfa_required() is True
+
+        app.config["APP_ENV"] = original_app_env
+        app.config["FLASK_ENV"] = original_flask_env
+
+
 def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
     app, admin_client, test_admin
 ):
