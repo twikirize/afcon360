@@ -98,6 +98,22 @@ def _verify_mfa_token(user, token: str, backup_code: bool = False) -> bool:
         return False
 
 
+def _owner_has_active_totp(user) -> bool:
+    """Return whether an active TOTP secret exists, without assuming it was used."""
+    from app.identity.models.user import MFASecret
+
+    try:
+        return MFASecret.query.filter_by(
+            user_id=user.id,
+            mfa_type="totp",
+            is_active=True,
+        ).first() is not None
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Could not inspect active owner TOTP enrollment")
+        return False
+
+
 def _owner_has_verified_totp(user) -> bool:
     """Return whether this account has an active TOTP and durable proof of use."""
     from app.identity.models.user import MFASecret
@@ -932,7 +948,7 @@ def login():
             # session and do not accept the unsupported method as proof.
             if user.is_app_owner():
                 from app.auth.security_policy import owner_mfa_required
-                if owner_mfa_required() and not _owner_has_verified_totp(user):
+                if owner_mfa_required() and not _owner_has_active_totp(user):
                     _begin_owner_mfa_setup(user)
                     flash(
                         "Complete authenticator setup before signing in to your owner account.",
@@ -1028,7 +1044,7 @@ def login():
             if user.is_app_owner():
                 from app.auth.security_policy import owner_mfa_required
                 owner_mfa_enforced = owner_mfa_required()
-                if owner_mfa_enforced and not _owner_has_verified_totp(user):
+                if owner_mfa_enforced and not _owner_has_active_totp(user):
                     current_app.logger.warning(
                         "Owner login requires authenticator enrollment or re-verification: %s",
                         user.public_id,
@@ -1785,14 +1801,13 @@ def mfa_setup():
         user_id=target_user.id, mfa_type='totp', is_active=True
     ).first()
     if existing and target_user.mfa_enabled:
-        if not preauth_owner:
-            flash('MFA is already enabled for your account.', 'info')
-            return redirect(url_for('auth.mfa_status'))
-        if _owner_has_verified_totp(target_user):
-            flash('An authenticator is already verified. Sign in with its code.', 'info')
+        if preauth_owner:
+            flash('An authenticator is already enrolled. Sign in with its current code.', 'info')
             session.pop("pending_owner_mfa_setup_user", None)
             session.pop("pending_owner_mfa_setup_expires_at", None)
             return redirect(url_for('auth.login'))
+        flash('MFA is already enabled for your account.', 'info')
+        return redirect(url_for('auth.mfa_status'))
 
     return render_template('auth/mfa_setup.html', preauth_owner=preauth_owner)
 
@@ -1820,8 +1835,7 @@ def mfa_enable():
         user_id=target_user.id, mfa_type='totp', is_active=True
     ).first()
     if existing and target_user.mfa_enabled:
-        if not preauth_owner or _owner_has_verified_totp(target_user):
-            return jsonify({'success': False, 'error': 'An authenticator is already enabled.'}), 409
+        return jsonify({'success': False, 'error': 'An authenticator is already enabled.'}), 409
 
     device_name = (request.form.get('device_name') or 'Primary Device').strip()[:100]
     secret = pyotp.random_base32()
