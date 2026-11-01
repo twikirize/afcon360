@@ -1264,21 +1264,18 @@ def update_owner_mfa_requirement():
                 )
                 .all()
             )
-            owner_ids = [owner.id for owner in active_owners]
+            from app.auth.security_policy import totp_proof_setting_key
+
             enrolled_ids = set()
-            if owner_ids:
-                enrolled_ids = {
-                    row[0]
-                    for row in db.session.query(MFASecret.user_id)
-                    .filter(
-                        MFASecret.user_id.in_(owner_ids),
-                        MFASecret.is_active.is_(True),
-                        MFASecret.mfa_type == 'totp',
-                        MFASecret.last_used.is_not(None),
-                    )
-                    .distinct()
-                    .all()
-                }
+            for owner in active_owners:
+                active_totp = MFASecret.query.filter_by(
+                    user_id=owner.id,
+                    mfa_type='totp',
+                    is_active=True,
+                ).first()
+                proof = SystemConfig.get(totp_proof_setting_key(owner), default=None)
+                if active_totp is not None and isinstance(proof, str) and proof.strip():
+                    enrolled_ids.add(owner.id)
 
             missing = [
                 owner for owner in active_owners
