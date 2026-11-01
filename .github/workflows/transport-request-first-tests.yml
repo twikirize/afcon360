@@ -38,6 +38,14 @@ on:
       - "tests/test_transport_restful_auth.py"
       - "tests/test_transport_tracking_live.py"
       - "tests/test_transport_frontend_contracts.py"
+      - "tests/test_owner_mfa_security.py"
+      - "tests/test_security_answer_hashing.py"
+      - "app/auth/security_policy.py"
+      - "app/auth/routes.py"
+      - "app/auth/services.py"
+      - "app/identity/models/user.py"
+      - "app/admin/owner/routes.py"
+      - "templates/owner/settings.html"
       - "tests/test_request_tracker_polling.cjs"
       - "tests/test_geo_realtime_fallback.cjs"
       - "tests/test_rider_sync_driver_card.cjs"
@@ -151,6 +159,8 @@ jobs:
           tests/test_transport_restful_auth.py
           tests/test_transport_tracking_live.py
           tests/test_transport_frontend_contracts.py
+          tests/test_owner_mfa_security.py
+          tests/test_security_answer_hashing.py
 
       - name: Parse changed Jinja templates without database access
         run: |
@@ -233,4 +243,6 @@ jobs:
             tests/test_transport_pwa_shell.py \
             tests/test_transport_restful_auth.py \
             tests/test_transport_tracking_live.py \
-            tests/test_transport_frontend_contracts.py
+            tests/test_transport_frontend_contracts.py \
+            tests/test_owner_mfa_security.py \
+            tests/test_security_answer_hashing.py
