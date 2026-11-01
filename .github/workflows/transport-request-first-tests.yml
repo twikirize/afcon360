@@ -41,11 +41,17 @@ on:
       - "tests/test_owner_mfa_security.py"
       - "tests/test_security_answer_hashing.py"
       - "app/auth/security_policy.py"
+      - "app/auth/otp_service.py"
+      - "app/models/system_config.py"
+      - "env.example"
+      - "templates/auth/**"
       - "app/auth/routes.py"
       - "app/auth/services.py"
       - "app/identity/models/user.py"
       - "app/admin/owner/routes.py"
       - "templates/owner/settings.html"
+      - "templates/auth/mfa_setup.html"
+      - "templates/auth/mfa_status.html"
       - "tests/test_request_tracker_polling.cjs"
       - "tests/test_geo_realtime_fallback.cjs"
       - "tests/test_rider_sync_driver_card.cjs"
@@ -161,6 +167,13 @@ jobs:
           tests/test_transport_frontend_contracts.py
           tests/test_owner_mfa_security.py
           tests/test_security_answer_hashing.py
+          app/auth/routes.py
+          app/auth/security_policy.py
+          app/auth/otp_service.py
+          app/auth/services.py
+          app/identity/models/user.py
+          app/admin/owner/routes.py
+          app/models/system_config.py
 
       - name: Parse changed Jinja templates without database access
         run: |
@@ -176,6 +189,9 @@ jobs:
               "transport/rides/show.html",
               "admin/transport_admin_dashboard.html",
               "admin/transport_admin_operations.html",
+              "owner/settings.html",
+              "auth/mfa_setup.html",
+              "auth/mfa_status.html",
               "transport/admin/dashboard.html",
           )
           env = Environment(
