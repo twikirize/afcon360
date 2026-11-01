@@ -93,32 +93,33 @@ class RegulatoryVolumePolicy(BaseModel):
 
     @classmethod
     def get_active_or_default(cls):
-        """Get active policy or create default if none exists."""
-        try:
-            policy = cls.get_active()
-        except Exception:
-            # Table may not exist yet (e.g., during tests before migration)
-            policy = None
+        """Return the active policy or a non-persistent safe default.
+
+        This method is used by wallet transfer limit checks, which may run
+        inside an existing financial transaction. A read helper must never
+        create/commit a policy row or roll back its caller's transaction.
+        Default configuration is therefore represented as a transient object;
+        an actual policy becomes durable only through the audited,
+        dual-authorized policy approval workflow.
         
-        if not policy:
-            policy = cls(
-                daily_window_mode='calendar',
-                monthly_window_mode='calendar',
-                timezone='Africa/Kampala',
-                is_active=True,
-                effective_from=datetime.now(timezone.utc),
-                requested_by=None,
-                approved_by=None,
-                reason="Default policy - auto-created"
-            )
-            # Only persist if table exists
-            try:
-                db.session.add(policy)
-                db.session.commit()
-            except Exception:
-                # Table doesn't exist, return in-memory default
-                db.session.rollback()
-        return policy
+        Database errors are deliberately allowed to propagate. A missing or
+        unreadable policy table is a schema/readiness failure and must not be
+        hidden by silently bypassing the normal transaction boundary.
+        """
+        policy = cls.get_active()
+        if policy:
+            return policy
+
+        return cls(
+            daily_window_mode=WindowMode.CALENDAR,
+            monthly_window_mode=WindowMode.CALENDAR,
+            timezone='Africa/Kampala',
+            is_active=True,
+            effective_from=datetime.now(timezone.utc),
+            requested_by=None,
+            approved_by=None,
+            reason="Default policy - in-memory fallback",
+        )
 
 
 class RegulatoryVolumePolicyChangeRequest(BaseModel):
