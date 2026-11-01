@@ -36,6 +36,22 @@ def test_regulatory_policy_default_does_not_commit_or_close_callers_transaction(
                 assert db.session().in_transaction()
 
 
+@pytest.mark.usefixtures("db_session")
+def test_wallet_system_config_default_flushes_without_committing_callers_transaction(app):
+    with app.app_context():
+        original_query = WalletSystemConfig.query
+        with patch.object(original_query, "first", return_value=None):
+            with db.session.begin():
+                config = WalletSystemConfig.get_config()
+                assert config in db.session
+                assert config.max_daily_amount == 5000000
+                assert config.max_monthly_amount == 50000000
+                # The helper may flush the row, but it must not finish the
+                # transaction opened by the financial caller.
+                assert db.session.execute(text("SELECT 1")).scalar_one() == 1
+                assert db.session().in_transaction()
+
+
 def test_legacy_security_answer_hash_is_upgraded_after_successful_verification():
     answer = "first-school"
     user = User()
