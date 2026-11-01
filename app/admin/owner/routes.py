@@ -1130,12 +1130,22 @@ def settings():
             # Update settings
             session_timeout = request.form.get('session_timeout', type=int, default=120)
 
-            # SECURITY: Update MFA requirement toggle
+            # Persist the platform-wide policy; only enable it after every
+            # active owner account has enrolled in MFA.
             require_owner_mfa = request.form.get('require_owner_mfa') == 'on'
-
-            # Update config (this is a system-wide setting)
-            # In production, this should update a SystemSetting in DB
-            current_app.config['REQUIRE_OWNER_MFA'] = require_owner_mfa
+            from app.auth.security_settings import (
+                OwnerMFAEnrollmentRequired,
+                set_owner_mfa_required,
+            )
+            try:
+                set_owner_mfa_required(
+                    required=require_owner_mfa,
+                    updated_by=current_user.id,
+                )
+            except OwnerMFAEnrollmentRequired as exc:
+                db.session.rollback()
+                flash(str(exc), 'danger')
+                return redirect(url_for('admin.owner.settings'))
 
             # Also update OwnerSettings
             owner_settings = OwnerSettings.query.filter_by(owner_id=current_user.id).first()
