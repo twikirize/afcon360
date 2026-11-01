@@ -1748,6 +1748,42 @@ def mfa_enable():
     
     return jsonify({'success': False, 'error': 'Unsupported MFA type'})
 
+
+@auth_bp.route('/mfa/confirm', methods=['POST'])
+@login_required
+@require_fresh_user
+@limiter.limit("10 per 15 minutes")
+def mfa_confirm():
+    """Activate a pending TOTP secret only after possession is proven."""
+    from app.identity.models.user import MFASecret
+    import pyotp
+
+    code = (request.form.get("mfa_code") or "").strip()[:8]
+    pending = MFASecret.query.filter_by(
+        user_id=current_user.id,
+        mfa_type="totp",
+        is_active=False,
+    ).first()
+    if not pending:
+        flash("Start MFA setup before confirming a code.", "warning")
+        return redirect(url_for("auth.mfa_setup"))
+
+    if not pyotp.TOTP(pending.secret).verify(code, valid_window=1):
+        flash("That code is not valid. Check your authenticator and try again.", "danger")
+        return redirect(url_for("auth.mfa_setup"))
+
+    pending.is_active = True
+    pending.last_used = datetime.now(timezone.utc)
+    current_user.mfa_enabled = True
+    current_user.enable_mfa("totp", enabled_by_user_id=current_user.id)
+    db.session.commit()
+
+    session["mfa_verified"] = True
+    session.pop("mfa_enrollment_required", None)
+    flash("Multi-factor authentication is now enabled and verified.", "success")
+    return redirect(url_for("auth.mfa_status"))
+
+
 @auth_bp.route('/mfa/status')
 @login_required
 def mfa_status():
