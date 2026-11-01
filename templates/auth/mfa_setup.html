@@ -13,10 +13,19 @@
         sign in again with your password and authenticator code.
       </div>
       {% else %}
+      {% if replacing_existing %}
+      <div class="alert alert-warning" role="alert">
+        You have recently verified your existing authenticator or a one-time backup code.
+        A new authenticator will replace the old one only after you scan the new QR code
+        and successfully verify a current six-digit code. The old authenticator remains
+        active until that confirmation succeeds.
+      </div>
+      {% else %}
       <p class="text-muted">
         Add an authenticator app such as Google Authenticator, Microsoft Authenticator,
         or another TOTP-compatible app.
       </p>
+      {% endif %}
       {% endif %}
 
       <div id="mfaMessage" class="alert d-none" role="status" aria-live="polite"></div>
