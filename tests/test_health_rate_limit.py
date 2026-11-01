@@ -168,8 +168,7 @@ def test_health_readiness_reports_database_and_disabled_redis_in_tests(rl_app):
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["status"] == "ready"
-    assert payload["dependencies"]["database"] == "ok"
-    assert payload["dependencies"]["redis"] == "disabled"
+    assert set(payload) == {"status"}
 
 
 def test_health_readiness_fails_when_required_redis_is_unavailable(rl_app, monkeypatch):
@@ -187,8 +186,7 @@ def test_health_readiness_fails_when_required_redis_is_unavailable(rl_app, monke
     response = rl_app.test_client().get("/api/health/ready")
     assert response.status_code == 503
     payload = response.get_json()
-    assert payload["status"] == "not_ready"
-    assert payload["dependencies"]["redis"] == "unavailable"
+    assert payload == {"status": "not_ready"}
 
 
 def test_health_readiness_fails_when_database_is_unavailable(rl_app):
@@ -206,7 +204,6 @@ def test_health_readiness_fails_when_database_is_unavailable(rl_app):
             response, status = ready()
             assert status == 503
             payload = response.get_json()
-            assert payload["status"] == "not_ready"
-            assert payload["dependencies"]["database"] == "unavailable"
+            assert payload == {"status": "not_ready"}
         finally:
             db.session.execute = original_execute
