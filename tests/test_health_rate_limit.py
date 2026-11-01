@@ -176,8 +176,12 @@ def test_health_readiness_fails_when_required_redis_is_unavailable(rl_app, monke
     import app
     from app.api import health
 
+    class FailingRedis:
+        def ping(self):
+            raise RuntimeError("unavailable")
+
     monkeypatch.setattr(app, "REDIS_AVAILABLE", True)
-    monkeypatch.setattr(health.redis_client, "ping", lambda: (_ for _ in ()).throw(RuntimeError("unavailable")))
+    monkeypatch.setattr(health.redis_client, "_client", FailingRedis())
     rl_app.config["REDIS_REQUIRED"] = True
 
     response = rl_app.test_client().get("/api/health/ready")
