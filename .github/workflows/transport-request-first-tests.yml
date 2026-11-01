@@ -40,6 +40,8 @@ on:
       - "tests/test_transport_frontend_contracts.py"
       - "tests/test_owner_mfa_security.py"
       - "tests/test_security_answer_hashing.py"
+      - "tests/test_mfa_secret_encryption.py"
+      - "app/auth/deletion_guard.py"
       - "app/auth/security_policy.py"
       - "app/auth/otp_service.py"
       - "app/models/system_config.py"
@@ -167,6 +169,8 @@ jobs:
           tests/test_transport_frontend_contracts.py
           tests/test_owner_mfa_security.py
           tests/test_security_answer_hashing.py
+          tests/test_mfa_secret_encryption.py
+          app/auth/deletion_guard.py
           app/auth/routes.py
           app/auth/security_policy.py
           app/auth/otp_service.py
@@ -262,3 +266,4 @@ jobs:
             tests/test_transport_frontend_contracts.py \
             tests/test_owner_mfa_security.py \
             tests/test_security_answer_hashing.py
+            tests/test_mfa_secret_encryption.py
