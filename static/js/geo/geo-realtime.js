@@ -132,7 +132,11 @@
         signal: controller ? controller.signal : undefined
       });
       request.then(function (response) {
-        if (response.status === 401 || response.status === 403 ||
+        var contentType = response.headers && response.headers.get
+          ? (response.headers.get('Content-Type') || '') : '';
+        var isJson = /^application\/(?:[a-z0-9.+-]+\+)?json\b/i.test(contentType);
+        if (response.redirected || !isJson ||
+            response.status === 401 || response.status === 403 ||
             response.status === 404) {
           var denied = new Error('tracking authorization ended');
           denied.permanent = true;
