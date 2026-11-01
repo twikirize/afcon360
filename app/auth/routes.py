@@ -75,7 +75,10 @@ def _verify_mfa_token(user, token: str, backup_code: bool = False) -> bool:
             import pyotp
             totp = pyotp.TOTP(mfa_secret.secret)
             if totp.verify(token, valid_window=1):
-                mfa_secret.last_used = datetime.now(timezone.utc)
+                verified_at = datetime.now(timezone.utc)
+                mfa_secret.last_used = verified_at
+                from app.auth.security_policy import record_totp_proof
+                record_totp_proof(user, verified_at, commit=False)
                 db.session.commit()
                 return True
         
@@ -96,19 +99,25 @@ def _verify_mfa_token(user, token: str, backup_code: bool = False) -> bool:
 
 
 def _owner_has_verified_totp(user) -> bool:
-    """Return whether the owner has an active TOTP with recorded proof of use."""
+    """Return whether this account has an active TOTP and durable proof of use."""
     from app.identity.models.user import MFASecret
+    from app.auth.security_policy import totp_proof_setting_key
+    from app.models.system_config import SystemConfig
 
-    return (
-        MFASecret.query.filter_by(
+    try:
+        active_totp = MFASecret.query.filter_by(
             user_id=user.id,
             mfa_type="totp",
             is_active=True,
-        )
-        .filter(MFASecret.last_used.is_not(None))
-        .first()
-        is not None
-    )
+        ).first()
+        if active_totp is None:
+            return False
+        proof = SystemConfig.get(totp_proof_setting_key(user), default=None)
+        return isinstance(proof, str) and bool(proof.strip())
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Could not verify durable TOTP enrollment evidence")
+        return False
 
 
 def _begin_owner_mfa_setup(user, provisional_session_id=None) -> None:
