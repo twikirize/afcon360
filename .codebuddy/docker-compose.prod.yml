@@ -10,7 +10,7 @@
     command: >
       redis-server
       --maxmemory 96mb
-      --maxmemory-policy allkeys-lru
+      --maxmemory-policy noeviction
       --save 60 1
       --appendonly yes
       --requirepass ${REDIS_PASSWORD}
