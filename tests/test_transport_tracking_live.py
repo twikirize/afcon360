@@ -32,7 +32,7 @@ from app.utils.exceptions import NotFoundError
 
 
 @pytest.fixture
-def live_user(app):
+def live_user(db_session):
     from app.identity.models.user import User
     unique = uuid.uuid4().hex[:8]
     u = User(
@@ -44,13 +44,13 @@ def live_user(app):
         email_verified=True,
     )
     u.set_password("Password123!")
-    db.session.add(u)
-    db.session.commit()
+    db_session.add(u)
+    db_session.commit()
     return u
 
 
 @pytest.fixture
-def live_driver(live_user):
+def live_driver(live_user, db_session):
     dp = DriverProfile(
         user_id=live_user.id,
         driver_code=f"DRV-{uuid.uuid4().hex[:6].upper()}",
@@ -62,8 +62,8 @@ def live_driver(live_user):
         max_passenger_capacity=4,
         vehicle_classes=['comfort'],
     )
-    db.session.add(dp)
-    db.session.commit()
+    db_session.add(dp)
+    db_session.commit()
     return dp
 
 
