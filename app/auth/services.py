@@ -318,16 +318,16 @@ def register_user(
 
     # Generate recovery code if no email
     recovery_code = None
-    hashed_security_answer = None
     if not email and security_answer:
-        # Generate recovery code
+        # Generate recovery code; the recovery answer itself is stored using
+        # the User model's salted, deliberately slow password-hash helper.
         recovery_code = secrets.token_urlsafe(16)
-        # Hash the security answer
-        hashed_security_answer = hashlib.sha256(security_answer.encode()).hexdigest()
 
     public_id = str(uuid.uuid4())
     user = User(public_id=public_id, username=username, email=email)
     user.set_password(password)
+    if not email and security_answer:
+        user.set_security_answer(security_answer)
 
     # Set verification and active status
     if email:
@@ -338,8 +338,6 @@ def register_user(
         # Assuming the User model has these fields
         if hasattr(user, 'security_question'):
             user.security_question = security_question
-        if hasattr(user, 'security_answer_hash'):
-            user.security_answer_hash = hashed_security_answer
         if hasattr(user, 'recovery_code_hash') and recovery_code:
             # Hash the recovery code for storage
             recovery_code_hash = hashlib.sha256(recovery_code.encode()).hexdigest()
