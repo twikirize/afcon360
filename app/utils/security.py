@@ -16,10 +16,14 @@ from flask import g, request, current_app
 from functools import wraps
 from app.utils.exceptions import PermissionError
 
-def _is_deployed_environment() -> bool:
+def _is_deployed_environment(app_env=None, flask_env=None) -> bool:
     """Fail closed when deployment mode is explicit or environment is unspecified."""
-    app_env = os.getenv("APP_ENV", "").strip().lower()
-    flask_env = os.getenv("FLASK_ENV", "").strip().lower()
+    app_env = str(
+        app_env if app_env is not None else os.getenv("APP_ENV", "")
+    ).strip().lower()
+    flask_env = str(
+        flask_env if flask_env is not None else os.getenv("FLASK_ENV", "")
+    ).strip().lower()
     return (
         app_env in ("docker", "prod", "production")
         or flask_env == "production"
@@ -27,7 +31,7 @@ def _is_deployed_environment() -> bool:
     )
 
 
-def ensure_encryption_key_configured() -> str:
+def ensure_encryption_key_configured(app_env=None, flask_env=None) -> str:
     """Require a persistent key in deployed environments.
 
     Local development may receive an ephemeral process key, but that key is
@@ -37,7 +41,7 @@ def ensure_encryption_key_configured() -> str:
     if key_env and not key_env.startswith("REPLACE_"):
         return key_env
 
-    if _is_deployed_environment():
+    if _is_deployed_environment(app_env, flask_env):
         raise RuntimeError(
             "ENCRYPTION_KEY must be configured before starting a deployed "
             "AFCON360 application. Preserve the existing key; do not generate "
