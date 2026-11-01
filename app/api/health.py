@@ -38,10 +38,11 @@ def ready():
         db.session.execute(text("SELECT 1"))
     except Exception:
         database_state = "unavailable"
+        current_app.logger.warning("Readiness check: database unavailable")
         try:
             db.session.rollback()
         except Exception:
-            current_app.logger.exception("Failed to clear database session after readiness check")
+            current_app.logger.warning("Readiness check: failed to clear database session")
 
     try:
         from app import REDIS_AVAILABLE
@@ -52,6 +53,7 @@ def ready():
             redis_state = "ok"
     except Exception:
         redis_state = "unavailable"
+        current_app.logger.warning("Readiness check: shared store unavailable")
 
     redis_required = current_app.config.get(
         "REDIS_REQUIRED",
@@ -61,13 +63,9 @@ def ready():
         database_state == "ok"
         and (redis_state == "ok" or not redis_required)
     )
-    response = {
-        "status": "ready" if dependencies_ready else "not_ready",
-        "dependencies": {
-            "database": database_state,
-            "redis": redis_state,
-        },
-    }
+    # Keep the public response opaque; component details belong in internal
+    # server logs, not a publicly enumerable health endpoint.
+    response = {"status": "ready" if dependencies_ready else "not_ready"}
     return jsonify(response), (200 if dependencies_ready else 503)
 
 
