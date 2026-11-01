@@ -78,7 +78,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     });
     await sleep(30);
     assert.strictEqual(deniedCalls, 1, "authorization failure must not be retried");
-    assert(states.includes("closed"), "authorization failure must close tracking");
+    assert(states.includes("access-denied"), "403 must report access denial");
+    assert(!states.includes("closed"), "403 must not claim the trip ended");
     deniedHandle.close();
 
     // A followed Flask-Login redirect can end as HTTP 200 with an HTML page.
@@ -102,7 +103,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     });
     await sleep(30);
     assert.strictEqual(redirectCalls, 1, "login redirect must not be retried");
-    assert(redirectStates.includes("closed"), "login redirect must close tracking");
+    assert(redirectStates.includes("auth-required"), "login redirect must request sign-in");
+    assert(!redirectStates.includes("closed"), "login redirect must not claim the trip ended");
     redirectHandle.close();
 
     // Even without the redirected flag, a non-JSON 200 is not a snapshot.
@@ -126,8 +128,59 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     });
     await sleep(30);
     assert.strictEqual(htmlCalls, 1, "non-JSON responses must not be retried");
-    assert(htmlStates.includes("closed"), "non-JSON response must close tracking");
+    assert(htmlStates.includes("unavailable"), "non-JSON response must report tracking unavailable");
+    assert(!htmlStates.includes("closed"), "HTML response must not claim the trip ended");
     htmlHandle.close();
+
+    // A direct 401 is an expired session even when the response is JSON.
+    let expiredCalls = 0;
+    const expiredStates = [];
+    global.fetch = async () => {
+        expiredCalls++;
+        return {
+            ok: false,
+            status: 401,
+            redirected: false,
+            headers: { get: () => "application/json" },
+            json: async () => ({ success: false }),
+        };
+    };
+    const GeoRealtime5 = loadClient();
+    const expiredHandle = GeoRealtime5.connect("/geo/stream/booking/TR-5", {
+        pollUrl: "/geo/api/booking/TR-5/location",
+        pollIntervalMs: 5000,
+        onState: (state) => expiredStates.push(state),
+    });
+    await sleep(30);
+    assert.strictEqual(expiredCalls, 1, "401 must not be retried");
+    assert(expiredStates.includes("auth-required"), "401 must request sign-in");
+    assert(!expiredStates.includes("closed"), "401 must not claim the trip ended");
+    expiredHandle.close();
+
+    // A missing booking/endpoint is not proof of trip completion either.
+    let missingCalls = 0;
+    const missingStates = [];
+    global.fetch = async () => {
+        missingCalls++;
+        return {
+            ok: false,
+            status: 404,
+            redirected: false,
+            headers: { get: () => "application/json" },
+            json: async () => ({ success: false }),
+        };
+    };
+    const GeoRealtime6 = loadClient();
+    const missingHandle = GeoRealtime6.connect("/geo/stream/booking/TR-6", {
+        pollUrl: "/geo/api/booking/TR-6/location",
+        pollIntervalMs: 5000,
+        onState: (state) => missingStates.push(state),
+    });
+    await sleep(30);
+    assert.strictEqual(missingCalls, 1, "404 must not be retried");
+    assert(missingStates.includes("unavailable"), "404 must report tracking unavailable");
+    assert(!missingStates.includes("closed"), "404 must not claim the trip ended");
+    missingHandle.close();
 
     console.log("GEO HTTP FALLBACK: ALL PASS");
 })().catch((error) => {
