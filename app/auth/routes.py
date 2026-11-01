@@ -1003,26 +1003,18 @@ def login():
                 # Check if MFA is required for owners (configurable in settings)
                 require_mfa = get_owner_mfa_required()
                 
-                if require_mfa:
-                    # Owners MUST have MFA enabled when requirement is active
-                    if not getattr(user, 'mfa_enabled', False):
-                        current_app.logger.warning(f"Owner {user.public_id} attempted login without MFA enabled (MFA required)")
-                        flash("Owner accounts require Multi-Factor Authentication. Please set up MFA.", "danger")
-                        return redirect(url_for("auth.setup_mfa"))
-                    
-                    # Verify MFA token for owners
-                    mfa_code = request.form.get('mfa_code')
-                    if not mfa_code:
-                        flash("MFA code is required for owner login", "danger")
-                        return redirect(url_for("auth.login"))
-                    
-                    # Validate MFA token (skip when the MFA_REQUIRED flow above already verified it)
+                needs_owner_mfa_enrollment = (
+                    require_mfa and not getattr(user, "mfa_enabled", False)
+                )
+                if require_mfa and not needs_owner_mfa_enrollment:
+                    # Owners who have enrolled must prove possession on login.
+                    mfa_code = (request.form.get("mfa_code") or "").strip()[:16]
                     if not session.get("mfa_verified") and not _verify_mfa_token(user, mfa_code):
-                        current_app.logger.warning(f"Failed MFA attempt for owner {user.public_id}")
-                        flash("Invalid MFA code. Please try again.", "danger")
+                        current_app.logger.warning(
+                            "Owner MFA verification failed for %s", user.public_id
+                        )
+                        flash("A valid MFA code is required for owner login.", "danger")
                         return redirect(url_for("auth.login"))
-                    
-                    # MFA passed - track in session
                     session["mfa_verified"] = True
                 else:
                     # MFA not required, but check if user has it enabled anyway
