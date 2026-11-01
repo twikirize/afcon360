@@ -1692,31 +1692,37 @@ def mfa_enable():
     device_name = request.form.get('device_name', 'Primary Device')
     
     if mfa_type == 'totp':
-        # Generate TOTP secret
+        # Generate a pending TOTP secret. It is not trusted until the user
+        # proves possession by submitting a valid code to /mfa/confirm.
         secret = pyotp.random_base32()
-        
-        # Create MFA record
-        mfa_secret = MFASecret(
+        mfa_secret = MFASecret.query.filter_by(
             user_id=current_user.id,
             mfa_type=mfa_type,
-            secret=secret,
-            device_name=device_name,
-            is_active=True
-        )
-        
-        # Generate backup codes
+        ).first()
+        if mfa_secret and mfa_secret.is_active:
+            return jsonify({
+                'success': False,
+                'error': 'MFA is already enabled for this account.',
+            }), 409
+        if mfa_secret is None:
+            mfa_secret = MFASecret(
+                user_id=current_user.id,
+                mfa_type=mfa_type,
+                secret=secret,
+                device_name=device_name,
+                is_active=False,
+            )
+            db.session.add(mfa_secret)
+        else:
+            mfa_secret.secret = secret
+            mfa_secret.device_name = device_name
+            mfa_secret.is_active = False
+
         backup_codes = mfa_secret.generate_backup_codes()
         mfa_secret.store_backup_codes(backup_codes)
-        
-        db.session.add(mfa_secret)
-        
-        # Update user
-        current_user.mfa_enabled = True
-        current_user.enable_mfa('totp', enabled_by_user_id=current_user.id)
-        
         db.session.commit()
-        
-        # Generate QR code
+
+        # Generate QR code for the pending secret.
         totp_uri = pyotp.totp.TOTP(secret).provisioning_uri(
             name=f"user_{current_user.id}@afcon360.com",
             issuer_name="AFCON360 Wallet"
