@@ -84,12 +84,26 @@ def test_owner_mfa_setting_cannot_be_enabled_until_active_owners_are_enrolled(ap
 
             owner = User.query.filter_by(public_id=owner.public_id).one()
             owner.mfa_enabled = True
-            db.session.add(MFASecret(
+            mfa_record = MFASecret(
                 user_id=owner.id,
                 mfa_type="totp",
                 secret="JBSWY3DPEHPK3PXP",
                 is_active=True,
-            ))
+                last_used=None,
+            )
+            db.session.add(mfa_record)
+            db.session.commit()
+
+            # An active secret created by an older unverified setup flow is
+            # not enough evidence that the owner has enrolled successfully.
+            with pytest.raises(OwnerMFAEnrollmentRequired):
+                set_owner_mfa_required(required=True, updated_by=owner.id)
+            db.session.rollback()
+
+            mfa_record = MFASecret.query.filter_by(
+                user_id=owner.id, mfa_type="totp"
+            ).one()
+            mfa_record.last_used = datetime.now(timezone.utc)
             db.session.commit()
 
             set_owner_mfa_required(required=True, updated_by=owner.id)
