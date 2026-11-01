@@ -25,6 +25,7 @@ from app.wallet.repositories.ledger_repository import LedgerRepository
 from app.wallet.repositories.account_repository import AccountRepository
 from app.wallet.models.ledger import AccountModel, LedgerEntryModel, EntryType, AccountOwnerType, AccountType, AccountStatus
 from app.wallet.models.transaction import TransactionModel, TransactionType, TransactionStatus
+from app.wallet.models.config import WalletSystemConfig
 from app.wallet.exceptions import (
     InsufficientBalanceError,
     WalletFrozenError,
@@ -546,6 +547,10 @@ class TestNoDoubleSpend:
     ):
         """Only 10 of 100 concurrent 100-unit withdrawals may spend 1,000."""
         account_id = str(funded_account.id)
+        with app.app_context():
+            # Create the singleton operational limits row before workers race;
+            # get_config() is intentionally a lazy initializer, not a concurrency primitive.
+            WalletSystemConfig.get_config()
         key_prefix = f"parallel_withdraw_{uuid4().hex}_"
 
         with app.app_context():
@@ -597,6 +602,8 @@ class TestNoDoubleSpend:
 
         sender_account_id = str(funded_account.id)
         with app.app_context():
+            # Initialize the single operational limits row before concurrent callers.
+            WalletSystemConfig.get_config()
             recipient = User(
                 email=f"parallel_recipient_{uuid.uuid4().hex}@example.com",
                 username=f"parallel_recipient_{uuid.uuid4().hex[:12]}",
