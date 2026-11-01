@@ -95,6 +95,38 @@ def _verify_mfa_token(user, token: str, backup_code: bool = False) -> bool:
         return False
 
 
+def _owner_has_verified_totp(user) -> bool:
+    """Return whether the owner has an active TOTP with recorded proof of use."""
+    from app.identity.models.user import MFASecret
+
+    return (
+        MFASecret.query.filter_by(
+            user_id=user.id,
+            mfa_type="totp",
+            is_active=True,
+        )
+        .filter(MFASecret.last_used.is_not(None))
+        .first()
+        is not None
+    )
+
+
+def _begin_owner_mfa_setup(user, provisional_session_id=None) -> None:
+    """Issue a 10-minute, password-verified TOTP enrollment capability only."""
+    if provisional_session_id:
+        try:
+            from app.auth.sessions import revoke_session
+            revoke_session(provisional_session_id)
+        except Exception:
+            current_app.logger.exception("Failed to revoke provisional owner session")
+
+    session.clear()
+    session["pending_owner_mfa_setup_user"] = user.public_id
+    session["pending_owner_mfa_setup_expires_at"] = int(time.time()) + 600
+    session.permanent = True
+    _rotate_session_id()
+
+
 def _rotate_session_id():
     """Rotate the Flask-Session SID after a successful authentication so a
     pre-login (attacker-supplied) session id cannot be fixed on the user.
