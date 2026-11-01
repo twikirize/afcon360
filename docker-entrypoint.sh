@@ -46,15 +46,21 @@ echo "✅ Environment validation passed"
 # of restarting a web container. Operators must review the live revision and
 # recovery point, then run "flask db upgrade" as a separate approved step.
 # ---------------------------------------------------------------------------
-if [ "${CONTAINER_ROLE}" = "web" ] && [ "${AUTO_MIGRATE_ON_START:-false}" = "true" ]; then
-    echo "🔄 AUTO_MIGRATE_ON_START=true; running explicitly enabled migrations..."
-    flask db upgrade
-    echo "✅ Migrations complete"
+if [ "${CONTAINER_ROLE}" = "web" ]; then
+    if [ "${AUTO_MIGRATE_ON_START:-false}" = "true" ]; then
+        echo "🔄 AUTO_MIGRATE_ON_START=true; running explicitly enabled migrations..."
+        flask db upgrade
+        echo "✅ Migrations complete"
+    else
+        echo "⏭️  Skipping automatic migrations; run a reviewed release migration separately"
+    fi
 
+    # Role seeding is idempotent and independent from the migration switch.
+    # On an empty database it may not run until the schema migration is applied.
     echo "🌱 Seeding roles and permissions..."
-    flask seed-roles 2>/dev/null || echo "ℹ️  Seed skipped (already seeded or not available)"
+    flask seed-roles 2>/dev/null || echo "ℹ️  Seed skipped (schema not ready, already seeded, or command unavailable)"
 else
-    echo "⏭️  Skipping automatic migrations (role: ${CONTAINER_ROLE:-web}); run a reviewed release migration separately"
+    echo "⏭️  Skipping web migrations and role seeding (role: ${CONTAINER_ROLE})"
 fi
 
 # ---------------------------------------------------------------------------
