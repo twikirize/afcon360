@@ -32,7 +32,7 @@ def test_regulatory_policy_default_does_not_commit_or_close_callers_transaction(
                 # transaction. The legacy implementation committed the
                 # session here and invalidated the caller's begin() context.
                 assert db.session.execute(text("SELECT 1")).scalar_one() == 1
-                assert db.session.in_transaction()
+                assert db.session().in_transaction()
 
 
 def test_legacy_security_answer_hash_is_upgraded_after_successful_verification():
