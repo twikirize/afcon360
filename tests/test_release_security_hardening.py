@@ -39,8 +39,8 @@ def test_regulatory_policy_default_does_not_commit_or_close_callers_transaction(
 @pytest.mark.usefixtures("db_session")
 def test_wallet_system_config_default_flushes_without_committing_callers_transaction(app):
     with app.app_context():
-        original_query = WalletSystemConfig.query
-        with patch.object(original_query, "first", return_value=None):
+        query_class = type(WalletSystemConfig.query)
+        with patch.object(query_class, "first", return_value=None):
             with db.session.begin():
                 config = WalletSystemConfig.get_config()
                 assert config in db.session
