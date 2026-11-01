@@ -1855,6 +1855,9 @@ def mfa_confirm():
     # the former setup flow verified possession.
     mfa_secret.last_used = datetime.now(timezone.utc)
     target_user.mfa_enabled = True
+    if not preauth_owner:
+        # This session has now proved possession of its newly enrolled factor.
+        session["mfa_verified"] = True
     target_user.enable_mfa('totp', enabled_by_user_id=target_user.id)
     db.session.add(target_user)
     db.session.commit()
