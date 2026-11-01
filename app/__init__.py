@@ -507,7 +507,10 @@ def create_app(config_object=None) -> Flask:
     # encryption happens. Only local development may receive an ephemeral key.
     # Never print the key: logs are not a secret store.
     from app.utils.security import ensure_encryption_key_configured
-    ensure_encryption_key_configured()
+    ensure_encryption_key_configured(
+        app_env=app.config.get("APP_ENV"),
+        flask_env=app.config.get("FLASK_ENV"),
+    )
 
     # Critical Config Fallbacks with validation
     # SECRET_KEY validation
