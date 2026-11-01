@@ -155,6 +155,8 @@ class TestLocationEndpointAuthorization:
 
     def test_admin_driver_location_page_renders_position(
             self, app, admin_client, live_driver, monkeypatch):
+        driver_id = int(live_driver.id)
+        driver_code = str(live_driver.driver_code)
         live_driver.last_location = {
             "latitude": -1.2833, "longitude": 36.8167,
             "accuracy": 5.0, "speed": 0.0, "heading": 0.0,
@@ -164,10 +166,12 @@ class TestLocationEndpointAuthorization:
         db.session.commit()
 
         response = admin_client.get(
-            f"/transport/drivers/{live_driver.id}/location")
+            f"/transport/drivers/{driver_id}/location")
         assert response.status_code == 200
         html = response.data.decode("utf-8")
-        assert live_driver.driver_code in html
+        # The request context may remove the scoped session; assert against
+        # stable scalar values captured before the HTTP request.
+        assert driver_code in html
         assert "-1.2833" in html
         assert "36.8167" in html
 
