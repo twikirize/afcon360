@@ -27,6 +27,24 @@ auth_bp = Blueprint("auth", __name__, url_prefix="")
 logger = logging.getLogger(__name__)
 
 
+@auth_bp.before_app_request
+def _enforce_owner_mfa_enrollment_gate():
+    """Restrict owners pending mandatory MFA enrollment to setup/logout routes."""
+    if not session.get("mfa_enrollment_required"):
+        return None
+    allowed_endpoints = {
+        "auth.mfa_setup",
+        "auth.setup_mfa",
+        "auth.mfa_enable",
+        "auth.mfa_confirm",
+        "auth.logout",
+        "static",
+    }
+    if request.endpoint in allowed_endpoints:
+        return None
+    return redirect(url_for("auth.mfa_setup"))
+
+
 # ---------------------------------------------------------------------------
 # Security Helpers
 # ---------------------------------------------------------------------------
