@@ -1069,6 +1069,12 @@ def login():
                 if not next_page or not is_safe_url(next_page):
                     next_page = url_for("admin.owner.dashboard")
                 _rotate_session_id()
+                if needs_owner_mfa_enrollment:
+                    flash(
+                        "Set up and verify multi-factor authentication before continuing.",
+                        "warning",
+                    )
+                    return redirect(url_for("auth.mfa_setup"))
                 return redirect(next_page)
 
             # Use public_id explicitly since get_profile_by_user expects a string UUID
