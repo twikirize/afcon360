@@ -14,6 +14,23 @@ class OwnerMFAEnrollmentRequired(ValueError):
     """Raised when active owner accounts are not yet enrolled in MFA."""
 
 
+def owner_has_verified_totp(user_id: int) -> bool:
+    """Return whether the user has an active TOTP verified at least once."""
+    from app.identity.models.user import MFASecret
+
+    return (
+        db.session.query(MFASecret.id)
+        .filter(
+            MFASecret.user_id == user_id,
+            MFASecret.mfa_type == "totp",
+            MFASecret.is_active.is_(True),
+            MFASecret.last_used.is_not(None),
+        )
+        .first()
+        is not None
+    )
+
+
 def get_owner_mfa_required() -> bool:
     """Resolve the owner MFA policy consistently across workers and restarts."""
     environment_requires_mfa = bool(
