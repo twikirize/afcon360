@@ -15,6 +15,7 @@ from app.identity.models.user import MFASecret, User, UserRole
 from app.models.system_config import SystemConfig
 from app.utils.enums import WindowMode
 from app.wallet.models.regulatory_volume import RegulatoryVolumePolicy
+from app.wallet.models.config import WalletSystemConfig
 
 
 @pytest.mark.usefixtures("db_session")
