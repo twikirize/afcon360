@@ -397,8 +397,19 @@ class User(UserMixin, ProtectedModel):
 
         if not re.fullmatch(r"[0-9a-fA-F]{64}", stored_hash):
             return False
-        legacy_hash = hashlib.sha256(candidate.encode("utf-8")).hexdigest()
-        if not hmac.compare_digest(legacy_hash.lower(), stored_hash.lower()):
+        # The legacy registration path hashed the exact submitted string
+        # without trimming it. Check that original representation as well as
+        # the normalized form so existing accounts with accidental outer
+        # whitespace can still recover.
+        legacy_candidates = (answer, candidate) if answer != candidate else (candidate,)
+        matched = any(
+            hmac.compare_digest(
+                hashlib.sha256(value.encode("utf-8")).hexdigest().lower(),
+                stored_hash.lower(),
+            )
+            for value in legacy_candidates
+        )
+        if not matched:
             return False
 
         self.security_answer_hash = generate_password_hash(
