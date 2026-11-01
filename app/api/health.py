@@ -55,10 +55,13 @@ def ready():
         redis_state = "unavailable"
         current_app.logger.warning("Readiness check: shared store unavailable")
 
-    redis_required = current_app.config.get(
-        "REDIS_REQUIRED",
-        not (current_app.config.get("DEBUG") or current_app.config.get("TESTING")),
-    )
+    app_env = str(current_app.config.get("APP_ENV", "")).strip().lower()
+    flask_env = str(current_app.config.get("FLASK_ENV", "")).strip().lower()
+    production_mode = (
+        app_env in ("prod", "production", "docker")
+        or flask_env == "production"
+    ) and not current_app.config.get("TESTING")
+    redis_required = current_app.config.get("REDIS_REQUIRED", production_mode)
     dependencies_ready = (
         database_state == "ok"
         and (redis_state == "ok" or not redis_required)
