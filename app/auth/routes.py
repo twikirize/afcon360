@@ -831,6 +831,11 @@ def login():
     from app.extensions import redis_client
 
     if request.method == "POST":
+        # Do not carry a successful second-factor marker between login attempts.
+        # It is set again only after this request verifies MFA for these credentials.
+        session.pop("mfa_verified", None)
+        session.pop("pending_mfa_user_id", None)
+
         username   = (request.form.get("username") or "").strip()[:64]
         email      = (request.form.get("email") or "").strip()[:64]
         identifier = username or email
@@ -964,6 +969,29 @@ def login():
                 flash("Please activate your account before logging in.", "warning")
                 return render_template("auth/login.html", username=identifier)
 
+            # Enforce owner MFA before any branch can create an authenticated
+            # session, including the email-verification redirect below.
+            owner_mfa_enforced = False
+            if user.is_app_owner():
+                from app.auth.security_policy import owner_mfa_required
+                owner_mfa_enforced = owner_mfa_required()
+                if owner_mfa_enforced and (
+                    not getattr(user, "mfa_enabled", False)
+                    or not session.get("mfa_verified")
+                ):
+                    current_app.logger.warning(
+                        "Owner login blocked because mandatory MFA was not completed: %s",
+                        user.public_id,
+                    )
+                    flash(
+                        "Owner accounts require an enrolled authenticator and a valid MFA code. "
+                        "Ask another platform owner to restore enrollment if your authenticator is unavailable.",
+                        "danger",
+                    )
+                    return render_template(
+                        "login.html", username=identifier, require_mfa=True, mfa_type="totp"
+                    )
+
             # Enforce email verification if required by configuration
             require_verification = current_app.config.get("REQUIRE_EMAIL_VERIFICATION", False)
             if require_verification and not getattr(user, "email_verified", False):
@@ -982,7 +1010,7 @@ def login():
             # SECURITY: Owner login with optional MFA (configurable)
             if user.is_app_owner():
                 # Check if MFA is required for owners (configurable in settings)
-                require_mfa = current_app.config.get('REQUIRE_OWNER_MFA', False)
+                require_mfa = owner_mfa_enforced
                 
                 if require_mfa:
                     # Owners MUST have MFA enabled when requirement is active
@@ -1028,7 +1056,7 @@ def login():
                 )
 
                 # Set up session for owner
-                require_mfa = current_app.config.get('REQUIRE_OWNER_MFA', False)
+                require_mfa = owner_mfa_enforced
                 session.update({
                     "server_session_id": session_id,
                     "user_id": user.public_id,
