@@ -320,7 +320,9 @@ class TestOrganisationWalletPage:
 
     def test_org_wallet_page_shows_real_balance(self, app):
         org = _make_org('page')
+        # Capture canonical identifiers while the ORM instance is attached.
         org_public_id = str(org.org_id)
+        org_slug = str(org.slug)
         acct = AccountModel(
             account_name=f'F01 Org Wallet {org.id}',
             account_number=uuid.uuid4().hex[:12],
@@ -350,10 +352,10 @@ class TestOrganisationWalletPage:
             legacy_resp = client.get(f'/org/{org_public_id}/wallet')
             assert legacy_resp.status_code == 301
             assert legacy_resp.headers['Location'].endswith(
-                f'/org/{org.slug}/wallet'
+                f'/org/{org_slug}/wallet'
             )
 
-            resp = client.get(f'/org/{org.slug}/wallet')
+            resp = client.get(f'/org/{org_slug}/wallet')
 
         assert resp.status_code == 200, resp.status_code
         assert b'7,500' in resp.data, 'funded org balance missing from page'
