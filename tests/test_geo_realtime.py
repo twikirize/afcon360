@@ -516,7 +516,13 @@ def test_booking_snapshot_fallback_is_available_to_booking_owner(
     assert payload["data"]["latitude"] == pytest.approx(LAT)
     assert payload["data"]["longitude"] == pytest.approx(LNG)
     assert response.headers["Cache-Control"] == "private, no-store, max-age=0"
-    assert response.headers["Vary"] == "Cookie"
+    # Compression middleware may add Accept-Encoding; the session-cookie
+    # variation must remain present without requiring it to be the only token.
+    vary_tokens = {
+        value.strip().lower()
+        for value in response.headers.get("Vary", "").split(",")
+    }
+    assert "cookie" in vary_tokens
     blob = response.get_data(as_text=True)
     assert "driver_id" not in blob
     assert "entity_id" not in blob
