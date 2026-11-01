@@ -11,6 +11,14 @@ import os
 import sys
 import time
 import uuid
+from pathlib import Path
+
+# Python starts this script with scripts/ci as sys.path[0]. The application
+# package lives at the repository root, so add that root explicitly before
+# importing AFCON360 modules.
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
 
 # These variables are set by the dedicated GitHub Actions step. Keep an
 # explicit guard here so this script can never silently test a memory fallback.
