@@ -39,6 +39,11 @@ on:
       - "tests/test_transport_tracking_live.py"
       - "tests/test_transport_frontend_contracts.py"
       - "tests/wallet/**"
+      - "tests/test_wallet_authorization_limits.py"
+      - "tests/test_kyc_limit_authorization.py"
+      - "tests/test_process_webhook_dead_letter.py"
+      - "tests/test_dead_letter_alert.py"
+      - "tests/test_payment_method_capabilities.py"
       - "tests/conftest.py"
       - "scripts/ci/redis_socketio_runtime_smoke.py"
       - "docs/release/**"
@@ -299,6 +304,11 @@ jobs:
             tests/test_health_rate_limit.py \
             tests/test_mfa_secret_encryption.py \
             tests/test_deletion_guard.py \
+            tests/test_wallet_authorization_limits.py \
+            tests/test_kyc_limit_authorization.py \
+            tests/test_process_webhook_dead_letter.py \
+            tests/test_dead_letter_alert.py \
+            tests/test_payment_method_capabilities.py \
             tests/wallet/
 
       - name: Verify Redis-backed sessions, rate limiting, Celery, and Socket.IO
