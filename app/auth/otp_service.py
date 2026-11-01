@@ -535,6 +535,17 @@ class OTPService:
         """
         from app.identity.models.user import MFASecret
 
+        # Prefer TOTP whenever it is enrolled; it is the supported
+        # authenticator-based login method. Other methods remain available only
+        # for legacy flows that have their own completed verifier.
+        totp_secret = MFASecret.query.filter_by(
+            user_id=user_id,
+            mfa_type="totp",
+            is_active=True,
+        ).first()
+        if totp_secret:
+            return "totp"
+
         mfa_secret = MFASecret.query.filter_by(
             user_id=user_id,
             is_active=True,
