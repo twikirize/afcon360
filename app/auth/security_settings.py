@@ -74,6 +74,7 @@ def set_owner_mfa_required(*, required: bool, updated_by: int) -> None:
             .outerjoin(MFASecret, active_totp)
             .filter(
                 Role.name == "owner",
+                Role.scope == "global",
                 User.is_active.is_(True),
                 (User.mfa_enabled.is_(False)) | (MFASecret.id.is_(None)),
             )
