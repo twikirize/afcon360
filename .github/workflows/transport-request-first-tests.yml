@@ -39,6 +39,7 @@ on:
       - "tests/test_transport_tracking_live.py"
       - "tests/test_transport_frontend_contracts.py"
       - "tests/wallet/**"
+      - "scripts/ci/redis_socketio_runtime_smoke.py"
       - "tests/test_owner_mfa_security.py"
       - "tests/test_security_answer_hashing.py"
       - "tests/test_mfa_secret_encryption.py"
@@ -98,6 +99,15 @@ jobs:
           --health-cmd "pg_isready -U postgres -d afcon360_test"
           --health-interval 10s
           --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
           --health-retries 12
 
     env:
@@ -287,3 +297,15 @@ jobs:
             tests/test_mfa_secret_encryption.py \
             tests/test_deletion_guard.py \
             tests/wallet/
+
+      - name: Verify Redis-backed sessions, rate limiting, Celery, and Socket.IO
+        env:
+          APP_ENV: docker
+          FLASK_ENV: development
+          DISABLE_REDIS: "0"
+          SOCKETIO_ENABLED: "true"
+          SOCKETIO_ASYNC_MODE: threading
+          REDIS_URL: redis://localhost:6379/0
+          CELERY_BROKER_URL: redis://localhost:6379/2
+          CELERY_RESULT_BACKEND: redis://localhost:6379/3
+        run: python scripts/ci/redis_socketio_runtime_smoke.py
