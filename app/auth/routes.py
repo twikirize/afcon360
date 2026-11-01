@@ -1850,6 +1850,10 @@ def mfa_confirm():
         mfa_secret.is_active = True
 
     mfa_secret.store_backup_codes(pending.get('backup_codes') or [])
+    # Persist the time of a successful authenticator proof. This also lets the
+    # owner-wide policy reject legacy active secrets that were created before
+    # the former setup flow verified possession.
+    mfa_secret.last_used = datetime.now(timezone.utc)
     target_user.mfa_enabled = True
     target_user.enable_mfa('totp', enabled_by_user_id=target_user.id)
     db.session.add(target_user)
