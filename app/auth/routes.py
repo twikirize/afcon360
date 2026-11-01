@@ -1057,6 +1057,8 @@ def login():
                     "mfa_verified": session.get("mfa_verified", False),  # Track actual MFA verification
                     "mfa_required": require_mfa,  # Track if MFA was required
                 })
+                if needs_owner_mfa_enrollment:
+                    session["mfa_enrollment_required"] = True
 
                 mfa_status = "with MFA" if session.get("mfa_verified") else "(MFA not required)"
                 current_app.logger.info(f"Owner {user.public_id} logged in successfully {mfa_status}")
