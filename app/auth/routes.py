@@ -51,9 +51,12 @@ def _verify_mfa_token(user, token: str, backup_code: bool = False) -> bool:
         from app.identity.models.user import MFASecret
         
         # Get active MFA secret
+        # AFCON360's verified login factor is TOTP. SMS is not yet a
+        # completed login verifier, so never select it or accept a custom fallback.
         mfa_secret = MFASecret.query.filter_by(
             user_id=user.id,
-            is_active=True
+            mfa_type='totp',
+            is_active=True,
         ).first()
         
         if not mfa_secret:
@@ -84,20 +87,11 @@ def _verify_mfa_token(user, token: str, backup_code: bool = False) -> bool:
         return False
         
     except ImportError:
-        # Fallback: simple time-based verification (less secure, for dev only)
-        import hashlib
-        import time
-        if hasattr(user, 'mfa_secret'):
-            secret = user.mfa_secret
-            # Check current time window and adjacent windows
-            for window in [-1, 0, 1]:
-                time_window = int(time.time()) // 30 + window
-                expected = hashlib.sha256(f"{secret}:{time_window}".encode()).hexdigest()[:6]
-                if token == expected:
-                    return True
+        # MFA must never fall back to a private, non-standard algorithm.
+        current_app.logger.critical("pyotp is required for MFA verification but is unavailable")
         return False
-    except Exception as e:
-        current_app.logger.error(f"MFA verification error: {e}")
+    except Exception:
+        current_app.logger.exception("MFA verification error")
         return False
 
 
