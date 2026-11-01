@@ -1908,6 +1908,8 @@ def mfa_confirm():
     if not preauth_owner:
         # This session has now proved possession of its newly enrolled factor.
         session["mfa_verified"] = True
+        session["mfa_verified_at"] = datetime.now(timezone.utc).isoformat()
+        session["mfa_verified_method"] = "totp"
     target_user.enable_mfa('totp', enabled_by_user_id=target_user.id)
     db.session.add(target_user)
     db.session.commit()
