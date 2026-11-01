@@ -1705,7 +1705,7 @@ def mfa_enable():
             user_id=current_user.id,
             mfa_type=mfa_type,
         ).first()
-        if mfa_secret and mfa_secret.is_active:
+        if mfa_secret and mfa_secret.is_active and mfa_secret.last_used is not None:
             return jsonify({
                 'success': False,
                 'error': 'MFA is already enabled for this account.',
