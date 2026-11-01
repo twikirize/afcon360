@@ -1783,16 +1783,24 @@ def mfa_setup():
     existing = MFASecret.query.filter_by(
         user_id=target_user.id, mfa_type='totp', is_active=True
     ).first()
+    replacing_existing = False
     if existing and target_user.mfa_enabled:
-        if preauth_owner:
-            flash('An authenticator is already enrolled. Sign in with its current code.', 'info')
-            session.pop("pending_owner_mfa_setup_user", None)
-            session.pop("pending_owner_mfa_setup_expires_at", None)
-            return redirect(url_for('auth.login'))
-        flash('MFA is already enabled for your account.', 'info')
-        return redirect(url_for('auth.mfa_status'))
+        from app.auth.security_policy import recent_session_mfa_proof
+        if not current_user.is_authenticated or not recent_session_mfa_proof():
+            if preauth_owner:
+                flash('An authenticator is already enrolled. Sign in with its current code or a one-time backup code.', 'info')
+                session.pop("pending_owner_mfa_setup_user", None)
+                session.pop("pending_owner_mfa_setup_expires_at", None)
+                return redirect(url_for('auth.login'))
+            flash('To replace your authenticator, sign in again using its current code or a one-time backup code.', 'warning')
+            return redirect(url_for('auth.mfa_status'))
+        replacing_existing = True
 
-    return render_template('auth/mfa_setup.html', preauth_owner=preauth_owner)
+    return render_template(
+        'auth/mfa_setup.html',
+        preauth_owner=preauth_owner,
+        replacing_existing=replacing_existing,
+    )
 
 
 # Backwards compatible alias for templates that still link to auth.setup_mfa
@@ -1819,7 +1827,12 @@ def mfa_enable():
         user_id=target_user.id, mfa_type='totp', is_active=True
     ).first()
     if existing and target_user.mfa_enabled:
-        return jsonify({'success': False, 'error': 'An authenticator is already enabled.'}), 409
+        from app.auth.security_policy import recent_session_mfa_proof
+        if not current_user.is_authenticated or not recent_session_mfa_proof():
+            return jsonify({
+                'success': False,
+                'error': 'Sign in again using your current authenticator or a one-time backup code before replacing it.',
+            }), 403
 
     device_name = (request.form.get('device_name') or 'Primary Device').strip()[:100]
     secret = pyotp.random_base32()
@@ -1895,6 +1908,13 @@ def mfa_confirm():
     mfa_secret = MFASecret.query.filter_by(
         user_id=target_user.id, mfa_type='totp'
     ).first()
+    if mfa_secret is not None and target_user.mfa_enabled:
+        from app.auth.security_policy import recent_session_mfa_proof
+        if not current_user.is_authenticated or not recent_session_mfa_proof():
+            return jsonify({
+                'success': False,
+                'error': 'Your recent MFA verification has expired. Sign in again before replacing the authenticator.',
+            }), 403
     if mfa_secret is None:
         mfa_secret = MFASecret(
             user_id=target_user.id,
