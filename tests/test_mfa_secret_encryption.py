@@ -141,6 +141,23 @@ def test_startup_key_guard_rejects_placeholder_in_production(monkeypatch):
         ensure_encryption_key_configured()
 
 
+def test_startup_key_guard_uses_loaded_local_app_config_when_shell_env_is_unset(monkeypatch):
+    from app.utils.security import ensure_encryption_key_configured
+
+    monkeypatch.delenv("ENCRYPTION_KEY", raising=False)
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("FLASK_ENV", raising=False)
+
+    with pytest.warns(RuntimeWarning, match="temporary local-development key"):
+        key = ensure_encryption_key_configured(
+            app_env="local",
+            flask_env="development",
+        )
+
+    assert len(key) >= 32
+    assert os.getenv("ENCRYPTION_KEY") == key
+
+
 def test_startup_key_guard_generates_unlogged_local_ephemeral_key(monkeypatch):
     from app.utils.security import ensure_encryption_key_configured
 
