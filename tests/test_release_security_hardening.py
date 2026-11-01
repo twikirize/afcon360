@@ -17,6 +17,24 @@ from app.utils.enums import WindowMode
 from app.wallet.models.regulatory_volume import RegulatoryVolumePolicy
 
 
+@pytest.mark.usefixtures("db_session")
+def test_regulatory_policy_default_does_not_commit_or_close_callers_transaction(app):
+    with app.app_context():
+        with patch.object(RegulatoryVolumePolicy, "get_active", return_value=None):
+            with db.session.begin():
+                policy = RegulatoryVolumePolicy.get_active_or_default()
+                assert policy.id is None
+                assert policy.daily_window_mode is WindowMode.CALENDAR
+                assert policy.monthly_window_mode is WindowMode.CALENDAR
+                assert policy not in db.session
+
+                # A subsequent statement must still be usable in the same
+                # transaction. The legacy implementation committed the
+                # session here and invalidated the caller's begin() context.
+                assert db.session.execute(text("SELECT 1")).scalar_one() == 1
+                assert db.session.in_transaction()
+
+
 def test_legacy_security_answer_hash_is_upgraded_after_successful_verification():
     answer = "first-school"
     user = User()
