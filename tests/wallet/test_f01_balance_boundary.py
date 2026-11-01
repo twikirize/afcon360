@@ -345,7 +345,15 @@ class TestOrganisationWalletPage:
             'OrganizationPermissionService.can_manage_wallet',
             return_value=True,
         ):
-            resp = client.get(f'/org/{org_public_id}/wallet')
+            # UUID URLs remain supported as a legacy compatibility boundary,
+            # but safe GETs must redirect to the canonical organisation slug.
+            legacy_resp = client.get(f'/org/{org_public_id}/wallet')
+            assert legacy_resp.status_code == 301
+            assert legacy_resp.headers['Location'].endswith(
+                f'/org/{org.slug}/wallet'
+            )
+
+            resp = client.get(f'/org/{org.slug}/wallet')
 
         assert resp.status_code == 200, resp.status_code
         assert b'7,500' in resp.data, 'funded org balance missing from page'
