@@ -13,6 +13,8 @@ from app.extensions import db
 from app.identity.models.roles_permission import get_or_create_role
 from app.identity.models.user import MFASecret, User, UserRole
 from app.models.system_config import SystemConfig
+from app.utils.enums import WindowMode
+from app.wallet.models.regulatory_volume import RegulatoryVolumePolicy
 
 
 def test_legacy_security_answer_hash_is_upgraded_after_successful_verification():
