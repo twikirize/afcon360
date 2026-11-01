@@ -1267,6 +1267,7 @@ def update_owner_mfa_requirement():
                         MFASecret.user_id.in_(owner_ids),
                         MFASecret.is_active.is_(True),
                         MFASecret.mfa_type == 'totp',
+                        MFASecret.last_used.is_not(None),
                     )
                     .distinct()
                     .all()
