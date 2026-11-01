@@ -26,6 +26,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         return {
             ok: true,
             status: 200,
+            redirected: false,
+            headers: { get: (name) => name.toLowerCase() === "content-type" ? "application/json; charset=utf-8" : null },
             json: async () => ({
                 success: true,
                 data: {
@@ -64,7 +66,9 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const states = [];
     global.fetch = async () => {
         deniedCalls++;
-        return { ok: false, status: 403, json: async () => ({}) };
+        return { ok: false, status: 403, redirected: false,
+            headers: { get: () => "application/json" },
+            json: async () => ({}) };
     };
     const GeoRealtime2 = loadClient();
     const deniedHandle = GeoRealtime2.connect("/geo/stream/booking/TR-2", {
@@ -76,6 +80,55 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     assert.strictEqual(deniedCalls, 1, "authorization failure must not be retried");
     assert(states.includes("closed"), "authorization failure must close tracking");
     deniedHandle.close();
+
+    // A followed Flask-Login redirect can end as HTTP 200 with an HTML page.
+    let redirectCalls = 0;
+    const redirectStates = [];
+    global.fetch = async () => {
+        redirectCalls++;
+        return {
+            ok: true,
+            status: 200,
+            redirected: true,
+            headers: { get: () => "text/html; charset=utf-8" },
+            json: async () => { throw new Error("HTML must not be parsed as JSON"); },
+        };
+    };
+    const GeoRealtime3 = loadClient();
+    const redirectHandle = GeoRealtime3.connect("/geo/stream/booking/TR-3", {
+        pollUrl: "/geo/api/booking/TR-3/location",
+        pollIntervalMs: 5000,
+        onState: (state) => redirectStates.push(state),
+    });
+    await sleep(30);
+    assert.strictEqual(redirectCalls, 1, "login redirect must not be retried");
+    assert(redirectStates.includes("closed"), "login redirect must close tracking");
+    redirectHandle.close();
+
+    // Even without the redirected flag, a non-JSON 200 is not a snapshot.
+    let htmlCalls = 0;
+    const htmlStates = [];
+    global.fetch = async () => {
+        htmlCalls++;
+        return {
+            ok: true,
+            status: 200,
+            redirected: false,
+            headers: { get: () => "text/html; charset=utf-8" },
+            json: async () => { throw new Error("HTML must not be parsed as JSON"); },
+        };
+    };
+    const GeoRealtime4 = loadClient();
+    const htmlHandle = GeoRealtime4.connect("/geo/stream/booking/TR-4", {
+        pollUrl: "/geo/api/booking/TR-4/location",
+        pollIntervalMs: 5000,
+        onState: (state) => htmlStates.push(state),
+    });
+    await sleep(30);
+    assert.strictEqual(htmlCalls, 1, "non-JSON responses must not be retried");
+    assert(htmlStates.includes("closed"), "non-JSON response must close tracking");
+    htmlHandle.close();
+
     console.log("GEO HTTP FALLBACK: ALL PASS");
 })().catch((error) => {
     console.error(error && error.stack || error);
