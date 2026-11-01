@@ -1239,6 +1239,12 @@ def update_owner_mfa_requirement():
         if not current_user.is_app_owner():
             flash("Only the platform owner can change the owner MFA policy.", "danger")
             return redirect(url_for('admin.owner.settings'))
+        if not session.get("mfa_verified"):
+            flash(
+                "Verify your authenticator by signing in again before changing the global owner MFA policy.",
+                "warning",
+            )
+            return redirect(url_for('admin.owner.settings'))
 
         enabled = request.form.get('require_owner_mfa') == 'on'
 
