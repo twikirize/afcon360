@@ -83,6 +83,12 @@ def test_owner_mfa_setting_cannot_be_enabled_until_active_owners_are_enrolled(ap
 
             owner = User.query.filter_by(public_id=owner.public_id).one()
             owner.mfa_enabled = True
+            db.session.add(MFASecret(
+                user_id=owner.id,
+                mfa_type="totp",
+                secret="JBSWY3DPEHPK3PXP",
+                is_active=True,
+            ))
             db.session.commit()
 
             set_owner_mfa_required(required=True, updated_by=owner.id)
