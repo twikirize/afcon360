@@ -72,6 +72,8 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
     # The acting owner has passed MFA on this session (step-up requirement).
     with admin_client.session_transaction() as session:
         session["mfa_verified"] = True
+        session["mfa_verified_at"] = datetime.now(timezone.utc).isoformat()
+        session["mfa_verified_method"] = "totp"
 
     response = admin_client.post(
         "/owner/settings/owner-mfa",
