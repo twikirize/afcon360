@@ -1,6 +1,4 @@
 """TOTP secret confidentiality and legacy plaintext upgrade contracts."""
-import hashlib
-
 import pyotp
 import pytest
 from cryptography.fernet import Fernet
@@ -91,3 +89,16 @@ def test_successful_legacy_totp_login_encrypts_the_secret(app, test_admin):
         db.session.refresh(record)
         assert record.totp_secret_is_encrypted is True
         assert record.get_totp_secret() == plaintext
+
+
+
+def test_durable_owner_totp_proof_is_bound_to_the_current_secret(app, test_admin):
+    user_pk = sa_inspect(test_admin).identity[0]
+    with app.app_context():
+        user = db.session.get(User, user_pk)
+        first_secret = pyotp.random_base32()
+        from app.auth.security_policy import record_totp_proof, totp_proof_matches
+
+        record_totp_proof(user, secret=first_secret, commit=True)
+        assert totp_proof_matches(user, first_secret) is True
+        assert totp_proof_matches(user, pyotp.random_base32()) is False
