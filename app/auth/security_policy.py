@@ -117,3 +117,32 @@ def record_totp_proof(user, verified_at=None, *, secret: str, commit: bool = Tru
         updated_by=user.id,
         commit=commit,
     )
+
+
+
+def recent_session_mfa_proof(max_age_seconds: int = 300) -> bool:
+    """Return whether this session recently passed an enrolled MFA factor.
+
+    This permits a user who signed in with a one-time backup code to replace a
+    lost authenticator, while the system-wide policy toggle remains stricter
+    and requires a recent TOTP code specifically.
+    """
+    from datetime import datetime, timezone
+    from flask import session
+
+    if not session.get("mfa_verified"):
+        return False
+    if session.get("mfa_verified_method") not in ("totp", "backup"):
+        return False
+
+    raw = session.get("mfa_verified_at")
+    if not isinstance(raw, str) or not raw:
+        return False
+    try:
+        verified_at = datetime.fromisoformat(raw)
+        if verified_at.tzinfo is None:
+            verified_at = verified_at.replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - verified_at).total_seconds()
+        return 0 <= age <= max_age_seconds
+    except (TypeError, ValueError, OverflowError):
+        return False
