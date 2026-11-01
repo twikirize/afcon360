@@ -13,6 +13,9 @@
         </div>
         <p class="mb-1"><strong>Method:</strong> Authenticator app (TOTP)</p>
         <p class="text-muted">Backup codes are stored securely. Each code can be used only once.</p>
+        <a class="btn btn-outline-primary" href="{{ url_for('auth.mfa_setup') }}">
+          Replace authenticator
+        </a>
       {% else %}
         <div class="alert alert-warning" role="status">
           No active authenticator app is enrolled on this account.
