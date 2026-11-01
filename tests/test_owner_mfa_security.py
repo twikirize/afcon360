@@ -55,8 +55,9 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
                 last_used=current_owner_verified_at,
             )
         )
+        from app.auth.security_policy import totp_proof_setting_key
         SystemConfig.set(
-            f"mfa_totp_verified:{current_owner.public_id}",
+            totp_proof_setting_key(current_owner),
             current_owner_verified_at.isoformat(),
             value_type="str",
             category="security",
@@ -105,7 +106,7 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
             )
         )
         SystemConfig.set(
-            f"mfa_totp_verified:{other_owner.public_id}",
+            totp_proof_setting_key(other_owner),
             other_owner_verified_at.isoformat(),
             value_type="str",
             category="security",
@@ -201,7 +202,8 @@ def test_new_owner_must_enroll_and_prove_totp_before_sign_in(
             .one()
         )
         assert record.last_used is not None
-        assert SystemConfig.get(f"mfa_totp_verified:{owner.public_id}") is not None
+        from app.auth.security_policy import totp_proof_setting_key
+        assert SystemConfig.get(totp_proof_setting_key(owner)) is not None
         assert len(record.get_backup_codes()) == 10
 
     with client.session_transaction() as session:
