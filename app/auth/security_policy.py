@@ -72,3 +72,26 @@ def recent_owner_totp_proof(max_age_seconds: int = 300) -> bool:
         return 0 <= age <= max_age_seconds
     except (TypeError, ValueError, OverflowError):
         return False
+
+
+
+def totp_proof_setting_key(user) -> str:
+    """Stable, non-secret SystemConfig key recording verified TOTP possession."""
+    return f"mfa_totp_verified:{user.public_id}"
+
+
+def record_totp_proof(user, verified_at=None, *, commit: bool = True) -> None:
+    """Persist evidence that this account completed a real TOTP verification."""
+    from datetime import datetime, timezone
+    from app.models.system_config import SystemConfig
+
+    stamp = verified_at or datetime.now(timezone.utc)
+    SystemConfig.set(
+        key=totp_proof_setting_key(user),
+        value=stamp.astimezone(timezone.utc).isoformat(),
+        value_type="str",
+        category="security",
+        description="Timestamp of the account's last successful TOTP proof",
+        updated_by=user.id,
+        commit=commit,
+    )
