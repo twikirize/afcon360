@@ -792,6 +792,9 @@ window.AFCONTrackDriver = function (bookingRef, driverLabel, tileUrl, tileAttr, 
       if (s === 'missing') setLiveState('No live data');
       else if (s === 'degraded') setLiveState('Using backup location updates');
       else if (s === 'closed') setLiveState('Trip ended');
+      else if (s === 'auth-required') setLiveState('Session expired — sign in again');
+      else if (s === 'access-denied') setLiveState('Location access denied');
+      else if (s === 'unavailable') setLiveState('Live tracking unavailable');
       else if (s === 'disconnected' || s === 'reconnecting') setLiveState('Reconnecting');
       else if (s === 'unsupported') setLiveState('Using backup location updates');
     }

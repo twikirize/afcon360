@@ -52,6 +52,12 @@ def test_geo_tracking_has_owner_scoped_http_fallback():
     assert "pollUrl: '/geo/api/booking/'" in template
     assert "function startPolling()" in client
     assert "sse-retry-budget-exhausted" in client
+    assert "terminalState = error.terminalState || 'unavailable'" in client
+    assert "auth-required" in client
+    assert "access-denied" in client
+    assert "Session expired — sign in again" in template
+    assert "Location access denied" in template
+    assert "Live tracking unavailable" in template
     assert 'response.headers["Cache-Control"] = "private, no-store, max-age=0"' in route
     assert 'response.headers["Vary"] = "Cookie"' in route
 
