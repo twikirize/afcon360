@@ -158,3 +158,51 @@ def test_method_not_allowed_returns_405_not_500(rl_app):
     client = rl_app.test_client()
     resp = client.get("/rl_post_only")
     assert resp.status_code == 405
+
+
+
+def test_health_readiness_reports_database_and_disabled_redis_in_tests(rl_app):
+    client = rl_app.test_client()
+    response = client.get("/api/health/ready")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "ready"
+    assert payload["dependencies"]["database"] == "ok"
+    assert payload["dependencies"]["redis"] == "disabled"
+
+
+def test_health_readiness_fails_when_required_redis_is_unavailable(rl_app, monkeypatch):
+    import app
+    from app.api import health
+
+    monkeypatch.setattr(app, "REDIS_AVAILABLE", True)
+    monkeypatch.setattr(health.redis_client, "ping", lambda: (_ for _ in ()).throw(RuntimeError("unavailable")))
+    rl_app.config["REDIS_REQUIRED"] = True
+
+    response = rl_app.test_client().get("/api/health/ready")
+    assert response.status_code == 503
+    payload = response.get_json()
+    assert payload["status"] == "not_ready"
+    assert payload["dependencies"]["redis"] == "unavailable"
+
+
+def test_health_readiness_fails_when_database_is_unavailable(rl_app):
+    from app.api.health import ready
+    from app.extensions import db
+
+    with rl_app.test_request_context():
+        original_execute = db.session.execute
+
+        def fail_database(*args, **kwargs):
+            raise RuntimeError("database unavailable")
+
+        db.session.execute = fail_database
+        try:
+            response, status = ready()
+            assert status == 503
+            payload = response.get_json()
+            assert payload["status"] == "not_ready"
+            assert payload["dependencies"]["database"] == "unavailable"
+        finally:
+            db.session.execute = original_execute
