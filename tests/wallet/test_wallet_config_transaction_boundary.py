@@ -15,10 +15,10 @@ def test_get_config_flushes_inside_explicit_transaction_without_early_commit(app
 
                 config = WalletSystemConfig.get_config()
                 assert config.id is not None
-                transaction = db.session.get_transaction()
+                transaction = db.session().get_transaction()
                 assert transaction is not None
                 assert getattr(transaction.origin, "name", None) == "BEGIN"
-                assert db.session.in_nested_transaction()
+                assert db.session().in_nested_transaction()
 
                 # If the getter commits, subsequent operations inside the
                 # caller's transaction raise InvalidRequestError.
@@ -42,7 +42,7 @@ def test_get_config_flushes_inside_autobegin_nested_savepoint(app):
 
             config = WalletSystemConfig.get_config()
             assert config.id is not None
-            assert db.session.in_nested_transaction()
+            assert db.session().in_nested_transaction()
             config.agents_enabled = True
             assert db.session.query(WalletSystemConfig).count() == 1
         finally:
