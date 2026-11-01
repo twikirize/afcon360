@@ -102,3 +102,29 @@ def test_durable_owner_totp_proof_is_bound_to_the_current_secret(app, test_admin
         record_totp_proof(user, secret=first_secret, commit=True)
         assert totp_proof_matches(user, first_secret) is True
         assert totp_proof_matches(user, pyotp.random_base32()) is False
+
+
+
+def test_missing_encryption_key_fails_closed_in_docker(monkeypatch):
+    from app.utils.security import get_encryption_key
+
+    monkeypatch.delenv("ENCRYPTION_KEY", raising=False)
+    monkeypatch.setenv("APP_ENV", "docker")
+    # The container must not fall back to a predictable development key just
+    # because this process was accidentally launched with development Flask mode.
+    monkeypatch.setenv("FLASK_ENV", "development")
+
+    with pytest.raises(RuntimeError, match="ENCRYPTION_KEY"):
+        get_encryption_key()
+
+
+def test_missing_encryption_key_allows_only_local_development_fallback(monkeypatch):
+    from app.utils.security import get_encryption_key
+
+    monkeypatch.delenv("ENCRYPTION_KEY", raising=False)
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("FLASK_ENV", "development")
+
+    key = get_encryption_key()
+    assert isinstance(key, bytes)
+    assert len(key) == 44
