@@ -1333,7 +1333,7 @@ def create_app(config_object=None) -> Flask:
         if (
             request.path.startswith("/static/")
             or request.path == "/transport/sw.js"
-            or request.path.startswith("/api/health/")
+            or request.path in ("/api/health/ping", "/api/health/ready")
             or request.endpoint in ("auth.login", "auth.logout")
         ):
             return
