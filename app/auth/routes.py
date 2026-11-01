@@ -1667,9 +1667,11 @@ def mfa_setup():
     from app.identity.models.user import MFASecret
     
     # Check if MFA is already enabled
-    existing_mfa = MFASecret.query.filter_by(
-        user_id=current_user.id,
-        is_active=True
+    existing_mfa = MFASecret.query.filter(
+        MFASecret.user_id == current_user.id,
+        MFASecret.mfa_type == "totp",
+        MFASecret.is_active.is_(True),
+        MFASecret.last_used.is_not(None),
     ).first()
     
     if existing_mfa:
