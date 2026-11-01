@@ -57,20 +57,21 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
         assert current_owner is not None
         current_owner.mfa_enabled = True
         current_owner_verified_at = datetime.now(timezone.utc)
-        db.session.add(
-            MFASecret(
-                user_id=current_owner.id,
-                mfa_type="totp",
-                secret=pyotp.random_base32(),
-                is_active=True,
-                last_used=current_owner_verified_at,
-            )
+        current_owner_secret = pyotp.random_base32()
+        current_owner_factor = MFASecret(
+            user_id=current_owner.id,
+            mfa_type="totp",
+            secret=current_owner_secret,
+            is_active=True,
+            last_used=current_owner_verified_at,
         )
-        SystemConfig.set(
-            totp_proof_setting_key(current_owner),
-            current_owner_verified_at.isoformat(),
-            value_type="str",
-            category="security",
+        current_owner_factor.set_totp_secret(current_owner_secret)
+        db.session.add(current_owner_factor)
+        from app.auth.security_policy import record_totp_proof
+        record_totp_proof(
+            current_owner,
+            current_owner_verified_at,
+            secret=current_owner_secret,
             commit=False,
         )
 
@@ -106,20 +107,20 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
         other_owner = db.session.get(User, other_owner_id)
         other_owner.mfa_enabled = True
         other_owner_verified_at = datetime.now(timezone.utc)
-        db.session.add(
-            MFASecret(
-                user_id=other_owner.id,
-                mfa_type="totp",
-                secret=pyotp.random_base32(),
-                is_active=True,
-                last_used=other_owner_verified_at,
-            )
+        other_owner_secret = pyotp.random_base32()
+        other_owner_factor = MFASecret(
+            user_id=other_owner.id,
+            mfa_type="totp",
+            secret=other_owner_secret,
+            is_active=True,
+            last_used=other_owner_verified_at,
         )
-        SystemConfig.set(
-            totp_proof_setting_key(other_owner),
-            other_owner_verified_at.isoformat(),
-            value_type="str",
-            category="security",
+        other_owner_factor.set_totp_secret(other_owner_secret)
+        db.session.add(other_owner_factor)
+        record_totp_proof(
+            other_owner,
+            other_owner_verified_at,
+            secret=other_owner_secret,
             commit=False,
         )
         db.session.commit()
@@ -337,8 +338,9 @@ def test_recent_backup_code_login_can_safely_replace_legacy_authenticator(
         record = db.session.query(MFASecret).filter_by(
             user_id=owner.id, mfa_type="totp", is_active=True
         ).one()
-        assert record.secret == setup["secret"]
-        assert SystemConfig.get(totp_proof_setting_key(owner)) is not None
+        assert record.get_totp_secret() == setup["secret"]
+        from app.auth.security_policy import totp_proof_matches
+        assert totp_proof_matches(owner, setup["secret"]) is True
 
 
 def test_global_owner_policy_requires_recent_totp_not_backup_code(app):
