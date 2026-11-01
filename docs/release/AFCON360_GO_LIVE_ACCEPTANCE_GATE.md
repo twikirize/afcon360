@@ -22,7 +22,7 @@ These facts are historical operator output, not a current live verification. Re-
 |---|---|---|
 | Exact release commit | CI and review attached to the exact candidate commit; candidate is merged to the intended release branch | OPEN — PR #15 is still a draft |
 | PostgreSQL compatibility | Disposable migration replay and regression suite on PostgreSQL 15 and 18 | IN PROGRESS — matrix is configured; latest run must finish successfully |
-| Wallet regression | Ledger, concurrency, refunds, payouts, withdrawals, payment identity and reconciliation tests run; all skips and failures reviewed | IN PROGRESS — broader `tests/wallet/` suite has been added to CI |
+| Wallet regression | Ledger, concurrency, refunds, payouts, withdrawals, payment identity and reconciliation tests run; all skips and failures reviewed | BLOCKED — latest completed PG15/18 attempts failed the sequential payout regression because `RegulatoryVolumePolicy.get_active_or_default()` committed inside the caller's wallet transaction. A transaction-aware flush fix and a focused regression are committed; the next CI run must prove payout and wallet tests green. KYC authorization and webhook dead-letter tests have now been added to the matrix but are not yet verified |
 | Redis runtime | Real Redis connection, server-side session persistence, shared rate limits, Celery broker connection and Socket.IO Redis manager/emit checked | IN PROGRESS — dedicated CI smoke script and Redis service added |
 | Live database identity | Web container connection metadata matches the actual production database container; live Alembic revision recorded | OPEN — latest read-only server output required |
 | Existing database upgrade safety | Production-like copy restored and candidate release/migration rehearsed against that copy | OPEN |
@@ -34,6 +34,12 @@ These facts are historical operator output, not a current live verification. Re-
 | Public end-to-end smoke | HTTPS/Nginx, registration/login, owner MFA, transport quote/accept/match lifecycle, customer notifications and health endpoints verified on candidate deployment | OPEN |
 | Financial operations | Payment-provider sandbox, signed webhook handling, idempotency, refund/payout reconciliation, settlement and country-specific legal/compliance approvals documented | OPEN — real-money operations remain disabled |
 | Extra container | Purpose, owner, mounts, resources and dependencies of `musing_rosalind` identified | OPEN — do not stop or remove it until identified |
+
+## Known test-coverage gaps
+
+- `tests/test_payment_flow.py` still contains placeholder bodies for `test_payment_rollback_on_registration_failure` and `test_refund_scenario` (`pass`). A green result for that file would not prove those behaviors. The actual wallet refund/payout tests under `tests/wallet/` and the separate webhook dead-letter tests are the meaningful current evidence; event-registration rollback/refund remains an explicit open coverage item.
+- The wallet concurrency tests were previously skipped. New threaded PostgreSQL tests now assert 10/100 withdrawals and 20/50 transfers, with matching double-entry totals. They must run successfully before the financial gate can close.
+- Historical test evidence in repository notes is not current release evidence. Only the current candidate commit's CI artifacts count.
 
 ## Non-negotiable data and security protections
 
