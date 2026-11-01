@@ -46,3 +46,29 @@ def owner_mfa_required() -> bool:
 
         logger.exception("Unable to read owner MFA policy; using non-production bootstrap fallback")
         return fallback
+
+
+
+def recent_owner_totp_proof(max_age_seconds: int = 300) -> bool:
+    """Require a recent, actual TOTP proof for high-impact owner policy changes.
+
+    Backup codes are valid for sign-in, but changing the platform-wide MFA
+    requirement specifically requires a fresh authenticator-app code.
+    """
+    from datetime import datetime, timezone
+    from flask import session
+
+    if not session.get("mfa_verified") or session.get("mfa_verified_method") != "totp":
+        return False
+
+    raw = session.get("mfa_verified_at")
+    if not isinstance(raw, str) or not raw:
+        return False
+    try:
+        verified_at = datetime.fromisoformat(raw)
+        if verified_at.tzinfo is None:
+            verified_at = verified_at.replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - verified_at).total_seconds()
+        return 0 <= age <= max_age_seconds
+    except (TypeError, ValueError, OverflowError):
+        return False
