@@ -21,6 +21,7 @@ from app.core.transport_permissions import TransportPermission
 from app.extensions import db, limiter
 from app.profile.models import get_profile_by_user
 from app.auth.security_settings import get_owner_mfa_required
+from app.auth.security_settings import get_owner_mfa_required
 
 # Standardized blueprint name: auth
 auth_bp = Blueprint("auth", __name__, url_prefix="")
