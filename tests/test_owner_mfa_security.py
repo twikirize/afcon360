@@ -315,6 +315,11 @@ def test_recent_backup_code_login_can_safely_replace_legacy_authenticator(
     denied_page = admin_client.get("/mfa/setup", follow_redirects=False)
     assert denied_page.status_code == 302
     assert denied_page.headers["Location"].endswith("/mfa/status")
+    # The setup page denial must not silently log the user out.
+    assert admin_client.get("/mfa/status").status_code == 200
+    with admin_client.session_transaction() as browser_session:
+        assert browser_session.get("_user_id")
+        assert browser_session.get("_fresh") is True
 
     denied_generate = admin_client.post(
         "/mfa/enable",
