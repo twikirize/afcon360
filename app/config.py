@@ -107,6 +107,9 @@ class Config:
     # ---- Auth secrets -------------------------------------------------------
     SECRET_KEY    = os.getenv("SECRET_KEY")
     SECURITY_SALT = os.getenv("SECURITY_SALT")
+    # Environment-level owner MFA requirement is a minimum policy. The owner
+    # settings page may strengthen it in the database, but cannot weaken it.
+    REQUIRE_OWNER_MFA = os.getenv("REQUIRE_OWNER_MFA", "false").strip().lower() in ("1", "true", "yes", "on")
 
     # ---- Database -----------------------------------------------------------
     # Config reads DATABASE_URL first; falls back to individual components.
