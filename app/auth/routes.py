@@ -1008,7 +1008,7 @@ def login():
                 require_mfa = get_owner_mfa_required()
                 
                 needs_owner_mfa_enrollment = (
-                    require_mfa and not getattr(user, "mfa_enabled", False)
+                    require_mfa and not owner_has_verified_totp(user.id)
                 )
                 if require_mfa and not needs_owner_mfa_enrollment:
                     # Owners who have enrolled must prove possession on login.
