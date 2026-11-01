@@ -660,10 +660,23 @@ def demand_cells():
     }), 200
 
 
+def _booking_location_poll_identifier():
+    """Return an authenticated rider key for the snapshot polling quota."""
+    from flask_login import current_user
+
+    user_id = getattr(current_user, "id", None)
+    return f"user:{user_id}" if user_id is not None else "anonymous"
+
+
 @geo_bp.get("/api/booking/<booking_reference>/location")
 @login_required
 @require_module_enabled("transport")
-@rate_limit("geo_booking_location_poll", per_minute=24)
+@rate_limit(
+    "geo_booking_location_poll",
+    limit=24,
+    period=60,
+    identifier_func=_booking_location_poll_identifier,
+)
 def booking_location_snapshot(booking_reference):
     """Owner-authorized HTTP snapshot used when the SSE channel is unavailable.
 
