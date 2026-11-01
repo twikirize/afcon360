@@ -362,13 +362,34 @@ class User(UserMixin, ProtectedModel):
         return check_password_hash(self.password_hash, password)
 
     def verify_security_answer(self, answer: str) -> bool:
-        """Verify security answer for password recovery without email."""
+        """Verify a recovery answer and upgrade legacy fast hashes on success.
+
+        Older accounts stored an unsalted SHA-256 digest. Accept that legacy
+        format once for compatibility, then replace it with Werkzeug's
+        salted scrypt password hash. The caller's password-reset transaction
+        persists the upgraded value together with the password change.
+        """
         if not self.security_answer_hash or not answer:
             return False
-        # Hash the provided answer and compare with stored hash
+
         import hashlib
-        answer_hash = hashlib.sha256(answer.encode()).hexdigest()
-        return answer_hash == self.security_answer_hash
+        import hmac
+        import re
+
+        stored_hash = self.security_answer_hash
+        if re.fullmatch(r"[0-9a-f]{64}", stored_hash):
+            legacy_hash = hashlib.sha256(answer.encode("utf-8")).hexdigest()
+            if not hmac.compare_digest(legacy_hash, stored_hash):
+                return False
+            self.security_answer_hash = generate_password_hash(
+                answer, method="scrypt"
+            )
+            return True
+
+        try:
+            return check_password_hash(stored_hash, answer)
+        except (TypeError, ValueError):
+            return False
 
     # ---------------------------
     # Login helpers
