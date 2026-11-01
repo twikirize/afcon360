@@ -43,9 +43,7 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
     # Capture the database identity while the fixture is still attached.
     from sqlalchemy import inspect as sa_inspect
     owner_pk = sa_inspect(test_admin).identity[0]
-    owner_public_id = test_admin.public_id
-    owner_username = test_admin.username
-    owner_suffix = owner_public_id.replace("-", "")[:12]
+    owner_suffix = str(owner_pk)
 
     with app.app_context():
         SystemConfig.set(
