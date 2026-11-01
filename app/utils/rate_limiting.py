@@ -75,11 +75,19 @@ class RateLimiter:
 
         return True, remaining, reset_time
 
-    def get_headers(self, key_prefix: str = "") -> Dict[str, str]:
+    def get_headers(
+            self,
+            key_prefix: str = "",
+            decision: Optional[tuple] = None,
+    ) -> Dict[str, str]:
+        """Build rate-limit headers from an existing decision when supplied.
+
+        Reusing the decision avoids incrementing the request counter a second
+        time merely to render response headers.
         """
-        Get rate limit headers
-        """
-        allowed, remaining, reset_time = self.is_allowed(key_prefix)
+        allowed, remaining, reset_time = (
+            decision if decision is not None else self.is_allowed(key_prefix)
+        )
 
         headers = {
             'X-RateLimit-Limit': str(self.max_requests),
@@ -88,7 +96,7 @@ class RateLimiter:
         }
 
         if not allowed:
-            headers['Retry-After'] = str(int(reset_time - time.time()))
+            headers['Retry-After'] = str(max(0, int(reset_time - time.time())))
 
         return headers
 
@@ -101,6 +109,7 @@ def rate_limit(
         period: int = 60,
         per_method: bool = False,
         per_endpoint: bool = True,
+        identifier_func: Optional[callable] = None,
         **kwargs
 ):
     """
@@ -121,34 +130,38 @@ def rate_limit(
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            # Create rate limiter instance
+            # Keep the historic endpoint bucket by default. Callers that
+            # provide identifier_func can partition the bucket by an
+            # authenticated actor (for example, one rider per booking poll).
+            def _identifier():
+                if identifier_func is None:
+                    return f"{key_prefix}:{func.__name__}"
+                actor_key = identifier_func()
+                return f"{key_prefix}:{func.__name__}:{actor_key}"
+
             limiter = RateLimiter(
                 max_requests=max_requests,
                 window=window,
-                identifier_func=lambda: f"{key_prefix}:{func.__name__}"
+                identifier_func=_identifier,
             )
 
-            # Check rate limit
-            allowed, remaining, reset_time = limiter.is_allowed()
+            # Check rate limit once; reuse this decision for response headers.
+            decision = limiter.is_allowed()
+            allowed, remaining, reset_time = decision
 
             if not allowed:
                 raise RateLimitError(
-                    message=f"Rate limit exceeded. Try again in {int(reset_time - time.time())} seconds.",
+                    message=f"Rate limit exceeded. Try again in {max(0, int(reset_time - time.time()))} seconds.",
                     limit=max_requests,
                     window=window
                 )
 
-            # Execute function
             response = func(*args, **kwargs)
 
-            # Add rate limit headers if response is a Flask response
-            try:
-                if hasattr(response, 'headers'):
-                    headers = limiter.get_headers()
-                    for header_key, header_value in headers.items():
-                        response.headers[header_key] = header_value
-            except:
-                pass
+            if hasattr(response, 'headers'):
+                headers = limiter.get_headers(decision=decision)
+                for header_key, header_value in headers.items():
+                    response.headers[header_key] = header_value
 
             return response
 

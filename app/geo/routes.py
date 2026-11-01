@@ -660,6 +660,101 @@ def demand_cells():
     }), 200
 
 
+def _booking_location_poll_identifier():
+    """Return an authenticated rider key for the snapshot polling quota."""
+    from flask_login import current_user
+
+    user_id = getattr(current_user, "id", None)
+    return f"user:{user_id}" if user_id is not None else "anonymous"
+
+
+@geo_bp.get("/api/booking/<booking_reference>/location")
+@login_required
+@require_module_enabled("transport")
+@rate_limit(
+    "geo_booking_location_poll",
+    limit=24,
+    period=60,
+    identifier_func=_booking_location_poll_identifier,
+)
+def booking_location_snapshot(booking_reference):
+    """Owner-authorized HTTP snapshot used when the SSE channel is unavailable.
+
+    This endpoint deliberately reuses Transport's booking-scoped tracking
+    authorization. It exposes the same public location event envelope as SSE,
+    never a driver database ID, and returns a terminal state when assignment
+    or booking eligibility has ended.
+    """
+    from flask_login import current_user
+    from app.auth.helpers import has_global_role
+    from app.geo.realtime import build_location_event
+    from app.transport.services.tracking_service import TrackingService
+    from app.utils.exceptions import NotFoundError
+
+    def _private_snapshot_response(payload, status=200):
+        response = jsonify(payload)
+        response.status_code = status
+        response.headers["Cache-Control"] = "private, no-store, max-age=0"
+        response.headers["Vary"] = "Cookie"
+        return response
+
+    if (not isinstance(booking_reference, str)
+            or not booking_reference.strip()
+            or len(booking_reference) > 64):
+        abort(404)
+    ref = booking_reference.strip()
+    viewer_is_admin = bool(has_global_role(
+        current_user, "admin", "super_admin", "owner"))
+    subject = TrackingService.get_rider_tracking_subject(
+        ref, int(current_user.id), viewer_is_admin)
+    if subject["reason"] == "unknown_booking":
+        abort(404)
+    if subject["reason"] == "not_authorized":
+        abort(403)
+    if not subject["allowed"]:
+        return _private_snapshot_response({
+            "success": True,
+            "data": {"status": "closed", "reason": subject["reason"]},
+        }, 200)
+
+    driver_public_ref = subject["driver_public_ref"]
+    internal_id = _resolve_location_subject("driver", driver_public_ref)
+    if internal_id is None:
+        return _private_snapshot_response({
+            "success": True,
+            "data": {"status": "closed", "reason": "no_driver"},
+        }, 200)
+
+    try:
+        current = TrackingService.get_location("driver", internal_id)
+    except NotFoundError:
+        return _private_snapshot_response({
+            "success": True,
+            "data": {"status": "missing"},
+        }, 200)
+    if not current.get("success"):
+        current_app.logger.warning(
+            "Rider snapshot polling failed for booking %s", ref)
+        return _private_snapshot_response({
+            "success": False,
+            "error": "Location snapshot temporarily unavailable",
+            "code": "LOCATION_UNAVAILABLE",
+        }, 503)
+
+    try:
+        event = build_location_event(
+            "driver", driver_public_ref, current["data"]["location"])
+    except Exception as exc:
+        current_app.logger.warning(
+            "Rider snapshot rejected for booking %s: %s", ref, exc)
+        return _private_snapshot_response({
+            "success": False,
+            "error": "Location snapshot temporarily unavailable",
+            "code": "LOCATION_UNAVAILABLE",
+        }, 503)
+    return _private_snapshot_response({"success": True, "data": event}, 200)
+
+
 @geo_bp.get("/stream/booking/<booking_reference>")
 @login_required
 @require_module_enabled("transport")

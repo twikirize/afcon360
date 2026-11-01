@@ -6,6 +6,11 @@ on:
     paths:
       - "app/transport/**"
       - "app/wallet/**"
+      - "app/geo/**"
+      - "static/js/geo/**"
+      - "static/js/modules/transport/**"
+      - "static/offline.html"
+      - "static/transport/sw.js"
       - "scripts/seed_payment_methods.py"
       - "app/tasks/transport_recovery.py"
       - "app/utils/validators.py"
@@ -22,6 +27,20 @@ on:
       - "tests/transport/test_ride_request_create.py"
       - "tests/transport/test_trip_end_payment_semantics.py"
       - "tests/transport/test_wallet_invoice_boundary.py"
+      - "tests/transport/test_location_lifecycle_booking_set.py"
+      - "tests/transport/test_cancel_fee_scheduled_p1.py"
+      - "tests/test_geo_realtime.py"
+      - "tests/test_geo_foundation.py"
+      - "tests/transport/test_driver_console.py"
+      - "tests/test_driver_location_csrf_refresh.py"
+      - "tests/test_transport_d2_evidence.py"
+      - "tests/test_transport_pwa_shell.py"
+      - "tests/test_transport_restful_auth.py"
+      - "tests/test_transport_tracking_live.py"
+      - "tests/test_transport_frontend_contracts.py"
+      - "tests/test_request_tracker_polling.cjs"
+      - "tests/test_geo_realtime_fallback.cjs"
+      - "tests/test_rider_sync_driver_card.cjs"
       - "migrations/**"
       - "requirements.txt"
       - ".github/workflows/transport-request-first-tests.yml"
@@ -82,6 +101,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
+          python -m pip install pytest-timeout==2.4.0
 
       - name: Confirm one Alembic head
         run: |
@@ -107,6 +127,7 @@ jobs:
           python -m compileall -q
           app/transport
           app/wallet
+          app/geo
           scripts/seed_payment_methods.py
           app/tasks/transport_recovery.py
           app/utils/validators.py
@@ -119,6 +140,17 @@ jobs:
           tests/transport/test_ride_request_create.py
           tests/transport/test_trip_end_payment_semantics.py
           tests/transport/test_wallet_invoice_boundary.py
+          tests/transport/test_location_lifecycle_booking_set.py
+          tests/transport/test_cancel_fee_scheduled_p1.py
+          tests/test_geo_realtime.py
+          tests/test_geo_foundation.py
+          tests/transport/test_driver_console.py
+          tests/test_driver_location_csrf_refresh.py
+          tests/test_transport_d2_evidence.py
+          tests/test_transport_pwa_shell.py
+          tests/test_transport_restful_auth.py
+          tests/test_transport_tracking_live.py
+          tests/test_transport_frontend_contracts.py
 
       - name: Parse changed Jinja templates without database access
         run: |
@@ -162,15 +194,43 @@ jobs:
 
       # Include pre-confirmation no-dispatch assertions and rider-facing confirmed-fare copy,
       # not only the downstream request, assignment, and payment lifecycle tests.
+
+      - name: Set up Node for browser contract tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check transport browser scripts and tracking fallback
+        run: |
+          node --check static/js/modules/transport/driver_offer_poll.js
+          node --check static/js/modules/transport/rider_matching.js
+          node --check static/js/modules/transport/rider_status_sync.js
+          node --check static/js/geo/geo-realtime.js
+          node --input-type=module --check < static/js/modules/transport/offer-poller.js
+          node tests/test_rider_sync_driver_card.cjs
+          node tests/test_geo_realtime_fallback.cjs
+          node tests/test_request_tracker_polling.cjs
+
       - name: Run fare confirmation, request lifecycle, payment, and admin regressions
-        run: >-
-          python -m pytest -q
-          tests/test_transport_ride_options.py
-          tests/test_transport_booking_route_path.py
-          tests/test_ui11_booking_flash_copy.py
-          tests/test_transport_request_tracker_copy.py
-          tests/test_transport_cash_confirmation_semantics.py
-          tests/test_transport_admin_canonical_overview.py
-          tests/transport/test_ride_request_create.py
-          tests/transport/test_trip_end_payment_semantics.py
-          tests/transport/test_wallet_invoice_boundary.py
+        run: |
+          python -m pytest -vv -x --timeout=120 --timeout-method=signal --durations=20 \
+            tests/test_transport_ride_options.py \
+            tests/test_transport_booking_route_path.py \
+            tests/test_ui11_booking_flash_copy.py \
+            tests/test_transport_request_tracker_copy.py \
+            tests/test_transport_cash_confirmation_semantics.py \
+            tests/test_transport_admin_canonical_overview.py \
+            tests/transport/test_ride_request_create.py \
+            tests/transport/test_trip_end_payment_semantics.py \
+            tests/transport/test_wallet_invoice_boundary.py \
+            tests/transport/test_location_lifecycle_booking_set.py \
+            tests/transport/test_cancel_fee_scheduled_p1.py \
+            tests/test_geo_realtime.py \
+            tests/test_geo_foundation.py \
+            tests/transport/test_driver_console.py \
+            tests/test_driver_location_csrf_refresh.py \
+            tests/test_transport_d2_evidence.py \
+            tests/test_transport_pwa_shell.py \
+            tests/test_transport_restful_auth.py \
+            tests/test_transport_tracking_live.py \
+            tests/test_transport_frontend_contracts.py

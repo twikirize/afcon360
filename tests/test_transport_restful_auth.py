@@ -100,12 +100,14 @@ def test_authenticated_driver_location_post_success(
         json={"latitude": 0.35, "longitude": 32.5},
     )
 
-    # Assert: should be 200 with success True
-    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.get_data(as_text=True)}"
-    data = resp.get_json()
-    assert data.get("success") is True, "success should be True"
-    # Authorized user should get data payload
-    assert "data" in data, "Authorized user should receive data payload"
+    # GPS success is intentionally bodyless: the internal tracking entity id
+    # is not returned to the browser.
+    assert resp.status_code == 204, f"Expected 204, got {resp.status_code}: {resp.get_data(as_text=True)}"
+    assert resp.data == b""
+    with app.app_context():
+        profile = db.session.get(DriverProfile, driver_id)
+        assert profile.last_location["latitude"] == 0.35
+        assert profile.location_updated_at is not None
 
 
 def test_authenticated_wrong_owner_driver_location_post_forbidden(

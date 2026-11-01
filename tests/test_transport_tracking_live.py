@@ -32,7 +32,7 @@ from app.utils.exceptions import NotFoundError
 
 
 @pytest.fixture
-def live_user(app):
+def live_user(db_session):
     from app.identity.models.user import User
     unique = uuid.uuid4().hex[:8]
     u = User(
@@ -44,13 +44,13 @@ def live_user(app):
         email_verified=True,
     )
     u.set_password("Password123!")
-    db.session.add(u)
-    db.session.commit()
+    db_session.add(u)
+    db_session.commit()
     return u
 
 
 @pytest.fixture
-def live_driver(live_user):
+def live_driver(live_user, db_session):
     dp = DriverProfile(
         user_id=live_user.id,
         driver_code=f"DRV-{uuid.uuid4().hex[:6].upper()}",
@@ -62,8 +62,8 @@ def live_driver(live_user):
         max_passenger_capacity=4,
         vehicle_classes=['comfort'],
     )
-    db.session.add(dp)
-    db.session.commit()
+    db_session.add(dp)
+    db_session.commit()
     return dp
 
 
@@ -155,6 +155,8 @@ class TestLocationEndpointAuthorization:
 
     def test_admin_driver_location_page_renders_position(
             self, app, admin_client, live_driver, monkeypatch):
+        driver_id = int(live_driver.id)
+        driver_code = str(live_driver.driver_code)
         live_driver.last_location = {
             "latitude": -1.2833, "longitude": 36.8167,
             "accuracy": 5.0, "speed": 0.0, "heading": 0.0,
@@ -164,10 +166,12 @@ class TestLocationEndpointAuthorization:
         db.session.commit()
 
         response = admin_client.get(
-            f"/transport/drivers/{live_driver.id}/location")
+            f"/transport/drivers/{driver_id}/location")
         assert response.status_code == 200
         html = response.data.decode("utf-8")
-        assert live_driver.driver_code in html
+        # The request context may remove the scoped session; assert against
+        # stable scalar values captured before the HTTP request.
+        assert driver_code in html
         assert "-1.2833" in html
         assert "36.8167" in html
 
@@ -181,6 +185,20 @@ class TestLocationEndpointAuthorization:
 # --- stored location JSON shape --------------------------------------------------
 
 class TestStoredLocationShape:
+    def test_missing_optional_telemetry_is_not_fabricated(
+            self, app, live_driver, monkeypatch):
+        monkeypatch.setattr(
+            "app.transport.services.tracking_service.redis_client",
+            _StoreRedis())
+        result = TrackingService.update_location(
+            "driver", live_driver.id,
+            {"latitude": -1.2833, "longitude": 36.8167})
+        assert result["success"] is True
+        location = result["data"]["location"]
+        assert location["accuracy"] is None
+        assert location["speed"] is None
+        assert location["heading"] is None
+
     def test_stored_payload_carries_telemetry_fields(
             self, app, live_driver, monkeypatch):
         recorded = {}

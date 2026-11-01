@@ -626,6 +626,62 @@ class BookingService:
                 distance_km=distance_for_fare,
             )
             estimated_price = _estimate["total"]
+
+            # The legacy Booking-first path is retained for scheduled rides
+            # and non-instant services. Apply the same Wallet commitment gate
+            # as RideRequestService: use the actual calculated fare and its
+            # denomination, not the form's default/empty amount.
+            fare_currency = str(_estimate.get("currency") or "USD").strip().upper()
+            requested_currency = str(
+                sanitized_data.get("currency") or fare_currency
+            ).strip().upper()
+            if requested_currency != fare_currency:
+                raise ValidationError(
+                    message=(
+                        "The selected currency does not match the fare quote. "
+                        "Review the fare and try again."
+                    ),
+                    field="currency",
+                )
+            selected_payment_method = str(
+                sanitized_data.get("payment_method") or "cash"
+            ).strip().lower()
+
+            # Cash is an offline, pay-on-completion choice and has no rider
+            # Wallet balance to authorize. The HTTP booking route has already
+            # confirmed that Cash is enabled. Every Wallet-backed/digital
+            # choice must be certified against the exact fare here as well,
+            # because this service also serves scheduled/non-instant rides.
+            if selected_payment_method != "cash":
+                from app.transport.services.payment_methods import (
+                    get_available_transport_payment_methods,
+                )
+                eligible_methods = get_available_transport_payment_methods(
+                    customer_id,
+                    currency_code=fare_currency,
+                    amount=estimated_price,
+                    payment_timing="pay_on_completion",
+                )
+                selected_eligibility = next(
+                    (
+                        method for method in eligible_methods
+                        if str(method.get("code") or "").strip().lower()
+                        == selected_payment_method
+                    ),
+                    None,
+                )
+                if (selected_eligibility is None
+                        or str(selected_eligibility.get("status") or "").lower()
+                        != "ready"):
+                    raise ValidationError(
+                        message=(
+                            "The selected payment method is not ready for this fare. "
+                            "Choose another available method or complete Wallet setup."
+                        ),
+                        field="payment_method",
+                    )
+
+
             # Record the applied surge alongside the price (fare node):
             # the surge_multiplier column previously stayed at its 1.00
             # default even when rush pricing applied, making estimates
@@ -1001,6 +1057,8 @@ class BookingService:
                 "tier": fee_tier,
                 "policy": "scheduled_v1",
                 "recorded_uncollected": True,
+                "refund_amount_estimate": str(refund_amount),
+                "refund_status": "not_processed_by_transport",
                 "initiated_by": initiated_by,
                 "scheduled": policy["scheduled"],
                 "percentage": (
@@ -1154,7 +1212,13 @@ class BookingService:
                 "data": {
                     "booking_reference": booking_reference,
                     "cancellation_fee": float(cancellation_fee),
+                    # Backward-compatible estimate only. Transport
+                    # cancellation never moves funds or issues cash/provider
+                    # refunds; Wallet must own any later ledger refund.
                     "refund_amount": float(refund_amount),
+                    "refund_amount_estimate": float(refund_amount),
+                    "refund_processed": False,
+                    "refund_status": "not_processed_by_transport",
                     "currency": policy["currency"],
                     "fee_tier": fee_tier,
                     "recorded_uncollected": True,

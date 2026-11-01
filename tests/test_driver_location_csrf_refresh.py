@@ -26,6 +26,8 @@ import time
 import pytest
 from itsdangerous import SignatureExpired, URLSafeTimedSerializer
 
+from app.extensions import db
+
 from tests.test_transport_restful_auth import _create_driver, _owner_id_in_context
 
 
@@ -150,8 +152,13 @@ class TestDriverLocationCsrfRefresh:
         accepted = authenticated_client.post(
             url, json=payload, headers={"X-CSRFToken": fresh}
         )
-        assert accepted.status_code == 200, (
-            f"Expected 200 after refresh, got {accepted.status_code}: "
+        assert accepted.status_code == 204, (
+            f"Expected 204 after refresh, got {accepted.status_code}: "
             f"{accepted.get_data(as_text=True)}"
         )
-        assert accepted.get_json().get("success") is True
+        assert accepted.data == b""
+        from app.transport.models import DriverProfile
+        with app.app_context():
+            profile = db.session.get(DriverProfile, driver_id)
+            assert profile.last_location["latitude"] == 0.35
+            assert profile.location_updated_at is not None

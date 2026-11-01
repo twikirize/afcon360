@@ -371,6 +371,28 @@ class TestRollbackAfterPartialFlush:
         assert response.status_code == 400, response.get_data(as_text=True)
         assert _counts(app, rider_id) == (0, 0, 0)
 
+    def test_payment_method_must_be_wallet_ready_for_exact_fare(
+            self, app, client, monkeypatch):
+        from app.transport.services import payment_methods
+
+        rider_id = _seed_rider(app, "walletnotready")
+        _promote_to_tier2(app, rider_id)
+        _login_as(app, client, rider_id)
+        monkeypatch.setattr(
+            payment_methods, "get_available_transport_payment_methods",
+            lambda *args, **kwargs: [
+                {"code": "cash", "status": "ready"},
+                {"code": "wallet", "status": "low_balance"},
+            ],
+        )
+
+        response = client.post(URL, json=_payload(
+            app, payment_method="wallet"
+        ))
+        assert response.status_code == 400, response.get_data(as_text=True)
+        assert "payment_method" in response.get_json().get("error", "").lower()
+        assert _counts(app, rider_id) == (0, 0, 0)
+
     def test_payment_method_is_required(self, app, client):
         rider_id = _seed_rider(app, "paymentrequired")
         _promote_to_tier2(app, rider_id)

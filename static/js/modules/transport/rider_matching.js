@@ -1,8 +1,8 @@
 /* ============================================================ */
 /* BOOKING SHOW - RIDER MATCHING PANEL (post-confirm live search) */
-/* Polls booking status; refreshes live availability + fares.    */
-/* On assignment flips the panel to "Driver assigned" then       */
-/* reloads so the canonical driver/tracking view renders.        */
+/* Polls canonical booking status only. Fare discovery remains   */
+/* quote-only and never supplies live availability or ETA.       */
+/* On assignment, hand off to the canonical rider status client. */
 /* ============================================================ */
 
 (function () {
@@ -12,8 +12,6 @@
     if (!panel) return;
 
     var statusUrl = panel.getAttribute('data-status-url');
-    var optionsUrl = panel.getAttribute('data-options-url');
-    var csrf = panel.getAttribute('data-csrf') || '';
     var availEl = document.getElementById('rmAvail');
     var optsEl = document.getElementById('rmOptions');
     var pingEl = document.getElementById('rmPing');
@@ -22,6 +20,18 @@
 
     /* While status is one of these, the rider is still being matched. */
     var MATCHING = { pending_payment: true, confirmed: true };
+    /* Only these canonical lifecycle states prove a driver accepted and
+       the assignment path advanced. Unknown states must never be rendered
+       as a successful driver assignment. */
+    var DRIVER_ACCEPTED = {
+        assigned: true,
+        driver_en_route: true,
+        pickup_arrived: true,
+        in_progress: true,
+        disputed: true,
+        completed: true,
+        no_show: true
+    };
     /* Bounded search budget (FS-6b): max MATCHING status polls before the
        panel tells the rider the search is taking longer than expected.
        At the 3.5s cadence below, 60 polls = ~3.5 minutes. Named and
@@ -32,7 +42,6 @@
     var polls = 0;
     var finished = false;
     var noSupply = false;
-    var optTimer = null;
     /* Bounded requests (FS-4): AbortController timeout so a stalled
        network retries on cadence instead of hanging a poll forever. */
     var REQ_TIMEOUT_MS = 15000;
@@ -83,82 +92,6 @@
         return String(s || '').toLowerCase();
     }
 
-    function optionBody() {
-        var body = {
-            service_type: panel.getAttribute('data-service-type') || 'on_demand',
-            currency: panel.getAttribute('data-currency') || 'USD'
-        };
-        var pl = panel.getAttribute('data-pickup-lat');
-        var pn = panel.getAttribute('data-pickup-lng');
-        var dl = panel.getAttribute('data-dropoff-lat');
-        var dn = panel.getAttribute('data-dropoff-lng');
-        if (pl && pn) { body.pickup_latitude = parseFloat(pl); body.pickup_longitude = parseFloat(pn); }
-        if (dl && dn) { body.dropoff_latitude = parseFloat(dl); body.dropoff_longitude = parseFloat(dn); }
-        return body;
-    }
-
-    function esc(s) {
-        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-        });
-    }
-
-    function fmtFare(o) {
-        var amt = Number(o.fare_total || 0).toFixed(2);
-        var cur = o.currency || 'USD';
-        return cur === 'USD' ? '$' + amt : amt + ' ' + cur;
-    }
-
-    function renderOptions(data) {
-        if (finished) return;
-        var opts = (data && data.options) || [];
-        if (!opts.length) {
-            if (availEl) {
-                availEl.textContent = 'No vehicles available nearby right now — we keep searching.';
-            }
-            if (optsEl) optsEl.innerHTML = '';
-            return;
-        }
-        var total = 0;
-        opts.forEach(function (o) { total += (o.available_count || 0); });
-        if (availEl) {
-            availEl.textContent = total + ' vehicle' + (total === 1 ? '' : 's') +
-                ' available nearby' +
-                (opts[0].eta_minutes != null ? ' · ETA ~' + opts[0].eta_minutes + ' min' : '');
-        }
-        if (optsEl) {
-            optsEl.innerHTML = '';
-            opts.slice(0, 3).forEach(function (o) {
-                var row = document.createElement('div');
-                row.className = 'rm-opt';
-                row.innerHTML =
-                    '<span>' + esc(o.display_name || o.vehicle_class) +
-                    ' <span style="color:var(--text-muted);">\u00d7' +
-                    (o.available_count || 0) + '</span></span>' +
-                    '<span style="font-weight:600;">' + esc(fmtFare(o)) + '</span>';
-                optsEl.appendChild(row);
-            });
-        }
-    }
-
-    function fetchOptions() {
-        if (finished || !optionsUrl) return;
-        fetchWithTimeout(optionsUrl, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-CSRFToken': csrf,
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify(optionBody())
-        })
-            .then(function (r) { if (!r.ok) throw new Error('options ' + r.status); return r.json(); })
-            .then(function (payload) { renderOptions(payload && payload.data); })
-            .catch(function () { /* availability is supplementary — poll continues */ });
-    }
-
     function enterAssigned(st) {
         finished = true;
         if (pingEl) pingEl.className = 'rm-step done';
@@ -182,7 +115,6 @@
            rider-visible copy and this comment changed.) */
         finished = true;
         noSupply = true;
-        if (optTimer) { clearInterval(optTimer); optTimer = null; }
         if (pingEl) pingEl.className = 'rm-step done';
         if (availEl) availEl.textContent =
             'Still checking for drivers. ' +
@@ -201,31 +133,17 @@
     function retrySearch() {
         /* Explicit rider resume of status polling against the SAME
            booking: reset the frontend budget and restart the existing
-           pollers. statusUrl and optionsUrl are unchanged, no POST to
-           the server-side retry endpoint happens here, so no second
-           booking can result and no backend dispatch state is touched. */
+           status poll loop. No POST to the server-side retry endpoint
+           happens here, so no second booking can result and no backend
+           dispatch state is touched. */
         if (!noSupply) return;
         noSupply = false;
         finished = false;
         polls = 0;
         if (pingEl) pingEl.className = 'rm-step active';
-        if (availEl) availEl.textContent = 'Checking available vehicles…';
+        if (availEl) availEl.textContent = 'Still contacting eligible drivers…';
         if (optsEl) optsEl.innerHTML = '';
-        fetchOptions();
-        startOptionPolling();
         tick();
-    }
-
-    function startOptionPolling() {
-        stopOptionPolling();
-        optTimer = setInterval(function () {
-            if (finished) { stopOptionPolling(); return; }
-            fetchOptions();
-        }, 20000);
-    }
-
-    function stopOptionPolling() {
-        if (optTimer) { clearInterval(optTimer); optTimer = null; }
     }
 
     function tick() {
@@ -247,7 +165,15 @@
                        Try again / Adjust request). Never enterAssigned: no
                        driver accepted. */
                     if (st === 'no_match') { finished = true; window.location.reload(); return; }
-                    enterAssigned(st);
+                    if (DRIVER_ACCEPTED[st]) {
+                        enterAssigned(st);
+                    } else {
+                        /* An unexpected lifecycle state is not proof that a
+                           driver accepted. Let the server-rendered page own
+                           its explanation rather than showing false success. */
+                        finished = true;
+                        window.location.reload();
+                    }
                     return;
                 }
                 polls += 1;
@@ -265,8 +191,6 @@
             });
     }
 
-    fetchOptions();
-    startOptionPolling();
     tick();
 
     /* Node-test seam (zero browser effect): expose the pure matching
@@ -275,6 +199,7 @@
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = {
             isMatchingStatus: isMatchingStatus,
+            isDriverAcceptedStatus: function (st) { return !!DRIVER_ACCEPTED[st]; },
             budgetExhausted: budgetExhausted,
             SEARCH_BUDGET_POLLS: SEARCH_BUDGET_POLLS
         };

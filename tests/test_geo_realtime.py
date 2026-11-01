@@ -465,6 +465,105 @@ def test_stream_degrades_truthfully_when_channel_down(app, admin_client,
     assert "snapshot only" in body
 
 
+def _seed_assigned_booking(app, owner_id, driver_id):
+    from datetime import datetime, timezone
+    from app.extensions import db
+    from app.transport.models import (
+        Booking, BookingStatus, ProviderType, ServiceType,
+    )
+
+    with app.app_context():
+        booking = Booking(
+            user_id=owner_id,
+            booking_reference="GEO-POLL-" + uuid.uuid4().hex[:10].upper(),
+            provider_type=ProviderType.INDIVIDUAL_DRIVER,
+            service_type=ServiceType.ON_DEMAND,
+            pickup_location={"latitude": LAT, "longitude": LNG},
+            dropoff_location={"latitude": 0.3476, "longitude": 32.5825},
+            pickup_time=datetime.now(timezone.utc),
+            passenger_count=1,
+            base_price=25.0,
+            currency="USD",
+            status=BookingStatus.ASSIGNED,
+            assigned_driver_id=driver_id,
+        )
+        db.session.add(booking)
+        db.session.commit()
+        return booking.booking_reference
+
+
+def test_booking_snapshot_fallback_is_available_to_booking_owner(
+        app, authenticated_client, test_user):
+    from app.extensions import db
+    from app.transport.services.tracking_service import TrackingService
+
+    driver_id, driver_code = _seed_driver_with_user(app)
+    with app.app_context():
+        owner_id = db.session.merge(test_user).id
+        ref = _seed_assigned_booking(app, owner_id, driver_id)
+        TrackingService.update_location("driver", driver_id, {
+            "latitude": LAT, "longitude": LNG, "accuracy": 4.0,
+        })
+
+    response = authenticated_client.get(
+        f"/geo/api/booking/{ref}/location"
+    )
+    assert response.status_code == 200, response.get_data(as_text=True)
+    payload = response.get_json()
+    assert payload["success"] is True
+    assert payload["data"]["entity_type"] == "driver"
+    assert payload["data"]["public_ref"] == driver_code
+    assert payload["data"]["latitude"] == pytest.approx(LAT)
+    assert payload["data"]["longitude"] == pytest.approx(LNG)
+    assert response.headers["Cache-Control"] == "private, no-store, max-age=0"
+    # Compression middleware may add Accept-Encoding; the session-cookie
+    # variation must remain present without requiring it to be the only token.
+    vary_tokens = {
+        value.strip().lower()
+        for value in response.headers.get("Vary", "").split(",")
+    }
+    assert "cookie" in vary_tokens
+    blob = response.get_data(as_text=True)
+    assert "driver_id" not in blob
+    assert "entity_id" not in blob
+
+
+def test_booking_snapshot_fallback_denies_non_owner(
+        app, authenticated_client):
+    from app.extensions import db
+    from app.identity.models.user import User
+    from app.transport.services.tracking_service import TrackingService
+
+    driver_id, _ = _seed_driver_with_user(app)
+    with app.app_context():
+        uid = uuid.uuid4().hex[:8]
+        owner = User(
+            username=f"geo_other_{uid}",
+            email=f"geo_other_{uid}@test.example.com",
+            is_active=True,
+        )
+        owner.set_password("TestPassword123!")
+        db.session.add(owner)
+        db.session.commit()
+        ref = _seed_assigned_booking(app, owner.id, driver_id)
+        TrackingService.update_location("driver", driver_id, {
+            "latitude": LAT, "longitude": LNG,
+        })
+
+    response = authenticated_client.get(
+        f"/geo/api/booking/{ref}/location"
+    )
+    assert response.status_code == 403
+
+
+def test_booking_snapshot_fallback_requires_login(app, anonymous_client):
+    response = anonymous_client.get(
+        "/geo/api/booking/NOT-A-REAL-BOOKING/location",
+        follow_redirects=False,
+    )
+    assert response.status_code in (302, 401)
+
+
 # --- CASE C consumer repair ------------------------------------------------------
 
 def test_drivers_location_page_renders_driver(app, admin_client):
@@ -487,3 +586,43 @@ def test_drivers_location_page_renders_driver(app, admin_client):
     # stream URL is assembled in JS (encodeURIComponent), so pin both parts
     assert "/geo/stream/location/driver/" in html
     assert driver_code in html
+
+
+def test_rate_limit_supports_per_rider_buckets_without_double_counting(app):
+    """Booking snapshot polling must be isolated per rider and counted once."""
+    from flask import g, jsonify
+    from app.utils.exceptions import RateLimitError
+    from app.utils.rate_limiting import clear_rate_limits, rate_limit
+
+    clear_rate_limits()
+    try:
+        @rate_limit(
+            "geo_booking_location_poll_test",
+            limit=2,
+            period=60,
+            identifier_func=lambda: g.rider_key,
+        )
+        def endpoint():
+            return jsonify({"success": True})
+
+        with app.test_request_context("/geo/api/booking/TEST/location"):
+            g.rider_key = "user:101"
+            first = endpoint()
+            assert first.status_code == 200
+            assert first.headers["X-RateLimit-Limit"] == "2"
+            assert first.headers["X-RateLimit-Remaining"] == "1"
+
+            second = endpoint()
+            assert second.status_code == 200
+            assert second.headers["X-RateLimit-Remaining"] == "0"
+
+            with pytest.raises(RateLimitError):
+                endpoint()
+
+            # A different authenticated rider has a separate allowance.
+            g.rider_key = "user:202"
+            other_rider = endpoint()
+            assert other_rider.status_code == 200
+            assert other_rider.headers["X-RateLimit-Remaining"] == "1"
+    finally:
+        clear_rate_limits()

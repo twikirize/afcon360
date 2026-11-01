@@ -30,7 +30,8 @@
 
     /* Mirrors templates/transport/rides/show.html server rendering. */
     var STEPS = ['draft', 'pending_payment', 'confirmed', 'assigned',
-        'driver_en_route', 'pickup_arrived', 'in_progress', 'completed'];
+        'driver_en_route', 'pickup_arrived', 'no_show', 'in_progress',
+        'disputed', 'completed'];
     /* app/transport/routes.py _MATCHING_STATUSES */
     var MATCHING = { pending_payment: true, confirmed: true };
     /* app/transport/services/booking_service.py STATUS_TRANSITIONS (out == []) */
@@ -60,7 +61,9 @@
        fallback for every status NOT enumerated here. */
     var BADGE_LABEL = {
         confirmed: 'Finding your driver',
-        no_match: 'No match found'
+        no_match: 'No match found',
+        no_show: 'No-show',
+        disputed: 'Disputed — under review'
     };
 
     /* Bounded polling contract (repo patterns: 3.5s-30s intervals,
@@ -122,8 +125,8 @@
     function stageOf(status) {
         if (status === 'draft' || status === 'pending_payment') return 0;
         if (status === 'confirmed' || status === 'assigned') return 1;
-        if (status === 'driver_en_route' || status === 'pickup_arrived') return 2;
-        if (status === 'in_progress' || status === 'completed') return 3;
+        if (status === 'driver_en_route' || status === 'pickup_arrived' || status === 'no_show') return 2;
+        if (status === 'in_progress' || status === 'disputed' || status === 'completed') return 3;
         return 0;
     }
 
@@ -131,6 +134,11 @@
         if (!progressEl) return;
         var stage = stageOf(status);
         var steps = progressEl.querySelectorAll('.rp-step');
+        var labels = progressEl.querySelectorAll('.rp-label');
+        if (labels[2]) labels[2].textContent =
+            status === 'no_show' ? 'No-show' : 'Trip Started';
+        if (labels[3]) labels[3].textContent =
+            status === 'disputed' ? 'Under Review' : 'Arrived';
         for (var i = 0; i < steps.length; i++) {
             var cls = 'rp-step';
             if (i < stage) cls += ' done';
@@ -208,12 +216,16 @@
             'tl-step ' + (b.driver_arrived_at ? 'done' : 'skip'),
             tsText(b.driver_arrived_at));
         setRow('started',
-            'tl-step ' + (status === 'in_progress' ? 'active'
+            'tl-step ' + ((status === 'in_progress' || status === 'disputed') ? 'active'
                 : (b.completed_at ? 'done' : 'skip')),
             tsText(b.pickup_actual_time));
         setRow('completed',
             'tl-step ' + (b.completed_at ? 'done' : 'skip'),
             tsText(b.completed_at));
+        var noShowRow = timelineEl.querySelector('[data-tl="no_show"]');
+        if (noShowRow) noShowRow.hidden = status !== 'no_show';
+        var disputedRow = timelineEl.querySelector('[data-tl="disputed"]');
+        if (disputedRow) disputedRow.hidden = status !== 'disputed';
         var cancelRow = timelineEl.querySelector('[data-tl="cancelled"]');
         if (cancelRow) {
             var ct = cancelRow.querySelector('.tl-time');

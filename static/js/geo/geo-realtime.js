@@ -7,15 +7,18 @@
  * only - operational meaning stays with the owning domain.
  *
  * Contract:
- *   GeoRealtime.connect(streamUrl, { onSnapshot, onLocation, onState })
- *     -> { close(), state }.
+ *   GeoRealtime.connect(streamUrl, {
+ *     onSnapshot, onLocation, onState, pollUrl?, pollIntervalMs?
+ *   }) -> { close(), state }.
  * Events carry {latitude, longitude} (latitude-first, GeoPoint order).
  * A latitude/longitude swap upstream is consumer-visible, never corrected.
  *
  * Reconnect: the server sends `retry:` and every stream opens with the
  * current snapshot, so EventSource auto-reconnect recovers latest state
  * with no replay. Consecutive-error bounding prevents retry storms:
- * after MAX_ERRORS errors the client closes and reports `disconnected`.
+ * after MAX_ERRORS errors the SSE channel closes. When the caller supplies
+ * an authorized same-origin `pollUrl`, bounded HTTP snapshots take over;
+ * closing the returned handle stops both transports.
  */
 (function () {
   'use strict';
@@ -44,7 +47,8 @@
       publicRef: data.public_ref || '',
       latitude: lat,
       longitude: lng,
-      accuracy: toFinite(data.accuracy) || 0,
+      accuracy: (data.accuracy === null || data.accuracy === undefined)
+        ? null : toFinite(data.accuracy),
       observedAt: data.observed_at || '',
       ageS: toFinite(data.age_s),
       fresh: data.fresh === true,
@@ -57,10 +61,17 @@
     var source = null;
     var errors = 0;
     var closed = false;
+    var pollUrl = opts.pollUrl || null;
+    var pollIntervalMs = Math.max(3000, Number(opts.pollIntervalMs) || 5000);
+    var pollTimer = null;
+    var pollController = null;
+    var polling = false;
+    var pollErrors = 0;
     var handle = {
       state: 'connecting',
       close: function () {
         closed = true;
+        stopPolling();
         if (source) {
           try {
             source.close();
@@ -88,6 +99,100 @@
       emitState(state, {});
     }
 
+    function stopPolling() {
+      polling = false;
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+      if (pollController) {
+        try { pollController.abort(); } catch (e) { /* already complete */ }
+        pollController = null;
+      }
+    }
+
+    function schedulePolling(delay) {
+      if (!polling || closed || !pollUrl) return;
+      if (pollTimer) clearTimeout(pollTimer);
+      pollTimer = setTimeout(pollTick, delay);
+    }
+
+    function pollTick() {
+      if (!polling || closed || !pollUrl || pollController) return;
+      var controller = (typeof AbortController !== 'undefined')
+        ? new AbortController() : null;
+      pollController = controller;
+      var timeout = setTimeout(function () {
+        if (controller) controller.abort();
+      }, 10000);
+      var request = fetch(pollUrl, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' },
+        signal: controller ? controller.signal : undefined
+      });
+      request.then(function (response) {
+        var contentType = response.headers && response.headers.get
+          ? (response.headers.get('Content-Type') || '') : '';
+        var isJson = /^application\/(?:[a-z0-9.+-]+\+)?json\b/i.test(contentType);
+        if (response.redirected || !isJson ||
+            response.status === 401 || response.status === 403 ||
+            response.status === 404) {
+          var denied = new Error('tracking authorization ended');
+          denied.permanent = true;
+          throw denied;
+        }
+        if (!response.ok) throw new Error('snapshot ' + response.status);
+        return response.json();
+      }).then(function (payload) {
+        clearTimeout(timeout);
+        pollController = null;
+        if (!polling || closed) return;
+        var data = payload && payload.data;
+        if (data && data.status === 'closed') {
+          stopPolling();
+          closed = true;
+          if (source) {
+            try { source.close(); } catch (e) { /* already gone */ }
+            source = null;
+          }
+          emitState('closed', data);
+          return;
+        }
+        if (data && data.status === 'missing') {
+          emitState('missing', data);
+        } else {
+          handlePayload(data, 'snapshot');
+        }
+        pollErrors = 0;
+        schedulePolling(pollIntervalMs);
+      }).catch(function (error) {
+        clearTimeout(timeout);
+        pollController = null;
+        if (!polling || closed) return;
+        if (error && error.permanent) {
+          stopPolling();
+          closed = true;
+          emitState('closed', { reason: 'tracking-authorization-ended' });
+          return;
+        }
+        pollErrors += 1;
+        var backoff = Math.min(pollIntervalMs * Math.pow(2, pollErrors - 1), 30000);
+        emitState('degraded', { reason: 'http-snapshot-unavailable',
+          retry_in_ms: backoff });
+        schedulePolling(backoff);
+      });
+    }
+
+    function startPolling() {
+      if (!pollUrl || closed || polling) return;
+      polling = true;
+      pollErrors = 0;
+      emitState('degraded', { reason: 'sse-unavailable',
+        fallback: 'http-snapshot', interval_ms: pollIntervalMs });
+      schedulePolling(0);
+    }
+
     function handlePayload(data, kind) {
       var event = normalizeEvent(data);
       if (!event) {
@@ -111,7 +216,9 @@
       var status = (data && data.status) || 'missing';
       if (status === 'degraded') {
         emitState('degraded', data);
+        startPolling();
       } else if (status === 'closed') {
+        stopPolling();
         // Booking-scoped streams close when tracking authorization ends
         // (terminal state, released assignment). Terminal: do not retry.
         try {
@@ -135,11 +242,13 @@
     try {
       if (typeof EventSource === 'undefined') {
         emitState('unsupported', {});
+        startPolling();
         return handle;
       }
       source = new EventSource(streamUrl);
     } catch (e) {
       emitState('disconnected', { reason: 'event-source-failed' });
+      startPolling();
       return handle;
     }
 
@@ -179,7 +288,13 @@
       }
       errors += 1;
       if (errors >= MAX_ERRORS) {
-        handle.close();
+        if (source) {
+          try { source.close(); } catch (e) { /* already gone */ }
+          source = null;
+        }
+        emitState('disconnected', { attempt: errors,
+          reason: 'sse-retry-budget-exhausted' });
+        startPolling();
         return;
       }
       emitState('reconnecting', { attempt: errors, maxAttempts: MAX_ERRORS });

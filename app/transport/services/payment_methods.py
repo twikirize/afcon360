@@ -42,6 +42,13 @@ def get_available_transport_payment_methods(
         ).all()
         results = []
         for config in configs:
+            # Anonymous checkout may show only an implemented cash option.
+            # Wallet accounts and external providers require an authenticated
+            # payer and their own Wallet eligibility checks.
+            if not getattr(config, "marketplace_collection_implemented", False):
+                continue
+            if str(config.method_id or "").strip().lower() != "cash":
+                continue
             if not config.supports_currency(currency_code):
                 continue
             allowed_timings = [str(t).strip().lower() for t in (config.allowed_timings or [])]
