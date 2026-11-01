@@ -333,16 +333,17 @@ class WalletSystemConfig(BaseModel):
             config = cls()
             db.session.add(config)
 
-            transaction = db.session.get_transaction()
+            session = db.session()
+            transaction = session.get_transaction()
             origin = getattr(getattr(transaction, "origin", None), "name", None)
             explicitly_managed = (
                 origin == "BEGIN"
-                or db.session.in_nested_transaction()
+                or session.in_nested_transaction()
             )
             if explicitly_managed:
-                db.session.flush()
+                session.flush()
             else:
-                db.session.commit()
+                session.commit()
         return config
     
     def to_dict(self):
