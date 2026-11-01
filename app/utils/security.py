@@ -16,10 +16,46 @@ from flask import g, request, current_app
 from functools import wraps
 from app.utils.exceptions import PermissionError
 
+def ensure_encryption_key_configured() -> str:
+    """Require a persistent key in deployed environments.
+
+    Local development may receive an ephemeral process key, but that key is
+    never logged and must not be mistaken for a durable deployment secret.
+    """
+    key_env = os.getenv("ENCRYPTION_KEY", "").strip()
+    if key_env and not key_env.startswith("REPLACE_"):
+        return key_env
+
+    app_env = os.getenv("APP_ENV", "local").strip().lower()
+    flask_env = os.getenv("FLASK_ENV", "production").strip().lower()
+    deployed = (
+        app_env in ("docker", "prod", "production")
+        or flask_env == "production"
+    )
+    if deployed:
+        raise RuntimeError(
+            "ENCRYPTION_KEY must be configured before starting a deployed "
+            "AFCON360 application. Preserve the existing key; do not generate "
+            "a replacement without re-encrypting stored secrets."
+        )
+
+    key_env = secrets.token_urlsafe(32)
+    os.environ["ENCRYPTION_KEY"] = key_env
+    import warnings
+    warnings.warn(
+        "ENCRYPTION_KEY was not configured. A temporary local-development "
+        "key was generated; encrypted data will not survive a process restart.",
+        RuntimeWarning,
+    )
+    return key_env
+
+
 # Use environment variable for encryption key
 def get_encryption_key():
     """Get encryption key from environment. Raises error if not set in production."""
     key_env = os.getenv("ENCRYPTION_KEY")
+    if key_env and key_env.startswith("REPLACE_"):
+        key_env = None
 
     if not key_env:
         # Docker is AFCON360's production deployment mode on the Oracle host;
