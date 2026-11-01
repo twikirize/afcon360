@@ -302,7 +302,7 @@ jobs:
       - name: Verify Redis-backed sessions, rate limiting, Celery, and Socket.IO
         env:
           APP_ENV: docker
-          FLASK_ENV: development
+          FLASK_ENV: production
           DISABLE_REDIS: "0"
           SOCKETIO_ENABLED: "true"
           SOCKETIO_ASYNC_MODE: threading
