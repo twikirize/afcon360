@@ -476,8 +476,18 @@ def authenticate_user(
     _reset_failed_login_counter(user)
     user.last_login = datetime.now(timezone.utc)
 
-    # Check if MFA is enabled for the user
+    # Existing non-owner MFA behavior remains unchanged. When the platform
+    # requires owner MFA, only an active TOTP credential that has been
+    # successfully used counts as enrollment. Legacy boolean flags and
+    # unverified pre-upgrade secrets must go through the restricted setup flow.
     requires_mfa = user.mfa_enabled
+    if user.is_app_owner():
+        from app.auth.security_settings import (
+            get_owner_mfa_required,
+            owner_has_verified_totp,
+        )
+        if get_owner_mfa_required():
+            requires_mfa = owner_has_verified_totp(user.id)
 
     if requires_mfa:
         # Get user's MFA method
