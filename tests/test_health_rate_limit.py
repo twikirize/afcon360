@@ -20,8 +20,16 @@ from app.extensions import limiter
 
 
 class _RateLimitTestConfig(TestingConfig):
-    """Testing config with rate limiting ON and a tiny shared quota."""
+    """Production-like test config with rate limiting ON and a tiny quota.
 
+    The application intentionally disables rate limiting in DEBUG/local mode.
+    Keep TESTING enabled for isolated database fixtures, but use the Docker
+    deployment mode and DEBUG=False so the dynamic request hook exercises the
+    same limiter activation path used by the production container.
+    """
+
+    APP_ENV = "docker"
+    DEBUG = False
     RATELIMIT_ENABLED = True
     # Use standard Flask-Limiter config key for default limits
     RATELIMIT_DEFAULT = "5 per minute"
