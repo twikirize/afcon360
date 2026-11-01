@@ -44,6 +44,8 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
     from sqlalchemy import inspect as sa_inspect
     owner_pk = sa_inspect(test_admin).identity[0]
     owner_suffix = str(owner_pk)
+    with app.test_request_context():
+        owner_mfa_url = url_for("admin.owner.update_owner_mfa_requirement")
 
     with app.app_context():
         SystemConfig.set(
@@ -93,7 +95,7 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
         browser_session["mfa_verified_method"] = "totp"
 
     response = admin_client.post(
-        "/owner/settings/owner-mfa",
+        owner_mfa_url,
         data={"require_owner_mfa": "on"},
         follow_redirects=False,
     )
@@ -123,7 +125,7 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
         db.session.commit()
 
     response = admin_client.post(
-        "/owner/settings/owner-mfa",
+        owner_mfa_url,
         data={"require_owner_mfa": "on"},
         follow_redirects=False,
     )
