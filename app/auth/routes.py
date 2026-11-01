@@ -1665,107 +1665,209 @@ def complete_profile():
 # Enhanced MFA Routes
 # ---------------------------------------------------------------------------
 
-@auth_bp.route('/mfa/setup')
-@login_required
-def mfa_setup():
-    """MFA setup page."""
-    from app.identity.models.user import MFASecret
-    
-    # Check if MFA is already enabled
-    existing_mfa = MFASecret.query.filter_by(
-        user_id=current_user.id,
-        is_active=True
+def _mfa_enrollment_identity():
+    """Resolve an authenticated user or a short-lived password-verified owner."""
+    from app.identity.models.user import User
+
+    if current_user.is_authenticated:
+        return current_user, False
+
+    public_id = session.get("pending_owner_mfa_setup_user")
+    expires_at = session.get("pending_owner_mfa_setup_expires_at")
+    try:
+        expired = not expires_at or time.time() > float(expires_at)
+    except (TypeError, ValueError):
+        expired = True
+    if not public_id or expired:
+        session.pop("pending_owner_mfa_setup_user", None)
+        session.pop("pending_owner_mfa_setup_expires_at", None)
+        return None, False
+
+    user = User.query.filter_by(
+        public_id=public_id,
+        is_active=True,
+        is_deleted=False,
     ).first()
-    
-    if existing_mfa:
-        flash('MFA is already enabled for your account', 'info')
+    if not user or not user.is_app_owner():
+        session.pop("pending_owner_mfa_setup_user", None)
+        session.pop("pending_owner_mfa_setup_expires_at", None)
+        return None, False
+    return user, True
+
+
+@auth_bp.route('/mfa/setup')
+def mfa_setup():
+    """Render TOTP enrollment for an authenticated user or verified owner login."""
+    target_user, preauth_owner = _mfa_enrollment_identity()
+    if not target_user:
+        flash('Please sign in before setting up an authenticator.', 'warning')
+        return redirect(url_for('auth.login'))
+
+    from app.identity.models.user import MFASecret
+    existing = MFASecret.query.filter_by(
+        user_id=target_user.id, mfa_type='totp', is_active=True
+    ).first()
+    if existing and target_user.mfa_enabled:
+        if preauth_owner:
+            flash('An authenticator is already enrolled. Sign in with its code.', 'info')
+            session.pop("pending_owner_mfa_setup_user", None)
+            session.pop("pending_owner_mfa_setup_expires_at", None)
+            return redirect(url_for('auth.login'))
+        flash('MFA is already enabled for your account.', 'info')
         return redirect(url_for('auth.mfa_status'))
-    
-    return render_template('auth/mfa_setup.html')
+
+    return render_template('auth/mfa_setup.html', preauth_owner=preauth_owner)
+
 
 # Backwards compatible alias for templates that still link to auth.setup_mfa
 auth_bp.add_url_rule('/mfa/setup', endpoint='setup_mfa', view_func=mfa_setup)
 
+
 @auth_bp.route('/mfa/enable', methods=['POST'])
-@login_required
-@require_fresh_user
 def mfa_enable():
-    """Enable MFA for user."""
-    from app.identity.models.user import MFASecret
-    import pyotp
-    import qrcode
-    import io
+    """Generate pending TOTP credentials; do not mark MFA enabled yet."""
     import base64
-    
-    mfa_type = request.form.get('mfa_type', 'totp')
-    device_name = request.form.get('device_name', 'Primary Device')
-    
-    if mfa_type == 'totp':
-        # Generate TOTP secret
-        secret = pyotp.random_base32()
-        
-        # Create MFA record
+    import io
+    import qrcode
+    import pyotp
+
+    target_user, preauth_owner = _mfa_enrollment_identity()
+    if not target_user:
+        return jsonify({'success': False, 'error': 'Sign-in or owner enrollment session expired.'}), 401
+    if current_user.is_authenticated and not session.get('_fresh'):
+        return jsonify({'success': False, 'error': 'Please sign in again before changing MFA.'}), 401
+
+    from app.identity.models.user import MFASecret
+    existing = MFASecret.query.filter_by(
+        user_id=target_user.id, mfa_type='totp', is_active=True
+    ).first()
+    if existing and target_user.mfa_enabled:
+        return jsonify({'success': False, 'error': 'An authenticator is already enabled.'}), 409
+
+    device_name = (request.form.get('device_name') or 'Primary Device').strip()[:100]
+    secret = pyotp.random_base32()
+    backup_codes = MFASecret(
+        user_id=target_user.id, mfa_type='totp', secret=secret
+    ).generate_backup_codes()
+
+    # Pending credentials live only in the server-side session until the user
+    # proves possession by entering a valid code from the authenticator app.
+    session['pending_totp_enrollment'] = {
+        'user_public_id': target_user.public_id,
+        'secret': secret,
+        'device_name': device_name or 'Primary Device',
+        'backup_codes': backup_codes,
+        'expires_at': int(time.time()) + 600,
+        'preauth_owner': bool(preauth_owner),
+    }
+
+    totp_uri = pyotp.TOTP(secret).provisioning_uri(
+        name=target_user.email or target_user.public_id,
+        issuer_name='AFCON360',
+    )
+    qr = qrcode.QRCode(version=1, box_size=7, border=4)
+    qr.add_data(totp_uri)
+    qr.make(fit=True)
+    image_buffer = io.BytesIO()
+    qr.make_image(fill_color='black', back_color='white').save(image_buffer, format='PNG')
+    qr_data_uri = 'data:image/png;base64,' + base64.b64encode(image_buffer.getvalue()).decode('ascii')
+
+    return jsonify({
+        'success': True,
+        'qr_code': qr_data_uri,
+        'secret': secret,
+        'backup_codes': backup_codes,
+        'expires_in': 600,
+    })
+
+
+@auth_bp.route('/mfa/confirm', methods=['POST'])
+def mfa_confirm():
+    """Verify TOTP possession, then persist and activate the authenticator."""
+    import pyotp
+
+    target_user, preauth_owner = _mfa_enrollment_identity()
+    if not target_user:
+        return jsonify({'success': False, 'error': 'Sign-in or owner enrollment session expired.'}), 401
+    if current_user.is_authenticated and not session.get('_fresh'):
+        return jsonify({'success': False, 'error': 'Please sign in again before changing MFA.'}), 401
+
+    pending = session.get('pending_totp_enrollment')
+    if not isinstance(pending, dict):
+        return jsonify({'success': False, 'error': 'Start authenticator setup again.'}), 400
+
+    try:
+        expired = time.time() > float(pending.get('expires_at') or 0)
+    except (TypeError, ValueError):
+        expired = True
+    if (
+        pending.get('user_public_id') != target_user.public_id
+        or expired
+        or bool(pending.get('preauth_owner')) != bool(preauth_owner)
+    ):
+        session.pop('pending_totp_enrollment', None)
+        return jsonify({'success': False, 'error': 'Authenticator setup expired. Start again.'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    code = (request.form.get('code') or payload.get('code') or '').strip()
+    if not code or not pyotp.TOTP(pending['secret']).verify(code, valid_window=1):
+        return jsonify({'success': False, 'error': 'The authenticator code is invalid. Enter the current code shown in your app.'}), 400
+
+    from app.identity.models.user import MFASecret
+    mfa_secret = MFASecret.query.filter_by(
+        user_id=target_user.id, mfa_type='totp'
+    ).first()
+    if mfa_secret is None:
         mfa_secret = MFASecret(
-            user_id=current_user.id,
-            mfa_type=mfa_type,
-            secret=secret,
-            device_name=device_name,
-            is_active=True
+            user_id=target_user.id,
+            mfa_type='totp',
+            secret=pending['secret'],
+            device_name=pending['device_name'],
+            is_active=True,
         )
-        
-        # Generate backup codes
-        backup_codes = mfa_secret.generate_backup_codes()
-        mfa_secret.store_backup_codes(backup_codes)
-        
         db.session.add(mfa_secret)
-        
-        # Update user
-        current_user.mfa_enabled = True
-        current_user.enable_mfa('totp', enabled_by_user_id=current_user.id)
-        
-        db.session.commit()
-        
-        # Generate QR code
-        totp_uri = pyotp.totp.TOTP(secret).provisioning_uri(
-            name=f"user_{current_user.id}@afcon360.com",
-            issuer_name="AFCON360 Wallet"
-        )
-        
-        qr = qrcode.QRCode(version=1, box_size=10, border=5)
-        qr.add_data(totp_uri)
-        qr.make(fit=True)
-        
-        img = qr.make_image(fill_color="black", back_color="white")
-        buffer = io.BytesIO()
-        img.save(buffer, format='PNG')
-        img_str = base64.b64encode(buffer.getvalue()).decode()
-        
-        qr_code = f"data:image/png;base64,{img_str}"
-        
+    else:
+        mfa_secret.secret = pending['secret']
+        mfa_secret.device_name = pending['device_name']
+        mfa_secret.is_active = True
+
+    mfa_secret.store_backup_codes(pending.get('backup_codes') or [])
+    target_user.mfa_enabled = True
+    target_user.enable_mfa('totp', enabled_by_user_id=target_user.id)
+    db.session.add(target_user)
+    db.session.commit()
+
+    session.pop('pending_totp_enrollment', None)
+    if preauth_owner:
+        session.pop('pending_owner_mfa_setup_user', None)
+        session.pop('pending_owner_mfa_setup_expires_at', None)
+        session.pop('mfa_verified', None)
         return jsonify({
             'success': True,
-            'secret': secret,
-            'qr_code': qr_code,
-            'backup_codes': backup_codes
+            'message': 'Authenticator verified and enabled. Sign in again with your password and authenticator code.',
+            'next_url': url_for('auth.login'),
         })
-    
-    return jsonify({'success': False, 'error': 'Unsupported MFA type'})
+
+    return jsonify({
+        'success': True,
+        'message': 'Authenticator verified and enabled.',
+        'next_url': url_for('auth.mfa_status'),
+    })
+
 
 @auth_bp.route('/mfa/status')
 @login_required
 def mfa_status():
-    """MFA status page."""
+    """Show MFA enrollment status without exposing authenticator secrets."""
     from app.identity.models.user import MFASecret
-    
     mfa_secrets = MFASecret.query.filter_by(user_id=current_user.id).all()
-    
     return render_template('auth/mfa_status.html', mfa_secrets=mfa_secrets)
+
 
 @auth_bp.route("/mfa/<user_id>", methods=["GET", "POST"], endpoint="mfa")
 def mfa(user_id: str):
     flash("Multi-factor authentication is not yet active.", "danger")
     return redirect(url_for("auth.login"))
-
 
 
 def get_active_channels(user) -> List[Dict[str, Any]]:
