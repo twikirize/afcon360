@@ -178,3 +178,44 @@ def test_totp_enrollment_stays_pending_until_a_valid_code_is_confirmed(app):
         assert saved_user.mfa_enabled is True
     status_page = client.get("/mfa/status")
     assert status_page.status_code == 200
+
+
+@pytest.mark.usefixtures("db_session")
+def test_unenrolled_owner_is_restricted_to_mfa_enrollment_when_policy_is_forced(app):
+    from app.identity.models.roles_permission import get_or_create_role
+
+    with app.app_context():
+        role = get_or_create_role("owner", level=1, commit=False)
+        suffix = uuid.uuid4().hex[:12]
+        owner = User(
+            public_id=str(uuid.uuid4()),
+            username=f"mfa_owner_gate_{suffix}",
+            email=f"mfa_owner_gate_{suffix}@example.test",
+        )
+        owner.set_password("StrongTestPassword123!")
+        owner.is_active = True
+        owner.is_verified = True
+        owner.email_verified = True
+        owner.mfa_enabled = False
+        db.session.add(owner)
+        db.session.flush()
+        db.session.add(UserRole(user_id=owner.id, role_id=role.id))
+        db.session.commit()
+        username = owner.username
+
+    app.config["REQUIRE_OWNER_MFA"] = True
+    client = app.test_client()
+    login = client.post(
+        "/login",
+        data={"username": username, "password": "StrongTestPassword123!"},
+        follow_redirects=False,
+    )
+    assert login.status_code == 302
+    assert login.headers["Location"].endswith("/mfa/setup")
+
+    blocked = client.get("/admin/owner/dashboard", follow_redirects=False)
+    assert blocked.status_code == 302
+    assert blocked.headers["Location"].endswith("/mfa/setup")
+
+    setup = client.get("/mfa/setup")
+    assert setup.status_code == 200
