@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Authenticator status - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:760px;">
+  <div class="card shadow-sm">
+    <div class="card-body p-4">
+      <h1 class="h3 mb-3">Multi-factor authentication</h1>
+      {% set active_totp = mfa_secrets | selectattr('mfa_type', 'equalto', 'totp') | selectattr('is_active') | list %}
+      {% if active_totp %}
+        <div class="alert alert-success" role="status">
+          Your authenticator app is enabled for this account.
+        </div>
+        <p class="mb-1"><strong>Method:</strong> Authenticator app (TOTP)</p>
+        <p class="text-muted">Backup codes are stored securely. Each code can be used only once.</p>
+      {% else %}
+        <div class="alert alert-warning" role="status">
+          No active authenticator app is enrolled on this account.
+        </div>
+        <a class="btn btn-primary" href="{{ url_for('auth.mfa_setup') }}">Set up an authenticator</a>
+      {% endif %}
+      <a class="btn btn-outline-secondary ms-2" href="{{ url_for('profile.account_overview') }}">Back to account</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
