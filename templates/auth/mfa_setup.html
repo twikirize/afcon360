@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Set up authenticator - AFCON360{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:760px;">
+  <div class="card shadow-sm">
+    <div class="card-body p-4">
+      <h1 class="h3 mb-3">Set up an authenticator</h1>
+      {% if preauth_owner %}
+      <div class="alert alert-warning" role="alert">
+        Your password was verified, but owner access is not enabled until you finish
+        authenticator setup. This setup session expires in 10 minutes. After setup,
+        sign in again with your password and authenticator code.
+      </div>
+      {% else %}
+      <p class="text-muted">
+        Add an authenticator app such as Google Authenticator, Microsoft Authenticator,
+        or another TOTP-compatible app.
+      </p>
+      {% endif %}
+
+      <div id="mfaMessage" class="alert d-none" role="status" aria-live="polite"></div>
+
+      <form id="mfaSetupForm" method="post" action="{{ url_for('auth.mfa_enable') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="mb-3">
+          <label for="device_name" class="form-label">Authenticator name</label>
+          <input id="device_name" name="device_name" class="form-control"
+                 maxlength="100" value="Primary Device" autocomplete="off">
+        </div>
+        <button id="generateMfaButton" class="btn btn-primary" type="submit">
+          Generate authenticator QR code
+        </button>
+      </form>
+
+      <section id="mfaEnrollment" class="mt-4 d-none" aria-live="polite">
+        <h2 class="h5">1. Scan this QR code</h2>
+        <p class="text-muted">
+          Open your authenticator app and scan the code. You can also enter the
+          setup key manually.
+        </p>
+        <div class="text-center my-3">
+          <img id="mfaQrCode" alt="Authenticator setup QR code"
+               class="img-fluid border rounded p-2" style="width:240px;height:240px;">
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="mfaSecret">Manual setup key</label>
+          <code id="mfaSecret" class="d-block p-3 bg-light border rounded"
+                style="overflow-wrap:anywhere;"></code>
+        </div>
+
+        <h2 class="h5 mt-4">2. Save your backup codes</h2>
+        <p class="text-muted">
+          Each backup code can be used once if you lose access to your authenticator.
+          Store them somewhere private and safe. They will not be shown again.
+        </p>
+        <div id="mfaBackupCodes" class="row row-cols-2 g-2 mb-4"></div>
+
+        <h2 class="h5">3. Verify the authenticator</h2>
+        <p class="text-muted">
+          Enter the current six-digit code shown in your authenticator app. MFA is
+          not activated until this code is verified.
+        </p>
+        <form id="mfaConfirmForm">
+          <div class="mb-3">
+            <label class="form-label" for="mfaCode">Authenticator code</label>
+            <input id="mfaCode" name="code" class="form-control" inputmode="numeric"
+                   autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6"
+                   required>
+          </div>
+          <button id="confirmMfaButton" class="btn btn-success" type="submit">
+            Verify and enable MFA
+          </button>
+        </form>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script nonce="{{ csp_nonce }}">
+(function () {
+  const setupForm = document.getElementById('mfaSetupForm');
+  const confirmForm = document.getElementById('mfaConfirmForm');
+  const enrollment = document.getElementById('mfaEnrollment');
+  const message = document.getElementById('mfaMessage');
+  const generateButton = document.getElementById('generateMfaButton');
+  const confirmButton = document.getElementById('confirmMfaButton');
+
+  function csrfToken() {
+    const field = setupForm.querySelector('input[name="csrf_token"]');
+    return field ? field.value : '';
+  }
+
+  function showMessage(text, kind) {
+    message.textContent = text;
+    message.className = 'alert alert-' + kind;
+    message.classList.remove('d-none');
+  }
+
+  setupForm.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    generateButton.disabled = true;
+    try {
+      const response = await fetch(setupForm.action, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfToken() },
+        body: new FormData(setupForm),
+        credentials: 'same-origin'
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Could not start authenticator setup.');
+      }
+
+      document.getElementById('mfaQrCode').src = data.qr_code;
+      document.getElementById('mfaSecret').textContent = data.secret;
+      const codes = document.getElementById('mfaBackupCodes');
+      codes.replaceChildren();
+      data.backup_codes.forEach(function (code) {
+        const cell = document.createElement('div');
+        cell.className = 'col';
+        const item = document.createElement('code');
+        item.className = 'd-block p-2 bg-light border rounded text-center';
+        item.textContent = code;
+        cell.appendChild(item);
+        codes.appendChild(cell);
+      });
+
+      enrollment.classList.remove('d-none');
+      showMessage('Authenticator details generated. Verify a current code to finish setup.', 'info');
+      document.getElementById('mfaCode').focus();
+    } catch (error) {
+      showMessage(error.message || 'Could not start authenticator setup.', 'danger');
+    } finally {
+      generateButton.disabled = false;
+    }
+  });
+
+  confirmForm.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    confirmButton.disabled = true;
+    const code = document.getElementById('mfaCode').value.trim();
+    try {
+      const response = await fetch('{{ url_for("auth.mfa_confirm") }}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken()
+        },
+        body: JSON.stringify({ code: code }),
+        credentials: 'same-origin'
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Authenticator verification failed.');
+      }
+      showMessage(data.message || 'MFA enabled.', 'success');
+      window.location.assign(data.next_url || '{{ url_for("auth.mfa_status") }}');
+    } catch (error) {
+      showMessage(error.message || 'Authenticator verification failed.', 'danger');
+      confirmButton.disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}
