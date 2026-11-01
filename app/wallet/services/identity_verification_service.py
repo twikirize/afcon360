@@ -134,8 +134,7 @@ class IdentityVerificationService:
         if not user.security_answer_hash:
             return {'success': False, 'reason': 'Security question not set'}
         
-        from werkzeug.security import check_password_hash
-        if not check_password_hash(user.security_answer_hash, answer.strip().lower()):
+        if not user.verify_security_answer(answer):
             return {'success': False, 'reason': 'Incorrect security answer'}
         
         return {'success': True, 'method': 'security_question'}
