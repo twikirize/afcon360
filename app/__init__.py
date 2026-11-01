@@ -503,16 +503,11 @@ def create_app(config_object=None) -> Flask:
     app.config.from_object(config_object or get_config())
 
     # -------------------------------------------------------------------------
-    # ENCRYPTION KEY GUARD — must run AFTER get_config() so .env.local is loaded
-    # -------------------------------------------------------------------------
-    if not os.getenv("ENCRYPTION_KEY") or os.getenv("ENCRYPTION_KEY", "").startswith("REPLACE_"):
-        import secrets as _secrets
-        _temp_key = _secrets.token_urlsafe(32)
-        os.environ["ENCRYPTION_KEY"] = _temp_key
-        logging.warning(
-            f"[ENV] ENCRYPTION_KEY not set. Generated a temporary key for this session. "
-            f"Add ENCRYPTION_KEY={_temp_key} to your .env.local for consistency."
-        )
+    # ENCRYPTION KEY GUARD — fail closed in Docker/production before any
+    # encryption happens. Only local development may receive an ephemeral key.
+    # Never print the key: logs are not a secret store.
+    from app.utils.security import ensure_encryption_key_configured
+    ensure_encryption_key_configured()
 
     # Critical Config Fallbacks with validation
     # SECRET_KEY validation
