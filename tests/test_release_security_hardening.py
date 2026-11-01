@@ -279,3 +279,76 @@ def test_unenrolled_owner_is_restricted_to_mfa_enrollment_when_policy_is_forced(
 
     setup = client.get("/mfa/setup")
     assert setup.status_code == 200
+
+
+@pytest.mark.usefixtures("db_session")
+def test_owner_with_legacy_unverified_mfa_flag_can_reenroll_securely(app):
+    """A stale mfa_enabled flag must not trap an owner outside enrollment."""
+    import pyotp
+
+    with app.app_context():
+        role = get_or_create_role("owner", level=1, commit=False)
+        suffix = uuid.uuid4().hex[:12]
+        owner = User(
+            public_id=str(uuid.uuid4()),
+            username=f"legacy_mfa_owner_{suffix}",
+            email=f"legacy_mfa_owner_{suffix}@example.test",
+        )
+        owner.set_password("StrongTestPassword123!")
+        owner.is_active = True
+        owner.is_verified = True
+        owner.email_verified = True
+        # Legacy setup marked the user enabled before proof of possession.
+        owner.mfa_enabled = True
+        db.session.add(owner)
+        db.session.flush()
+        db.session.add(UserRole(user_id=owner.id, role_id=role.id))
+        db.session.add(MFASecret(
+            user_id=owner.id,
+            mfa_type="totp",
+            secret="JBSWY3DPEHPK3PXP",
+            is_active=True,
+            last_used=None,
+        ))
+        db.session.commit()
+        username = owner.username
+        public_id = owner.public_id
+
+    app.config["REQUIRE_OWNER_MFA"] = True
+    client = app.test_client()
+    login = client.post(
+        "/login",
+        data={"username": username, "password": "StrongTestPassword123!"},
+        follow_redirects=False,
+    )
+    assert login.status_code == 302
+    assert login.headers["Location"].endswith("/mfa/setup")
+
+    setup = client.get("/mfa/setup")
+    assert setup.status_code == 200
+
+    started = client.post("/mfa/enable", data={"mfa_type": "totp"})
+    assert started.status_code == 200
+    secret = started.get_json()["secret"]
+
+    with app.app_context():
+        saved = User.query.filter_by(public_id=public_id).one()
+        pending = MFASecret.query.filter_by(
+            user_id=saved.id, mfa_type="totp"
+        ).one()
+        assert pending.is_active is False
+        assert saved.mfa_enabled is True
+
+    code = pyotp.TOTP(secret).now()
+    confirmed = client.post("/mfa/confirm", data={"mfa_code": code})
+    assert confirmed.status_code == 302
+    assert confirmed.headers["Location"].endswith("/mfa/status")
+
+    with app.app_context():
+        saved = User.query.filter_by(public_id=public_id).one()
+        verified = MFASecret.query.filter_by(
+            user_id=saved.id, mfa_type="totp"
+        ).one()
+        assert saved.mfa_enabled is True
+        assert verified.is_active is True
+        assert verified.last_used is not None
