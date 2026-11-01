@@ -586,3 +586,43 @@ def test_drivers_location_page_renders_driver(app, admin_client):
     # stream URL is assembled in JS (encodeURIComponent), so pin both parts
     assert "/geo/stream/location/driver/" in html
     assert driver_code in html
+
+
+def test_rate_limit_supports_per_rider_buckets_without_double_counting(app):
+    """Booking snapshot polling must be isolated per rider and counted once."""
+    from flask import g, jsonify
+    from app.utils.exceptions import RateLimitError
+    from app.utils.rate_limiting import clear_rate_limits, rate_limit
+
+    clear_rate_limits()
+    try:
+        @rate_limit(
+            "geo_booking_location_poll_test",
+            limit=2,
+            period=60,
+            identifier_func=lambda: g.rider_key,
+        )
+        def endpoint():
+            return jsonify({"success": True})
+
+        with app.test_request_context("/geo/api/booking/TEST/location"):
+            g.rider_key = "user:101"
+            first = endpoint()
+            assert first.status_code == 200
+            assert first.headers["X-RateLimit-Limit"] == "2"
+            assert first.headers["X-RateLimit-Remaining"] == "1"
+
+            second = endpoint()
+            assert second.status_code == 200
+            assert second.headers["X-RateLimit-Remaining"] == "0"
+
+            with pytest.raises(RateLimitError):
+                endpoint()
+
+            # A different authenticated rider has a separate allowance.
+            g.rider_key = "user:202"
+            other_rider = endpoint()
+            assert other_rider.status_code == 200
+            assert other_rider.headers["X-RateLimit-Remaining"] == "1"
+    finally:
+        clear_rate_limits()
