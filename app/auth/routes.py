@@ -975,19 +975,37 @@ def login():
             if user.is_app_owner():
                 from app.auth.security_policy import owner_mfa_required
                 owner_mfa_enforced = owner_mfa_required()
-                if owner_mfa_enforced and (
-                    not getattr(user, "mfa_enabled", False)
-                    or not session.get("mfa_verified")
-                ):
+                if owner_mfa_enforced and not getattr(user, "mfa_enabled", False):
+                    current_app.logger.warning(
+                        "Owner login requires authenticator enrollment: %s", user.public_id
+                    )
+                    # authenticate_user() created a provisional server-session
+                    # record before the database policy was read. Revoke it;
+                    # this browser receives only a short-lived enrollment
+                    # capability, never a Flask-Login authenticated session.
+                    try:
+                        from app.auth.sessions import revoke_session
+                        revoke_session(session_id)
+                    except Exception:
+                        current_app.logger.exception("Failed to revoke provisional owner session")
+
+                    session.clear()
+                    session["pending_owner_mfa_setup_user"] = user.public_id
+                    session["pending_owner_mfa_setup_expires_at"] = int(time.time()) + 600
+                    session.permanent = True
+                    _rotate_session_id()
+                    flash(
+                        "Your owner account must enrol an authenticator before sign-in can continue.",
+                        "warning",
+                    )
+                    return redirect(url_for("auth.setup_mfa"))
+
+                if owner_mfa_enforced and not session.get("mfa_verified"):
                     current_app.logger.warning(
                         "Owner login blocked because mandatory MFA was not completed: %s",
                         user.public_id,
                     )
-                    flash(
-                        "Owner accounts require an enrolled authenticator and a valid MFA code. "
-                        "Ask another platform owner to restore enrollment if your authenticator is unavailable.",
-                        "danger",
-                    )
+                    flash("Enter the current authenticator code to finish signing in.", "danger")
                     return render_template(
                         "login.html", username=identifier, require_mfa=True, mfa_type="totp"
                     )
