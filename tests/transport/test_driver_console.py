@@ -183,7 +183,7 @@ def test_removed_legacy_driver_console_url_is_not_registered(
     assert resp.status_code == 404, resp.status_code
 
 
-def test_driver_dashboard_carries_console_location_feature(
+def test_driver_dashboard_carries_location_feature(
         app, client, db_session):
     driver = _seed_driver(app)
     _enter_driver_context(client, driver)
@@ -192,11 +192,13 @@ def test_driver_dashboard_carries_console_location_feature(
     assert resp.status_code == 200, resp.status_code
     body = resp.data.decode("utf-8")
     assert driver.driver_code in body
-    assert 'id="driverConsole"' in body
-    assert "dcLocBadge" in body
+    # The canonical workspace root replaced the legacy driverConsole shell.
+    assert 'id="driverDashboard"' in body
+    assert 'id="dcLocBadge"' in body
+    assert 'id="dcGpsStatus"' in body
     assert "data-ping-interval" in body
-    assert body.count("dcLocBadge") == 1
-    assert body.index('data-panel="home"') < body.index("dcLocBadge") < body.index(
+    assert body.count('id="dcLocBadge"') == 1
+    assert body.index('data-panel="home"') < body.index('id="dcLocBadge"') < body.index(
         'data-panel="status"')
 
 
