@@ -5,6 +5,8 @@ import uuid
 from datetime import datetime, timezone
 
 import pytest
+from unittest.mock import patch
+from sqlalchemy import text
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.extensions import db
