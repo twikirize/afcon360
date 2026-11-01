@@ -322,7 +322,9 @@ def test_enabling_global_owner_mfa_ends_existing_password_only_sessions(
 
     blocked = client.get("/", follow_redirects=False)
     assert blocked.status_code == 302
-    assert blocked.headers["Location"].endswith("/login")
+    from urllib.parse import urlsplit
+    assert urlsplit(blocked.headers["Location"]).path == "/login"
+    assert "next=" in blocked.headers["Location"]
     with client.session_transaction() as browser_session:
         assert "_user_id" not in browser_session
 
