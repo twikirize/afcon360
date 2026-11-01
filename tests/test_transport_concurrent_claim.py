@@ -230,13 +230,24 @@ def _veh_field(app, vehicle_id, field):
 
 
 def _delete(app, *ids_and_types):
-    """Delete rows by (model_class, id) pairs.
+    """Delete test rows by (model_class, id) pairs.
 
     Threaded tests skip _isolate_db, so they must clean up EVERY row they
-    created -- including the passenger/driver User rows -- or later tests'
-    teardown triggers FK violations (notifications_user_id_fkey).
+    created -- including passenger/driver User rows. PostgreSQL's identity
+    deletion triggers remain active in the test schema, so cleanup that
+    targets users or user_roles must use the sanctioned transaction-scoped
+    deletion authorization rather than bypassing the database guard.
     """
     with app.app_context():
+        protected_tables = {"users", "user_roles"}
+        if any(
+            getattr(model, "__tablename__", None) in protected_tables
+            for model, _oid in ids_and_types
+        ):
+            from app.auth.deletion_guard import authorize_deletion
+
+            authorize_deletion(db.session, actor="test-helper-cleanup")
+
         for model, oid in ids_and_types:
             obj = db.session.get(model, oid)
             if obj:
