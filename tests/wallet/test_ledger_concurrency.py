@@ -12,6 +12,8 @@ Tests verify:
 """
 
 import pytest
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from uuid import uuid4
 import uuid
@@ -123,6 +125,61 @@ def _run_with_user(app, user_id, func):
     """Helper to run a function within app context (no auth needed - tests use system_initiated)."""
     with app.app_context():
         return func()
+
+
+def _run_concurrent_wallet_operations(app, attempt_count, operation):
+    """Run independent wallet operations with one Flask/SQLAlchemy context per worker.
+
+    KYC/fraud authorization is stubbed once around the whole race; the ledger,
+    balance queries, account locks, transactions and entries remain real
+    PostgreSQL operations. No shared SQLAlchemy Session is passed to workers.
+    """
+    barrier = threading.Barrier(attempt_count)
+
+    def worker(index):
+        try:
+            with app.app_context():
+                with app.test_request_context("/"):
+                    try:
+                        barrier.wait(timeout=30)
+                    except threading.BrokenBarrierError as exc:
+                        return exc
+
+                    try:
+                        operation(index)
+                        return "success"
+                    except InsufficientBalanceError:
+                        return "insufficient"
+                    except Exception as exc:
+                        return exc
+                    finally:
+                        db.session.remove()
+        except Exception as exc:
+            return exc
+
+    kyc_result = {"allowed": True, "kyc_level": 4}
+    fraud_result = {
+        "score": 0.0,
+        "risk_level": "low",
+        "factors": [],
+        "action": "allow",
+    }
+    with (
+        patch(
+            "app.wallet.services.kyc_limit_service.KYCLimitService.check_transaction_allowed",
+            return_value=kyc_result,
+        ),
+        patch(
+            "app.wallet.services.kyc_limit_service.KYCLimitService.check_regulatory_cumulative_limits",
+            return_value={"allowed": True},
+        ),
+        patch(
+            "app.wallet.services.fraud_detection_service.FraudDetectionService.score_transaction",
+            return_value=fraud_result,
+        ),
+    ):
+        with ThreadPoolExecutor(max_workers=attempt_count) as executor:
+            return list(executor.map(worker, range(attempt_count)))
 
 
 class TestIdempotency:
@@ -481,32 +538,132 @@ class TestTransactionStatus:
         _run_with_user(app, test_user, _run_test)
 
 
-# Concurrent tests are skipped due to Flask app context complexity in threads.
-# These require proper app context propagation to worker threads.
-# See: https://flask.palletsprojects.com/en/stable/appcontext/
-@pytest.mark.skip(reason="Requires Flask app context propagation to worker threads")
 class TestNoDoubleSpend:
-    """Test that double spending is impossible under concurrency."""
+    """Prove direct ledger debit/transfer serialization under real concurrency."""
 
-    @pytest.mark.skip(reason="Requires Flask app context propagation to worker threads")
-    def test_no_double_spend_100_parallel_withdrawals(self, app, funded_account, service):
-        """
-        Test: 100 threads each withdrawing 100 units from 1000 balance.
-        
-        Expected: Exactly 10 succeed, 90 raise InsufficientBalanceError.
-        Expected: Final balance == 0, never negative.
-        """
-        pass
+    def test_no_double_spend_100_parallel_withdrawals(
+        self, app, funded_account
+    ):
+        """Only 10 of 100 concurrent 100-unit withdrawals may spend 1,000."""
+        account_id = str(funded_account.id)
+        key_prefix = f"parallel_withdraw_{uuid4().hex}_"
 
-    @pytest.mark.skip(reason="Requires Flask app context propagation to worker threads")
-    def test_no_double_send_parallel_transfers(self, app, funded_account, service, test_user):
-        """
-        Test: 50 threads each sending 50 units to different recipients.
-        
-        Expected: Exactly 20 succeed (1000/50), 30 fail.
-        Expected: Sender balance == 0, never negative.
-        """
-        pass
+        with app.app_context():
+            initial_balance = LedgerRepository().get_balance(account_id, "USD")
+        assert initial_balance == Decimal("1000")
+
+        def withdraw(index):
+            WalletService().withdraw(
+                account_id=account_id,
+                amount=Decimal("100"),
+                currency="USD",
+                client_request_id=f"{key_prefix}{index}",
+                system_initiated=True,
+            )
+
+        outcomes = _run_concurrent_wallet_operations(app, 100, withdraw)
+        assert outcomes.count("success") == 10, outcomes
+        assert outcomes.count("insufficient") == 90, outcomes
+        unexpected = [
+            item for item in outcomes
+            if item not in ("success", "insufficient")
+        ]
+        assert not unexpected, f"Unexpected withdrawal outcomes: {unexpected}"
+
+        with app.app_context():
+            final_balance = LedgerRepository().get_balance(account_id, "USD")
+            transactions = TransactionModel.query.filter(
+                TransactionModel.client_request_id.like(f"{key_prefix}%")
+            ).all()
+            transaction_ids = [tx.id for tx in transactions]
+            entries = (
+                LedgerEntryModel.query
+                .filter(LedgerEntryModel.transaction_id.in_(transaction_ids))
+                .all()
+            )
+
+        assert final_balance == Decimal("0")
+        assert len(transactions) == 10
+        assert all(tx.status == TransactionStatus.COMPLETED for tx in transactions)
+        assert len(entries) == 10
+        assert all(entry.entry_type == EntryType.DEBIT for entry in entries)
+        assert sum((entry.amount for entry in entries), Decimal("0")) == Decimal("1000")
+
+    def test_no_double_send_parallel_transfers(
+        self, app, funded_account
+    ):
+        """Only 20 of 50 concurrent 50-unit transfers may spend 1,000."""
+        from app.wallet.routes import get_or_create_account
+
+        sender_account_id = str(funded_account.id)
+        with app.app_context():
+            recipient = User(
+                email=f"parallel_recipient_{uuid.uuid4().hex}@example.com",
+                username=f"parallel_recipient_{uuid.uuid4().hex[:12]}",
+                password_hash="hashed_password",
+            )
+            db.session.add(recipient)
+            db.session.flush()
+            recipient_account = get_or_create_account(recipient.id, "USD")
+            recipient_account_id = str(recipient_account.id)
+
+            initial_sender_balance = LedgerRepository().get_balance(
+                sender_account_id, "USD"
+            )
+            initial_recipient_balance = LedgerRepository().get_balance(
+                recipient_account_id, "USD"
+            )
+
+        assert initial_sender_balance == Decimal("1000")
+        assert initial_recipient_balance == Decimal("0")
+        key_prefix = f"parallel_transfer_{uuid4().hex}_"
+
+        def transfer(index):
+            WalletService().transfer(
+                from_account_id=sender_account_id,
+                to_account_id=recipient_account_id,
+                amount=Decimal("50"),
+                currency="USD",
+                client_request_id=f"{key_prefix}{index}",
+                system_initiated=True,
+            )
+
+        outcomes = _run_concurrent_wallet_operations(app, 50, transfer)
+        assert outcomes.count("success") == 20, outcomes
+        assert outcomes.count("insufficient") == 30, outcomes
+        unexpected = [
+            item for item in outcomes
+            if item not in ("success", "insufficient")
+        ]
+        assert not unexpected, f"Unexpected transfer outcomes: {unexpected}"
+
+        with app.app_context():
+            final_sender_balance = LedgerRepository().get_balance(
+                sender_account_id, "USD"
+            )
+            final_recipient_balance = LedgerRepository().get_balance(
+                recipient_account_id, "USD"
+            )
+            transactions = TransactionModel.query.filter(
+                TransactionModel.client_request_id.like(f"{key_prefix}%")
+            ).all()
+            transaction_ids = [tx.id for tx in transactions]
+            entries = (
+                LedgerEntryModel.query
+                .filter(LedgerEntryModel.transaction_id.in_(transaction_ids))
+                .all()
+            )
+
+        assert final_sender_balance == Decimal("0")
+        assert final_recipient_balance == Decimal("1000")
+        assert len(transactions) == 20
+        assert all(tx.status == TransactionStatus.COMPLETED for tx in transactions)
+        assert len(entries) == 40
+        debits = [entry for entry in entries if entry.entry_type == EntryType.DEBIT]
+        credits = [entry for entry in entries if entry.entry_type == EntryType.CREDIT]
+        assert len(debits) == len(credits) == 20
+        assert sum((entry.amount for entry in debits), Decimal("0")) == Decimal("1000")
+        assert sum((entry.amount for entry in credits), Decimal("0")) == Decimal("1000")
 
 
 # New tests for wallet ownership types
