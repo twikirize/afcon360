@@ -73,9 +73,14 @@ def _verify_mfa_token(user, token: str, backup_code: bool = False) -> bool:
         # Verify TOTP token
         if mfa_secret.mfa_type == 'totp':
             import pyotp
-            totp = pyotp.TOTP(mfa_secret.secret)
+            plaintext_secret = mfa_secret.get_totp_secret()
+            totp = pyotp.TOTP(plaintext_secret)
             if totp.verify(token, valid_window=1):
                 verified_at = datetime.now(timezone.utc)
+                # Transparently encrypt historical plaintext secrets after
+                # the owner proves possession with a valid current code.
+                if not mfa_secret.totp_secret_is_encrypted:
+                    mfa_secret.set_totp_secret(plaintext_secret)
                 mfa_secret.last_used = verified_at
                 from app.auth.security_policy import record_totp_proof
                 record_totp_proof(user, verified_at, commit=False)
@@ -1918,9 +1923,10 @@ def mfa_confirm():
             device_name=pending['device_name'],
             is_active=True,
         )
+        mfa_secret.set_totp_secret(pending['secret'])
         db.session.add(mfa_secret)
     else:
-        mfa_secret.secret = pending['secret']
+        mfa_secret.set_totp_secret(pending['secret'])
         mfa_secret.device_name = pending['device_name']
         mfa_secret.is_active = True
 
