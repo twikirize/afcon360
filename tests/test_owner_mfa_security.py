@@ -34,13 +34,45 @@ def test_persisted_owner_mfa_policy_overrides_process_config(app):
 def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
     app, admin_client, test_admin
 ):
+    from app.identity.models.user import User, UserRole
+    from app.identity.models.roles_permission import get_or_create_role
+
     with app.app_context():
         SystemConfig.set(
             "REQUIRE_OWNER_MFA", False, value_type="bool",
             category="security", commit=True,
         )
+        owner_role = get_or_create_role("owner", scope="global", level=1)
+        current_owner = db.session.get(User, test_admin.id)
+        current_owner.mfa_enabled = True
+        db.session.add(
+            MFASecret(
+                user_id=current_owner.id,
+                mfa_type="totp",
+                secret=pyotp.random_base32(),
+                is_active=True,
+                last_used=datetime.now(timezone.utc),
+            )
+        )
 
-    # No MFA enrollment exists yet; enabling the global rule must be refused.
+        # A second active owner has not yet enrolled.
+        other_owner = User(
+            username=f"not_enrolled_{test_admin.id}",
+            email=f"not_enrolled_{test_admin.id}@test.example.com",
+            is_active=True,
+            is_verified=True,
+        )
+        other_owner.set_password("TestPass123!")
+        db.session.add(other_owner)
+        db.session.flush()
+        db.session.add(UserRole(user_id=other_owner.id, role_id=owner_role.id))
+        db.session.commit()
+        other_owner_id = other_owner.id
+
+    # The acting owner has passed MFA on this session (step-up requirement).
+    with admin_client.session_transaction() as session:
+        session["mfa_verified"] = True
+
     response = admin_client.post(
         "/owner/settings/owner-mfa",
         data={"require_owner_mfa": "on"},
@@ -50,11 +82,11 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
     with app.app_context():
         assert SystemConfig.get("REQUIRE_OWNER_MFA", False) is False
 
-        owner = db.session.get(type(test_admin), test_admin.id)
-        owner.mfa_enabled = True
+        other_owner = db.session.get(User, other_owner_id)
+        other_owner.mfa_enabled = True
         db.session.add(
             MFASecret(
-                user_id=owner.id,
+                user_id=other_owner.id,
                 mfa_type="totp",
                 secret=pyotp.random_base32(),
                 is_active=True,
@@ -63,7 +95,6 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
         )
         db.session.commit()
 
-    # A verified active TOTP enrollment now exists for every active owner.
     response = admin_client.post(
         "/owner/settings/owner-mfa",
         data={"require_owner_mfa": "on"},
