@@ -37,6 +37,7 @@ def _enforce_owner_mfa_enrollment_gate():
         "auth.setup_mfa",
         "auth.mfa_enable",
         "auth.mfa_confirm",
+        "auth.mfa_status",
         "auth.logout",
         "static",
     }
