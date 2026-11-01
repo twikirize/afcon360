@@ -22,12 +22,20 @@ def get_encryption_key():
     key_env = os.getenv("ENCRYPTION_KEY")
 
     if not key_env:
-        # Check if we're in production
-        flask_env = os.getenv("FLASK_ENV", "production")
-        if flask_env == "production":
+        # Docker is AFCON360's production deployment mode on the Oracle host;
+        # do not allow FLASK_ENV=development to silently activate the shared
+        # development key inside a deployed container.
+        app_env = os.getenv("APP_ENV", "local").strip().lower()
+        flask_env = os.getenv("FLASK_ENV", "production").strip().lower()
+        deployed = (
+            app_env in ("docker", "prod", "production")
+            or flask_env == "production"
+        )
+        if deployed:
             raise RuntimeError(
-                "ENCRYPTION_KEY environment variable must be set in production. "
-                "Generate a secure key with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+                "ENCRYPTION_KEY must be configured for deployed environments. "
+                "Provide the existing protected key; do not generate a replacement "
+                "without re-encrypting all stored secrets."
             )
         else:
             # Development fallback with warning
