@@ -37,7 +37,7 @@ def owner_mfa_required() -> bool:
 
         app_env = str(current_app.config.get("APP_ENV", "")).strip().lower()
         flask_env = str(current_app.config.get("FLASK_ENV", "")).strip().lower()
-        if app_env in ("prod", "production") or flask_env == "production":
+        if app_env in ("prod", "production", "docker") or flask_env == "production":
             logger.critical(
                 "Unable to read persisted owner MFA policy; failing closed for owner login",
                 exc_info=True,
