@@ -45,14 +45,22 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
         owner_role = get_or_create_role("owner", scope="global", level=1)
         current_owner = db.session.get(User, test_admin.id)
         current_owner.mfa_enabled = True
+        current_owner_verified_at = datetime.now(timezone.utc)
         db.session.add(
             MFASecret(
                 user_id=current_owner.id,
                 mfa_type="totp",
                 secret=pyotp.random_base32(),
                 is_active=True,
-                last_used=datetime.now(timezone.utc),
+                last_used=current_owner_verified_at,
             )
+        )
+        SystemConfig.set(
+            f"mfa_totp_verified:{current_owner.public_id}",
+            current_owner_verified_at.isoformat(),
+            value_type="str",
+            category="security",
+            commit=False,
         )
 
         # A second active owner has not yet enrolled.
@@ -86,14 +94,22 @@ def test_owner_mfa_toggle_requires_every_active_owner_to_have_verified_totp(
 
         other_owner = db.session.get(User, other_owner_id)
         other_owner.mfa_enabled = True
+        other_owner_verified_at = datetime.now(timezone.utc)
         db.session.add(
             MFASecret(
                 user_id=other_owner.id,
                 mfa_type="totp",
                 secret=pyotp.random_base32(),
                 is_active=True,
-                last_used=datetime.now(timezone.utc),
+                last_used=other_owner_verified_at,
             )
+        )
+        SystemConfig.set(
+            f"mfa_totp_verified:{other_owner.public_id}",
+            other_owner_verified_at.isoformat(),
+            value_type="str",
+            category="security",
+            commit=False,
         )
         db.session.commit()
 
@@ -185,6 +201,7 @@ def test_new_owner_must_enroll_and_prove_totp_before_sign_in(
             .one()
         )
         assert record.last_used is not None
+        assert SystemConfig.get(f"mfa_totp_verified:{owner.public_id}") is not None
         assert len(record.get_backup_codes()) == 10
 
     with client.session_transaction() as session:
