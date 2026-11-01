@@ -1264,7 +1264,7 @@ def update_owner_mfa_requirement():
                 )
                 .all()
             )
-            from app.auth.security_policy import totp_proof_setting_key
+            from app.auth.security_policy import totp_proof_matches
 
             enrolled_ids = set()
             for owner in active_owners:
@@ -1273,9 +1273,16 @@ def update_owner_mfa_requirement():
                     mfa_type='totp',
                     is_active=True,
                 ).first()
-                proof = SystemConfig.get(totp_proof_setting_key(owner), default=None)
-                if active_totp is not None and isinstance(proof, str) and proof.strip():
-                    enrolled_ids.add(owner.id)
+                if active_totp is None:
+                    continue
+                try:
+                    plaintext_secret = active_totp.get_totp_secret()
+                    if totp_proof_matches(owner, plaintext_secret):
+                        enrolled_ids.add(owner.id)
+                except Exception:
+                    current_app.logger.exception(
+                        "Could not validate TOTP proof for owner %s", owner.public_id
+                    )
 
             missing = [
                 owner for owner in active_owners
