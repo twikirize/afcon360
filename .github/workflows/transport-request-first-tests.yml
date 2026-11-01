@@ -38,6 +38,7 @@ on:
       - "tests/test_transport_restful_auth.py"
       - "tests/test_transport_tracking_live.py"
       - "tests/test_transport_frontend_contracts.py"
+      - "tests/wallet/**"
       - "tests/test_owner_mfa_security.py"
       - "tests/test_security_answer_hashing.py"
       - "tests/test_mfa_secret_encryption.py"
@@ -176,6 +177,7 @@ jobs:
           tests/test_owner_mfa_security.py
           tests/test_security_answer_hashing.py
           tests/test_mfa_secret_encryption.py
+          tests/wallet
           tests/test_deletion_guard.py
           app/auth/deletion_guard.py
           app/auth/routes.py
@@ -279,4 +281,5 @@ jobs:
             tests/test_security_answer_hashing.py \
             tests/test_health_rate_limit.py \
             tests/test_mfa_secret_encryption.py \
-            tests/test_deletion_guard.py
+            tests/test_deletion_guard.py \
+            tests/wallet/
