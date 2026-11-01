@@ -205,6 +205,14 @@ def test_new_owner_must_enroll_and_prove_totp_before_sign_in(
     assert setup["qr_code"].startswith("data:image/png;base64,")
     assert len(setup["backup_codes"]) == 10
 
+    # The short-lived server-side session stores the TOTP seed and backup
+    # codes only as Fernet ciphertext; the plaintext form is never persisted.
+    with client.session_transaction() as browser_session:
+        encrypted_pending = browser_session.get("pending_totp_enrollment_enc")
+        assert isinstance(encrypted_pending, str) and encrypted_pending
+        assert setup["secret"] not in encrypted_pending
+        assert "pending_totp_enrollment" not in browser_session
+
     # No active MFA record is created before the TOTP possession proof.
     with app.app_context():
         owner = db.session.get(type(test_admin), owner_pk)
