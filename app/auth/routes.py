@@ -860,6 +860,8 @@ def login():
         # Do not carry a successful second-factor marker between login attempts.
         # It is set again only after this request verifies MFA for these credentials.
         session.pop("mfa_verified", None)
+        session.pop("mfa_verified_at", None)
+        session.pop("mfa_verified_method", None)
         session.pop("pending_mfa_user_id", None)
 
         username   = (request.form.get("username") or "").strip()[:64]
@@ -921,24 +923,13 @@ def login():
             # session and do not accept the unsupported method as proof.
             if user.is_app_owner():
                 from app.auth.security_policy import owner_mfa_required
-                if owner_mfa_required():
-                    from app.identity.models.user import MFASecret
-                    verified_totp = MFASecret.query.filter_by(
-                        user_id=user.id,
-                        mfa_type='totp',
-                        is_active=True,
-                    ).filter(MFASecret.last_used.is_not(None)).first()
-                    if verified_totp is None:
-                        session.clear()
-                        session["pending_owner_mfa_setup_user"] = user.public_id
-                        session["pending_owner_mfa_setup_expires_at"] = int(time.time()) + 600
-                        session.permanent = True
-                        _rotate_session_id()
-                        flash(
-                            "Complete authenticator setup before signing in to your owner account.",
-                            "warning",
-                        )
-                        return redirect(url_for("auth.setup_mfa"))
+                if owner_mfa_required() and not _owner_has_verified_totp(user):
+                    _begin_owner_mfa_setup(user)
+                    flash(
+                        "Complete authenticator setup before signing in to your owner account.",
+                        "warning",
+                    )
+                    return redirect(url_for("auth.setup_mfa"))
 
             # First step: valid credentials + MFA enabled. Present the
             # challenge; the same form re-submits username/password +
@@ -970,6 +961,8 @@ def login():
             # MFA confirmed: start the server session and let the standard
             # SUCCESS branch below complete the owner/non-owner login setup.
             session["mfa_verified"] = True
+            session["mfa_verified_at"] = datetime.now(timezone.utc).isoformat()
+            session["mfa_verified_method"] = "backup" if len(mfa_code) == 8 else "totp"
             session.pop("pending_mfa_user_id", None)
             session_id = start_server_session(user.public_id, ip, user_agent)
             db.session.commit()
@@ -1026,40 +1019,46 @@ def login():
             if user.is_app_owner():
                 from app.auth.security_policy import owner_mfa_required
                 owner_mfa_enforced = owner_mfa_required()
-                if owner_mfa_enforced and not getattr(user, "mfa_enabled", False):
+                if owner_mfa_enforced and not _owner_has_verified_totp(user):
                     current_app.logger.warning(
-                        "Owner login requires authenticator enrollment: %s", user.public_id
+                        "Owner login requires authenticator enrollment or re-verification: %s",
+                        user.public_id,
                     )
-                    # authenticate_user() created a provisional server-session
-                    # record before the database policy was read. Revoke it;
-                    # this browser receives only a short-lived enrollment
-                    # capability, never a Flask-Login authenticated session.
+                    _begin_owner_mfa_setup(user, provisional_session_id=session_id)
+                    flash(
+                        "Your owner account must enrol and verify an authenticator before sign-in can continue.",
+                        "warning",
+                    )
+                    return redirect(url_for("auth.setup_mfa"))
+
+                if owner_mfa_enforced and not getattr(user, "mfa_enabled", False):
+                    # The secret was previously verified, but the user flag is
+                    # inconsistent. Correct it and require a fresh login so the
+                    # normal MFA challenge runs before access is granted.
+                    user.mfa_enabled = True
+                    db.session.commit()
                     try:
                         from app.auth.sessions import revoke_session
                         revoke_session(session_id)
                     except Exception:
-                        current_app.logger.exception("Failed to revoke provisional owner session")
-
+                        current_app.logger.exception("Failed to revoke inconsistent owner session")
                     session.clear()
-                    session["pending_owner_mfa_setup_user"] = user.public_id
-                    session["pending_owner_mfa_setup_expires_at"] = int(time.time()) + 600
-                    session.permanent = True
-                    _rotate_session_id()
-                    flash(
-                        "Your owner account must enrol an authenticator before sign-in can continue.",
-                        "warning",
-                    )
-                    return redirect(url_for("auth.setup_mfa"))
+                    flash("Authenticator enrollment is confirmed. Sign in again using your TOTP code.", "info")
+                    return redirect(url_for("auth.login"))
 
                 if owner_mfa_enforced and not session.get("mfa_verified"):
                     current_app.logger.warning(
                         "Owner login blocked because mandatory MFA was not completed: %s",
                         user.public_id,
                     )
+                    try:
+                        from app.auth.sessions import revoke_session
+                        revoke_session(session_id)
+                    except Exception:
+                        current_app.logger.exception("Failed to revoke owner session without MFA proof")
+                    session.clear()
                     flash("Enter the current authenticator code to finish signing in.", "danger")
-                    return render_template(
-                        "login.html", username=identifier, require_mfa=True, mfa_type="totp"
-                    )
+                    return redirect(url_for("auth.login"))
 
             # Enforce email verification if required by configuration
             require_verification = current_app.config.get("REQUIRE_EMAIL_VERIFICATION", False)
