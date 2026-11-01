@@ -1239,9 +1239,10 @@ def update_owner_mfa_requirement():
         if not current_user.is_app_owner():
             flash("Only the platform owner can change the owner MFA policy.", "danger")
             return redirect(url_for('admin.owner.settings'))
-        if not session.get("mfa_verified"):
+        from app.auth.security_policy import recent_owner_totp_proof
+        if not recent_owner_totp_proof(max_age_seconds=300):
             flash(
-                "Verify your authenticator by signing in again before changing the global owner MFA policy.",
+                "For security, verify a current authenticator-app code and save this setting within five minutes.",
                 "warning",
             )
             return redirect(url_for('admin.owner.settings'))
