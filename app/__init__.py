@@ -850,7 +850,10 @@ def create_app(config_object=None) -> Flask:
                 "base-uri 'self'; "
                 + upgrade_directive
             )
-            csp_script = f"script-src 'self' 'nonce-{nonce}' 'unsafe-eval' https://cdn.jsdelivr.net; "
+            # Do not permit string-to-code execution. Repository JavaScript
+            # uses normal script execution and Redis Lua eval is server-side;
+            # neither requires the browser's CSP 'unsafe-eval' exception.
+            csp_script = f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
             if strict:
                 csp_enforce = (
                     "default-src 'self'; "
