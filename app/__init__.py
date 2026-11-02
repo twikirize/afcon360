@@ -569,54 +569,78 @@ def create_app(config_object=None) -> Flask:
     app.config["SESSION_SERIALIZER"] = "json"
 
     # ------------------------------------------------------------------
-    # Redis & Extensions (Shared) – resilient fallback
+    # Redis & Extensions (shared production dependency; local-only fallback)
     # ------------------------------------------------------------------
-    redis_url = app.config.get("REDIS_URL") or os.getenv("REDIS_URL")
-
-    if not redis_url:
-        flask_env = os.getenv("FLASK_ENV", "production")
-        if flask_env == "production":
-            raise RuntimeError("REDIS_URL must be set in production.")
-        else:
-            redis_url = "redis://localhost:6379/0"
-            logger.warning("Using development Redis URL.")
+    from app.utils.security import (
+        _is_deployed_environment,
+        ensure_redis_url_configured,
+    )
+    deployed_runtime = _is_deployed_environment(
+        app_env=app.config.get("APP_ENV"),
+        flask_env=app.config.get("FLASK_ENV"),
+    )
+    redis_url = ensure_redis_url_configured(
+        app.config.get("REDIS_URL") or os.getenv("REDIS_URL"),
+        redis_available=REDIS_AVAILABLE,
+        app_env=app.config.get("APP_ENV"),
+        flask_env=app.config.get("FLASK_ENV"),
+    )
+    app.config["REDIS_REQUIRED"] = deployed_runtime
 
     from app.extensions import limiter, cache, redis_client
 
-    # Try to configure Redis for caching; fallback to SimpleCache
+    # Prove the shared Redis endpoint is reachable before using it for any
+    # production state. Docker/prod must never silently fall back to
+    # process-local rate limits, filesystem sessions, or SimpleCache.
     _redis_available_for_cache = False
-    try:
-        if REDIS_AVAILABLE:
+    redis_runtime_client = None
+    if REDIS_AVAILABLE:
+        try:
+            redis_client.configure(redis_url)
+            redis_runtime_client = redis_client.client  # creates client and pings
+            redis_runtime_client.ping()
             cache.config.update({
                 "CACHE_TYPE": "RedisCache",
                 "CACHE_REDIS_URL": redis_url,
                 "CACHE_DEFAULT_TIMEOUT": 300
             })
-            redis_client.configure(redis_url)
             _redis_available_for_cache = True
-        else:
+        except Exception as exc:
+            if deployed_runtime:
+                raise RuntimeError(
+                    "Required shared Redis is unavailable; refusing to start "
+                    "a deployed AFCON360 worker with local-state fallbacks."
+                ) from exc
             cache.config.update({"CACHE_TYPE": "SimpleCache"})
-    except Exception:
+            logger.warning(
+                "Redis cache configuration failed in local development; using SimpleCache"
+            )
+    else:
+        if deployed_runtime:
+            raise RuntimeError(
+                "The Redis Python client is required for a deployed AFCON360 process."
+            )
         cache.config.update({"CACHE_TYPE": "SimpleCache"})
-        logger.warning("Redis cache configuration failed – using SimpleCache")
 
-    _is_dev = app.config.get("DEBUG") or app.config.get("APP_ENV") in ("local", "development", "testing")
+    # Deployment mode, not Flask DEBUG, determines whether local process
+    # storage is acceptable. APP_ENV=docker stays deployed even if
+    # FLASK_ENV=development was accidentally set.
+    _is_dev = not deployed_runtime
     app.config["RATELIMIT_STORAGE_URI"] = (
-        "memory://" if _is_dev
-        else (redis_url if _redis_available_for_cache else "memory://")
+        "memory://" if _is_dev else redis_url
     )
     limiter.storage_uri = app.config["RATELIMIT_STORAGE_URI"]
 
-    # Get Redis client for sessions – reuse existing connection
-    redis_session_client = None
-    try:
-        if _redis_available_for_cache:
-            redis_session_client = redis_client.client
-    except Exception:
-        pass
-
+    # Reuse the connection already proven above for server-side sessions.
+    redis_session_client = redis_runtime_client
     if not redis_session_client:
         redis_session_client = require_redis(redis_url, "sessions")
+
+    if deployed_runtime and not redis_session_client:
+        raise RuntimeError(
+            "Required Redis session storage is unavailable; refusing to start "
+            "a deployed AFCON360 worker with filesystem-session fallback."
+        )
 
     # ============================================================
     # SENTRY INITIALIZATION (guarded by feature flag)
