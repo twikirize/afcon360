@@ -362,6 +362,24 @@ def test_shell_template_uses_canonical_context_contract():
     assert 'dashboard-shell.js' in shell
 
 
+def test_workspace_switcher_is_shared_with_non_personal_shells():
+    root = Path(__file__).resolve().parents[1]
+    base_shell = (root / "templates" / "base.html").read_text(encoding="utf-8")
+    driver_shell = (
+        root / "templates" / "transport" / "driver" / "base.html"
+    ).read_text(encoding="utf-8")
+    component = (
+        root / "templates" / "components" / "workspace_context_switcher.html"
+    ).read_text(encoding="utf-8")
+
+    assert "render_workspace_context_switcher('desktop')" in base_shell
+    assert "render_workspace_context_switcher('drawer')" in base_shell
+    assert "render_workspace_context_switcher('driver')" in driver_shell
+    assert "auth.switch_context" in component
+    assert "csrf_token" in component
+    assert "available_contexts" in component
+
+
 def test_dashboard_shell_is_inside_parent_content_block():
     root = Path(__file__).resolve().parents[1]
     shell = (root / "templates" / "user" / "base_user_dashboard.html").read_text(encoding="utf-8")
