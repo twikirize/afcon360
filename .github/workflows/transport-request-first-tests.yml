@@ -90,7 +90,7 @@ jobs:
   postgres-regression:
     name: PostgreSQL ${{ matrix.postgres-version }} — request lifecycle, payments, admin queues
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -282,42 +282,22 @@ jobs:
           node tests/test_geo_realtime_fallback.cjs
           node tests/test_request_tracker_polling.cjs
 
-      - name: Run fare confirmation, request lifecycle, payment, and admin regressions
+      - name: Run the complete PostgreSQL test suite and collect every failure
         run: |
-          python -m pytest -vv -x --timeout=120 --timeout-method=signal --durations=20 \
-            tests/test_transport_ride_options.py \
-            tests/test_transport_booking_route_path.py \
-            tests/test_ui11_booking_flash_copy.py \
-            tests/test_transport_request_tracker_copy.py \
-            tests/test_transport_cash_confirmation_semantics.py \
-            tests/test_transport_admin_canonical_overview.py \
-            tests/transport/test_ride_request_create.py \
-            tests/transport/test_trip_end_payment_semantics.py \
-            tests/transport/test_wallet_invoice_boundary.py \
-            tests/transport/test_location_lifecycle_booking_set.py \
-            tests/transport/test_cancel_fee_scheduled_p1.py \
-            tests/test_geo_realtime.py \
-            tests/test_geo_foundation.py \
-            tests/transport/test_driver_console.py \
-            tests/test_driver_location_csrf_refresh.py \
-            tests/test_transport_d2_evidence.py \
-            tests/test_transport_pwa_shell.py \
-            tests/test_transport_restful_auth.py \
-            tests/test_transport_tracking_live.py \
-            tests/test_transport_frontend_contracts.py \
-            tests/test_owner_mfa_security.py \
-            tests/test_security_answer_hashing.py \
-            tests/test_ui_20_csp.py \
-            tests/test_csp_strict_flag.py \
-            tests/test_health_rate_limit.py \
-            tests/test_mfa_secret_encryption.py \
-            tests/test_deletion_guard.py \
-            tests/test_wallet_authorization_limits.py \
-            tests/test_kyc_limit_authorization.py \
-            tests/test_process_webhook_dead_letter.py \
-            tests/test_dead_letter_alert.py \
-            tests/test_payment_method_capabilities.py \
-            tests/wallet/
+          mkdir -p artifacts
+          python -m pytest -vv --continue-on-collection-errors \
+            --timeout=120 --timeout-method=signal --durations=30 \
+            --junitxml=artifacts/full-suite.xml \
+            tests/
+
+      - name: Upload full-suite failure inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-suite-postgres-${{ matrix.postgres-version }}-results
+          path: artifacts/full-suite.xml
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Verify Redis-backed sessions, rate limiting, Celery, and Socket.IO
         env:
