@@ -1,6 +1,9 @@
 name: Transport request-first PostgreSQL regression
 
 on:
+  push:
+    branches:
+      - fix/workspace-deep-links-test-baseline-20261102
   pull_request:
     branches: [main]
     paths:
@@ -230,7 +233,11 @@ jobs:
           tests/conftest.py
           tests/test_deletion_guard.py
           app/auth/deletion_guard.py
+          app/auth/context.py
           app/auth/routes.py
+          app/accommodation/routes.py
+          app/identity/routes.py
+          app/transport/routes.py
           app/auth/security_policy.py
           app/auth/otp_service.py
           app/auth/services.py
@@ -241,6 +248,9 @@ jobs:
           app/models/system_config.py
           app/api/health.py
           tests/test_health_rate_limit.py
+          tests/test_auth_context.py
+          tests/test_driver_workspace_consolidation.py
+          tests/test_isolation_baseline.py
 
       - name: Parse changed Jinja templates without database access
         run: |
@@ -260,6 +270,9 @@ jobs:
               "auth/mfa_setup.html",
               "auth/mfa_status.html",
               "transport/admin/dashboard.html",
+              "base.html",
+              "transport/driver/base.html",
+              "components/workspace_context_switcher.html",
           )
           env = Environment(
               loader=FileSystemLoader("templates"),
