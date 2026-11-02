@@ -9,14 +9,14 @@ Design:
   "dirty" (has rows) / "empty" classification is stable for the session.
   Because of that, a single baseline captured ONCE per session is valid for
   every per-test cleanup:
-    - int PK tables   -> session-start (count, max(id))
+    - int PK tables   -> exact session-start set of ids (plus max for diagnostics)
     - UUID PK tables  -> session-start set of ids
     - other/composite -> session-start canonical row set
     - empty tables    -> "was empty" marker (cleanup = DELETE ALL rows,
                          since any row found there is test-created)
 - Cleanup DELETE:
-    - int table       -> DELETE WHERE id > baseline max
-    - uuid table      -> DELETE rows whose id NOT in baseline set
+    - int table       -> DELETE rows whose id is not in baseline set
+    - uuid table      -> DELETE rows whose id is not in baseline set
     - other tables    -> DELETE each current row not in baseline set
     - empty table     -> DELETE ALL
   FK-safe delete order is computed once from a cached FK graph.
@@ -25,7 +25,7 @@ Design:
   post-baseline and cleaned up like any other test data.
 
 PK strategies (per table):
-  - integer PK     -> (count, max(id); rows with id > max are test-created)
+  - integer PK     -> exact pre-existing ID set (max retained for diagnostics)
   - UUID PK        -> exact pre-existing ID set
   - composite PK   -> full-row snapshot (row equality)
   - no PK          -> full-row snapshot (row equality)
@@ -206,6 +206,9 @@ def snapshot_table_rows_readonly(conn, table_name: str) -> Dict[str, Any]:
         if sample is not None and isinstance(sample, int):
             snap["pk_type"] = "int"
             snap["max_pk"] = max(values) if values else 0
+            # Explicit/manual PK inserts can fill gaps below max(id). Preserve
+            # the exact baseline IDs so teardown never misses those rows.
+            snap["int_pks"] = set(values)
             if fk_cols:
                 fk_idx_map = {fc: columns.index(fc) for fc in fk_cols if fc in columns}
                 if fk_idx_map:
@@ -293,11 +296,25 @@ def cleanup_table(session, table_name: str, snap: Dict[str, Any]) -> int:
     pk_type = snap.get("pk_type", "none")
 
     if pk_type == "int":
-        max_pk = snap.get("max_pk", 0)
-        statement = delete(table)
-        if max_pk != 0:
-            statement = statement.where(table.c[snap["pk_columns"][0]] > max_pk)
-        return session.execute(statement).rowcount or 0
+        pk_column = table.c[snap["pk_columns"][0]]
+        baseline_ids = snap.get("int_pks")
+        if baseline_ids is None:
+            # Compatibility for a baseline captured by older helper code.
+            max_pk = snap.get("max_pk", 0)
+            statement = delete(table)
+            if max_pk != 0:
+                statement = statement.where(pk_column > max_pk)
+            return session.execute(statement).rowcount or 0
+
+        current_values = session.execute(select(pk_column)).scalars().all()
+        to_delete = [value for value in current_values if value not in baseline_ids]
+        deleted = 0
+        for index in range(0, len(to_delete), 1000):
+            batch = to_delete[index:index + 1000]
+            if batch:
+                result = session.execute(delete(table).where(pk_column.in_(batch)))
+                deleted += result.rowcount or 0
+        return deleted
 
     if pk_type == "uuid":
         existing = snap.get("uuid_pks", set())
@@ -467,6 +484,7 @@ def _build_baseline(session, engine) -> Dict[str, Dict[str, Any]]:
     Called lazily on the first test and reused for the whole session.
     """
     dirty, empty = _classify_tables(session, engine)
+    expected_tables = set(dirty) | set(empty)
     snapshot: Dict[str, Dict[str, Any]] = {}
     read_conn = engine.connect()
     try:
@@ -475,12 +493,24 @@ def _build_baseline(session, engine) -> Dict[str, Dict[str, Any]]:
                 snap = snapshot_table_rows_readonly(read_conn, table_name)
                 snap["pre_count"] = snap["count"]
                 snapshot[table_name] = snap
-            except Exception:
-                pass
+            except Exception as exc:
+                raise RuntimeError(
+                    "Test isolation baseline capture failed for table "
+                    f"{table_name!r}; stopping before tests run because teardown "
+                    "cannot safely clean a partial baseline."
+                ) from exc
         for table_name in empty:
             snapshot[table_name] = {"pre_count": 0, "pk_type": "none", "count": 0}
     finally:
         read_conn.close()
+
+    missing = expected_tables - set(snapshot)
+    unexpected = set(snapshot) - expected_tables
+    if missing or unexpected:
+        raise RuntimeError(
+            "Test isolation baseline table coverage mismatch: "
+            f"missing={sorted(missing)!r}, unexpected={sorted(unexpected)!r}"
+        )
     return snapshot
 
 
@@ -520,6 +550,14 @@ def cleanup_inserted_rows(
     # The baseline snapshot covers every table (dirty + empty), so the
     # FK-safe delete order is the same for every cleanup — use the cached one.
     delete_order = _get_delete_order(engine)
+    missing_baseline = [name for name in delete_order if name not in snapshot]
+    if missing_baseline:
+        preview = ", ".join(sorted(missing_baseline)[:10])
+        suffix = " ..." if len(missing_baseline) > 10 else ""
+        raise RuntimeError(
+            "Test isolation baseline is incomplete; refusing teardown because "
+            f"these tables have no baseline snapshot: {preview}{suffix}"
+        )
 
     # Pass 1: revert FK mutations on pre-existing rows.
     for table_name in delete_order:
