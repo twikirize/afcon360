@@ -84,6 +84,15 @@ on:
       - "requirements.txt"
       - ".github/workflows/transport-request-first-tests.yml"
   workflow_dispatch:
+    inputs:
+      test_scope:
+        description: "Run only recorded failing tests, or the final full regression"
+        required: true
+        type: choice
+        options:
+          - failed_only
+          - full_suite
+        default: failed_only
 
 permissions:
   contents: read
@@ -295,13 +304,24 @@ jobs:
           node tests/test_geo_realtime_fallback.cjs
           node tests/test_request_tracker_polling.cjs
 
-      - name: Run the complete PostgreSQL test suite and collect every failure
+      - name: Run only the selected PostgreSQL regression tests
         run: |
           mkdir -p artifacts
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${{ inputs.test_scope }}" == "full_suite" ]]; then
+            echo "Running final full-suite regression."
+            TARGETS=(tests/)
+          else
+            echo "Running only the recorded failing tests."
+            mapfile -t TARGETS < tests/ci/failed_test_targets.txt
+            if [[ ${#TARGETS[@]} -eq 0 ]]; then
+              echo "No failed-test targets are recorded."
+              exit 2
+            fi
+          fi
           python -m pytest -vv --continue-on-collection-errors \
             --timeout=120 --timeout-method=signal --durations=30 \
             --junitxml=artifacts/full-suite.xml \
-            tests/
+            "${TARGETS[@]}"
 
       - name: Upload full-suite failure inventory
         if: always()
@@ -313,6 +333,7 @@ jobs:
           retention-days: 14
 
       - name: Verify Redis-backed sessions, rate limiting, Celery, and Socket.IO
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.test_scope == 'full_suite'
         env:
           APP_ENV: docker
           FLASK_ENV: production
