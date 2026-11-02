@@ -509,6 +509,7 @@ def create_app(config_object=None) -> Flask:
     from app.utils.security import (
         ensure_encryption_key_configured,
         ensure_secret_key_configured,
+        ensure_database_url_configured,
     )
     ensure_encryption_key_configured(
         app_env=app.config.get("APP_ENV"),
@@ -534,31 +535,34 @@ def create_app(config_object=None) -> Flask:
         )
     app.config['SECRET_KEY'] = secret_key
 
-    # DATABASE URI validation
+    # DATABASE URI validation is also Docker-aware; never let a deployed
+    # container fall through to localhost/afcon360_dev because FLASK_ENV was
+    # accidentally set to development.
     db_uri = app.config.get("SQLALCHEMY_DATABASE_URI") or os.getenv("DATABASE_URL")
+    db_uri = ensure_database_url_configured(
+        db_uri,
+        app_env=app.config.get("APP_ENV"),
+        flask_env=app.config.get("FLASK_ENV"),
+    )
 
     if not db_uri:
-        flask_env = os.getenv("FLASK_ENV", "production")
-        if flask_env == "production":
-            raise RuntimeError(
-                "DATABASE_URL must be set in production. "
-                "Set DATABASE_URL environment variable or configure SQLALCHEMY_DATABASE_URI in config."
-            )
+        # Development fallback - use local PostgreSQL with default credentials.
+        # The deployed-mode guard above has already rejected this path in Docker/prod.
+        db_host = os.getenv("DB_HOST", "localhost")
+        db_port = os.getenv("DB_PORT", "5432")
+        db_name = os.getenv("DB_NAME", "afcon360_dev")
+        db_user = os.getenv("DB_USER", "postgres")
+        db_pass = os.getenv("DB_PASSWORD", "")
+
+        if db_pass:
+            db_uri = f"postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
         else:
-            # Development fallback - use local PostgreSQL with default credentials
-            db_host = os.getenv("DB_HOST", "localhost")
-            db_port = os.getenv("DB_PORT", "5432")
-            db_name = os.getenv("DB_NAME", "afcon360_dev")
-            db_user = os.getenv("DB_USER", "postgres")
-            db_pass = os.getenv("DB_PASSWORD", "")
+            db_uri = f"postgresql://{db_user}@{db_host}:{db_port}/{db_name}"
 
-            if db_pass:
-                db_uri = f"postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
-            else:
-                db_uri = f"postgresql://{db_user}@{db_host}:{db_port}/{db_name}"
-
-            logger.warning(f"Using development database: {db_uri.replace(db_pass, '***') if db_pass else db_uri}")
-            logger.warning("Set DATABASE_URL environment variable for production.")
+        logger.warning(
+            f"Using development database: {db_uri.replace(db_pass, '***') if db_pass else db_uri}"
+        )
+        logger.warning("Set DATABASE_URL environment variable for production.")
 
     app.config["SQLALCHEMY_DATABASE_URI"] = db_uri
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
