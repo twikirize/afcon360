@@ -46,6 +46,7 @@ on:
       - "tests/test_payment_method_capabilities.py"
       - "tests/conftest.py"
       - "scripts/ci/redis_socketio_runtime_smoke.py"
+      - "scripts/ops/**"
       - "docs/release/**"
       - "tests/test_owner_mfa_security.py"
       - "tests/test_security_answer_hashing.py"
@@ -168,6 +169,9 @@ jobs:
       # These source-level checks deliberately run before migration replay.
       # They can still report useful code/template failures when an unrelated
       # migration prevents the database-backed regression suite from starting.
+      - name: Validate read-only Oracle release audit script syntax
+        run: bash -n scripts/ops/pre_release_readonly_audit.sh
+
       - name: Compile Python modules changed by the transport feature
         run: >-
           python -m compileall -q
