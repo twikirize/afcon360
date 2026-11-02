@@ -35,8 +35,12 @@ switching, role assignment, impersonation, or a permission snapshot.
   `current_org_id`; logout explicitly removes those values along with other
   session state.
 - Flask-Session/Redis is configured by the application factory when available.
-  The session is shared by browser tabs according to the configured Flask-Session
-  backend, so a context selection is intentionally last-write-wins across tabs.
+  Explicit context-switcher selections remain session-wide because the configured
+  session backend is shared by browser tabs. A resource-specific deep link may
+  establish a validated request-local context after that route verifies the live
+  assignment and resource scope; that URL visit does not rewrite the session
+  selection or change the context used by another tab. Ambiguous workspace types
+  are not guessed and still require an explicit user selection.
 - `active_global_role` is a separate legacy persona selector handled by
   `app/auth/helpers.py`. It must not be treated as a replacement for the selected
   organisation, event, driver, host, or personal context.
