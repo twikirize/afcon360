@@ -179,11 +179,9 @@ def _promote_to_tier2(app, user_id):
         assert info["tier"] >= 2
 
 
-def test_authenticated_booking_assigns_server_side_rider(
-        app, test_user, authenticated_client):
-    """Commitment: the persisted booking belongs to the authenticated
-    rider derived server-side from the session — never to any
-    browser-supplied identity."""
+def test_authenticated_booking_creates_server_owned_ride_request(
+        app, test_user, authenticated_client, monkeypatch):
+    """The instant request belongs to the logged-in rider, never a browser id."""
     from app.extensions import db
     with app.app_context():
         merged = db.session.merge(test_user)
@@ -191,16 +189,22 @@ def test_authenticated_booking_assigns_server_side_rider(
         db.session.rollback()
     _promote_to_tier2(app, rider_id)
     key = f"owned-{uuid.uuid4().hex}"
+    monkeypatch.setattr(
+        "app.transport.routes.get_available_transport_payment_methods",
+        lambda _user_id: [{"code": "cash", "enabled": True, "status": "ready", "label": "Cash"}],
+    )
     resp = authenticated_client.post(
         "/transport/book", data=_form(idempotency_key=key),
         follow_redirects=False)
     assert resp.status_code in (301, 302, 303, 308)
     location = resp.headers.get("Location", "")
     assert "/transport/rides/" in location
-    from app.transport.models import Booking
+    from app.transport.models import Booking, RideRequest
     with app.app_context():
-        booking = Booking.query.filter_by(
+        ride_request = RideRequest.query.filter_by(
             idempotency_key=key, is_deleted=False).first()
-        assert booking is not None
-        assert booking.user_id == rider_id
+        assert ride_request is not None
+        assert ride_request.user_id == rider_id
+        assert Booking.query.filter_by(
+            idempotency_key=key, is_deleted=False).first() is None
         db.session.rollback()

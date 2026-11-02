@@ -40,6 +40,7 @@ def _form(**over):
         "dropoff_longitude": "32.6000",
         "pickup_time": "2099-12-31T10:00:00",
         "service_type": "on_demand",
+        "booking_mode": "scheduled",
         "provider_type": "individual_driver",
         "currency": "USD",
         "vehicle_class": "comfort",
@@ -151,7 +152,8 @@ def patched_booking():
         return {"success": True, "data": {
             "booking_id": 999999, "booking_reference": "SHADOW123"}}
 
-    with patch.object(bs.BookingService, "create_booking", mock_create), \
+    with patch("app.transport.routes.get_available_transport_payment_methods", lambda _user_id: [{"code": "cash", "enabled": True, "status": "ready", "label": "Cash"}]), \
+         patch.object(bs.BookingService, "create_booking", mock_create), \
          patch.object(bs.BookingService, "transition_status",
                       lambda *a, **k: {"success": True}), \
          patch.object(ms.MatchingService, "discover_and_offer",
