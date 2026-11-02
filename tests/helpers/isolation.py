@@ -34,7 +34,9 @@ This is the "Option B — Row tracking + explicit cleanup" architecture.
 """
 
 import json
+import os
 import threading
+import time
 from collections import defaultdict, deque
 from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import UUID
@@ -46,6 +48,30 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.auth.deletion_guard import authorize_deletion
+
+
+def _isolation_timings_enabled() -> bool:
+    return os.getenv("TEST_ISOLATION_TIMINGS", "").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+
+
+def _emit_isolation_timing(phase: str, **measurements: Any) -> None:
+    """Emit opt-in phase diagnostics; normal test output stays quiet."""
+    if not _isolation_timings_enabled():
+        return
+    parts = []
+    for name, value in measurements.items():
+        if isinstance(value, float):
+            parts.append(f"{name}={value:.4f}s")
+        else:
+            parts.append(f"{name}={value}")
+    print(
+        "[TEST_ISOLATION_TIMING] "
+        + phase
+        + (" " + " ".join(parts) if parts else ""),
+        flush=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -83,11 +109,26 @@ def build_fk_graph(engine) -> Dict[str, List[str]]:
         referred = []
         try:
             fks = inspector.get_foreign_keys(table_name)
-        except Exception:
-            fks = []
+        except Exception as exc:
+            raise RuntimeError(
+                "Test isolation cannot inspect foreign keys for table "
+                f"{table_name!r}; refusing to build an incomplete delete graph."
+            ) from exc
         for fk in fks:
             parent = fk.get("referred_table")
-            if not parent or parent not in table_names:
+            if not parent:
+                raise RuntimeError(
+                    "Test isolation received incomplete foreign-key metadata "
+                    f"for table {table_name!r}: referred_table is missing."
+                )
+            if parent not in table_names:
+                referred_schema = fk.get("referred_schema")
+                if referred_schema in (None, inspector.default_schema_name):
+                    raise RuntimeError(
+                        "Test isolation foreign-key metadata for table "
+                        f"{table_name!r} refers to missing table {parent!r}."
+                    )
+                # External-schema parents are not among the tables cleaned here.
                 continue
             options = fk.get("options") or {}
             ondelete = (options.get("ondelete") or "NO ACTION").upper()
@@ -153,8 +194,11 @@ def _get_fk_columns(inspector, table_name: str) -> List[str]:
     """
     try:
         fks = inspector.get_foreign_keys(table_name)
-    except Exception:
-        return []
+    except Exception as exc:
+        raise RuntimeError(
+            "Test isolation cannot inspect foreign-key columns for table "
+            f"{table_name!r}."
+        ) from exc
     cols: List[str] = []
     for fk in fks:
         for c in fk.get("constrained_columns", []):
@@ -167,8 +211,11 @@ def _get_pk_columns(inspector, table_name: str) -> List[str]:
     try:
         pk = inspector.get_pk_constraint(table_name)
         return pk.get("constrained_columns", [])
-    except Exception:
-        return []
+    except Exception as exc:
+        raise RuntimeError(
+            "Test isolation cannot inspect primary-key metadata for table "
+            f"{table_name!r}."
+        ) from exc
 
 
 def _reflect_table(bind, table_name: str) -> Table:
@@ -430,7 +477,27 @@ def _get_fk_graph(engine) -> Dict[str, List[str]]:
 def _get_delete_order(engine) -> List[str]:
     global _delete_order_cache
     if _delete_order_cache is None:
-        _delete_order_cache = topological_delete_order(_get_fk_graph(engine))
+        graph = _get_fk_graph(engine)
+        order = topological_delete_order(graph)
+        position = {table_name: index for index, table_name in enumerate(order)}
+        missing = set(graph) - set(position)
+        unexpected = set(position) - set(graph)
+        if missing or unexpected:
+            raise RuntimeError(
+                "Test isolation delete-order coverage mismatch: "
+                f"missing={sorted(missing)!r}, unexpected={sorted(unexpected)!r}"
+            )
+        for table_name, parents in graph.items():
+            for parent in parents:
+                if parent == table_name:
+                    continue
+                if position[table_name] >= position[parent]:
+                    raise RuntimeError(
+                        "Test isolation FK dependency graph is not acyclic or "
+                        "does not produce a safe delete order: "
+                        f"{table_name!r} must be deleted before {parent!r}."
+                    )
+        _delete_order_cache = order
     return _delete_order_cache
 
 
@@ -455,8 +522,16 @@ def _classify_tables(session, engine) -> Tuple[List[str], List[str]]:
         rows = conn.execute(union_all(*statements)).all()
 
     counts = {row[0]: row[1] for row in rows}
-    _dirty_tables_cache = [name for name in tables if counts.get(name, 0) > 0]
-    _empty_tables_cache = [name for name in tables if counts.get(name, 0) == 0]
+    missing_counts = set(tables) - set(counts)
+    unexpected_counts = set(counts) - set(tables)
+    if missing_counts or unexpected_counts:
+        raise RuntimeError(
+            "Test isolation table classification was incomplete: "
+            f"missing={sorted(missing_counts)!r}, "
+            f"unexpected={sorted(unexpected_counts)!r}"
+        )
+    _dirty_tables_cache = [name for name in tables if counts[name] > 0]
+    _empty_tables_cache = [name for name in tables if counts[name] == 0]
     return _dirty_tables_cache, _empty_tables_cache
 
 
@@ -492,9 +567,29 @@ def _build_baseline(session, engine) -> Dict[str, Dict[str, Any]]:
 
     Called lazily on the first test and reused for the whole session.
     """
+    total_started = time.perf_counter()
+    classify_started = time.perf_counter()
     dirty, empty = _classify_tables(session, engine)
+    classify_seconds = time.perf_counter() - classify_started
     expected_tables = set(dirty) | set(empty)
+
+    # Validate the complete FK graph and safe delete order before the first
+    # test executes. A partial graph can silently skip cleanup dependencies.
+    order_started = time.perf_counter()
+    delete_order = _get_delete_order(engine)
+    order_seconds = time.perf_counter() - order_started
+    order_tables = set(delete_order)
+    missing_order = expected_tables - order_tables
+    unexpected_order = order_tables - expected_tables
+    if missing_order or unexpected_order:
+        raise RuntimeError(
+            "Test isolation FK graph does not cover the baseline schema: "
+            f"missing={sorted(missing_order)!r}, "
+            f"unexpected={sorted(unexpected_order)!r}"
+        )
+
     snapshot: Dict[str, Dict[str, Any]] = {}
+    snapshot_started = time.perf_counter()
     read_conn = engine.connect()
     try:
         for table_name in dirty:
@@ -503,6 +598,11 @@ def _build_baseline(session, engine) -> Dict[str, Dict[str, Any]]:
                 snap["pre_count"] = snap["count"]
                 snapshot[table_name] = snap
             except Exception as exc:
+                _emit_isolation_timing(
+                    "baseline_capture_failed",
+                    table=table_name,
+                    elapsed=time.perf_counter() - total_started,
+                )
                 raise RuntimeError(
                     "Test isolation baseline capture failed for table "
                     f"{table_name!r}; stopping before tests run because teardown "
@@ -513,6 +613,7 @@ def _build_baseline(session, engine) -> Dict[str, Dict[str, Any]]:
     finally:
         read_conn.close()
 
+    snapshot_seconds = time.perf_counter() - snapshot_started
     missing = expected_tables - set(snapshot)
     unexpected = set(snapshot) - expected_tables
     if missing or unexpected:
@@ -520,6 +621,15 @@ def _build_baseline(session, engine) -> Dict[str, Dict[str, Any]]:
             "Test isolation baseline table coverage mismatch: "
             f"missing={sorted(missing)!r}, unexpected={sorted(unexpected)!r}"
         )
+    _emit_isolation_timing(
+        "baseline_capture",
+        classify=classify_seconds,
+        fk_graph=order_seconds,
+        snapshot=snapshot_seconds,
+        total=time.perf_counter() - total_started,
+        populated_tables=len(dirty),
+        empty_tables=len(empty),
+    )
     return snapshot
 
 
@@ -546,39 +656,69 @@ def cleanup_inserted_rows(
 
     Returns {table: rows_deleted}.
     """
-    # The migration-built test schema installs BEFORE DELETE guards
-    # (trg_guard_users_delete, trg_guard_user_roles_delete) that raise
-    # 42501 unless the transaction-scoped GUC app.guard.authorized_deletion
-    # is 'true'. Reuse the sanctioned helper so the authorization is issued
-    # as SET LOCAL: it ends with this cleanup transaction (commit/rollback)
-    # and cannot leak to pooled sessions. Deletion targets are unchanged —
-    # the snapshot logic below still removes exactly the rows identified as
-    # test-created, never baseline data.
+    total_started = time.perf_counter()
+    authorize_started = time.perf_counter()
+    # The migration-built test schema installs BEFORE DELETE guards. Reuse the
+    # sanctioned SET LOCAL authorization so it cannot leak to pooled sessions.
     authorize_deletion(conn, actor="test-isolation-cleanup")
+    authorize_seconds = time.perf_counter() - authorize_started
 
-    # The baseline snapshot covers every table (dirty + empty), so the
-    # FK-safe delete order is the same for every cleanup — use the cached one.
+    order_started = time.perf_counter()
     delete_order = _get_delete_order(engine)
+    order_seconds = time.perf_counter() - order_started
     missing_baseline = [name for name in delete_order if name not in snapshot]
-    if missing_baseline:
-        preview = ", ".join(sorted(missing_baseline)[:10])
-        suffix = " ..." if len(missing_baseline) > 10 else ""
+    unexpected_baseline = set(snapshot) - set(delete_order)
+    if missing_baseline or unexpected_baseline:
         raise RuntimeError(
-            "Test isolation baseline is incomplete; refusing teardown because "
-            f"these tables have no baseline snapshot: {preview}{suffix}"
+            "Test isolation baseline/delete-order coverage mismatch: "
+            f"missing_baseline={sorted(missing_baseline)!r}, "
+            f"unexpected_baseline={sorted(unexpected_baseline)!r}"
         )
 
-    # Pass 1: revert FK mutations on pre-existing rows.
-    for table_name in delete_order:
-        snap = snapshot.get(table_name)
-        if snap:
-            revert_fk_mutations(conn, table_name, snap)
-
-    # Pass 2: delete test-created rows in FK-safe order.
-    deleted: Dict[str, int] = {}
+    # Pass 1: restore FK mutations on pre-existing rows.
+    fk_started = time.perf_counter()
+    fk_values_reverted = 0
+    fk_table_timings = []
     for table_name in delete_order:
         snap = snapshot[table_name]
-        count = cleanup_table(conn, table_name, snap)
+        table_started = time.perf_counter()
+        fk_values_reverted += revert_fk_mutations(conn, table_name, snap)
+        fk_table_timings.append((time.perf_counter() - table_started, table_name))
+    fk_seconds = time.perf_counter() - fk_started
+
+    # Pass 2: remove test-created rows in FK-safe order.
+    row_cleanup_started = time.perf_counter()
+    deleted: Dict[str, int] = {}
+    cleanup_table_timings = []
+    for table_name in delete_order:
+        table_started = time.perf_counter()
+        count = cleanup_table(conn, table_name, snapshot[table_name])
+        elapsed = time.perf_counter() - table_started
+        cleanup_table_timings.append((elapsed, table_name, count))
         if count > 0:
             deleted[table_name] = count
+    row_cleanup_seconds = time.perf_counter() - row_cleanup_started
+
+    slow_fk_tables = ";".join(
+        f"{name}:{seconds:.3f}s"
+        for seconds, name in sorted(fk_table_timings, reverse=True)[:5]
+    )
+    slow_cleanup_tables = ";".join(
+        f"{name}:{seconds:.3f}s({count})"
+        for seconds, name, count in sorted(cleanup_table_timings, reverse=True)[:8]
+    )
+    _emit_isolation_timing(
+        "per_test_cleanup",
+        authorize=authorize_seconds,
+        delete_order=order_seconds,
+        fk_restore=fk_seconds,
+        row_cleanup=row_cleanup_seconds,
+        total=time.perf_counter() - total_started,
+        tables=len(delete_order),
+        fk_values_reverted=fk_values_reverted,
+        rows_deleted=sum(deleted.values()),
+        touched_tables=len(deleted),
+        slow_fk_tables=slow_fk_tables or "none",
+        slow_cleanup_tables=slow_cleanup_tables or "none",
+    )
     return deleted

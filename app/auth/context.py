@@ -560,9 +560,14 @@ def _host_contexts(user: Any) -> list[ContextDescriptor]:
             continue
         try:
             can_org_host, _ = AccommodationIdentityService.can_org_host(org_id)
+            member_can_manage_host = (
+                membership.has_permission("org.accommodation.manage")
+                or membership.has_permission("org.transport.manage")
+            )
         except (AttributeError, RuntimeError):
             can_org_host = False
-        if can_org_host:
+            member_can_manage_host = False
+        if can_org_host and member_can_manage_host:
             descriptors.append(
                 ContextDescriptor(
                     type=ContextType.ACCOMMODATION_HOST,

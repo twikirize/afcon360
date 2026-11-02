@@ -2,3 +2,8 @@ tests/test_transport_front_page.py::test_transport_front_page_renders_anonymous
 tests/test_auth_context.py
 tests/test_driver_workspace_consolidation.py
 tests/test_isolation_baseline.py
+tests/test_stage4b8_context_switch_e2e_proof.py
+tests/test_stage4b9_context_switch_nav_e2e.py
+tests/test_org_workspace.py
+tests/test_org_host_production_path.py
+tests/test_events_ownership_characterization.py

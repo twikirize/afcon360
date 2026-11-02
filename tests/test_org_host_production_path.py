@@ -341,6 +341,17 @@ class TestOrgWriteProductionPath:
             app, pp_status=ProviderCapabilityStatus.ACTIVATED.value,
             role="org_admin",
         )
+        with app.app_context():
+            from app.auth.context import ContextType, get_available_contexts
+
+            live_user = db.session.get(User, actor.id)
+            contexts = get_available_contexts(live_user)
+            assert not any(
+                context.type is ContextType.ACCOMMODATION_HOST
+                and context.public_id == org_public_id
+                for context in contexts
+            )
+
         _login(client, actor)
         _set_org_host_context(client, org_public_id)
 

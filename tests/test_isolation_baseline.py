@@ -1,7 +1,17 @@
 """Focused tests for safe, complete test-database baseline capture."""
 
 import pytest
-from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, insert, select
+from sqlalchemy import (
+    Column,
+    ForeignKeyConstraint,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    create_engine,
+    insert,
+    select,
+)
 
 from tests.helpers import isolation
 
@@ -26,6 +36,11 @@ def test_baseline_capture_fails_closed_with_table_specific_error(monkeypatch):
         "_classify_tables",
         lambda _session, _engine: (["already_populated", "cannot_snapshot"], ["empty_table"]),
     )
+    monkeypatch.setattr(
+        isolation,
+        "_get_delete_order",
+        lambda _engine: ["already_populated", "cannot_snapshot", "empty_table"],
+    )
 
     def snapshot(_connection, table_name):
         if table_name == "cannot_snapshot":
@@ -41,6 +56,56 @@ def test_baseline_capture_fails_closed_with_table_specific_error(monkeypatch):
     assert engine.connection.closed is True
 
 
+def test_fk_metadata_failure_stops_baseline_before_tests(monkeypatch):
+    class Inspector:
+        default_schema_name = "public"
+
+        def get_table_names(self):
+            return ["cannot_inspect_fk_metadata"]
+
+        def get_foreign_keys(self, table_name):
+            raise PermissionError(f"no FK metadata access for {table_name}")
+
+    monkeypatch.setattr(isolation, "sa_inspect", lambda _engine: Inspector())
+    monkeypatch.setattr(
+        isolation,
+        "_classify_tables",
+        lambda _session, _engine: (["cannot_inspect_fk_metadata"], []),
+    )
+    monkeypatch.setattr(isolation, "_fk_graph_cache", None)
+    monkeypatch.setattr(isolation, "_delete_order_cache", None)
+
+    with pytest.raises(RuntimeError, match="cannot_inspect_fk_metadata") as exc_info:
+        isolation._build_baseline(None, object())
+
+    assert isinstance(exc_info.value.__cause__, PermissionError)
+
+
+def test_delete_order_rejects_unresolvable_fk_cycles(monkeypatch):
+    monkeypatch.setattr(
+        isolation,
+        "_get_fk_graph",
+        lambda _engine: {"child": ["parent"], "parent": ["child"]},
+    )
+    monkeypatch.setattr(isolation, "_delete_order_cache", None)
+
+    with pytest.raises(RuntimeError, match="not acyclic"):
+        isolation._get_delete_order(object())
+
+
+def test_isolation_timings_are_opt_in(monkeypatch, capsys):
+    monkeypatch.delenv("TEST_ISOLATION_TIMINGS", raising=False)
+    isolation._emit_isolation_timing("probe", elapsed=0.25)
+    assert capsys.readouterr().out == ""
+
+    monkeypatch.setenv("TEST_ISOLATION_TIMINGS", "1")
+    isolation._emit_isolation_timing("probe", elapsed=0.25, tables=12)
+    captured = capsys.readouterr().out
+    assert "[TEST_ISOLATION_TIMING] probe" in captured
+    assert "elapsed=0.2500s" in captured
+    assert "tables=12" in captured
+
+
 def test_integer_fk_restore_includes_zero_primary_key():
     engine = create_engine("sqlite+pysqlite:///:memory:")
     metadata = MetaData()
@@ -54,7 +119,7 @@ def test_integer_fk_restore_includes_zero_primary_key():
         metadata,
         Column("id", Integer, primary_key=True),
         Column("parent_id", Integer, nullable=False),
-        __import__("sqlalchemy").ForeignKeyConstraint(
+        ForeignKeyConstraint(
             ["parent_id"], ["isolation_fk_parent_probe.id"]
         ),
     )
