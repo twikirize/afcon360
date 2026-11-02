@@ -51,11 +51,19 @@ def test_verified_driver_login_lands_on_working_dashboard(app, client):
     assert "Traceback" not in html
 
 
-def test_unverified_driver_not_routed_to_workspace(app, client):
+def test_unverified_driver_enters_workspace_but_cannot_go_live(app, client):
     username, _ = _seed_driver(app, tier="PENDING")
     resp = _login(client, username)
     assert resp.status_code == 302
-    assert not resp.headers["Location"].endswith("/transport/driver-dashboard")
+    assert resp.headers["Location"].endswith("/transport/driver-dashboard")
+
+    # Workspace access is participation, not operational approval. A pending
+    # driver can complete setup but must not receive the online/go-live control.
+    page = client.get("/transport/driver-dashboard")
+    assert page.status_code == 200
+    html = page.data.decode("utf-8")
+    assert "Go-live checklist" in html or "Requirements" in html
+    assert "data-online-toggle" not in html
 
 
 def test_non_driver_cannot_enter_workspace(app, authenticated_client):
