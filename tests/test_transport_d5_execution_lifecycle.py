@@ -545,7 +545,9 @@ class TestBookingCancellation:
         assert r.status_code == 200, r.get_json()
         assert _bk_field(app, bk_id, "status") == BookingStatus.DISPUTED.value
         assert _bk_field(app, bk_id, "assigned_driver_id") == drv
-        assert _drv_field(app, drv, "is_available") is False
+        # is_available means qualification, not current workload.
+        # Active assignment rows are the busy/claim-exclusion authority.
+        assert _drv_field(app, drv, "is_available") is True
         assert _veh_field(app, veh, "is_available") is False
 
         # Cancelling a DISPUTED booking closes it through the canonical release.
@@ -580,7 +582,9 @@ class TestBookingCancellation:
         # resources remain latched (not lost, not stranded)
         assert _bk_field(app, bk_id, "status") == BookingStatus.IN_PROGRESS.value
         assert _bk_field(app, bk_id, "assigned_driver_id") == drv
-        assert _drv_field(app, drv, "is_available") is False
+        # is_available means qualification, not current workload.
+        # Active assignment rows are the busy/claim-exclusion authority.
+        assert _drv_field(app, drv, "is_available") is True
 
     def test_repeat_cancel_after_terminal_refused_without_mutation(self, app, admin_client):
         pax_id = _create_user(app, "paxRC")
@@ -719,7 +723,9 @@ class TestExecutionConcurrency:
         r = _admin_status(admin_client, bk_id, "no_show", reason="late no show")
         assert r.status_code == 422  # IN_PROGRESS -> {COMPLETED, DISPUTED}
         assert _bk_field(app, bk_id, "status") == BookingStatus.IN_PROGRESS.value
-        assert _drv_field(app, drv, "is_available") is False
+        # is_available means qualification, not current workload.
+        # Active assignment rows are the busy/claim-exclusion authority.
+        assert _drv_field(app, drv, "is_available") is True
 
         # cleanup: close in-progress trip
         assert _trips(drv_client, bk_id, "complete").status_code == 200
@@ -845,7 +851,9 @@ class TestRecoveryVsProgress:
         assert bk_id not in result["recovered"]
         assert _bk_field(app, bk_id, "status") == BookingStatus.DRIVER_EN_ROUTE.value
         assert _bk_field(app, bk_id, "assigned_driver_id") == drv
-        assert _drv_field(app, drv, "is_available") is False
+        # is_available means qualification, not current workload.
+        # Active assignment rows are the busy/claim-exclusion authority.
+        assert _drv_field(app, drv, "is_available") is True
 
         # close the trip cleanly
         _trips(drv_client, bk_id, "arrive")
@@ -919,7 +927,9 @@ class TestModeratorBookingActions:
         # formally refused: still IN_PROGRESS, resources still held
         assert _bk_field(app, bk_id, "status") == BookingStatus.IN_PROGRESS.value
         assert _bk_field(app, bk_id, "assigned_driver_id") == drv
-        assert _drv_field(app, drv, "is_available") is False
+        # is_available means qualification, not current workload.
+        # Active assignment rows are the busy/claim-exclusion authority.
+        assert _drv_field(app, drv, "is_available") is True
 
         _trips(drv_client, bk_id, "complete")
 
@@ -1000,4 +1010,6 @@ class TestModeratorBookingActions:
         assert r.status_code == 302
         assert _bk_field(app, bk_id, "status") == BookingStatus.ASSIGNED.value
         assert _bk_field(app, bk_id, "assigned_driver_id") == drv
-        assert _drv_field(app, drv, "is_available") is False
+        # is_available means qualification, not current workload.
+        # Active assignment rows are the busy/claim-exclusion authority.
+        assert _drv_field(app, drv, "is_available") is True
