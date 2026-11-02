@@ -2507,6 +2507,84 @@ def driver_dashboard():
     # the browse page's source. Never fed from a raw Vehicle query.
     available_marketplace_vehicles = _marketplace_listing_views(limit=5)
 
+    # Read-only data projections for the current consolidated workspace panels.
+    scheduled_routes = []
+    switchable_vehicles = []
+    vehicle_history = []
+    incidents = []
+    if profile is not None:
+        from types import SimpleNamespace
+        from app.transport.models import (
+            ScheduledRoute, DriverVehicleHistory, TransportIncident,
+        )
+        try:
+            rows = (
+                ScheduledRoute.query
+                .filter_by(current_driver_id=profile.id, is_active=True, is_cancelled=False)
+                .order_by(ScheduledRoute.next_departure.asc())
+                .limit(10)
+                .all()
+            )
+            scheduled_routes = [
+                SimpleNamespace(
+                    name=row.name, route_code=row.route_code,
+                    route_type=row.route_type, primary_zone=row.primary_zone,
+                    next_departure=row.next_departure.isoformat() if row.next_departure else None,
+                    available_seats=row.available_seats,
+                    vehicle_capacity=row.vehicle_capacity,
+                    price_per_seat=row.price_per_seat, is_free=row.is_free,
+                )
+                for row in rows
+            ]
+        except Exception:
+            db.session.rollback()
+            logger.warning("Driver scheduled-route panel unavailable for profile %s", profile.id, exc_info=True)
+
+        current_vehicle_id = getattr(assigned_vehicle, "id", None)
+        switchable_vehicles = [
+            vehicle for vehicle in (owned_vehicles or [])
+            if vehicle.id != current_vehicle_id
+            and str(getattr(vehicle, "status", "")).lower() == "active"
+            and bool(getattr(vehicle, "is_available", True))
+        ]
+
+        try:
+            rows = (
+                DriverVehicleHistory.query
+                .filter_by(driver_id=profile.id)
+                .order_by(DriverVehicleHistory.started_at.desc())
+                .limit(8)
+                .all()
+            )
+            vehicle_history = [
+                SimpleNamespace(
+                    license_plate=row.vehicle.license_plate if row.vehicle else "Vehicle",
+                    assignment_reason=row.assignment_reason, was_breakdown=row.was_breakdown,
+                    started_at=row.started_at.isoformat() if row.started_at else None,
+                    ended_at=row.ended_at.isoformat() if row.ended_at else None,
+                )
+                for row in rows
+            ]
+        except Exception:
+            db.session.rollback()
+            logger.warning("Driver vehicle-history panel unavailable for profile %s", profile.id, exc_info=True)
+
+        try:
+            incidents = (
+                TransportIncident.query
+                .filter(
+                    TransportIncident.driver_id == profile.id,
+                    TransportIncident.is_deleted.is_(False),
+                    TransportIncident.status.notin_(("resolved", "closed")),
+                )
+                .order_by(TransportIncident.created_at.desc())
+                .limit(8)
+                .all()
+            )
+        except Exception:
+            db.session.rollback()
+            logger.warning("Driver safety panel unavailable for profile %s", profile.id, exc_info=True)
+
     # Location publishing cadence: drives the workspace's
     # live geolocation pings and the Location card's stated cadence.
     try:
@@ -2531,6 +2609,10 @@ def driver_dashboard():
         offers=offers,
         offer_count=offer_count,
         active_trip=active_trip,
+        scheduled_routes=scheduled_routes,
+        switchable_vehicles=switchable_vehicles,
+        vehicle_history=vehicle_history,
+        incidents=incidents,
     )
 
 

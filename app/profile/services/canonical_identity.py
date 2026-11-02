@@ -136,6 +136,9 @@ def get_canonical_identity(user) -> CanonicalIdentity:
             # same authority is enforced at gate sites which fail closed.
             kyc_decisions = {"error": "unavailable"}
 
+    raw_id_type = _profile_value("id_type")
+    canonical_id_type = getattr(raw_id_type, "value", raw_id_type)
+
     return CanonicalIdentity(
         public_id=str(public_id) if public_id is not None else "",
         profile=profile,
@@ -147,7 +150,7 @@ def get_canonical_identity(user) -> CanonicalIdentity:
         date_of_birth=_iso(_profile_value("date_of_birth")),
         gender=_profile_value("gender"),
         nationality=_profile_value("nationality"),
-        id_type=_profile_value("id_type"),
+        id_type=canonical_id_type,
         id_number=_profile_value("id_number"),
         verification_status=verification_status,
         kyc_tier=kyc_tier,

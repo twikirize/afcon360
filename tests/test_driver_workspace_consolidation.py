@@ -207,7 +207,9 @@ class TestDriverWorkspaceRendering:
         resp = _fresh_get(client, "/transport/driver-dashboard")
 
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
-        assert "Driver Dashboard" in resp.data.decode("utf-8")
+        body = resp.data.decode("utf-8")
+        assert 'id="driverDashboard"' in body
+        assert "Driver" in body
 
     def test_driver_workspace_has_driver_shell(self, app, client):
         driver = _seed_driver(app, compliance=ComplianceStatus.PENDING_REVIEW)
@@ -215,9 +217,10 @@ class TestDriverWorkspaceRendering:
 
         body = _fresh_get(client, "/transport/driver-dashboard").data.decode("utf-8")
 
-        assert "t-sidebar" in body
-        assert "My Transport" in body
-        assert "Register Vehicle" in body
+        assert "ck-shell" in body
+        assert "ck-pane" in body
+        assert 'data-ck-nav="home"' in body
+        assert "My Vehicles" in body
 
     def test_driver_workspace_has_no_admin_navigation(self, app, client):
         driver = _seed_driver(app, compliance=ComplianceStatus.PENDING_REVIEW)
