@@ -17,6 +17,7 @@
   <!-- Theme System - Add after Bootstrap CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-components.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/global/workspace-context-switcher.css') }}">
 
   
   <!-- Theme System - Proper Cascade Order -->
@@ -297,6 +298,10 @@
 
     <nav class="main-nav desktop-nav" aria-label="Main menu">
       <ul class="menu">
+        {% if current_user.is_authenticated and request.endpoint != 'user.dashboard' %}
+          {% from "components/workspace_context_switcher.html" import render_workspace_context_switcher with context %}
+          <li class="menu-item workspace-context-menu">{{ render_workspace_context_switcher('desktop') }}</li>
+        {% endif %}
         <li class="menu-item"><a href="{{ url_for('index') }}">Home</a></li>
 
         <li class="menu-item has-dropdown">
@@ -600,6 +605,10 @@
       <button class="drawer-close" id="drawerClose" aria-label="Close menu">&#10005;</button>
     </div>
     <nav class="drawer-nav">
+      {% if current_user.is_authenticated and request.endpoint != 'user.dashboard' %}
+        {% from "components/workspace_context_switcher.html" import render_workspace_context_switcher with context %}
+        {{ render_workspace_context_switcher('drawer') }}
+      {% endif %}
       <a class="drawer-link" href="{{ url_for('index') }}">🏠 Home</a>
 
       <div class="drawer-accordion">
@@ -679,18 +688,9 @@
             <i class="bi bi-person-plus me-2"></i>Create Account
           </a>
         {% elif nav_in_org_context %}
-          <span class="drawer-sub-label">🏢 Organisation · {{ nav_org_name or 'Organisation' }}</span>
           <a class="drawer-link" href="{{ url_for('org.org_dashboard', org_id=nav_org_slug or nav_org_id) }}">
-            <i class="bi bi-speedometer2 me-2"></i>Dashboard
+            <i class="bi bi-speedometer2 me-2"></i>Organisation Dashboard
           </a>
-          <form method="POST" action="{{ url_for('auth.switch_context') }}">
-            <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
-            <input type="hidden" name="type" value="personal">
-            <input type="hidden" name="role" value="user">
-            <button type="submit" class="drawer-link drawer-auth">
-              <i class="bi bi-person me-2"></i>Switch to Personal
-            </button>
-          </form>
         {% else %}
           <a class="drawer-link" href="{% if current_user.is_app_owner() %}{{ url_for('admin.owner.dashboard') }}
             {% elif current_user.has_global_role('super_admin') %}{{ url_for('admin.super_dashboard') }}
@@ -698,24 +698,6 @@
             {% else %}{{ url_for('user.dashboard') }}{% endif %}">
             <i class="bi bi-speedometer2 me-2"></i>Dashboard
           </a>
-          {% set nav_org_ctxs = [] %}
-          {% for ctx in available_contexts|default([]) %}
-            {% if ctx.type.value == 'organisation' and nav_org_ctxs.append(ctx) %}{% endif %}
-          {% endfor %}
-          {% if nav_org_ctxs %}
-          <span class="drawer-sub-label">🏢 Switch to Organisation</span>
-          {% for ctx in nav_org_ctxs %}
-          <form method="POST" action="{{ url_for('auth.switch_context') }}">
-            <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
-            <input type="hidden" name="type" value="organisation">
-            <input type="hidden" name="public_id" value="{{ ctx.public_id }}">
-            <input type="hidden" name="role" value="{{ ctx.role }}">
-            <button type="submit" class="drawer-link drawer-auth">
-              <i class="bi bi-building me-2"></i>{{ ctx.label.split(' — ', 1)[0] if ctx.label else 'Organisation' }}
-            </button>
-          </form>
-          {% endfor %}
-          {% endif %}
         {% endif %}
 
         <div class="drawer-divider"></div>
