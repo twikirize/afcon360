@@ -5,9 +5,9 @@
 # Run on the Oracle host from /opt/afcon360:
 #   bash scripts/ops/pre_release_readonly_audit.sh
 #
-# This script does not restart or stop containers, apply migrations, change
-# Redis configuration, read environment-file contents, or write to PostgreSQL.
-# It reports only non-secret runtime metadata. Review all output before release.
+# This script does not restart/stop containers, apply migrations, change Redis,
+# read environment-file contents, or write to PostgreSQL. It reports only
+# non-secret metadata. Review its output before any release operation.
 #
 set -uo pipefail
 
@@ -31,10 +31,13 @@ container_summary() {
         return
     fi
     docker inspect --format \
-        '{{.Name}} image={{.Config.Image}} state={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}} started={{.State.StartedAt}}' \
+        '{{.Name}} image={{.Config.Image}} image_id={{.Image}} state={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}} started={{.State.StartedAt}}' \
         "$name" 2>/dev/null | sed 's#^/##'
     docker inspect --format \
-        '{{range .Config.Labels}}{{if or (eq .Name "com.docker.compose.project") (eq .Name "com.docker.compose.service")}}{{println .Name "=" .Value}}{{end}}{{end}}' \
+        '{{range $key, $value := .Config.Labels}}{{if or (eq $key "com.docker.compose.project") (eq $key "com.docker.compose.service")}}{{println $key "=" $value}}{{end}}{{end}}' \
+        "$name" 2>/dev/null
+    docker inspect --format \
+        '{{range .Mounts}}{{println "mount=" .Source "->" .Destination "rw=" .RW}}{{end}}' \
         "$name" 2>/dev/null
 }
 
@@ -50,7 +53,7 @@ if [ -d "$ROOT/.git" ]; then
     git rev-parse --short=12 HEAD 2>/dev/null || true
     git log -1 --format='last_commit=%h %s' 2>/dev/null || true
     git status --short --branch 2>/dev/null || true
-    printf '\nserver-only files (names only; contents not read):\n'
+    printf '\nserver-only files (names and metadata only; contents not read):\n'
     for f in .env.docker.runtime .env.runtime docker-compose.prod.yml; do
         if [ -e "$f" ]; then
             stat -c '%n size=%s bytes modified=%y' "$f" 2>/dev/null || printf '%s exists\n' "$f"
@@ -75,7 +78,7 @@ container_summary "$WEB_CONTAINER"
 container_summary "$DB_CONTAINER"
 container_summary "$REDIS_CONTAINER"
 
-section "UNHEALTHY / UNIDENTIFIED CONTAINERS"
+section "UNHEALTHY CONTAINERS"
 docker ps -a --filter health=unhealthy --format '{{.Names}} image={{.Image}} status={{.Status}}' 2>/dev/null || true
 
 section "WEB CONTAINER DATABASE TARGET (CREDENTIALS REDACTED)"
@@ -94,22 +97,17 @@ for raw in sys.stdin:
         continue
     key, value = raw.split("=", 1)
     if key in allowed:
-        print(f"{key}={value}")
+        print("{}={}".format(key, value))
     elif key in uri_keys:
         try:
             parsed = urlsplit(value)
-            if key == "REDIS_URL":
-                print(
-                    f"{key}: scheme={parsed.scheme} host={parsed.hostname} "
-                    f"port={parsed.port or \'default\'} database={parsed.path.lstrip(\'/\')}"
-                )
-            else:
-                print(
-                    f"{key}: scheme={parsed.scheme} host={parsed.hostname} "
-                    f"port={parsed.port or \'default\'} database={parsed.path.lstrip(\'/\')}"
-                )
+            port = parsed.port if parsed.port is not None else "default"
+            database = parsed.path.lstrip("/")
+            print("{}: scheme={} host={} port={} database={}".format(
+                key, parsed.scheme, parsed.hostname, port, database
+            ))
         except Exception:
-            print(f"{key}: set (target could not be parsed; value suppressed)")
+            print("{}: set (target could not be parsed; value suppressed)".format(key))
 ' || true
 else
     printf 'web container missing; target not inspected\n'
@@ -117,28 +115,31 @@ fi
 
 section "POSTGRESQL SERVER AND SCHEMA METADATA"
 if container_exists "$DB_CONTAINER"; then
-    docker exec "$DB_CONTAINER" sh -lc '
-        PGUSER="${POSTGRES_USER:-postgres}"
-        PGDATABASE="${POSTGRES_DB:-postgres}"
-        export PGUSER PGDATABASE
-        psql -X -v ON_ERROR_STOP=1 -Atc "
-            SELECT '''server_version=''' || current_setting('''server_version''');
-            SELECT '''database=''' || current_database();
-            SELECT '''database_size=''' || pg_size_pretty(pg_database_size(current_database()));
-            SELECT '''public_base_tables=''' || count(*)
-              FROM information_schema.tables
-             WHERE table_schema = '''public''' AND table_type = '''BASE TABLE''';
-            SELECT '''public_enum_types=''' || count(*)
-              FROM pg_type t
-              JOIN pg_namespace n ON n.oid = t.typnamespace
-             WHERE n.nspname = '''public''' AND t.typtype = '''e''';
-            SELECT '''alembic_version_table=''' || coalesce(to_regclass('''public.alembic_version''')::text, '''missing''');
-        "
-        if psql -X -Atc "SELECT to_regclass('''public.alembic_version''') IS NOT NULL" | grep -qx t; then
-            psql -X -v ON_ERROR_STOP=1 -Atc \
-              "SELECT '''alembic_revisions=''' || coalesce(string_agg(version_num, ''',''' ORDER BY version_num), '''none''') FROM alembic_version;"
-        fi
-    ' 2>&1 || true
+    docker exec -i "$DB_CONTAINER" sh -s 2>&1 <<'REMOTE'
+PGUSER="${POSTGRES_USER:-postgres}"
+PGDATABASE="${POSTGRES_DB:-postgres}"
+export PGUSER PGDATABASE
+
+psql -X -v ON_ERROR_STOP=1 -Atc "
+    SELECT 'server_version=' || current_setting('server_version');
+    SELECT 'database=' || current_database();
+    SELECT 'database_size=' || pg_size_pretty(pg_database_size(current_database()));
+    SELECT 'public_base_tables=' || count(*)
+      FROM information_schema.tables
+     WHERE table_schema = 'public' AND table_type = 'BASE TABLE';
+    SELECT 'public_enum_types=' || count(*)
+      FROM pg_type t
+      JOIN pg_namespace n ON n.oid = t.typnamespace
+     WHERE n.nspname = 'public' AND t.typtype = 'e';
+    SELECT 'alembic_version_table=' ||
+           coalesce(to_regclass('public.alembic_version')::text, 'missing');
+"
+
+if [ "$(psql -X -Atc "SELECT to_regclass('public.alembic_version') IS NOT NULL")" = "t" ]; then
+    psql -X -v ON_ERROR_STOP=1 -Atc \
+      "SELECT 'alembic_revisions=' || coalesce(string_agg(version_num, ',' ORDER BY version_num), 'none') FROM alembic_version;"
+fi
+REMOTE
 else
     printf 'database container missing; PostgreSQL metadata not available\n'
 fi
@@ -147,7 +148,10 @@ section "REDIS MEMORY, EVICTION AND PERSISTENCE"
 if container_exists "$REDIS_CONTAINER"; then
     docker exec "$REDIS_CONTAINER" sh -lc '
         echo "-- CONFIG --"
-        redis-cli CONFIG GET maxmemory maxmemory-policy appendonly appendfsync 2>&1
+        for setting in maxmemory maxmemory-policy appendonly appendfsync; do
+            printf "%s=" "$setting"
+            redis-cli --raw CONFIG GET "$setting" 2>&1 | awk "NR == 2 {print; found=1} END {if (!found) exit 0}"
+        done
         echo "-- MEMORY --"
         redis-cli INFO memory 2>&1 | grep -E "^(used_memory_human|maxmemory|maxmemory_human|mem_fragmentation_ratio):" || true
         echo "-- STATS --"
