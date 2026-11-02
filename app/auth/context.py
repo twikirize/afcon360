@@ -314,7 +314,10 @@ def _global_contexts(user: Any) -> list[ContextDescriptor]:
         if not role or getattr(role, "scope", "global") != "global":
             continue
         role_name = getattr(role, "name", None)
-        if not role_name:
+        if not role_name or role_name in {"independent_driver", "independent_host"}:
+            # These are provider participation roles, not Platform personas.
+            # Their workspaces are derived from live DriverProfile / Host
+            # identity records below, so a role row alone cannot create one.
             continue
         descriptors.append(
             ContextDescriptor(
