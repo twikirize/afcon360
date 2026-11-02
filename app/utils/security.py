@@ -31,6 +31,34 @@ def _is_deployed_environment(app_env=None, flask_env=None) -> bool:
     )
 
 
+def ensure_redis_url_configured(
+    redis_url=None,
+    redis_available=True,
+    app_env=None,
+    flask_env=None,
+):
+    """Require the real shared Redis dependency in deployed environments.
+
+    Local development may use the existing localhost URL and in-memory
+    fallbacks. Docker/production must not silently degrade sessions,
+    rate-limiting, cache or realtime coordination to process-local storage.
+    """
+    candidate = str(redis_url or "").strip()
+    deployed = _is_deployed_environment(app_env, flask_env)
+
+    if deployed and not candidate:
+        raise RuntimeError(
+            "REDIS_URL must be configured before starting a deployed "
+            "AFCON360 application. Local Redis fallbacks are not permitted."
+        )
+    if deployed and not redis_available:
+        raise RuntimeError(
+            "The Redis client library is required in deployed AFCON360 mode."
+        )
+
+    return candidate or "redis://localhost:6379/0"
+
+
 def ensure_database_url_configured(database_url=None, app_env=None, flask_env=None):
     """Require an explicit database target in deployed environments.
 
