@@ -31,6 +31,7 @@ def test_property_payment_options_keep_method_specific_timings(monkeypatch):
     policy = SimpleNamespace(
         allow_pay_now=True,
         allow_pay_on_arrival=True,
+        allow_pay_at_checkout=False,
         allow_deposit_payment=True,
         deposit_percentage=Decimal("0"),
         cancellation_policy="flexible",
