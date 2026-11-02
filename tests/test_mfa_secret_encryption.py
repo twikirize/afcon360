@@ -182,3 +182,47 @@ def test_missing_encryption_key_allows_only_local_development_fallback(monkeypat
     key = get_encryption_key()
     assert isinstance(key, bytes)
     assert len(key) == 44
+
+def test_flask_signing_key_fails_closed_in_docker_with_development_flask_env(monkeypatch):
+    from app.utils.security import ensure_secret_key_configured
+
+    monkeypatch.setenv("APP_ENV", "docker")
+    monkeypatch.setenv("FLASK_ENV", "development")
+
+    with pytest.raises(RuntimeError, match="SECRET_KEY"):
+        ensure_secret_key_configured(
+            None,
+            app_env="docker",
+            flask_env="development",
+        )
+
+
+def test_flask_signing_key_rejects_placeholder_in_production(monkeypatch):
+    from app.utils.security import ensure_secret_key_configured
+
+    with pytest.raises(RuntimeError, match="SECRET_KEY"):
+        ensure_secret_key_configured(
+            "REPLACE_WITH_A_REAL_SECRET",
+            app_env="production",
+            flask_env="production",
+        )
+
+
+def test_flask_signing_key_allows_real_key_in_deployed_mode():
+    from app.utils.security import ensure_secret_key_configured
+
+    assert ensure_secret_key_configured(
+        "a-real-secret-key",
+        app_env="docker",
+        flask_env="development",
+    ) == "a-real-secret-key"
+
+
+def test_flask_signing_key_leaves_local_development_fallback_available():
+    from app.utils.security import ensure_secret_key_configured
+
+    assert ensure_secret_key_configured(
+        None,
+        app_env="local",
+        flask_env="development",
+    ) is None
