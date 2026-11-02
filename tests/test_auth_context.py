@@ -410,6 +410,26 @@ def test_workspace_switcher_is_shared_with_non_personal_shells():
     assert "available_contexts" in component
 
 
+def test_host_deep_link_resolution_is_confined_to_dashboard_entry():
+    root = Path(__file__).resolve().parents[1]
+    routes = (
+        root / "app" / "accommodation" / "routes.py"
+    ).read_text(encoding="utf-8")
+
+    identity_start = routes.index("def _ensure_host_identity():")
+    identity_end = routes.index("\ndef _populate_form_choices", identity_start)
+    identity_helper = routes[identity_start:identity_end]
+
+    dashboard_start = routes.index("def host_dashboard():")
+    dashboard_end = routes.index(
+        '@accommodation_bp.route("/host/dashboard/data"', dashboard_start
+    )
+    dashboard_view = routes[dashboard_start:dashboard_end]
+
+    assert "resolve_request_context" not in identity_helper
+    assert "resolve_request_context" in dashboard_view
+
+
 def test_dashboard_shell_is_inside_parent_content_block():
     root = Path(__file__).resolve().parents[1]
     shell = (root / "templates" / "user" / "base_user_dashboard.html").read_text(encoding="utf-8")
