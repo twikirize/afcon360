@@ -947,8 +947,11 @@ def event_owner_context_required():
     
     Allows access if:
     1. User is platform admin, OR
-    2. User owns the event (canonical owner or EventRole owner) - auto-switches context
-    3. User has EVENT context already selected for this event
+    2. User owns the event (canonical owner or EventRole owner), OR
+    3. User has a live EVENT assignment for this event.
+
+    A non-platform event URL establishes a request-local context after the
+    ownership check; it does not rewrite the session selection for other tabs.
     """
     def decorator(view):
         @wraps(view)
