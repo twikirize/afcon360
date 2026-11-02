@@ -202,6 +202,13 @@ def _cleanup(app, org_id, user_id):
             db.session.commit()
         user = db.session.get(User, user_id)
         if user is not None:
+            # The PostgreSQL trigger intentionally blocks direct role deletes.
+            # Use the same transaction-scoped authorization as the sanctioned
+            # account-deletion service before cascading the test user's roles.
+            from app.auth.deletion_guard import authorize_deletion
+            authorize_deletion(
+                db.session, actor=f"test_cleanup:user:{user_id}"
+            )
             db.session.delete(user)
             db.session.commit()
 

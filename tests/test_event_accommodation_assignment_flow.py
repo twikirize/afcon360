@@ -434,9 +434,23 @@ def test_full_booking_existing_guest_can_complete(app, event_with_booking, atten
         assert resp.status_code == 409
 
 
-def test_multiple_attendees_distinct_tokens(app, event_with_booking):
+def test_multiple_attendees_distinct_tokens(app, event_with_booking, test_guest_user):
     """Multiple attendees: John->token A, Mary->token B; A resolves John only, B resolves Mary only; no rotation."""
     with app.app_context():
+        john_user = db.session.merge(test_guest_user)
+        mary_suffix = uuid.uuid4().hex[:8]
+        mary_user = User(
+            email=f"mary-{mary_suffix}@example.com",
+            username=f"mary-{mary_suffix}",
+            password_hash="not-a-real-hash",
+            email_verified=True,
+            phone_verified=True,
+            is_verified=True,
+            is_active=True,
+            kyc_level=2,
+        )
+        db.session.add(mary_user)
+        db.session.flush()
         event = db.session.get(Event, event_with_booking["event_id"])
         booking = db.session.get(AccommodationBooking, event_with_booking["booking_id"])
         event_id = event.id
@@ -458,7 +472,7 @@ def test_multiple_attendees_distinct_tokens(app, event_with_booking):
         john = EventRegistration(
             event_id=event_id,
             ticket_type_id=ticket_type.id,
-            user_id=1,
+            user_id=john_user.id,
             full_name="John Doe",
             email="john@example.com",
             status="confirmed",
@@ -469,7 +483,7 @@ def test_multiple_attendees_distinct_tokens(app, event_with_booking):
         mary = EventRegistration(
             event_id=event_id,
             ticket_type_id=ticket_type.id,
-            user_id=2,
+            user_id=mary_user.id,
             full_name="Mary Smith",
             email="mary@example.com",
             status="confirmed",
@@ -573,6 +587,7 @@ def test_reassignment_deactivates_old_slot(app, event_with_booking, attendee_reg
         if not prop_b:
             prop_b = Property(
                 title="Hotel B",
+                description="A secondary test hotel used for reassignment coverage.",
                 owner_id=event_created_by_id,
                 status="approved",
                 property_type="hotel",
@@ -726,9 +741,23 @@ def test_cancellation_frees_capacity(app, event_with_booking, attendee_registrat
         assert resp.status_code in (404, 410)
 
 
-def test_token_authorization_isolation(app, event_with_booking):
+def test_token_authorization_isolation(app, event_with_booking, test_guest_user):
     """John's token cannot modify Mary's registration."""
     with app.app_context():
+        john_user = db.session.merge(test_guest_user)
+        mary_suffix = uuid.uuid4().hex[:8]
+        mary_user = User(
+            email=f"mary-{mary_suffix}@example.com",
+            username=f"mary-{mary_suffix}",
+            password_hash="not-a-real-hash",
+            email_verified=True,
+            phone_verified=True,
+            is_verified=True,
+            is_active=True,
+            kyc_level=2,
+        )
+        db.session.add(mary_user)
+        db.session.flush()
         event = db.session.get(Event, event_with_booking["event_id"])
         booking = db.session.get(AccommodationBooking, event_with_booking["booking_id"])
         event_id = event.id

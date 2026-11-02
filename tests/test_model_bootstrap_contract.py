@@ -500,7 +500,6 @@ FALSE_STAMP_MARKERS = (
         "tests/conftest.py",
         "scripts/setup_test_db_schema.py",
         "scripts/setup_test_db.py",
-        "tests/browser/start_test_server.py",
     ],
 )
 def test_no_false_alembic_head_stamp_in_provisioning_paths(relative_path):

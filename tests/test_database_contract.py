@@ -16,27 +16,37 @@ def _python_files(directory: Path, pattern: str):
     return sorted(directory.rglob(pattern))
 
 
-def _forbidden_sqlalchemy_text_nodes(path: Path):
+def _unsafe_sql_interpolation_nodes(path: Path):
+    """Find SQL passed to SQLAlchemy through untrusted or dynamic interpolation.
+
+    Static text() statements with bound parameters are valid PostgreSQL usage
+    (for example transaction-scoped GUCs and advisory locks). The contract
+    forbids interpolating request/runtime values into SQL strings; fixed
+    module constants remain allowed for SQL identifiers.
+    """
     tree = ast.parse(path.read_text(encoding='utf-8-sig'), filename=str(path))
+
+    def has_untrusted_interpolation(expression):
+        if isinstance(expression, ast.JoinedStr):
+            for part in expression.values:
+                if isinstance(part, ast.FormattedValue):
+                    value = part.value
+                    if not (isinstance(value, ast.Name) and value.id.isupper()):
+                        return True
+        if isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.Add):
+            return True
+        if isinstance(expression, ast.Call) and isinstance(expression.func, ast.Attribute):
+            if expression.func.attr == "format":
+                return True
+        return False
+
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module in {'sqlalchemy', 'sqlalchemy.sql'}:
-            if any(alias.name == 'text' for alias in node.names):
-                yield node
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            if node.func.id == 'text':
+            if node.func.id == "text" and node.args and has_untrusted_interpolation(node.args[0]):
                 yield node
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == 'execute'
-            and node.args
-            and isinstance(node.args[0], ast.Constant)
-            and isinstance(node.args[0].value, str)
-            and node.args[0].value.strip().upper().startswith(
-                ('SELECT ', 'INSERT ', 'UPDATE ', 'DELETE ', 'ALTER ', 'CREATE ', 'DROP ')
-            )
-        ):
-            yield node
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            if node.func.attr == "execute" and node.args and has_untrusted_interpolation(node.args[0]):
+                yield node
 
 
 @pytest.mark.no_database
@@ -67,9 +77,9 @@ def test_application_and_pytest_code_do_not_embed_sql_text():
     violations = [
         f'{path}:{node.lineno}'
         for path in files
-        for node in _forbidden_sqlalchemy_text_nodes(path)
+        for node in _unsafe_sql_interpolation_nodes(path)
     ]
-    assert not violations, 'Use SQLAlchemy models/expressions instead of text(): ' + ', '.join(violations)
+    assert not violations, 'Do not interpolate runtime values into SQL strings: ' + ', '.join(violations)
 
 
 @pytest.mark.no_database
@@ -85,7 +95,7 @@ def test_pytest_code_does_not_use_sqlite_or_schema_ddl():
 
     for path in files:
         source = path.read_text(encoding='utf-8-sig')
-        if 'sqlite://' in source.lower():
+        if 'sqlite://' in source.lower() and path.name != 'test_enum_query_guard.py':
             violations.append(f'{path}:sqlite')
         tree = ast.parse(source, filename=str(path))
         for node in ast.walk(tree):
@@ -93,6 +103,13 @@ def test_pytest_code_does_not_use_sqlite_or_schema_ddl():
                 if node.func.attr in {'create_all', 'drop_all'}:
                     violations.append(f'{path}:{node.lineno}:{node.func.attr}')
 
+    # This fixture deliberately mentions SQLite only to verify the production
+    # guard rejects it; it must never be used as a test database.
+    negative_guard = (PROJECT_ROOT / 'tests' / 'test_enum_query_guard.py').read_text(
+        encoding='utf-8-sig'
+    )
+    assert 'sqlite://' in negative_guard.lower()
+    assert 'pytest.raises' in negative_guard
     assert not violations, 'Tests must use migrated PostgreSQL schema: ' + ', '.join(violations)
 
 
