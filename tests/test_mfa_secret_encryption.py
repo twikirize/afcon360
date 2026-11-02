@@ -268,3 +268,49 @@ def test_database_url_allows_local_development_fallback():
         app_env="local",
         flask_env="development",
     ) is None
+
+def test_redis_url_fails_closed_in_docker_with_development_flask_mode():
+    from app.utils.security import ensure_redis_url_configured
+
+    with pytest.raises(RuntimeError, match="REDIS_URL"):
+        ensure_redis_url_configured(
+            None,
+            redis_available=True,
+            app_env="docker",
+            flask_env="development",
+        )
+
+
+def test_redis_client_library_is_required_in_deployed_mode():
+    from app.utils.security import ensure_redis_url_configured
+
+    with pytest.raises(RuntimeError, match="Redis Python client"):
+        ensure_redis_url_configured(
+            "redis://redis.internal:6379/0",
+            redis_available=False,
+            app_env="docker",
+            flask_env="development",
+        )
+
+
+def test_redis_url_is_accepted_in_deployed_mode():
+    from app.utils.security import ensure_redis_url_configured
+
+    uri = "redis://redis.internal:6379/0"
+    assert ensure_redis_url_configured(
+        uri,
+        redis_available=True,
+        app_env="docker",
+        flask_env="development",
+    ) == uri
+
+
+def test_local_development_retains_redis_localhost_fallback():
+    from app.utils.security import ensure_redis_url_configured
+
+    assert ensure_redis_url_configured(
+        None,
+        redis_available=False,
+        app_env="local",
+        flask_env="development",
+    ) == "redis://localhost:6379/0"
