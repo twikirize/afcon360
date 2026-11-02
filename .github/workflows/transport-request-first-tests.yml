@@ -45,6 +45,7 @@ on:
       - "tests/test_dead_letter_alert.py"
       - "tests/test_payment_method_capabilities.py"
       - "tests/conftest.py"
+      - "tests/helpers/**"
       - "scripts/ci/redis_socketio_runtime_smoke.py"
       - "scripts/ops/**"
       - "docs/release/**"
@@ -129,13 +130,20 @@ jobs:
       SECRET_KEY: "ci-only-not-a-production-secret"
       SECURITY_SALT: "ci-only-security-salt-value-long-enough-for-tests-2026"
       ENCRYPTION_KEY: "ci-only-not-a-production-key"
-      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afcon360_test
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afcon360_test
+      TEST_DATABASE_URL: postgresql://postgres@localhost:5432/afcon360_test
+      DATABASE_URL: postgresql://postgres@localhost:5432/afcon360_test
       TEST_DB_LOCK_TIMEOUT: "60"
 
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      - name: Configure passwordless CI PostgreSQL authentication
+        shell: bash
+        run: |
+          umask 077
+          printf 'localhost:5432:afcon360_test:postgres:postgres\n' > "$HOME/.pgpass"
+          chmod 600 "$HOME/.pgpass"
 
       - name: Set up Python
         uses: actions/setup-python@v5
