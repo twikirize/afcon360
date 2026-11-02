@@ -763,8 +763,14 @@ def _verify_test_state(request, app):
         # No active/leaked request context
         from flask import g, has_request_context
         # DB session should be clean at test start
-        assert db.session.is_active or not db.session.dirty, (
-            f"DB session is dirty at test start: {db.session.dirty}"
+        # Some focused service tests temporarily replace the scoped
+        # session with a small FakeSession. Treat an unavailable dirty
+        # collection as empty for that test double; real SQLAlchemy
+        # sessions still expose and verify the actual dirty collection.
+        dirty = getattr(db.session, "dirty", ())
+        is_active = getattr(db.session, "is_active", True)
+        assert is_active or not dirty, (
+            f"DB session is dirty at test start: {dirty}"
         )
 
     yield  # test runs
@@ -779,8 +785,9 @@ def _verify_test_state(request, app):
             pass
 
         # Check no dirty/flushed state
-        assert not db.session.dirty, (
-            f"DB session has dirty state at teardown: {db.session.dirty}"
+        dirty = getattr(db.session, "dirty", ())
+        assert not dirty, (
+            f"DB session has dirty state at teardown: {dirty}"
         )
 
 
