@@ -12,6 +12,7 @@ from app.auth.context import (
     get_active_context,
     get_available_contexts,
     switch_context,
+    resolve_request_context,
 )
 
 
@@ -312,6 +313,41 @@ def test_switch_endpoint_blocks_invalid_context_and_route_is_post_only(monkeypat
     app.register_blueprint(auth_routes.auth_bp)
     rules = [rule for rule in app.url_map.iter_rules() if "switch-context" in rule.rule]
     assert rules and all(rule.methods == {"POST", "OPTIONS"} for rule in rules)
+
+
+def test_request_context_override_does_not_change_session_selection(request_context):
+    user = _user()
+    session["active_context_type"] = "personal"
+    session["active_role"] = "user"
+    original_session = dict(session)
+
+    selected = resolve_request_context(user, ContextType.DRIVER)
+
+    assert selected is not None
+    assert selected.type is ContextType.DRIVER
+    assert get_active_context(user) == selected
+    assert dict(session) == original_session
+
+
+def test_request_context_resolution_refuses_ambiguous_workspace(request_context, monkeypatch):
+    user = _user()
+    driver_a = ContextDescriptor(
+        ContextType.DRIVER, "driver-a", "Driver A", "driver", "/transport/driver-dashboard"
+    )
+    driver_b = ContextDescriptor(
+        ContextType.DRIVER, "driver-b", "Driver B", "driver", "/transport/driver-dashboard"
+    )
+    monkeypatch.setattr(
+        "app.auth.context.get_available_contexts",
+        lambda _user: [
+            ContextDescriptor(ContextType.PERSONAL, None, "Personal", "user"),
+            driver_a,
+            driver_b,
+        ],
+    )
+
+    assert resolve_request_context(user, ContextType.DRIVER) is None
+    assert get_active_context(user).type is ContextType.PERSONAL
 
 
 def test_shell_template_uses_canonical_context_contract():
