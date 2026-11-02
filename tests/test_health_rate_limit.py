@@ -28,7 +28,10 @@ class _RateLimitTestConfig(TestingConfig):
     same limiter activation path used by the production container.
     """
 
-    APP_ENV = "docker"
+    # Use an isolated test runtime: the production-like request hook stays
+    # active (DEBUG=False), while Redis-less test storage remains permitted.
+    # The Docker/production Redis fail-closed contract is covered separately.
+    APP_ENV = "test"
     DEBUG = False
     RATELIMIT_ENABLED = True
     # Use standard Flask-Limiter config key for default limits
