@@ -260,10 +260,19 @@ def revert_fk_mutations(conn, table_name: str, snap: Dict[str, Any]) -> int:
     statement = select(pk_column, *(table.c[name] for name in fk_columns))
     pk_type = snap.get("pk_type")
     if pk_type == "int":
-        max_pk = snap.get("max_pk", 0)
-        if max_pk == 0:
-            return 0
-        statement = statement.where(pk_column <= max_pk)
+        baseline_ids = snap.get("int_pks")
+        if baseline_ids is not None:
+            if not baseline_ids:
+                return 0
+            statement = statement.where(pk_column.in_(list(baseline_ids)))
+        else:
+            # Compatibility with baselines created before exact integer IDs
+            # were stored. Include zero-valued IDs rather than assuming a
+            # positive sequence boundary.
+            max_pk = snap.get("max_pk")
+            if max_pk is None:
+                return 0
+            statement = statement.where(pk_column <= max_pk)
     elif pk_type == "uuid":
         uuid_pks = list(snap.get("uuid_pks") or set())
         if not uuid_pks:
