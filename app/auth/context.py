@@ -958,13 +958,9 @@ def event_owner_context_required():
     """
     Decorator for per-event organizer dashboards.
     
-    Allows access if:
-    1. User is platform admin, OR
-    2. User owns the event (canonical owner or EventRole owner), OR
-    3. User has a live EVENT assignment for this event.
-
-    A non-platform event URL establishes a request-local context after the
-    ownership check; it does not rewrite the session selection for other tabs.
+    Requires the canonical event-owner check for the specific URL target.
+    If the owner has a matching EVENT workspace, the request uses it locally.
+    The URL visit does not rewrite session selection for other tabs.
     """
     def decorator(view):
         @wraps(view)
