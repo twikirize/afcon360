@@ -734,10 +734,9 @@ def verify_phone():
         flash("Please enter a valid 6-digit code.", "danger")
         return redirect(request.referrer or url_for("index"))
 
-    if not full_name:
-        flash("Please enter your full name as it appears on your ID document.", "danger")
-        return redirect(request.referrer or url_for("auth.verify_phone"))
-
+    # Phone verification proves control of the registered contact channel.
+    # Canonical name collection/verification is handled by the profile and KYC
+    # flows; it must not block a valid phone OTP.
     success, message = PhoneVerificationService.verify_code(
         user=current_user,
         profile=profile,
