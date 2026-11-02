@@ -408,6 +408,10 @@ def test_workspace_switcher_is_shared_with_non_personal_shells():
     assert "auth.switch_context" in component
     assert "csrf_token" in component
     assert "available_contexts" in component
+    # A request-local current context remains clickable so the user can
+    # explicitly persist it in the shared session across tabs.
+    assert "disabled aria-current" not in component
+    assert "Set across tabs" in component
 
 
 def test_host_deep_link_resolution_is_confined_to_dashboard_entry():
