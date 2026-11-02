@@ -245,7 +245,7 @@ class TestDriverWorkspaceRendering:
 
 
 class TestDriverContextGate:
-    """Workspace entry requires an active DRIVER context, nothing more."""
+    """A live DriverProfile grants workspace entry; go-live remains separate."""
 
     def test_driver_deep_link_resolves_without_a_saved_context(self, app, client):
         driver = _seed_driver(app, compliance=ComplianceStatus.PENDING_REVIEW)
