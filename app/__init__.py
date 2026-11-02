@@ -641,6 +641,10 @@ def create_app(config_object=None) -> Flask:
             "Required Redis session storage is unavailable; refusing to start "
             "a deployed AFCON360 worker with filesystem-session fallback."
         )
+    if deployed_runtime and not FLASK_SESSION_AVAILABLE:
+        raise RuntimeError(
+            "Flask-Session is required for deployed AFCON360 server-side Redis sessions."
+        )
 
     # ============================================================
     # SENTRY INITIALIZATION (guarded by feature flag)
