@@ -288,7 +288,8 @@ def revert_fk_mutations(conn, table_name: str, snap: Dict[str, Any]) -> int:
 
 def cleanup_table(session, table_name: str, snap: Dict[str, Any]) -> int:
     """Delete only rows inserted during the test using reflected Core tables."""
-    table = _reflect_table(session.get_bind(), table_name)
+    bind = session.get_bind() if callable(getattr(session, "get_bind", None)) else session
+    table = _reflect_table(bind, table_name)
     pk_type = snap.get("pk_type", "none")
 
     if pk_type == "int":
