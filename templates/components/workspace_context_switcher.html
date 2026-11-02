@@ -15,9 +15,9 @@
         <input type="hidden" name="public_id" value="{{ context.public_id }}">
         {% endif %}
         <input type="hidden" name="role" value="{{ context.role or ('user' if context.type.value == 'personal' else '') }}">
-        <button type="submit" class="workspace-context-switcher__option{% if is_selected %} is-selected{% endif %}" {% if is_selected %}disabled aria-current="true"{% endif %}>
+        <button type="submit" class="workspace-context-switcher__option{% if is_selected %} is-selected{% endif %}" {% if is_selected %}aria-current="true"{% endif %}>
           <span>{{ context.label }}</span>
-          {% if is_selected %}<span class="workspace-context-switcher__current">Current</span>{% endif %}
+          {% if is_selected %}<span class="workspace-context-switcher__current">Current · Set across tabs</span>{% endif %}
         </button>
       </form>
     {% endfor %}
