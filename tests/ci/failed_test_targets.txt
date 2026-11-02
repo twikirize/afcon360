@@ -1,1 +1,4 @@
 tests/test_transport_front_page.py::test_transport_front_page_renders_anonymous
+tests/test_auth_context.py
+tests/test_driver_workspace_consolidation.py
+tests/test_isolation_baseline.py
