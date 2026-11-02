@@ -156,18 +156,46 @@ def _count_open_incidents():
         return 0
 
 
+def _wants_json_response():
+    """Return whether the caller explicitly requested the JSON representation."""
+    return (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or request.accept_mimetypes.best == "application/json"
+    )
+
+
 def _json_or_template(template, status=200, **ctx):
     """
     Returns JSON for AJAX/API clients, HTML for browsers.
     Detects via Accept header or X-Requested-With.
     """
-    wants_json = (
-        request.headers.get("X-Requested-With") == "XMLHttpRequest"
-        or request.accept_mimetypes.best == "application/json"
-    )
-    if wants_json:
+    if _wants_json_response():
         return jsonify({"status": "ok", **ctx}), status
     return render_template(template, **ctx), status
+
+
+_VEHICLE_JSON_FIELDS = (
+    "license_plate",
+    "registration_number",
+    "make",
+    "model",
+    "year",
+    "color",
+    "vehicle_type",
+    "vehicle_class",
+    "passenger_capacity",
+    "max_passenger_capacity",
+    "luggage_capacity",
+    "luggage_space_cubic_meters",
+    "features",
+    "accessibility_features",
+    "safety_features",
+)
+
+
+def _vehicle_json_representation(vehicle):
+    """Return an allow-listed, JSON-safe vehicle view without internal or secret fields."""
+    return vehicle.to_dict(include=list(_VEHICLE_JSON_FIELDS))
 
 
 def _paginate_args():
@@ -2698,13 +2726,15 @@ def register_vehicle():
     try:
         svc = get_provider_service()
         driver = svc.get_driver_profile(current_user.id)
-        if not driver:
-            raise ValidationError(
-                "You must be a registered driver to register a vehicle"
-            )
+
+        # Vehicle ownership is independent of driver-workspace participation.
+        # Approved drivers register against their DriverProfile; users without
+        # a driver profile may register a personally owned vehicle directly.
+        owner_type = "driver" if driver else "user"
+        owner_id = driver.id if driver else current_user.id
         result = svc.register_vehicle(
-            owner_type='driver',
-            owner_id=driver.id,
+            owner_type=owner_type,
+            owner_id=owner_id,
             vehicle_data=data,
         )
         vehicle_id = result['data']['vehicle_id']
@@ -2751,6 +2781,12 @@ def vehicles_show(id):
         flash("Vehicle not found", "warning")
         return redirect(url_for("transport.vehicles_index"))
 
+    if _wants_json_response():
+        return _json_or_template(
+            "transport/vehicles/show.html",
+            vehicle=_vehicle_json_representation(vehicle),
+            id=id,
+        )
     return _json_or_template("transport/vehicles/show.html", vehicle=vehicle, id=id)
 
 
@@ -2794,6 +2830,12 @@ def vehicles_edit(id):
     vehicle = get_provider_service().get_vehicle(id)
     if not vehicle:
         abort(404)
+    if _wants_json_response():
+        return _json_or_template(
+            "transport/vehicles/edit.html",
+            vehicle=_vehicle_json_representation(vehicle),
+            id=id,
+        )
     return _json_or_template("transport/vehicles/edit.html", vehicle=vehicle, id=id)
 
 
