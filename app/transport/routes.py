@@ -36,6 +36,7 @@ from app.auth.decorators import (
 from app.auth.context import (
     ContextType,
     active_context_required,
+    workspace_context_entry_required,
     switch_context,
     ContextSwitchError,
 )
@@ -2437,7 +2438,7 @@ def _driver_active_trip(bookings):
 @transport_bp.route("/driver-dashboard")
 @module_enabled_required("transport")
 @login_required
-@active_context_required(ContextType.DRIVER)
+@workspace_context_entry_required(ContextType.DRIVER)
 def driver_dashboard():
     """Driver's personal dashboard (Driver Workspace home).
 
