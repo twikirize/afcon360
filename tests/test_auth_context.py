@@ -362,6 +362,34 @@ def test_shell_template_uses_canonical_context_contract():
     assert 'dashboard-shell.js' in shell
 
 
+def test_active_context_guard_still_requires_explicit_selection(request_context, monkeypatch):
+    from flask import abort
+    from app.auth.context import active_context_required
+    from flask_login import LoginManager
+
+    app = Flask("strict-context-guard")
+    app.secret_key = "strict-context-guard-secret"
+    login_manager = LoginManager(app)
+
+    @login_manager.user_loader
+    def load_user(_user_id):
+        return _user()
+
+    personal = ContextDescriptor(
+        ContextType.PERSONAL, None, "Personal", "user"
+    )
+    monkeypatch.setattr("app.auth.context.get_active_context", lambda _user: personal)
+
+    @active_context_required(ContextType.DRIVER)
+    def protected_action():
+        return "allowed"
+
+    with app.test_request_context("/driver/action"):
+        with pytest.raises(Exception) as exc_info:
+            protected_action()
+        assert getattr(exc_info.value, "code", None) == 403
+
+
 def test_workspace_switcher_is_shared_with_non_personal_shells():
     root = Path(__file__).resolve().parents[1]
     base_shell = (root / "templates" / "base.html").read_text(encoding="utf-8")
