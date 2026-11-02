@@ -226,3 +226,45 @@ def test_flask_signing_key_leaves_local_development_fallback_available():
         app_env="local",
         flask_env="development",
     ) is None
+
+def test_database_url_fails_closed_in_docker_with_development_flask_env():
+    from app.utils.security import ensure_database_url_configured
+
+    with pytest.raises(RuntimeError, match="DATABASE_URL"):
+        ensure_database_url_configured(
+            None,
+            app_env="docker",
+            flask_env="development",
+        )
+
+
+def test_database_url_rejects_missing_target_in_production():
+    from app.utils.security import ensure_database_url_configured
+
+    with pytest.raises(RuntimeError, match="DATABASE_URL"):
+        ensure_database_url_configured(
+            "",
+            app_env="production",
+            flask_env="production",
+        )
+
+
+def test_database_url_accepts_explicit_target_in_deployed_mode():
+    from app.utils.security import ensure_database_url_configured
+
+    uri = "postgresql://afcon360@db.internal:5432/afcon360_prod"
+    assert ensure_database_url_configured(
+        uri,
+        app_env="docker",
+        flask_env="development",
+    ) == uri
+
+
+def test_database_url_allows_local_development_fallback():
+    from app.utils.security import ensure_database_url_configured
+
+    assert ensure_database_url_configured(
+        None,
+        app_env="local",
+        flask_env="development",
+    ) is None
