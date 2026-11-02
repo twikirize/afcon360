@@ -35,6 +35,7 @@ from app.auth.decorators import (
 )
 from app.auth.context import (
     ContextType,
+    active_context_required,
     workspace_context_entry_required,
     switch_context,
     ContextSwitchError,
