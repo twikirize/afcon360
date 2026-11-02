@@ -506,28 +506,32 @@ def create_app(config_object=None) -> Flask:
     # ENCRYPTION KEY GUARD — fail closed in Docker/production before any
     # encryption happens. Only local development may receive an ephemeral key.
     # Never print the key: logs are not a secret store.
-    from app.utils.security import ensure_encryption_key_configured
+    from app.utils.security import (
+        ensure_encryption_key_configured,
+        ensure_secret_key_configured,
+    )
     ensure_encryption_key_configured(
         app_env=app.config.get("APP_ENV"),
         flask_env=app.config.get("FLASK_ENV"),
     )
 
     # Critical Config Fallbacks with validation
-    # SECRET_KEY validation
+    # SECRET_KEY validation is Docker-aware and must not depend solely on
+    # FLASK_ENV: APP_ENV=docker remains deployed even if FLASK_ENV is mis-set.
     secret_key = app.config.get('SECRET_KEY') or os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY")
+    secret_key = ensure_secret_key_configured(
+        secret_key,
+        app_env=app.config.get("APP_ENV"),
+        flask_env=app.config.get("FLASK_ENV"),
+    )
     if not secret_key:
-        flask_env = os.getenv("FLASK_ENV", "production")
-        if flask_env == "production":
-            raise RuntimeError(
-                "SECRET_KEY must be set in production. "
-                "Set SECRET_KEY environment variable."
-            )
-        else:
-            # Development fallback - generate a deterministic key for development
-            #import hashlib
-            dev_secret = hashlib.sha256(b"afcon360_dev_secret_do_not_use_in_prod").hexdigest()[:32]
-            secret_key = dev_secret
-            logger.warning("Using development SECRET_KEY. Set SECRET_KEY environment variable for production.")
+        # Local-development-only fallback. Deployed environments have already
+        # failed closed above, so this deterministic key cannot enter Docker/prod.
+        dev_secret = hashlib.sha256(b"afcon360_dev_secret_do_not_use_in_prod").hexdigest()[:32]
+        secret_key = dev_secret
+        logger.warning(
+            "Using development SECRET_KEY. Set SECRET_KEY environment variable for production."
+        )
     app.config['SECRET_KEY'] = secret_key
 
     # DATABASE URI validation
