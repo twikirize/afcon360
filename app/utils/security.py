@@ -31,6 +31,26 @@ def _is_deployed_environment(app_env=None, flask_env=None) -> bool:
     )
 
 
+def ensure_database_url_configured(database_url=None, app_env=None, flask_env=None):
+    """Require an explicit database target in deployed environments.
+
+    The deployed APP_ENV is authoritative even if FLASK_ENV was accidentally
+    set to development. Returning None is permitted only for local development,
+    where create_app may use its existing local PostgreSQL fallback.
+    """
+    candidate = str(database_url or "").strip()
+    if candidate:
+        return candidate
+
+    if _is_deployed_environment(app_env, flask_env):
+        raise RuntimeError(
+            "DATABASE_URL must be configured before starting a deployed "
+            "AFCON360 application. Local database fallbacks are not permitted "
+            "in Docker or production."
+        )
+    return None
+
+
 def ensure_secret_key_configured(secret_key=None, app_env=None, flask_env=None):
     """Require a non-placeholder Flask signing key in deployed environments.
 
