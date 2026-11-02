@@ -54,22 +54,21 @@ def build_fk_graph(engine) -> Dict[str, List[str]]:
     Returns {table: [referred_tables]} — i.e. which tables this table
     depends on via FK.
 
-    Only FKs that actually BLOCK the deletion of their referred (parent)
-    row impose deleting-order constraints and are included:
+    Include NO ACTION / RESTRICT edges because they block parent deletion.
+    Also include CASCADE edges: although they do not block a direct parent
+    DELETE, deleting a parent may cascade through an intermediate child
+    table which is itself referenced by a restrictive FK. Omitting that
+    edge can make cleanup delete the grandparent too early (for example,
+    organisations -> accommodation_properties -> accommodation_bookings).
 
-      - ondelete is a no-op / NO ACTION / RESTRICT  -> included
-      - ondelete CASCADE / SET NULL / SET DEFAULT   -> excluded (the
-        database handles the referenced-row removal automatically)
-      - deferrable + initially deferred             -> excluded (checked
-        at COMMIT; the per-test cleanup deletes every test-created row in
-        a single transaction, so the constraint is satisfied regardless of
-        deletion order)
+    SET NULL / SET DEFAULT edges are excluded because parent deletion keeps
+    the child row and only changes its FK value. Deferrable, initially
+    deferred constraints are excluded because cleanup deletes test-created
+    rows in one transaction.
 
-    Excluding the non-blocking edges keeps the graph acyclic in practice
-    (e.g. the ``users`` <-> ``organisations`` <-> ``compliance_cases``
-    mutual-FK cycle dissolves: every edge in that SCC is either SET NULL or
-    deferred), so ``topological_delete_order`` returns a valid,
-    dependents-before-parents order instead of a cycle-skipped guess.
+    The known mutual-FK cycles in this schema are dissolved by SET NULL or
+    deferred constraints; CASCADE edges needed for multi-hop delete ordering
+    must remain in the graph.
     """
     inspector = sa_inspect(engine)
     graph: Dict[str, List[str]] = {}
@@ -88,8 +87,8 @@ def build_fk_graph(engine) -> Dict[str, List[str]]:
                 continue
             options = fk.get("options") or {}
             ondelete = (options.get("ondelete") or "NO ACTION").upper()
-            if ondelete in ("CASCADE", "SET NULL", "SET DEFAULT"):
-                continue  # parent-row removal is automatically handled
+            if ondelete in ("SET NULL", "SET DEFAULT"):
+                continue  # child survives parent deletion; no delete-order edge
             if options.get("deferrable") and (options.get("initially") or "").upper() == "DEFERRED":
                 continue  # checked at COMMIT; single-txn cleanup is order-safe
             referred.append(parent)
@@ -141,10 +140,12 @@ _TABLE_SKIP_NAMES = {"alembic_version", "_test_rows"}
 
 
 def _get_fk_columns(inspector, table_name: str) -> List[str]:
-    """Return FK column names that can block parent-row deletion.
+    """Return every FK column so baseline-row mutations can be restored.
 
-    Excludes CASCADE / SET NULL / SET DEFAULT (Postgres handles those) and
-    deferrable-deferred FKs. Only NO ACTION / RESTRICT columns are returned.
+    The snapshot is used to undo test changes to pre-existing rows before
+    deleting test-created parents. Restoration is required for every
+    ON DELETE action: CASCADE could otherwise delete a pre-existing child,
+    while SET NULL / SET DEFAULT could silently alter its original value.
     """
     try:
         fks = inspector.get_foreign_keys(table_name)
@@ -152,17 +153,10 @@ def _get_fk_columns(inspector, table_name: str) -> List[str]:
         return []
     cols: List[str] = []
     for fk in fks:
-        options = fk.get("options") or {}
-        ondelete = (options.get("ondelete") or "NO ACTION").upper()
-        if ondelete in ("CASCADE", "SET NULL", "SET DEFAULT"):
-            continue
-        if options.get("deferrable") and (options.get("initially") or "").upper() == "DEFERRED":
-            continue
         for c in fk.get("constrained_columns", []):
             if c not in cols:
                 cols.append(c)
     return cols
-
 
 def _get_pk_columns(inspector, table_name: str) -> List[str]:
     """Return ordered PK column names for a table."""
