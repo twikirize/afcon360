@@ -31,6 +31,26 @@ def _is_deployed_environment(app_env=None, flask_env=None) -> bool:
     )
 
 
+def ensure_secret_key_configured(secret_key=None, app_env=None, flask_env=None):
+    """Require a non-placeholder Flask signing key in deployed environments.
+
+    The APP_ENV docker/prod setting is authoritative even when someone
+    accidentally sets FLASK_ENV=development inside a deployed container.
+    Local development may continue to use the documented development fallback.
+    """
+    candidate = str(secret_key or "").strip()
+    if candidate and not candidate.startswith("REPLACE_"):
+        return candidate
+
+    if _is_deployed_environment(app_env, flask_env):
+        raise RuntimeError(
+            "SECRET_KEY must be configured before starting a deployed "
+            "AFCON360 application. A deterministic development signing key "
+            "is never permitted in Docker or production."
+        )
+    return None
+
+
 def ensure_encryption_key_configured(app_env=None, flask_env=None) -> str:
     """Require a persistent key in deployed environments.
 
