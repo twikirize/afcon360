@@ -9,6 +9,7 @@ from app.auth.context import (
     ContextDescriptor,
     ContextSwitchError,
     ContextType,
+    active_context_required,
     get_active_context,
     get_available_contexts,
     switch_context,
