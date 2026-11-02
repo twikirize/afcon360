@@ -387,12 +387,19 @@ def test_revoke_org_role_is_idempotent(db_session):
 
 def test_org_user_roles_never_reference_global_role_id(db_session):
     """Inspect the actual org_user_roles rows and verify no FK points to roles.id."""
-    global_role_ids = _get_global_role_id_set()
-
     org = _make_org(db_session)
     user = _make_user(db_session)
     _add_member(db_session, org, user)
 
     our = assign_org_role(user.id, org.id, "org_admin")
+    org_role = _get_org_role(org, "org_admin")
 
-    assert our.role_id not in global_role_ids
+    role_fk_targets = {
+        fk.target_fullname
+        for fk in OrgUserRole.__table__.c.role_id.foreign_keys
+    }
+
+    # Numeric primary-key sequences are independent: a valid org_roles.id
+    # may equal a roles.id. Verify the actual FK target and resolved row.
+    assert role_fk_targets == {"org_roles.id"}
+    assert our.role_id == org_role.id
