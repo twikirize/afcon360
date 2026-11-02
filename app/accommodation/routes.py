@@ -4357,25 +4357,9 @@ def _ensure_host_identity():
         flash(f"Cannot access host tools: {reason}", "warning")
         return None
 
-    from app.auth.context import (
-        ContextType,
-        get_active_context,
-        resolve_request_context,
-    )
+    from app.auth.context import ContextType, get_active_context
 
     active_context = get_active_context(current_user)
-    if active_context.type not in {
-        ContextType.ACCOMMODATION_HOST,
-        ContextType.PLATFORM,
-    }:
-        # A direct host-dashboard URL may establish the only live Host
-        # workspace for this request. If the user has multiple host identities,
-        # do not guess: the normal context selector remains required.
-        request_host_context = resolve_request_context(
-            current_user, ContextType.ACCOMMODATION_HOST
-        )
-        if request_host_context is not None:
-            active_context = request_host_context
 
     # Organisation host: the active ACCOMMODATION_HOST context carries the
     # organisation's PUBLIC org id, while get_host_identity() only resolves the
@@ -4482,6 +4466,18 @@ def _resolve_month(month_str: Optional[str]) -> dict:
 @accommodation_bp.route("/host/dashboard", endpoint="host_dashboard")
 @login_required
 def host_dashboard():
+    # Only the workspace landing page may resolve an unambiguous Host
+    # assignment from a bookmark. Host data and mutation routes still use
+    # _ensure_host_identity() with the explicit active context.
+    from app.auth.context import ContextType, get_active_context, resolve_request_context
+
+    active_context = get_active_context(current_user)
+    if active_context.type not in {
+        ContextType.ACCOMMODATION_HOST,
+        ContextType.PLATFORM,
+    }:
+        resolve_request_context(current_user, ContextType.ACCOMMODATION_HOST)
+
     host_info = _ensure_host_identity()
     if not host_info:
         return redirect(url_for("index"))
