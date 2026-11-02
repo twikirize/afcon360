@@ -276,6 +276,24 @@ class TestDriverContextGate:
             assert sess["active_context_type"] == "personal"
             assert sess["active_role"] == "user"
 
+    def test_legacy_driver_dashboard_bookmark_resolves_from_personal(self, app, client):
+        driver = _seed_driver(app, compliance=ComplianceStatus.PENDING_REVIEW)
+        with client.session_transaction() as sess:
+            sess["_user_id"] = driver.public_id
+            sess["_fresh"] = True
+            sess["active_context_type"] = "personal"
+            sess["active_role"] = "user"
+
+        response = _fresh_get(
+            client, "/transport/driver/dashboard", follow_redirects=True
+        )
+
+        assert response.status_code == 200
+        assert 'id="driverDashboard"' in response.data.decode("utf-8")
+        with client.session_transaction() as sess:
+            assert sess["active_context_type"] == "personal"
+
+
     def test_workspace_allowed_before_go_live(self, app, client):
         """KYC-qualified but not-yet-approved driver: workspace yes, go-live no."""
         driver = _seed_driver(app, compliance=ComplianceStatus.PENDING_REVIEW, kyc=True)
