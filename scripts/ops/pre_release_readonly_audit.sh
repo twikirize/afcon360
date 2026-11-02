@@ -88,7 +88,12 @@ if container_exists "$WEB_CONTAINER"; then
 import sys
 from urllib.parse import urlsplit
 
-allowed = {"APP_ENV", "FLASK_ENV", "DB_HOST", "DB_PORT", "DB_NAME"}
+allowed = {
+    "APP_ENV", "FLASK_ENV", "DB_HOST", "DB_PORT", "DB_NAME",
+    "SESSION_COOKIE_SECURE", "SESSION_COOKIE_HTTPONLY",
+    "SESSION_COOKIE_SAMESITE", "SESSION_TYPE", "RATELIMIT_ENABLED",
+}
+secret_keys = {"SECRET_KEY", "ENCRYPTION_KEY", "SECURITY_SALT", "OTP_PEPPER"}
 uri_keys = {"DATABASE_URL", "SQLALCHEMY_DATABASE_URI", "REDIS_URL"}
 
 for raw in sys.stdin:
@@ -98,6 +103,8 @@ for raw in sys.stdin:
     key, value = raw.split("=", 1)
     if key in allowed:
         print("{}={}".format(key, value))
+    elif key in secret_keys:
+        print("{}={}".format(key, "configured" if value else "missing"))
     elif key in uri_keys:
         try:
             parsed = urlsplit(value)
