@@ -52,7 +52,7 @@
         <div class="ck-status-value" data-online-label>{{ 'Online' if driver_profile.is_online else 'Offline' }}</div>
       </div>
       <label class="toggle">
-        <input type="checkbox" data-online-toggle
+        <input type="checkbox" id="onlineToggle" data-online-toggle
                data-url="{{ url_for('transport_api.driver_go_live_status', driver_id=driver_profile.id) }}"
                {{ 'checked' if driver_profile.is_online }} />
         <span class="toggle-slider"></span>
