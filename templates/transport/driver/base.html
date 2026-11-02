@@ -32,6 +32,7 @@
    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/base.css') }}">
    <link rel="stylesheet" href="{{ url_for('static', filename='css/global/style.css') }}">
    <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-components.css') }}">
+   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/workspace-context-switcher.css') }}">
    <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/driver-dashboard.css') }}">
 
   <!-- PWA -->
@@ -151,6 +152,8 @@
       {% endif %}
 
       <div class="topbar-actions">
+        {% from "components/workspace_context_switcher.html" import render_workspace_context_switcher with context %}
+        {{ render_workspace_context_switcher('driver') }}
         {% include 'components/notification_bell.html' %}
         <a href="{{ url_for('index') }}" class="topbar-btn" id="backToSiteBtn" title="Back to main site">
           <i class="fa-solid fa-globe"></i>
