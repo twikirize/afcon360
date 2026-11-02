@@ -247,17 +247,6 @@ def org_dashboard(org_id):
         is_deleted=False
     ).first()
 
-    # The organisation URL is resource-specific and membership was verified
-    # above. Resolve the matching live workspace for this request only, without
-    # replacing the user's session selection in other tabs.
-    from app.auth.context import ContextType, resolve_request_context
-    if getattr(org, "org_id", None):
-        resolve_request_context(
-            current_user,
-            ContextType.ORGANISATION,
-            public_id=str(org.org_id),
-        )
-
     # Get organization statistics
     stats = {
         'total_members': OrganisationMember.query.filter_by(
@@ -280,6 +269,17 @@ def org_dashboard(org_id):
     accessible_modules = OrganizationPermissionService.get_accessible_modules(current_user, org)
     organisation_role = OrganizationPermissionService.get_user_role(current_user, org)
     role_value = getattr(organisation_role, 'value', organisation_role) or 'member'
+    # Bind the verified organization route to its exact live workspace for
+    # this request. Supplying the resolved role avoids guessing when the user
+    # has more than one role assignment in the same organization.
+    from app.auth.context import ContextType, resolve_request_context
+    if getattr(org, "org_id", None):
+        resolve_request_context(
+            current_user,
+            ContextType.ORGANISATION,
+            public_id=str(org.org_id),
+            role=str(role_value),
+        )
     organisation_role_label = str(role_value).replace('_', ' ').title()
     # Canonical classification via the single chokepoint (organisation_type_code
     # → business_category fallback → CORPORATE default).
