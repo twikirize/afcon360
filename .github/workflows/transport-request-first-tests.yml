@@ -18,6 +18,8 @@ on:
       - "app/config.py"
       - "tests/test_geo_integration.py"
       - "tests/test_module_integration.py"
+      - "tests/test_*.py"
+      - "tests/transport/**"
       - "app/__init__.py"
       - "templates/transport/**"
       - "templates/admin/transport_admin_*.html"
