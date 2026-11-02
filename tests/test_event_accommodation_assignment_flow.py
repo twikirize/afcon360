@@ -587,10 +587,20 @@ def test_reassignment_deactivates_old_slot(app, event_with_booking, attendee_reg
         if not prop_b:
             prop_b = Property(
                 title="Hotel B",
+                slug=f"hotel-b-{uuid.uuid4().hex[:8]}",
                 description="A secondary test hotel used for reassignment coverage.",
-                owner_id=event_created_by_id,
+                owner_user_id=event_created_by_id,
                 status="approved",
                 property_type="hotel",
+                address_line1="456 Secondary Test Street",
+                city="Kampala",
+                country="UG",
+                base_price_per_night=Decimal("100.00"),
+                currency="USD",
+                max_guests=4,
+                is_verified=True,
+                is_active=True,
+                cancellation_policy=AccommodationCancellationPolicy.FLEXIBLE.value,
             )
             db.session.add(prop_b)
             db.session.flush()
@@ -778,7 +788,7 @@ def test_token_authorization_isolation(app, event_with_booking, test_guest_user)
         john = EventRegistration(
             event_id=event_id,
             ticket_type_id=ticket_type.id,
-            user_id=1,
+            user_id=john_user.id,
             full_name="John Doe",
             email="john@example.com",
             status="confirmed",
@@ -789,7 +799,7 @@ def test_token_authorization_isolation(app, event_with_booking, test_guest_user)
         mary = EventRegistration(
             event_id=event_id,
             ticket_type_id=ticket_type.id,
-            user_id=2,
+            user_id=mary_user.id,
             full_name="Mary Smith",
             email="mary@example.com",
             status="confirmed",
@@ -855,11 +865,14 @@ def test_token_authorization_isolation(app, event_with_booking, test_guest_user)
             booking_id=booking_id, event_assignment_id=mary_assignment_id
         ).first()
 
-        # John's slot got updated (his token -> his slot)
-        assert john_slot.guest_name == "Mary Smith"  # form allows name change but email is read-only
-        # Mary's slot unchanged
+        # John's token may update John's slot, but must never touch Mary's slot.
+        assert john_slot.guest_name == "Mary Smith"
+        assert john_slot.guest_phone == "+256701000000"
+        assert john_slot.status == "completed"
         assert mary_slot.guest_name == "Mary Smith"
         assert mary_slot.guest_email == "mary@example.com"
+        assert mary_slot.guest_phone is None
+        assert mary_slot.status == "in_progress"
 
 
 def test_shared_link_rejects_unknown_at_capacity(app, event_with_booking, attendee_registration):
