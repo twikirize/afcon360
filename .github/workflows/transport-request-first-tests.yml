@@ -150,6 +150,7 @@ jobs:
       TEST_DATABASE_URL: postgresql://postgres@localhost:5432/afcon360_test
       DATABASE_URL: postgresql://postgres@localhost:5432/afcon360_test
       TEST_DB_LOCK_TIMEOUT: "60"
+      TEST_ISOLATION_TIMING: "1"
 
     steps:
       - name: Check out source
