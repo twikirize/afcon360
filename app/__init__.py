@@ -1986,6 +1986,8 @@ def create_app(config_object=None) -> Flask:
         _org_id = None
         _org_slug = None
         _org_role = None
+        _active_context = None
+        _available_contexts = []
 
         # Resolve auth defensively: a detached/stale current_user (long-lived
         # app context after db.session.remove()) raises DetachedInstanceError
@@ -2015,9 +2017,13 @@ def create_app(config_object=None) -> Flask:
             # read-only compatibility path; stale legacy keys MUST NOT override
             # a live canonical selection.
             try:
-                from app.auth.context import get_active_context
+                from app.auth.context import (
+                    get_active_context,
+                    get_available_contexts,
+                )
 
                 _active_context = get_active_context(_cu)
+                _available_contexts = get_available_contexts(_cu)
                 if _active_context.type.value == "organisation":
                     _in_org_context = True
                     _org_id = _active_context.public_id
@@ -2047,6 +2053,8 @@ def create_app(config_object=None) -> Flask:
             "nav_org_slug": _org_slug,
             "nav_org_role": _org_role,
             "active_global_role": _session.get("active_global_role"),
+            "active_context": _active_context,
+            "available_contexts": _available_contexts,
         }
 
     def _safe_url(endpoint, *args, **kwargs):
