@@ -36,7 +36,7 @@ def test_alert_owner_dead_letter(app, monkeypatch):
         def first(self):
             return owner
 
-    with app.app_context():
+    def install_owner_query_stub():
         session = ext.db.session()
         monkeypatch.setattr(
             session,
@@ -88,6 +88,7 @@ def test_alert_owner_dead_letter(app, monkeypatch):
 
     # Call helper
     with app.app_context():
+        install_owner_query_stub()
         _alert_owner_dead_letter(ev)
 
     assert sms_called["ok"] or email_called["ok"]
