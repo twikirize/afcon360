@@ -125,6 +125,14 @@ def _require_vehicle_ownership(vehicle_model):
         ).all()]
         if owner_id in driver_ids:
             return vehicle_model
+    elif owner_type == "organisation":
+        organisation = db.session.get(Organisation, owner_id)
+        if organisation and OrganizationPermissionService.has_permission(
+            current_user._get_current_object(),
+            organisation,
+            "org.transport.manage",
+        ):
+            return vehicle_model
     elif owner_id == current_user.id:
         return vehicle_model
 
@@ -208,6 +216,12 @@ _PUBLIC_ENDPOINTS = {
     "transport.driver_dashboard_slash",
     "transport.transport_service_worker",
     "transport.vehicle_marketplace",
+    # Personal/driver/org vehicle detail surfaces enforce owner-scoped access
+    # inside each route via _require_vehicle_ownership.
+    "transport.vehicles_show",
+    "transport.vehicles_edit",
+    # Listing review performs its own listing-owner check before rendering.
+    "transport.owner_application_review",
     # Rider incident reporting — linked from the rider ride page
     # (templates/transport/rides/show.html). The view's own decorators
     # are @module_enabled_required + @login_required only; without this
@@ -2658,13 +2672,47 @@ def vehicles_show(id):
     return _json_or_template("transport/vehicles/show.html", vehicle=vehicle, id=id)
 
 
-@transport_bp.route("/vehicles/<int:id>/edit")
+@transport_bp.route("/vehicles/<int:id>/edit", methods=["GET", "POST"])
 @module_enabled_required("transport")
 @login_required
 def vehicles_edit(id):
-    """Edit vehicle"""
+    """Edit an owned vehicle's editable specifications.
+
+    The service owns validation/persistence and deliberately preserves
+    ownership, moderation, availability, verification and assignment state.
+    """
     logger.info(f"Vehicle edit {id} accessed by user_id={_uid()}")
-    return _json_or_template("transport/vehicles/edit.html", id=id)
+    vehicle_model = db.session.get(Vehicle, id)
+    if vehicle_model is None:
+        abort(404)
+
+    # Keep the authorization exception outside generic service error handling:
+    # unauthorized users must receive 403, never a misleading redirect.
+    _require_vehicle_ownership(vehicle_model)
+
+    if request.method == "POST":
+        try:
+            get_provider_service().update_vehicle(id, request.form.to_dict())
+        except ValidationError as exc:
+            db.session.rollback()
+            flash(f"Vehicle details were not saved: {exc}", "danger")
+            return redirect(url_for("transport.vehicles_edit", id=id))
+        except Exception as exc:
+            db.session.rollback()
+            logger.warning(
+                "Vehicle edit failed for vehicle_id=%s user_id=%s: %s",
+                id, _uid(), exc, exc_info=True,
+            )
+            flash("Vehicle details could not be saved. Please review the fields and try again.", "danger")
+            return redirect(url_for("transport.vehicles_edit", id=id))
+
+        flash("Vehicle details updated successfully.", "success")
+        return redirect(url_for("transport.vehicles_show", id=id))
+
+    vehicle = get_provider_service().get_vehicle(id)
+    if not vehicle:
+        abort(404)
+    return _json_or_template("transport/vehicles/edit.html", vehicle=vehicle, id=id)
 
 
 @transport_bp.route("/vehicles/<int:id>/maintenance")

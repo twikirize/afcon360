@@ -145,18 +145,26 @@ class FareConfigResource(Resource):
         if not current_user.is_authenticated:
             return {"success": False,
                     "error": "Authentication required"}, 401
-        # Only Owner or Super Admin can configure fare tables
+        # The platform owner is authoritative. A super admin must also
+        # hold the specific fare-settings delegation; the broad super_admin
+        # role alone must not silently grant financial configuration access.
         is_owner = False
         is_super = False
-        if hasattr(current_user, 'has_global_role'):
+        if hasattr(current_user, "has_global_role"):
             try:
-                is_owner = current_user.has_global_role('owner')
-                is_super = current_user.has_global_role('super_admin')
+                is_owner = current_user.has_global_role("owner")
+                is_super = current_user.has_global_role("super_admin")
             except Exception:
                 pass
-        if not (is_owner or is_super):
-            return {"success": False,
-                    "error": "Owner or Super Admin role required"}, 403
+        delegated = False
+        if is_super and not is_owner:
+            from app.auth.helpers import has_global_permission
+            delegated = has_global_permission(current_user, "transport.settings")
+        if not (is_owner or delegated):
+            return {
+                "success": False,
+                "error": "Owner or delegated Super Admin role required",
+            }, 403
         return None
 
     def get(self):
