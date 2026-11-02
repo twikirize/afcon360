@@ -53,7 +53,7 @@ def ensure_redis_url_configured(
         )
     if deployed and not redis_available:
         raise RuntimeError(
-            "The Redis client library is required in deployed AFCON360 mode."
+            "The Redis Python client library is required in deployed AFCON360 mode."
         )
 
     return candidate or "redis://localhost:6379/0"
