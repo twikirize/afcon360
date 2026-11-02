@@ -4385,7 +4385,10 @@ def _ensure_host_identity():
                 is_active=True,
                 is_deleted=False,
             ).first()
-            if membership is not None:
+            if membership is not None and not (
+                membership.has_permission("org.accommodation.manage")
+                or membership.has_permission("org.transport.manage")
+            ):
                 abort(403)
 
     # Organisation host: the active ACCOMMODATION_HOST context carries the
