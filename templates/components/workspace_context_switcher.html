@@ -1,0 +1,27 @@
+{% macro render_workspace_context_switcher(variant='default') -%}
+{% if current_user.is_authenticated and available_contexts|default([])|length > 1 %}
+<details class="workspace-context-switcher workspace-context-switcher--{{ variant }}">
+  <summary class="workspace-context-switcher__summary">
+    <span class="workspace-context-switcher__eyebrow">Operating as</span>
+    <strong>{{ active_context.label if active_context else 'Personal' }}</strong>
+  </summary>
+  <div class="workspace-context-switcher__menu" aria-label="Available workspaces">
+    {% for context in available_contexts %}
+      {% set is_selected = active_context and context.type == active_context.type and context.public_id == active_context.public_id and context.role == active_context.role %}
+      <form method="POST" action="{{ url_for('auth.switch_context') }}">
+        <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
+        <input type="hidden" name="type" value="{{ context.type.value }}">
+        {% if context.public_id %}
+        <input type="hidden" name="public_id" value="{{ context.public_id }}">
+        {% endif %}
+        <input type="hidden" name="role" value="{{ context.role or ('user' if context.type.value == 'personal' else '') }}">
+        <button type="submit" class="workspace-context-switcher__option{% if is_selected %} is-selected{% endif %}" {% if is_selected %}disabled aria-current="true"{% endif %}>
+          <span>{{ context.label }}</span>
+          {% if is_selected %}<span class="workspace-context-switcher__current">Current</span>{% endif %}
+        </button>
+      </form>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
+{%- endmacro %}
