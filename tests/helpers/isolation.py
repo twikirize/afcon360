@@ -218,9 +218,35 @@ def _get_pk_columns(inspector, table_name: str) -> List[str]:
         ) from exc
 
 
+# Reflected table metadata is schema-stable for the lifetime of a pytest worker.
+# The isolation teardown touches every table twice per test; reflecting each
+# table on every pass was the dominant avoidable cost in the timed CI run.
+_reflected_tables_cache: Dict[Tuple[int, str], Table] = {}
+_reflected_engines: Dict[int, Any] = {}
+_reflected_tables_lock = threading.RLock()
+
+
 def _reflect_table(bind, table_name: str) -> Table:
-    """Reflect one schema-verified table for SQLAlchemy Core operations."""
-    return Table(table_name, MetaData(), autoload_with=bind)
+    """Return cached metadata for one table on the current bound Engine."""
+    get_bind = getattr(bind, "get_bind", None)
+    resolved_bind = get_bind() if callable(get_bind) else bind
+    engine = getattr(resolved_bind, "engine", resolved_bind)
+    if engine is None:
+        raise RuntimeError(
+            f"Test isolation cannot resolve an Engine to reflect table {table_name!r}."
+        )
+
+    engine_key = id(engine)
+    cache_key = (engine_key, table_name)
+    with _reflected_tables_lock:
+        table = _reflected_tables_cache.get(cache_key)
+        if table is None:
+            table = Table(table_name, MetaData(), autoload_with=engine)
+            _reflected_tables_cache[cache_key] = table
+            # Retain the Engine so its identity cannot be recycled while its
+            # cached Table objects remain addressable.
+            _reflected_engines[engine_key] = engine
+        return table
 
 
 def snapshot_table_rows_readonly(conn, table_name: str) -> Dict[str, Any]:
@@ -556,6 +582,9 @@ def reset_dirty_tables_cache():
     _fk_graph_cache = None
     _delete_order_cache = None
     _baseline_cache = None
+    with _reflected_tables_lock:
+        _reflected_tables_cache.clear()
+        _reflected_engines.clear()
 
 
 # ---------------------------------------------------------------------------

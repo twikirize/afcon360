@@ -16,6 +16,9 @@ from sqlalchemy import (
 from tests.helpers import isolation
 
 
+pytestmark = pytest.mark.no_database
+
+
 def test_baseline_capture_fails_closed_with_table_specific_error(monkeypatch):
     class Connection:
         closed = False

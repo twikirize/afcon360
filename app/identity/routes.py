@@ -272,14 +272,24 @@ def org_dashboard(org_id):
     # Bind the verified organization route to its exact live workspace for
     # this request. Supplying the resolved role avoids guessing when the user
     # has more than one role assignment in the same organization.
-    from app.auth.context import ContextType, resolve_request_context
+    from app.auth.context import (
+        ContextType,
+        get_active_context,
+        resolve_request_context,
+    )
     if getattr(org, "org_id", None):
-        resolve_request_context(
-            current_user,
-            ContextType.ORGANISATION,
-            public_id=str(org.org_id),
-            role=str(role_value),
+        active_context = get_active_context(current_user)
+        already_in_target_organisation = (
+            active_context.type is ContextType.ORGANISATION
+            and active_context.public_id == str(org.org_id)
         )
+        if not already_in_target_organisation:
+            resolve_request_context(
+                current_user,
+                ContextType.ORGANISATION,
+                public_id=str(org.org_id),
+                role=str(role_value),
+            )
     organisation_role_label = str(role_value).replace('_', ' ').title()
     # Canonical classification via the single chokepoint (organisation_type_code
     # → business_category fallback → CORPORATE default).

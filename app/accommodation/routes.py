@@ -4359,7 +4359,34 @@ def _ensure_host_identity():
 
     from app.auth.context import ContextType, get_active_context
 
+    # Capture the requested target before get_active_context() sanitizes an
+    # invalid session selection. A member explicitly targeting an organisation
+    # they belong to but cannot host for should receive a clear 403; a foreign
+    # organisation target continues to be sanitized and redirected to Personal.
+    requested_context_type = session.get("active_context_type")
+    requested_context_id = session.get("active_context_id")
     active_context = get_active_context(current_user)
+    if (
+        requested_context_type == ContextType.ACCOMMODATION_HOST.value
+        and active_context.type is not ContextType.ACCOMMODATION_HOST
+        and requested_context_id
+    ):
+        from app.identity.models.organisation import Organisation
+        from app.identity.models.organisation_member import OrganisationMember
+
+        requested_organisation = Organisation.query.filter(
+            Organisation.org_id == str(requested_context_id),
+            Organisation.is_deleted.is_(False),
+        ).first()
+        if requested_organisation is not None:
+            membership = OrganisationMember.query.filter_by(
+                user_id=current_user.id,
+                organisation_id=requested_organisation.id,
+                is_active=True,
+                is_deleted=False,
+            ).first()
+            if membership is not None:
+                abort(403)
 
     # Organisation host: the active ACCOMMODATION_HOST context carries the
     # organisation's PUBLIC org id, while get_host_identity() only resolves the
