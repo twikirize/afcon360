@@ -246,7 +246,18 @@ def org_dashboard(org_id):
         organisation_id=org.id,
         is_deleted=False
     ).first()
-    
+
+    # The organisation URL is resource-specific and membership was verified
+    # above. Resolve the matching live workspace for this request only, without
+    # replacing the user's session selection in other tabs.
+    from app.auth.context import ContextType, resolve_request_context
+    if getattr(org, "org_id", None):
+        resolve_request_context(
+            current_user,
+            ContextType.ORGANISATION,
+            public_id=str(org.org_id),
+        )
+
     # Get organization statistics
     stats = {
         'total_members': OrganisationMember.query.filter_by(
