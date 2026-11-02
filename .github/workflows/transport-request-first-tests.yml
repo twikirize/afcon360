@@ -108,7 +108,7 @@ jobs:
   postgres-regression:
     name: PostgreSQL ${{ matrix.postgres-version }} — request lifecycle, payments, admin queues
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -328,7 +328,8 @@ jobs:
           TEST_ISOLATION_TIMINGS: "1"
         run: |
           mkdir -p artifacts
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${{ inputs.test_scope }}" == "full_suite" ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${{ inputs.test_scope }}" == "full_suite" ]] || \
+             [[ "${GITHUB_EVENT_NAME}" == "push" && -f tests/ci/FULL_REGRESSION_GATE ]]; then
             echo "Running final full-suite regression."
             TARGETS=(tests/)
           else
@@ -354,7 +355,12 @@ jobs:
           retention-days: 14
 
       - name: Verify Redis-backed sessions, rate limiting, Celery, and Socket.IO
-        if: success() && github.event_name == 'workflow_dispatch' && inputs.test_scope == 'full_suite'
+        if: >-
+          success() &&
+          (
+            (github.event_name == 'workflow_dispatch' && inputs.test_scope == 'full_suite') ||
+            (github.event_name == 'push' && hashFiles('tests/ci/FULL_REGRESSION_GATE') != '')
+          )
         env:
           APP_ENV: docker
           FLASK_ENV: production
