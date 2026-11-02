@@ -2,7 +2,7 @@
 from types import SimpleNamespace
 
 
-def test_alert_owner_dead_letter(monkeypatch):
+def test_alert_owner_dead_letter(app, monkeypatch):
     """Ensure the dead-letter alert helper attempts SMS, email and Redis increment."""
     # Import the helper
     from app.tasks.webhook_processor import _alert_owner_dead_letter
@@ -18,14 +18,31 @@ def test_alert_owner_dead_letter(monkeypatch):
         is_super_admin=lambda: True
     )
 
-    # Patch User.query.all to return our fake owner
-    import app.identity.models.user as user_mod
+    # Stub the exact joined owner lookup used by the production helper.
+    # Patching User.query alone is insufficient because the helper first
+    # calls db.session.query(User).join(...).filter(...).first().
+    import app.extensions as ext
 
-    class FakeQuery:
-        def all(self):
-            return [owner]
+    class FakeOwnerQuery:
+        def join(self, *args, **kwargs):
+            return self
 
-    monkeypatch.setattr(user_mod.User, "query", FakeQuery())
+        def filter(self, *args, **kwargs):
+            return self
+
+        def order_by(self, *args, **kwargs):
+            return self
+
+        def first(self):
+            return owner
+
+    with app.app_context():
+        session = ext.db.session()
+        monkeypatch.setattr(
+            session,
+            "query",
+            lambda model: FakeOwnerQuery(),
+        )
 
     # Patch SMS sender
     sms_called = {"ok": False}
@@ -51,9 +68,7 @@ def test_alert_owner_dead_letter(monkeypatch):
         raising=False,
     )
 
-    # Patch Redis incr
-    import app.extensions as ext
-
+    # Patch Redis increment without resolving the lazy client.
     incr_called = {"ok": False}
 
     def fake_incr(key):
@@ -72,7 +87,8 @@ def test_alert_owner_dead_letter(monkeypatch):
     ev = SimpleNamespace(id=99, provider="flutterwave", event_type="charge.completed")
 
     # Call helper
-    _alert_owner_dead_letter(ev)
+    with app.app_context():
+        _alert_owner_dead_letter(ev)
 
     assert sms_called["ok"] or email_called["ok"]
     assert incr_called["ok"]
