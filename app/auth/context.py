@@ -888,7 +888,7 @@ def can_in_context(
 
 
 def active_context_required(context_type: ContextType):
-    """Require a freshly resolved operating context for a workspace route."""
+    """Require the explicitly selected operating context for a protected route."""
 
     def decorator(view):
         @wraps(view)
@@ -897,14 +897,8 @@ def active_context_required(context_type: ContextType):
 
             active = get_active_context(current_user)
             if active.type is not context_type:
-                # Workspace deep links resolve the user's own live assignment
-                # for this request. No assignment is created and the session
-                # context is not changed; ambiguous or unavailable contexts
-                # remain denied.
-                active = resolve_request_context(current_user, context_type)
-            if active is None or active.type is not context_type:
                 if request.is_json or request.path.startswith("/api/"):
-                    return jsonify({"error": "The requested workspace is unavailable for this account."}), 403
+                    return jsonify({"error": "The requested operating context is not active."}), 403
                 abort(403)
             return view(*args, **kwargs)
 
@@ -914,7 +908,7 @@ def active_context_required(context_type: ContextType):
 
 
 def active_context_or_platform_required(context_type: ContextType):
-    """Require the workspace context, while allowing platform administration."""
+    """Require the explicitly selected workspace, while allowing Platform."""
 
     def decorator(view):
         @wraps(view)
@@ -923,14 +917,33 @@ def active_context_or_platform_required(context_type: ContextType):
 
             active = get_active_context(current_user)
             if active.type not in {context_type, ContextType.PLATFORM}:
-                # Resolve only an unambiguous, currently assigned workspace.
-                # Platform access still depends on its actual context and
-                # separate role/permission guard.
-                active = (
-                    None if context_type is ContextType.PLATFORM
-                    else resolve_request_context(current_user, context_type)
-                )
-            if active is None or active.type not in {context_type, ContextType.PLATFORM}:
+                if request.is_json or request.path.startswith("/api/"):
+                    return jsonify({"error": "The requested operating context is not active."}), 403
+                abort(403)
+            return view(*args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
+def workspace_context_entry_required(context_type: ContextType):
+    """Allow a workspace landing page to resolve one live assignment.
+
+    This is intentionally separate from active_context_required so operational
+    APIs and mutations continue to require an explicitly selected context.
+    Use only on a workspace landing page that also verifies its domain profile.
+    """
+
+    def decorator(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            from flask_login import current_user
+
+            active = get_active_context(current_user)
+            if active.type is not context_type:
+                active = resolve_request_context(current_user, context_type)
+            if active is None or active.type is not context_type:
                 if request.is_json or request.path.startswith("/api/"):
                     return jsonify({"error": "The requested workspace is unavailable for this account."}), 403
                 abort(403)
