@@ -337,6 +337,10 @@ def test_create_booking_service_returns_public_reference(db_session):
         {
             "pickup_location": {"latitude": 1.2, "longitude": 3.4},
             "dropoff_location": {"latitude": 5.6, "longitude": 7.8},
+            "pickup_latitude": 1.2,
+            "pickup_longitude": 3.4,
+            "dropoff_latitude": 5.6,
+            "dropoff_longitude": 7.8,
             "booking_mode": "instant",
             "pickup_time": datetime.now(timezone.utc) + timedelta(hours=2),
             "service_type": "on_demand",
