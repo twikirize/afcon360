@@ -458,3 +458,25 @@ def test_geo_pages_expose_no_internal_ids(app, admin_client):
         # Same-origin app links must not embed raw integer record IDs
         # (public slugs such as /events/afcon-2027 are allowed).
         assert not re.search(r'href="/[^"]*/\d+(?:[/?#]|")', html)
+
+def test_stored_module_flags_accept_decoded_json_dictionary(app, monkeypatch):
+    """SystemConfig.get(json) returns a Python dict, not a JSON string."""
+    from app.models.system_config import SystemConfig
+    from app.utils.module_toggle_service import ModuleToggleService
+
+    monkeypatch.setattr(
+        SystemConfig,
+        "get",
+        classmethod(lambda cls, key: {
+            " GEO ": False,
+            "Transport": True,
+            "invalid": "false",
+            17: False,
+        }),
+    )
+
+    with app.app_context():
+        assert ModuleToggleService._fetch_stored_flags() == {
+            "geo": False,
+            "transport": True,
+        }
