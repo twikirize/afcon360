@@ -4357,9 +4357,25 @@ def _ensure_host_identity():
         flash(f"Cannot access host tools: {reason}", "warning")
         return None
 
-    from app.auth.context import ContextType, get_active_context
+    from app.auth.context import (
+        ContextType,
+        get_active_context,
+        resolve_request_context,
+    )
 
     active_context = get_active_context(current_user)
+    if active_context.type not in {
+        ContextType.ACCOMMODATION_HOST,
+        ContextType.PLATFORM,
+    }:
+        # A direct host-dashboard URL may establish the only live Host
+        # workspace for this request. If the user has multiple host identities,
+        # do not guess: the normal context selector remains required.
+        request_host_context = resolve_request_context(
+            current_user, ContextType.ACCOMMODATION_HOST
+        )
+        if request_host_context is not None:
+            active_context = request_host_context
 
     # Organisation host: the active ACCOMMODATION_HOST context carries the
     # organisation's PUBLIC org id, while get_host_identity() only resolves the
