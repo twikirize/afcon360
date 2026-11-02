@@ -63,6 +63,12 @@ from tests.helpers.isolation import (
     take_snapshot,
     cleanup_inserted_rows,
 )
+from tests.helpers import isolation as isolation_helpers
+
+
+def isolation_baseline_is_cached():
+    """Return whether the session-start baseline has already been captured."""
+    return isolation_helpers._baseline_cache is not None
 
 
 # ===================================================================
@@ -603,6 +609,18 @@ def _get_fk_graph(engine):
     return _fk_graph
 
 
+def _report_isolation_timing(request, phase, started_at):
+    """Emit opt-in setup/teardown timing without changing fixture behavior."""
+    if os.getenv("TEST_ISOLATION_TIMING", "").strip().lower() not in {"1", "true", "yes"}:
+        return
+    elapsed = time.perf_counter() - started_at
+    print(
+        f"TEST_ISOLATION_TIMING phase={phase} "
+        f"nodeid={request.node.nodeid} seconds={elapsed:.4f}",
+        flush=True,
+    )
+
+
 @pytest.fixture(autouse=True)
 def _isolate_db(request, app):
     """Automatically track and clean DB rows inserted during each test.
@@ -625,11 +643,19 @@ def _isolate_db(request, app):
         yield
         return
 
+    baseline_was_cached = isolation_baseline_is_cached()
+    snapshot_started = time.perf_counter()
     with app.app_context():
         snapshot = take_snapshot(db.session, db.engine)
+    _report_isolation_timing(
+        request,
+        "baseline_cache_hit" if baseline_was_cached else "baseline_capture",
+        snapshot_started,
+    )
 
     yield  # test runs
 
+    teardown_started = time.perf_counter()
     with app.app_context():
         # 1. Rollback any uncommitted work
         try:
@@ -645,20 +671,25 @@ def _isolate_db(request, app):
         #    exactly what the isolation architecture exists to prevent.
         #    Run on a raw connection to avoid per-statement ORM session
         #    overhead (the cleanup is pure SQL).
+        cleanup_started = time.perf_counter()
         try:
-            with db.engine.begin() as conn:
-                deleted = cleanup_inserted_rows(conn, db.engine, snapshot)
-        except Exception as exc:
             try:
-                db.session.rollback()
-            except Exception:
-                pass
-            raise AssertionError(
-                "DATABASE ISOLATION FAILED: test-created rows could not be "
-                "cleaned up. The suite must stop rather than continue with "
-                "contaminated database state. "
-                f"Original error: {exc}"
-            ) from exc
+                with db.engine.begin() as conn:
+                    deleted = cleanup_inserted_rows(conn, db.engine, snapshot)
+            except Exception as exc:
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+                raise AssertionError(
+                    "DATABASE ISOLATION FAILED: test-created rows could not be "
+                    "cleaned up. The suite must stop rather than continue with "
+                    "contaminated database state. "
+                    f"Original error: {exc}"
+                ) from exc
+        finally:
+            _report_isolation_timing(request, "cleanup_rows", cleanup_started)
+            _report_isolation_timing(request, "teardown_total", teardown_started)
 
         # 4. Final cleanup — remove identity map again
         try:
