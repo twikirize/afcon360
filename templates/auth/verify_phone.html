@@ -52,11 +52,11 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="mb-3">
-          <label for="full_name" class="form-label">Full name (as on ID document) <span class="text-danger">*</span></label>
+          <label for="full_name" class="form-label">Full name (optional)</label>
           <input type="text" class="form-control form-control-lg" id="full_name" name="full_name"
-                 placeholder="John William Doe" required autofocus
+                 placeholder="John William Doe"
                  value="{{ profile.full_name if profile else '' }}">
-          <div class="form-text">Enter your full name exactly as it appears on your passport or national ID.</div>
+          <div class="form-text">Phone verification only confirms control of this number. You can update your legal name separately in your profile and KYC details.</div>
         </div>
 
         <div class="mb-3">
