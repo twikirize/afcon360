@@ -50,6 +50,20 @@ These facts are historical operator output, not a current live verification. Re-
 5. Do not treat Redis `PING` as proof that session persistence, rate limiting, Celery or Socket.IO fan-out work. Do not use `allkeys-lru` for a shared Redis instance carrying non-disposable queues or session state without an explicit data-loss decision.
 6. A release rollback is not the same as restoring a database backup. Record whether a rollback is code-only, schema-compatible, or requires a separately rehearsed database recovery.
 
+## Test evidence limitations that remain
+
+- The selected CI workflow is a targeted release regression set, not proof that
+  every test in the repository passes.
+- `tests/test_payment_flow.py` still contains placeholder `pass` bodies for
+  payment rollback and refund scenarios. Those placeholders are not refund or
+  rollback evidence.
+- Provider sandbox settlement, signed webhook verification against the live
+  provider configuration, payout reconciliation, and country-specific payment
+  approvals remain separate acceptance gates.
+- A CI green result does not establish that the Oracle host is running that
+  commit, that its persistent encryption key matches the encrypted MFA rows,
+  or that a production backup can be restored.
+
 ## Required recovery rehearsal
 
 The rehearsal must use a separate database and must not write to the production database.
@@ -63,6 +77,21 @@ The rehearsal must use a separate database and must not write to the production 
 7. Record commands, operator, start/end times, checksums, result, exceptions and recovery duration. A backup is accepted only after this restore succeeds.
 
 ## Required pre-release production inspection
+
+A read-only host audit helper is included at
+`scripts/ops/pre_release_readonly_audit.sh`. On the Oracle host, from
+`/opt/afcon360`, run:
+
+```bash
+bash scripts/ops/pre_release_readonly_audit.sh
+```
+
+It reports container/image/health metadata, the web container's DB target with
+credentials suppressed, PostgreSQL version/schema/Alembic metadata, Redis
+memory/eviction/persistence settings, disk capacity, Compose service names and
+server-only file names. It performs no writes or restarts. Review the output
+before release; the script has not been run against the live host as part of
+this repository review.
 
 Run only read-only commands first. Confirm:
 - the latest remote main SHA and production checkout SHA;
