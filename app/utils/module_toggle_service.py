@@ -18,15 +18,46 @@ class ModuleToggleService:
 
     @classmethod
     def _fetch_stored_flags(cls) -> Dict[str, bool]:
-        """Fetch persisted module flags from SystemConfig."""
+        """Fetch persisted module flags from SystemConfig.
+
+        SystemConfig.get() already decodes value_type="json" settings into
+        Python values. Accept that canonical dictionary directly, while
+        retaining support for callers/backends that provide the raw JSON
+        string. Invalid stored shapes fail closed to no overrides.
+        """
         try:
             from app.models.system_config import SystemConfig
+
             stored_val = SystemConfig.get(cls.SETTINGS_KEY)
-            if stored_val:
-                return json.loads(stored_val)
-            return {}
+            if stored_val is None or stored_val == "":
+                return {}
+
+            if isinstance(stored_val, str):
+                parsed = json.loads(stored_val)
+            elif isinstance(stored_val, dict):
+                parsed = stored_val
+            else:
+                logger.warning(
+                    "Ignoring MODULE_FLAGS with unsupported stored type: %s",
+                    type(stored_val).__name__,
+                )
+                return {}
+
+            if not isinstance(parsed, dict):
+                logger.warning("Ignoring MODULE_FLAGS because its JSON value is not an object")
+                return {}
+
+            flags: Dict[str, bool] = {}
+            for name, enabled in parsed.items():
+                if not isinstance(name, str) or type(enabled) is not bool:
+                    logger.warning("Ignoring invalid MODULE_FLAGS entry: %r", name)
+                    continue
+                normalized_name = name.strip().lower()
+                if normalized_name:
+                    flags[normalized_name] = enabled
+            return flags
         except Exception as e:
-            logger.debug(f"Failed to fetch stored flags: {e}")
+            logger.debug("Failed to fetch stored flags: %s", e)
             return {}
 
     @classmethod
