@@ -60,7 +60,13 @@ def test_alert_owner_dead_letter(monkeypatch):
         assert key == "dead_letter_count"
         incr_called["ok"] = True
 
-    monkeypatch.setattr(ext.redis_client, "incr", fake_incr)
+    # Replace the lazy proxy itself; reading ext.redis_client.incr first
+    # would resolve the Redis connection before the test can stub it.
+    monkeypatch.setattr(
+        ext,
+        "redis_client",
+        SimpleNamespace(incr=fake_incr),
+    )
 
     # Create fake event
     ev = SimpleNamespace(id=99, provider="flutterwave", event_type="charge.completed")
