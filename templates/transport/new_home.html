@@ -1166,6 +1166,17 @@
           {% endfor %}
         </div>
         {% endif %}
+
+        {% if is_authenticated %}
+        <div class="bolt-driver-actions" aria-label="Driver options">
+          <a class="btn btn-outline-success btn-sm" href="{{ safe_url('transport.become_driver') }}">
+            Become a driver
+          </a>
+          <a class="btn btn-outline-secondary btn-sm" href="{{ safe_url('transport.register_vehicle') }}">
+            Add a vehicle
+          </a>
+        </div>
+        {% endif %}
       </div>
 
       {# ---------- RIGHT: map panel ---------- #}

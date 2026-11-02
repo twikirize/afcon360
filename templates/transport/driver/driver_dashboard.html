@@ -1196,6 +1196,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/driver_alerts.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/driver-dashboard.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/driver_offer_poll.js') }}"></script>
 {% endblock %}

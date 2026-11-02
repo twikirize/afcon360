@@ -100,6 +100,12 @@ def test_driver_dashboard_offer_sound_picker(app, client):
                   "value=\"custom\""):
         assert value in html
     assert "alertSoundPreview" in html
-    assert "AFCONDriverSound" in html
+    assert "driver_alerts.js" in html
+    from pathlib import Path
+    alerts_script = (
+        Path(__file__).resolve().parents[1]
+        / "static" / "js" / "modules" / "transport" / "driver_alerts.js"
+    ).read_text(encoding="utf-8")
+    assert "window.AFCONDriverSound" in alerts_script
     assert "customSoundFile" in html
     assert "customSoundRemove" in html

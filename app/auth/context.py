@@ -648,17 +648,12 @@ def switch_context(user: Any, requested: Any) -> ContextDescriptor:
     return descriptor
 
 
-# Canonical post-login context priority — first eligible match wins.
-# DRIVER outranks ORGANISATION and EVENT (owner decision: a driver always
-# lands on the Driver Workspace, even when they also hold an org membership
-# or an event role). PLATFORM is checked first; multiple platform personas
-# are ranked by Role.level (owner=1 highest … user last).
+# Automatic login selects a privileged platform workspace when one exists;
+# otherwise every user starts in Personal. Organisation, Driver, Event and
+# Host workspaces remain available through explicit context switching.
+# Multiple platform personas are ranked by Role.level (owner=1 highest).
 CONTEXT_PRIORITY: tuple[ContextType, ...] = (
     ContextType.PLATFORM,
-    ContextType.DRIVER,
-    ContextType.ORGANISATION,
-    ContextType.EVENT,
-    ContextType.ACCOMMODATION_HOST,
     ContextType.PERSONAL,
 )
 

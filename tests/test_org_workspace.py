@@ -14,7 +14,7 @@ def test_organisation_dashboard_links_use_public_identifier():
     root = Path(__file__).resolve().parents[1]
     dashboard = (root / "templates" / "org" / "dashboard.html").read_text(encoding="utf-8")
 
-    assert "org_id=org.org_id" in dashboard
+    assert "org_id=org.slug" in dashboard
     assert "org_id=org.id" not in dashboard
 
 

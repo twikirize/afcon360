@@ -1238,12 +1238,8 @@ def login():
                     # Store organization info for quick switching
                     session["available_orgs"] = active_orgs
 
-                    # If user has a default organization, set it as current context
-                    if hasattr(user, 'default_org_id') and user.default_org_id:
-                        default_org_exists = any(org["org_id"] == user.default_org_id for org in active_orgs)
-                        if default_org_exists:
-                            session["current_context"] = "organization"
-                            session["current_org_id"] = user.default_org_id
+                    # Memberships are exposed for explicit context switching.
+                    # Do not silently enter an organisation on login.
 
             next_page = request.args.get("next") or session.pop("next_url", None)
             if next_page and not is_safe_url(next_page):

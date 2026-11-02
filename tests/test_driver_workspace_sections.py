@@ -30,6 +30,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
+from html import unescape
 
 from app.extensions import db
 from app.notifications.models import (
@@ -310,7 +311,7 @@ class TestWorkspaceSectionsRender:
         driver = _seed_driver(app, compliance=ComplianceStatus.PENDING_REVIEW)
         _enter_driver_context(client, driver)
 
-        body = _fresh_get(client, "/transport/driver-dashboard").data.decode("utf-8")
+        body = unescape(_fresh_get(client, "/transport/driver-dashboard").data.decode("utf-8"))
 
         # The current shell groups these functions into seven navigable panels.
         for heading in [
@@ -493,7 +494,7 @@ class TestVehicleSwitchingSection:
 
         body = _fresh_get(client, "/transport/driver-dashboard").data.decode("utf-8")
 
-        assert "Vehicle Switching" in body
+        assert "Switch Vehicle" in body
         assert "Register another vehicle to enable switching" in body
 
 
