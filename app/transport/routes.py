@@ -2443,8 +2443,8 @@ def driver_dashboard():
 
     Presentation-only consolidation (Phase C): the view reuses the existing
     transport services and adds no business logic. Workspace entry stays a
-    PARTICIPATION capability — ``@active_context_required(ContextType.DRIVER)``
-    above is unchanged, and go-live readiness remains composed solely by
+    PARTICIPATION capability — a live, non-blocked DriverProfile is required
+    by the dedicated workspace-entry gate, and go-live readiness remains composed solely by
     ``can_go_live``. Operational data (earnings, owned vs assigned vehicles,
     upcoming/recent bookings) is surfaced from the authoritative services so
     the home presents one coherent driver workspace instead of admin links.
@@ -2647,7 +2647,7 @@ def driver_dashboard():
 @transport_bp.route("/driver/dashboard")
 @module_enabled_required("transport")
 @login_required
-@active_context_required(ContextType.DRIVER)
+@workspace_context_entry_required(ContextType.DRIVER)
 def driver_dashboard_slash():
     """Alias of driver_dashboard.
 
