@@ -8,6 +8,7 @@ or sending financial tasks.
 from __future__ import annotations
 
 import os
+import secrets
 import sys
 import time
 import uuid
@@ -19,6 +20,14 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
+
+# These values exist only in this disposable CI process. A deployed-mode
+# application correctly refuses to start without durable encryption/signing
+# secrets; the Redis integration smoke must not read or reuse production keys.
+# Never print or persist these generated values.
+os.environ.setdefault("ENCRYPTION_KEY", secrets.token_urlsafe(48))
+os.environ.setdefault("SECRET_KEY", secrets.token_urlsafe(48))
+os.environ.setdefault("SECURITY_SALT", secrets.token_urlsafe(32))
 
 # These variables are set by the dedicated GitHub Actions step. Keep an
 # explicit guard here so this script can never silently test a memory fallback.
