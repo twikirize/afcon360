@@ -39,7 +39,11 @@ from collections import defaultdict, deque
 from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import UUID
 
-from sqlalchemy import inspect as sa_inspect, text
+from sqlalchemy import (
+    JSON, MetaData, Table, Text, and_, cast, delete, func, literal,
+    select, union_all, update, inspect as sa_inspect,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.auth.deletion_guard import authorize_deletion
 
@@ -167,32 +171,25 @@ def _get_pk_columns(inspector, table_name: str) -> List[str]:
         return []
 
 
-def snapshot_table_rows_readonly(conn, table_name: str) -> Dict[str, Any]:
-    """Snapshot a table using a dedicated connection (no ORM session).
+def _reflect_table(bind, table_name: str) -> Table:
+    """Reflect one schema-verified table for SQLAlchemy Core operations."""
+    return Table(table_name, MetaData(), autoload_with=bind)
 
-    Identical semantics to :func:`snapshot_table_rows` but executes against a
-    raw ``Connection`` so the ORM identity map is never expired by the
-    snapshot reads. ``conn`` must provide its engine via ``conn.engine``.
-    """
+
+def snapshot_table_rows_readonly(conn, table_name: str) -> Dict[str, Any]:
+    """Snapshot a table using a dedicated Connection and SQLAlchemy Core."""
     inspector = sa_inspect(conn.engine)
-    columns = [col["name"] for col in inspector.get_columns(table_name)]
+    table = _reflect_table(conn, table_name)
+    columns = list(table.c.keys())
     pk_cols = _get_pk_columns(inspector, table_name)
     fk_cols = _get_fk_columns(inspector, table_name)
+    all_rows = [tuple(row) for row in conn.execute(select(table))]
 
-    result = conn.execute(text(f'SELECT * FROM "{table_name}"'))
-    all_rows = [tuple(row) for row in result]
-
-    snap: Dict[str, Any] = {
-        "columns": columns,
-        "pk_columns": pk_cols,
-        "count": len(all_rows),
-    }
-
+    snap: Dict[str, Any] = {"columns": columns, "pk_columns": pk_cols, "count": len(all_rows)}
     if not pk_cols or len(pk_cols) > 2:
         snap["pk_type"] = "composite" if len(pk_cols) > 2 else "none"
-        if not all_rows:
-            return snap
-        snap["row_snap"] = all_rows
+        if all_rows:
+            snap["row_snap"] = all_rows
         return snap
 
     if len(pk_cols) == 1:
@@ -200,14 +197,12 @@ def snapshot_table_rows_readonly(conn, table_name: str) -> Dict[str, Any]:
         pk_idx = columns.index(pk_col) if pk_col in columns else None
         if pk_idx is None:
             snap["pk_type"] = "none"
-            if not all_rows:
-                return snap
-            snap["row_snap"] = all_rows
+            if all_rows:
+                snap["row_snap"] = all_rows
             return snap
 
         values = [row[pk_idx] for row in all_rows]
         sample = values[0] if values else None
-
         if sample is not None and isinstance(sample, int):
             snap["pk_type"] = "int"
             snap["max_pk"] = max(values) if values else 0
@@ -220,8 +215,7 @@ def snapshot_table_rows_readonly(conn, table_name: str) -> Dict[str, Any]:
                         for row in all_rows
                     }
         elif sample is not None and (
-            isinstance(sample, str) and len(sample) == 36
-            or isinstance(sample, UUID)
+            isinstance(sample, str) and len(sample) == 36 or isinstance(sample, UUID)
         ):
             snap["pk_type"] = "uuid"
             snap["uuid_pks"] = {str(v) if isinstance(v, UUID) else v for v in values}
@@ -236,16 +230,13 @@ def snapshot_table_rows_readonly(conn, table_name: str) -> Dict[str, Any]:
                     }
         else:
             snap["pk_type"] = "other"
-            if not all_rows:
-                return snap
-            snap["row_snap"] = all_rows
+            if all_rows:
+                snap["row_snap"] = all_rows
         return snap
 
-    # Composite PK (2 columns)
     snap["pk_type"] = "composite"
-    if not all_rows:
-        return snap
-    snap["row_snap"] = all_rows
+    if all_rows:
+        snap["row_snap"] = all_rows
     return snap
 
 
@@ -254,145 +245,103 @@ def snapshot_table_rows_readonly(conn, table_name: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def revert_fk_mutations(conn, table_name: str, snap: Dict[str, Any]) -> int:
-    """Restore FK columns on pre-existing rows to their session-start values.
-
-    Runs BEFORE cleanup_table's delete pass, so removing a test-created parent
-    cannot orphan a pre-existing child that was repointed mid-test.
-    """
-    from sqlalchemy import bindparam
-
+    """Restore FK values on pre-existing rows before deleting test-created rows."""
     fk_baseline = snap.get("fk_baseline") or {}
     fk_columns = snap.get("fk_columns") or []
     pk_cols = snap.get("pk_columns") or []
     if not fk_baseline or not fk_columns or len(pk_cols) != 1:
         return 0
 
-    pk_col = pk_cols[0]
+    table = _reflect_table(conn, table_name)
+    pk_column = table.c[pk_cols[0]]
+    statement = select(pk_column, *(table.c[name] for name in fk_columns))
     pk_type = snap.get("pk_type")
-    cols_sql = ", ".join(f'"{c}"' for c in [pk_col, *fk_columns])
-
     if pk_type == "int":
         max_pk = snap.get("max_pk", 0)
         if max_pk == 0:
             return 0
-        rows = conn.execute(
-            text(f'SELECT {cols_sql} FROM "{table_name}" WHERE "{pk_col}" <= :max_pk'),
-            {"max_pk": max_pk},
-        ).all()
+        statement = statement.where(pk_column <= max_pk)
     elif pk_type == "uuid":
         uuid_pks = list(snap.get("uuid_pks") or set())
         if not uuid_pks:
             return 0
-        stmt = text(
-            f'SELECT {cols_sql} FROM "{table_name}" WHERE "{pk_col}" IN :pks'
-        ).bindparams(bindparam("pks", expanding=True))
-        rows = conn.execute(stmt, {"pks": uuid_pks}).all()
+        statement = statement.where(pk_column.in_(uuid_pks))
     else:
         return 0
 
     reverted = 0
-    for row in rows:
+    for row in conn.execute(statement):
         pk_val = row[0]
         key = str(pk_val) if isinstance(pk_val, UUID) else pk_val
         baseline = fk_baseline.get(key)
         if baseline is None:
             continue
-        for i, col in enumerate(fk_columns, start=1):
-            baseline_val = baseline.get(col)
-            if row[i] != baseline_val:
+        for index, column_name in enumerate(fk_columns, start=1):
+            baseline_value = baseline.get(column_name)
+            if row[index] != baseline_value:
                 conn.execute(
-                    text(f'UPDATE "{table_name}" SET "{col}" = :v WHERE "{pk_col}" = :pk'),
-                    {"v": baseline_val, "pk": pk_val},
+                    update(table).where(pk_column == pk_val).values({column_name: baseline_value})
                 )
                 reverted += 1
     return reverted
 
 
 def cleanup_table(session, table_name: str, snap: Dict[str, Any]) -> int:
-    """Delete rows inserted during the test. Returns count deleted.
-
-    A stronger-than-necessary delete is fine for tables that started empty
-    (``pre_count == 0`` or no baseline rows): exactly the rows removed were
-    test-created, so we remove every row currently present.
-    """
+    """Delete only rows inserted during the test using reflected Core tables."""
+    table = _reflect_table(session.get_bind(), table_name)
     pk_type = snap.get("pk_type", "none")
 
     if pk_type == "int":
         max_pk = snap.get("max_pk", 0)
-        if max_pk == 0:
-            # Table was empty before the test — delete everything.
-            result = session.execute(text(f'DELETE FROM "{table_name}"'))
-            return result.rowcount
-        pk_col = snap["pk_columns"][0]
-        result = session.execute(
-            text(f'DELETE FROM "{table_name}" WHERE "{pk_col}" > :max_pk'),
-            {"max_pk": max_pk},
-        )
-        return result.rowcount
+        statement = delete(table)
+        if max_pk != 0:
+            statement = statement.where(table.c[snap["pk_columns"][0]] > max_pk)
+        return session.execute(statement).rowcount or 0
 
     if pk_type == "uuid":
         existing = snap.get("uuid_pks", set())
+        pk_column = table.c[snap["pk_columns"][0]]
         if not existing:
-            # table was empty before test — delete everything
-            result = session.execute(text(f'DELETE FROM "{table_name}"'))
-            return result.rowcount
-        pk_col = snap["pk_columns"][0]
-        # delete rows whose PK is NOT in the snapshot
-        rows = session.execute(text(f'SELECT "{pk_col}" FROM "{table_name}"'))
-        current_ids = {
-            str(row[0]) if isinstance(row[0], UUID) else row[0] for row in rows
+            return session.execute(delete(table)).rowcount or 0
+        current_values = session.execute(select(pk_column)).scalars().all()
+        current_by_normalized = {
+            str(value) if isinstance(value, UUID) else value: value
+            for value in current_values
         }
-        to_delete = current_ids - existing
-        if not to_delete:
-            return 0
-        # batch delete (PostgreSQL IN limit is ~32767 params)
+        to_delete = [
+            raw_value for normalized, raw_value in current_by_normalized.items()
+            if normalized not in existing
+        ]
         deleted = 0
-        batch_size = 1000
-        id_list = list(to_delete)
-        for i in range(0, len(id_list), batch_size):
-            batch = id_list[i : i + batch_size]
-            placeholders = ", ".join(f":id{j}" for j in range(len(batch)))
-            params = {f"id{j}": v for j, v in enumerate(batch)}
-            result = session.execute(
-                text(f'DELETE FROM "{table_name}" WHERE "{pk_col}" IN ({placeholders})'),
-                params,
-            )
-            deleted += result.rowcount
+        for index in range(0, len(to_delete), 1000):
+            batch = to_delete[index:index + 1000]
+            if batch:
+                result = session.execute(delete(table).where(pk_column.in_(batch)))
+                deleted += result.rowcount or 0
         return deleted
 
     if pk_type in ("none", "composite", "other"):
         row_snap = snap.get("row_snap", [])
         if not row_snap:
-            # Table was empty before the test — delete everything.
-            result = session.execute(text(f'DELETE FROM "{table_name}"'))
-            return result.rowcount
-        existing_set = {_canonical_row(r) for r in row_snap}
-        rows = session.execute(text(f'SELECT * FROM "{table_name}"'))
-        current_rows = [tuple(row) for row in rows]
-        to_delete = [r for r in current_rows if _canonical_row(r) not in existing_set]
-        if not to_delete:
-            return 0
-        # Fallback row-equality deletes. Serialize every column via ::text so
-        # JSON/JSONB values (returned as dicts) work reliably as params.
+            return session.execute(delete(table)).rowcount or 0
+        existing_set = {_canonical_row(row) for row in row_snap}
+        current_rows = [tuple(row) for row in session.execute(select(table))]
+        to_delete = [row for row in current_rows if _canonical_row(row) not in existing_set]
         deleted = 0
         for row in to_delete:
-            conditions = []
-            params = {}
-            for i, val in enumerate(row):
-                col_name = snap["columns"][i]
-                param_name = f"v{i}"
-                if val is None:
-                    conditions.append(f'"{col_name}" IS NULL')
+            predicates = []
+            for column, value in zip(table.columns, row):
+                if value is None:
+                    predicates.append(column.is_(None))
+                elif isinstance(column.type, (JSON, JSONB)):
+                    predicates.append(
+                        cast(column, Text) == cast(literal(value, type_=column.type), Text)
+                    )
                 else:
-                    conditions.append(f'"{col_name}"::text = :{param_name}')
-                    params[param_name] = str(val)
-            where = " AND ".join(conditions)
-            result = session.execute(
-                text(f'DELETE FROM "{table_name}" WHERE {where}'), params
-            )
-            deleted += result.rowcount
+                    predicates.append(column == value)
+            result = session.execute(delete(table).where(and_(*predicates)))
+            deleted += result.rowcount or 0
         return deleted
-
     return 0
 
 
@@ -459,37 +408,29 @@ def _get_delete_order(engine) -> List[str]:
 
 
 def _classify_tables(session, engine) -> Tuple[List[str], List[str]]:
-    """Return (tables_with_rows, tables_empty). Computed once per session.
-
-    Uses a batched UNION count so the one-time classification cost is a
-    single round trip rather than N round trips.
-    """
+    """Return session-start populated/empty tables in one Core UNION query."""
     global _dirty_tables_cache, _empty_tables_cache
     if _dirty_tables_cache is not None and _empty_tables_cache is not None:
         return _dirty_tables_cache, _empty_tables_cache
 
     tables = _all_tables(engine)
-    parts = []
-    params = {}
-    for i, t in enumerate(tables):
-        pn = f"pn{i}"
-        parts.append(f"(SELECT :{pn} AS name, count(*) AS cnt FROM \"{t}\")")
-        params[pn] = t
-    stmt = " UNION ALL ".join(parts)
+    if not tables:
+        _dirty_tables_cache, _empty_tables_cache = [], []
+        return _dirty_tables_cache, _empty_tables_cache
 
-    dirty, empty = [], []
+    metadata = MetaData()
+    statements = [
+        select(literal(table_name).label("name"), func.count().label("cnt"))
+        .select_from(Table(table_name, metadata, autoload_with=engine))
+        for table_name in tables
+    ]
     with engine.begin() as conn:
-        rows = conn.execute(text(stmt), params).all()
-    counts = {r[0]: r[1] for r in rows}
-    for t in tables:
-        if counts.get(t, 0) > 0:
-            dirty.append(t)
-        else:
-            empty.append(t)
+        rows = conn.execute(union_all(*statements)).all()
 
-    _dirty_tables_cache = dirty
-    _empty_tables_cache = empty
-    return dirty, empty
+    counts = {row[0]: row[1] for row in rows}
+    _dirty_tables_cache = [name for name in tables if counts.get(name, 0) > 0]
+    _empty_tables_cache = [name for name in tables if counts.get(name, 0) == 0]
+    return _dirty_tables_cache, _empty_tables_cache
 
 
 def discover_dirty_tables(session, engine) -> List[str]:

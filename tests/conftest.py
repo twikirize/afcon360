@@ -210,7 +210,6 @@ def setup_database():
 
     db_url = TEST_DATABASE_URL
     db_name = db_url.split('/')[-1]
-    default_url = db_url.replace('/' + db_name, '/postgres')
 
     # --- Acquire the cross-session advisory lock (blocking w/ timeout). ---
     _guard_engine = create_engine(db_url, poolclass=NullPool)
@@ -237,16 +236,10 @@ def setup_database():
         time.sleep(1.0)
 
     try:
-        engine_default = create_engine(default_url, isolation_level="AUTOCOMMIT")
-        try:
-            engine_test = create_engine(db_url)
-            with engine_test.connect() as conn:
-                conn.execute(text("SELECT 1"))
-            print(f"[OK] Test database '{db_name}' already exists.")
-        except Exception:
-            with engine_default.connect() as conn:
-                conn.execute(text(f"CREATE DATABASE {db_name}"))
-            print(f"[OK] Test database '{db_name}' created.")
+        # _guard_conn is already connected to TEST_DATABASE_URL. A missing
+        # database fails closed above; pytest never creates or repairs schema.
+        _guard_conn.execute(text("SELECT 1"))
+        print(f"[OK] Existing test database '{db_name}' is reachable.")
 
         app = create_app(config_object=TestingConfig)
         app.config['SQLALCHEMY_DATABASE_URI'] = db_url

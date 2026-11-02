@@ -19,7 +19,7 @@ Violations can cause:
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, BigInteger, DateTime, Boolean, event
+from sqlalchemy import Column, BigInteger, DateTime, Boolean, event, select
 from sqlalchemy.sql import func
 from app.extensions import db
 from app.utils.id_guard import IDGuard
@@ -171,7 +171,7 @@ def fix_sqlite_autoincrement(mapper, connection, target):
         table_name = mapper.local_table.name
         # Get current max ID
         result = connection.execute(
-            f"SELECT COALESCE(MAX({pk_name}), 0) FROM {table_name}"
+            select(func.coalesce(func.max(pk_col), 0)).select_from(mapper.local_table)
         ).scalar()
         # Set new ID
         setattr(target, pk_name, result + 1)
