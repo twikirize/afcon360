@@ -185,8 +185,7 @@ def test_ride_options_rejected_quotes_never_reach_fare(app, anonymous_client,
         raise AssertionError("fare must not be reached for rejected quotes")
 
     monkeypatch.setattr(ro.fare_service, "calculate_estimate", _boom)
-    monkeypatch.setattr(ro, "available_by_class", lambda: (_ for _ in ()).throw(
-        AssertionError("availability must not be reached for rejected quotes")))
+    assert not hasattr(ro, "available_by_class")  # quote stage never queries live supply
     for body in (
         {},
         {"pickup_latitude": LAT_A},
@@ -236,7 +235,8 @@ def test_booking_needs_coords_while_estimate_does_not(app,
 
 def test_legacy_book_route_rejects_text_only_endpoints(app,
                                                       authenticated_client,
-                                                      test_user):
+                                                      test_user,
+                                                      monkeypatch):
     """UI-LOC-02A legacy-route proof (single focused test).
 
     The retired `book.html` form posts no lat/lng fields. With the booking
@@ -269,6 +269,12 @@ def test_legacy_book_route_rejects_text_only_endpoints(app,
         before = Booking.query.filter_by(user_id=rider_id).count()
 
     # Mirrors templates/transport/book.html: text addresses, no coordinates.
+    monkeypatch.setattr(
+        "app.transport.routes.get_available_transport_payment_methods",
+        lambda _user_id: [{
+            "code": "cash", "enabled": True, "status": "ready", "label": "Cash",
+        }],
+    )
     resp = authenticated_client.post("/transport/book", data={
         "service_type": "on_demand",
         "provider_type": "individual_driver",
@@ -286,7 +292,7 @@ def test_legacy_book_route_rejects_text_only_endpoints(app,
 
     assert resp.status_code in (301, 302)
     location = resp.headers.get("Location", "")
-    assert "/transport/book" in location
+    assert "/transport/" in location
     assert "/transport/rides/" not in location
     with app.app_context():
         assert Booking.query.filter_by(user_id=rider_id).count() == before

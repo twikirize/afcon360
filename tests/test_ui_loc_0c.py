@@ -56,7 +56,7 @@ def test_0c_0b_contracts_intact():
     # 0B GPS + targeting + Continue gate untouched
     assert "function invalidateGpsRequest()" in src
     assert "if (mySeq !== gpsSeq) return;" in src
-    assert "btnContinue.disabled = !state.dest || !state.pickup || !coordsPresent;" in src
+    assert "btnContinue.disabled = !state.dest || !state.pickup || !coordsPresent || !isScheduleValid();" in src
     assert "updateMapTarget();" in src and "updateContinueReason();" in src
     # 02A guards untouched
     assert "if (!pickupLat || !pickupLng || !dropoffLat || !dropoffLng) {" in src

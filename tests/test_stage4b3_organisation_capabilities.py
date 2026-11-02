@@ -286,7 +286,7 @@ def test_api_list_returns_public_org_id_and_no_internal_ids(
     db_session.flush()
 
     _login(app, client, owner_user)
-    r = client.get(f"/org/{public_id}/capabilities")
+    r = client.get(f"/org/{org.slug}/capabilities")
     assert r.status_code == 200
     data = r.get_json()
     assert data["organisation_id"] == public_id

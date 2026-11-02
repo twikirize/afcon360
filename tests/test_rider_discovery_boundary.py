@@ -193,9 +193,16 @@ def test_authenticated_booking_creates_server_owned_ride_request(
         "app.transport.routes.get_available_transport_payment_methods",
         lambda _user_id: [{"code": "cash", "enabled": True, "status": "ready", "label": "Cash"}],
     )
+    from tests.transport.test_ride_request_create import _payload as signed_quote_payload
+    quote = signed_quote_payload(app, idempotency_key=key)
+    form = _form(
+        idempotency_key=key,
+        currency=quote["currency"],
+        confirmed_fare_amount=quote["confirmed_fare_amount"],
+        fare_quote_token=quote["fare_quote_token"],
+    )
     resp = authenticated_client.post(
-        "/transport/book", data=_form(idempotency_key=key),
-        follow_redirects=False)
+        "/transport/book", data=form, follow_redirects=False)
     assert resp.status_code in (301, 302, 303, 308)
     location = resp.headers.get("Location", "")
     assert "/transport/rides/" in location
