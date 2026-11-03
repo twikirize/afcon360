@@ -503,114 +503,148 @@ def create_app(config_object=None) -> Flask:
     app.config.from_object(config_object or get_config())
 
     # -------------------------------------------------------------------------
-    # ENCRYPTION KEY GUARD — must run AFTER get_config() so .env.local is loaded
-    # -------------------------------------------------------------------------
-    if not os.getenv("ENCRYPTION_KEY") or os.getenv("ENCRYPTION_KEY", "").startswith("REPLACE_"):
-        import secrets as _secrets
-        _temp_key = _secrets.token_urlsafe(32)
-        os.environ["ENCRYPTION_KEY"] = _temp_key
-        logging.warning(
-            f"[ENV] ENCRYPTION_KEY not set. Generated a temporary key for this session. "
-            f"Add ENCRYPTION_KEY={_temp_key} to your .env.local for consistency."
-        )
+    # ENCRYPTION KEY GUARD — fail closed in Docker/production before any
+    # encryption happens. Only local development may receive an ephemeral key.
+    # Never print the key: logs are not a secret store.
+    from app.utils.security import (
+        ensure_encryption_key_configured,
+        ensure_secret_key_configured,
+        ensure_database_url_configured,
+    )
+    ensure_encryption_key_configured(
+        app_env=app.config.get("APP_ENV"),
+        flask_env=app.config.get("FLASK_ENV"),
+    )
 
     # Critical Config Fallbacks with validation
-    # SECRET_KEY validation
+    # SECRET_KEY validation is Docker-aware and must not depend solely on
+    # FLASK_ENV: APP_ENV=docker remains deployed even if FLASK_ENV is mis-set.
     secret_key = app.config.get('SECRET_KEY') or os.getenv("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY")
+    secret_key = ensure_secret_key_configured(
+        secret_key,
+        app_env=app.config.get("APP_ENV"),
+        flask_env=app.config.get("FLASK_ENV"),
+    )
     if not secret_key:
-        flask_env = os.getenv("FLASK_ENV", "production")
-        if flask_env == "production":
-            raise RuntimeError(
-                "SECRET_KEY must be set in production. "
-                "Set SECRET_KEY environment variable."
-            )
-        else:
-            # Development fallback - generate a deterministic key for development
-            #import hashlib
-            dev_secret = hashlib.sha256(b"afcon360_dev_secret_do_not_use_in_prod").hexdigest()[:32]
-            secret_key = dev_secret
-            logger.warning("Using development SECRET_KEY. Set SECRET_KEY environment variable for production.")
+        # Local-development-only fallback. Deployed environments have already
+        # failed closed above, so this deterministic key cannot enter Docker/prod.
+        dev_secret = hashlib.sha256(b"afcon360_dev_secret_do_not_use_in_prod").hexdigest()[:32]
+        secret_key = dev_secret
+        logger.warning(
+            "Using development SECRET_KEY. Set SECRET_KEY environment variable for production."
+        )
     app.config['SECRET_KEY'] = secret_key
 
-    # DATABASE URI validation
+    # DATABASE URI validation is also Docker-aware; never let a deployed
+    # container fall through to localhost/afcon360_dev because FLASK_ENV was
+    # accidentally set to development.
     db_uri = app.config.get("SQLALCHEMY_DATABASE_URI") or os.getenv("DATABASE_URL")
+    db_uri = ensure_database_url_configured(
+        db_uri,
+        app_env=app.config.get("APP_ENV"),
+        flask_env=app.config.get("FLASK_ENV"),
+    )
 
     if not db_uri:
-        flask_env = os.getenv("FLASK_ENV", "production")
-        if flask_env == "production":
-            raise RuntimeError(
-                "DATABASE_URL must be set in production. "
-                "Set DATABASE_URL environment variable or configure SQLALCHEMY_DATABASE_URI in config."
-            )
+        # Development fallback - use local PostgreSQL with default credentials.
+        # The deployed-mode guard above has already rejected this path in Docker/prod.
+        db_host = os.getenv("DB_HOST", "localhost")
+        db_port = os.getenv("DB_PORT", "5432")
+        db_name = os.getenv("DB_NAME", "afcon360_dev")
+        db_user = os.getenv("DB_USER", "postgres")
+        db_pass = os.getenv("DB_PASSWORD", "")
+
+        if db_pass:
+            db_uri = f"postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
         else:
-            # Development fallback - use local PostgreSQL with default credentials
-            db_host = os.getenv("DB_HOST", "localhost")
-            db_port = os.getenv("DB_PORT", "5432")
-            db_name = os.getenv("DB_NAME", "afcon360_dev")
-            db_user = os.getenv("DB_USER", "postgres")
-            db_pass = os.getenv("DB_PASSWORD", "")
+            db_uri = f"postgresql://{db_user}@{db_host}:{db_port}/{db_name}"
 
-            if db_pass:
-                db_uri = f"postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
-            else:
-                db_uri = f"postgresql://{db_user}@{db_host}:{db_port}/{db_name}"
-
-            logger.warning(f"Using development database: {db_uri.replace(db_pass, '***') if db_pass else db_uri}")
-            logger.warning("Set DATABASE_URL environment variable for production.")
+        logger.warning(
+            f"Using development database: {db_uri.replace(db_pass, '***') if db_pass else db_uri}"
+        )
+        logger.warning("Set DATABASE_URL environment variable for production.")
 
     app.config["SQLALCHEMY_DATABASE_URI"] = db_uri
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["SESSION_SERIALIZER"] = "json"
 
     # ------------------------------------------------------------------
-    # Redis & Extensions (Shared) – resilient fallback
+    # Redis & Extensions (shared production dependency; local-only fallback)
     # ------------------------------------------------------------------
-    redis_url = app.config.get("REDIS_URL") or os.getenv("REDIS_URL")
-
-    if not redis_url:
-        flask_env = os.getenv("FLASK_ENV", "production")
-        if flask_env == "production":
-            raise RuntimeError("REDIS_URL must be set in production.")
-        else:
-            redis_url = "redis://localhost:6379/0"
-            logger.warning("Using development Redis URL.")
+    from app.utils.security import (
+        _is_deployed_environment,
+        ensure_redis_url_configured,
+    )
+    deployed_runtime = _is_deployed_environment(
+        app_env=app.config.get("APP_ENV"),
+        flask_env=app.config.get("FLASK_ENV"),
+    )
+    redis_url = ensure_redis_url_configured(
+        app.config.get("REDIS_URL") or os.getenv("REDIS_URL"),
+        redis_available=REDIS_AVAILABLE,
+        app_env=app.config.get("APP_ENV"),
+        flask_env=app.config.get("FLASK_ENV"),
+    )
+    app.config["REDIS_REQUIRED"] = deployed_runtime
 
     from app.extensions import limiter, cache, redis_client
 
-    # Try to configure Redis for caching; fallback to SimpleCache
+    # Prove the shared Redis endpoint is reachable before using it for any
+    # production state. Docker/prod must never silently fall back to
+    # process-local rate limits, filesystem sessions, or SimpleCache.
     _redis_available_for_cache = False
-    try:
-        if REDIS_AVAILABLE:
+    redis_runtime_client = None
+    if REDIS_AVAILABLE:
+        try:
+            redis_client.configure(redis_url)
+            redis_runtime_client = redis_client.client  # creates client and pings
+            redis_runtime_client.ping()
             cache.config.update({
                 "CACHE_TYPE": "RedisCache",
                 "CACHE_REDIS_URL": redis_url,
                 "CACHE_DEFAULT_TIMEOUT": 300
             })
-            redis_client.configure(redis_url)
             _redis_available_for_cache = True
-        else:
+        except Exception as exc:
+            if deployed_runtime:
+                raise RuntimeError(
+                    "Required shared Redis is unavailable; refusing to start "
+                    "a deployed AFCON360 worker with local-state fallbacks."
+                ) from exc
             cache.config.update({"CACHE_TYPE": "SimpleCache"})
-    except Exception:
+            logger.warning(
+                "Redis cache configuration failed in local development; using SimpleCache"
+            )
+    else:
+        if deployed_runtime:
+            raise RuntimeError(
+                "The Redis Python client is required for a deployed AFCON360 process."
+            )
         cache.config.update({"CACHE_TYPE": "SimpleCache"})
-        logger.warning("Redis cache configuration failed – using SimpleCache")
 
-    _is_dev = app.config.get("DEBUG") or app.config.get("APP_ENV") in ("local", "development", "testing")
+    # Deployment mode, not Flask DEBUG, determines whether local process
+    # storage is acceptable. APP_ENV=docker stays deployed even if
+    # FLASK_ENV=development was accidentally set.
+    _is_dev = not deployed_runtime
     app.config["RATELIMIT_STORAGE_URI"] = (
-        "memory://" if _is_dev
-        else (redis_url if _redis_available_for_cache else "memory://")
+        "memory://" if _is_dev else redis_url
     )
     limiter.storage_uri = app.config["RATELIMIT_STORAGE_URI"]
 
-    # Get Redis client for sessions – reuse existing connection
-    redis_session_client = None
-    try:
-        if _redis_available_for_cache:
-            redis_session_client = redis_client.client
-    except Exception:
-        pass
-
+    # Reuse the connection already proven above for server-side sessions.
+    redis_session_client = redis_runtime_client
     if not redis_session_client:
         redis_session_client = require_redis(redis_url, "sessions")
+
+    if deployed_runtime and not redis_session_client:
+        raise RuntimeError(
+            "Required Redis session storage is unavailable; refusing to start "
+            "a deployed AFCON360 worker with filesystem-session fallback."
+        )
+    if deployed_runtime and not FLASK_SESSION_AVAILABLE:
+        raise RuntimeError(
+            "Flask-Session is required for deployed AFCON360 server-side Redis sessions."
+        )
 
     # ============================================================
     # SENTRY INITIALIZATION (guarded by feature flag)
@@ -790,7 +824,14 @@ def create_app(config_object=None) -> Flask:
             except Exception:
                 pass
             uid_short = hashlib.sha256(str(uid).encode()).hexdigest()[:12] if uid else "anon"
-            content_length = response.calculate_content_length()
+            # Never iterate a streamed response to calculate its length:
+            # SSE and other streaming bodies may be unbounded. Use a declared
+            # Content-Length for streams; calculate only for buffered bodies.
+            content_length = (
+                response.content_length
+                if response.is_streamed
+                else response.calculate_content_length()
+            )
             logger.info("req", extra={
                 "request_id": g.get('correlation_id', "-"),
                 "user": uid_short,
@@ -837,7 +878,10 @@ def create_app(config_object=None) -> Flask:
                 "base-uri 'self'; "
                 + upgrade_directive
             )
-            csp_script = f"script-src 'self' 'nonce-{nonce}' 'unsafe-eval' https://cdn.jsdelivr.net; "
+            # Do not permit string-to-code execution. Repository JavaScript
+            # uses normal script execution and Redis Lua eval is server-side;
+            # neither requires the browser's CSP 'unsafe-eval' exception.
+            csp_script = f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
             if strict:
                 csp_enforce = (
                     "default-src 'self'; "
@@ -1314,6 +1358,69 @@ def create_app(config_object=None) -> Flask:
                 db.session.rollback()
             except Exception:
                 pass
+
+    @app.before_request
+    def enforce_owner_mfa_on_existing_sessions():
+        """Apply newly enabled owner MFA to sessions created before the policy.
+
+        Login remains available so an owner without MFA can enter the restricted
+        password-verified enrollment path. Logout and public health probes are
+        also exempt so neither recovery nor orchestration is blocked.
+        """
+        if (
+            request.path.startswith("/static/")
+            or request.path == "/transport/sw.js"
+            or request.path in ("/api/health/ping", "/api/health/ready")
+            or request.endpoint in ("auth.login", "auth.logout")
+        ):
+            return
+
+        from flask_login import current_user, logout_user
+
+        if not current_user.is_authenticated:
+            return
+
+        try:
+            if not current_user.is_app_owner():
+                return
+
+            from app.auth.security_policy import owner_mfa_required
+            if not owner_mfa_required():
+                return
+
+            factor_verified = (
+                session.get("mfa_verified") is True
+                and session.get("mfa_verified_method") in ("totp", "backup")
+            )
+            if factor_verified:
+                return
+        except Exception:
+            # A policy/identity lookup failure must not grant an owner
+            # password-only access in a deployed environment.
+            current_app.logger.exception(
+                "Unable to validate owner MFA on an existing session; forcing sign-in"
+            )
+
+        server_session_id = session.get("server_session_id")
+        if server_session_id:
+            try:
+                from app.auth.sessions import revoke_session
+                revoke_session(server_session_id)
+            except Exception:
+                current_app.logger.exception(
+                    "Failed to revoke owner server session after MFA policy enforcement"
+                )
+
+        logout_user()
+        session.clear()
+        flash(
+            "Platform owner access now requires multi-factor authentication. "
+            "Please sign in again and complete authenticator verification.",
+            "warning",
+        )
+        if request.path.startswith("/api/") or request.is_json:
+            return jsonify({"error": "owner_mfa_required"}), 401
+        return redirect(url_for("auth.login", next=request.full_path))
 
     @app.teardown_request
     def handle_transaction(exception=None):
@@ -1879,6 +1986,8 @@ def create_app(config_object=None) -> Flask:
         _org_id = None
         _org_slug = None
         _org_role = None
+        _active_context = None
+        _available_contexts = []
 
         # Resolve auth defensively: a detached/stale current_user (long-lived
         # app context after db.session.remove()) raises DetachedInstanceError
@@ -1908,9 +2017,13 @@ def create_app(config_object=None) -> Flask:
             # read-only compatibility path; stale legacy keys MUST NOT override
             # a live canonical selection.
             try:
-                from app.auth.context import get_active_context
+                from app.auth.context import (
+                    get_active_context,
+                    get_available_contexts,
+                )
 
                 _active_context = get_active_context(_cu)
+                _available_contexts = get_available_contexts(_cu)
                 if _active_context.type.value == "organisation":
                     _in_org_context = True
                     _org_id = _active_context.public_id
@@ -1940,6 +2053,8 @@ def create_app(config_object=None) -> Flask:
             "nav_org_slug": _org_slug,
             "nav_org_role": _org_role,
             "active_global_role": _session.get("active_global_role"),
+            "active_context": _active_context,
+            "available_contexts": _available_contexts,
         }
 
     def _safe_url(endpoint, *args, **kwargs):

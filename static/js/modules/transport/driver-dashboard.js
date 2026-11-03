@@ -1712,8 +1712,8 @@
                 var previous = this.innerHTML;
                 try {
                     var response = await request(this.dataset.url, {});
-                    // Decline result follows the standard API envelope: response.data.declined.
-                    if (!response.success || (response.data && response.data.declined === false)) {
+                    // request() returns the server response body directly.
+                    if (!response.success || response.declined === false) {
                         flashMsg((response && response.error) || 'This offer is no longer active', false);
                         this.disabled = false;
                         this.innerHTML = previous;
