@@ -531,6 +531,194 @@ html {
   padding: 12px; border-bottom: 1px solid var(--border-light, #e9ecef);
 }
 .offer-row:last-child { border-bottom: none; }
+
+/* ── Panel Layout (from original inline style block) ──────────────── */
+.ck-panel { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; align-items: start; }
+.ck-panel--full { grid-template-columns: 1fr; }
+.ck-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ck-full { grid-column: 1 / -1; }
+html.ck-js .ck-panel:not(.ck-active) { display: none; }
+
+/* ── Identity Hero ──────────────────────────────────────────────── */
+.ck-hero {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  background: linear-gradient(135deg, var(--bg-surface), var(--bg-elevated));
+  border: 1px solid var(--border-light); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card); padding: 18px 22px; margin-bottom: 16px;
+}
+.ck-hero-avatar {
+  width: 62px; height: 62px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--amber), var(--blue));
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-weight: 800; font-size: 1.4rem; color: #000;
+  flex-shrink: 0;
+}
+.ck-hero-info { flex: 1; min-width: 220px; }
+.ck-hero-name { font-family: var(--font-display); font-weight: 800; font-size: 1.25rem; line-height: 1.2; }
+.ck-hero-meta {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-muted); margin-top: 6px;
+}
+
+/* ── Status & Toggle ────────────────────────────────────────────── */
+.ck-status {
+  display: flex; align-items: center; gap: 14px; padding: 10px 18px;
+  background: var(--bg-elevated); border: 1px solid var(--border-light); border-radius: 12px;
+}
+.ck-status-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+.ck-status-value { font-size: 0.88rem; font-weight: 700; }
+
+.toggle { position: relative; display: inline-block; width: 46px; height: 26px; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; cursor: pointer; inset: 0;
+  background: var(--bg-hover); border: 1px solid var(--border-light);
+  border-radius: 26px; transition: 0.2s;
+}
+.toggle-slider::before {
+  content: ''; position: absolute; width: 20px; height: 20px;
+  left: 2px; top: 2px; background: var(--text-muted); border-radius: 50%; transition: 0.2s;
+}
+.toggle input:checked + .toggle-slider { background: var(--green); border-color: var(--green); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(20px); background: #000; }
+
+/* ── Focus Card ─────────────────────────────────────────────────── */
+.ck-focus {
+  position: relative; grid-column: 1 / -1; border-radius: var(--radius-lg);
+  border: 1px solid var(--border-light);
+  background: var(--bg-surface);
+  padding: 16px;
+}
+.ck-focus::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+}
+.ck-focus-title { color: var(--text-primary); font-family: var(--font-display); font-size: 1.05rem; }
+.ck-focus-sub { color: var(--text-muted); font-size: 0.82rem; }
+.ck-focus-actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Pills ──────────────────────────────────────────────────────── */
+.ck-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 0.7rem; font-weight: 600; }
+.ck-pill--blue { background: rgba(37,99,235,0.12); color: #2563eb; }
+.ck-pill--green { background: rgba(45,90,45,0.12); color: #2d5a2d; }
+.ck-pill--amber { background: rgba(255,204,0,0.15); color: #b38700; }
+.ck-pill--gray { background: #e9ecef; color: #495057; }
+
+/* ── Checks ─────────────────────────────────────────────────────── */
+.ck-focus-checks { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-direction: column; gap: 10px; }
+.ck-check { display: flex; align-items: flex-start; gap: 10px; }
+.ck-check i { font-size: 1rem; margin-top: 2px; }
+.ck-check--ok i { color: var(--green); }
+.ck-check--bad i { color: var(--danger); }
+.ck-check-label { font-weight: 600; font-size: 0.82rem; }
+.ck-check-hint { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+
+/* ── Metrics Strip ──────────────────────────────────────────────── */
+.ck-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.stat-card { background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: 10px; padding: 16px; text-align: center; }
+.stat-icon { width: 44px; height: 44px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; font-size: 1.2rem; margin-bottom: 8px; }
+.stat-value { font-family: var(--font-display); font-size: 1.5rem; font-weight: 800; line-height: 1.2; }
+.stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-top: 4px; }
+
+/* ── Bottom Sheet (Home) ───────────────────────────────────────── */
+.ck-sheet-primary-btn { width: 100%; padding: 16px; font-size: 1rem; font-weight: 700; border-radius: 12px; margin-bottom: 12px; }
+.ck-sheet-meta { display: flex; justify-content: space-between; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 12px; padding: 0 4px; }
+.ck-sheet-actions { display: flex; gap: 8px; padding: 0 4px; }
+.ck-sheet-actions .btn { flex: 1; padding: 12px; border-radius: 10px; }
+
+/* ── Route Row (Assignments/Vehicles) ───────────────────────────── */
+.route-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border-light); }
+.route-icon { width: 36px; height: 36px; background: rgba(45,90,45,0.12); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--brand-primary); }
+.vehicle-name { font-weight: 600; font-size: 0.88rem; }
+.vehicle-meta { font-size: 0.74rem; color: var(--text-muted); }
+
+/* ── Opportunity Numbers ────────────────────────────────────────── */
+.opportunity-num { font-family: var(--font-display); font-size: 2rem; font-weight: 800; line-height: 1; }
+
+/* ── Trip/Time Cards ────────────────────────────────────────────── */
+.trip-card { display: flex; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid var(--border-light); }
+.trip-time { display: flex; flex-direction: column; align-items: center; min-width: 60px; }
+.trip-time .th { font-family: var(--font-mono); font-size: 0.82rem; font-weight: 700; }
+.trip-time .td { font-size: 0.66rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.trip-info { flex: 1; min-width: 0; }
+.trip-route { font-weight: 600; font-size: 0.82rem; margin-bottom: 2px; }
+.trip-meta { font-size: 0.7rem; color: var(--text-muted); }
+
+/* ── Vehicle Row ────────────────────────────────────────────────── */
+.vehicle-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border-light); }
+.vehicle-row:last-child { border-bottom: none; }
+.vehicle-icon { width: 36px; height: 36px; background: rgba(45,90,45,0.12); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--brand-primary); }
+.vehicle-actions { display: flex; gap: 8px; }
+
+/* ── Notifications ──────────────────────────────────────────────── */
+.notif-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border-light); }
+.notif-row:last-child { border-bottom: none; }
+.notif-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--brand-primary); flex-shrink: 0; margin-top: 6px; }
+.notif-dot.read { background: #ccc; }
+
+/* ── Workspace Actions ──────────────────────────────────────────── */
+.workspace-actions { display: flex; gap: 10px; padding-top: 12px; margin-top: 8px; border-top: 1px solid var(--border-light); }
+
+/* ── WS Row (key/value pairs) ───────────────────────────────────── */
+.ws-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-light); }
+.ws-row:last-child { border-bottom: none; }
+.ws-k { color: var(--text-muted); font-size: 0.82rem; }
+.ws-v { color: var(--text-primary); font-weight: 600; font-size: 0.82rem; }
+
+/* ── Empty State ────────────────────────────────────────────────── */
+.ws-empty { text-align: center; padding: 22px 16px; color: var(--text-muted); font-size: 0.82rem; }
+.ws-empty i { font-size: 1.4rem; opacity: 0.35; margin-bottom: 8px; display: block; }
+
+/* ── Live Dot ───────────────────────────────────────────────────── */
+.live-dot { color: var(--brand-primary); }
+.live-dot::before { background: var(--brand-primary); }
+
+/* ── Page Title ─────────────────────────────────────────────────── */
+.page-title { color: var(--text-primary); font-family: var(--font-display); }
+.page-subtitle { color: var(--text-muted); }
+
+/* ── Link Button ────────────────────────────────────────────────── */
+.link-btn { background: none; border: none; color: var(--green); cursor: pointer; padding: 0; font: inherit; }
+
+/* ── Edit Vehicle Button ────────────────────────────────────────── */
+.edit-vehicle { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ── Trip Action Buttons ────────────────────────────────────────── */
+.trip-action { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ── Trip Phase ─────────────────────────────────────────────────── */
+.ck-focus-phase { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* ── Offer Row ──────────────────────────────────────────────────── */
+.offer-icon { width: 36px; height: 36px; background: rgba(37,99,235,0.12); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #2563eb; }
+.offer-body { flex: 1; min-width: 0; }
+.offer-title { font-weight: 600; font-size: 0.82rem; margin-bottom: 4px; }
+.offer-meta { font-size: 0.7rem; color: var(--text-muted); line-height: 1.5; }
+.offer-actions { display: flex; gap: 8px; margin-top: 8px; }
+.offer-actions .btn { padding: 8px 12px; font-size: 0.78rem; }
+
+/* ── Focus Top ──────────────────────────────────────────────────── */
+.ck-focus-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+
+/* ── Focus Variants ─────────────────────────────────────────────── */
+.ck-focus--trip { border-left: 3px solid #2563eb; }
+.ck-focus--offer { border-left: 3px solid #b88605; }
+.ck-focus--live { border-left: 3px solid #2d5a2d; }
+.ck-focus--idle { border-left: 3px solid #a855f7; }
+.ck-focus--req { border-left: 3px solid #b88605; }
+
+/* ── Card Header ────────────────────────────────────────────────── */
+.card-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--bg-surface-alt); border-bottom: 1px solid var(--border-light); border-radius: 10px 10px 0 0; }
+.card-title { font-family: var(--font-display); font-weight: 700; font-size: 0.9rem; }
+.card-title i { margin-right: 8px; }
+
+/* ── Card ───────────────────────────────────────────────────────── */
+.card { background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.card-body { background: var(--bg-surface); padding: 16px; }
+
+* {
+  box-sizing: border-box;
+}
 .trip-card {
   display: flex; align-items: center; gap: 12px;
   padding: 12px; border-bottom: 1px solid var(--border-light, #e9ecef);
@@ -870,5 +1058,197 @@ body.dark-mode #refreshBtn { color: #66bb6a; }
   }
   body.dark-mode .t-shell.ck-shell .topbar-actions .afc-notif .afc-notif__trigger:hover {
     background: #3a3a3a; border-color: transparent;
+  }
+}
+
+/* ── Driver Map Styles ───────────────────────────── */
+#driverMap {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-surface-alt, #f8f9fa);
+}
+
+.driver-marker {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  pointer-events: none;
+}
+.driver-marker .driver-pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  border-radius: 50%;
+  background: rgba(37, 99, 235, 0.4);
+  opacity: 0;
+  transform: scale(0.5);
+  animation: driver-pulse 2s ease-out infinite;
+}
+.driver-marker .driver-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  background: #2563eb;
+  border: 3px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  z-index: 1;
+}
+
+@keyframes driver-pulse {
+  0% { transform: scale(0.5); opacity: 0.6; }
+  70% { transform: scale(2.5); opacity: 0; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+/* Map container in home panel */
+.ck-map-container {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 120px);
+  min-height: 350px;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 900px) {
+  .ck-map-container {
+    height: calc(100vh - 200px);
+    min-height: 300px;
+    border-radius: 0;
+    margin: 0 -16px 16px;
+  }
+}
+
+@media (max-width: 767px) {
+  .ck-map-container {
+    height: calc(100vh - 180px);
+    min-height: 280px;
+    margin: 0 -16px 12px;
+  }
+}
+
+/* Bottom sheet for home panel */
+.ck-bottom-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-surface, #fff);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+  z-index: 100;
+  max-height: 60vh;
+  overflow-y: auto;
+  transform: translateY(0);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ck-bottom-sheet.peek {
+  transform: translateY(calc(100% - 100px));
+}
+
+.ck-bottom-sheet.half {
+  transform: translateY(calc(100% - 50%));
+}
+
+.ck-bottom-sheet.full {
+  transform: translateY(0);
+}
+
+.ck-sheet-handle {
+  width: 40px;
+  height: 4px;
+  background: var(--border-medium, #dee2e6);
+  border-radius: 2px;
+  margin: 12px auto 8px;
+  cursor: grab;
+}
+
+.ck-sheet-content {
+  padding: 0 16px 16px;
+}
+
+.ck-sheet-primary-btn {
+  width: 100%;
+  padding: 16px;
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.ck-sheet-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  padding: 0 4px;
+}
+
+.ck-sheet-actions {
+  display: flex;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.ck-sheet-actions .btn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 10px;
+}
+
+/* Dark mode for map elements */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light-mode) #driverMap,
+  body.dark-mode #driverMap {
+    background: var(--bg-surface, #1e1e1e);
+  }
+}
+
+/* MapLibre overrides */
+.maplibregl-ctrl-attrib {
+  font-size: 0.65rem !important;
+}
+
+.maplibregl-ctrl-geolocate {
+  background: var(--bg-surface, #fff) !important;
+  border: 1px solid var(--border-light, #e9ecef) !important;
+}
+
+.maplibregl-ctrl-geolocate:hover {
+  background: var(--bg-surface-alt, #f8f9fa) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light-mode) .maplibregl-ctrl-geolocate,
+  body.dark-mode .maplibregl-ctrl-geolocate {
+    background: var(--bg-surface, #1e1e1e) !important;
+    border-color: var(--border-light, #2d2d2d) !important;
+  }
+}
+
+/* Bottom sheet dark mode */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light-mode) .ck-bottom-sheet,
+  body.dark-mode .ck-bottom-sheet {
+    background: var(--bg-surface, #1e1e1e);
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+  }
+  :root:not(.light-mode) .ck-sheet-handle,
+  body.dark-mode .ck-sheet-handle {
+    background: var(--border-medium, #dee2e6);
   }
 }

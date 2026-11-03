@@ -27,6 +27,111 @@
         <p>Total: {{ users.total if users else 0 }} users</p>
       </div>
 
+      <!-- Search and Filter Panel -->
+      <div class="users-filter-panel">
+        <form method="GET" class="filter-form">
+          <!-- Search Section -->
+          <div class="filter-section search-section">
+            <label for="search">Search</label>
+            <div class="search-input-group">
+              <select name="search_field" id="search_field" class="search-field-select">
+                <option value="all" {% if search_field == 'all' %}selected{% endif %}>All Fields</option>
+                <option value="username" {% if search_field == 'username' %}selected{% endif %}>Username</option>
+                <option value="email" {% if search_field == 'email' %}selected{% endif %}>Email</option>
+                <option value="phone" {% if search_field == 'phone' %}selected{% endif %}>Phone</option>
+              </select>
+              <input type="text" 
+                     name="search" 
+                     id="search" 
+                     class="search-input" 
+                     placeholder="Search users..." 
+                     value="{{ search }}">
+              <button type="submit" class="btn btn-primary search-btn">
+                <i class="bi bi-search"></i> Search
+              </button>
+            </div>
+          </div>
+
+          <!-- Filter Section -->
+          <div class="filter-section">
+            <label>Filters</label>
+            <div class="filter-row">
+              <div class="filter-group">
+                <label for="status">Status</label>
+                <select name="status" id="status" class="filter-select">
+                  <option value="" {% if not status_filter %}selected{% endif %}>All Status</option>
+                  <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option>
+                  <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive</option>
+                  <option value="verified" {% if status_filter == 'verified' %}selected{% endif %}>Verified</option>
+                  <option value="unverified" {% if status_filter == 'unverified' %}selected{% endif %}>Unverified</option>
+                  <option value="agent" {% if status_filter == 'agent' %}selected{% endif %}>Agent</option>
+                  <option value="deleted" {% if status_filter == 'deleted' %}selected{% endif %}>Deleted</option>
+                </select>
+              </div>
+
+              <div class="filter-group">
+                <label for="role">Role</label>
+                <select name="role" id="role" class="filter-select">
+                  <option value="" {% if not role_filter %}selected{% endif %}>All Roles</option>
+                  {% for role in all_roles %}
+                    <option value="{{ role.name }}" {% if role_filter == role.name %}selected{% endif %}>{{ role.name.replace('_', ' ').title() }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div class="filter-group">
+                <label for="date_from">Registered From</label>
+                <input type="date" name="date_from" id="date_from" class="filter-input" value="{{ date_from }}">
+              </div>
+
+              <div class="filter-group">
+                <label for="date_to">Registered To</label>
+                <input type="date" name="date_to" id="date_to" class="filter-input" value="{{ date_to }}">
+              </div>
+            </div>
+          </div>
+
+          <!-- Sort Section -->
+          <div class="filter-section sort-section">
+            <label>Sort By</label>
+            <div class="filter-row">
+              <div class="filter-group">
+                <select name="sort_by" id="sort_by" class="filter-select">
+                  <option value="created_at" {% if sort_by == 'created_at' %}selected{% endif %}>Date Registered</option>
+                  <option value="username" {% if sort_by == 'username' %}selected{% endif %}>Username</option>
+                  <option value="email" {% if sort_by == 'email' %}selected{% endif %}>Email</option>
+                  <option value="last_login" {% if sort_by == 'last_login' %}selected{% endif %}>Last Login</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <select name="sort_order" id="sort_order" class="filter-select">
+                  <option value="desc" {% if sort_order == 'desc' %}selected{% endif %}>Newest First (Desc)</option>
+                  <option value="asc" {% if sort_order == 'asc' %}selected{% endif %}>Oldest First (Asc)</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <label for="per_page">Per Page</label>
+                <select name="per_page" id="per_page" class="filter-select" onchange="this.form.submit()">
+                  <option value="25" {% if per_page == 25 %}selected{% endif %}>25</option>
+                  <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                  <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="filter-actions">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-funnel"></i> Apply Filters
+            </button>
+            <a href="{{ url_for('admin.owner.users') }}" class="btn btn-secondary">
+              <i class="bi bi-x-circle"></i> Clear All
+            </a>
+          </div>
+        </form>
+      </div>
+
       <div class="users-table">
         <table class="owner-table">
           <thead>
@@ -43,7 +148,11 @@
             {% if users %}
             {% for user in users.items %}
             <tr>
-              <td>{{ user.username }}</td>
+              <td>
+                <strong>{{ user.username }}</strong>
+                {% if user.is_agent %}<span class="badge agent">Agent</span>{% endif %}
+                {% if user.is_protected %}<span class="badge protected">Protected</span>{% endif %}
+              </td>
               <td>{{ user.email }}</td>
               <td>
                 <span class="badge {{ 'success' if user.is_active else 'danger' }}">
@@ -80,7 +189,7 @@
         {% if users and users.pages > 1 %}
         <div class="pagination">
           {% if users.has_prev %}
-            <a href="{{ url_for('admin.owner.users', page=users.prev_num) }}" class="btn">← Previous</a>
+            <a href="{{ url_for('admin.owner.users', page=users.prev_num, search=search, search_field=search_field, status=status_filter, role=role_filter, date_from=date_from, date_to=date_to, sort_by=sort_by, sort_order=sort_order, per_page=per_page) }}" class="btn">← Previous</a>
           {% endif %}
 
           <span class="page-info">
@@ -88,7 +197,7 @@
           </span>
 
           {% if users.has_next %}
-            <a href="{{ url_for('admin.owner.users', page=users.next_num) }}" class="btn">Next →</a>
+            <a href="{{ url_for('admin.owner.users', page=users.next_num, search=search, search_field=search_field, status=status_filter, role=role_filter, date_from=date_from, date_to=date_to, sort_by=sort_by, sort_order=sort_order, per_page=per_page) }}" class="btn">Next →</a>
           {% endif %}
         </div>
         {% endif %}
@@ -98,8 +207,138 @@
 </div>
 
 <style nonce="{{ csp_nonce }}">
+.users-filter-panel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.filter-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.filter-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.filter-section label {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.search-input-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.search-field-select {
+  min-width: 150px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-medium);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.search-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-medium);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.filter-row {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+  min-width: 180px;
+}
+
+.filter-group label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.filter-select, .filter-input {
+  padding: 8px 12px;
+  border: 1px solid var(--border-medium);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-light);
+}
+
+.btn {
+  padding: 10px 20px;
+  border-radius: 4px;
+  text-decoration: none;
+  font-size: 14px;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--text-light);
+}
+
+.btn-primary:hover {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+.btn-secondary {
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-medium);
+  color: var(--text-secondary);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-surface);
+  border-color: var(--border-dark);
+  color: var(--text-primary);
+}
+
 .users-table {
-  background: white;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
   border-radius: 8px;
   padding: 20px;
   box-shadow: 0 2px 10px rgba(0,0,0,0.1);
@@ -114,12 +353,18 @@
 .owner-table td {
   padding: 12px;
   text-align: left;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-primary);
 }
 
 .owner-table th {
-  background: #f8f9fa;
+  background: var(--bg-surface-alt);
   font-weight: 600;
+  color: var(--text-primary);
+}
+
+.owner-table tbody tr:hover {
+  background: var(--bg-surface-alt);
 }
 
 .badge {
@@ -127,11 +372,15 @@
   border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
+  display: inline-block;
+  margin-right: 5px;
 }
 
-.badge.success { background: #d4edda; color: #155724; }
-.badge.danger { background: #f8d7da; color: #721c24; }
-.badge.warning { background: #fff3cd; color: #856404; }
+.badge.success { background: rgba(0, 100, 0, 0.15); color: var(--success); }
+.badge.danger { background: rgba(220, 53, 69, 0.15); color: #ff6b6b; }
+.badge.warning { background: rgba(255, 193, 7, 0.15); color: var(--warning); }
+.badge.agent { background: rgba(23, 162, 184, 0.15); color: var(--info); }
+.badge.protected { background: rgba(220, 53, 69, 0.15); color: #ff6b6b; }
 
 .btn-impersonate {
   background: #6f42c1;
@@ -140,6 +389,8 @@
   border-radius: 4px;
   text-decoration: none;
   font-size: 12px;
+  border: none;
+  cursor: pointer;
 }
 
 .btn-impersonate:hover {
@@ -153,25 +404,40 @@
   align-items: center;
   margin-top: 20px;
   padding-top: 20px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--border-light);
 }
 
-.btn {
-  background: #007bff;
-  color: white;
-  padding: 8px 16px;
-  border-radius: 4px;
-  text-decoration: none;
+.pagination .btn {
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border-medium);
+  color: var(--text-secondary);
 }
 
-.btn:hover {
-  background: #0056b3;
-  color: white;
+.pagination .btn:hover {
+  background: var(--bg-surface);
+  border-color: var(--border-dark);
+  color: var(--text-primary);
 }
 
 .page-info {
-  color: #666;
+  color: var(--text-muted);
   font-size: 14px;
+}
+
+@media (max-width: 768px) {
+  .search-input-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .filter-group {
+    min-width: 100%;
+  }
 }
 </style>
 {% endblock %}

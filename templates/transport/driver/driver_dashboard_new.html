@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Driver — AFCON360</title>
+  <meta name="theme-color" content="#2d5a2d">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=DM+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/global/dark-mode.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/global/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-components.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='lib/maplibre-gl/maplibre-gl.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/driver_dashboard_new.css') }}">
+  <style nonce="{{ csp_nonce }}">
+    /* Inline critical CSS for instant render */
+    .dd-shell { display: grid; grid-template-columns: 280px 1fr; grid-template-rows: 64px 1fr; grid-template-areas: "pane topbar" "pane main"; min-height: 100vh; background: var(--bg-surface-alt); }
+    .dd-pane { grid-area: pane; background: var(--bg-surface); border-right: 1px solid var(--border-light); display: flex; flex-direction: column; z-index: 100; }
+    .dd-main { grid-area: main; display: flex; flex-direction: column; min-height: 0; }
+    .dd-topbar { grid-area: topbar; height: 64px; background: var(--bg-surface); border-bottom: 1px solid var(--border-light); display: flex; align-items: center; gap: 16px; padding: 0 16px; position: sticky; top: 0; z-index: 50; }
+    @media (max-width: 1024px) { .dd-shell { grid-template-columns: 1fr; grid-template-areas: "topbar" "main"; } .dd-pane { position: fixed; top: 0; left: 0; bottom: 0; width: 280px; max-width: 85vw; transform: translateX(-100%); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); z-index: 100; } .dd-pane.open { transform: translateX(0); } .dd-hamburger { display: flex; } .dd-driver-code { display: none; } .dd-overlay.visible { display: block; opacity: 1; } }
+    @media (max-width: 640px) { .dd-dock { display: flex; } }
+  </style>
+</head>
+<body>
+<div class="dd-shell" id="ddShell" 
+     data-driver-id="{{ driver_profile.id if driver_profile else '' }}"
+     data-csrf="{{ raw_csrf_token }}"
+     data-ping-interval="{{ ping_interval_seconds|default(30000) }}"
+     data-is-online="{{ '1' if driver_profile and driver_profile.is_online else '0' }}"
+     data-driver-code="{{ driver_profile.driver_code if driver_profile else '' }}">
+
+  <!-- LEFT PANE (Desktop Sidebar) -->
+  <aside class="dd-pane" id="ddPane" role="navigation" aria-label="Driver workspace">
+    <div class="dd-pane-header">
+      <div class="dd-brand"><i class="fa-solid fa-bus"></i><span>AFCON360</span></div>
+      <button class="dd-pane-close" id="ddPaneClose" aria-label="Close menu"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <nav class="dd-pane-nav">
+      <a href="#" class="dd-pane-item active" data-panel="home" aria-current="page"><i class="fa-solid fa-house"></i><span>Home</span></a>
+      <a href="#" class="dd-pane-item" data-panel="earnings"><i class="fa-solid fa-wallet"></i><span>Earnings</span><span class="dd-badge" id="ddTodayEarningsBadge">KES 0</span></a>
+      <a href="#" class="dd-pane-item" data-panel="trips"><i class="fa-solid fa-route"></i><span>Trips</span></a>
+      <a href="#" class="dd-pane-item" data-panel="vehicle"><i class="fa-solid fa-van-shuttle"></i><span>Vehicle</span></a>
+      <a href="#" class="dd-pane-item" data-panel="account"><i class="fa-solid fa-user"></i><span>Account</span></a>
+    </nav>
+    <div class="dd-pane-footer">
+      <div class="dd-driver-mini" id="ddDriverMini">
+        <div class="dd-mini-avatar">{{ (driver_profile.user.name or driver_profile.driver_code)[:2].upper() if driver_profile.user else driver_profile.driver_code[:2].upper() }}</div>
+        <div class="dd-mini-info"><div class="dd-mini-name">{{ driver_profile.user.name if driver_profile.user else 'Driver' }}</div><div class="dd-mini-code">{{ driver_profile.driver_code }}</div></div>
+      </div>
+      <button class="dd-btn dd-btn-ghost" id="ddLogoutBtn"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
+    </div>
+  </aside>
+
+  <div class="dd-overlay" id="ddOverlay" aria-hidden="true"></div>
+
+  <!-- MAIN CONTENT -->
+  <main class="dd-main" role="main">
+    <header class="dd-topbar">
+      <button class="dd-hamburger" id="ddHamburger" aria-label="Open menu" aria-expanded="false"><i class="fa-solid fa-bars"></i></button>
+      <div class="dd-search" id="ddSearch"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Search transport..." aria-label="Search transport"></div>
+      <div class="dd-topbar-actions">
+        <span class="dd-driver-code" id="ddDriverCode">{{ driver_profile.driver_code }}</span>
+        <button class="dd-icon-btn" id="ddSafetyBtn" aria-label="Safety Toolkit"><i class="fa-solid fa-shield-halved"></i></button>
+        <button class="dd-icon-btn" id="ddSupportBtn" aria-label="Support"><i class="fa-solid fa-headset"></i></button>
+        <button class="dd-icon-btn" id="ddNotificationsBtn" aria-label="Notifications"><i class="fa-solid fa-bell"></i><span class="dd-notif-dot" id="ddNotifDot" aria-hidden="true"></span></button>
+      </div>
+    </header>
+
+    <div class="dd-panels" id="ddPanels">
+      <!-- HOME PANEL -->
+      <section class="dd-panel active" data-panel="home" role="region" aria-label="Home">
+        <div class="dd-hero">
+          <div class="dd-hero-avatar">{{ (driver_profile.user.name or driver_profile.driver_code)[:2].upper() if driver_profile.user else driver_profile.driver_code[:2].upper() }}</div>
+          <div class="dd-hero-info">
+            <h1 class="dd-hero-name">{{ driver_profile.user.name if driver_profile.user else 'Driver' }}</h1>
+            <div class="dd-hero-meta">
+              <span class="dd-badge dd-badge-{{ 'green' if compliance == 'approved' else 'amber' if compliance in ['pending_review', 'under_review'] else 'red' }}">{{ compliance|replace('_',' ')|title }}</span>
+              <span><i class="fa-solid fa-star"></i> {{ '%.1f'|format(driver_profile.average_rating|float) if driver_profile.average_rating else '—' }}</span>
+              <span>{{ driver_profile.driver_code }}</span>
+              {% if assigned_vehicle %}<span><i class="fa-solid fa-van-shuttle"></i> {{ assigned_vehicle.license_plate }}</span>{% endif %}
+            </div>
+          </div>
+          <div class="dd-hero-status">
+            <div class="dd-status-label">Status</div>
+            <div class="dd-status-value" id="ddOnlineLabel">{{ 'Online' if driver_profile.is_online else 'Offline' }}</div>
+            <label class="dd-toggle"><input type="checkbox" id="ddOnlineToggle" {{ 'checked' if driver_profile.is_online }}><span class="dd-toggle-slider"></span></label>
+          </div>
+        </div>
+
+        {% if compliance in ['pending_review', 'under_review'] %}
+        <div class="dd-alert dd-alert-warning"><i class="fa-solid fa-clock"></i><span>Your driver account is <strong>pending review</strong>. You will be able to accept rides once approved.</span></div>
+        {% elif compliance != 'approved' %}
+        <div class="dd-alert dd-alert-error"><i class="fa-solid fa-circle-exclamation"></i><span>Your driver account is <strong>{{ compliance|replace('_',' ')|title }}</strong>. Contact support.</span></div>
+        {% endif %}
+
+        <div class="dd-card dd-golive-card {% if go_live and go_live.ready %}ready{% else %}pending{% endif %}">
+          <div class="dd-card-header"><div class="dd-pill dd-pill-{{ 'green' if go_live and go_live.ready else 'amber' }}">{{ 'Ready' if go_live and go_live.ready else 'Pending' }} to go live</div></div>
+          <div class="dd-card-body">
+            <h3>{{ 'Go-live ready' if go_live and go_live.ready else 'Go-live pending' }}</h3>
+            <p>{{ go_live.message if go_live else 'Complete the requirements below to start receiving rides.' }}</p>
+            {% if go_live and go_live.checks %}
+            <ul class="dd-checklist">
+              {% for check in go_live.checks %}
+              <li class="dd-checklist-item {% if check.ok %}ok{% else %}bad{% endif %}"><i class="fa-solid fa-{{ 'circle-check' if check.ok else 'circle-xmark' }}"></i><div><div class="dd-check-label">{{ check.label }}</div><div class="dd-check-hint">{{ check.hint }}</div></div></li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+            {% if go_live and go_live.ready %}
+            <button class="dd-btn dd-btn-primary dd-btn-block" id="ddGoOnlineCta"><i class="fa-solid fa-power-off"></i> Go Online</button>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="dd-map-section">
+          <div class="dd-map-container" id="ddMapContainer"><div id="ddMap" class="dd-map"></div></div>
+          <div class="dd-sheet" id="ddSheet" role="region" aria-label="Driver controls">
+            <div class="dd-sheet-handle" id="ddSheetHandle" tabindex="0" aria-label="Drag to expand"></div>
+            <div class="dd-sheet-content">
+              {% if go_live and go_live.ready %}
+              <button class="dd-btn dd-btn-primary dd-btn-block dd-sheet-toggle" id="ddSheetToggle">
+                <span class="dd-toggle-content"><i class="fa-solid fa-circle" style="color:var(--green)"></i><div><strong>GO ONLINE</strong><small>Tap to start receiving rides</small></div></span>
+                <input type="checkbox" id="ddSheetOnlineToggle" {{ 'checked' if driver_profile.is_online }} class="dd-sheet-toggle-input">
+              </button>
+              {% else %}
+              <button class="dd-btn dd-btn-warning dd-btn-block" disabled><i class="fa-solid fa-clock"></i><div><strong>GO LIVE PENDING</strong><small>{{ go_live.message if go_live else 'Requirements not met' }}</small></div></button>
+              {% endif %}
+              <div class="dd-sheet-meta"><div class="dd-sheet-meta-item"><span class="dd-sheet-meta-label">Earnings/hr</span><span class="dd-sheet-meta-value" id="ddSheetEarnings">—</span></div><div class="dd-sheet-meta-item"><span class="dd-sheet-meta-label">Daily Goal</span><span class="dd-sheet-meta-value" id="ddSheetGoal">—</span></div></div>
+              <div class="dd-sheet-actions"><button class="dd-btn dd-btn-primary" id="ddNavigateBtn"><i class="fa-solid fa-location-dot"></i> Navigate</button><button class="dd-btn dd-btn-outline" id="ddSupportBtnSheet"><i class="fa-solid fa-headset"></i> Support</button></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- EARNINGS PANEL -->
+      <section class="dd-panel" data-panel="earnings" role="region" aria-label="Earnings">
+        <div class="dd-card"><div class="dd-card-header"><h2><i class="fa-solid fa-wallet"></i> Earnings Overview</h2></div><div class="dd-card-body">
+          <div class="dd-metrics">
+            <div class="dd-metric"><div class="dd-metric-icon green"><i class="fa-solid fa-money-bill-wave"></i></div><div class="dd-metric-info"><div class="dd-metric-value" id="ddTodayEarnings">KES 0</div><div class="dd-metric-label">Today</div></div></div>
+            <div class="dd-metric"><div class="dd-metric-icon green"><i class="fa-solid fa-calendar-week"></i></div><div class="dd-metric-info"><div class="dd-metric-value" id="ddWeekEarnings">KES 0</div><div class="dd-metric-label">This Week</div></div></div>
+            <div class="dd-metric"><div class="dd-metric-icon blue"><i class="fa-solid fa-calendar-days"></i></div><div class="dd-metric-info"><div class="dd-metric-value" id="ddMonthEarnings">KES 0</div><div class="dd-metric-label">This Month</div></div></div>
+          </div>
+        </div></div>
+        <div class="dd-card"><div class="dd-card-header"><h2><i class="fa-solid fa-clock"></i> Recent Trips</h2></div><div class="dd-card-body dd-trip-list" id="ddRecentTrips">
+          {% if recent_trips %}{% for trip in recent_trips %}
+          <div class="dd-trip-item"><div class="dd-trip-time"><span class="dd-trip-time-main">{{ trip.started_at.strftime('%H:%M') if trip.started_at else '—' }}</span><span class="dd-trip-duration">{{ '%.0f'|format(trip.duration_minutes|float) if trip.duration_minutes else '—' }} min</span></div><div class="dd-trip-details"><div class="dd-trip-route">{{ trip.pickup_address or 'Pickup' }} → {{ trip.dropoff_address or 'Drop-off' }}</div><div class="dd-trip-meta"><span class="dd-badge dd-badge-{{ 'green' if trip.status == 'completed' else 'blue' if trip.status == 'active' else 'gray' }}">{{ trip.status|title }}</span>{% if trip.fare_amount %}<span><i class="fa-solid fa-money-bill"></i> {{ '%.0f'|format(trip.fare_amount|float) }}</span>{% endif %}</div></div></div>
+          {% endfor %}{% else %}<div class="dd-empty"><i class="fa-solid fa-receipt"></i> No recent trips</div>{% endif %}
+        </div></div>
+      </section>
+
+      <!-- TRIPS PANEL -->
+      <section class="dd-panel" data-panel="trips" role="region" aria-label="Trips">
+        <div class="dd-card"><div class="dd-card-header"><h2><i class="fa-solid fa-route"></i> Trip History</h2></div><div class="dd-card-body dd-trip-list" id="ddAllTrips">
+          {% if all_trips %}{% for trip in all_trips %}
+          <div class="dd-trip-item"><div class="dd-trip-time"><span class="dd-trip-time-main">{{ trip.started_at.strftime('%H:%M') if trip.started_at else '—' }}</span><span class="dd-trip-date">{{ trip.started_at.strftime('%d %b') if trip.started_at else '' }}</span></div><div class="dd-trip-details"><div class="dd-trip-route">{{ trip.pickup_address or 'Pickup' }} → {{ trip.dropoff_address or 'Drop-off' }}</div><div class="dd-trip-meta"><span class="dd-badge dd-badge-{{ 'green' if trip.status == 'completed' else 'blue' if trip.status == 'active' else 'amber' if trip.status == 'cancelled' else 'gray' }}">{{ trip.status|title }}</span>{% if trip.fare_amount %}<span><i class="fa-solid fa-money-bill"></i> {{ '%.0f'|format(trip.fare_amount|float) }}</span>{% endif %}{% if trip.distance_km %}<span><i class="fa-solid fa-road"></i> {{ '%.1f'|format(trip.distance_km|float) }} km</span>{% endif %}</div></div><button class="dd-btn dd-btn-ghost dd-btn-sm" data-trip-id="{{ trip.id }}"><i class="fa-solid fa-eye"></i> Details</button></div>
+          {% endfor %}{% else %}<div class="dd-empty"><i class="fa-solid fa-route"></i> No trips yet</div>{% endif %}
+        </div></div>
+      </section>
+
+      <!-- VEHICLE PANEL -->
+      <section class="dd-panel" data-panel="vehicle" role="region" aria-label="Vehicle">
+        {% if assigned_vehicle %}
+        <div class="dd-card"><div class="dd-card-header"><h2><i class="fa-solid fa-van-shuttle"></i> Assigned Vehicle</h2></div><div class="dd-card-body">
+          <div class="dd-vehicle-main"><div class="dd-vehicle-icon"><i class="fa-solid fa-van-shuttle"></i></div><div class="dd-vehicle-info"><h3>{{ assigned_vehicle.make }} {{ assigned_vehicle.model }}</h3><p>{{ assigned_vehicle.license_plate }} • {{ assigned_vehicle.color or '—' }} • {{ assigned_vehicle.year or '—' }}</p></div><div class="dd-vehicle-actions"><button class="dd-btn dd-btn-outline" data-vehicle-id="{{ assigned_vehicle.id }}" id="ddEditVehicleBtn"><i class="fa-solid fa-pen"></i> Edit</button><button class="dd-btn dd-btn-outline" data-action="docs"><i class="fa-solid fa-file-alt"></i> Docs</button></div></div>
+        </div></div>
+        {% endif %}
+        <div class="dd-card"><div class="dd-card-header"><h2><i class="fa-solid fa-wrench"></i> Vehicle Documents</h2></div><div class="dd-card-body" id="ddVehicleDocs">
+          {% if vehicle_docs %}{% for doc in vehicle_docs %}
+          <div class="dd-doc-item"><div class="dd-doc-info"><i class="fa-solid fa-file"></i><div><div class="dd-doc-type">{{ doc.type|replace('_',' ')|title }}</div><div class="dd-doc-hint">{% if doc.expiry_date %}Expires {{ doc.expiry_date.strftime('%d %b %Y') }}{% else %}No expiry{% endif %}</div></div></div><span class="dd-badge dd-badge-{{ 'green' if doc.status == 'approved' else 'amber' if doc.status == 'pending' else 'red' }}">{{ doc.status|title }}</span></div>
+          {% endfor %}{% else %}<div class="dd-empty"><i class="fa-solid fa-file-alt"></i> No documents uploaded</div>{% endif %}
+        </div></div>
+      </section>
+
+      <!-- ACCOUNT PANEL -->
+      <section class="dd-panel" data-panel="account" role="region" aria-label="Account">
+        <div class="dd-card"><div class="dd-card-header"><h2><i class="fa-solid fa-user"></i> Profile</h2></div><div class="dd-card-body">
+          <div class="dd-profile-field"><span class="dd-profile-label">Name</span><span class="dd-profile-value">{{ driver_profile.user.name if driver_profile.user else '—' }}</span></div>
+          <div class="dd-profile-field"><span class="dd-profile-label">Email</span><span class="dd-profile-value">{{ driver_profile.user.email if driver_profile.user else '—' }}</span></div>
+          <div class="dd-profile-field"><span class="dd-profile-label">Phone</span><span class="dd-profile-value">{{ driver_profile.user.phone if driver_profile.user else '—' }}</span></div>
+          <div class="dd-profile-field"><span class="dd-profile-label">Driver Code</span><span class="dd-profile-value">{{ driver_profile.driver_code }}</span></div>
+          <div class="dd-profile-field"><span class="dd-profile-label">License</span><span class="dd-profile-value">{{ driver_profile.license_number or '—' }}</span></div>
+          <div class="dd-profile-field"><span class="dd-profile-label">Status</span><span class="dd-profile-value"><span class="dd-badge dd-badge-{{ 'green' if compliance == 'approved' else 'amber' if compliance in ['pending_review', 'under_review'] else 'red' }}">{{ compliance|replace('_',' ')|title }}</span></span></div>
+        </div></div>
+        <div class="dd-card"><div class="dd-card-header"><h2><i class="fa-solid fa-shield-halved"></i> Go-Live Requirements</h2></div><div class="dd-card-body">
+          {% if go_live and go_live.checks %}<ul class="dd-checklist">{% for check in go_live.checks %}<li class="dd-checklist-item {% if check.ok %}ok{% else %}bad{% endif %}"><i class="fa-solid fa-{{ 'circle-check' if check.ok else 'circle-xmark' }}"></i><div><div class="dd-check-label">{{ check.label }}</div><div class="dd-check-hint">{{ check.hint }}</div></div></li>{% endfor %}</ul>{% else %}<div class="dd-empty"><i class="fa-solid fa-clipboard-check"></i> Requirements loaded separately</div>{% endif %}
+        </div></div>
+        <div class="dd-card"><div class="dd-card-header"><h2><i class="fa-solid fa-headset"></i> Support</h2></div><div class="dd-card-body"><a href="{{ url_for('transport.drivers_new') }}" target="_blank" class="dd-btn dd-btn-primary dd-btn-block"><i class="fa-solid fa-life-ring"></i> Help Center</a><a href="tel:+254700000000" class="dd-btn dd-btn-outline dd-btn-block"><i class="fa-solid fa-phone"></i> Call Support</a><a href="https://wa.me/254700000000" target="_blank" class="dd-btn dd-btn-outline dd-btn-block"><i class="fa-brands fa-whatsapp"></i> WhatsApp Support</a><button class="dd-btn dd-btn-outline dd-btn-block" id="ddChatSupportBtn"><i class="fa-solid fa-comment-dots"></i> Live Chat</button></div></div>
+        <div class="dd-actions"><button class="dd-btn dd-btn-primary" id="ddEditProfileBtn"><i class="fa-solid fa-user-pen"></i> Edit Profile</button><button class="dd-btn dd-btn-outline" id="ddSettingsBtn"><i class="fa-solid fa-gear"></i> Settings</button><button class="dd-btn dd-btn-ghost" id="ddLogoutBtn2"><i class="fa-solid fa-right-from-bracket"></i> Logout</button></div>
+      </section>
+    </div>
+  </main>
+
+  <nav class="dd-dock" id="ddDock" role="navigation" aria-label="Mobile navigation">
+    <a href="#" class="dd-dock-item active" data-panel="home"><i class="fa-solid fa-house"></i><span>Home</span></a>
+    <a href="#" class="dd-dock-item" data-panel="earnings"><i class="fa-solid fa-wallet"></i><span>Earn</span></a>
+    <a href="#" class="dd-dock-item" data-panel="trips"><i class="fa-solid fa-route"></i><span>Trips</span></a>
+    <a href="#" class="dd-dock-item" data-panel="vehicle"><i class="fa-solid fa-van-shuttle"></i><span>Vehicle</span></a>
+    <a href="#" class="dd-dock-item" data-panel="account"><i class="fa-solid fa-user"></i><span>Account</span></a>
+  </nav>
+</div>
+
+<!-- SAFETY MODAL -->
+<div class="dd-modal" id="ddSafetyModal" role="dialog" aria-modal="true" aria-labelledby="ddSafetyModalTitle">
+  <div class="dd-modal-backdrop"></div>
+  <div class="dd-modal-content"><div class="dd-modal-header"><h3 id="ddSafetyModalTitle"><i class="fa-solid fa-shield-halved"></i> Safety Toolkit</h3><button class="dd-modal-close" id="ddCloseSafetyModal" aria-label="Close"><i class="fa-solid fa-xmark"></i></button></div><div class="dd-modal-body"><button class="dd-btn dd-btn-danger dd-btn-block" id="ddEmergencyBtn"><i class="fa-solid fa-phone"></i> Call Emergency (999)</button><button class="dd-btn dd-btn-outline dd-btn-block" id="ddShareTripBtn"><i class="fa-solid fa-share"></i> Share Trip with Contact</button><button class="dd-btn dd-btn-outline dd-btn-block" id="ddSafetyGuidelinesBtn"><i class="fa-solid fa-book"></i> Safety Guidelines</button><button class="dd-btn dd-btn-outline dd-btn-block" id="ddRecordAudioBtn"><i class="fa-solid fa-microphone"></i> Record Audio</button></div></div>
+</div>
+
+<!-- SUPPORT MODAL -->
+<div class="dd-modal" id="ddSupportModal" role="dialog" aria-modal="true" aria-labelledby="ddSupportModalTitle">
+  <div class="dd-modal-backdrop"></div>
+  <div class="dd-modal-content"><div class="dd-modal-header"><h3 id="ddSupportModalTitle"><i class="fa-solid fa-headset"></i> Support</h3><button class="dd-modal-close" id="ddCloseSupportModal" aria-label="Close"><i class="fa-solid fa-xmark"></i></button></div><div class="dd-modal-body"><a href="{{ url_for('transport.drivers_new') }}" target="_blank" class="dd-btn dd-btn-primary dd-btn-block"><i class="fa-solid fa-life-ring"></i> Help Center</a><a href="tel:+254700000000" class="dd-btn dd-btn-outline dd-btn-block"><i class="fa-solid fa-phone"></i> Call Support</a><a href="https://wa.me/254700000000" target="_blank" class="dd-btn dd-btn-outline dd-btn-block"><i class="fa-brands fa-whatsapp"></i> WhatsApp Support</a><button class="dd-btn dd-btn-outline dd-btn-block" id="ddChatSupportBtn"><i class="fa-solid fa-comment-dots"></i> Live Chat</button></div></div>
+</div>
+
+<script src="{{ url_for('static', filename='lib/maplibre-gl/maplibre-gl.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/transport/driver-map.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/transport/driver_dashboard_new.js') }}"></script>
+</body>
+</html>

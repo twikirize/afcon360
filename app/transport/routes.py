@@ -2623,8 +2623,169 @@ def driver_dashboard():
     except (TypeError, ValueError):
         ping_interval = 120
 
+    # Determine which dashboard version to use based on system config
+    from app.models.system_config import SystemConfig
+    dashboard_version = SystemConfig.get('driver_dashboard_version', '3')  # '1', '2', or '3'
+    template_map = {
+        '1': 'transport/driver/driver_dashboard_RESTORED_WORKING.html',
+        '2': 'transport/driver/driver_dashboard_FINAL_WORKING.html',
+        '3': 'transport/driver/driver_dashboard_new.html',
+    }
+    template = template_map.get(dashboard_version, template_map['3'])
+
     return _json_or_template(
-        "transport/driver/driver_dashboard.html",
+        template,
+        driver_profile=profile,
+        bookings=bookings,
+        upcoming=upcoming,
+        recent=recent,
+        earnings=earnings,
+        owned_vehicles=owned_vehicles,
+        assigned_vehicle=assigned_vehicle,
+        go_live=go_live,
+        available_marketplace_vehicles=available_marketplace_vehicles,
+        ping_interval_seconds=ping_interval,
+        offers=offers,
+        offer_count=offer_count,
+        active_trip=active_trip,
+    )
+
+
+@transport_bp.route("/driver/dashboard/compare")
+@module_enabled_required("transport")
+@login_required
+@active_context_required(ContextType.DRIVER)
+def driver_dashboard_compare():
+    """Comparison page to test all 3 dashboard versions."""
+    return _json_or_template(
+        "transport/driver/dashboard_compare.html",
+        driver_profile=profile,
+        bookings=bookings,
+        upcoming=upcoming,
+        recent=recent,
+        earnings=earnings,
+        owned_vehicles=owned_vehicles,
+        assigned_vehicle=assigned_vehicle,
+        go_live=go_live,
+        available_marketplace_vehicles=available_marketplace_vehicles,
+        ping_interval_seconds=ping_interval,
+        offers=offers,
+        offer_count=offer_count,
+        active_trip=active_trip,
+    )
+
+
+@transport_bp.route("/driver/dashboard/preview/1")
+@module_enabled_required("transport")
+@login_required
+@active_context_required(ContextType.DRIVER)
+def driver_dashboard_preview_1():
+    """Dashboard 1 Preview - Original."""
+    import os
+    DASHBOARD_PREVIEW_DIR = os.path.join(os.path.dirname(__file__), '..', 'dashboard_preview')
+    from flask import send_from_directory
+    return send_from_directory(DASHBOARD_PREVIEW_DIR, "dashboard_1_original.html")
+
+
+@transport_bp.route("/driver/dashboard/preview/2")
+@module_enabled_required("transport")
+@login_required
+@active_context_required(ContextType.DRIVER)
+def driver_dashboard_preview_2():
+    """Dashboard 2 Preview - Map."""
+    import os
+    DASHBOARD_PREVIEW_DIR = os.path.join(os.path.dirname(__file__), '..', 'dashboard_preview')
+    from flask import send_from_directory
+    return send_from_directory(DASHBOARD_PREVIEW_DIR, "dashboard_2_map.html")
+
+
+@transport_bp.route("/driver/dashboard/preview/3")
+@module_enabled_required("transport")
+@login_required
+@active_context_required(ContextType.DRIVER)
+def driver_dashboard_preview_3():
+    """Dashboard 3 Preview - Modern."""
+    import os
+    DASHBOARD_PREVIEW_DIR = os.path.join(os.path.dirname(__file__), '..', 'dashboard_preview')
+    from flask import send_from_directory
+    return send_from_directory(DASHBOARD_PREVIEW_DIR, "dashboard_3_modern.html")
+
+
+@transport_bp.route("/driver/dashboard/preview")
+@module_enabled_required("transport")
+@login_required
+@active_context_required(ContextType.DRIVER)
+def driver_dashboard_preview_index():
+    """Dashboard Comparison Preview."""
+    import os
+    DASHBOARD_PREVIEW_DIR = os.path.join(os.path.dirname(__file__), '..', 'dashboard_preview')
+    from flask import send_from_directory
+    return send_from_directory(DASHBOARD_PREVIEW_DIR, "index.html")
+
+
+@transport_bp.route("/driver/dashboard/1")
+def driver_dashboard_v1():
+    """DASHBOARD 1: Restored Working (original b84ffd8^ inline CSS/JS)."""
+    return _json_or_template(
+        "transport/driver/driver_dashboard_RESTORED_WORKING.html",
+        driver_profile=profile,
+        bookings=bookings,
+        upcoming=upcoming,
+        recent=recent,
+        earnings=earnings,
+        owned_vehicles=owned_vehicles,
+        assigned_vehicle=assigned_vehicle,
+        go_live=go_live,
+        available_marketplace_vehicles=available_marketplace_vehicles,
+        ping_interval_seconds=ping_interval,
+        offers=offers,
+        offer_count=offer_count,
+        active_trip=active_trip,
+    )
+
+
+@transport_bp.route("/driver/dashboard/2")
+@module_enabled_required("transport")
+@login_required
+@active_context_required(ContextType.DRIVER)
+def driver_dashboard_v2():
+    """DASHBOARD 2: Final Working (map + bottom sheet, fixed nav)."""
+    return _json_or_template(
+        "transport/driver/driver_dashboard_FINAL_WORKING.html",
+        driver_profile=profile,
+        bookings=bookings,
+        upcoming=upcoming,
+        recent=recent,
+        earnings=earnings,
+        owned_vehicles=owned_vehicles,
+        assigned_vehicle=assigned_vehicle,
+        go_live=go_live,
+        available_marketplace_vehicles=available_marketplace_vehicles,
+        ping_interval_seconds=ping_interval,
+        offers=offers,
+        offer_count=offer_count,
+        active_trip=active_trip,
+    )
+
+
+@transport_bp.route("/driver/dashboard/3")
+@module_enabled_required("transport")
+@login_required
+@active_context_required(ContextType.DRIVER)
+def driver_dashboard_v3():
+    """DASHBOARD 3: New Standalone (modern Uber-style, no base.html)."""
+    # Determine which dashboard version to use based on system config
+    from app.models.system_config import SystemConfig
+    dashboard_version = SystemConfig.get('driver_dashboard_version', '3')  # '1', '2', or '3'
+    template_map = {
+        '1': 'transport/driver/driver_dashboard_RESTORED_WORKING.html',
+        '2': 'transport/driver/driver_dashboard_FINAL_WORKING.html',
+        '3': 'transport/driver/driver_dashboard_new.html',
+    }
+    template = template_map.get(dashboard_version, template_map['3'])
+
+    return _json_or_template(
+        template,
         driver_profile=profile,
         bookings=bookings,
         upcoming=upcoming,

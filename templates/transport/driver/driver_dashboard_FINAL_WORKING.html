@@ -1,0 +1,887 @@
+{# =========================================================================
+   FINAL DRIVER DASHBOARD — Combined Working Version
+   - Structure: current template (map, bottom sheet, 5-tab nav, safety/support)
+   - Styles: working inline CSS from b84ffd8^ (before consolidation broke rendering)
+   ========================================================================= #}
+{% extends "transport/driver/base.html" %}
+{% block title %}Driver{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="current">Driver</span>{% endblock %}
+
+{% block extra_css %}
+<style nonce="{{ csp_nonce }}">
+/* =========================================
+   DRIVER COCKPIT — presentation layer on top of transport/base.css.
+   All component classes use the ck- prefix. Uses transport theme tokens only.
+   ========================================= */
+
+/* Panels ------------------------------------------------------------- */
+.ck-panel { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; align-items: start; }
+.ck-panel--full { grid-template-columns: 1fr; }
+.ck-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ck-full { grid-column: 1 / -1; }
+html.ck-js .ck-panel:not(.ck-active) { display: none; }
+
+/* Identity hero ------------------------------------------------------- */
+.ck-hero {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  background: linear-gradient(135deg, var(--bg-surface), var(--bg-elevated));
+  border: 1px solid var(--border-light); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card); padding: 18px 22px; margin-bottom: 16px;
+}
+.ck-hero-avatar {
+  width: 62px; height: 62px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--amber), var(--blue));
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-weight: 800; font-size: 1.4rem; color: #000;
+  flex-shrink: 0;
+}
+.ck-hero-info { flex: 1; min-width: 220px; }
+.ck-hero-name { font-family: var(--font-display); font-weight: 800; font-size: 1.25rem; line-height: 1.2; }
+.ck-hero-meta {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-muted); margin-top: 6px;
+}
+.ck-status {
+  display: flex; align-items: center; gap: 14px; padding: 10px 18px;
+  background: var(--bg-elevated); border: 1px solid var(--border-light); border-radius: 12px;
+}
+.ck-status-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+.ck-status-value { font-size: 0.88rem; font-weight: 700; }
+
+/* Toggle ------------------------------------------------------------- */
+.toggle { position: relative; display: inline-block; width: 46px; height: 26px; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; cursor: pointer; inset: 0;
+  background: var(--bg-hover); border: 1px solid var(--border-light);
+  border-radius: 26px; transition: 0.2s;
+}
+.toggle-slider::before {
+  content: ''; position: absolute; width: 20px; height: 20px;
+  left: 2px; top: 2px; background: var(--text-muted); border-radius: 50%; transition: 0.2s;
+}
+.toggle input:checked + .toggle-slider { background: var(--green); border-color: var(--green); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(20px); background: #000; }
+
+/* Focus card (state-driven) ------------------------------------------ */
+.ck-focus {
+  position: relative; grid-column: 1 / -1; border-radius: var(--radius-lg);
+  border: 1px solid var(--border-light);
+  background: linear-gradient(135deg, var(--bg-surface), var(--bg-elevated));
+  box-shadow: var(--shadow-card); padding: 24px 26px; margin-bottom: 4px; overflow: hidden;
+}
+.ck-focus::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--amber), var(--green)); opacity: 0.85;
+}
+.ck-focus--trip  { background: linear-gradient(135deg, rgba(59,130,246,0.06), var(--bg-surface) 48%); }
+.ck-focus--offer { background: linear-gradient(135deg, rgba(245,158,11,0.10), var(--bg-surface) 48%); }
+.ck-focus--live  { background: linear-gradient(135deg, rgba(22,163,74,0.10),  var(--bg-surface) 48%); }
+.ck-focus--idle  { background: linear-gradient(135deg, rgba(168,85,247,0.08), var(--bg-surface) 48%); }
+.ck-focus--req   { background: linear-gradient(135deg, rgba(245,158,11,0.10), var(--bg-surface) 48%); }
+
+.ck-focus-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.ck-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-display); font-weight: 700; font-size: 0.7rem;
+  letter-spacing: 0.05em; text-transform: uppercase; padding: 5px 12px; border-radius: 999px;
+}
+.ck-pill--blue  { background: var(--blue-dim);  color: var(--blue); }
+.ck-pill--green { background: var(--green-dim); color: var(--green); }
+.ck-pill--amber { background: var(--amber-dim); color: var(--amber); }
+.ck-pill--gray  { background: var(--bg-hover);  color: var(--text-muted); border: 1px solid var(--border-light); }
+.ck-focus-phase { margin-left: auto; font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted); }
+.ck-focus-title {
+  font-family: var(--font-display); font-weight: 800;
+  font-size: clamp(1.15rem, 2.6vw, 1.55rem); line-height: 1.25;
+  color: var(--text-primary); margin-bottom: 8px;
+}
+.ck-focus-title i { font-size: 0.85em; opacity: 0.45; margin: 0 4px; }
+.ck-focus-sub {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 0.8rem; color: var(--text-muted); margin-bottom: 16px;
+}
+.ck-focus-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.ck-focus-checks { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 9px; }
+.ck-check { display: flex; align-items: flex-start; gap: 10px; }
+.ck-check i { font-size: 1rem; margin-top: 2px; }
+.ck-check--ok i { color: var(--green); }
+.ck-check--bad i { color: var(--danger); }
+.ck-check-label { font-weight: 600; font-size: 0.82rem; }
+.ck-check-hint { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+
+/* Metrics strip ------------------------------------------------------ */
+.ck-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.stat-card { background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: 10px; padding: 16px; text-align: center; }
+.stat-icon { width: 44px; height: 44px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; font-size: 1.2rem; margin-bottom: 8px; }
+.stat-value { font-family: var(--font-display); font-size: 1.5rem; font-weight: 800; line-height: 1.2; }
+.stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-top: 4px; }
+
+/* Route row (assignments/vehicles) ----------------------------------- */
+.route-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border-light); }
+.route-icon { width: 36px; height: 36px; background: rgba(45,90,45,0.12); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--brand-primary); }
+.vehicle-name { font-weight: 600; font-size: 0.88rem; }
+.vehicle-meta { font-size: 0.74rem; color: var(--text-muted); }
+
+/* Opportunity numbers ------------------------------------------------ */
+.opportunity-num { font-family: var(--font-display); font-size: 2rem; font-weight: 800; line-height: 1; }
+
+/* Trip/Time cards ---------------------------------------------------- */
+.trip-card { display: flex; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid var(--border-light); }
+.trip-time { display: flex; flex-direction: column; align-items: center; min-width: 60px; }
+.trip-time .th { font-family: var(--font-mono); font-size: 0.82rem; font-weight: 700; }
+.trip-time .td { font-size: 0.66rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.trip-info { flex: 1; min-width: 0; }
+.trip-route { font-weight: 600; font-size: 0.82rem; margin-bottom: 2px; }
+.trip-meta { font-size: 0.7rem; color: var(--text-muted); }
+
+/* Vehicle row -------------------------------------------------------- */
+.vehicle-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border-light); }
+.vehicle-row:last-child { border-bottom: none; }
+.vehicle-icon { width: 36px; height: 36px; background: rgba(45,90,45,0.12); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--brand-primary); }
+.vehicle-actions { display: flex; gap: 8px; }
+
+/* Notifications ------------------------------------------------------ */
+.notif-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border-light); }
+.notif-row:last-child { border-bottom: none; }
+.notif-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--brand-primary); flex-shrink: 0; margin-top: 6px; }
+.notif-dot.read { background: #ccc; }
+
+/* Workspace actions -------------------------------------------------- */
+.workspace-actions { display: flex; gap: 10px; padding-top: 12px; margin-top: 8px; border-top: 1px solid var(--border-light); }
+
+/* WS Row (key/value pairs) ------------------------------------------- */
+.ws-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-light); }
+.ws-row:last-child { border-bottom: none; }
+.ws-k { color: var(--text-muted); font-size: 0.82rem; }
+.ws-v { color: var(--text-primary); font-weight: 600; font-size: 0.82rem; }
+
+/* Empty state -------------------------------------------------------- */
+.ws-empty { text-align: center; padding: 22px 16px; color: var(--text-muted); font-size: 0.82rem; }
+.ws-empty i { font-size: 1.4rem; opacity: 0.35; margin-bottom: 8px; display: block; }
+
+/* Live dot ----------------------------------------------------------- */
+.live-dot { color: var(--brand-primary); }
+.live-dot::before { background: var(--brand-primary); }
+
+/* Page title --------------------------------------------------------- */
+.page-title { color: var(--text-primary); font-family: var(--font-display); }
+.page-subtitle { color: var(--text-muted); }
+
+/* Link button -------------------------------------------------------- */
+.link-btn { background: none; border: none; color: var(--green); cursor: pointer; padding: 0; font: inherit; }
+
+/* Edit vehicle button ------------------------------------------------ */
+.edit-vehicle { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Trip action buttons ------------------------------------------------ */
+.trip-action { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Trip phase --------------------------------------------------------- */
+.ck-focus-phase { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* Offer row ---------------------------------------------------------- */
+.offer-row { display: flex; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid var(--border-light); }
+.offer-row:last-child { border-bottom: none; }
+.offer-icon { width: 36px; height: 36px; background: rgba(37,99,235,0.12); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #2563eb; }
+.offer-body { flex: 1; min-width: 0; }
+.offer-title { font-weight: 600; font-size: 0.82rem; margin-bottom: 4px; }
+.offer-meta { font-size: 0.7rem; color: var(--text-muted); line-height: 1.5; }
+.offer-actions { display: flex; gap: 8px; margin-top: 8px; }
+.offer-actions .btn { padding: 8px 12px; font-size: 0.78rem; }
+
+/* Focus top ---------------------------------------------------------- */
+.ck-focus-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+
+/* Focus variants ----------------------------------------------------- */
+.ck-focus--trip { border-left: 3px solid #2563eb; }
+.ck-focus--offer { border-left: 3px solid #b88605; }
+.ck-focus--live { border-left: 3px solid #2d5a2d; }
+.ck-focus--idle { border-left: 3px solid #a855f7; }
+.ck-focus--req { border-left: 3px solid #b88605; }
+
+/* Card header -------------------------------------------------------- */
+.card-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--bg-surface-alt); border-bottom: 1px solid var(--border-light); border-radius: 10px 10px 0 0; }
+.card-title { font-family: var(--font-display); font-weight: 700; font-size: 0.9rem; }
+.card-title i { margin-right: 8px; }
+
+/* Card --------------------------------------------------------------- */
+.card { background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.card-body { background: var(--bg-surface); padding: 16px; }
+
+/* Map container ------------------------------------------------------ */
+.ck-map-container { position: relative; height: 40vh; min-height: 300px; max-height: 500px; border-radius: var(--radius-lg); overflow: hidden; background: var(--bg-surface); border: 1px solid var(--border-light); }
+#driverMap { width: 100%; height: 100%; }
+
+/* Bottom sheet ------------------------------------------------------- */
+.ck-bottom-sheet {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+  background: var(--bg-surface); border-top: 1px solid var(--border-light);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.15); max-height: 85vh;
+  display: flex; flex-direction: column; transition: max-height 0.3s ease, transform 0.3s ease;
+}
+.ck-bottom-sheet.peek { max-height: 120px; }
+.ck-bottom-sheet.expanded { max-height: 85vh; }
+.ck-sheet-handle {
+  width: 40px; height: 5px; background: var(--border-medium); border-radius: 999px;
+  margin: 12px auto 8px; cursor: grab; touch-action: none;
+}
+.ck-sheet-handle:active { cursor: grabbing; }
+.ck-sheet-content { padding: 0 16px 16px; overflow-y: auto; }
+.ck-sheet-primary-btn { width: 100%; padding: 16px; font-size: 1rem; font-weight: 700; border-radius: 12px; margin-bottom: 12px; }
+.ck-sheet-meta { display: flex; justify-content: space-between; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 12px; padding: 0 4px; }
+.ck-sheet-actions { display: flex; gap: 8px; padding: 0 4px; }
+.ck-sheet-actions .btn { flex: 1; padding: 12px; border-radius: 10px; }
+
+/* MapLibre overrides ------------------------------------------------- */
+.maplibregl-ctrl-attrib { font-size: 0.65rem !important; }
+.maplibregl-ctrl-geolocate {
+  background: var(--bg-surface) !important; border: 1px solid var(--border-light) !important;
+}
+.maplibregl-ctrl-geolocate:hover { background: var(--bg-surface-alt) !important; }
+
+/* Dark mode ---------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light-mode) #driverMap, body.dark-mode #driverMap { background: var(--bg-surface, #1e1e1e); }
+  :root:not(.light-mode) .ck-bottom-sheet, body.dark-mode .ck-bottom-sheet {
+    background: var(--bg-surface, #1e1e1e); box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+  }
+  :root:not(.light-mode) .ck-sheet-handle, body.dark-mode .ck-sheet-handle { background: var(--border-medium, #dee2e6); }
+  :root:not(.light-mode) .maplibregl-ctrl-geolocate, body.dark-mode .maplibregl-ctrl-geolocate {
+    background: var(--bg-surface, #1e1e1e) !important; border-color: var(--border-light, #2d2d2d) !important;
+  }
+}
+
+/* Driver marker pulse ------------------------------------------------ */
+.driver-marker { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; }
+.driver-marker .pulse-ring {
+  position: absolute; width: 48px; height: 48px; border: 2px solid var(--brand-primary);
+  border-radius: 50%; animation: pulse-ring 2s ease-out infinite;
+}
+.driver-marker .pulse-ring:nth-child(2) { animation-delay: 0.7s; }
+.driver-marker .pulse-ring:nth-child(3) { animation-delay: 1.4s; }
+@keyframes pulse-ring { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(2.5); opacity: 0; } }
+.driver-marker .driver-icon {
+  width: 28px; height: 28px; background: var(--brand-primary); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; z-index: 1;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3); border: 2px solid #fff;
+}
+
+/* Surge badge -------------------------------------------------------- */
+.surge-badge {
+  position: absolute; background: #dc2626; color: #fff; padding: 2px 6px;
+  border-radius: 4px; font-size: 0.7rem; font-weight: 700; pointer-events: none; z-index: 10;
+  box-shadow: 0 2px 6px rgba(220,38,38,0.4);
+}
+
+/* Request pin -------------------------------------------------------- */
+.request-pin { width: 32px; height: 32px; background: #2563eb; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; box-shadow: 0 2px 8px rgba(37,99,235,0.4); }
+.request-pin::before { content: ''; position: absolute; bottom: 4px; left: 50%; width: 8px; height: 8px; background: #2563eb; border-radius: 2px; transform: translateX(-50%) rotate(45deg); }
+
+/* Safety / Support modals ------------------------------------------- */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000;
+  display: flex; align-items: center; justify-content: center; padding: 16px; opacity: 0; visibility: hidden; transition: opacity 0.2s, visibility 0.2s;
+}
+.modal-overlay.show { opacity: 1; visibility: visible; }
+.modal-content { background: var(--bg-surface); border-radius: 16px; max-width: 420px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); transform: scale(0.95); transition: transform 0.2s; }
+.modal-overlay.show .modal-content { transform: scale(1); }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--border-light); }
+.modal-header h3 { margin: 0; font-family: var(--font-display); font-size: 1.2rem; }
+.modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); padding: 4px; }
+.modal-body { padding: 24px; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--border-light); }
+.btn-emergency { background: #dc2626; color: #fff; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; }
+
+* { box-sizing: border-box; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="driverDashboard"
+     data-driver-id="{{ driver_profile.id if driver_profile else '' }}"
+     data-csrf="{{ raw_csrf_token }}"
+     data-ping-interval="{{ ping_interval_seconds|default(120) }}"
+     data-is-online="{{ '1' if driver_profile and driver_profile.is_online else '0' }}"
+     data-last-lat="{{ driver_profile.last_location.get('latitude') if driver_profile and driver_profile.last_location and driver_profile.last_location.get('latitude') is not none else '' }}"
+     data-last-lng="{{ driver_profile.last_location.get('longitude') if driver_profile and driver_profile.last_location and driver_profile.last_location.get('longitude') is not none else '' }}"
+     data-last-acc="{{ driver_profile.last_location.get('accuracy') if driver_profile and driver_profile.last_location and driver_profile.last_location.get('accuracy') is not none else '' }}"
+     data-last-ts="{{ driver_profile.location_updated_at.isoformat() if driver_profile and driver_profile.location_updated_at else '' }}">
+{% if driver_profile %}
+{% set compliance = driver_profile.compliance_status.value %}
+{% set compliance_badge = 'green' if compliance == 'approved'
+                          else 'amber' if compliance in ['pending_review', 'under_review']
+                          else 'red' %}
+{% set readiness_badge = 'green' if go_live and go_live.ready else 'amber' %}
+
+{# ============================ HOME ============================ #}
+<section class="ck-panel ck-active" data-panel="home">
+
+  {# Identity hero #}
+  <div class="ck-hero ck-full">
+    <div class="ck-hero-avatar">
+      {{ (driver_profile.user.name or driver_profile.driver_code)[:2].upper() if driver_profile.user else driver_profile.driver_code[:2].upper() }}
+    </div>
+    <div class="ck-hero-info">
+      <div class="ck-hero-name">{{ driver_profile.user.name if driver_profile.user else 'Driver' }}</div>
+      <div class="ck-hero-meta">
+        <span class="badge badge-{{ compliance_badge }}">{{ compliance|replace('_',' ')|title }}</span>
+        <span><i class="fa-solid fa-star" style="color:var(--amber)"></i>
+          {{ '%.1f'|format(driver_profile.average_rating|float) if driver_profile.average_rating else '—' }}
+        </span>
+        <span>{{ driver_profile.driver_code }}</span>
+        {% if assigned_vehicle %}
+        <span><i class="fa-solid fa-van-shuttle"></i> {{ assigned_vehicle.license_plate }}</span>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if go_live and go_live.ready %}
+    <div class="ck-status" title="Availability">
+      <div>
+        <div class="ck-status-label">Online status</div>
+        <div class="ck-status-value" data-online-label>{{ 'Online' if driver_profile.is_online else 'Offline' }}</div>
+      </div>
+      <span class="badge badge-{{ 'green' if driver_profile.is_online else 'gray' }}" style="font-size:0.7rem;">
+        {{ 'Receiving rides' if driver_profile.is_online else 'Tap Go Online below' }}
+      </span>
+    </div>
+    {% else %}
+    <div class="ck-status" title="Availability">
+      <div>
+        <div class="ck-status-label">Online status</div>
+        <div class="ck-status-value">Unavailable</div>
+      </div>
+      <span class="badge badge-amber" style="cursor:not-allowed;">Go-live pending</span>
+    </div>
+    {% endif %}
+  </div>
+
+  {# Compliance alerts (only when not approved) #}
+  {% if compliance in ['pending_review', 'under_review'] %}
+  <div class="alert alert-amber ck-full" style="margin:0 0 0;">
+    <i class="fa-solid fa-clock"></i>
+    <span>Your driver account is <strong>pending review</strong>. You will be able to accept rides once approved.</span>
+  </div>
+  {% elif compliance != 'approved' %}
+  <div class="alert alert-red ck-full" style="margin:0 0 0;">
+    <i class="fa-solid fa-circle-exclamation"></i>
+    <span>Your driver account is <strong>{{ compliance|replace('_',' ')|title }}</strong>. Contact support.</span>
+  </div>
+  {% endif %}
+
+  {# Map container #}
+  <div class="ck-map-container" id="driverMapContainer">
+    <div id="driverMap" data-map-initialized="false"></div>
+  </div>
+
+  {# Bottom sheet — Go Online / Earnings pace / Quick actions #}
+  <div class="ck-bottom-sheet peek" id="ckBottomSheet" role="region" aria-label="Driver controls">
+    <div class="ck-sheet-handle" tabindex="0" aria-label="Drag to expand"></div>
+    <div class="ck-sheet-content">
+      {% if go_live and go_live.ready %}
+      <div class="ck-sheet-primary-btn" style="background: var(--green); color: #fff;">
+        <label class="toggle" style="display:flex;align-items:center;justify-content:space-between;width:100%;cursor:pointer;">
+          <span style="display:flex;align-items:center;gap:12px;">
+            <i class="fa-solid fa-circle" style="color:var(--green);font-size:1.2rem;"></i>
+            <span><strong>GO ONLINE</strong><br><small style="font-weight:400;">Tap to start receiving rides</small></span>
+          </span>
+          <input type="checkbox" data-online-toggle
+                 data-url="{{ url_for('transport_api.driver_go_live_status', driver_id=driver_profile.id) }}"
+                 {{ 'checked' if driver_profile.is_online }} />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      {% else %}
+      <div class="ck-sheet-primary-btn" style="background: var(--amber); color: #1a1a1a; cursor:not-allowed;">
+        <span style="display:flex;align-items:center;gap:12px;">
+          <i class="fa-solid fa-clock" style="color:var(--amber);font-size:1.2rem;"></i>
+          <span><strong>GO LIVE PENDING</strong><br><small style="font-weight:400;">{{ go_live.message if go_live else 'Requirements not met' }}</small></span>
+        </span>
+      </div>
+      {% endif %}
+
+      <div class="ck-sheet-meta">
+        <div id="sheetEarningsPace" style="font-family:var(--font-mono);font-weight:700;">—/hr</div>
+        <div id="sheetDailyGoal" style="font-family:var(--font-mono);">Goal: —</div>
+      </div>
+      <div id="sheetNearbyOffers" class="ck-sheet-meta" style="display:none;">
+        <span><i class="fa-solid fa-bolt"></i> <strong>Surge nearby</strong></span>
+        <span>+<span id="surgeMultiplier">1.5</span>x</span>
+      </div>
+
+      <div class="ck-sheet-actions">
+        <button type="button" class="btn btn-primary" id="navigateBtn">
+          <i class="fa-solid fa-location-dot"></i> Navigate
+        </button>
+        <button type="button" class="btn btn-outline" id="supportBtnSheet">
+          <i class="fa-solid fa-headset"></i> Support
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ============================ EARNINGS ============================ #}
+<section class="ck-panel" data-panel="earnings">
+  <div class="ck-full card">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-wallet"></i> Earnings</h3>
+    </div>
+    <div class="card-body">
+      <div class="ck-metrics">
+        <div class="stat-card">
+          <div class="stat-icon" style="background:rgba(45,90,45,0.12);color:var(--brand-primary);"><i class="fa-solid fa-money-bill-wave"></i></div>
+          <div class="stat-value text-success" id="todayEarnings">{{ '%.0f'|format(today_earnings|float) if today_earnings else 0 }}</div>
+          <div class="stat-label">Today</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:rgba(45,90,45,0.12);color:var(--brand-primary);"><i class="fa-solid fa-calendar-week"></i></div>
+          <div class="stat-value text-success" id="weekEarnings">{{ '%.0f'|format(week_earnings|float) if week_earnings else 0 }}</div>
+          <div class="stat-label">This Week</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:rgba(37,99,235,0.12);color:#2563eb;"><i class="fa-solid fa-calendar-days"></i></div>
+          <div class="stat-value text-primary" id="monthEarnings">{{ '%.0f'|format(month_earnings|float) if month_earnings else 0 }}</div>
+          <div class="stat-label">This Month</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ck-col">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-clock"></i> Trip History</h3>
+      </div>
+      <div class="card-body" style="padding:0;">
+        {% if recent_trips %}
+        {% for trip in recent_trips %}
+        <div class="trip-card">
+          <div class="trip-time">
+            <span class="th">{{ trip.started_at.strftime('%H:%M') if trip.started_at else '—' }}</span>
+            <span class="td">{{ '%.0f'|format(trip.duration_minutes|float) if trip.duration_minutes else '—' }} min</span>
+          </div>
+          <div class="trip-info">
+            <div class="trip-route">{{ trip.pickup_address or 'Pickup' }} → {{ trip.dropoff_address or 'Drop-off' }}</div>
+            <div class="trip-meta">
+              <span class="badge badge-{{ 'green' if trip.status == 'completed' else 'blue' if trip.status == 'active' else 'gray' }}">{{ trip.status|title }}</span>
+              {% if trip.fare_amount %}
+              <span style="margin-left:8px;"><i class="fa-solid fa-money-bill"></i> {{ '%.0f'|format(trip.fare_amount|float) }}</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="ws-empty"><i class="fa-solid fa-receipt"></i> No recent trips</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ============================ TRIPS ============================ #}
+<section class="ck-panel" data-panel="trips">
+  <div class="ck-full card">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-route"></i> Trip History</h3>
+    </div>
+    <div class="card-body" style="padding:0;">
+      {% if all_trips %}
+      {% for trip in all_trips %}
+      <div class="trip-card">
+        <div class="trip-time">
+          <span class="th">{{ trip.started_at.strftime('%H:%M') if trip.started_at else '—' }}</span>
+          <span class="td">{{ trip.started_at.strftime('%d %b') if trip.started_at else '' }}</span>
+        </div>
+        <div class="trip-info">
+          <div class="trip-route">{{ trip.pickup_address or 'Pickup' }} → {{ trip.dropoff_address or 'Drop-off' }}</div>
+          <div class="trip-meta">
+            <span class="badge badge-{{ 'green' if trip.status == 'completed' else 'blue' if trip.status == 'active' else 'amber' if trip.status == 'cancelled' else 'gray' }}">{{ trip.status|title }}</span>
+            {% if trip.fare_amount %}
+            <span style="margin-left:8px;"><i class="fa-solid fa-money-bill"></i> {{ '%.0f'|format(trip.fare_amount|float) }}</span>
+            {% endif %}
+            {% if trip.distance_km %}
+            <span style="margin-left:8px;"><i class="fa-solid fa-road"></i> {{ '%.1f'|format(trip.distance_km|float) }} km</span>
+            {% endif %}
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <button class="btn btn-sm btn-outline trip-action" data-trip-id="{{ trip.id }}">
+            <i class="fa-solid fa-eye"></i> Details
+          </button>
+        </div>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="ws-empty"><i class="fa-solid fa-route"></i> No trips yet</div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+{# ============================ VEHICLE ============================ #}
+<section class="ck-panel" data-panel="vehicle">
+  <div class="ck-col">
+    {% if assigned_vehicle %}
+    <div class="ck-full card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-van-shuttle"></i> Assigned Vehicle</h3>
+      </div>
+      <div class="card-body">
+        <div class="vehicle-row">
+          <div class="vehicle-icon"><i class="fa-solid fa-van-shuttle"></i></div>
+          <div style="flex:1;">
+            <div class="vehicle-name">{{ assigned_vehicle.make }} {{ assigned_vehicle.model }}</div>
+            <div class="vehicle-meta">{{ assigned_vehicle.license_plate }} • {{ assigned_vehicle.color or '—' }} • {{ assigned_vehicle.year or '—' }}</div>
+          </div>
+          <div class="vehicle-actions">
+            <button class="btn btn-sm btn-outline edit-vehicle" data-vehicle-id="{{ assigned_vehicle.id }}"><i class="fa-solid fa-pen"></i> Edit</button>
+            <button class="btn btn-sm btn-outline" data-action="docs"><i class="fa-solid fa-file-alt"></i> Docs</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="ck-full card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-wrench"></i> Vehicle Documents</h3>
+      </div>
+      <div class="card-body">
+        {% if vehicle_docs %}
+        {% for doc in vehicle_docs %}
+        <div class="ws-row">
+          <span class="ws-k"><i class="fa-solid fa-file"></i> {{ doc.type|replace('_',' ')|title }}</span>
+          <span class="ws-v">
+            <span class="badge badge-{{ 'green' if doc.status == 'approved' else 'amber' if doc.status == 'pending' else 'red' }}">{{ doc.status|title }}</span>
+            {% if doc.expiry_date %} • Expires {{ doc.expiry_date.strftime('%d %b %Y') }}{% endif %}
+          </span>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="ws-empty"><i class="fa-solid fa-file-alt"></i> No documents uploaded</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ============================ ACCOUNT ============================ #}
+<section class="ck-panel" data-panel="account">
+  <div class="ck-col">
+    <div class="ck-full card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-user"></i> Profile</h3>
+      </div>
+      <div class="card-body">
+        <div class="ws-row"><span class="ws-k">Name</span><span class="ws-v">{{ driver_profile.user.name if driver_profile.user else '—' }}</span></div>
+        <div class="ws-row"><span class="ws-k">Email</span><span class="ws-v">{{ driver_profile.user.email if driver_profile.user else '—' }}</span></div>
+        <div class="ws-row"><span class="ws-k">Phone</span><span class="ws-v">{{ driver_profile.user.phone if driver_profile.user else '—' }}</span></div>
+        <div class="ws-row"><span class="ws-k">Driver Code</span><span class="ws-v">{{ driver_profile.driver_code }}</span></div>
+        <div class="ws-row"><span class="ws-k">License</span><span class="ws-v">{{ driver_profile.license_number or '—' }}</span></div>
+        <div class="ws-row"><span class="ws-k">Status</span><span class="ws-v"><span class="badge badge-{{ compliance_badge }}">{{ compliance|replace('_',' ')|title }}</span></span></div>
+      </div>
+    </div>
+
+    <div class="ck-full card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-shield-halved"></i> Go-Live Requirements</h3>
+      </div>
+      <div class="card-body">
+        {% if go_live and go_live.checks %}
+        <ul class="ck-focus-checks">
+          {% for check in go_live.checks %}
+          <li class="ck-check ck-check--{{ 'ok' if check.ok else 'bad' }}">
+            <i class="fa-solid fa-{{ 'check-circle' if check.ok else 'xmark-circle' }}"></i>
+            <div>
+              <div class="ck-check-label">{{ check.label }}</div>
+              <div class="ck-check-hint">{{ check.hint }}</div>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="ws-empty"><i class="fa-solid fa-clipboard-check"></i> Requirements loaded separately</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="workspace-actions ck-full">
+      <button class="btn btn-primary" id="editProfileBtn"><i class="fa-solid fa-user-pen"></i> Edit Profile</button>
+      <button class="btn btn-outline" id="settingsBtn"><i class="fa-solid fa-gear"></i> Settings</button>
+      <button class="btn btn-outline" id="logoutBtn"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
+    </div>
+  </div>
+</section>
+
+{% else %}
+<div class="ck-panel ck-active" style="text-align:center;padding:60px 20px;">
+  <i class="fa-solid fa-user-slash" style="font-size:3rem;color:var(--text-muted);margin-bottom:16px;"></i>
+  <h2 style="margin:0 0 8px;">No driver profile found</h2>
+  <p style="color:var(--text-muted);margin:0;">Complete onboarding to access the driver dashboard.</p>
+</div>
+{% endif %}
+</div>
+
+{# ============================ SAFETY MODAL ============================ #}
+<div class="modal-overlay" id="safetyModal" role="dialog" aria-modal="true" aria-labelledby="safetyModalTitle">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="safetyModalTitle"><i class="fa-solid fa-shield-halved" style="color:var(--brand-primary);margin-right:8px;"></i>Safety Toolkit</h3>
+      <button class="modal-close" id="closeSafetyModal" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <button class="btn btn-emergency" id="emergencyBtn">
+          <i class="fa-solid fa-phone" style="margin-right:8px;"></i>Call Emergency (999)
+        </button>
+        <button class="btn btn-outline" id="shareTripBtn">
+          <i class="fa-solid fa-share" style="margin-right:8px;"></i>Share Trip with Contact
+        </button>
+        <button class="btn btn-outline" id="safetyGuidelinesBtn">
+          <i class="fa-solid fa-book" style="margin-right:8px;"></i>Safety Guidelines
+        </button>
+        <button class="btn btn-outline" id="recordAudioBtn">
+          <i class="fa-solid fa-microphone" style="margin-right:8px;"></i>Record Audio
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ============================ SUPPORT MODAL ============================ #}
+<div class="modal-overlay" id="supportModal" role="dialog" aria-modal="true" aria-labelledby="supportModalTitle">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="supportModalTitle"><i class="fa-solid fa-headset" style="color:var(--blue);margin-right:8px;"></i>Support</h3>
+      <button class="modal-close" id="closeSupportModal" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <a href="{{ url_for('transport.drivers_new') }}" class="btn btn-primary" target="_blank"><i class="fa-solid fa-life-ring"></i> Help Center</a>
+        <a href="tel:+254700000000" class="btn btn-outline"><i class="fa-solid fa-phone"></i> Call Support</a>
+        <a href="https://wa.me/254700000000" class="btn btn-outline" target="_blank"><i class="fa-brands fa-whatsapp"></i> WhatsApp Support</a>
+        <button class="btn btn-outline" id="chatSupportBtn"><i class="fa-solid fa-comment-dots"></i> Live Chat</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='lib/maplibre-gl/maplibre-gl.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/transport/driver-map.js') }}"></script>
+<script nonce="{{ csp_nonce }}">
+(function() {
+  'use strict';
+
+  // Enable CSS panel hiding (html.ck-js .ck-panel:not(.ck-active) { display: none })
+  document.documentElement.classList.add('ck-js');
+
+  // ==========================================
+  // PANEL NAVIGATION
+  // ==========================================
+  const panels = document.querySelectorAll('.ck-panel[data-panel]');
+  const navBtns = document.querySelectorAll('[data-ck-nav]');
+  const mobileDock = document.querySelector('nav.ck-dock');
+
+  function showPanel(panelName) {
+    panels.forEach(p => p.classList.toggle('ck-active', p.dataset.panel === panelName));
+    navBtns.forEach(b => b.classList.toggle('active', b.dataset.ckNav === panelName));
+    if (mobileDock) {
+      mobileDock.querySelectorAll('[data-ck-nav]').forEach(b =>
+        b.classList.toggle('active', b.dataset.ckNav === panelName));
+    }
+    // Trigger map resize when Home panel shown
+    if (panelName === 'home' && window.driverMap && window.driverMap.map) {
+      setTimeout(() => window.driverMap.map.resize(), 100);
+    }
+  }
+
+  navBtns.forEach(btn => btn.addEventListener('click', () => showPanel(btn.dataset.ckNav)));
+  if (mobileDock) {
+    mobileDock.querySelectorAll('[data-ck-nav]').forEach(btn =>
+      btn.addEventListener('click', () => showPanel(btn.dataset.ckNav)));
+  }
+
+  // ==========================================
+  // BOTTOM SHEET DRAG
+  // ==========================================
+  const sheet = document.getElementById('ckBottomSheet');
+  const handle = document.querySelector('.ck-sheet-handle');
+  let startY = 0, startHeight = 0, isDragging = false;
+
+  if (sheet && handle) {
+    function onMove(e) {
+      if (!isDragging) return;
+      const y = e.touches ? e.touches[0].clientY : e.clientY;
+      const delta = startY - y;
+      const maxH = window.innerHeight * 0.85;
+      const minH = 120;
+      let newH = Math.min(maxH, Math.max(minH, startHeight + delta));
+      sheet.style.maxHeight = newH + 'px';
+      sheet.classList.toggle('peek', newH <= minH + 20);
+      sheet.classList.toggle('expanded', newH > minH + 20);
+    }
+    function onEnd() {
+      isDragging = false;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onEnd);
+      document.removeEventListener('touchmove', onMove, { passive: true });
+      document.removeEventListener('touchend', onEnd);
+    }
+    handle.addEventListener('mousedown', e => {
+      isDragging = true; startY = e.clientY; startHeight = parseInt(sheet.style.maxHeight) || sheet.offsetHeight;
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onEnd);
+    });
+    handle.addEventListener('touchstart', e => {
+      isDragging = true; startY = e.touches[0].clientY; startHeight = parseInt(sheet.style.maxHeight) || sheet.offsetHeight;
+      document.addEventListener('touchmove', onMove, { passive: true });
+      document.addEventListener('touchend', onEnd);
+    }, { passive: true });
+  }
+
+  // ==========================================
+  // ONLINE TOGGLE
+  // ==========================================
+  const onlineToggle = document.querySelector('[data-online-toggle]');
+  const onlineLabel = document.querySelector('[data-online-label]');
+  const sheetPrimaryBtn = document.querySelector('.ck-sheet-primary-btn');
+
+  if (onlineToggle) {
+    onlineToggle.addEventListener('change', async function() {
+      const url = this.dataset.url;
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('[data-csrf]').dataset.csrf },
+          body: JSON.stringify({ is_online: this.checked })
+        });
+        const data = await res.json();
+        if (data.success) {
+          const dashboard = document.getElementById('driverDashboard');
+          dashboard.dataset.isOnline = this.checked ? '1' : '0';
+          if (onlineLabel) onlineLabel.textContent = this.checked ? 'Online' : 'Offline';
+          if (sheetPrimaryBtn) {
+            sheetPrimaryBtn.style.background = this.checked ? 'var(--green)' : 'var(--amber)';
+            sheetPrimaryBtn.style.color = this.checked ? '#fff' : '#1a1a1a';
+            sheetPrimaryBtn.querySelector('small').textContent = this.checked
+              ? 'Tap to go offline'
+              : 'Tap to start receiving rides';
+          }
+        } else {
+          this.checked = !this.checked;
+          alert(data.message || 'Failed to update status');
+        }
+      } catch (e) {
+        this.checked = !this.checked;
+        console.error('Online toggle error:', e);
+        alert('Network error');
+      }
+    });
+  }
+
+  // ==========================================
+  // SAFETY / SUPPORT MODALS
+  // ==========================================
+  function openModal(id) { document.getElementById(id).classList.add('show'); document.body.style.overflow = 'hidden'; }
+  function closeModal(id) { document.getElementById(id).classList.remove('show'); document.body.style.overflow = ''; }
+
+  document.getElementById('safetyBtn')?.addEventListener('click', () => openModal('safetyModal'));
+  document.getElementById('supportBtn')?.addEventListener('click', () => openModal('supportModal'));
+  document.getElementById('supportBtnSheet')?.addEventListener('click', () => openModal('supportModal'));
+  document.getElementById('closeSafetyModal')?.addEventListener('click', () => closeModal('safetyModal'));
+  document.getElementById('closeSupportModal')?.addEventListener('click', () => closeModal('supportModal'));
+
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(overlay.id); });
+  });
+
+  document.getElementById('emergencyBtn')?.addEventListener('click', () => {
+    if (confirm('Call emergency services (999)?')) { window.location.href = 'tel:999'; }
+  });
+
+  // Share trip
+  document.getElementById('shareTripBtn')?.addEventListener('click', async () => {
+    const dashboard = document.getElementById('driverDashboard');
+    const driverId = dashboard?.dataset.driverId;
+    if (!driverId) return alert('Driver ID not found');
+    try {
+      const res = await fetch(`/transport/api/drivers/${driverId}/share-trip`, { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': dashboard.dataset.csrf } });
+      const data = await res.json();
+      if (data.success && data.share_url) {
+        if (navigator.share) {
+          await navigator.share({ title: 'My Trip', text: 'Tracking my ride', url: data.share_url });
+        } else {
+          navigator.clipboard.writeText(data.share_url);
+          alert('Trip link copied to clipboard');
+        }
+      } else {
+        alert(data.message || 'Could not create share link');
+      }
+    } catch (e) { console.error(e); alert('Failed to share trip'); }
+  });
+
+  // ==========================================
+  // MAP INITIALIZATION
+  // ==========================================
+  const mapContainer = document.getElementById('driverMapContainer');
+  if (mapContainer && !mapContainer.dataset.mapInitialized) {
+    mapContainer.dataset.mapInitialized = 'true';
+    function initMapWhenReady() {
+      if (typeof DriverMap !== 'undefined') {
+        // DriverMap is an object with init() method
+        DriverMap.init('driverMap').catch(console.error);
+      } else {
+        // Wait for DriverMap to be exposed by driver-map.js
+        var checkCount = 0;
+        var checkInterval = setInterval(function() {
+          checkCount++;
+          if (typeof DriverMap !== 'undefined') {
+            clearInterval(checkInterval);
+            DriverMap.init('driverMap').catch(console.error);
+          } else if (checkCount > 100) { // 10 seconds max
+            clearInterval(checkInterval);
+            console.warn('DriverMap not available after 10s');
+          }
+        }, 100);
+      }
+    }
+    // If document already loaded, init immediately; else wait for DOMContentLoaded
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initMapWhenReady);
+    } else {
+      initMapWhenReady();
+    }
+  }
+
+  // ==========================================
+  // PERIODIC LOCATION PING (existing logic preserved)
+  // ==========================================
+  const dashboard = document.getElementById('driverDashboard');
+  const pingInterval = dashboard ? parseInt(dashboard.dataset.pingInterval || '120', 10) * 1000 : 120000;
+
+  function sendLocationPing() {
+    if (!navigator.geolocation) return;
+    const d = document.getElementById('driverDashboard');
+    if (!d || d.dataset.isOnline !== '1') return;
+    navigator.geolocation.getCurrentPosition(pos => {
+      fetch('/transport/api/drivers/location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': d.dataset.csrf },
+        body: JSON.stringify({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy })
+      }).catch(console.error);
+    }, console.error, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+  }
+
+  setInterval(sendLocationPing, pingInterval);
+  if (dashboard?.dataset.isOnline === '1') sendLocationPing();
+
+})();
+</script>
+{% endblock %}

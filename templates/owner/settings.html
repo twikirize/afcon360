@@ -937,6 +937,19 @@ document.addEventListener('DOMContentLoaded', function() {
       <span class="card-badge" style="background: #fee2e2; color: #dc2626;">Danger</span>
     </a>
   </div>
+
+    <a href="{{ url_for('admin.owner.dashboard_version') }}" class="settings-card" style="border-left:4px solid #10b981;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
+        <div class="card-icon">🚗</div>
+        <span class="card-badge badge-system">Driver App</span>
+      </div>
+      <div class="card-title">Driver Dashboard Version</div>
+      <div class="card-description">
+        Select which driver dashboard version to display. Version 1: Original (inline CSS, no map). Version 2: Map + bottom sheet. Version 3: Modern standalone (Uber/Bolt style).
+      </div>
+      <span class="card-badge badge-system">System</span>
+    </a>
+</div>
 </div>
 
 <script nonce="{{ csp_nonce }}">

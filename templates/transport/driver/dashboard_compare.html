@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard Comparison — AFCON360</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/global/style.css') }}">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    :root { --brand: #2d5a2d; --brand-dark: #1a3a1a; }
+    * { box-sizing: border-box; }
+    body { font-family: 'DM Sans', system-ui, sans-serif; background: #f5f7f5; margin: 0; min-height: 100vh; }
+    .compare-header { background: var(--brand); color: #fff; padding: 24px; text-align: center; }
+    .compare-header h1 { margin: 0; font-family: 'Syne', sans-serif; font-size: 2rem; }
+    .compare-header p { margin: 8px 0 0; opacity: 0.9; }
+    .compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; padding: 24px; max-width: 1200px; margin: 0 auto; }
+    .dash-card { background: #fff; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); overflow: hidden; border: 1px solid #e5e7eb; transition: transform 0.2s, box-shadow 0.2s; }
+    .dash-card:hover { transform: translateY(-4px); box-shadow: 0 12px 30px rgba(0,0,0,0.12); }
+    .dash-header { background: linear-gradient(135deg, var(--brand), var(--brand-dark)); color: #fff; padding: 24px; position: relative; }
+    .dash-number { position: absolute; top: 16px; right: 16px; width: 48px; height: 48px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.5rem; }
+    .dash-header h2 { margin: 0 0 8px; font-family: 'Syne', sans-serif; font-size: 1.5rem; }
+    .dash-header p { margin: 0; opacity: 0.9; font-size: 0.95rem; }
+    .dash-body { padding: 24px; }
+    .dash-features { list-style: none; padding: 0; margin: 0 0 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .dash-features li { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; color: #374151; }
+    .dash-features i { color: var(--brand); width: 20px; }
+    .dash-btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 16px; border: none; border-radius: 12px; font-family: 'DM Sans', sans-serif; font-weight: 700; font-size: 1rem; cursor: pointer; background: var(--brand); color: #fff; text-decoration: none; transition: all 0.2s; }
+    .dash-btn:hover { background: var(--brand-dark); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(45,90,45,0.3); }
+    .dash-btn.secondary { background: #fff; color: var(--brand); border: 2px solid var(--brand); }
+    .dash-btn.secondary:hover { background: var(--brand); color: #fff; }
+    .version-badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+    .v1-badge { background: #dcfce7; color: #15803d; }
+    .v2-badge { background: #dbeafe; color: #2563eb; }
+    .v3-badge { background: #fef3c7; color: #f59e0b; }
+  </style>
+</head>
+<body>
+  <header class="compare-header">
+    <h1><i class="fa-solid fa-layer-group"></i> Driver Dashboard Comparison</h1>
+    <p>Test all 3 versions side by side — pick the best for production</p>
+  </header>
+
+  <div class="compare-grid">
+    <!-- DASHBOARD 1 -->
+    <article class="dash-card">
+      <div class="dash-header">
+        <span class="dash-number">1</span>
+        <h2>Restored Working</h2>
+        <p>Original b84ffd8^ — inline CSS/JS, extends base.html</p>
+      </div>
+      <div class="dash-body">
+        <span class="version-badge v1-badge">v1 — Baseline</span>
+        <ul class="dash-features">
+          <li><i class="fa-solid fa-check"></i> Working inline styles</li>
+          <li><i class="fa-solid fa-check"></i> All panels render correctly</li>
+          <li><i class="fa-solid fa-check"></i> Panel nav works</li>
+          <li><i class="fa-solid fa-times"></i> No map / bottom sheet</li>
+          <li><i class="fa-solid fa-times"></i> No live location</li>
+          <li><i class="fa-solid fa-check"></i> Extends base.html</li>
+        </ul>
+        <a href="{{ url_for('transport.driver_dashboard_v1') }}" class="dash-btn" target="_blank">
+          <i class="fa-solid fa-external-link-alt"></i> Open Dashboard 1
+        </a>
+      </div>
+    </article>
+
+    <!-- DASHBOARD 2 -->
+    <article class="dash-card">
+      <div class="dash-header">
+        <span class="dash-number">2</span>
+        <h2>Final Working</h2>
+        <p>Map + bottom sheet + fixed nav — extends base.html</p>
+      </div>
+      <div class="dash-body">
+        <span class="version-badge v2-badge">v2 — With Map</span>
+        <ul class="dash-features">
+          <li><i class="fa-solid fa-check"></i> Map with live location</li>
+          <li><i class="fa-solid fa-check"></i> Draggable bottom sheet</li>
+          <li><i class="fa-solid fa-check"></i> Go Online toggle (hero + sheet)</li>
+          <li><i class="fa-solid fa-check"></i> All 5 panels</li>
+          <li><i class="fa-solid fa-check"></i> Safety/Support modals</li>
+          <li><i class="fa-solid fa-check"></i> Extends base.html</li>
+        </ul>
+        <a href="{{ url_for('transport.driver_dashboard_v2') }}" class="dash-btn" target="_blank">
+          <i class="fa-solid fa-external-link-alt"></i> Open Dashboard 2
+        </a>
+      </div>
+    </article>
+
+    <!-- DASHBOARD 3 -->
+    <article class="dash-card">
+      <div class="dash-header">
+        <span class="dash-number">3</span>
+        <h2>New Standalone</h2>
+        <p>Modern Uber/Bolt-style — no base.html, fully custom</p>
+      </div>
+      <div class="dash-body">
+        <span class="version-badge v3-badge">v3 — Modern</span>
+        <ul class="dash-features">
+          <li><i class="fa-solid fa-check"></i> Left sidebar (desktop)</li>
+          <li><i class="fa-solid fa-check"></i> Hamburger + slide pane (mobile)</li>
+          <li><i class="fa-solid fa-check"></i> Bottom dock (mobile)</li>
+          <li><i class="fa-solid fa-check"></i> Map + bottom sheet</li>
+          <li><i class="fa-solid fa-check"></i> Single Go Online toggle</li>
+          <li><i class="fa-solid fa-check"></i> Standalone (no base.html)</li>
+        </ul>
+        <a href="{{ url_for('transport.driver_dashboard_v3') }}" class="dash-btn" target="_blank">
+          <i class="fa-solid fa-external-link-alt"></i> Open Dashboard 3
+        </a>
+      </div>
+    </article>
+  </div>
+
+  <div style="max-width: 1200px; margin: 0 auto 48px; padding: 0 24px;">
+    <h2 style="font-family: 'Syne', sans-serif; color: var(--brand);">Quick Comparison</h2>
+    <table style="width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.08);">
+      <thead>
+        <tr style="background: var(--brand); color: #fff;">
+          <th style="padding: 16px; text-align: left;">Feature</th>
+          <th style="padding: 16px; text-align: center;">v1 Restored</th>
+          <th style="padding: 16px; text-align: center;">v2 Final</th>
+          <th style="padding: 16px; text-align: center;">v3 New</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom: 1px solid #e5e7eb;"><td style="padding: 16px;">Extends base.html</td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i></td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i></td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-times" style="color: #dc2626;"></i></td></tr>
+        <tr style="border-bottom: 1px solid #e5e7eb;"><td style="padding: 16px;">Inline CSS (working)</td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i></td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-times" style="color: #dc2626;"></i></td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-times" style="color: #dc2626;"></i></td></tr>
+        <tr style="border-bottom: 1px solid #e5e7eb;"><td style="padding: 16px;">Map + live location</td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-times" style="color: #dc2626;"></i></td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i></td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i></td></tr>
+        <tr style="border-bottom: 1px solid #e5e7eb;"><td style="padding: 16px;">Bottom sheet (draggable)</td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-times" style="color: #dc2626;"></i></td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i></td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i></td></tr>
+        <tr style="border-bottom: 1px solid #e5e7eb;"><td style="padding: 16px;">Go Online toggle (once)</td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i></td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-times" style="color: #dc2626;"></i> (twice)</td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i></td></tr>
+        <tr style="border-bottom: 1px solid #e5e7eb;"><td style="padding: 16px;">Left sidebar (desktop)</td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i> (base)</td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i> (base)</td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i> (custom)</td></tr>
+        <tr style="border-bottom: 1px solid #e5e7eb;"><td style="padding: 16px;">Mobile: hamburger + pane</td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i> (base)</td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i> (base)</td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i> (custom)</td></tr>
+        <tr style="border-bottom: 1px solid #e5e7eb;"><td style="padding: 16px;">Mobile: bottom dock</td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i> (base)</td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i> (base)</td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i> (custom)</td></tr>
+        <tr style="border-bottom: 1px solid #e5e7eb;"><td style="padding: 16px;">Safety/Support modals</td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i></td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i></td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i></td></tr>
+        <tr><td style="padding: 16px;">Uses base.html CSS</td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i></td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-check" style="color: var(--brand);"></i></td><td style="padding: 16px; text-align: center;"><i class="fa-solid fa-times" style="color: #dc2626;"></i> (own CSS)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>
