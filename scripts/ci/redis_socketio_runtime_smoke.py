@@ -60,6 +60,18 @@ def main() -> int:
         SESSION_COOKIE_SECURE=False,
     )
 
+    # This is a disposable CI database, not production configuration. The
+    # singleton bootstrap currently creates its first row with enabled=False,
+    # so seed the owner-controlled setting before the first request. The app's
+    # before_request hook reads this persisted value and controls limiter.enabled.
+    from app.admin.owner.rate_limit_service import RateLimitService
+
+    with app.app_context():
+        if not RateLimitService.update_settings({"enabled": True}):
+            fail("could not enable rate limiting in the disposable CI database")
+        if not RateLimitService.is_enabled():
+            fail("rate limiting remained disabled after CI database setup")
+
     # Register every CI-only probe before the app handles its first request.
     # Flask freezes route registration after the first request has been served.
     def session_probe():
