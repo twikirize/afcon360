@@ -164,35 +164,64 @@ def main() -> int:
     if peer_manager is None or "redis" not in type(peer_manager).__name__.lower():
         fail("independent Socket.IO peer did not initialize a Redis manager")
 
-    peer_client = peer_socketio.test_client(peer_app)
-    if not peer_client.is_connected():
-        fail("independent Socket.IO peer could not connect")
-    event_nonce = uuid.uuid4().hex
-    socketio.emit(
-        "afcon360_ci_redis_probe",
-        {"nonce": event_nonce},
-        namespace="/",
+    # Flask-SocketIO's in-process test_client is intentionally unsupported
+    # when message_queue is configured. Use a real Socket.IO network client
+    # connected to a separately served peer instance so Redis pub/sub remains
+    # enabled and the test exercises the cross-instance delivery path.
+    from threading import Event, Thread
+
+    import socketio as socketio_client
+    from werkzeug.serving import make_server
+
+    peer_server = make_server("127.0.0.1", 0, peer_app, threaded=True)
+    peer_thread = Thread(
+        target=peer_server.serve_forever,
+        name="afcon360-ci-socketio-peer",
+        daemon=True,
     )
+    peer_thread.start()
 
-    deadline = time.monotonic() + 5
-    received = []
-    while time.monotonic() < deadline:
-        received.extend(peer_client.get_received())
-        if any(
-            item.get("name") == "afcon360_ci_redis_probe"
-            and (item.get("args") or [{}])[0].get("nonce") == event_nonce
-            for item in received
-        ):
-            break
-        time.sleep(0.05)
+    peer_client = socketio_client.Client(
+        reconnection=False,
+        logger=False,
+        engineio_logger=False,
+    )
+    event_nonce = uuid.uuid4().hex
+    event_received = Event()
 
-    if not any(
-        item.get("name") == "afcon360_ci_redis_probe"
-        and (item.get("args") or [{}])[0].get("nonce") == event_nonce
-        for item in received
-    ):
-        fail("Socket.IO event did not fan out to the independent Redis-backed peer")
-    peer_client.disconnect()
+    @peer_client.on("afcon360_ci_redis_probe", namespace="/")
+    def _receive_redis_probe(payload):
+        if isinstance(payload, dict) and payload.get("nonce") == event_nonce:
+            event_received.set()
+
+    try:
+        peer_client.connect(
+            f"http://127.0.0.1:{peer_server.server_port}",
+            transports=["polling"],
+            wait_timeout=5,
+        )
+        if not peer_client.connected:
+            fail("independent Socket.IO network peer could not connect")
+
+        socketio.emit(
+            "afcon360_ci_redis_probe",
+            {"nonce": event_nonce},
+            namespace="/",
+        )
+
+        if not event_received.wait(timeout=5):
+            fail(
+                "Socket.IO event did not fan out through Redis to the "
+                "independent network-backed peer"
+            )
+    finally:
+        try:
+            if peer_client.connected:
+                peer_client.disconnect()
+        finally:
+            peer_server.shutdown()
+            peer_server.server_close()
+            peer_thread.join(timeout=5)
 
     # 5. Celery must establish a real connection to the configured Redis
     # broker. Do not enqueue or execute a wallet/payment task in this smoke test.
