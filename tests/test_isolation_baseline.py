@@ -1,17 +1,7 @@
 """Focused tests for safe, complete test-database baseline capture."""
 
 import pytest
-from sqlalchemy import (
-    Column,
-    ForeignKeyConstraint,
-    Integer,
-    MetaData,
-    String,
-    Table,
-    create_engine,
-    insert,
-    select,
-)
+from sqlalchemy import Column, ForeignKeyConstraint, Integer, MetaData, Table
 
 from tests.helpers import isolation
 
@@ -109,10 +99,9 @@ def test_isolation_timings_are_opt_in(monkeypatch, capsys):
     assert "tables=12" in captured
 
 
-def test_integer_fk_restore_includes_zero_primary_key():
-    engine = create_engine("sqlite+pysqlite:///:memory:")
+def _table_with_fk():
     metadata = MetaData()
-    parent = Table(
+    Table(
         "isolation_fk_parent_probe",
         metadata,
         Column("id", Integer, primary_key=True),
@@ -126,85 +115,98 @@ def test_integer_fk_restore_includes_zero_primary_key():
             ["parent_id"], ["isolation_fk_parent_probe.id"]
         ),
     )
-    metadata.create_all(engine)
-
-    try:
-        with engine.begin() as connection:
-            connection.execute(insert(parent), [{"id": 11}, {"id": 22}])
-            connection.execute(
-                insert(child), {"id": 0, "parent_id": 11}
-            )
-
-        with engine.connect() as connection:
-            baseline = isolation.snapshot_table_rows_readonly(
-                connection, "isolation_fk_child_probe"
-            )
-        assert baseline["max_pk"] == 0
-        assert baseline["int_pks"] == {0}
-
-        with engine.begin() as connection:
-            connection.execute(
-                child.update().where(child.c.id == 0).values(parent_id=22)
-            )
-
-        with engine.begin() as connection:
-            reverted = isolation.revert_fk_mutations(
-                connection, "isolation_fk_child_probe", baseline
-            )
-
-        assert reverted == 1
-        with engine.connect() as connection:
-            parent_id = connection.execute(
-                select(child.c.parent_id).where(child.c.id == 0)
-            ).scalar_one()
-        assert parent_id == 11
-    finally:
-        engine.dispose()
+    return child
 
 
-def test_integer_primary_key_cleanup_removes_new_ids_inside_existing_gap():
-    engine = create_engine("sqlite+pysqlite:///:memory:")
+class _FakeResult:
+    def __init__(self, rows=(), rowcount=None):
+        self._rows = list(rows)
+        self.rowcount = rowcount
+
+    def __iter__(self):
+        return iter(self._rows)
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return list(self._rows)
+
+
+def test_integer_fk_restore_includes_zero_primary_key(monkeypatch):
+    table = _table_with_fk()
+
+    class Connection:
+        def __init__(self):
+            self.statements = []
+
+        def execute(self, statement):
+            self.statements.append(statement)
+            if len(self.statements) == 1:
+                # The pre-existing row with PK zero has been mutated by the test.
+                return _FakeResult(rows=[(0, 22)])
+            return _FakeResult(rowcount=1)
+
+    connection = Connection()
+    monkeypatch.setattr(
+        isolation, "_reflect_table", lambda _bind, _name: table
+    )
+
+    baseline = {
+        "pk_type": "int",
+        "pk_columns": ["id"],
+        "int_pks": {0},
+        "fk_columns": ["parent_id"],
+        "fk_baseline": {0: {"parent_id": 11}},
+    }
+
+    reverted = isolation.revert_fk_mutations(
+        connection, "isolation_fk_child_probe", baseline
+    )
+
+    assert reverted == 1
+    assert len(connection.statements) == 2
+    selected_ids = set(connection.statements[0].compile().params.values())
+    assert selected_ids == {0}
+    update_values = connection.statements[1].compile().params
+    assert 0 in update_values.values()
+    assert 11 in update_values.values()
+
+
+def test_integer_primary_key_cleanup_removes_new_ids_inside_existing_gap(monkeypatch):
     metadata = MetaData()
     table = Table(
         "isolation_int_pk_gap_probe",
         metadata,
         Column("id", Integer, primary_key=True),
-        Column("label", String(40), nullable=False),
     )
-    metadata.create_all(engine)
 
-    try:
-        with engine.begin() as connection:
-            connection.execute(
-                insert(table),
-                [{"id": 10, "label": "baseline-low"}, {"id": 20, "label": "baseline-high"}],
-            )
+    class Session:
+        def __init__(self):
+            self.statements = []
 
-        with engine.connect() as connection:
-            baseline = isolation.snapshot_table_rows_readonly(
-                connection, "isolation_int_pk_gap_probe"
-            )
+        def get_bind(self):
+            return object()
 
-        assert baseline["max_pk"] == 20
-        assert baseline["int_pks"] == {10, 20}
+        def execute(self, statement):
+            self.statements.append(statement)
+            if len(self.statements) == 1:
+                # ID 15 was added inside the baseline's existing 0..20 range.
+                return _FakeResult(rows=[0, 10, 15, 20])
+            return _FakeResult(rowcount=1)
 
-        # A manually assigned PK can land inside the pre-existing ID range.
-        with engine.begin() as connection:
-            connection.execute(
-                insert(table),
-                {"id": 15, "label": "test-created-gap-row"},
-            )
+    session = Session()
+    monkeypatch.setattr(
+        isolation, "_reflect_table", lambda _bind, _name: table
+    )
 
-        with engine.begin() as connection:
-            deleted = isolation.cleanup_table(
-                connection, "isolation_int_pk_gap_probe", baseline
-            )
+    deleted = isolation.cleanup_table(
+        session,
+        "isolation_int_pk_gap_probe",
+        {"pk_type": "int", "pk_columns": ["id"], "int_pks": {0, 10, 20}},
+    )
 
-        assert deleted == 1
-        with engine.connect() as connection:
-            remaining = set(
-                connection.execute(select(table.c.id)).scalars().all()
-            )
-        assert remaining == {10, 20}
-    finally:
-        engine.dispose()
+    assert deleted == 1
+    assert len(session.statements) == 2
+    delete_values = set(session.statements[1].compile().params.values())
+    assert delete_values == {15}
