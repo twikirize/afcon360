@@ -9,14 +9,14 @@ Design:
   "dirty" (has rows) / "empty" classification is stable for the session.
   Because of that, a single baseline captured ONCE per session is valid for
   every per-test cleanup:
-    - int PK tables   -> session-start (count, max(id))
+    - int PK tables   -> exact session-start set of ids (plus max for diagnostics)
     - UUID PK tables  -> session-start set of ids
     - other/composite -> session-start canonical row set
     - empty tables    -> "was empty" marker (cleanup = DELETE ALL rows,
                          since any row found there is test-created)
 - Cleanup DELETE:
-    - int table       -> DELETE WHERE id > baseline max
-    - uuid table      -> DELETE rows whose id NOT in baseline set
+    - int table       -> DELETE rows whose id is not in baseline set
+    - uuid table      -> DELETE rows whose id is not in baseline set
     - other tables    -> DELETE each current row not in baseline set
     - empty table     -> DELETE ALL
   FK-safe delete order is computed once from a cached FK graph.
@@ -25,7 +25,7 @@ Design:
   post-baseline and cleaned up like any other test data.
 
 PK strategies (per table):
-  - integer PK     -> (count, max(id); rows with id > max are test-created)
+  - integer PK     -> exact pre-existing ID set (max retained for diagnostics)
   - UUID PK        -> exact pre-existing ID set
   - composite PK   -> full-row snapshot (row equality)
   - no PK          -> full-row snapshot (row equality)
@@ -34,14 +34,44 @@ This is the "Option B — Row tracking + explicit cleanup" architecture.
 """
 
 import json
+import os
 import threading
+import time
 from collections import defaultdict, deque
 from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import UUID
 
-from sqlalchemy import inspect as sa_inspect, text
+from sqlalchemy import (
+    JSON, MetaData, Table, Text, and_, cast, delete, func, literal,
+    select, union_all, update, inspect as sa_inspect,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.auth.deletion_guard import authorize_deletion
+
+
+def _isolation_timings_enabled() -> bool:
+    return os.getenv("TEST_ISOLATION_TIMINGS", "").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+
+
+def _emit_isolation_timing(phase: str, **measurements: Any) -> None:
+    """Emit opt-in phase diagnostics; normal test output stays quiet."""
+    if not _isolation_timings_enabled():
+        return
+    parts = []
+    for name, value in measurements.items():
+        if isinstance(value, float):
+            parts.append(f"{name}={value:.4f}s")
+        else:
+            parts.append(f"{name}={value}")
+    print(
+        "[TEST_ISOLATION_TIMING] "
+        + phase
+        + (" " + " ".join(parts) if parts else ""),
+        flush=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -54,22 +84,21 @@ def build_fk_graph(engine) -> Dict[str, List[str]]:
     Returns {table: [referred_tables]} — i.e. which tables this table
     depends on via FK.
 
-    Only FKs that actually BLOCK the deletion of their referred (parent)
-    row impose deleting-order constraints and are included:
+    Include NO ACTION / RESTRICT edges because they block parent deletion.
+    Also include CASCADE edges: although they do not block a direct parent
+    DELETE, deleting a parent may cascade through an intermediate child
+    table which is itself referenced by a restrictive FK. Omitting that
+    edge can make cleanup delete the grandparent too early (for example,
+    organisations -> accommodation_properties -> accommodation_bookings).
 
-      - ondelete is a no-op / NO ACTION / RESTRICT  -> included
-      - ondelete CASCADE / SET NULL / SET DEFAULT   -> excluded (the
-        database handles the referenced-row removal automatically)
-      - deferrable + initially deferred             -> excluded (checked
-        at COMMIT; the per-test cleanup deletes every test-created row in
-        a single transaction, so the constraint is satisfied regardless of
-        deletion order)
+    SET NULL / SET DEFAULT edges are excluded because parent deletion keeps
+    the child row and only changes its FK value. Deferrable, initially
+    deferred constraints are excluded because cleanup deletes test-created
+    rows in one transaction.
 
-    Excluding the non-blocking edges keeps the graph acyclic in practice
-    (e.g. the ``users`` <-> ``organisations`` <-> ``compliance_cases``
-    mutual-FK cycle dissolves: every edge in that SCC is either SET NULL or
-    deferred), so ``topological_delete_order`` returns a valid,
-    dependents-before-parents order instead of a cycle-skipped guess.
+    The known mutual-FK cycles in this schema are dissolved by SET NULL or
+    deferred constraints; CASCADE edges needed for multi-hop delete ordering
+    must remain in the graph.
     """
     inspector = sa_inspect(engine)
     graph: Dict[str, List[str]] = {}
@@ -80,16 +109,31 @@ def build_fk_graph(engine) -> Dict[str, List[str]]:
         referred = []
         try:
             fks = inspector.get_foreign_keys(table_name)
-        except Exception:
-            fks = []
+        except Exception as exc:
+            raise RuntimeError(
+                "Test isolation cannot inspect foreign keys for table "
+                f"{table_name!r}; refusing to build an incomplete delete graph."
+            ) from exc
         for fk in fks:
             parent = fk.get("referred_table")
-            if not parent or parent not in table_names:
+            if not parent:
+                raise RuntimeError(
+                    "Test isolation received incomplete foreign-key metadata "
+                    f"for table {table_name!r}: referred_table is missing."
+                )
+            if parent not in table_names:
+                referred_schema = fk.get("referred_schema")
+                if referred_schema in (None, inspector.default_schema_name):
+                    raise RuntimeError(
+                        "Test isolation foreign-key metadata for table "
+                        f"{table_name!r} refers to missing table {parent!r}."
+                    )
+                # External-schema parents are not among the tables cleaned here.
                 continue
             options = fk.get("options") or {}
             ondelete = (options.get("ondelete") or "NO ACTION").upper()
-            if ondelete in ("CASCADE", "SET NULL", "SET DEFAULT"):
-                continue  # parent-row removal is automatically handled
+            if ondelete in ("SET NULL", "SET DEFAULT"):
+                continue  # child survives parent deletion; no delete-order edge
             if options.get("deferrable") and (options.get("initially") or "").upper() == "DEFERRED":
                 continue  # checked at COMMIT; single-txn cleanup is order-safe
             referred.append(parent)
@@ -141,64 +185,84 @@ _TABLE_SKIP_NAMES = {"alembic_version", "_test_rows"}
 
 
 def _get_fk_columns(inspector, table_name: str) -> List[str]:
-    """Return FK column names that can block parent-row deletion.
+    """Return every FK column so baseline-row mutations can be restored.
 
-    Excludes CASCADE / SET NULL / SET DEFAULT (Postgres handles those) and
-    deferrable-deferred FKs. Only NO ACTION / RESTRICT columns are returned.
+    The snapshot is used to undo test changes to pre-existing rows before
+    deleting test-created parents. Restoration is required for every
+    ON DELETE action: CASCADE could otherwise delete a pre-existing child,
+    while SET NULL / SET DEFAULT could silently alter its original value.
     """
     try:
         fks = inspector.get_foreign_keys(table_name)
-    except Exception:
-        return []
+    except Exception as exc:
+        raise RuntimeError(
+            "Test isolation cannot inspect foreign-key columns for table "
+            f"{table_name!r}."
+        ) from exc
     cols: List[str] = []
     for fk in fks:
-        options = fk.get("options") or {}
-        ondelete = (options.get("ondelete") or "NO ACTION").upper()
-        if ondelete in ("CASCADE", "SET NULL", "SET DEFAULT"):
-            continue
-        if options.get("deferrable") and (options.get("initially") or "").upper() == "DEFERRED":
-            continue
         for c in fk.get("constrained_columns", []):
             if c not in cols:
                 cols.append(c)
     return cols
-
 
 def _get_pk_columns(inspector, table_name: str) -> List[str]:
     """Return ordered PK column names for a table."""
     try:
         pk = inspector.get_pk_constraint(table_name)
         return pk.get("constrained_columns", [])
-    except Exception:
-        return []
+    except Exception as exc:
+        raise RuntimeError(
+            "Test isolation cannot inspect primary-key metadata for table "
+            f"{table_name!r}."
+        ) from exc
+
+
+# Reflected table metadata is schema-stable for the lifetime of a pytest worker.
+# The isolation teardown touches every table twice per test; reflecting each
+# table on every pass was the dominant avoidable cost in the timed CI run.
+_reflected_tables_cache: Dict[Tuple[int, str], Table] = {}
+_reflected_engines: Dict[int, Any] = {}
+_reflected_tables_lock = threading.RLock()
+
+
+def _reflect_table(bind, table_name: str) -> Table:
+    """Return cached metadata for one table on the current bound Engine."""
+    get_bind = getattr(bind, "get_bind", None)
+    resolved_bind = get_bind() if callable(get_bind) else bind
+    engine = getattr(resolved_bind, "engine", resolved_bind)
+    if engine is None:
+        raise RuntimeError(
+            f"Test isolation cannot resolve an Engine to reflect table {table_name!r}."
+        )
+
+    engine_key = id(engine)
+    cache_key = (engine_key, table_name)
+    with _reflected_tables_lock:
+        table = _reflected_tables_cache.get(cache_key)
+        if table is None:
+            table = Table(table_name, MetaData(), autoload_with=engine)
+            _reflected_tables_cache[cache_key] = table
+            # Retain the Engine so its identity cannot be recycled while its
+            # cached Table objects remain addressable.
+            _reflected_engines[engine_key] = engine
+        return table
 
 
 def snapshot_table_rows_readonly(conn, table_name: str) -> Dict[str, Any]:
-    """Snapshot a table using a dedicated connection (no ORM session).
-
-    Identical semantics to :func:`snapshot_table_rows` but executes against a
-    raw ``Connection`` so the ORM identity map is never expired by the
-    snapshot reads. ``conn`` must provide its engine via ``conn.engine``.
-    """
+    """Snapshot a table using a dedicated Connection and SQLAlchemy Core."""
     inspector = sa_inspect(conn.engine)
-    columns = [col["name"] for col in inspector.get_columns(table_name)]
+    table = _reflect_table(conn, table_name)
+    columns = list(table.c.keys())
     pk_cols = _get_pk_columns(inspector, table_name)
     fk_cols = _get_fk_columns(inspector, table_name)
+    all_rows = [tuple(row) for row in conn.execute(select(table))]
 
-    result = conn.execute(text(f'SELECT * FROM "{table_name}"'))
-    all_rows = [tuple(row) for row in result]
-
-    snap: Dict[str, Any] = {
-        "columns": columns,
-        "pk_columns": pk_cols,
-        "count": len(all_rows),
-    }
-
+    snap: Dict[str, Any] = {"columns": columns, "pk_columns": pk_cols, "count": len(all_rows)}
     if not pk_cols or len(pk_cols) > 2:
         snap["pk_type"] = "composite" if len(pk_cols) > 2 else "none"
-        if not all_rows:
-            return snap
-        snap["row_snap"] = all_rows
+        if all_rows:
+            snap["row_snap"] = all_rows
         return snap
 
     if len(pk_cols) == 1:
@@ -206,17 +270,18 @@ def snapshot_table_rows_readonly(conn, table_name: str) -> Dict[str, Any]:
         pk_idx = columns.index(pk_col) if pk_col in columns else None
         if pk_idx is None:
             snap["pk_type"] = "none"
-            if not all_rows:
-                return snap
-            snap["row_snap"] = all_rows
+            if all_rows:
+                snap["row_snap"] = all_rows
             return snap
 
         values = [row[pk_idx] for row in all_rows]
         sample = values[0] if values else None
-
         if sample is not None and isinstance(sample, int):
             snap["pk_type"] = "int"
             snap["max_pk"] = max(values) if values else 0
+            # Explicit/manual PK inserts can fill gaps below max(id). Preserve
+            # the exact baseline IDs so teardown never misses those rows.
+            snap["int_pks"] = set(values)
             if fk_cols:
                 fk_idx_map = {fc: columns.index(fc) for fc in fk_cols if fc in columns}
                 if fk_idx_map:
@@ -226,8 +291,7 @@ def snapshot_table_rows_readonly(conn, table_name: str) -> Dict[str, Any]:
                         for row in all_rows
                     }
         elif sample is not None and (
-            isinstance(sample, str) and len(sample) == 36
-            or isinstance(sample, UUID)
+            isinstance(sample, str) and len(sample) == 36 or isinstance(sample, UUID)
         ):
             snap["pk_type"] = "uuid"
             snap["uuid_pks"] = {str(v) if isinstance(v, UUID) else v for v in values}
@@ -242,16 +306,13 @@ def snapshot_table_rows_readonly(conn, table_name: str) -> Dict[str, Any]:
                     }
         else:
             snap["pk_type"] = "other"
-            if not all_rows:
-                return snap
-            snap["row_snap"] = all_rows
+            if all_rows:
+                snap["row_snap"] = all_rows
         return snap
 
-    # Composite PK (2 columns)
     snap["pk_type"] = "composite"
-    if not all_rows:
-        return snap
-    snap["row_snap"] = all_rows
+    if all_rows:
+        snap["row_snap"] = all_rows
     return snap
 
 
@@ -260,145 +321,127 @@ def snapshot_table_rows_readonly(conn, table_name: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def revert_fk_mutations(conn, table_name: str, snap: Dict[str, Any]) -> int:
-    """Restore FK columns on pre-existing rows to their session-start values.
-
-    Runs BEFORE cleanup_table's delete pass, so removing a test-created parent
-    cannot orphan a pre-existing child that was repointed mid-test.
-    """
-    from sqlalchemy import bindparam
-
+    """Restore FK values on pre-existing rows before deleting test-created rows."""
     fk_baseline = snap.get("fk_baseline") or {}
     fk_columns = snap.get("fk_columns") or []
     pk_cols = snap.get("pk_columns") or []
     if not fk_baseline or not fk_columns or len(pk_cols) != 1:
         return 0
 
-    pk_col = pk_cols[0]
+    table = _reflect_table(conn, table_name)
+    pk_column = table.c[pk_cols[0]]
+    statement = select(pk_column, *(table.c[name] for name in fk_columns))
     pk_type = snap.get("pk_type")
-    cols_sql = ", ".join(f'"{c}"' for c in [pk_col, *fk_columns])
-
     if pk_type == "int":
-        max_pk = snap.get("max_pk", 0)
-        if max_pk == 0:
-            return 0
-        rows = conn.execute(
-            text(f'SELECT {cols_sql} FROM "{table_name}" WHERE "{pk_col}" <= :max_pk'),
-            {"max_pk": max_pk},
-        ).all()
+        baseline_ids = snap.get("int_pks")
+        if baseline_ids is not None:
+            if not baseline_ids:
+                return 0
+            statement = statement.where(pk_column.in_(list(baseline_ids)))
+        else:
+            # Compatibility with baselines created before exact integer IDs
+            # were stored. Include zero-valued IDs rather than assuming a
+            # positive sequence boundary.
+            max_pk = snap.get("max_pk")
+            if max_pk is None:
+                return 0
+            statement = statement.where(pk_column <= max_pk)
     elif pk_type == "uuid":
         uuid_pks = list(snap.get("uuid_pks") or set())
         if not uuid_pks:
             return 0
-        stmt = text(
-            f'SELECT {cols_sql} FROM "{table_name}" WHERE "{pk_col}" IN :pks'
-        ).bindparams(bindparam("pks", expanding=True))
-        rows = conn.execute(stmt, {"pks": uuid_pks}).all()
+        statement = statement.where(pk_column.in_(uuid_pks))
     else:
         return 0
 
     reverted = 0
-    for row in rows:
+    for row in conn.execute(statement):
         pk_val = row[0]
         key = str(pk_val) if isinstance(pk_val, UUID) else pk_val
         baseline = fk_baseline.get(key)
         if baseline is None:
             continue
-        for i, col in enumerate(fk_columns, start=1):
-            baseline_val = baseline.get(col)
-            if row[i] != baseline_val:
+        for index, column_name in enumerate(fk_columns, start=1):
+            baseline_value = baseline.get(column_name)
+            if row[index] != baseline_value:
                 conn.execute(
-                    text(f'UPDATE "{table_name}" SET "{col}" = :v WHERE "{pk_col}" = :pk'),
-                    {"v": baseline_val, "pk": pk_val},
+                    update(table).where(pk_column == pk_val).values({column_name: baseline_value})
                 )
                 reverted += 1
     return reverted
 
 
 def cleanup_table(session, table_name: str, snap: Dict[str, Any]) -> int:
-    """Delete rows inserted during the test. Returns count deleted.
-
-    A stronger-than-necessary delete is fine for tables that started empty
-    (``pre_count == 0`` or no baseline rows): exactly the rows removed were
-    test-created, so we remove every row currently present.
-    """
+    """Delete only rows inserted during the test using reflected Core tables."""
+    bind = session.get_bind() if callable(getattr(session, "get_bind", None)) else session
+    table = _reflect_table(bind, table_name)
     pk_type = snap.get("pk_type", "none")
 
     if pk_type == "int":
-        max_pk = snap.get("max_pk", 0)
-        if max_pk == 0:
-            # Table was empty before the test — delete everything.
-            result = session.execute(text(f'DELETE FROM "{table_name}"'))
-            return result.rowcount
-        pk_col = snap["pk_columns"][0]
-        result = session.execute(
-            text(f'DELETE FROM "{table_name}" WHERE "{pk_col}" > :max_pk'),
-            {"max_pk": max_pk},
-        )
-        return result.rowcount
+        pk_column = table.c[snap["pk_columns"][0]]
+        baseline_ids = snap.get("int_pks")
+        if baseline_ids is None:
+            # Compatibility for a baseline captured by older helper code.
+            max_pk = snap.get("max_pk", 0)
+            statement = delete(table)
+            if max_pk != 0:
+                statement = statement.where(pk_column > max_pk)
+            return session.execute(statement).rowcount or 0
+
+        current_values = session.execute(select(pk_column)).scalars().all()
+        to_delete = [value for value in current_values if value not in baseline_ids]
+        deleted = 0
+        for index in range(0, len(to_delete), 1000):
+            batch = to_delete[index:index + 1000]
+            if batch:
+                result = session.execute(delete(table).where(pk_column.in_(batch)))
+                deleted += result.rowcount or 0
+        return deleted
 
     if pk_type == "uuid":
         existing = snap.get("uuid_pks", set())
+        pk_column = table.c[snap["pk_columns"][0]]
         if not existing:
-            # table was empty before test — delete everything
-            result = session.execute(text(f'DELETE FROM "{table_name}"'))
-            return result.rowcount
-        pk_col = snap["pk_columns"][0]
-        # delete rows whose PK is NOT in the snapshot
-        rows = session.execute(text(f'SELECT "{pk_col}" FROM "{table_name}"'))
-        current_ids = {
-            str(row[0]) if isinstance(row[0], UUID) else row[0] for row in rows
+            return session.execute(delete(table)).rowcount or 0
+        current_values = session.execute(select(pk_column)).scalars().all()
+        current_by_normalized = {
+            str(value) if isinstance(value, UUID) else value: value
+            for value in current_values
         }
-        to_delete = current_ids - existing
-        if not to_delete:
-            return 0
-        # batch delete (PostgreSQL IN limit is ~32767 params)
+        to_delete = [
+            raw_value for normalized, raw_value in current_by_normalized.items()
+            if normalized not in existing
+        ]
         deleted = 0
-        batch_size = 1000
-        id_list = list(to_delete)
-        for i in range(0, len(id_list), batch_size):
-            batch = id_list[i : i + batch_size]
-            placeholders = ", ".join(f":id{j}" for j in range(len(batch)))
-            params = {f"id{j}": v for j, v in enumerate(batch)}
-            result = session.execute(
-                text(f'DELETE FROM "{table_name}" WHERE "{pk_col}" IN ({placeholders})'),
-                params,
-            )
-            deleted += result.rowcount
+        for index in range(0, len(to_delete), 1000):
+            batch = to_delete[index:index + 1000]
+            if batch:
+                result = session.execute(delete(table).where(pk_column.in_(batch)))
+                deleted += result.rowcount or 0
         return deleted
 
     if pk_type in ("none", "composite", "other"):
         row_snap = snap.get("row_snap", [])
         if not row_snap:
-            # Table was empty before the test — delete everything.
-            result = session.execute(text(f'DELETE FROM "{table_name}"'))
-            return result.rowcount
-        existing_set = {_canonical_row(r) for r in row_snap}
-        rows = session.execute(text(f'SELECT * FROM "{table_name}"'))
-        current_rows = [tuple(row) for row in rows]
-        to_delete = [r for r in current_rows if _canonical_row(r) not in existing_set]
-        if not to_delete:
-            return 0
-        # Fallback row-equality deletes. Serialize every column via ::text so
-        # JSON/JSONB values (returned as dicts) work reliably as params.
+            return session.execute(delete(table)).rowcount or 0
+        existing_set = {_canonical_row(row) for row in row_snap}
+        current_rows = [tuple(row) for row in session.execute(select(table))]
+        to_delete = [row for row in current_rows if _canonical_row(row) not in existing_set]
         deleted = 0
         for row in to_delete:
-            conditions = []
-            params = {}
-            for i, val in enumerate(row):
-                col_name = snap["columns"][i]
-                param_name = f"v{i}"
-                if val is None:
-                    conditions.append(f'"{col_name}" IS NULL')
+            predicates = []
+            for column, value in zip(table.columns, row):
+                if value is None:
+                    predicates.append(column.is_(None))
+                elif isinstance(column.type, (JSON, JSONB)):
+                    predicates.append(
+                        cast(column, Text) == cast(literal(value, type_=column.type), Text)
+                    )
                 else:
-                    conditions.append(f'"{col_name}"::text = :{param_name}')
-                    params[param_name] = str(val)
-            where = " AND ".join(conditions)
-            result = session.execute(
-                text(f'DELETE FROM "{table_name}" WHERE {where}'), params
-            )
-            deleted += result.rowcount
+                    predicates.append(column == value)
+            result = session.execute(delete(table).where(and_(*predicates)))
+            deleted += result.rowcount or 0
         return deleted
-
     return 0
 
 
@@ -460,42 +503,62 @@ def _get_fk_graph(engine) -> Dict[str, List[str]]:
 def _get_delete_order(engine) -> List[str]:
     global _delete_order_cache
     if _delete_order_cache is None:
-        _delete_order_cache = topological_delete_order(_get_fk_graph(engine))
+        graph = _get_fk_graph(engine)
+        order = topological_delete_order(graph)
+        position = {table_name: index for index, table_name in enumerate(order)}
+        missing = set(graph) - set(position)
+        unexpected = set(position) - set(graph)
+        if missing or unexpected:
+            raise RuntimeError(
+                "Test isolation delete-order coverage mismatch: "
+                f"missing={sorted(missing)!r}, unexpected={sorted(unexpected)!r}"
+            )
+        for table_name, parents in graph.items():
+            for parent in parents:
+                if parent == table_name:
+                    continue
+                if position[table_name] >= position[parent]:
+                    raise RuntimeError(
+                        "Test isolation FK dependency graph is not acyclic or "
+                        "does not produce a safe delete order: "
+                        f"{table_name!r} must be deleted before {parent!r}."
+                    )
+        _delete_order_cache = order
     return _delete_order_cache
 
 
 def _classify_tables(session, engine) -> Tuple[List[str], List[str]]:
-    """Return (tables_with_rows, tables_empty). Computed once per session.
-
-    Uses a batched UNION count so the one-time classification cost is a
-    single round trip rather than N round trips.
-    """
+    """Return session-start populated/empty tables in one Core UNION query."""
     global _dirty_tables_cache, _empty_tables_cache
     if _dirty_tables_cache is not None and _empty_tables_cache is not None:
         return _dirty_tables_cache, _empty_tables_cache
 
     tables = _all_tables(engine)
-    parts = []
-    params = {}
-    for i, t in enumerate(tables):
-        pn = f"pn{i}"
-        parts.append(f"(SELECT :{pn} AS name, count(*) AS cnt FROM \"{t}\")")
-        params[pn] = t
-    stmt = " UNION ALL ".join(parts)
+    if not tables:
+        _dirty_tables_cache, _empty_tables_cache = [], []
+        return _dirty_tables_cache, _empty_tables_cache
 
-    dirty, empty = [], []
+    metadata = MetaData()
+    statements = [
+        select(literal(table_name).label("name"), func.count().label("cnt"))
+        .select_from(Table(table_name, metadata, autoload_with=engine))
+        for table_name in tables
+    ]
     with engine.begin() as conn:
-        rows = conn.execute(text(stmt), params).all()
-    counts = {r[0]: r[1] for r in rows}
-    for t in tables:
-        if counts.get(t, 0) > 0:
-            dirty.append(t)
-        else:
-            empty.append(t)
+        rows = conn.execute(union_all(*statements)).all()
 
-    _dirty_tables_cache = dirty
-    _empty_tables_cache = empty
-    return dirty, empty
+    counts = {row[0]: row[1] for row in rows}
+    missing_counts = set(tables) - set(counts)
+    unexpected_counts = set(counts) - set(tables)
+    if missing_counts or unexpected_counts:
+        raise RuntimeError(
+            "Test isolation table classification was incomplete: "
+            f"missing={sorted(missing_counts)!r}, "
+            f"unexpected={sorted(unexpected_counts)!r}"
+        )
+    _dirty_tables_cache = [name for name in tables if counts[name] > 0]
+    _empty_tables_cache = [name for name in tables if counts[name] == 0]
+    return _dirty_tables_cache, _empty_tables_cache
 
 
 def discover_dirty_tables(session, engine) -> List[str]:
@@ -519,6 +582,9 @@ def reset_dirty_tables_cache():
     _fk_graph_cache = None
     _delete_order_cache = None
     _baseline_cache = None
+    with _reflected_tables_lock:
+        _reflected_tables_cache.clear()
+        _reflected_engines.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -530,8 +596,29 @@ def _build_baseline(session, engine) -> Dict[str, Dict[str, Any]]:
 
     Called lazily on the first test and reused for the whole session.
     """
+    total_started = time.perf_counter()
+    classify_started = time.perf_counter()
     dirty, empty = _classify_tables(session, engine)
+    classify_seconds = time.perf_counter() - classify_started
+    expected_tables = set(dirty) | set(empty)
+
+    # Validate the complete FK graph and safe delete order before the first
+    # test executes. A partial graph can silently skip cleanup dependencies.
+    order_started = time.perf_counter()
+    delete_order = _get_delete_order(engine)
+    order_seconds = time.perf_counter() - order_started
+    order_tables = set(delete_order)
+    missing_order = expected_tables - order_tables
+    unexpected_order = order_tables - expected_tables
+    if missing_order or unexpected_order:
+        raise RuntimeError(
+            "Test isolation FK graph does not cover the baseline schema: "
+            f"missing={sorted(missing_order)!r}, "
+            f"unexpected={sorted(unexpected_order)!r}"
+        )
+
     snapshot: Dict[str, Dict[str, Any]] = {}
+    snapshot_started = time.perf_counter()
     read_conn = engine.connect()
     try:
         for table_name in dirty:
@@ -539,12 +626,39 @@ def _build_baseline(session, engine) -> Dict[str, Dict[str, Any]]:
                 snap = snapshot_table_rows_readonly(read_conn, table_name)
                 snap["pre_count"] = snap["count"]
                 snapshot[table_name] = snap
-            except Exception:
-                pass
+            except Exception as exc:
+                _emit_isolation_timing(
+                    "baseline_capture_failed",
+                    table=table_name,
+                    elapsed=time.perf_counter() - total_started,
+                )
+                raise RuntimeError(
+                    "Test isolation baseline capture failed for table "
+                    f"{table_name!r}; stopping before tests run because teardown "
+                    "cannot safely clean a partial baseline."
+                ) from exc
         for table_name in empty:
             snapshot[table_name] = {"pre_count": 0, "pk_type": "none", "count": 0}
     finally:
         read_conn.close()
+
+    snapshot_seconds = time.perf_counter() - snapshot_started
+    missing = expected_tables - set(snapshot)
+    unexpected = set(snapshot) - expected_tables
+    if missing or unexpected:
+        raise RuntimeError(
+            "Test isolation baseline table coverage mismatch: "
+            f"missing={sorted(missing)!r}, unexpected={sorted(unexpected)!r}"
+        )
+    _emit_isolation_timing(
+        "baseline_capture",
+        classify=classify_seconds,
+        fk_graph=order_seconds,
+        snapshot=snapshot_seconds,
+        total=time.perf_counter() - total_started,
+        populated_tables=len(dirty),
+        empty_tables=len(empty),
+    )
     return snapshot
 
 
@@ -571,31 +685,69 @@ def cleanup_inserted_rows(
 
     Returns {table: rows_deleted}.
     """
-    # The migration-built test schema installs BEFORE DELETE guards
-    # (trg_guard_users_delete, trg_guard_user_roles_delete) that raise
-    # 42501 unless the transaction-scoped GUC app.guard.authorized_deletion
-    # is 'true'. Reuse the sanctioned helper so the authorization is issued
-    # as SET LOCAL: it ends with this cleanup transaction (commit/rollback)
-    # and cannot leak to pooled sessions. Deletion targets are unchanged —
-    # the snapshot logic below still removes exactly the rows identified as
-    # test-created, never baseline data.
+    total_started = time.perf_counter()
+    authorize_started = time.perf_counter()
+    # The migration-built test schema installs BEFORE DELETE guards. Reuse the
+    # sanctioned SET LOCAL authorization so it cannot leak to pooled sessions.
     authorize_deletion(conn, actor="test-isolation-cleanup")
+    authorize_seconds = time.perf_counter() - authorize_started
 
-    # The baseline snapshot covers every table (dirty + empty), so the
-    # FK-safe delete order is the same for every cleanup — use the cached one.
+    order_started = time.perf_counter()
     delete_order = _get_delete_order(engine)
+    order_seconds = time.perf_counter() - order_started
+    missing_baseline = [name for name in delete_order if name not in snapshot]
+    unexpected_baseline = set(snapshot) - set(delete_order)
+    if missing_baseline or unexpected_baseline:
+        raise RuntimeError(
+            "Test isolation baseline/delete-order coverage mismatch: "
+            f"missing_baseline={sorted(missing_baseline)!r}, "
+            f"unexpected_baseline={sorted(unexpected_baseline)!r}"
+        )
 
-    # Pass 1: revert FK mutations on pre-existing rows.
-    for table_name in delete_order:
-        snap = snapshot.get(table_name)
-        if snap:
-            revert_fk_mutations(conn, table_name, snap)
-
-    # Pass 2: delete test-created rows in FK-safe order.
-    deleted: Dict[str, int] = {}
+    # Pass 1: restore FK mutations on pre-existing rows.
+    fk_started = time.perf_counter()
+    fk_values_reverted = 0
+    fk_table_timings = []
     for table_name in delete_order:
         snap = snapshot[table_name]
-        count = cleanup_table(conn, table_name, snap)
+        table_started = time.perf_counter()
+        fk_values_reverted += revert_fk_mutations(conn, table_name, snap)
+        fk_table_timings.append((time.perf_counter() - table_started, table_name))
+    fk_seconds = time.perf_counter() - fk_started
+
+    # Pass 2: remove test-created rows in FK-safe order.
+    row_cleanup_started = time.perf_counter()
+    deleted: Dict[str, int] = {}
+    cleanup_table_timings = []
+    for table_name in delete_order:
+        table_started = time.perf_counter()
+        count = cleanup_table(conn, table_name, snapshot[table_name])
+        elapsed = time.perf_counter() - table_started
+        cleanup_table_timings.append((elapsed, table_name, count))
         if count > 0:
             deleted[table_name] = count
+    row_cleanup_seconds = time.perf_counter() - row_cleanup_started
+
+    slow_fk_tables = ";".join(
+        f"{name}:{seconds:.3f}s"
+        for seconds, name in sorted(fk_table_timings, reverse=True)[:5]
+    )
+    slow_cleanup_tables = ";".join(
+        f"{name}:{seconds:.3f}s({count})"
+        for seconds, name, count in sorted(cleanup_table_timings, reverse=True)[:8]
+    )
+    _emit_isolation_timing(
+        "per_test_cleanup",
+        authorize=authorize_seconds,
+        delete_order=order_seconds,
+        fk_restore=fk_seconds,
+        row_cleanup=row_cleanup_seconds,
+        total=time.perf_counter() - total_started,
+        tables=len(delete_order),
+        fk_values_reverted=fk_values_reverted,
+        rows_deleted=sum(deleted.values()),
+        touched_tables=len(deleted),
+        slow_fk_tables=slow_fk_tables or "none",
+        slow_cleanup_tables=slow_cleanup_tables or "none",
+    )
     return deleted

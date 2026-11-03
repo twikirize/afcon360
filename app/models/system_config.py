@@ -108,6 +108,9 @@ class SystemConfig(BaseModel):
         init-wallet-config`` so both initializers commit together).
         """
         defaults = [
+            # REQUIRE_OWNER_MFA is intentionally not default-seeded here. Its
+            # absence must preserve the explicit bootstrap environment value;
+            # once saved, the owner-controlled database setting is authoritative.
             {'key': 'SITE_NAME', 'value': 'AFCON 360', 'value_type': 'str', 'category': 'branding', 'description': 'Site display name'},
             {'key': 'MAINTENANCE_MODE', 'value': 'false', 'value_type': 'bool', 'category': 'system', 'description': 'Enable maintenance mode'},
             {'key': 'SOCKETIO_ENABLED', 'value': 'true', 'value_type': 'bool', 'category': 'system', 'description': 'Enable Socket.IO real-time streaming. Requires an app restart.', 'requires_restart': True},

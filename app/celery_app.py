@@ -256,9 +256,21 @@ def make_celery(app=None):
         task_default_queue="default",
     )
 
-    # Bind Flask app context so tasks can use current_app
+    # Bind Flask app context so tasks can use current_app. Keep Flask's
+    # application config out of Celery's config namespace: Flask exposes the
+    # legacy uppercase CELERY_* keys, while Celery's constructor has already
+    # populated the modern broker_url/result_backend keys. Passing the whole
+    # Flask config mixes both naming conventions and raises
+    # ImproperlyConfigured when Celery finalizes its settings.
     if app is not None:
-        celery.conf.update(app.config)
+        broker_url = app.config.get("CELERY_BROKER_URL") or app.config.get("REDIS_URL")
+        result_backend = (
+            app.config.get("CELERY_RESULT_BACKEND") or app.config.get("REDIS_URL")
+        )
+        celery.conf.update(
+            broker_url=broker_url,
+            result_backend=result_backend,
+        )
 
         class ContextTask(celery.Task):
             def __call__(self, *args, **kwargs):

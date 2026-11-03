@@ -147,7 +147,10 @@ def require_owner_otp(session: Session | scoped_session, otp: str) -> None:
             valid = mfa_secret.verify_backup_code(token.upper())
         else:
             try:
-                valid = pyotp.TOTP(str(mfa_secret.secret) or "").verify(token, valid_window=1)
+                plaintext_secret = mfa_secret.get_totp_secret()
+                valid = pyotp.TOTP(plaintext_secret).verify(token, valid_window=1)
+                if valid and not mfa_secret.totp_secret_is_encrypted:
+                    mfa_secret.set_totp_secret(plaintext_secret)
             except Exception:
                 valid = False
     elif len(token) == 8 and mfa_type in ("sms", "webauthn"):

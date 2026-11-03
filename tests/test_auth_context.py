@@ -9,9 +9,11 @@ from app.auth.context import (
     ContextDescriptor,
     ContextSwitchError,
     ContextType,
+    active_context_required,
     get_active_context,
     get_available_contexts,
     switch_context,
+    resolve_request_context,
 )
 
 
@@ -314,6 +316,41 @@ def test_switch_endpoint_blocks_invalid_context_and_route_is_post_only(monkeypat
     assert rules and all(rule.methods == {"POST", "OPTIONS"} for rule in rules)
 
 
+def test_request_context_override_does_not_change_session_selection(request_context):
+    user = _user()
+    session["active_context_type"] = "personal"
+    session["active_role"] = "user"
+    original_session = dict(session)
+
+    selected = resolve_request_context(user, ContextType.DRIVER)
+
+    assert selected is not None
+    assert selected.type is ContextType.DRIVER
+    assert get_active_context(user) == selected
+    assert dict(session) == original_session
+
+
+def test_request_context_resolution_refuses_ambiguous_workspace(request_context, monkeypatch):
+    user = _user()
+    driver_a = ContextDescriptor(
+        ContextType.DRIVER, "driver-a", "Driver A", "driver", "/transport/driver-dashboard"
+    )
+    driver_b = ContextDescriptor(
+        ContextType.DRIVER, "driver-b", "Driver B", "driver", "/transport/driver-dashboard"
+    )
+    monkeypatch.setattr(
+        "app.auth.context.get_available_contexts",
+        lambda _user: [
+            ContextDescriptor(ContextType.PERSONAL, None, "Personal", "user"),
+            driver_a,
+            driver_b,
+        ],
+    )
+
+    assert resolve_request_context(user, ContextType.DRIVER) is None
+    assert get_active_context(user).type is ContextType.PERSONAL
+
+
 def test_shell_template_uses_canonical_context_contract():
     root = Path(__file__).resolve().parents[1]
     shell = (root / "templates" / "user" / "base_user_dashboard.html").read_text(encoding="utf-8")
@@ -324,6 +361,77 @@ def test_shell_template_uses_canonical_context_contract():
     assert 'style=' not in shell
     assert '<script>' not in shell
     assert 'dashboard-shell.js' in shell
+
+
+def test_active_context_guard_still_requires_explicit_selection(monkeypatch):
+    from flask import Flask, session
+    from flask_login import LoginManager
+    from werkzeug.exceptions import Forbidden
+
+    app = Flask("strict-context-guard")
+    app.secret_key = "strict-context-guard-secret"
+    login_manager = LoginManager(app)
+
+    @login_manager.user_loader
+    def load_user(_user_id):
+        return _user()
+
+    personal = ContextDescriptor(
+        ContextType.PERSONAL, None, "Personal", "user"
+    )
+    monkeypatch.setattr("app.auth.context.get_active_context", lambda _user: personal)
+
+    @active_context_required(ContextType.DRIVER)
+    def protected_action():
+        return "allowed"
+
+    with app.test_request_context("/driver/action"):
+        session["_user_id"] = "user-123"
+        session["_fresh"] = True
+        with pytest.raises(Forbidden):
+            protected_action()
+
+
+def test_workspace_switcher_is_shared_with_non_personal_shells():
+    root = Path(__file__).resolve().parents[1]
+    base_shell = (root / "templates" / "base.html").read_text(encoding="utf-8")
+    driver_shell = (
+        root / "templates" / "transport" / "driver" / "base.html"
+    ).read_text(encoding="utf-8")
+    component = (
+        root / "templates" / "components" / "workspace_context_switcher.html"
+    ).read_text(encoding="utf-8")
+
+    assert "render_workspace_context_switcher('desktop')" in base_shell
+    assert "render_workspace_context_switcher('drawer')" in base_shell
+    assert "render_workspace_context_switcher('driver')" in driver_shell
+    assert "auth.switch_context" in component
+    assert "csrf_token" in component
+    assert "available_contexts" in component
+    # A request-local current context remains clickable so the user can
+    # explicitly persist it in the shared session across tabs.
+    assert "disabled aria-current" not in component
+    assert "Set across tabs" in component
+
+
+def test_host_deep_link_resolution_is_confined_to_dashboard_entry():
+    root = Path(__file__).resolve().parents[1]
+    routes = (
+        root / "app" / "accommodation" / "routes.py"
+    ).read_text(encoding="utf-8")
+
+    identity_start = routes.index("def _ensure_host_identity():")
+    identity_end = routes.index("\ndef _populate_form_choices", identity_start)
+    identity_helper = routes[identity_start:identity_end]
+
+    dashboard_start = routes.index("def host_dashboard():")
+    dashboard_end = routes.index(
+        '@accommodation_bp.route("/host/dashboard/data"', dashboard_start
+    )
+    dashboard_view = routes[dashboard_start:dashboard_end]
+
+    assert "resolve_request_context" not in identity_helper
+    assert "resolve_request_context" in dashboard_view
 
 
 def test_dashboard_shell_is_inside_parent_content_block():

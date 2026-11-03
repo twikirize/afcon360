@@ -52,7 +52,7 @@
         <div class="ck-status-value" data-online-label>{{ 'Online' if driver_profile.is_online else 'Offline' }}</div>
       </div>
       <label class="toggle">
-        <input type="checkbox" data-online-toggle
+        <input type="checkbox" id="onlineToggle" data-online-toggle
                data-url="{{ url_for('transport_api.driver_go_live_status', driver_id=driver_profile.id) }}"
                {{ 'checked' if driver_profile.is_online }} />
         <span class="toggle-slider"></span>
@@ -133,6 +133,7 @@
               data-action="cancel" style="color:#b91c1c;">
         <i class="fa-solid fa-ban"></i> Cancel trip
       </button>
+      <p class="ws-muted">No fee is charged to the rider for a driver-initiated cancellation before pickup.</p>
       {% endif %}
     </div>
     {% endif %}
@@ -1195,6 +1196,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/driver_alerts.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/driver-dashboard.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/driver_offer_poll.js') }}"></script>
 {% endblock %}

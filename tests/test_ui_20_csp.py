@@ -469,3 +469,20 @@ def test_base_template_carries_no_inline_event_handlers():
         f"{sorted(set(offenders))}; under the enforced policy these are blocked "
         "(browser-proven) and the controls are dead"
     )
+
+def test_hsts_is_present_only_for_secure_requests(client):
+    """The HSTS branch must be exercised with a genuinely secure WSGI scheme."""
+    secure = client.get(
+        "/",
+        environ_overrides={"wsgi.url_scheme": "https"},
+    )
+    assert secure.headers.get("Strict-Transport-Security") == (
+        "max-age=63072000; includeSubDomains; preload"
+    )
+
+    insecure = client.get(
+        "/",
+        environ_overrides={"wsgi.url_scheme": "http"},
+    )
+    assert "Strict-Transport-Security" not in insecure.headers
+

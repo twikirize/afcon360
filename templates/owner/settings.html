@@ -189,6 +189,48 @@ document.addEventListener('DOMContentLoaded', function() {
     <p>Central hub for all platform configuration and settings</p>
   </div>
 
+  {% if current_user.is_app_owner() %}
+  <h3 class="section-title">Owner Security</h3>
+  <div class="settings-grid">
+    <div class="settings-card" style="border-left:4px solid #dc2626;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
+        <div class="card-icon">🔐</div>
+        <span class="card-badge badge-security">Platform Owner Only</span>
+      </div>
+      <div class="card-title">Require MFA for every platform owner</div>
+      <div class="card-description" style="margin-bottom:1rem;">
+        When enabled, every active owner must have a verified authenticator-app (TOTP)
+        enrollment and must enter a valid code at sign-in. The policy is stored in
+        the database and applies across application workers and restarts.
+      </div>
+      <form method="POST" action="{{ url_for('admin.owner.update_owner_mfa_requirement') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label style="display:flex;align-items:center;gap:0.75rem;cursor:pointer;">
+          <input type="checkbox" name="require_owner_mfa"
+                 {{ 'checked' if require_owner_mfa else '' }}
+                 style="width:20px;height:20px;cursor:pointer;">
+          <span style="font-weight:600;color:#1a1a1a;">
+            Enforce owner MFA
+          </span>
+        </label>
+        <button type="submit" class="btn btn-primary btn-sm" style="margin-top:1rem;">
+          Save owner MFA policy
+        </button>
+      </form>
+      <div style="margin-top:1rem;font-size:0.8125rem;color:#6b7280;background:#f9fafb;border-radius:8px;padding:0.75rem 1rem;">
+        Enabling is refused until every active owner has an active TOTP authenticator.
+        Enrolled accounts continue to require MFA even when this global requirement is off.
+      </div>
+      <div style="margin-top:0.75rem;font-size:0.8125rem;color:#6b7280;">
+        Current policy:
+        <strong style="color:{{ '#065f46' if require_owner_mfa else '#92400e' }};">
+          {{ 'Enforced' if require_owner_mfa else 'Not globally enforced' }}
+        </strong>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Module Permissions Section -->
   <h3 class="section-title">Module Permissions</h3>
   <div class="settings-grid">

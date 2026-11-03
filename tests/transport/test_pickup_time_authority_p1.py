@@ -113,7 +113,7 @@ class TestBookingModeRequired:
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="function")
-def rider_with_kyc(app):
+def rider_with_kyc(app, monkeypatch):
     """Rider with KYC tier >= 2 and a completed profile (booking gates)."""
     from datetime import date
     from app.auth.kyc_compliance import calculate_kyc_tier
@@ -166,6 +166,10 @@ def rider_with_kyc(app):
         uid = user.id
         public_id = str(user.public_id)
 
+    monkeypatch.setattr(
+        "app.transport.routes.get_available_transport_payment_methods",
+        lambda _user_id: [{"code": "cash", "enabled": True, "status": "ready", "label": "Cash"}],
+    )
     yield public_id
     with app.app_context():
         try:
@@ -230,21 +234,30 @@ class TestRouteCashGate:
         assert booking is not None
         assert booking.status == BookingStatus.PENDING_PAYMENT.value
 
-    def test_instant_cash_ride_confirms_at_route(
+    def test_instant_cash_ride_starts_request_first_matching(
             self, client, rider_with_kyc):
-        """Control: the immediate confirm/dispatch for cash INSTANT rides
-        is unchanged."""
+        """Instant on-demand cash enters matching; it is not a confirmed Booking."""
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from app.transport.services.ride_request_service import RideRequestService
+        from app.transport.services.ride_request_dispatch_service import RideRequestDispatchService
+
         _login(client, rider_with_kyc)
-        resp = client.post("/transport/book", data=_form(),
-                           follow_redirects=False)
+        request_ref = "REQ-P1-INSTANT"
+        with patch.object(
+            RideRequestService, "create_request",
+            return_value={"request": SimpleNamespace(public_id=request_ref), "cycle": None, "replayed": False},
+        ) as create_request, patch.object(
+            RideRequestDispatchService, "start_search",
+            return_value={"status": "searching"},
+        ):
+            resp = client.post("/transport/book", data=_form(), follow_redirects=False)
+
         assert resp.status_code == 302
-        location = resp.headers["Location"]
-        assert "/transport/rides/" in location
-        ref = location.rsplit("/", 1)[-1]
+        assert resp.headers["Location"].endswith(f"/transport/rides/{request_ref}")
+        assert create_request.call_args.args[0] is not None
         with client.application.app_context():
-            booking = Booking.query.filter_by(booking_reference=ref).first()
-        assert booking is not None
-        assert booking.status == BookingStatus.CONFIRMED.value
+            assert Booking.query.filter_by(booking_reference=request_ref).first() is None
 
 
 # ---------------------------------------------------------------------------

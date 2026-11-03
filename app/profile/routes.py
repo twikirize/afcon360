@@ -766,8 +766,6 @@ def account_settings():
             return redirect(url_for('profile.account_settings'))
         
         elif action == 'update_security_question':
-            import hashlib
-
             question = (request.form.get('security_question') or '').strip()
             answer = (request.form.get('security_answer') or '').strip()
 
@@ -780,7 +778,7 @@ def account_settings():
                 return redirect(url_for('profile.account_settings'))
 
             user.security_question = question
-            user.security_answer_hash = hashlib.sha256(answer.lower().encode()).hexdigest()
+            user.set_security_answer(answer)
 
             try:
                 db.session.commit()

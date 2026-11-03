@@ -108,6 +108,12 @@ class Config:
     SECRET_KEY    = os.getenv("SECRET_KEY")
     SECURITY_SALT = os.getenv("SECURITY_SALT")
 
+    # Owner MFA can be bootstrapped after every active owner has enrolled.
+    # Once persisted, SystemConfig.REQUIRE_OWNER_MFA is authoritative.
+    REQUIRE_OWNER_MFA = os.getenv("REQUIRE_OWNER_MFA", "false").strip().lower() in (
+        "true", "1", "yes", "on"
+    )
+
     # ---- Database -----------------------------------------------------------
     # Config reads DATABASE_URL first; falls back to individual components.
     # NEVER hardcode a URL here — always read from env.

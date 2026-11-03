@@ -13,7 +13,7 @@ from enum import Enum
 from functools import wraps
 from typing import Any, Iterable, Mapping, Optional
 
-from flask import abort, jsonify, request, session, url_for
+from flask import abort, g, has_request_context, jsonify, request, session, url_for
 
 
 class ContextType(str, Enum):
@@ -314,7 +314,10 @@ def _global_contexts(user: Any) -> list[ContextDescriptor]:
         if not role or getattr(role, "scope", "global") != "global":
             continue
         role_name = getattr(role, "name", None)
-        if not role_name:
+        if not role_name or role_name in {"independent_driver", "independent_host"}:
+            # These are provider participation roles, not Platform personas.
+            # Their workspaces are derived from live DriverProfile / Host
+            # identity records below, so a role row alone cannot create one.
             continue
         descriptors.append(
             ContextDescriptor(
@@ -557,9 +560,14 @@ def _host_contexts(user: Any) -> list[ContextDescriptor]:
             continue
         try:
             can_org_host, _ = AccommodationIdentityService.can_org_host(org_id)
+            member_can_manage_host = (
+                membership.has_permission("org.accommodation.manage")
+                or membership.has_permission("org.transport.manage")
+            )
         except (AttributeError, RuntimeError):
             can_org_host = False
-        if can_org_host:
+            member_can_manage_host = False
+        if can_org_host and member_can_manage_host:
             descriptors.append(
                 ContextDescriptor(
                     type=ContextType.ACCOMMODATION_HOST,
@@ -648,17 +656,77 @@ def switch_context(user: Any, requested: Any) -> ContextDescriptor:
     return descriptor
 
 
-# Canonical post-login context priority — first eligible match wins.
-# DRIVER outranks ORGANISATION and EVENT (owner decision: a driver always
-# lands on the Driver Workspace, even when they also hold an org membership
-# or an event role). PLATFORM is checked first; multiple platform personas
-# are ranked by Role.level (owner=1 highest … user last).
+def _request_context_user_key(user: Any) -> Optional[str]:
+    """Return the public identity key used to scope an override to one request."""
+    value = getattr(user, "public_id", None) or getattr(user, "id", None)
+    return str(value) if value is not None else None
+
+
+def set_request_context(user: Any, requested: Any) -> Optional[ContextDescriptor]:
+    """Set a validated, request-local context without changing the session.
+
+    URL-driven workspace entry uses this after the route has identified the
+    target resource and independently checked its ownership or membership.
+    The override is held on Flask's request-local g object, so it cannot switch
+    another browser tab or become a saved login preference.
+    """
+    if not has_request_context() or not _is_live_user(user):
+        return None
+    descriptor = validate_context(user, requested)
+    if descriptor is None:
+        return None
+    user_key = _request_context_user_key(user)
+    if user_key is None:
+        return None
+    g._afcon360_request_context = (user_key, descriptor)
+    return descriptor
+
+
+def resolve_request_context(
+    user: Any,
+    context_type: ContextType,
+    *,
+    public_id: Optional[str] = None,
+    role: Optional[str] = None,
+) -> Optional[ContextDescriptor]:
+    """Resolve exactly one live workspace assignment for the current request.
+
+    Ambiguous workspace types (for example, a user who hosts several
+    organisations) are deliberately not guessed. Callers must supply the
+    target public ID or let the user choose from the context switcher.
+    """
+    if not _is_live_user(user):
+        return None
+    try:
+        requested_type = ContextType(context_type)
+    except (TypeError, ValueError):
+        return None
+
+    matches = [
+        descriptor
+        for descriptor in get_available_contexts(user)
+        if descriptor.type is requested_type
+        and (public_id is None or descriptor.public_id == str(public_id))
+        and (role is None or descriptor.role == role)
+    ]
+    if len(matches) != 1:
+        return None
+    return set_request_context(
+        user,
+        {
+            "type": matches[0].type.value,
+            "public_id": matches[0].public_id,
+            "role": matches[0].role,
+        },
+    )
+
+
+# Automatic login selects a privileged platform workspace when one exists;
+# otherwise every user starts in Personal. Organisation, Driver, Event and
+# Host workspaces remain available through explicit context switching.
+# Multiple platform personas are ranked by Role.level (owner=1 highest).
 CONTEXT_PRIORITY: tuple[ContextType, ...] = (
     ContextType.PLATFORM,
-    ContextType.DRIVER,
-    ContextType.ORGANISATION,
-    ContextType.EVENT,
-    ContextType.ACCOMMODATION_HOST,
     ContextType.PERSONAL,
 )
 
@@ -717,6 +785,16 @@ def get_active_context(user: Any = None) -> ContextDescriptor:
         user = current_user
     if not _is_live_user(user):
         return _personal_context(user)
+
+    # A validated URL-targeted context takes precedence for this request only.
+    # It never writes the user's session-wide selection.
+    if has_request_context():
+        request_selection = getattr(g, "_afcon360_request_context", None)
+        if request_selection:
+            selected_user_key, descriptor = request_selection
+            if selected_user_key == _request_context_user_key(user):
+                return descriptor
+
     context_type = session.get("active_context_type")
     if not context_type:
         # Read-only rollout compatibility for sessions created before the
@@ -815,7 +893,7 @@ def can_in_context(
 
 
 def active_context_required(context_type: ContextType):
-    """Require a freshly resolved operating context for a workspace route."""
+    """Require the explicitly selected operating context for a protected route."""
 
     def decorator(view):
         @wraps(view)
@@ -835,7 +913,7 @@ def active_context_required(context_type: ContextType):
 
 
 def active_context_or_platform_required(context_type: ContextType):
-    """Require the workspace context, while allowing platform administration."""
+    """Require the explicitly selected workspace, while allowing Platform."""
 
     def decorator(view):
         @wraps(view)
@@ -854,20 +932,46 @@ def active_context_or_platform_required(context_type: ContextType):
     return decorator
 
 
+def workspace_context_entry_required(context_type: ContextType):
+    """Allow a workspace landing page to resolve one live assignment.
+
+    This is intentionally separate from active_context_required so operational
+    APIs and mutations continue to require an explicitly selected context.
+    Use only on a workspace landing page that also verifies its domain profile.
+    """
+
+    def decorator(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            from flask_login import current_user
+
+            active = get_active_context(current_user)
+            if active.type is not context_type:
+                active = resolve_request_context(current_user, context_type)
+            if active is None or active.type is not context_type:
+                if request.is_json or request.path.startswith("/api/"):
+                    return jsonify({"error": "The requested workspace is unavailable for this account."}), 403
+                abort(403)
+            return view(*args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
 def event_owner_context_required():
     """
     Decorator for per-event organizer dashboards.
     
-    Allows access if:
-    1. User is platform admin, OR
-    2. User owns the event (canonical owner or EventRole owner) - auto-switches context
-    3. User has EVENT context already selected for this event
+    Requires the canonical event-owner check for the specific URL target.
+    If the owner has a matching EVENT workspace, the request uses it locally.
+    The URL visit does not rewrite session selection for other tabs.
     """
     def decorator(view):
         @wraps(view)
         def wrapped(*args, **kwargs):
             from flask_login import current_user
-            from flask import session, request
+            from flask import request
             
             # Extract event identifier from route kwargs
             identifier = kwargs.get('identifier') or kwargs.get('event_id')
@@ -911,11 +1015,19 @@ def event_owner_context_required():
             matching_ctx = next((ctx for ctx in available_contexts if ctx.public_id == event_public_id), None)
             
             if matching_ctx:
-                # Auto-switch context for this event
-                session['active_context_type'] = ContextType.EVENT.value
-                session['active_context_id'] = event_public_id
-                session['active_role'] = matching_ctx.role
-                return view(*args, **kwargs)
+                # The event URL selects a request-local workspace. Do not
+                # mutate the session: another tab may still be operating in
+                # Personal, Driver, or a different Event context.
+                selected = set_request_context(
+                    current_user,
+                    {
+                        "type": ContextType.EVENT.value,
+                        "public_id": event_public_id,
+                        "role": matching_ctx.role,
+                    },
+                )
+                if selected is not None:
+                    return view(*args, **kwargs)
             
             # No access
             if request.is_json or request.path.startswith("/api/"):

@@ -1111,12 +1111,12 @@
           <button type="button" class="bolt-svc"
                   data-service="airport_departure">
             <i class="bi bi-airplane"></i>
-            <span class="svc-label">Airport</span>
+            <span class="svc-label">Airport Transfer</span>
           </button>
           <button type="button" class="bolt-svc"
                   data-service="on_demand" data-vip="1">
             <i class="bi bi-star-fill"></i>
-            <span class="svc-label">VIP</span>
+            <span class="svc-label">VIP Service</span>
           </button>
         </div>
 
@@ -1164,6 +1164,17 @@
             </span>
           </a>
           {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if is_authenticated %}
+        <div class="bolt-driver-actions" aria-label="Driver options">
+          <a class="btn btn-outline-success btn-sm" href="{{ safe_url('transport.become_driver') }}">
+            Become a driver
+          </a>
+          <a class="btn btn-outline-secondary btn-sm" href="{{ safe_url('transport.register_vehicle') }}">
+            Add a vehicle
+          </a>
         </div>
         {% endif %}
       </div>

@@ -1282,7 +1282,7 @@ def verify_upload():
             accepted_id_types = [
                 t.lower() for t in get_kyc_settings().get(
                     "kyc_accepted_id_types",
-                    ["national_id", "passport", "driver_license"],
+                    ["national_id", "passport", "driver_license", "voter_card"],
                 )
             ]
             if id_type and id_type.lower() not in accepted_id_types:
@@ -1460,7 +1460,7 @@ def verify_upload():
     from app.kyc_config_schema import get_kyc_settings
     accepted_id_types = get_kyc_settings().get(
         "kyc_accepted_id_types",
-        ["national_id", "passport", "driver_license"],
+        ["national_id", "passport", "driver_license", "voter_card"],
     )
 
     # Canonical identity (single entry): personal identity lives in

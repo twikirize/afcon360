@@ -361,14 +361,74 @@ class User(UserMixin, ProtectedModel):
     def verify_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)
 
+    @staticmethod
+    def _normalise_security_answer(answer: str) -> str:
+        """Canonical form used for new recovery-answer hashes."""
+        return answer.strip().lower()
+
+    def set_security_answer(self, answer: str) -> None:
+        """Store a recovery answer using a salted, deliberately slow hash."""
+        if not isinstance(answer, str) or not answer.strip():
+            raise ValueError("A non-empty security answer is required")
+        normalised = self._normalise_security_answer(answer)
+        self.security_answer_hash = generate_password_hash(
+            normalised, method="scrypt"
+        )
+
     def verify_security_answer(self, answer: str) -> bool:
-        """Verify security answer for password recovery without email."""
-        if not self.security_answer_hash or not answer:
+        """Verify a recovery answer and upgrade every supported legacy format.
+
+        Historical writers stored either SHA-256(answer) or
+        SHA-256(answer.lower()). New records use salted Werkzeug scrypt hashes.
+        A successful verification transparently upgrades the stored value.
+        The caller's transaction persists that upgrade together with its
+        password reset or identity-verification operation.
+        """
+        if not self.security_answer_hash or not isinstance(answer, str):
             return False
-        # Hash the provided answer and compare with stored hash
+
+        normalised = self._normalise_security_answer(answer)
+        if not normalised:
+            return False
+
+        stored_hash = self.security_answer_hash
+        # Accept scrypt hashes written by both the first MFA/security branch
+        # (case-preserving) and the canonical lowercase writer.
+        try:
+            if (
+                check_password_hash(stored_hash, normalised)
+                or check_password_hash(stored_hash, answer.strip())
+            ):
+                return True
+        except (TypeError, ValueError):
+            # Historical unsalted SHA-256 digests are not Werkzeug hashes.
+            pass
+
         import hashlib
-        answer_hash = hashlib.sha256(answer.encode()).hexdigest()
-        return answer_hash == self.security_answer_hash
+        import hmac
+        import re
+
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", stored_hash):
+            return False
+
+        legacy_candidates = {
+            answer,
+            answer.strip(),
+            answer.lower(),
+            answer.strip().lower(),
+        }
+        matches = []
+        for legacy_candidate in legacy_candidates:
+            digest = hashlib.sha256(legacy_candidate.encode("utf-8")).hexdigest()
+            matches.append(hmac.compare_digest(digest.lower(), stored_hash.lower()))
+
+        if not any(matches):
+            return False
+
+        self.security_answer_hash = generate_password_hash(
+            normalised, method="scrypt"
+        )
+        return True
 
     # ---------------------------
     # Login helpers
@@ -1047,6 +1107,43 @@ class MFASecret(ProtectedModel):
 
     user = relationship("User", back_populates="mfa_secrets", lazy="joined")
 
+    TOTP_ENCRYPTED_PREFIX = "enc:v1:"
+
+    def set_totp_secret(self, plaintext_secret: str) -> None:
+        """Encrypt a TOTP secret at rest using the application Fernet key."""
+        if not isinstance(plaintext_secret, str) or not plaintext_secret.strip():
+            raise ValueError("A non-empty TOTP secret is required")
+        from app.utils.security import _get_fernet
+
+        token = _get_fernet().encrypt(plaintext_secret.strip().encode("utf-8")).decode("ascii")
+        self.secret = self.TOTP_ENCRYPTED_PREFIX + token
+
+    def get_totp_secret(self) -> str:
+        """Read an encrypted TOTP secret, or return a legacy plaintext value.
+
+        Legacy values remain readable for backwards compatibility. They are
+        encrypted and written back only after a valid TOTP code is presented.
+        Invalid ciphertext fails closed; it is never treated as plaintext.
+        """
+        stored = self.secret or ""
+        if not stored.startswith(self.TOTP_ENCRYPTED_PREFIX):
+            if not stored:
+                raise ValueError("TOTP secret is empty")
+            return stored
+
+        from app.utils.security import _get_fernet
+        try:
+            token = stored[len(self.TOTP_ENCRYPTED_PREFIX):]
+            return _get_fernet().decrypt(token.encode("ascii")).decode("utf-8")
+        except Exception as exc:
+            raise ValueError("TOTP secret could not be decrypted with the configured encryption key") from exc
+
+    @property
+    def totp_secret_is_encrypted(self) -> bool:
+        return bool(
+            self.secret and self.secret.startswith(self.TOTP_ENCRYPTED_PREFIX)
+        )
+
     __table_args__ = (
         UniqueConstraint("user_id", "mfa_type", name="uq_mfa_user_type"),
     )
@@ -1058,8 +1155,8 @@ class MFASecret(ProtectedModel):
     
     def store_backup_codes(self, backup_codes: List[str]):
         """Store encrypted backup codes."""
-        from app.utils.security import get_encryption_key, _fernet
-        encrypted_codes = _fernet.encrypt(json.dumps(backup_codes).encode()).decode()
+        from app.utils.security import _get_fernet
+        encrypted_codes = _get_fernet().encrypt(json.dumps(backup_codes).encode()).decode()
         self.backup_codes = encrypted_codes
     
     def get_backup_codes(self) -> List[str]:
@@ -1067,9 +1164,9 @@ class MFASecret(ProtectedModel):
         if not self.backup_codes:
             return []
         
-        from app.utils.security import get_encryption_key, _fernet
+        from app.utils.security import _get_fernet
         try:
-            decrypted = _fernet.decrypt(self.backup_codes.encode()).decode()
+            decrypted = _get_fernet().decrypt(self.backup_codes.encode()).decode()
             return json.loads(decrypted)  # Convert string back to list
         except Exception:
             return []

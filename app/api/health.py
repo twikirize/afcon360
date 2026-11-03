@@ -1,7 +1,8 @@
 """Health check endpoint for module status monitoring."""
-from flask import Blueprint, jsonify
+from flask import Blueprint, current_app, jsonify
 from flask_login import login_required, current_user
-from app.extensions import limiter
+from sqlalchemy import text
+from app.extensions import db, limiter, redis_client
 from app.utils.module_toggle_service import ModuleToggleService
 
 health_bp = Blueprint('health', __name__, url_prefix='/api/health')
@@ -18,6 +19,57 @@ def ping():
     converted into a 429/500.
     """
     return jsonify({'status': 'ok'}), 200
+
+
+
+
+@health_bp.route('/ready', methods=['GET'])
+@limiter.exempt
+def ready():
+    """Dependency readiness check, separate from the lightweight liveness ping.
+
+    The response deliberately reports only component state, never connection
+    strings or exception details. Redis is required by default outside tests
+    and debug mode because it backs production sessions and shared rate limits;
+    deployments may explicitly set REDIS_REQUIRED to override that policy.
+    """
+    database_state = "ok"
+    try:
+        db.session.execute(text("SELECT 1"))
+    except Exception:
+        database_state = "unavailable"
+        current_app.logger.warning("Readiness check: database unavailable")
+        try:
+            db.session.rollback()
+        except Exception:
+            current_app.logger.warning("Readiness check: failed to clear database session")
+
+    try:
+        from app import REDIS_AVAILABLE
+        if not REDIS_AVAILABLE:
+            redis_state = "disabled"
+        else:
+            redis_client.ping()
+            redis_state = "ok"
+    except Exception:
+        redis_state = "unavailable"
+        current_app.logger.warning("Readiness check: shared store unavailable")
+
+    app_env = str(current_app.config.get("APP_ENV", "")).strip().lower()
+    flask_env = str(current_app.config.get("FLASK_ENV", "")).strip().lower()
+    production_mode = (
+        app_env in ("prod", "production", "docker")
+        or flask_env == "production"
+    ) and not current_app.config.get("TESTING")
+    redis_required = current_app.config.get("REDIS_REQUIRED", production_mode)
+    dependencies_ready = (
+        database_state == "ok"
+        and (redis_state == "ok" or not redis_required)
+    )
+    # Keep the public response opaque; component details belong in internal
+    # server logs, not a publicly enumerable health endpoint.
+    response = {"status": "ready" if dependencies_ready else "not_ready"}
+    return jsonify(response), (200 if dependencies_ready else 503)
 
 
 @health_bp.route('/modules', methods=['GET'])

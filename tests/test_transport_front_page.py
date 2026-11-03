@@ -45,7 +45,7 @@ def test_transport_front_page_renders_anonymous(anonymous_client):
     # Hero section — bold premium landing banner (decorative artwork only, no data claims)
     assert "Your Ride," in body
     assert "Your Game!" in body
-    assert "Book Your Ride Now!" in body
+    assert "Book a ride in under 30 seconds." in body
 
     # Bolt-sheet State A (Where to?) must be present
     assert 'id="inputDest"' in body

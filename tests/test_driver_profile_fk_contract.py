@@ -1,7 +1,7 @@
 from app.transport.models import DriverProfile
 
 
-def test_driver_profile_user_id_has_one_named_cascade_fk():
+def test_driver_profile_user_id_has_one_named_restrict_fk():
     table = DriverProfile.__table__
 
     user_id_fks = [
@@ -14,7 +14,7 @@ def test_driver_profile_user_id_has_one_named_cascade_fk():
 
     fk = user_id_fks[0]
     assert fk.name == "fk_driver_user"
-    assert fk.ondelete == "CASCADE"
+    assert fk.ondelete == "RESTRICT"
     assert tuple(
         element.target_fullname for element in fk.elements
     ) == ("users.id",)

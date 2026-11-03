@@ -152,71 +152,52 @@ class TestUI15BookRedirects:
     def test_successful_mocked_booking_redirects_to_rides_show_with_reference(
         self, client, rider_with_kyc, app
     ):
-        """Mock full success path; assert redirect to ride page and success flash with reference."""
-        # Login the rider
+        """A valid quote creates a durable request and redirects by public reference."""
         with client.session_transaction() as sess:
-            sess['_user_id'] = rider_with_kyc
-            sess['_fresh'] = True
+            sess["_user_id"] = rider_with_kyc
+            sess["_fresh"] = True
 
-        mock_booking_ref = "TRTEST123456"
-        mock_booking_id = 999999
-
+        from tests.transport.test_ride_request_create import _payload as signed_quote_payload
+        quote = signed_quote_payload(app, idempotency_key=f"ui15-{rider_with_kyc[:8]}")
         with app.app_context():
-            from app.transport.services import booking_service as bs_module
-            from app.transport.services import matching_service as ms_module
-
-            # Mock create_booking to return a fake booking dict
-            def mock_create_booking(*args, **kwargs):
-                return {
-                    "success": True,
-                    "data": {
-                        "booking_id": mock_booking_id,
-                        "booking_reference": mock_booking_ref,
-                    },
-                }
-
-            # Mock transition_status to do nothing (success)
-            def mock_transition_status(*args, **kwargs):
-                return {"success": True}
-
-            # Mock discover_and_offer to return empty offers
-            def mock_discover_and_offer(*args, **kwargs):
-                return {"offers_created": 0, "offers": []}
+            from app.extensions import db
+            from app.transport.models import Booking, RideRequest
+            from app.transport.services.ride_request_dispatch_service import RideRequestDispatchService
 
             with patch.object(
-                bs_module.BookingService, "create_booking", mock_create_booking
+                RideRequestDispatchService, "start_search",
+                return_value={"status": "started"},
             ):
-                with patch.object(
-                    bs_module.BookingService, "transition_status", mock_transition_status
-                ):
-                    with patch.object(
-                        ms_module.MatchingService, "discover_and_offer", mock_discover_and_offer
-                    ):
-                        payload = {
-                            "pickup_location": '{"latitude": 0.34, "longitude": 32.58}',
-                            "dropoff_location": '{"latitude": 0.35, "longitude": 32.59}',
-                            "pickup_latitude": "0.34",
-                            "pickup_longitude": "32.58",
-                            "dropoff_latitude": "0.35",
-                            "dropoff_longitude": "32.59",
-                            "pickup_time": "2099-12-31T10:00:00",
-                            "service_type": "on_demand",
-                            "vehicle_class": "comfort",
-                            "payment_method": "cash",
-                            "passenger_count": "1",
-                            "idempotency_key": f"test-key-{rider_with_kyc[:8]}",
-                        }
-                        resp = client.post(
-                            "/transport/book",
-                            data=payload,
-                            follow_redirects=False,
-                        )
-                        assert resp.status_code == 302
-                        # Should redirect to the ride page with the booking reference
-                        assert f"/transport/rides/{mock_booking_ref}" in resp.headers["Location"]
-                        # Verify success flash is set (we can't follow the redirect to a non-existent booking,
-                        # but the flash should be set in the session)
-                        with client.session_transaction() as sess:
-                            flashes = sess.get('_flashes', [])
-                            assert any("Ride request received" in msg[1] for msg in flashes) or \
-                                   any(mock_booking_ref in msg[1] for msg in flashes)
+                payload = {
+                    "pickup_location": quote["pickup"]["address"],
+                    "dropoff_location": quote["dropoff"]["address"],
+                    "pickup_latitude": str(quote["pickup"]["latitude"]),
+                    "pickup_longitude": str(quote["pickup"]["longitude"]),
+                    "dropoff_latitude": str(quote["dropoff"]["latitude"]),
+                    "dropoff_longitude": str(quote["dropoff"]["longitude"]),
+                    "pickup_time": quote["pickup_time"],
+                    "service_type": "on_demand",
+                    "booking_mode": "instant",
+                    "vehicle_class": quote["vehicle_class"],
+                    "payment_method": quote["payment_method"],
+                    "passenger_count": str(quote["passenger_count"]),
+                    "currency": quote["currency"],
+                    "confirmed_fare_amount": quote["confirmed_fare_amount"],
+                    "fare_quote_token": quote["fare_quote_token"],
+                    "idempotency_key": quote["idempotency_key"],
+                }
+                resp = client.post("/transport/book", data=payload, follow_redirects=False)
+
+            assert resp.status_code == 302
+            assert resp.headers["Location"].startswith("/transport/rides/")
+            reference = resp.headers["Location"].rsplit("/", 1)[-1]
+            assert reference
+            assert RideRequest.query.filter_by(public_id=reference).first() is not None
+            assert Booking.query.filter_by(
+                idempotency_key=quote["idempotency_key"], is_deleted=False
+            ).first() is None
+            with client.session_transaction() as sess:
+                flashes = sess.get("_flashes", [])
+                assert any("Fare confirmed" in msg[1] and reference in msg[1]
+                           for msg in flashes)
+            db.session.rollback()

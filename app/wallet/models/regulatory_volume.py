@@ -93,15 +93,32 @@ class RegulatoryVolumePolicy(BaseModel):
 
     @classmethod
     def get_active_or_default(cls):
-        """Get active policy or create default if none exists."""
+        """Get active policy or create a default without committing caller work.
+
+        Wallet authorization calls this while a wallet transaction is open.
+        A commit here would terminate the caller's atomic ledger transaction
+        and expire the policy ORM object before its window settings are read.
+        Persist the default with a flush when the caller owns the transaction;
+        only commit when this getter started an ordinary autobegin unit of work.
+        """
+        session = db.session()
+        transaction = session.get_transaction()
+        origin = getattr(getattr(transaction, "origin", None), "name", None)
+        caller_owns_transaction = (
+            origin == "BEGIN"
+            or session.in_nested_transaction()
+        )
+
         try:
             policy = cls.get_active()
         except Exception:
-            # Table may not exist yet (e.g., during tests before migration)
-            policy = None
-        
-        if not policy:
-            policy = cls(
+            # Missing policy storage is tolerated only outside a caller-owned
+            # financial transaction (for schema/bootstrap tooling). Never
+            # swallow a database failure and continue a wallet operation.
+            if caller_owns_transaction:
+                raise
+            session.rollback()
+            return cls(
                 daily_window_mode='calendar',
                 monthly_window_mode='calendar',
                 timezone='Africa/Kampala',
@@ -109,15 +126,27 @@ class RegulatoryVolumePolicy(BaseModel):
                 effective_from=datetime.now(timezone.utc),
                 requested_by=None,
                 approved_by=None,
-                reason="Default policy - auto-created"
+                reason="Default policy - in-memory fallback"
             )
-            # Only persist if table exists
-            try:
-                db.session.add(policy)
-                db.session.commit()
-            except Exception:
-                # Table doesn't exist, return in-memory default
-                db.session.rollback()
+
+        if policy is not None:
+            return policy
+
+        policy = cls(
+            daily_window_mode='calendar',
+            monthly_window_mode='calendar',
+            timezone='Africa/Kampala',
+            is_active=True,
+            effective_from=datetime.now(timezone.utc),
+            requested_by=None,
+            approved_by=None,
+            reason="Default policy - auto-created"
+        )
+        session.add(policy)
+        if caller_owns_transaction:
+            session.flush()
+        else:
+            session.commit()
         return policy
 
 

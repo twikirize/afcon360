@@ -71,13 +71,26 @@ def with_transaction(isolation_level="REPEATABLE_READ"):
 
 
 class IdempotencyChecker:
-    """Prevents duplicate processing of requests."""
+    """Prevents duplicate processing of requests.
+
+    Redis is the fast distributed guard. If it is unavailable, the event
+    registration transaction still applies its database uniqueness checks;
+    callers must treat that database result as the authoritative fallback.
+    """
     @staticmethod
     def check_and_store(key: str, ttl_seconds: int = 300) -> bool:
-        if not redis_client:
+        if redis_client is None:
             return False
         cache_key = f"idempotency:{key}"
-        result = redis_client.set(cache_key, "1", nx=True, ex=ttl_seconds)
+        try:
+            result = redis_client.set(cache_key, "1", nx=True, ex=ttl_seconds)
+        except Exception as exc:
+            logger.warning(
+                "Redis idempotency guard unavailable; relying on database "
+                "registration constraints: %s",
+                exc,
+            )
+            return False
         return result is not True
 
     @staticmethod
@@ -220,9 +233,20 @@ class EventService:
             from app.utils.singleflight import singleflight_json
 
             ttl = int(current_app.config.get("EVENT_AVAILABILITY_CACHE_TTL", 30))
-            return singleflight_json(
-                cache_key, lambda: cls._availability_snapshot(event, now), ttl
-            )
+            try:
+                return singleflight_json(
+                    cache_key, lambda: cls._availability_snapshot(event, now), ttl
+                )
+            except Exception as exc:
+                # This cache is presentation-only. A Redis outage must not
+                # prevent the public event page from showing live DB-backed
+                # availability; mutation paths always bypass this cache.
+                logger.warning(
+                    "Event availability cache unavailable; using database "
+                    "snapshot for %s: %s",
+                    cache_key,
+                    exc,
+                )
         return cls._availability_snapshot(event, now)
 
     @classmethod
@@ -1444,6 +1468,10 @@ class EventService:
                         user_id=check_user_id
                     ).first()
                     if existing:
+                        if idempotency_key:
+                            return None, None, (
+                                "Duplicate request - registration already processed"
+                            )
                         if booking_type == BookingType.THIRD_PARTY.value:
                             attendee_name = data.get("full_name")
                             attendee_email = data.get("email")

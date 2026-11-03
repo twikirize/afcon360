@@ -20,8 +20,19 @@ from app.extensions import limiter
 
 
 class _RateLimitTestConfig(TestingConfig):
-    """Testing config with rate limiting ON and a tiny shared quota."""
+    """Production-like test config with rate limiting ON and a tiny quota.
 
+    The application intentionally disables rate limiting in DEBUG/local mode.
+    Keep TESTING enabled for isolated database fixtures, but use the Docker
+    deployment mode and DEBUG=False so the dynamic request hook exercises the
+    same limiter activation path used by the production container.
+    """
+
+    # Use an isolated test runtime: the production-like request hook stays
+    # active (DEBUG=False), while Redis-less test storage remains permitted.
+    # The Docker/production Redis fail-closed contract is covered separately.
+    APP_ENV = "test"
+    DEBUG = False
     RATELIMIT_ENABLED = True
     # Use standard Flask-Limiter config key for default limits
     RATELIMIT_DEFAULT = "5 per minute"
@@ -158,3 +169,52 @@ def test_method_not_allowed_returns_405_not_500(rl_app):
     client = rl_app.test_client()
     resp = client.get("/rl_post_only")
     assert resp.status_code == 405
+
+
+
+def test_health_readiness_reports_database_and_disabled_redis_in_tests(rl_app):
+    client = rl_app.test_client()
+    response = client.get("/api/health/ready")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "ready"
+    assert set(payload) == {"status"}
+
+
+def test_health_readiness_fails_when_required_redis_is_unavailable(rl_app, monkeypatch):
+    import app
+    from app.api import health
+
+    class FailingRedis:
+        def ping(self):
+            raise RuntimeError("unavailable")
+
+    monkeypatch.setattr(app, "REDIS_AVAILABLE", True)
+    monkeypatch.setattr(health.redis_client, "_client", FailingRedis())
+    rl_app.config["REDIS_REQUIRED"] = True
+
+    response = rl_app.test_client().get("/api/health/ready")
+    assert response.status_code == 503
+    payload = response.get_json()
+    assert payload == {"status": "not_ready"}
+
+
+def test_health_readiness_fails_when_database_is_unavailable(rl_app):
+    from app.api.health import ready
+    from app.extensions import db
+
+    with rl_app.test_request_context():
+        original_execute = db.session.execute
+
+        def fail_database(*args, **kwargs):
+            raise RuntimeError("database unavailable")
+
+        db.session.execute = fail_database
+        try:
+            response, status = ready()
+            assert status == 503
+            payload = response.get_json()
+            assert payload == {"status": "not_ready"}
+        finally:
+            db.session.execute = original_execute

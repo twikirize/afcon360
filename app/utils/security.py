@@ -16,18 +16,131 @@ from flask import g, request, current_app
 from functools import wraps
 from app.utils.exceptions import PermissionError
 
+def _is_deployed_environment(app_env=None, flask_env=None) -> bool:
+    """Fail closed when deployment mode is explicit or environment is unspecified."""
+    app_env = str(
+        app_env if app_env is not None else os.getenv("APP_ENV", "")
+    ).strip().lower()
+    flask_env = str(
+        flask_env if flask_env is not None else os.getenv("FLASK_ENV", "")
+    ).strip().lower()
+    return (
+        app_env in ("docker", "prod", "production")
+        or flask_env == "production"
+        or not (app_env or flask_env)
+    )
+
+
+def ensure_redis_url_configured(
+    redis_url=None,
+    redis_available=True,
+    app_env=None,
+    flask_env=None,
+):
+    """Require the real shared Redis dependency in deployed environments.
+
+    Local development may use the existing localhost URL and in-memory
+    fallbacks. Docker/production must not silently degrade sessions,
+    rate-limiting, cache or realtime coordination to process-local storage.
+    """
+    candidate = str(redis_url or "").strip()
+    deployed = _is_deployed_environment(app_env, flask_env)
+
+    if deployed and not candidate:
+        raise RuntimeError(
+            "REDIS_URL must be configured before starting a deployed "
+            "AFCON360 application. Local Redis fallbacks are not permitted."
+        )
+    if deployed and not redis_available:
+        raise RuntimeError(
+            "The Redis Python client library is required in deployed AFCON360 mode."
+        )
+
+    return candidate or "redis://localhost:6379/0"
+
+
+def ensure_database_url_configured(database_url=None, app_env=None, flask_env=None):
+    """Require an explicit database target in deployed environments.
+
+    The deployed APP_ENV is authoritative even if FLASK_ENV was accidentally
+    set to development. Returning None is permitted only for local development,
+    where create_app may use its existing local PostgreSQL fallback.
+    """
+    candidate = str(database_url or "").strip()
+    if candidate:
+        return candidate
+
+    if _is_deployed_environment(app_env, flask_env):
+        raise RuntimeError(
+            "DATABASE_URL must be configured before starting a deployed "
+            "AFCON360 application. Local database fallbacks are not permitted "
+            "in Docker or production."
+        )
+    return None
+
+
+def ensure_secret_key_configured(secret_key=None, app_env=None, flask_env=None):
+    """Require a non-placeholder Flask signing key in deployed environments.
+
+    The APP_ENV docker/prod setting is authoritative even when someone
+    accidentally sets FLASK_ENV=development inside a deployed container.
+    Local development may continue to use the documented development fallback.
+    """
+    candidate = str(secret_key or "").strip()
+    if candidate and not candidate.startswith("REPLACE_"):
+        return candidate
+
+    if _is_deployed_environment(app_env, flask_env):
+        raise RuntimeError(
+            "SECRET_KEY must be configured before starting a deployed "
+            "AFCON360 application. A deterministic development signing key "
+            "is never permitted in Docker or production."
+        )
+    return None
+
+
+def ensure_encryption_key_configured(app_env=None, flask_env=None) -> str:
+    """Require a persistent key in deployed environments.
+
+    Local development may receive an ephemeral process key, but that key is
+    never logged and must not be mistaken for a durable deployment secret.
+    """
+    key_env = os.getenv("ENCRYPTION_KEY", "").strip()
+    if key_env and not key_env.startswith("REPLACE_"):
+        return key_env
+
+    if _is_deployed_environment(app_env, flask_env):
+        raise RuntimeError(
+            "ENCRYPTION_KEY must be configured before starting a deployed "
+            "AFCON360 application. Preserve the existing key; do not generate "
+            "a replacement without re-encrypting stored secrets."
+        )
+
+    key_env = secrets.token_urlsafe(32)
+    os.environ["ENCRYPTION_KEY"] = key_env
+    import warnings
+    warnings.warn(
+        "ENCRYPTION_KEY was not configured. A temporary local-development "
+        "key was generated; encrypted data will not survive a process restart.",
+        RuntimeWarning,
+    )
+    return key_env
+
+
 # Use environment variable for encryption key
 def get_encryption_key():
     """Get encryption key from environment. Raises error if not set in production."""
     key_env = os.getenv("ENCRYPTION_KEY")
+    if key_env and key_env.startswith("REPLACE_"):
+        key_env = None
 
     if not key_env:
-        # Check if we're in production
-        flask_env = os.getenv("FLASK_ENV", "production")
-        if flask_env == "production":
+        # Docker is AFCON360's production deployment mode on the Oracle host.
+        if _is_deployed_environment():
             raise RuntimeError(
-                "ENCRYPTION_KEY environment variable must be set in production. "
-                "Generate a secure key with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+                "ENCRYPTION_KEY must be configured for deployed environments. "
+                "Provide the existing protected key; do not generate a replacement "
+                "without re-encrypting all stored secrets."
             )
         else:
             # Development fallback with warning

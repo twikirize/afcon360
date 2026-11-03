@@ -97,9 +97,15 @@ def test_process_webhook_events_dead_letter_triggers_alert(monkeypatch):
 
     monkeypatch.setattr('app.tasks.webhook_processor._alert_owner_dead_letter', fake_alert)
 
-    # Patch redis incr to avoid requiring real Redis
+    # Replace the lazy Redis proxy itself. Accessing ext.redis_client.incr
+    # first would invoke LazyRedis.__getattr__ and require a configured URL
+    # before monkeypatch can install the replacement.
     import app.extensions as ext
-    monkeypatch.setattr(ext.redis_client, 'incr', lambda k: None)
+    monkeypatch.setattr(
+        ext,
+        "redis_client",
+        SimpleNamespace(incr=lambda key: None),
+    )
 
     # Run the task
     result = process_webhook_events()

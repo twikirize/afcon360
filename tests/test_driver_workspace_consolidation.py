@@ -12,7 +12,8 @@ Invariants asserted here:
 
 * the workspace renders inside the dedicated driver shell and never renders
   the transport admin/operations navigation;
-* entry is gated by an active DRIVER context — a PERSONAL context cannot enter;
+* a valid DriverProfile can enter from a Driver deep link even when the
+  session currently selects Personal; blocked or absent profiles remain denied;
 * a PENDING driver can enter (participation) but has no online toggle, while a
   blocked driver is refused;
 * My Vehicles is the driver-owned ``transport.vehicle_dashboard`` surface and
@@ -207,7 +208,9 @@ class TestDriverWorkspaceRendering:
         resp = _fresh_get(client, "/transport/driver-dashboard")
 
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
-        assert "Driver Dashboard" in resp.data.decode("utf-8")
+        body = resp.data.decode("utf-8")
+        assert 'id="driverDashboard"' in body
+        assert "Driver" in body
 
     def test_driver_workspace_has_driver_shell(self, app, client):
         driver = _seed_driver(app, compliance=ComplianceStatus.PENDING_REVIEW)
@@ -215,9 +218,10 @@ class TestDriverWorkspaceRendering:
 
         body = _fresh_get(client, "/transport/driver-dashboard").data.decode("utf-8")
 
-        assert "t-sidebar" in body
-        assert "My Transport" in body
-        assert "Register Vehicle" in body
+        assert "ck-shell" in body
+        assert "ck-pane" in body
+        assert 'data-ck-nav="home"' in body
+        assert "My Vehicles" in body
 
     def test_driver_workspace_has_no_admin_navigation(self, app, client):
         driver = _seed_driver(app, compliance=ComplianceStatus.PENDING_REVIEW)
@@ -241,17 +245,20 @@ class TestDriverWorkspaceRendering:
 
 
 class TestDriverContextGate:
-    """Workspace entry requires an active DRIVER context, nothing more."""
+    """A live DriverProfile grants workspace entry; go-live remains separate."""
 
-    def test_driver_context_required(self, app, client):
+    def test_driver_deep_link_resolves_without_a_saved_context(self, app, client):
         driver = _seed_driver(app, compliance=ComplianceStatus.PENDING_REVIEW)
         _login(client, driver)
 
         resp = _fresh_get(client, "/transport/driver-dashboard")
 
-        assert resp.status_code == 403
+        assert resp.status_code == 200
+        assert 'id="driverDashboard"' in resp.data.decode("utf-8")
+        with client.session_transaction() as sess:
+            assert "active_context_type" not in sess
 
-    def test_personal_context_cannot_enter_driver_workspace(self, app, client):
+    def test_personal_session_does_not_block_valid_driver_deep_link(self, app, client):
         driver = _seed_driver(app, compliance=ComplianceStatus.PENDING_REVIEW)
         with client.session_transaction() as sess:
             sess["_user_id"] = driver.public_id
@@ -261,7 +268,31 @@ class TestDriverContextGate:
 
         resp = _fresh_get(client, "/transport/driver-dashboard")
 
-        assert resp.status_code == 403
+        assert resp.status_code == 200
+        assert 'id="driverDashboard"' in resp.data.decode("utf-8")
+        # URL-driven context is request-local: the other tab/session remains
+        # in Personal after this GET.
+        with client.session_transaction() as sess:
+            assert sess["active_context_type"] == "personal"
+            assert sess["active_role"] == "user"
+
+    def test_legacy_driver_dashboard_bookmark_resolves_from_personal(self, app, client):
+        driver = _seed_driver(app, compliance=ComplianceStatus.PENDING_REVIEW)
+        with client.session_transaction() as sess:
+            sess["_user_id"] = driver.public_id
+            sess["_fresh"] = True
+            sess["active_context_type"] = "personal"
+            sess["active_role"] = "user"
+
+        response = _fresh_get(
+            client, "/transport/driver/dashboard", follow_redirects=True
+        )
+
+        assert response.status_code == 200
+        assert 'id="driverDashboard"' in response.data.decode("utf-8")
+        with client.session_transaction() as sess:
+            assert sess["active_context_type"] == "personal"
+
 
     def test_workspace_allowed_before_go_live(self, app, client):
         """KYC-qualified but not-yet-approved driver: workspace yes, go-live no."""

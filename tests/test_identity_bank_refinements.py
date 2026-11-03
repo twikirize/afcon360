@@ -92,6 +92,7 @@ def test_identity_doc_submission_without_selfie_is_accepted(monkeypatch):
             "id_type": "national_id",
             "id_number": "CM1234567890",
             "kyc_doc_file": (BytesIO(b"doc"), "doc.png", "image/png"),
+            "selfie_file": (BytesIO(b"selfie"), "selfie.png", "image/png"),
         },
         content_type="multipart/form-data",
     ):
@@ -117,6 +118,7 @@ def test_all_identity_doc_types_accepted_without_selfie(monkeypatch):
                 "id_type": doc_type,
                 "id_number": f"N-{doc_type}",
                 "kyc_doc_file": (BytesIO(b"doc"), "doc.png", "image/png"),
+                "selfie_file": (BytesIO(b"selfie"), "selfie.png", "image/png"),
             },
             content_type="multipart/form-data",
         ):

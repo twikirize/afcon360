@@ -36,6 +36,7 @@ from app.auth.decorators import (
 from app.auth.context import (
     ContextType,
     active_context_required,
+    workspace_context_entry_required,
     switch_context,
     ContextSwitchError,
 )
@@ -125,6 +126,14 @@ def _require_vehicle_ownership(vehicle_model):
         ).all()]
         if owner_id in driver_ids:
             return vehicle_model
+    elif owner_type == "organisation":
+        organisation = db.session.get(Organisation, owner_id)
+        if organisation and OrganizationPermissionService.has_permission(
+            current_user._get_current_object(),
+            organisation,
+            "org.transport.manage",
+        ):
+            return vehicle_model
     elif owner_id == current_user.id:
         return vehicle_model
 
@@ -148,18 +157,46 @@ def _count_open_incidents():
         return 0
 
 
+def _wants_json_response():
+    """Return whether the caller explicitly requested the JSON representation."""
+    return (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or request.accept_mimetypes.best == "application/json"
+    )
+
+
 def _json_or_template(template, status=200, **ctx):
     """
     Returns JSON for AJAX/API clients, HTML for browsers.
     Detects via Accept header or X-Requested-With.
     """
-    wants_json = (
-        request.headers.get("X-Requested-With") == "XMLHttpRequest"
-        or request.accept_mimetypes.best == "application/json"
-    )
-    if wants_json:
+    if _wants_json_response():
         return jsonify({"status": "ok", **ctx}), status
     return render_template(template, **ctx), status
+
+
+_VEHICLE_JSON_FIELDS = (
+    "license_plate",
+    "registration_number",
+    "make",
+    "model",
+    "year",
+    "color",
+    "vehicle_type",
+    "vehicle_class",
+    "passenger_capacity",
+    "max_passenger_capacity",
+    "luggage_capacity",
+    "luggage_space_cubic_meters",
+    "features",
+    "accessibility_features",
+    "safety_features",
+)
+
+
+def _vehicle_json_representation(vehicle):
+    """Return an allow-listed, JSON-safe vehicle view without internal or secret fields."""
+    return vehicle.to_dict(include=list(_VEHICLE_JSON_FIELDS))
 
 
 def _paginate_args():
@@ -208,6 +245,12 @@ _PUBLIC_ENDPOINTS = {
     "transport.driver_dashboard_slash",
     "transport.transport_service_worker",
     "transport.vehicle_marketplace",
+    # Personal/driver/org vehicle detail surfaces enforce owner-scoped access
+    # inside each route via _require_vehicle_ownership.
+    "transport.vehicles_show",
+    "transport.vehicles_edit",
+    # Listing review performs its own listing-owner check before rendering.
+    "transport.owner_application_review",
     # Rider incident reporting — linked from the rider ride page
     # (templates/transport/rides/show.html). The view's own decorators
     # are @module_enabled_required + @login_required only; without this
@@ -2395,14 +2438,14 @@ def _driver_active_trip(bookings):
 @transport_bp.route("/driver-dashboard")
 @module_enabled_required("transport")
 @login_required
-@active_context_required(ContextType.DRIVER)
+@workspace_context_entry_required(ContextType.DRIVER)
 def driver_dashboard():
     """Driver's personal dashboard (Driver Workspace home).
 
     Presentation-only consolidation (Phase C): the view reuses the existing
     transport services and adds no business logic. Workspace entry stays a
-    PARTICIPATION capability — ``@active_context_required(ContextType.DRIVER)``
-    above is unchanged, and go-live readiness remains composed solely by
+    PARTICIPATION capability — a live, non-blocked DriverProfile is required
+    by the dedicated workspace-entry gate, and go-live readiness remains composed solely by
     ``can_go_live``. Operational data (earnings, owned vs assigned vehicles,
     upcoming/recent bookings) is surfaced from the authoritative services so
     the home presents one coherent driver workspace instead of admin links.
@@ -2493,6 +2536,84 @@ def driver_dashboard():
     # the browse page's source. Never fed from a raw Vehicle query.
     available_marketplace_vehicles = _marketplace_listing_views(limit=5)
 
+    # Read-only data projections for the current consolidated workspace panels.
+    scheduled_routes = []
+    switchable_vehicles = []
+    vehicle_history = []
+    incidents = []
+    if profile is not None:
+        from types import SimpleNamespace
+        from app.transport.models import (
+            ScheduledRoute, DriverVehicleHistory, TransportIncident,
+        )
+        try:
+            rows = (
+                ScheduledRoute.query
+                .filter_by(current_driver_id=profile.id, is_active=True, is_cancelled=False)
+                .order_by(ScheduledRoute.next_departure.asc())
+                .limit(10)
+                .all()
+            )
+            scheduled_routes = [
+                SimpleNamespace(
+                    name=row.name, route_code=row.route_code,
+                    route_type=row.route_type, primary_zone=row.primary_zone,
+                    next_departure=row.next_departure.isoformat() if row.next_departure else None,
+                    available_seats=row.available_seats,
+                    vehicle_capacity=row.vehicle_capacity,
+                    price_per_seat=row.price_per_seat, is_free=row.is_free,
+                )
+                for row in rows
+            ]
+        except Exception:
+            db.session.rollback()
+            logger.warning("Driver scheduled-route panel unavailable for profile %s", profile.id, exc_info=True)
+
+        current_vehicle_id = getattr(assigned_vehicle, "id", None)
+        switchable_vehicles = [
+            vehicle for vehicle in (owned_vehicles or [])
+            if vehicle.id != current_vehicle_id
+            and str(getattr(vehicle, "status", "")).lower() == "active"
+            and bool(getattr(vehicle, "is_available", True))
+        ]
+
+        try:
+            rows = (
+                DriverVehicleHistory.query
+                .filter_by(driver_id=profile.id)
+                .order_by(DriverVehicleHistory.started_at.desc())
+                .limit(8)
+                .all()
+            )
+            vehicle_history = [
+                SimpleNamespace(
+                    license_plate=row.vehicle.license_plate if row.vehicle else "Vehicle",
+                    assignment_reason=row.assignment_reason, was_breakdown=row.was_breakdown,
+                    started_at=row.started_at.isoformat() if row.started_at else None,
+                    ended_at=row.ended_at.isoformat() if row.ended_at else None,
+                )
+                for row in rows
+            ]
+        except Exception:
+            db.session.rollback()
+            logger.warning("Driver vehicle-history panel unavailable for profile %s", profile.id, exc_info=True)
+
+        try:
+            incidents = (
+                TransportIncident.query
+                .filter(
+                    TransportIncident.driver_id == profile.id,
+                    TransportIncident.is_deleted.is_(False),
+                    TransportIncident.status.notin_(("resolved", "closed")),
+                )
+                .order_by(TransportIncident.created_at.desc())
+                .limit(8)
+                .all()
+            )
+        except Exception:
+            db.session.rollback()
+            logger.warning("Driver safety panel unavailable for profile %s", profile.id, exc_info=True)
+
     # Location publishing cadence: drives the workspace's
     # live geolocation pings and the Location card's stated cadence.
     try:
@@ -2517,13 +2638,17 @@ def driver_dashboard():
         offers=offers,
         offer_count=offer_count,
         active_trip=active_trip,
+        scheduled_routes=scheduled_routes,
+        switchable_vehicles=switchable_vehicles,
+        vehicle_history=vehicle_history,
+        incidents=incidents,
     )
 
 
 @transport_bp.route("/driver/dashboard")
 @module_enabled_required("transport")
 @login_required
-@active_context_required(ContextType.DRIVER)
+@workspace_context_entry_required(ContextType.DRIVER)
 def driver_dashboard_slash():
     """Alias of driver_dashboard.
 
@@ -2602,13 +2727,15 @@ def register_vehicle():
     try:
         svc = get_provider_service()
         driver = svc.get_driver_profile(current_user.id)
-        if not driver:
-            raise ValidationError(
-                "You must be a registered driver to register a vehicle"
-            )
+
+        # Vehicle ownership is independent of driver-workspace participation.
+        # Approved drivers register against their DriverProfile; users without
+        # a driver profile may register a personally owned vehicle directly.
+        owner_type = "driver" if driver else "user"
+        owner_id = driver.id if driver else current_user.id
         result = svc.register_vehicle(
-            owner_type='driver',
-            owner_id=driver.id,
+            owner_type=owner_type,
+            owner_id=owner_id,
             vehicle_data=data,
         )
         vehicle_id = result['data']['vehicle_id']
@@ -2655,16 +2782,62 @@ def vehicles_show(id):
         flash("Vehicle not found", "warning")
         return redirect(url_for("transport.vehicles_index"))
 
+    if _wants_json_response():
+        return _json_or_template(
+            "transport/vehicles/show.html",
+            vehicle=_vehicle_json_representation(vehicle),
+            id=id,
+        )
     return _json_or_template("transport/vehicles/show.html", vehicle=vehicle, id=id)
 
 
-@transport_bp.route("/vehicles/<int:id>/edit")
+@transport_bp.route("/vehicles/<int:id>/edit", methods=["GET", "POST"])
 @module_enabled_required("transport")
 @login_required
 def vehicles_edit(id):
-    """Edit vehicle"""
+    """Edit an owned vehicle's editable specifications.
+
+    The service owns validation/persistence and deliberately preserves
+    ownership, moderation, availability, verification and assignment state.
+    """
     logger.info(f"Vehicle edit {id} accessed by user_id={_uid()}")
-    return _json_or_template("transport/vehicles/edit.html", id=id)
+    vehicle_model = db.session.get(Vehicle, id)
+    if vehicle_model is None:
+        abort(404)
+
+    # Keep the authorization exception outside generic service error handling:
+    # unauthorized users must receive 403, never a misleading redirect.
+    _require_vehicle_ownership(vehicle_model)
+
+    if request.method == "POST":
+        try:
+            get_provider_service().update_vehicle(id, request.form.to_dict())
+        except ValidationError as exc:
+            db.session.rollback()
+            flash(f"Vehicle details were not saved: {exc}", "danger")
+            return redirect(url_for("transport.vehicles_edit", id=id))
+        except Exception as exc:
+            db.session.rollback()
+            logger.warning(
+                "Vehicle edit failed for vehicle_id=%s user_id=%s: %s",
+                id, _uid(), exc, exc_info=True,
+            )
+            flash("Vehicle details could not be saved. Please review the fields and try again.", "danger")
+            return redirect(url_for("transport.vehicles_edit", id=id))
+
+        flash("Vehicle details updated successfully.", "success")
+        return redirect(url_for("transport.vehicles_show", id=id))
+
+    vehicle = get_provider_service().get_vehicle(id)
+    if not vehicle:
+        abort(404)
+    if _wants_json_response():
+        return _json_or_template(
+            "transport/vehicles/edit.html",
+            vehicle=_vehicle_json_representation(vehicle),
+            id=id,
+        )
+    return _json_or_template("transport/vehicles/edit.html", vehicle=vehicle, id=id)
 
 
 @transport_bp.route("/vehicles/<int:id>/maintenance")

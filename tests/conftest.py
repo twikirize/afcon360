@@ -63,6 +63,12 @@ from tests.helpers.isolation import (
     take_snapshot,
     cleanup_inserted_rows,
 )
+from tests.helpers import isolation as isolation_helpers
+
+
+def isolation_baseline_is_cached():
+    """Return whether the session-start baseline has already been captured."""
+    return isolation_helpers._baseline_cache is not None
 
 
 # ===================================================================
@@ -210,7 +216,6 @@ def setup_database():
 
     db_url = TEST_DATABASE_URL
     db_name = db_url.split('/')[-1]
-    default_url = db_url.replace('/' + db_name, '/postgres')
 
     # --- Acquire the cross-session advisory lock (blocking w/ timeout). ---
     _guard_engine = create_engine(db_url, poolclass=NullPool)
@@ -237,16 +242,10 @@ def setup_database():
         time.sleep(1.0)
 
     try:
-        engine_default = create_engine(default_url, isolation_level="AUTOCOMMIT")
-        try:
-            engine_test = create_engine(db_url)
-            with engine_test.connect() as conn:
-                conn.execute(text("SELECT 1"))
-            print(f"[OK] Test database '{db_name}' already exists.")
-        except Exception:
-            with engine_default.connect() as conn:
-                conn.execute(text(f"CREATE DATABASE {db_name}"))
-            print(f"[OK] Test database '{db_name}' created.")
+        # _guard_conn is already connected to TEST_DATABASE_URL. A missing
+        # database fails closed above; pytest never creates or repairs schema.
+        _guard_conn.execute(text("SELECT 1"))
+        print(f"[OK] Existing test database '{db_name}' is reachable.")
 
         app = create_app(config_object=TestingConfig)
         app.config['SQLALCHEMY_DATABASE_URI'] = db_url
@@ -317,6 +316,28 @@ def app(setup_database):
     with app.app_context():
         table_count = assert_migrated_postgres_database(db.engine)
         print(f"[OK] PostgreSQL test database verified (tables count: {table_count})")
+
+        # Seed frozen organisation classification catalogues before the
+        # row-tracking isolation baseline is captured by the first test.
+        # Production seeds these idempotently on the first request in a
+        # background thread; doing it synchronously here prevents the test
+        # cleanup baseline from misclassifying reference rows as test data.
+        from app.identity.services.organisation_classification_service import (
+            seed_organisation_catalogues,
+        )
+        seed_organisation_catalogues(force=True, verbose=False)
+        from app.identity.models.organisation_catalogues import (
+            OrganisationCategory,
+            OrganisationTypeCatalogue,
+        )
+        category_count = OrganisationCategory.query.count()
+        type_count = OrganisationTypeCatalogue.query.count()
+        if category_count != 8 or type_count != 39:
+            raise RuntimeError(
+                "Organisation classification catalogue seed is incomplete: "
+                f"{category_count} categories, {type_count} types; expected 8/39."
+            )
+        print("[OK] Seeded canonical organisation classification catalogues (8/39)")
 
         from app.auth.seed_roles import seed_all
         seed_all(verbose=False)
@@ -588,6 +609,18 @@ def _get_fk_graph(engine):
     return _fk_graph
 
 
+def _report_isolation_timing(request, phase, started_at):
+    """Emit opt-in setup/teardown timing without changing fixture behavior."""
+    if os.getenv("TEST_ISOLATION_TIMING", "").strip().lower() not in {"1", "true", "yes"}:
+        return
+    elapsed = time.perf_counter() - started_at
+    print(
+        f"TEST_ISOLATION_TIMING phase={phase} "
+        f"nodeid={request.node.nodeid} seconds={elapsed:.4f}",
+        flush=True,
+    )
+
+
 @pytest.fixture(autouse=True)
 def _isolate_db(request, app):
     """Automatically track and clean DB rows inserted during each test.
@@ -610,11 +643,19 @@ def _isolate_db(request, app):
         yield
         return
 
+    baseline_was_cached = isolation_baseline_is_cached()
+    snapshot_started = time.perf_counter()
     with app.app_context():
         snapshot = take_snapshot(db.session, db.engine)
+    _report_isolation_timing(
+        request,
+        "baseline_cache_hit" if baseline_was_cached else "baseline_capture",
+        snapshot_started,
+    )
 
     yield  # test runs
 
+    teardown_started = time.perf_counter()
     with app.app_context():
         # 1. Rollback any uncommitted work
         try:
@@ -630,20 +671,25 @@ def _isolate_db(request, app):
         #    exactly what the isolation architecture exists to prevent.
         #    Run on a raw connection to avoid per-statement ORM session
         #    overhead (the cleanup is pure SQL).
+        cleanup_started = time.perf_counter()
         try:
-            with db.engine.begin() as conn:
-                deleted = cleanup_inserted_rows(conn, db.engine, snapshot)
-        except Exception as exc:
             try:
-                db.session.rollback()
-            except Exception:
-                pass
-            raise AssertionError(
-                "DATABASE ISOLATION FAILED: test-created rows could not be "
-                "cleaned up. The suite must stop rather than continue with "
-                "contaminated database state. "
-                f"Original error: {exc}"
-            ) from exc
+                with db.engine.begin() as conn:
+                    deleted = cleanup_inserted_rows(conn, db.engine, snapshot)
+            except Exception as exc:
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+                raise AssertionError(
+                    "DATABASE ISOLATION FAILED: test-created rows could not be "
+                    "cleaned up. The suite must stop rather than continue with "
+                    "contaminated database state. "
+                    f"Original error: {exc}"
+                ) from exc
+        finally:
+            _report_isolation_timing(request, "cleanup_rows", cleanup_started)
+            _report_isolation_timing(request, "teardown_total", teardown_started)
 
         # 4. Final cleanup — remove identity map again
         try:
@@ -741,8 +787,14 @@ def _verify_test_state(request, app):
         # No active/leaked request context
         from flask import g, has_request_context
         # DB session should be clean at test start
-        assert db.session.is_active or not db.session.dirty, (
-            f"DB session is dirty at test start: {db.session.dirty}"
+        # Some focused service tests temporarily replace the scoped
+        # session with a small FakeSession. Treat an unavailable dirty
+        # collection as empty for that test double; real SQLAlchemy
+        # sessions still expose and verify the actual dirty collection.
+        dirty = getattr(db.session, "dirty", ())
+        is_active = getattr(db.session, "is_active", True)
+        assert is_active or not dirty, (
+            f"DB session is dirty at test start: {dirty}"
         )
 
     yield  # test runs
@@ -757,8 +809,9 @@ def _verify_test_state(request, app):
             pass
 
         # Check no dirty/flushed state
-        assert not db.session.dirty, (
-            f"DB session has dirty state at teardown: {db.session.dirty}"
+        dirty = getattr(db.session, "dirty", ())
+        assert not dirty, (
+            f"DB session has dirty state at teardown: {dirty}"
         )
 
 

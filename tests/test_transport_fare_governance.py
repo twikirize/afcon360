@@ -35,6 +35,7 @@ def _tables(base=10.0):
                               "premium": 1.5, "van": 1.8, "luxury": 2.0},
         "minimum_fare": 5.0,
         "peak": {"hours": [[7, 10], [17, 20]], "multiplier": 1.3},
+        "currency": "USD",
     }
 
 

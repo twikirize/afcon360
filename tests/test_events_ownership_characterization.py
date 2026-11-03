@@ -176,7 +176,8 @@ def test_organization_operator(test_db, char_user, char_org, other_user):
         organizer_id=other_user.id,
         organization_id=char_org.id,
         created_by_type=CreatorType.ORGANIZATION,
-        created_by_id=char_org.id,
+        created_by_id=char_user.id,
+        created_by_entity_id=char_org.id,
         current_owner_type=OwnerType.ORGANIZATION,
         current_owner_id=char_org.id
     )

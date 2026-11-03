@@ -1528,20 +1528,10 @@ class DriverStatusResource(Resource):
         except ValueError as e:
             return {"success": False, "error": str(e)}, 400
 
-        # SUPPLY-00b: corrected invariant -- is_online => is_available.
-        # Refuse the forbidden combination (online without qualification).
-        # Project the end state so a partial payload is validated against
-        # the resulting state, not just the fields present.
-        projected_online = is_online if is_online is not None else driver.is_online
-        projected_available = is_available if is_available is not None else driver.is_available
-        if projected_online and not projected_available:
-            return {
-                "success": False,
-                "error": "Driver must be available to become online",
-            }, 422
-
-        # Eligibility gate: going online is only allowed when can_go_live is
-        # ready.  Refuse with a 403 + checklist so the UI can explain why.
+        # Eligibility is the first decision for an attempted go-live. A
+        # suspended / unapproved / otherwise ineligible driver must receive
+        # the authoritative 403 checklist regardless of the requested
+        # availability combination.
         if is_online:
             checklist = can_go_live(driver)
             if not checklist.ready:
@@ -1550,6 +1540,17 @@ class DriverStatusResource(Resource):
                     "error": "driver is not eligible to go live",
                     "go_live": checklist.to_dict(),
                 }, 403
+
+        # SUPPLY-00b: corrected invariant -- is_online => is_available.
+        # Project the end state so partial payloads are validated against the
+        # resulting state, not only against fields present in the request.
+        projected_online = is_online if is_online is not None else driver.is_online
+        projected_available = is_available if is_available is not None else driver.is_available
+        if projected_online and not projected_available:
+            return {
+                "success": False,
+                "error": "Driver must be available to become online",
+            }, 422
 
         try:
             result = get_provider_service().set_driver_operational_status(

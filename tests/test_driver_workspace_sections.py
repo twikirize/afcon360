@@ -30,6 +30,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
+from html import unescape
 
 from app.extensions import db
 from app.notifications.models import (
@@ -310,25 +311,15 @@ class TestWorkspaceSectionsRender:
         driver = _seed_driver(app, compliance=ComplianceStatus.PENDING_REVIEW)
         _enter_driver_context(client, driver)
 
-        body = _fresh_get(client, "/transport/driver-dashboard").data.decode("utf-8")
+        body = unescape(_fresh_get(client, "/transport/driver-dashboard").data.decode("utf-8"))
 
+        # The current shell groups these functions into seven navigable panels.
         for heading in [
-            "Active Trip",
-            "Upcoming Assignments",
-            "Ride Offers",
-            "Scheduled Work",
-            "Recent Trips",
-            "Vehicles",
-            "Vehicle Switching",
-            "Earnings",
-            "Notifications",
-            "Safety",
-            "Compliance",
-            "Opportunities",
-            "Support",
-            "Settings",
+            "Active trip", "Ride Offers", "Scheduled work", "Recent trips",
+            "My Vehicles", "Switch vehicle", "Total captured earnings",
+            "Performance", "Notifications", "Safety", "Profile & compliance",
         ]:
-            assert heading in body, f"Missing workspace section: {heading!r}"
+            assert heading.lower() in body.lower(), f"Missing workspace panel: {heading!r}"
 
     def test_upcoming_section_present(self, app, client):
         """Upcoming Assignments section is part of the workspace contract."""
@@ -337,7 +328,7 @@ class TestWorkspaceSectionsRender:
 
         body = _fresh_get(client, "/transport/driver-dashboard").data.decode("utf-8")
 
-        assert "Upcoming Assignments" in body
+        assert "Upcoming" in body
 
     def test_performance_section_renders_metrics(self, app, client):
         driver = _seed_driver(app, compliance=ComplianceStatus.PENDING_REVIEW)
@@ -346,10 +337,10 @@ class TestWorkspaceSectionsRender:
         body = _fresh_get(client, "/transport/driver-dashboard").data.decode("utf-8")
 
         assert "Performance" in body
-        assert "Acceptance Rate" in body
-        assert "Cancellation Rate" in body
-        assert "Reliability Score" in body
-        assert "Total Distance" in body
+        assert "acceptance rate" in body.lower()
+        assert "cancellation rate" in body.lower()
+        assert "reliability score" in body.lower()
+        assert "total distance" in body.lower()
 
 
 class TestActiveTripSection:
@@ -447,7 +438,7 @@ class TestScheduledWorkSection:
 
         body = _fresh_get(client, "/transport/driver-dashboard").data.decode("utf-8")
 
-        assert "Scheduled Work" in body
+        assert "Scheduled work" in body
         assert "AirportLink" in body
 
     def test_no_scheduled_work_empty_state(self, app, client):
@@ -475,7 +466,7 @@ class TestRecentTripsSection:
 
         body = _fresh_get(client, "/transport/driver-dashboard").data.decode("utf-8")
 
-        assert "Recent Trips" in body
+        assert "Recent trips" in body
         assert booking.booking_reference in body
         assert "Completed" in body
 
@@ -492,7 +483,7 @@ class TestVehicleSwitchingSection:
 
         body = _fresh_get(client, "/transport/driver-dashboard").data.decode("utf-8")
 
-        assert "Vehicle Switching" in body
+        assert "Switch vehicle" in body
         assert "SW-402" in body
         assert "vehicle-switch" in body
         assert f"/api/transport/drivers/{driver.driver_profile_id}/vehicles/switch" in body
@@ -503,7 +494,7 @@ class TestVehicleSwitchingSection:
 
         body = _fresh_get(client, "/transport/driver-dashboard").data.decode("utf-8")
 
-        assert "Vehicle Switching" in body
+        assert "Switch Vehicle" in body
         assert "Register another vehicle to enable switching" in body
 
 

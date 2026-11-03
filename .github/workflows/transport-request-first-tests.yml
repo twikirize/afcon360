@@ -1,6 +1,9 @@
 name: Transport request-first PostgreSQL regression
 
 on:
+  push:
+    branches:
+      - fix/workspace-deep-links-test-baseline-20261102
   pull_request:
     branches: [main]
     paths:
@@ -14,7 +17,12 @@ on:
       - "scripts/seed_payment_methods.py"
       - "app/tasks/transport_recovery.py"
       - "app/utils/validators.py"
+      - "app/utils/module_toggle_service.py"
       - "app/config.py"
+      - "tests/test_geo_integration.py"
+      - "tests/test_module_integration.py"
+      - "tests/test_*.py"
+      - "tests/transport/**"
       - "app/__init__.py"
       - "templates/transport/**"
       - "templates/admin/transport_admin_*.html"
@@ -38,6 +46,40 @@ on:
       - "tests/test_transport_restful_auth.py"
       - "tests/test_transport_tracking_live.py"
       - "tests/test_transport_frontend_contracts.py"
+      - "tests/wallet/**"
+      - "tests/test_wallet_authorization_limits.py"
+      - "tests/test_kyc_limit_authorization.py"
+      - "tests/test_process_webhook_dead_letter.py"
+      - "tests/test_dead_letter_alert.py"
+      - "tests/test_payment_method_capabilities.py"
+      - "tests/conftest.py"
+      - "tests/helpers/**"
+      - "scripts/ci/redis_socketio_runtime_smoke.py"
+      - "scripts/ops/**"
+      - "docs/release/**"
+      - "tests/test_owner_mfa_security.py"
+      - "tests/test_security_answer_hashing.py"
+      - "tests/test_ui_20_csp.py"
+      - "tests/test_csp_strict_flag.py"
+      - "tests/test_mfa_secret_encryption.py"
+      - "tests/test_deletion_guard.py"
+      - "app/auth/deletion_guard.py"
+      - "app/auth/security_policy.py"
+      - "app/api/health.py"
+      - "tests/test_health_rate_limit.py"
+      - "app/auth/otp_service.py"
+      - "app/models/system_config.py"
+      - "env.example"
+      - "templates/auth/**"
+      - "app/auth/routes.py"
+      - "app/auth/services.py"
+      - "app/identity/models/user.py"
+      - "app/profile/routes.py"
+      - "app/utils/security.py"
+      - "app/admin/owner/routes.py"
+      - "templates/owner/settings.html"
+      - "templates/auth/mfa_setup.html"
+      - "templates/auth/mfa_status.html"
       - "tests/test_request_tracker_polling.cjs"
       - "tests/test_geo_realtime_fallback.cjs"
       - "tests/test_rider_sync_driver_card.cjs"
@@ -45,6 +87,15 @@ on:
       - "requirements.txt"
       - ".github/workflows/transport-request-first-tests.yml"
   workflow_dispatch:
+    inputs:
+      test_scope:
+        description: "Run only recorded failing tests, or the final full regression"
+        required: true
+        type: choice
+        options:
+          - failed_only
+          - full_suite
+        default: failed_only
 
 permissions:
   contents: read
@@ -55,13 +106,17 @@ concurrency:
 
 jobs:
   postgres-regression:
-    name: PostgreSQL 18 — request lifecycle, payments, admin queues
+    name: PostgreSQL ${{ matrix.postgres-version }} — request lifecycle, payments, admin queues
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres-version: ["15", "18"]
 
     services:
       postgres:
-        image: postgres:18
+        image: postgres:${{ matrix.postgres-version }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -73,6 +128,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
 
     env:
       APP_ENV: testing
@@ -81,14 +145,23 @@ jobs:
       SOCKETIO_ENABLED: "false"
       LOG_LEVEL: WARNING
       SECRET_KEY: "ci-only-not-a-production-secret"
+      SECURITY_SALT: "ci-only-security-salt-value-long-enough-for-tests-2026"
       ENCRYPTION_KEY: "ci-only-not-a-production-key"
-      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afcon360_test
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afcon360_test
+      TEST_DATABASE_URL: postgresql://postgres@localhost:5432/afcon360_test
+      DATABASE_URL: postgresql://postgres@localhost:5432/afcon360_test
       TEST_DB_LOCK_TIMEOUT: "60"
+      TEST_ISOLATION_TIMING: "1"
 
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      - name: Configure passwordless CI PostgreSQL authentication
+        shell: bash
+        run: |
+          umask 077
+          printf 'localhost:5432:afcon360_test:postgres:postgres\n' > "$HOME/.pgpass"
+          chmod 600 "$HOME/.pgpass"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -122,6 +195,9 @@ jobs:
       # These source-level checks deliberately run before migration replay.
       # They can still report useful code/template failures when an unrelated
       # migration prevents the database-backed regression suite from starting.
+      - name: Validate read-only Oracle release audit script syntax
+        run: bash -n scripts/ops/pre_release_readonly_audit.sh
+
       - name: Compile Python modules changed by the transport feature
         run: >-
           python -m compileall -q
@@ -151,6 +227,36 @@ jobs:
           tests/test_transport_restful_auth.py
           tests/test_transport_tracking_live.py
           tests/test_transport_frontend_contracts.py
+          tests/test_owner_mfa_security.py
+          tests/test_security_answer_hashing.py
+          tests/test_mfa_secret_encryption.py
+          tests/wallet
+          tests/conftest.py
+          tests/test_deletion_guard.py
+          app/auth/deletion_guard.py
+          app/auth/context.py
+          app/auth/routes.py
+          app/accommodation/routes.py
+          app/identity/routes.py
+          app/transport/routes.py
+          app/auth/security_policy.py
+          app/auth/otp_service.py
+          app/auth/services.py
+          app/identity/models/user.py
+          app/profile/routes.py
+          app/utils/security.py
+          app/admin/owner/routes.py
+          app/models/system_config.py
+          app/api/health.py
+          tests/test_health_rate_limit.py
+          tests/test_auth_context.py
+          tests/test_driver_workspace_consolidation.py
+          tests/test_isolation_baseline.py
+          tests/test_stage4b8_context_switch_e2e_proof.py
+          tests/test_stage4b9_context_switch_nav_e2e.py
+          tests/test_org_workspace.py
+          tests/test_org_host_production_path.py
+          tests/test_events_ownership_characterization.py
 
       - name: Parse changed Jinja templates without database access
         run: |
@@ -166,7 +272,13 @@ jobs:
               "transport/rides/show.html",
               "admin/transport_admin_dashboard.html",
               "admin/transport_admin_operations.html",
+              "owner/settings.html",
+              "auth/mfa_setup.html",
+              "auth/mfa_status.html",
               "transport/admin/dashboard.html",
+              "base.html",
+              "transport/driver/base.html",
+              "components/workspace_context_switcher.html",
           )
           env = Environment(
               loader=FileSystemLoader("templates"),
@@ -211,26 +323,51 @@ jobs:
           node tests/test_geo_realtime_fallback.cjs
           node tests/test_request_tracker_polling.cjs
 
-      - name: Run fare confirmation, request lifecycle, payment, and admin regressions
+      - name: Run only the selected PostgreSQL regression tests
+        env:
+          TEST_ISOLATION_TIMINGS: "1"
         run: |
-          python -m pytest -vv -x --timeout=120 --timeout-method=signal --durations=20 \
-            tests/test_transport_ride_options.py \
-            tests/test_transport_booking_route_path.py \
-            tests/test_ui11_booking_flash_copy.py \
-            tests/test_transport_request_tracker_copy.py \
-            tests/test_transport_cash_confirmation_semantics.py \
-            tests/test_transport_admin_canonical_overview.py \
-            tests/transport/test_ride_request_create.py \
-            tests/transport/test_trip_end_payment_semantics.py \
-            tests/transport/test_wallet_invoice_boundary.py \
-            tests/transport/test_location_lifecycle_booking_set.py \
-            tests/transport/test_cancel_fee_scheduled_p1.py \
-            tests/test_geo_realtime.py \
-            tests/test_geo_foundation.py \
-            tests/transport/test_driver_console.py \
-            tests/test_driver_location_csrf_refresh.py \
-            tests/test_transport_d2_evidence.py \
-            tests/test_transport_pwa_shell.py \
-            tests/test_transport_restful_auth.py \
-            tests/test_transport_tracking_live.py \
-            tests/test_transport_frontend_contracts.py
+          mkdir -p artifacts
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${{ inputs.test_scope }}" == "full_suite" ]] || \
+             [[ "${GITHUB_EVENT_NAME}" == "push" && -f tests/ci/FULL_REGRESSION_GATE ]]; then
+            echo "Running final full-suite regression."
+            TARGETS=(tests/)
+          else
+            echo "Running only the recorded failing tests."
+            mapfile -t TARGETS < tests/ci/failed_test_targets.txt
+            if [[ ${#TARGETS[@]} -eq 0 ]]; then
+              echo "No failed-test targets are recorded."
+              exit 2
+            fi
+          fi
+          python -m pytest -vv --continue-on-collection-errors \
+            --timeout=120 --timeout-method=signal --durations=30 \
+            --junitxml=artifacts/full-suite.xml \
+            "${TARGETS[@]}"
+
+      - name: Upload full-suite failure inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-suite-postgres-${{ matrix.postgres-version }}-results
+          path: artifacts/full-suite.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Verify Redis-backed sessions, rate limiting, Celery, and Socket.IO
+        if: >-
+          success() &&
+          (
+            (github.event_name == 'workflow_dispatch' && inputs.test_scope == 'full_suite') ||
+            (github.event_name == 'push' && hashFiles('tests/ci/FULL_REGRESSION_GATE') != '')
+          )
+        env:
+          APP_ENV: docker
+          FLASK_ENV: production
+          DISABLE_REDIS: "0"
+          SOCKETIO_ENABLED: "true"
+          SOCKETIO_ASYNC_MODE: threading
+          REDIS_URL: redis://localhost:6379/0
+          CELERY_BROKER_URL: redis://localhost:6379/2
+          CELERY_RESULT_BACKEND: redis://localhost:6379/3
+        run: python scripts/ci/redis_socketio_runtime_smoke.py

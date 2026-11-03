@@ -37,7 +37,7 @@ def viewer(app):
     from app.identity.models.user import User, UserRole
 
     with app.app_context():
-        user_role = get_or_create_role("user", level=6)
+        user_role = get_or_create_role("transport_admin", level=4)
         uid = uuid.uuid4().hex[:8]
         user = User(
             public_id=str(uuid.uuid4()),

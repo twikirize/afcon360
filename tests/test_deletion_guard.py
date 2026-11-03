@@ -54,6 +54,8 @@ def _enable_owner_mfa(db_session, owner, secret=pyotp.random_base32()):
         secret=secret,
         is_active=True,
     )
+    # Exercise the encrypted-at-rest representation used by production.
+    mfa.set_totp_secret(secret)
     db_session.add(mfa)
     db_session.flush()
     return mfa

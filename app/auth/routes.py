@@ -51,9 +51,12 @@ def _verify_mfa_token(user, token: str, backup_code: bool = False) -> bool:
         from app.identity.models.user import MFASecret
         
         # Get active MFA secret
+        # AFCON360's verified login factor is TOTP. SMS is not yet a
+        # completed login verifier, so never select it or accept a custom fallback.
         mfa_secret = MFASecret.query.filter_by(
             user_id=user.id,
-            is_active=True
+            mfa_type='totp',
+            is_active=True,
         ).first()
         
         if not mfa_secret:
@@ -70,9 +73,17 @@ def _verify_mfa_token(user, token: str, backup_code: bool = False) -> bool:
         # Verify TOTP token
         if mfa_secret.mfa_type == 'totp':
             import pyotp
-            totp = pyotp.TOTP(mfa_secret.secret)
+            plaintext_secret = mfa_secret.get_totp_secret()
+            totp = pyotp.TOTP(plaintext_secret)
             if totp.verify(token, valid_window=1):
-                mfa_secret.last_used = datetime.now(timezone.utc)
+                verified_at = datetime.now(timezone.utc)
+                # Transparently encrypt historical plaintext secrets after
+                # the owner proves possession with a valid current code.
+                if not mfa_secret.totp_secret_is_encrypted:
+                    mfa_secret.set_totp_secret(plaintext_secret)
+                mfa_secret.last_used = verified_at
+                from app.auth.security_policy import record_totp_proof
+                record_totp_proof(user, verified_at, secret=plaintext_secret, commit=False)
                 db.session.commit()
                 return True
         
@@ -84,21 +95,44 @@ def _verify_mfa_token(user, token: str, backup_code: bool = False) -> bool:
         return False
         
     except ImportError:
-        # Fallback: simple time-based verification (less secure, for dev only)
-        import hashlib
-        import time
-        if hasattr(user, 'mfa_secret'):
-            secret = user.mfa_secret
-            # Check current time window and adjacent windows
-            for window in [-1, 0, 1]:
-                time_window = int(time.time()) // 30 + window
-                expected = hashlib.sha256(f"{secret}:{time_window}".encode()).hexdigest()[:6]
-                if token == expected:
-                    return True
+        # MFA must never fall back to a private, non-standard algorithm.
+        current_app.logger.critical("pyotp is required for MFA verification but is unavailable")
         return False
-    except Exception as e:
-        current_app.logger.error(f"MFA verification error: {e}")
+    except Exception:
+        current_app.logger.exception("MFA verification error")
         return False
+
+
+def _owner_has_active_totp(user) -> bool:
+    """Return whether an active TOTP secret exists, without assuming it was used."""
+    from app.identity.models.user import MFASecret
+
+    try:
+        return MFASecret.query.filter_by(
+            user_id=user.id,
+            mfa_type="totp",
+            is_active=True,
+        ).first() is not None
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Could not inspect active owner TOTP enrollment")
+        return False
+
+
+def _begin_owner_mfa_setup(user, provisional_session_id=None) -> None:
+    """Issue a 10-minute, password-verified TOTP enrollment capability only."""
+    if provisional_session_id:
+        try:
+            from app.auth.sessions import revoke_session
+            revoke_session(provisional_session_id)
+        except Exception:
+            current_app.logger.exception("Failed to revoke provisional owner session")
+
+    session.clear()
+    session["pending_owner_mfa_setup_user"] = user.public_id
+    session["pending_owner_mfa_setup_expires_at"] = int(time.time()) + 600
+    session.permanent = True
+    _rotate_session_id()
 
 
 def _rotate_session_id():
@@ -700,10 +734,9 @@ def verify_phone():
         flash("Please enter a valid 6-digit code.", "danger")
         return redirect(request.referrer or url_for("index"))
 
-    if not full_name:
-        flash("Please enter your full name as it appears on your ID document.", "danger")
-        return redirect(request.referrer or url_for("auth.verify_phone"))
-
+    # Phone verification proves control of the registered contact channel.
+    # Canonical name collection/verification is handled by the profile and KYC
+    # flows; it must not block a valid phone OTP.
     success, message = PhoneVerificationService.verify_code(
         user=current_user,
         profile=profile,
@@ -831,6 +864,13 @@ def login():
     from app.extensions import redis_client
 
     if request.method == "POST":
+        # Do not carry a successful second-factor marker between login attempts.
+        # It is set again only after this request verifies MFA for these credentials.
+        session.pop("mfa_verified", None)
+        session.pop("mfa_verified_at", None)
+        session.pop("mfa_verified_method", None)
+        session.pop("pending_mfa_user_id", None)
+
         username   = (request.form.get("username") or "").strip()[:64]
         email      = (request.form.get("email") or "").strip()[:64]
         identifier = username or email
@@ -884,6 +924,20 @@ def login():
         if result == AuthResult.MFA_REQUIRED:
             user = payload["user"]
 
+            # Mandatory owner MFA is specifically TOTP. If a legacy owner has
+            # only an unsupported/never-verified method, allow only the limited
+            # password-verified enrollment path; do not issue an authenticated
+            # session and do not accept the unsupported method as proof.
+            if user.is_app_owner():
+                from app.auth.security_policy import owner_mfa_required
+                if owner_mfa_required() and not _owner_has_active_totp(user):
+                    _begin_owner_mfa_setup(user)
+                    flash(
+                        "Complete authenticator setup before signing in to your owner account.",
+                        "warning",
+                    )
+                    return redirect(url_for("auth.setup_mfa"))
+
             # First step: valid credentials + MFA enabled. Present the
             # challenge; the same form re-submits username/password +
             # mfa_code together (consistent with the owner inline-MFA flow).
@@ -914,6 +968,8 @@ def login():
             # MFA confirmed: start the server session and let the standard
             # SUCCESS branch below complete the owner/non-owner login setup.
             session["mfa_verified"] = True
+            session["mfa_verified_at"] = datetime.now(timezone.utc).isoformat()
+            session["mfa_verified_method"] = "backup" if len(mfa_code) == 8 else "totp"
             session.pop("pending_mfa_user_id", None)
             session_id = start_server_session(user.public_id, ip, user_agent)
             db.session.commit()
@@ -924,7 +980,6 @@ def login():
             user = payload["user"]
             locked_until = getattr(user, "locked_until", None)
             if locked_until:
-                from datetime import datetime, timezone
                 if locked_until.tzinfo is None:
                     locked_until = locked_until.replace(tzinfo=timezone.utc)
                 remaining = locked_until - datetime.now(timezone.utc)
@@ -964,6 +1019,53 @@ def login():
                 flash("Please activate your account before logging in.", "warning")
                 return render_template("auth/login.html", username=identifier)
 
+            # Enforce owner MFA before any branch can create an authenticated
+            # session, including the email-verification redirect below.
+            owner_mfa_enforced = False
+            if user.is_app_owner():
+                from app.auth.security_policy import owner_mfa_required
+                owner_mfa_enforced = owner_mfa_required()
+                if owner_mfa_enforced and not _owner_has_active_totp(user):
+                    current_app.logger.warning(
+                        "Owner login requires authenticator enrollment or re-verification: %s",
+                        user.public_id,
+                    )
+                    _begin_owner_mfa_setup(user, provisional_session_id=session_id)
+                    flash(
+                        "Your owner account must enrol and verify an authenticator before sign-in can continue.",
+                        "warning",
+                    )
+                    return redirect(url_for("auth.setup_mfa"))
+
+                if owner_mfa_enforced and not getattr(user, "mfa_enabled", False):
+                    # The secret was previously verified, but the user flag is
+                    # inconsistent. Correct it and require a fresh login so the
+                    # normal MFA challenge runs before access is granted.
+                    user.mfa_enabled = True
+                    db.session.commit()
+                    try:
+                        from app.auth.sessions import revoke_session
+                        revoke_session(session_id)
+                    except Exception:
+                        current_app.logger.exception("Failed to revoke inconsistent owner session")
+                    session.clear()
+                    flash("Authenticator enrollment is confirmed. Sign in again using your TOTP code.", "info")
+                    return redirect(url_for("auth.login"))
+
+                if owner_mfa_enforced and not session.get("mfa_verified"):
+                    current_app.logger.warning(
+                        "Owner login blocked because mandatory MFA was not completed: %s",
+                        user.public_id,
+                    )
+                    try:
+                        from app.auth.sessions import revoke_session
+                        revoke_session(session_id)
+                    except Exception:
+                        current_app.logger.exception("Failed to revoke owner session without MFA proof")
+                    session.clear()
+                    flash("Enter the current authenticator code to finish signing in.", "danger")
+                    return redirect(url_for("auth.login"))
+
             # Enforce email verification if required by configuration
             require_verification = current_app.config.get("REQUIRE_EMAIL_VERIFICATION", False)
             if require_verification and not getattr(user, "email_verified", False):
@@ -982,7 +1084,7 @@ def login():
             # SECURITY: Owner login with optional MFA (configurable)
             if user.is_app_owner():
                 # Check if MFA is required for owners (configurable in settings)
-                require_mfa = current_app.config.get('REQUIRE_OWNER_MFA', False)
+                require_mfa = owner_mfa_enforced
                 
                 if require_mfa:
                     # Owners MUST have MFA enabled when requirement is active
@@ -1028,7 +1130,7 @@ def login():
                 )
 
                 # Set up session for owner
-                require_mfa = current_app.config.get('REQUIRE_OWNER_MFA', False)
+                require_mfa = owner_mfa_enforced
                 session.update({
                     "server_session_id": session_id,
                     "user_id": user.public_id,
@@ -1136,12 +1238,8 @@ def login():
                     # Store organization info for quick switching
                     session["available_orgs"] = active_orgs
 
-                    # If user has a default organization, set it as current context
-                    if hasattr(user, 'default_org_id') and user.default_org_id:
-                        default_org_exists = any(org["org_id"] == user.default_org_id for org in active_orgs)
-                        if default_org_exists:
-                            session["current_context"] = "organization"
-                            session["current_org_id"] = user.default_org_id
+                    # Memberships are exposed for explicit context switching.
+                    # Do not silently enter an organisation on login.
 
             next_page = request.args.get("next") or session.pop("next_url", None)
             if next_page and not is_safe_url(next_page):
@@ -1637,107 +1735,278 @@ def complete_profile():
 # Enhanced MFA Routes
 # ---------------------------------------------------------------------------
 
-@auth_bp.route('/mfa/setup')
-@login_required
-def mfa_setup():
-    """MFA setup page."""
-    from app.identity.models.user import MFASecret
-    
-    # Check if MFA is already enabled
-    existing_mfa = MFASecret.query.filter_by(
-        user_id=current_user.id,
-        is_active=True
+_PENDING_TOTP_SESSION_KEY = "pending_totp_enrollment_enc"
+
+
+def _store_pending_totp_enrollment(payload: dict) -> None:
+    """Encrypt pending authenticator material before placing it in server-side session storage."""
+    from app.utils.security import _get_fernet
+
+    encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    token = _get_fernet().encrypt(encoded).decode("ascii")
+    session[_PENDING_TOTP_SESSION_KEY] = token
+    # Do not retain or accept the former plaintext session representation.
+    session.pop("pending_totp_enrollment", None)
+
+
+def _load_pending_totp_enrollment():
+    """Decrypt the short-lived pending authenticator material; fail closed on corruption."""
+    from app.utils.security import _get_fernet
+
+    token = session.get(_PENDING_TOTP_SESSION_KEY)
+    if not isinstance(token, str) or not token:
+        return None
+    try:
+        decoded = _get_fernet().decrypt(token.encode("ascii"))
+        payload = json.loads(decoded.decode("utf-8"))
+        return payload if isinstance(payload, dict) else None
+    except Exception:
+        session.pop(_PENDING_TOTP_SESSION_KEY, None)
+        current_app.logger.warning("Pending TOTP enrollment could not be decrypted; requiring setup again")
+        return None
+
+
+def _clear_pending_totp_enrollment() -> None:
+    session.pop(_PENDING_TOTP_SESSION_KEY, None)
+    session.pop("pending_totp_enrollment", None)
+
+
+def _mfa_enrollment_identity():
+    """Resolve an authenticated user or a short-lived password-verified owner."""
+    from app.identity.models.user import User
+
+    if current_user.is_authenticated:
+        return current_user, False
+
+    public_id = session.get("pending_owner_mfa_setup_user")
+    expires_at = session.get("pending_owner_mfa_setup_expires_at")
+    try:
+        expired = not expires_at or time.time() > float(expires_at)
+    except (TypeError, ValueError):
+        expired = True
+    if not public_id or expired:
+        session.pop("pending_owner_mfa_setup_user", None)
+        session.pop("pending_owner_mfa_setup_expires_at", None)
+        return None, False
+
+    user = User.query.filter_by(
+        public_id=public_id,
+        is_active=True,
+        is_deleted=False,
     ).first()
-    
-    if existing_mfa:
-        flash('MFA is already enabled for your account', 'info')
-        return redirect(url_for('auth.mfa_status'))
-    
-    return render_template('auth/mfa_setup.html')
+    if not user or not user.is_app_owner():
+        session.pop("pending_owner_mfa_setup_user", None)
+        session.pop("pending_owner_mfa_setup_expires_at", None)
+        return None, False
+    return user, True
+
+
+@auth_bp.route('/mfa/setup')
+@limiter.limit("10 per hour")
+def mfa_setup():
+    """Render TOTP enrollment for an authenticated user or verified owner login."""
+    target_user, preauth_owner = _mfa_enrollment_identity()
+    if not target_user:
+        flash('Please sign in before setting up an authenticator.', 'warning')
+        return redirect(url_for('auth.login'))
+
+    from app.identity.models.user import MFASecret
+    existing = MFASecret.query.filter_by(
+        user_id=target_user.id, mfa_type='totp', is_active=True
+    ).first()
+    replacing_existing = False
+    if existing:
+        from app.auth.security_policy import recent_session_mfa_proof
+        if not current_user.is_authenticated or not recent_session_mfa_proof():
+            if preauth_owner:
+                flash('An authenticator is already enrolled. Sign in with its current code or a one-time backup code.', 'info')
+                session.pop("pending_owner_mfa_setup_user", None)
+                session.pop("pending_owner_mfa_setup_expires_at", None)
+                return redirect(url_for('auth.login'))
+            flash('To replace your authenticator, sign in again using its current code or a one-time backup code.', 'warning')
+            return redirect(url_for('auth.mfa_status'))
+        replacing_existing = True
+
+    return render_template(
+        'auth/mfa_setup.html',
+        preauth_owner=preauth_owner,
+        replacing_existing=replacing_existing,
+    )
+
 
 # Backwards compatible alias for templates that still link to auth.setup_mfa
 auth_bp.add_url_rule('/mfa/setup', endpoint='setup_mfa', view_func=mfa_setup)
 
+
 @auth_bp.route('/mfa/enable', methods=['POST'])
-@login_required
-@require_fresh_user
+@limiter.limit("5 per hour")
 def mfa_enable():
-    """Enable MFA for user."""
-    from app.identity.models.user import MFASecret
-    import pyotp
-    import qrcode
-    import io
+    """Generate pending TOTP credentials; do not mark MFA enabled yet."""
     import base64
-    
-    mfa_type = request.form.get('mfa_type', 'totp')
-    device_name = request.form.get('device_name', 'Primary Device')
-    
-    if mfa_type == 'totp':
-        # Generate TOTP secret
-        secret = pyotp.random_base32()
-        
-        # Create MFA record
+    import io
+    import qrcode
+    import pyotp
+
+    target_user, preauth_owner = _mfa_enrollment_identity()
+    if not target_user:
+        return jsonify({'success': False, 'error': 'Sign-in or owner enrollment session expired.'}), 401
+    if current_user.is_authenticated and not session.get('_fresh'):
+        return jsonify({'success': False, 'error': 'Please sign in again before changing MFA.'}), 401
+
+    from app.identity.models.user import MFASecret
+    existing = MFASecret.query.filter_by(
+        user_id=target_user.id, mfa_type='totp', is_active=True
+    ).first()
+    if existing:
+        from app.auth.security_policy import recent_session_mfa_proof
+        if not current_user.is_authenticated or not recent_session_mfa_proof():
+            return jsonify({
+                'success': False,
+                'error': 'Sign in again using your current authenticator or a one-time backup code before replacing it.',
+            }), 403
+
+    device_name = (request.form.get('device_name') or 'Primary Device').strip()[:100]
+    secret = pyotp.random_base32()
+    backup_codes = MFASecret(
+        user_id=target_user.id, mfa_type='totp', secret=secret
+    ).generate_backup_codes()
+
+    # Pending credentials live only in the server-side session until the user
+    # proves possession by entering a valid code from the authenticator app.
+    _store_pending_totp_enrollment({
+        'user_public_id': target_user.public_id,
+        'secret': secret,
+        'device_name': device_name or 'Primary Device',
+        'backup_codes': backup_codes,
+        'expires_at': int(time.time()) + 600,
+        'preauth_owner': bool(preauth_owner),
+    })
+
+    totp_uri = pyotp.TOTP(secret).provisioning_uri(
+        name=target_user.email or target_user.public_id,
+        issuer_name='AFCON360',
+    )
+    qr = qrcode.QRCode(version=1, box_size=7, border=4)
+    qr.add_data(totp_uri)
+    qr.make(fit=True)
+    image_buffer = io.BytesIO()
+    qr.make_image(fill_color='black', back_color='white').save(image_buffer, format='PNG')
+    qr_data_uri = 'data:image/png;base64,' + base64.b64encode(image_buffer.getvalue()).decode('ascii')
+
+    return jsonify({
+        'success': True,
+        'qr_code': qr_data_uri,
+        'secret': secret,
+        'backup_codes': backup_codes,
+        'expires_in': 600,
+    })
+
+
+@auth_bp.route('/mfa/confirm', methods=['POST'])
+@limiter.limit("5 per 5 minutes")
+def mfa_confirm():
+    """Verify TOTP possession, then persist and activate the authenticator."""
+    import pyotp
+
+    target_user, preauth_owner = _mfa_enrollment_identity()
+    if not target_user:
+        return jsonify({'success': False, 'error': 'Sign-in or owner enrollment session expired.'}), 401
+    if current_user.is_authenticated and not session.get('_fresh'):
+        return jsonify({'success': False, 'error': 'Please sign in again before changing MFA.'}), 401
+
+    pending = _load_pending_totp_enrollment()
+    if not isinstance(pending, dict):
+        return jsonify({'success': False, 'error': 'Start authenticator setup again.'}), 400
+
+    try:
+        expired = time.time() > float(pending.get('expires_at') or 0)
+    except (TypeError, ValueError):
+        expired = True
+    if (
+        pending.get('user_public_id') != target_user.public_id
+        or expired
+        or bool(pending.get('preauth_owner')) != bool(preauth_owner)
+    ):
+        _clear_pending_totp_enrollment()
+        return jsonify({'success': False, 'error': 'Authenticator setup expired. Start again.'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    code = (request.form.get('code') or payload.get('code') or '').strip()
+    if not code or not pyotp.TOTP(pending['secret']).verify(code, valid_window=1):
+        return jsonify({'success': False, 'error': 'The authenticator code is invalid. Enter the current code shown in your app.'}), 400
+
+    from app.identity.models.user import MFASecret
+    mfa_secret = MFASecret.query.filter_by(
+        user_id=target_user.id, mfa_type='totp'
+    ).first()
+    if mfa_secret is not None and mfa_secret.is_active:
+        from app.auth.security_policy import recent_session_mfa_proof
+        if not current_user.is_authenticated or not recent_session_mfa_proof():
+            return jsonify({
+                'success': False,
+                'error': 'Your recent MFA verification has expired. Sign in again before replacing the authenticator.',
+            }), 403
+    if mfa_secret is None:
         mfa_secret = MFASecret(
-            user_id=current_user.id,
-            mfa_type=mfa_type,
-            secret=secret,
-            device_name=device_name,
-            is_active=True
+            user_id=target_user.id,
+            mfa_type='totp',
+            secret=pending['secret'],
+            device_name=pending['device_name'],
+            is_active=True,
         )
-        
-        # Generate backup codes
-        backup_codes = mfa_secret.generate_backup_codes()
-        mfa_secret.store_backup_codes(backup_codes)
-        
+        mfa_secret.set_totp_secret(pending['secret'])
         db.session.add(mfa_secret)
-        
-        # Update user
-        current_user.mfa_enabled = True
-        current_user.enable_mfa('totp', enabled_by_user_id=current_user.id)
-        
-        db.session.commit()
-        
-        # Generate QR code
-        totp_uri = pyotp.totp.TOTP(secret).provisioning_uri(
-            name=f"user_{current_user.id}@afcon360.com",
-            issuer_name="AFCON360 Wallet"
-        )
-        
-        qr = qrcode.QRCode(version=1, box_size=10, border=5)
-        qr.add_data(totp_uri)
-        qr.make(fit=True)
-        
-        img = qr.make_image(fill_color="black", back_color="white")
-        buffer = io.BytesIO()
-        img.save(buffer, format='PNG')
-        img_str = base64.b64encode(buffer.getvalue()).decode()
-        
-        qr_code = f"data:image/png;base64,{img_str}"
-        
+    else:
+        mfa_secret.set_totp_secret(pending['secret'])
+        mfa_secret.device_name = pending['device_name']
+        mfa_secret.is_active = True
+
+    mfa_secret.store_backup_codes(pending.get('backup_codes') or [])
+    verified_at = datetime.now(timezone.utc)
+    mfa_secret.last_used = verified_at
+    from app.auth.security_policy import record_totp_proof
+    record_totp_proof(target_user, verified_at, secret=pending['secret'], commit=False)
+    target_user.mfa_enabled = True
+    if not preauth_owner:
+        # This session has now proved possession of its newly enrolled factor.
+        session["mfa_verified"] = True
+        session["mfa_verified_at"] = datetime.now(timezone.utc).isoformat()
+        session["mfa_verified_method"] = "totp"
+    target_user.enable_mfa('totp', enabled_by_user_id=target_user.id)
+    db.session.add(target_user)
+    db.session.commit()
+
+    _clear_pending_totp_enrollment()
+    if preauth_owner:
+        session.pop('pending_owner_mfa_setup_user', None)
+        session.pop('pending_owner_mfa_setup_expires_at', None)
+        session.pop('mfa_verified', None)
         return jsonify({
             'success': True,
-            'secret': secret,
-            'qr_code': qr_code,
-            'backup_codes': backup_codes
+            'message': 'Authenticator verified and enabled. Sign in again with your password and authenticator code.',
+            'next_url': url_for('auth.login'),
         })
-    
-    return jsonify({'success': False, 'error': 'Unsupported MFA type'})
+
+    return jsonify({
+        'success': True,
+        'message': 'Authenticator verified and enabled.',
+        'next_url': url_for('auth.mfa_status'),
+    })
+
 
 @auth_bp.route('/mfa/status')
 @login_required
 def mfa_status():
-    """MFA status page."""
+    """Show MFA enrollment status without exposing authenticator secrets."""
     from app.identity.models.user import MFASecret
-    
     mfa_secrets = MFASecret.query.filter_by(user_id=current_user.id).all()
-    
     return render_template('auth/mfa_status.html', mfa_secrets=mfa_secrets)
+
 
 @auth_bp.route("/mfa/<user_id>", methods=["GET", "POST"], endpoint="mfa")
 def mfa(user_id: str):
     flash("Multi-factor authentication is not yet active.", "danger")
     return redirect(url_for("auth.login"))
-
 
 
 def get_active_channels(user) -> List[Dict[str, Any]]:

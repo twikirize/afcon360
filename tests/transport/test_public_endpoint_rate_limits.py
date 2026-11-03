@@ -27,7 +27,14 @@ from app.transport.api.ride_options_routes import _rate_limit_key
 
 RIDE_URL = "/api/transport/ride-options"
 FARE_URL = "/api/transport/fare/estimate"
-RIDE_PAYLOAD = {}
+RIDE_PAYLOAD = {
+    "pickup_latitude": 0.3150,
+    "pickup_longitude": 32.5820,
+    "dropoff_latitude": 0.3350,
+    "dropoff_longitude": 32.6000,
+    "currency": "USD",
+    "service_type": "on_demand",
+}
 FARE_PAYLOAD = {"service_type": "on_demand", "vehicle_class": "comfort"}
 LIMIT = 30
 

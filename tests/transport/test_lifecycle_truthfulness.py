@@ -111,11 +111,11 @@ def test_matching_ride_page_uses_true_wording(app, client):
     assert "Finding Driver" in html          # status-flow sf-label
     assert "Request received" in html        # timeline tl-label
     assert "Finding your driver" in html     # server badge + matching card
-    assert (
-        "Your request is still being matched and no driver has been "
-        "assigned yet. Cancelling now will not incur a fee."
-    ) in html
+    assert "We are contacting eligible drivers. Driver and vehicle details appear after acceptance." in html
+    assert "Cancelling now will not incur a fee." not in html
 
+    # Cancellation costs depend on the booking mode and policy; this page
+    # must not promise that every cancellation is free.
     # The old certainty claim is gone from the cancel-dialog copy.
     assert "Your booking is confirmed but no driver has been assigned yet" not in html
 

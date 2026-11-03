@@ -87,7 +87,7 @@ def test_0b_validate_single_sync_point():
     assert "updateMapTarget();" in va_block
     assert "updateContinueReason();" in va_block
     # safety gate preserved
-    assert "btnContinue.disabled = !state.dest || !state.pickup || !coordsPresent;" in va_block
+    assert "btnContinue.disabled = !state.dest || !state.pickup || !coordsPresent || !isScheduleValid();" in va_block
 
 
 def test_0b_csp_nonce_preserved():

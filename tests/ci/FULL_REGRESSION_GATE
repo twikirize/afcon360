@@ -1,0 +1,3 @@
+One-run release gate for the AFCON360 candidate branch.
+Its presence selects the complete tests/ suite and enables Redis/Celery/Socket.IO runtime smoke checks.
+Remove this marker after the full regression finishes; ordinary pushes use tests/ci/failed_test_targets.txt.

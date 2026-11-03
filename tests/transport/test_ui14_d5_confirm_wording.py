@@ -26,18 +26,20 @@ def test_confirm_action_requests_rather_than_asserts():
     text = _template()
     start = text.index('id="btnConfirm"')
     button = text[start:start + 400]
-    assert '<span>Request ride</span>' in button
-    # The old certainty-implying label is gone from the action itself
-    # (the stage-3 progress step label is a separate static caption).
-    assert '<span>Confirm</span>' not in button
+    assert "Confirm Fare &amp; Request Ride" in button or "Confirm Fare & Request Ride" in button
+    assert "Select payment" in button
+    # The old generic action label is gone; the rider must see fare + payment choice.
+    assert '<span>Request ride</span>' not in button
 
 
 def test_cash_indicator_and_submit_contract_unchanged():
     text = _template()
     start = text.index('id="btnConfirm"')
-    # The button under test is the submit control with its cash badge.
+    # The button submits only after the rider chooses a payment method.
     assert 'type="submit"' in text[start - 200:start]
-    assert '<span>Cash</span>' in text[start:start + 400]
+    assert 'id="btnConfirmPaymentLabel">Select payment</span>' in text[start:start + 400]
+    assert 'name="payment_method"' in text
+    assert '<span>Cash</span>' not in text[start:start + 400]
     # ID, behavior hooks and summaries referenced by the flow are intact.
     assert 'id="confirmTimeSub"' in text
 

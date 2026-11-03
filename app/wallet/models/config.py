@@ -319,12 +319,31 @@ class WalletSystemConfig(BaseModel):
     
     @classmethod
     def get_config(cls):
-        """Get or create system config"""
+        """Get the configuration without breaking a caller-owned transaction.
+
+        Wallet operations call this getter while an explicit SQLAlchemy
+        transaction is active. Committing here would close that transaction
+        before ledger entries and audit rows can be written. Flush the
+        singleton row into an explicitly managed transaction and let its
+        owner commit or roll it back. For a normal autobegin transaction,
+        retain the historical convenience of committing lazy initialization.
+        """
         config = cls.query.first()
-        if not config:
+        if config is None:
             config = cls()
             db.session.add(config)
-            db.session.commit()
+
+            session = db.session()
+            transaction = session.get_transaction()
+            origin = getattr(getattr(transaction, "origin", None), "name", None)
+            explicitly_managed = (
+                origin == "BEGIN"
+                or session.in_nested_transaction()
+            )
+            if explicitly_managed:
+                session.flush()
+            else:
+                session.commit()
         return config
     
     def to_dict(self):
