@@ -1252,3 +1252,132 @@ body.dark-mode #refreshBtn { color: #66bb6a; }
     background: var(--border-medium, #dee2e6);
   }
 }
+
+/* AFCON360 DASHBOARD — RESTORED 29 OCTOBER COCKPIT PRESENTATION LAYER — VERIFIED AGAINST 903a493 */
+/* =========================================
+   DRIVER COCKPIT — presentation layer on top of transport/base.css.
+   All component classes use the ck- prefix. Uses transport theme tokens only.
+   ========================================= */
+
+/* Panels ------------------------------------------------------------- */
+.ck-panel { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; align-items: start; }
+.ck-panel--full { grid-template-columns: 1fr; }
+.ck-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ck-full { grid-column: 1 / -1; }
+html.ck-js .ck-panel:not(.ck-active) { display: none; }
+
+/* Identity hero ------------------------------------------------------- */
+.ck-hero {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  background: linear-gradient(135deg, var(--bg-surface), var(--bg-elevated));
+  border: 1px solid var(--border-light); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card); padding: 18px 22px; margin-bottom: 16px;
+}
+.ck-hero-avatar {
+  width: 62px; height: 62px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--amber), var(--blue));
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-weight: 800; font-size: 1.4rem; color: #000;
+  flex-shrink: 0;
+}
+.ck-hero-info { flex: 1; min-width: 220px; }
+.ck-hero-name { font-family: var(--font-display); font-weight: 800; font-size: 1.25rem; line-height: 1.2; }
+.ck-hero-meta {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-muted); margin-top: 6px;
+}
+.ck-status {
+  display: flex; align-items: center; gap: 14px; padding: 10px 18px;
+  background: var(--bg-elevated); border: 1px solid var(--border-light); border-radius: 12px;
+}
+.ck-status-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+.ck-status-value { font-size: 0.88rem; font-weight: 700; }
+
+/* Toggle ------------------------------------------------------------- */
+.toggle { position: relative; display: inline-block; width: 46px; height: 26px; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; cursor: pointer; inset: 0;
+  background: var(--bg-hover); border: 1px solid var(--border-light);
+  border-radius: 26px; transition: 0.2s;
+}
+.toggle-slider::before {
+  content: ''; position: absolute; width: 20px; height: 20px;
+  left: 2px; top: 2px; background: var(--text-muted); border-radius: 50%; transition: 0.2s;
+}
+.toggle input:checked + .toggle-slider { background: var(--green); border-color: var(--green); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(20px); background: #000; }
+
+/* Focus card (state-driven) ------------------------------------------ */
+.ck-focus {
+  position: relative; grid-column: 1 / -1; border-radius: var(--radius-lg);
+  border: 1px solid var(--border-light);
+  background: linear-gradient(135deg, var(--bg-surface), var(--bg-elevated));
+  box-shadow: var(--shadow-card); padding: 24px 26px; margin-bottom: 4px; overflow: hidden;
+}
+.ck-focus::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--amber), var(--green)); opacity: 0.85;
+}
+.ck-focus--trip  { background: linear-gradient(135deg, rgba(59,130,246,0.06), var(--bg-surface) 48%); }
+.ck-focus--offer { background: linear-gradient(135deg, rgba(245,158,11,0.10), var(--bg-surface) 48%); }
+.ck-focus--live  { background: linear-gradient(135deg, rgba(22,163,74,0.10),  var(--bg-surface) 48%); }
+.ck-focus--idle  { background: linear-gradient(135deg, rgba(168,85,247,0.08), var(--bg-surface) 48%); }
+.ck-focus--req   { background: linear-gradient(135deg, rgba(245,158,11,0.10), var(--bg-surface) 48%); }
+
+.ck-focus-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.ck-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-display); font-weight: 700; font-size: 0.7rem;
+  letter-spacing: 0.05em; text-transform: uppercase; padding: 5px 12px; border-radius: 999px;
+}
+.ck-pill--blue  { background: var(--blue-dim);  color: var(--blue); }
+.ck-pill--green { background: var(--green-dim); color: var(--green); }
+.ck-pill--amber { background: var(--amber-dim); color: var(--amber); }
+.ck-pill--gray  { background: var(--bg-hover);  color: var(--text-muted); border: 1px solid var(--border-light); }
+.ck-focus-phase { margin-left: auto; font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted); }
+.ck-focus-title {
+  font-family: var(--font-display); font-weight: 800;
+  font-size: clamp(1.15rem, 2.6vw, 1.55rem); line-height: 1.25;
+  color: var(--text-primary); margin-bottom: 8px;
+}
+.ck-focus-title i { font-size: 0.85em; opacity: 0.45; margin: 0 4px; }
+.ck-focus-sub {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 0.8rem; color: var(--text-muted); margin-bottom: 16px;
+}
+.ck-focus-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.ck-focus-checks { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 9px; }
+.ck-check { display: flex; align-items: flex-start; gap: 10px; font-size: 0.84rem; }
+.ck-check > .fa { margin-top: 2px; font-size: 0.95rem; }
+.ck-check--ok > .fa  { color: var(--green); }
+.ck-check--bad > .fa { color: var(--red); }
+.ck-check-label { font-weight: 600; }
+.ck-check-hint { font-size: 0.74rem; color: var(--text-muted); margin-top: 1px; }
+.ck-live-dot {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--green);
+  display: inline-block; margin-right: 6px; animation: ck-pulse 1.8s ease-in-out infinite;
+}
+@keyframes ck-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.35); }
+  50%      { box-shadow: 0 0 0 6px rgba(22,163,74,0); }
+}
+
+/* Metrics strip ------------------------------------------------------ */
+.ck-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.ck-metrics .stat-card { margin: 0; }
+
+/* Workspace cards ---------------------------------------------------- */
+.ws-card .card-header { align-items: center; }
+.ws-card .card-header .badge { margin-left: auto; }
+.ws-empty { padding: 22px 16px; text-align: center; color: var(--text-muted); font-size: 0.82rem; }
+.ws-empty i { font-size: 1.4rem; opacity: 0.35; margin-bottom: 8px; display: block; }
+
+/* Live status line (location publishing) ----------------------------- */
+.dc-toast { min-height: 1.4em; font-size: 0.8rem; margin-top: 6px; }
+.dc-toast.err { color: var(--red, #b91c1c); }
+.dc-toast.ok { color: var(--green, #15803d); }
+
+/* Responsive --------------------------------------------------------- */
+@media (max-width: 1200px) { .ck-panel { grid-template-columns: 1fr; } }
+@media (max-width: 900px)  { .ck-panel { grid-template-columns: 1fr; } }
