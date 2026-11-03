@@ -60,6 +60,32 @@ def main() -> int:
         SESSION_COOKIE_SECURE=False,
     )
 
+    # Register every CI-only probe before the app handles its first request.
+    # Flask freezes route registration after the first request has been served.
+    def session_probe():
+        requested = request.args.get("set")
+        if requested:
+            session["redis_runtime_smoke"] = requested
+        return jsonify({"value": session.get("redis_runtime_smoke")})
+
+    app.add_url_rule(
+        "/__ci/redis-session-probe",
+        endpoint="ci_redis_session_probe",
+        view_func=session_probe,
+        methods=["GET"],
+    )
+
+    def limited_probe():
+        return jsonify({"ok": True})
+
+    limited_probe = limiter.limit("2 per minute")(limited_probe)
+    app.add_url_rule(
+        "/__ci/redis-rate-limit-probe",
+        endpoint="ci_redis_rate_limit_probe",
+        view_func=limited_probe,
+        methods=["GET"],
+    )
+
     # 1. Shared Redis client and health/readiness dependency.
     redis_client.ping()
     probe_key = f"afcon360:ci:redis-smoke:{uuid.uuid4().hex}"
@@ -73,21 +99,7 @@ def main() -> int:
         if readiness.status_code != 200:
             fail(f"readiness endpoint returned {readiness.status_code}")
 
-        # 2. Server-side session persistence. This route exists only in this
-        # one-off CI process and is never part of the deployed application.
-        def session_probe():
-            requested = request.args.get("set")
-            if requested:
-                session["redis_runtime_smoke"] = requested
-            return jsonify({"value": session.get("redis_runtime_smoke")})
-
-        app.add_url_rule(
-            "/__ci/redis-session-probe",
-            endpoint="ci_redis_session_probe",
-            view_func=session_probe,
-            methods=["GET"],
-        )
-
+        # 2. Server-side session persistence.
         expected = uuid.uuid4().hex
         first = client.get("/__ci/redis-session-probe", query_string={"set": expected})
         second = client.get("/__ci/redis-session-probe")
@@ -103,16 +115,6 @@ def main() -> int:
 
         # 3. Shared rate-limit storage. The third request must be rejected by
         # the configured backend, not by an in-memory test stub.
-        def limited_probe():
-            return jsonify({"ok": True})
-
-        limited_probe = limiter.limit("2 per minute")(limited_probe)
-        app.add_url_rule(
-            "/__ci/redis-rate-limit-probe",
-            endpoint="ci_redis_rate_limit_probe",
-            view_func=limited_probe,
-            methods=["GET"],
-        )
         statuses = [
             client.get("/__ci/redis-rate-limit-probe").status_code
             for _ in range(3)
