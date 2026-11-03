@@ -1,0 +1,526 @@
+// --- PWA: service worker ---
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/transport/sw.js', { scope: '/transport/' })
+    .catch(err => console.warn('SW registration failed:', err));
+}
+
+// --- PWA: install prompt ---
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  window.__deferredInstallPrompt = e;
+  const btn = document.getElementById('installAppBtn');
+  if (btn) btn.hidden = false;
+});
+
+window.addEventListener('appinstalled', () => {
+  window.__deferredInstallPrompt = null;
+  const btn = document.getElementById('installAppBtn');
+  if (btn) btn.hidden = true;
+});
+
+// --- PWA: install button ---
+(function () {
+  var btn = document.getElementById('installAppBtn');
+  if (!btn) return;
+  btn.addEventListener('click', async function () {
+    var deferred = window.__deferredInstallPrompt;
+    if (deferred) {
+      deferred.prompt();
+      try { await deferred.userChoice; } catch (e) { /* prompt dismissed */ }
+      window.__deferredInstallPrompt = null;
+      btn.hidden = true;
+      return;
+    }
+    var main = document.querySelector('.t-content');
+    if (!main) return;
+    var toast = document.createElement('div');
+    toast.className = 'alert alert-amber';
+    toast.style.margin = '0 16px 16px';
+    toast.innerHTML = '<i class="fa-solid fa-circle-info"></i>' +
+      '<span style="flex:1;">Use your browser menu &rarr; Add to Home Screen</span>' +
+      '<button class="alert-close" type="button" aria-label="Close">&times;</button>';
+    toast.querySelector('.alert-close').addEventListener('click', function () {
+      toast.remove();
+    });
+    main.prepend(toast);
+    setTimeout(function () { toast.remove(); }, 6000);
+  });
+})();
+
+// Driver workspace live location publishing — vanilla fetch, no framework.
+// Only calls the existing endpoint; never a second source of dispatch truth.
+(function () {
+    "use strict";
+
+    var root = document.getElementById("driverDashboard");
+    if (!root) return; // not the driver workspace page
+
+    var driverId = root.getAttribute("data-driver-id");
+    var csrf = root.getAttribute("data-csrf") || "";
+    var pingInterval = parseInt(root.getAttribute("data-ping-interval") || "120", 10);
+    if (!(pingInterval > 0)) pingInterval = 120;
+    if (pingInterval > 300) {
+        // eslint-disable-next-line no-console
+        console.warn("driver.location_ping_interval_seconds exceeds the 300s freshness TTL; clamped to 300.");
+        pingInterval = 300;
+    }
+
+    var isOnline = root.getAttribute("data-is-online") === "1";
+    // Seeded last-known fix: show the approximate position immediately on
+    // page load instead of a blank badge, then refine when the first genuine
+    // browser fix arrives. Unknown/absent accuracy is stored as +Infinity
+    // (never rendered as meters, never compared as a real value): tierOf()
+    // reads it as "low" and Rules C/D always yield to a genuine fix, while
+    // Rule B still retires a stale seed. afconShouldReplaceBest/tierOf
+    // themselves are untouched (covered by ported unit tests).
+    function seedLastKnown() {
+        var lat = parseFloat(root.getAttribute("data-last-lat"));
+        var lon = parseFloat(root.getAttribute("data-last-lng"));
+        if (!isFinite(lat) || lat < -90 || lat > 90 ||
+            !isFinite(lon) || lon < -180 || lon > 180) return false;
+        var accRaw = parseFloat(root.getAttribute("data-last-acc"));
+        var acc = (isFinite(accRaw) && accRaw > 0) ? accRaw : Infinity;
+        var ts = Date.parse(root.getAttribute("data-last-ts") || "");
+        best = {
+            lat: lat, lon: lon, acc: acc,
+            ts: isFinite(ts) ? ts : 0,
+            seeded: true,
+        };
+        lastTier = tierOf(best);
+        renderAvailabilityBadge();
+        return true;
+    }
+    var locTimer = null;
+    var inFlight = false; // POST in flight (publish only)
+    var blockedByPermission = false;
+    var permWatcherBound = false;
+    var watchId = null;   // single geolocation watcher handle (at most one)
+    var best = null;      // best genuine current position {lat, lon, acc, ts}
+    var lastGeoCode = null; // last acquisition error code (truthful badge)
+    var lastTier = null;  // 'none' | 'low' | 'good' (badge transition tracking)
+
+    // Acquisition policy. FRESHNESS_MS is the stale threshold for both
+    // replacement (Rule B) and publishing. LOW_ACCURACY_M is a DISPLAY-ONLY
+    // tier for the badge — never a filter, never a matchability decision.
+    var FRESHNESS_MS = 5 * 60 * 1000;
+    var LOW_ACCURACY_M = 100;
+    var OPT_FAST = { enableHighAccuracy: false, timeout: 15000, maximumAge: 0 };
+    var OPT_REFINE = { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 };
+
+    function httpsBadge() {
+        setLocBadge("Location requires HTTPS. Open https://" + location.host, true);
+    }
+
+    // Chrome reports PERMISSION_DENIED (code 1) on insecure origins, which
+    // masked the real cause. Watch the Permissions API so a re-grant resumes
+    // publishing without a manual toggle; the ping timer retries regardless.
+    function watchPermissionResume() {
+        if (permWatcherBound) return;
+        if (!navigator.permissions || !navigator.permissions.query) return;
+        navigator.permissions.query({ name: "geolocation" }).then(function (st) {
+            permWatcherBound = true;
+            st.onchange = function () {
+                if (st.state === "granted" || st.state === "prompt") {
+                    blockedByPermission = false;
+                    setLocBadge("Location permission restored. Resuming.", false);
+                    publishLocation();
+                }
+            };
+        }).catch(function () { /* Permissions API unsupported — timer retry covers it */ });
+    }
+
+    function headers(json) {
+        var h = {};
+        if (json) h["Content-Type"] = "application/json";
+        if (csrf) h["X-CSRFToken"] = csrf;
+        return h;
+    }
+
+    async function postJSON(url, body) {
+        var resp = await fetch(url, {
+            method: "POST",
+            headers: headers(true),
+            body: JSON.stringify(body || {}),
+        });
+        var data = null;
+        try { data = await resp.json(); } catch (e) { /* non-JSON */ }
+        return { status: resp.status, data: data };
+    }
+
+    async function refreshCsrfToken() {
+        // The dashboard captures its CSRF token once at load. That token is
+        // time-limited (WTF_CSRF_TIME_LIMIT), so a long-lived page eventually
+        // 400s. Fetch a fresh, session-bound token for the already-authenticated
+        // session — this reissues, never bypasses, CSRF protection.
+        try {
+            var resp = await fetch("/api/transport/csrf-token", {
+                method: "GET",
+                headers: { "Accept": "application/json" },
+                credentials: "same-origin",
+            });
+            if (resp.status !== 200) return false;
+            var data = await resp.json();
+            if (data && typeof data.csrf_token === "string" && data.csrf_token) {
+                csrf = data.csrf_token;
+                return true;
+            }
+        } catch (e) { /* fall through to the failure badge */ }
+        return false;
+    }
+
+    // Pure decision (node-testable): may a 400 be retried once with a fresh
+    // CSRF token? ONLY when the server explicitly says the token expired.
+    // A missing/invalid token, a validation failure, or any non-400 is handed
+    // back unchanged — never retried blindly.
+    function afconShouldRetryAfter400(status, data) {
+        if (status !== 400) return false;
+        if (!data) return false;
+        if (typeof data === "string") {
+            try { data = JSON.parse(data); } catch (e) { return false; }
+        }
+        return data.code === "csrf_expired";
+    }
+
+    // POST with at most ONE refresh+replay on an expired-CSRF 400. Bounded by
+    // construction: a single refresh, a single replay — never a loop.
+    // buildBody is a factory so the replayed request gets a fresh client_ts.
+    async function afconPostWithCsrfRetry(url, buildBody) {
+        var r = await postJSON(url, buildBody());
+        if (afconShouldRetryAfter400(r.status, r.data)) {
+            if (await refreshCsrfToken()) {
+                r = await postJSON(url, buildBody());
+            }
+        }
+        return r;
+    }
+
+    function setLocBadge(msg, isErr, showRetry) {
+        var el = document.getElementById("dcLocBadge");
+        if (!el) return;
+        el.className = isErr ? "dc-toast err" : "dc-toast ok";
+        if (showRetry) {
+            el.innerHTML = msg + ' <button type="button" class="btn btn-sm btn-outline" id="dcLocRetry" style="margin-left:8px;padding:2px 8px;font-size:0.75rem;">Retry</button>';
+            var btn = document.getElementById("dcLocRetry");
+            if (btn) btn.addEventListener("click", retryLocationPermission);
+        } else {
+            el.textContent = msg;
+        }
+    }
+
+    function geoErrorName(code) {
+        if (code === 1) return "Permission denied";
+        if (code === 2) return "Position unavailable";
+        if (code === 3) return "Timeout";
+        return "Unknown error (" + (code || "?") + ")";
+    }
+
+    // The availability checkbox is the live truth; the data attribute is the
+    // page-load snapshot. Re-read every tick so offline -> online is picked up
+    // without a reload.
+    function syncOnline() {
+        var t = document.querySelector("[data-online-toggle]");
+        isOnline = t ? !!t.checked : root.getAttribute("data-is-online") === "1";
+        root.setAttribute("data-is-online", isOnline ? "1" : "0");
+        return isOnline;
+    }
+
+    function stopLocTimer() {
+        if (locTimer) { clearInterval(locTimer); locTimer = null; }
+        stopWatch(); // no background GPS drain while offline/off-page (single choke point)
+    }
+
+    function startLocTimer() {
+        stopLocTimer();
+        if (!syncOnline()) {
+            setLocBadge("Offline — publishing paused.", false);
+            return;
+        }
+        publishLocation();
+        locTimer = setInterval(publishLocation, pingInterval * 1000);
+    }
+
+    // --- Pure position policy (no DOM; exported for deterministic tests) ---
+    function afconValidObservation(lat, lon, acc) {
+        return typeof lat === "number" && isFinite(lat) && lat >= -90 && lat <= 90 &&
+               typeof lon === "number" && isFinite(lon) && lon >= -180 && lon <= 180 &&
+               typeof acc === "number" && isFinite(acc) && acc >= 0;
+    }
+
+    // Replacement Rules A–D. Returns true when *candidate* becomes the
+    // operational best. Never mutates inputs. Reported browser accuracy is
+    // authoritative — never adjusted, never inferred.
+    function afconShouldReplaceBest(current, candidate, nowMs) {
+        if (!current) return true; // Rule A — no current position
+        if (!candidate || !(candidate.ts <= nowMs)) return false; // future-dated: ignore
+        if ((nowMs - current.ts) > FRESHNESS_MS) return true; // Rule B — stale current
+        if (!(candidate.acc >= 0) || !(current.acc >= 0)) return false;
+        if (candidate.acc <= current.acc * 0.80) return true; // Rule C — materially better
+        if (candidate.acc <= current.acc * 1.20 && candidate.ts > current.ts) return true; // Rule D
+        return false; // retain a good fresh position over a worse one
+    }
+
+    function tierOf(b) {
+        if (!b) return "none";
+        return b.acc > LOW_ACCURACY_M ? "low" : "good";
+    }
+
+    // Ingest one genuine browser observation. Returns true when it becomes
+    // the operational best. Observations with missing/invalid accuracy are
+    // ignored (accuracy must never be fabricated, not even as 0).
+    function ingestPosition(pos, nowMs) {
+        if (!pos || !pos.coords) return false;
+        var now = (typeof nowMs === "number") ? nowMs : Date.now();
+        var lat = pos.coords.latitude, lon = pos.coords.longitude, acc = pos.coords.accuracy;
+        if (!afconValidObservation(lat, lon, acc)) return false;
+        var ts = (typeof pos.timestamp === "number" && pos.timestamp <= now) ? pos.timestamp : now;
+        if (afconShouldReplaceBest(best, { lat: lat, lon: lon, acc: acc, ts: ts }, now)) {
+            best = { lat: lat, lon: lon, acc: acc, ts: ts };
+            var t = tierOf(best);
+            if (t !== lastTier) {
+                lastTier = t;
+                renderAvailabilityBadge();
+            }
+            return true;
+        }
+        return false;
+    }
+
+    function renderAvailabilityBadge() {
+        if (blockedByPermission) {
+            setLocBadge(
+                "Location permission denied. Open browser site settings → Location → Allow. " +
+                "Then click Retry or refresh the page.",
+                true,
+                true
+            );
+            return;
+        }
+        if (!best) {
+            setLocBadge(
+                "Location unavailable (" + geoErrorName(lastGeoCode) +
+                "). Retrying every " + pingInterval + "s.",
+                true
+            );
+            return;
+        }
+        // Seeded last-known fix (see seedLastKnown): show the approximate
+        // position immediately, honestly aged, until a genuine browser fix
+        // replaces it. Accuracy is unknown by construction and never printed.
+        if (best.seeded) {
+            var sAgeS = Math.max(0, Math.round((Date.now() - best.ts) / 1000));
+            var sAgeTxt = best.ts > 0
+                ? (sAgeS < 60 ? sAgeS + "s ago" : Math.floor(sAgeS / 60) + "m ago")
+                : "time unknown";
+            setLocBadge(
+                "Approximate location (last fix " + sAgeTxt + "). Refining…",
+                true
+            );
+            return;
+        }
+        // D6/D7 (proven live): a retained best older than FRESHNESS_MS is
+        // never published, so the badge must say stale — not "Publishing".
+        if ((Date.now() - best.ts) > FRESHNESS_MS) {
+            var ageS = Math.max(0, Math.round((Date.now() - best.ts) / 1000));
+            var ageTxt = ageS < 60 ? ageS + "s ago" :
+                Math.floor(ageS / 60) + "m ago";
+            setLocBadge(
+                "Location stale (last fix " + ageTxt + "). Retrying every " +
+                pingInterval + "s.",
+                true
+            );
+            return;
+        }
+        if (best.acc > LOW_ACCURACY_M) {
+            setLocBadge(
+                "Location available — low accuracy (±" + Math.round(best.acc) +
+                "m). Publishing every " + pingInterval + "s.",
+                false
+            );
+            return;
+        }
+        setLocBadge(
+            "Location available (±" + Math.round(best.acc) +
+            "m). Publishing every " + pingInterval + "s.",
+            false
+        );
+    }
+
+    // --- Continuous acquisition (single watcher max, background refinement) ---
+    function onAcquired(pos) {
+        ingestPosition(pos);
+    }
+
+    function onAcquireError(err) {
+        lastGeoCode = err ? err.code : null;
+        if (window.isSecureContext === false) {
+            httpsBadge();
+            return;
+        }
+        if (err && err.code === 1) {
+            // Permission denied: never invent a location, never POST.
+            // Stop the watcher so a denied device is not re-polled; the
+            // permission watcher + publish timer drive recovery (no prompt spam).
+            blockedByPermission = true;
+            stopWatch();
+            watchPermissionResume();
+            renderAvailabilityBadge();
+            return;
+        }
+        // TIMEOUT(2/3)/unknown: this attempt failed, acquisition continues.
+        // A genuine best is retained; the badge only changes when empty.
+        if (!best) renderAvailabilityBadge();
+    }
+
+    function ensureWatch() {
+        if (watchId !== null) return;
+        if (!navigator.geolocation || !navigator.geolocation.watchPosition) return;
+        try {
+            watchId = navigator.geolocation.watchPosition(onAcquired, onAcquireError, OPT_REFINE);
+        } catch (e) {
+            watchId = null;
+        }
+    }
+
+    function stopWatch() {
+        if (watchId !== null) {
+            try { navigator.geolocation.clearWatch(watchId); } catch (e) { /* log-only */ }
+            watchId = null;
+        }
+    }
+
+    // Manual retry for permission denied — user clicked Retry button.
+    // Clears the blocked flag and attempts a fresh getCurrentPosition.
+    function retryLocationPermission() {
+        if (!navigator.geolocation || !navigator.geolocation.getCurrentPosition) return;
+        if (!syncOnline()) return;
+        blockedByPermission = false;
+        setLocBadge("Requesting location permission…", false);
+        try {
+            navigator.geolocation.getCurrentPosition(
+                function (pos) {
+                    ingestPosition(pos);
+                    ensureWatch();
+                    publishLocation();
+                },
+                function (err) {
+                    if (err && err.code === 1) {
+                        blockedByPermission = true;
+                        watchPermissionResume();
+                    }
+                    onAcquireError(err);
+                    renderAvailabilityBadge();
+                },
+                OPT_FAST
+            );
+        } catch (e) {
+            blockedByPermission = true;
+            renderAvailabilityBadge();
+        }
+    }
+
+    // Fast first fix without forcing a high-accuracy wait; refinement
+    // continues on the watcher either way (unless permission was denied).
+    function kickFastFirst() {
+        if (!navigator.geolocation || !navigator.geolocation.getCurrentPosition) return;
+        if (!syncOnline() || blockedByPermission) return;
+        try {
+            navigator.geolocation.getCurrentPosition(
+                function (pos) { ingestPosition(pos); ensureWatch(); },
+                function (err) {
+                    if (err && err.code === 1) { onAcquireError(err); return; }
+                    onAcquireError(err);
+                    ensureWatch();
+                },
+                OPT_FAST
+            );
+        } catch (e) {
+            ensureWatch();
+        }
+    }
+
+    async function publishLocation() {
+        if (!syncOnline()) {
+            setLocBadge("Offline — publishing paused.", false);
+            stopLocTimer();
+            return;
+        }
+        if (inFlight) return;
+        if (window.isSecureContext === false) {
+            // Geolocation is blocked on http:// pages — this is not a
+            // permission problem, so the timer must keep running.
+            httpsBadge();
+            return;
+        }
+        if (!navigator.geolocation) {
+            setLocBadge("Geolocation is not available in this browser.", true);
+            stopLocTimer();
+            return;
+        }
+        // Acquisition and publishing are separate: keep refining in the
+        // background, then publish the best genuine FRESH position. A stale
+        // best is never published; a failed cycle never fabricates one.
+        if (!blockedByPermission) kickFastFirst();
+        var now = Date.now();
+        if (!best || (now - best.ts) > FRESHNESS_MS) {
+            renderAvailabilityBadge();
+            return;
+        }
+        inFlight = true;
+        try {
+            var url = "/api/transport/drivers/" + driverId + "/location";
+            // D9 latency observability: client send-time (ms epoch).
+            // Server timestamp stays authoritative; client_ts only lets
+            // reads compute client→server latency. Never trusted.
+            // A long-lived page can outlive the CSRF token's lifetime. Retry
+            // once — and ONLY for an explicitly-expired token — via a single
+            // refresh+replay (bounded; see afconPostWithCsrfRetry).
+            var r = await afconPostWithCsrfRetry(url, function () {
+                return { latitude: best.lat, longitude: best.lon, accuracy: best.acc,
+                         client_ts: Date.now() };
+            });
+            if (r.status === 200 && r.data && r.data.success) {
+                setLocBadge("Published " + new Date().toLocaleTimeString() + ".", false);
+            } else {
+                setLocBadge("Publish failed (" + r.status + "). Retrying next tick.", true);
+            }
+        } catch (e) {
+            setLocBadge("Publish error. Retrying next tick.", true);
+        } finally {
+            inFlight = false;
+        }
+    }
+
+    document.addEventListener("change", function (e) {
+        var el = e.target;
+        if (!el || !el.matches || !el.matches("[data-online-toggle]")) return;
+        if (syncOnline()) {
+            startLocTimer();
+        } else {
+            stopLocTimer();
+            setLocBadge("Offline — publishing paused.", false);
+        }
+    }, true);
+
+    // Seed the live badge from the last known fix BEFORE the first
+    // startLocTimer() tick, so the page opens on an approximate position
+    // instead of a blank badge. Genuine fixes replace the seed via Rules B-D.
+    seedLastKnown();
+    startLocTimer();
+    document.addEventListener("visibilitychange", function () {
+        if (!document.hidden && blockedByPermission && syncOnline()) publishLocation();
+    });
+    window.addEventListener("pagehide", stopLocTimer);
+
+    // Node-test seam (zero browser effect): expose the pure position policy
+    // for deterministic tests. `typeof` guard keeps this safe in browsers.
+    if (typeof module !== "undefined" && module.exports) {
+        module.exports = {
+            afconValidObservation: afconValidObservation,
+            afconShouldReplaceBest: afconShouldReplaceBest,
+            AFCON_FRESHNESS_MS: FRESHNESS_MS,
+            AFCON_LOW_ACCURACY_M: LOW_ACCURACY_M,
+            afconShouldRetryAfter400: afconShouldRetryAfter400,
+            afconPostWithCsrfRetry: afconPostWithCsrfRetry
+        };
+    }
+})();
