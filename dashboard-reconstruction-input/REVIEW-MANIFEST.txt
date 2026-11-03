@@ -1,0 +1,9 @@
+﻿AFCON360 DRIVER DASHBOARD RECONSTRUCTION INPUT
+Created: 2026-11-04 02:04:52
+Source commit: ccd781d6d8aef795786fd61351917c39bdf99b05
+Historical HTML reference: ac2189275a8ba3b675b7913d853639112ebefbd3
+Historical CSS reference: b8214b4b10f600747c3becd93450b7022bb822df
+Historical JS reference: ed946a0019ffadea9de36ba4efc254d638df887a
+Current JS Git blob: 91e742af75ccbf5069d43bc6da3b50c73cd5af0d
+
+FILES:
