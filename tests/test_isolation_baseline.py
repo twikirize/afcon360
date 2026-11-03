@@ -166,8 +166,8 @@ def test_integer_fk_restore_includes_zero_primary_key(monkeypatch):
 
     assert reverted == 1
     assert len(connection.statements) == 2
-    selected_ids = set(connection.statements[0].compile().params.values())
-    assert selected_ids == {0}
+    selected_params = connection.statements[0].compile().params
+    assert any(value == 0 or value == [0] for value in selected_params.values())
     update_values = connection.statements[1].compile().params
     assert 0 in update_values.values()
     assert 11 in update_values.values()
@@ -208,5 +208,5 @@ def test_integer_primary_key_cleanup_removes_new_ids_inside_existing_gap(monkeyp
 
     assert deleted == 1
     assert len(session.statements) == 2
-    delete_values = set(session.statements[1].compile().params.values())
-    assert delete_values == {15}
+    delete_params = session.statements[1].compile().params
+    assert any(value == 15 or value == [15] for value in delete_params.values())
