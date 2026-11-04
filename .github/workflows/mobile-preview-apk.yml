@@ -1,5 +1,5 @@
-# Trigger first signed Android preview build.
-name: AFCON360 Android preview APKs
+# Cross-platform mobile compatibility gate and Android preview distribution.
+name: AFCON360 Mobile compatibility and Android preview builds
 
 on:
   push:
