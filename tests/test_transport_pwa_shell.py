@@ -130,3 +130,4 @@ def test_driver_service_worker_precaches_shared_dashboard_map_assets():
     # External tile/CDN resources are network-only; only first-party static
     # integration code is admitted to the transport cache.
     assert "tile.openstreetmap.org" not in worker
+
