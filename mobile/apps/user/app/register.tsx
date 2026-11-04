@@ -116,7 +116,7 @@ export default function RegisterScreen() {
               <AuthField
                 label="Email verification code"
                 value={verificationCode}
-                onChangeText={value => setVerificationCode(value.replace(/\\D/g, "").slice(0, 6))}
+                onChangeText={value => setVerificationCode(value.replace(/\D/g, "").slice(0, 6))}
                 keyboardType="number-pad"
                 autoComplete="one-time-code"
                 maxLength={6}
