@@ -23,6 +23,7 @@ Status is evidence-based. A green code/build check is not store approval.
 - [ ] Live-like end-to-end tests for native login/MFA/refresh replay/revocation, rider booking commitment, driver offer assignment, trip lifecycle, Wallet settlement and deletion.
 - [ ] Verify external deletion requests through web login, including incorrect password, missing/invalid TOTP, protected account rejection, and retained-record disclosure.
 - [ ] Real-device testing on low-memory Android phones and supported iPhones, including permission denial, network loss and app upgrade.
+- [x] Draft User and Driver store listing names, short descriptions and full descriptions prepared in `docs/store-listing-copy.md`.
 - [ ] Final icons, splash screens, screenshots, store graphics and localized listing copy approved.
 
 ## Android / Google Play
@@ -32,7 +33,7 @@ Status is evidence-based. A green code/build check is not store approval.
 - [ ] Production signing key and Play App Signing configured. The internal preview signing key must remain separate from production signing.
 - [ ] Production-signed AAB generated; preview APK is not a store binary.
 - [ ] Generated target SDK verified as Android 16 / API 36 or higher. Google's published rule requires API 36+ for new app submissions and updates from 31 August 2026.
-- [ ] Store listing text, support URL, 512×512 icon, 1024×500 feature graphic and phone/tablet screenshots prepared.
+- [ ] Final store listing text and metadata approved; support URL, 512×512 icon, 1024×500 feature graphic and phone/tablet screenshots prepared.
 - [ ] Approved privacy policy, Data safety declaration, App access, content rating, target audience, ads and permission declarations completed.
 - [ ] Reviewer credentials/instructions tested for both customer and driver experiences.
 - [ ] Financial-services declarations and any applicable payment policy requirements reviewed.
@@ -50,7 +51,7 @@ Status is evidence-based. A green code/build check is not store approval.
 - [ ] In-app account deletion tested end-to-end.
 - [ ] Location purpose text matches the foreground-only Driver behavior.
 - [ ] App Review notes include working demo accounts and MFA instructions for both apps.
-- [ ] Icons, screenshots, descriptions, support URL, age rating, pricing and availability complete.
+- [ ] Final descriptions, icons, screenshots, support URL, age rating, pricing and availability complete.
 - [ ] TestFlight device testing passed, App Review accepted and official App Store URLs verified.
 
 ## Privacy, legal and operational sign-off
@@ -66,7 +67,7 @@ Status is evidence-based. A green code/build check is not store approval.
 
 The parallel APK workflow requires a stable test signing certificate so testers can install later preview builds as updates rather than uninstalling the app each time. Do not commit the keystore or its passwords.
 
-Create a dedicated internal preview keystore on a trusted workstation, then add these encrypted secrets under **GitHub repository → Settings → Secrets and variables → Actions**:
+Create a dedicated internal preview keystore on a trusted workstation (see `docs/android-preview-signing-setup.md` for Windows PowerShell steps), then add these encrypted secrets under **GitHub repository → Settings → Secrets and variables → Actions**:
 
 - `AFCON360_PREVIEW_KEYSTORE_BASE64` — base64 output of the keystore file.
 - `AFCON360_PREVIEW_KEYSTORE_PASSWORD` — keystore password.
@@ -79,7 +80,7 @@ For Windows PowerShell commands and the exact encrypted GitHub secrets required 
 
 ## Distribution labels
 
-- **Internal preview APK:** directly installable Android test binary from the GitHub `mobile-preview` prerelease. Debug-signed and not eligible for Play Console submission.
+- **Internal preview APK:** directly installable Android test binary from the GitHub `mobile-preview` prerelease. Signed with a private preview keystore, separate from production Play App Signing, and not eligible for Play Console submission.
 - **Google Play:** production-signed AAB distributed and updated by Play.
 - **Apple App Store:** separately signed IPA reviewed and distributed by Apple.
 - **Share URL:** canonical `https://www.pamoja.space/apps` page; official store listing URLs are added only after approval.

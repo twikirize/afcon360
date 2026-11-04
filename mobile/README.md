@@ -19,7 +19,7 @@ Both use Expo SDK 58, React Native 0.88.1, React 19.3 and TypeScript 6. Flask re
 
 ## What is still a release gate
 
-The branch is not merged or deployed. No live-like end-to-end run or physical-device acceptance has been completed. The Android internal preview build must finish and its package/target SDK/signature be verified before APK links can be considered live. Direct APKs are debug-signed tester builds, not Play Store releases.
+The branch is not merged or deployed. No live-like end-to-end run or physical-device acceptance has been completed. The Android internal preview build must finish and its package/target SDK/signature be verified before APK links can be considered live. Direct APKs are signed with a dedicated internal preview key, not the production Play App Signing key.
 
 Production Android requires a Play App Signing AAB. iOS requires a signed App Store/TestFlight archive. EAS projects must be linked and both developer accounts, privacy/legal disclosures, icons/screenshots, review accounts and store reviews remain outstanding. The privacy page is a working draft, not the approved store policy.
 
@@ -44,12 +44,12 @@ Read `docs/backend-contracts.md`, `docs/api-inventory.md`, `docs/store-submissio
 
 ## Direct APK sharing
 
-The workflow publishes two debug-signed internal preview APKs to the GitHub prerelease named `mobile-preview` only after both standalone Android builds, package identity, target API and signature checks pass. The website `/apps` exposes the download/share links. Never submit these APKs to Play Console.
+The workflow publishes two internally preview-key-signed Android APKs to the GitHub prerelease named `mobile-preview` only after both standalone Android builds, package identity, target API and signature checks pass. The website `/apps` exposes the download/share links. Never submit these APKs to Play Console.
 
 
 ### Preview APK signing secret
 
-The GitHub Actions APK workflow intentionally fails closed until a stable test keystore is configured. Add the four encrypted repository secrets documented in `docs/store-submission-checklist.md`. The signing keystore is never committed to this public repository and must be backed up securely. This test key is distinct from the production Play App Signing key.
+The GitHub Actions APK workflow intentionally fails closed until a stable test keystore is configured. Follow `docs/android-preview-signing-setup.md`, then add the four encrypted repository secrets documented in `docs/store-submission-checklist.md`. The signing keystore is never committed to this public repository and must be backed up securely. This test key is distinct from the production Play App Signing key.
 
 
 For Windows PowerShell instructions to create and add the stable internal preview signing key, see docs/preview-signing-setup.md. Do not add the keystore or password to Git.

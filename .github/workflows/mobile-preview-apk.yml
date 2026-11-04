@@ -5,11 +5,12 @@ on:
     branches:
       - feat/native-mobile-apps-20261104
     paths:
-      - "mobile/**"
-      - "app/auth/**"
-      - "app/transport/**"
-      - "app/__init__.py"
-      - "templates/mobile_apps/**"
+      - "mobile/apps/**"
+      - "mobile/packages/**"
+      - "mobile/package.json"
+      - "mobile/pnpm-lock.yaml"
+      - "mobile/pnpm-workspace.yaml"
+      - "mobile/.npmrc"
       - ".github/workflows/mobile-preview-apk.yml"
   workflow_dispatch:
 
@@ -262,6 +263,6 @@ jobs:
           body: |
             Internal tester distribution only.
 
-            These are debug-signed Android preview APKs. They are directly installable for testing, but are not production-signed Google Play releases and must not be submitted to Play Console. Android may require the tester to allow installation from the source used to download the file.
+            These are Android preview APKs signed with AFCON360's dedicated internal preview key. They are directly installable for testing, but are not signed with the production Play App Signing key and must not be submitted to Play Console. Android may require the tester to allow installation from the source used to download the file.
 
             Production Android requires a signed AAB and Play App Signing. iPhone installation requires a separate signed iOS build and Apple distribution process.
