@@ -29,7 +29,7 @@ def test_driver_without_operating_country_keeps_base_fare_currency(monkeypatch):
     monkeypatch.setattr(
         display_fx_service, "build_display_amount", same_currency_display
     )
-    enriched = currency_presentation_service.enrich_driver_offers_with_home_currency(
+    enriched = currency_presentation_service.enrich_driver_offers_with_operating_currency(
         [offer], profile
     )
 
@@ -61,7 +61,7 @@ def test_driver_offer_survives_display_fx_failure(monkeypatch):
         display_fx_service, "build_display_amount", fail_conversion
     )
 
-    enriched = currency_presentation_service.enrich_driver_offers_with_home_currency(
+    enriched = currency_presentation_service.enrich_driver_offers_with_operating_currency(
         [offer], profile
     )
 
@@ -94,7 +94,7 @@ def test_operating_country_determines_driver_display_currency(monkeypatch):
     monkeypatch.setattr(
         display_fx_service, "build_display_amount", fake_display
     )
-    enriched = currency_presentation_service.enrich_driver_offers_with_home_currency(
+    enriched = currency_presentation_service.enrich_driver_offers_with_operating_currency(
         [offer], profile
     )
 
