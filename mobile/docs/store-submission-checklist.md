@@ -15,12 +15,12 @@ Status is evidence-based. A green code/build check is not store approval.
 - [x] Driver readiness, offers, trip progression, foreground location and captured earnings use existing server services/records.
 - [x] Driver location is foreground-only and only requested after explicit driver action; background tracking is not enabled.
 - [x] Wallet amounts and payment state are server-provided; no client ledger or fare authority.
-- [x] In-app sign-out and account deletion controls exist; the deletion handler revokes sessions/API keys, clears MFA/recovery/PIN credentials, anonymizes direct profile identifiers and retains only separately controlled KYC/financial/audit records as required.
+- [x] In-app sign-out and account-deletion controls exist. The current handler reauthenticates, revokes sessions/API keys, clears MFA/recovery/PIN credentials and anonymizes the primary User/Profile. It is not yet comprehensive: cross-domain PII snapshots in Events, Accommodation and Transport, active Wallet payment identities and balance/settlement handling remain unresolved.
 - [x] Public web account-deletion initiation route exists at `/apps/delete-account`, alongside the in-app deletion control. End-to-end user testing and final retention-policy approval remain outstanding.
 - [x] PR-safe User Android validation workflow can build or reuse a checksum-verified APK artifact; the current workflow does not publish a stable GitHub Release.
 - [ ] Stable, in-place-updatable internal preview distribution is designed in a separate trusted workflow; current per-run CI signing keys are intentionally disposable and must not be stored as repository-level secrets.
 - [ ] Live-like end-to-end tests for native login/MFA/refresh replay/revocation, rider booking commitment, driver offer assignment, trip lifecycle, Wallet settlement and deletion.
-- [ ] Verify external and in-app deletion end-to-end, including incorrect password, missing/invalid TOTP, protected-account rejection, actual deletion of non-retained data, and documented legally required retention.
+- [ ] Verify external and in-app deletion end-to-end across Identity/Profile, Events, Transport, Accommodation, Wallet/payment identities, uploads and processor copies. Test incorrect password, missing/invalid TOTP, protected-account rejection, active/upcoming service obligations, positive wallet balance, unsettled payment, retries and payment-recipient lookup after deletion. Current model review found direct PII snapshots outside Identity/Profile and active payment identities are not handled by the deletion service. Delete non-required data, restrict/time-limit legally required evidence, protect users' remaining funds and publish an approved category/legal-basis/retention schedule.
 - [ ] Real-device testing on low-memory Android phones and supported iPhones, including permission denial, network loss and app upgrade.
 - [x] Draft User and Driver store listing names, short descriptions and full descriptions prepared in `docs/store-listing-copy.md`.
 - [ ] Final icons, splash screens, screenshots, store graphics and localized listing copy approved.
@@ -63,7 +63,7 @@ For Apple review, the native ride and account experience must be clearly useful 
 - [ ] Signed IPA built and uploaded to TestFlight.
 - [ ] Approved privacy policy URL linked inside both apps and in App Store Connect.
 - [ ] App Privacy labels reflect actual data types, purposes, linkage and third-party processing.
-- [ ] In-app and external web account deletion tested end-to-end; verify that data not legally retained is actually deleted, and disclose retained record categories, legal basis and retention periods.
+- [ ] In-app and external web account deletion tested end-to-end across every data domain and processor. Current handler does not yet cover all direct-PII snapshots in Events, Accommodation and Transport, or active Wallet payment identities/account settlement. Verify erasure of non-required data, restricted/time-limited retention of legally required records, safe handling of positive balances and the approved published retention schedule.
 - [ ] Location purpose text matches the foreground-only Driver behavior.
 - [ ] App Review notes include working demo accounts and MFA instructions for both apps.
 - [ ] Final descriptions, icons, screenshots, support URL, age rating, pricing and availability complete.
