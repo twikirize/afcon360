@@ -693,6 +693,20 @@ class ProviderService:
                     code="VALIDATION_FAILED"
                 )
 
+            # Operating market is a required Transport declaration, separate
+            # from nationality and Wallet home currency. Never infer it from
+            # either identity field.
+            from app.utils.validators import resolve_country_code
+            operating_country_code = resolve_country_code(
+                sanitized_data.get("operating_country_code", "")
+            )
+            if operating_country_code not in {"UG", "KE", "TZ"}:
+                raise ValidationError(
+                    message="A supported driver operating country is required",
+                    details=["Choose Uganda, Kenya, or Tanzania as your operating country."],
+                    code="INVALID_OPERATING_COUNTRY",
+                )
+
             # PHASE 3: CHECK FOR EXISTING REGISTRATION
             with _redis_lock(f"lock:driver_registration:{user_id}", ttl=10):
                 existing = DriverProfile.query.filter_by(
@@ -768,13 +782,15 @@ class ProviderService:
                     emergency_contact_name=sanitized_data.get('emergency_contact_name'),
                     emergency_contact_phone=sanitized_data.get('emergency_contact_phone'),
                     emergency_contact_relationship=sanitized_data.get('emergency_contact_relationship'),
-                    metadata={
+                    driver_metadata={
                         'identity_verified': eligibility['identity']['identity_verified'],
                         'email_verified': eligibility['identity']['email_verified'],
                         'phone_verified': eligibility['identity']['phone_verified'],
                         'registration_source': sanitized_data.get('registration_source', 'web'),
                         'ip_address': request.remote_addr if request else None,
-                        'request_id': request_id
+                        'request_id': request_id,
+                        'operating_country_code': operating_country_code,
+                        'operating_country_verified': False,
                     }
                 )
 
