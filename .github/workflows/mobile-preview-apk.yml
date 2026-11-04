@@ -70,9 +70,6 @@ jobs:
              git diff --quiet "${BASELINE_SHA}" "${GITHUB_SHA}" -- \
                mobile/apps \
                mobile/packages \
-               mobile/docs \
-               mobile/README.md \
-               mobile/AGENTS.md \
                mobile/package.json \
                mobile/pnpm-lock.yaml \
                mobile/pnpm-workspace.yaml \
