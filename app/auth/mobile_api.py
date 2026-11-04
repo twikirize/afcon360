@@ -552,13 +552,25 @@ def mobile_account_deletion():
             profile.avatar_url = None
             profile.bio = None
         try:
-            from app.identity.models.user import MFASecret
-            MFASecret.query.filter_by(user_id=user.id, is_active=True).update(
-                {"is_active": False},
-                synchronize_session=False,
-            )
+            from app.identity.models.user import MFASecret, APIKey
+            # Deactivate MFA and erase the stored authenticator/backup material.
+            for mfa_secret in MFASecret.query.filter_by(
+                user_id=user.id, is_active=True
+            ).all():
+                mfa_secret.is_active = False
+                mfa_secret.secret = "revoked"
+                mfa_secret.backup_codes = None
+                mfa_secret.device_name = None
+                mfa_secret.last_used = None
+
+            # Revoke any personal API credentials associated with the user.
+            api_keys = APIKey.query.filter_by(
+                owner_type="user", owner_id=user.id, revoked_at=None
+            ).all()
+            for api_key in api_keys:
+                api_key.revoked_at = datetime.now(timezone.utc)
         except Exception:
-            logger.exception("Could not disable all MFA credentials during account deletion")
+            logger.exception("Could not clear MFA/API credentials during account deletion")
             raise
         db.session.commit()
         result = {
