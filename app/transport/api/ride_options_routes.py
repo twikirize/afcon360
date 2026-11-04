@@ -132,7 +132,8 @@ class RideOptionsResource(Resource):
         dropoff = {"latitude": float(dropoff_lat), "longitude": float(dropoff_lng)}
 
         # The fare engine currently denominates transport quotes in its own
-        # currency. Never label a USD amount as UGX/KES/TZS or imply FX.
+        # currency. A separate Wallet-currency amount is display-only.
+        from app.wallet.services.display_fx_service import build_display_amount
         options = []
         active_tables, _, _ = fare_service.resolve_tables(at=quote_at)
         explicitly_priced_classes = set(
@@ -176,7 +177,6 @@ class RideOptionsResource(Resource):
                 logger.warning("Ride-option fare failed for %s: %s", vc_value, exc)
                 continue
 
-            from app.wallet.services.display_fx_service import build_display_amount
             display_fields = build_display_amount(
                 fare_total, quote_currency, preferred_currency
             )
