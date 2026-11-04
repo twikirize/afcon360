@@ -21,11 +21,21 @@ permissions:
   contents: write
 
 jobs:
-  android-preview-apks:
-    name: Build internal User and Driver APKs
+  build-preview-apk:
+    name: Build ${{ matrix.app }} standalone APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: user
+            package: space.pamoja.afcon360.user
+          - app: driver
+            package: space.pamoja.afcon360.driver
     env:
+      APP: ${{ matrix.app }}
+      EXPECTED_PACKAGE: ${{ matrix.package }}
       EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
     steps:
       - name: Check out source
@@ -48,15 +58,13 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Install JavaScript workspace
+      - name: Install app workspace dependencies
         working-directory: mobile
         run: pnpm install --no-frozen-lockfile
 
-      - name: Check Expo SDK compatibility
+      - name: Check Expo dependency compatibility
         working-directory: mobile
-        run: |
-          pnpm --filter @afcon360/user-app exec expo install --check
-          pnpm --filter @afcon360/driver-app exec expo install --check
+        run: pnpm --filter "@afcon360/${{ matrix.app }}-app" exec expo install --check
 
       - name: Install Android platform and build tools
         run: |
@@ -78,103 +86,106 @@ jobs:
             -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=Android Debug,O=AFCON360,C=UG"
 
-      - name: Prebuild User Android project
+      - name: Generate native Android project
         working-directory: mobile
-        run: pnpm --filter @afcon360/user-app exec expo prebuild --platform android --no-install --clean
+        run: pnpm --filter "@afcon360/${{ matrix.app }}-app" exec expo prebuild --platform android --no-install --clean
 
-      - name: Configure User preview build signing
-        working-directory: mobile/apps/user/android
+      - name: Configure internal preview signing
+        working-directory: mobile
         run: |
           node <<'NODE'
           const fs = require("fs");
-          const file = "app/build.gradle";
-          let source = fs.readFileSync(file, "utf8");
+          const path = "apps/" + process.env.APP + "/android/app/build.gradle";
+          let source = fs.readFileSync(path, "utf8");
           const buildTypes = source.indexOf("buildTypes {");
           const release = source.indexOf("release {", buildTypes);
-          if (buildTypes < 0 || release < 0) throw new Error("Could not locate Android release buildType");
-          const insertAt = release + "release {".length;
-          source = source.slice(0, insertAt) + "\n            signingConfig signingConfigs.debug" + source.slice(insertAt);
-          fs.writeFileSync(file, source);
+          if (buildTypes < 0 || release < 0) throw new Error("Could not find Android release build type");
+          const open = source.indexOf("{", release);
+          let depth = 0;
+          let end = -1;
+          for (let i = open; i < source.length; i++) {
+            if (source[i] === "{") depth++;
+            if (source[i] === "}") {
+              depth--;
+              if (depth === 0) { end = i + 1; break; }
+            }
+          }
+          if (end < 0) throw new Error("Could not find end of Android release build type");
+          let block = source.slice(release, end);
+          const signing = /signingConfig\\s+signingConfigs\\.[A-Za-z0-9_]+/;
+          if (signing.test(block)) {
+            block = block.replace(signing, "signingConfig signingConfigs.debug");
+          } else {
+            block = block.replace("release {", "release {\\n            signingConfig signingConfigs.debug");
+          }
+          source = source.slice(0, release) + block + source.slice(end);
+          fs.writeFileSync(path, source);
           NODE
-          grep -R -n "targetSdkVersion" build.gradle app/build.gradle || true
 
-      - name: Build User standalone preview APK
-        working-directory: mobile/apps/user/android
-        run: ./gradlew --no-daemon --stacktrace assembleRelease
-
-      - name: Sign User preview APK
-        working-directory: mobile/apps/user/android
-        run: |
-          APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
-          test -n "$APK"
-          zipalign -p -f 4 "$APK" "$RUNNER_TEMP/user-aligned.apk"
-          apksigner sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android \
-            --key-pass pass:android --out "$GITHUB_WORKSPACE/mobile/release-user.apk" "$RUNNER_TEMP/user-aligned.apk"
-          FINAL_APK="$GITHUB_WORKSPACE/mobile/release-user.apk"
-          apksigner verify --verbose "$FINAL_APK"
-          BADGING="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$FINAL_APK")"
-          PACKAGE="$(printf '%s\n' "$BADGING" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n 1)"
-          TARGET="$(printf '%s\n' "$BADGING" | sed -n "s/.*targetSdkVersion:'\\([0-9]*\\)'.*/\\1/p" | head -n 1)"
-          test "$PACKAGE" = "space.pamoja.afcon360.user"
-          test -n "$TARGET" && test "$TARGET" -ge 36
-          echo "Verified User APK package=$PACKAGE targetSdkVersion=$TARGET"
-          unzip -l "$FINAL_APK" > "$RUNNER_TEMP/user-apk-contents.txt"
-          grep -q 'classes.dex' "$RUNNER_TEMP/user-apk-contents.txt"
-
-      - name: Prebuild Driver Android project
+      - name: Build standalone release APK
         working-directory: mobile
-        run: pnpm --filter @afcon360/driver-app exec expo prebuild --platform android --no-install --clean
+        run: cd "apps/$APP/android" && ./gradlew --no-daemon --stacktrace assembleRelease
 
-      - name: Configure Driver preview build signing
-        working-directory: mobile/apps/driver/android
+      - name: Sign and verify APK package, SDK and payload
+        working-directory: mobile
         run: |
-          node <<'NODE'
-          const fs = require("fs");
-          const file = "app/build.gradle";
-          let source = fs.readFileSync(file, "utf8");
-          const buildTypes = source.indexOf("buildTypes {");
-          const release = source.indexOf("release {", buildTypes);
-          if (buildTypes < 0 || release < 0) throw new Error("Could not locate Android release buildType");
-          const insertAt = release + "release {".length;
-          source = source.slice(0, insertAt) + "\n            signingConfig signingConfigs.debug" + source.slice(insertAt);
-          fs.writeFileSync(file, source);
-          NODE
-          grep -R -n "targetSdkVersion" build.gradle app/build.gradle || true
-
-      - name: Build Driver standalone preview APK
-        working-directory: mobile/apps/driver/android
-        run: ./gradlew --no-daemon --stacktrace assembleRelease
-
-      - name: Sign Driver preview APK
-        working-directory: mobile/apps/driver/android
-        run: |
-          APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          APK="$(find "apps/$APP/android/app/build/outputs/apk/release" -name '*.apk' -type f | head -n 1)"
           test -n "$APK"
-          zipalign -p -f 4 "$APK" "$RUNNER_TEMP/driver-aligned.apk"
+          mkdir -p release
+          zipalign -p -f 4 "$APK" "$RUNNER_TEMP/$APP-aligned.apk"
           apksigner sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android \
-            --key-pass pass:android --out "$GITHUB_WORKSPACE/mobile/release-driver.apk" "$RUNNER_TEMP/driver-aligned.apk"
-          FINAL_APK="$GITHUB_WORKSPACE/mobile/release-driver.apk"
+            --key-pass pass:android --out "release/$APP-preview.apk" "$RUNNER_TEMP/$APP-aligned.apk"
+          FINAL_APK="$GITHUB_WORKSPACE/mobile/release/$APP-preview.apk"
           apksigner verify --verbose "$FINAL_APK"
-          BADGING="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$FINAL_APK")"
-          PACKAGE="$(printf '%s\n' "$BADGING" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n 1)"
-          TARGET="$(printf '%s\n' "$BADGING" | sed -n "s/.*targetSdkVersion:'\\([0-9]*\\)'.*/\\1/p" | head -n 1)"
-          test "$PACKAGE" = "space.pamoja.afcon360.driver"
+          BADGING="$(aapt dump badging "$FINAL_APK")"
+          PACKAGE="$(printf '%s\\n' "$BADGING" | sed -n "s/^package: name='\\\\([^']*\\\\)'.*/\\\\1/p" | head -n 1)"
+          TARGET="$(printf '%s\\n' "$BADGING" | sed -n "s/.*targetSdkVersion:'\\\\([0-9]*\\\\)'.*/\\\\1/p" | head -n 1)"
+          test "$PACKAGE" = "$EXPECTED_PACKAGE"
           test -n "$TARGET" && test "$TARGET" -ge 36
-          echo "Verified Driver APK package=$PACKAGE targetSdkVersion=$TARGET"
-          unzip -l "$FINAL_APK" > "$RUNNER_TEMP/driver-apk-contents.txt"
-          grep -q 'classes.dex' "$RUNNER_TEMP/driver-apk-contents.txt"
+          echo "Verified $APP APK package=$PACKAGE targetSdkVersion=$TARGET"
+          unzip -l "$FINAL_APK" > "$RUNNER_TEMP/$APP-apk-contents.txt"
+          grep -q 'classes.dex' "$RUNNER_TEMP/$APP-apk-contents.txt"
 
-      - name: Stage preview APKs and checksums
+      - name: Upload verified app APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: afcon360-${{ matrix.app }}-preview-apk
+          path: mobile/release/${{ matrix.app }}-preview.apk
+          if-no-files-found: error
+          retention-days: 90
+
+  publish-preview:
+    name: Publish verified User and Driver APKs
+    needs: build-preview-apk
+    if: needs.build-preview-apk.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Prepare release directory
+        run: mkdir -p mobile/release
+
+      - name: Download User APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: afcon360-user-preview-apk
+          path: mobile/release
+
+      - name: Download Driver APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: afcon360-driver-preview-apk
+          path: mobile/release
+
+      - name: Name APKs and calculate checksums
         run: |
-          mkdir -p mobile/release
-          cp mobile/release-user.apk mobile/release/AFCON360-User-preview.apk
-          cp mobile/release-driver.apk mobile/release/AFCON360-Driver-preview.apk
+          mv mobile/release/user-preview.apk mobile/release/AFCON360-User-preview.apk
+          mv mobile/release/driver-preview.apk mobile/release/AFCON360-Driver-preview.apk
           cd mobile/release
-          sha256sum *.apk > SHA256SUMS.txt
+          sha256sum AFCON360-User-preview.apk AFCON360-Driver-preview.apk > SHA256SUMS.txt
           ls -lh
           cat SHA256SUMS.txt
 
-      - name: Upload APK workflow artifacts
+      - name: Upload combined release artifact
         uses: actions/upload-artifact@v4
         with:
           name: afcon360-android-preview-apks
@@ -182,12 +193,29 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      - name: Update stable internal preview tag
+      - name: Confirm this build is still the branch head
+        id: current
         uses: actions/github-script@v7
         with:
           script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
+            const { owner, repo } = context.repo;
+            const response = await github.rest.git.getRef({
+              owner,
+              repo,
+              ref: "heads/feat/native-mobile-apps-20261104"
+            });
+            const isCurrent = response.data.object.sha === context.sha;
+            core.setOutput("is_current", String(isCurrent));
+            if (!isCurrent) {
+              core.warning("A newer feature-branch commit exists; this APK will remain a workflow artifact and will not replace the public preview.");
+            }
+
+      - name: Update stable internal preview tag
+        if: steps.current.outputs.is_current == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
             const ref = "tags/mobile-preview";
             try {
               await github.rest.git.getRef({ owner, repo, ref });
@@ -202,6 +230,7 @@ jobs:
             }
 
       - name: Publish internal preview APK download links
+        if: steps.current.outputs.is_current == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: mobile-preview
