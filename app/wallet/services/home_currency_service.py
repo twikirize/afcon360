@@ -78,6 +78,14 @@ def _country_currency(country: Any) -> Optional[str]:
     return None
 
 
+def home_currency_for_country(country: Any) -> Optional[str]:
+    """Return the mapped, currently Wallet-supported currency for a country."""
+    currency = _country_currency(country)
+    if not currency or currency not in SUPPORTED_HOME_CURRENCIES:
+        return None
+    return currency
+
+
 def _profile_for(user: Any):
     try:
         from app.profile.models import get_profile_by_user
