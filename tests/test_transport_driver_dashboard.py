@@ -155,5 +155,6 @@ def test_csrf_refresh_keeps_existing_dashboard_token_valid(app, client):
             headers={"X-CSRFToken": page_token},
         )
         assert response.status_code == 200, response.get_data(as_text=True)
+
     finally:
         app.config["WTF_CSRF_ENABLED"] = previous_setting
