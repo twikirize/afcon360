@@ -54,3 +54,33 @@ Select the supported transport for offer delivery and trip updates after tracing
 ### 6. Money and offline behavior (P0)
 
 Display wallet values returned by Wallet. No client-side ledger, refund decision, fee calculation or FX conversion may become authoritative. Financial writes require server-side idempotency and pending/success/failure reconciliation. Offline mode may cache safe public content but must not claim an offline booking, payment or driver assignment.
+
+
+## Confirmed source-level details (main audit baseline)
+
+### Existing login and device sessions
+
+- The existing `POST /login` is a browser form flow. It reads form fields, runs `authenticate_user()`, completes the current MFA/verification policy, calls Flask-Login `login_user()`, and returns redirects.
+- Successful browser login creates a server-session record and a device-session record through `start_device_session()`.
+- The existing `sessions` model stores `session_id`, internal user FK, a hashed User-Agent fingerprint, IP, User-Agent, expiry, revocation timestamp and revocation reason. The implementation currently uses an opaque UUID as `session_id`; it is not a refresh-token hash or a rotated token family.
+- Browser logout is `POST /logout`; it depends on the authenticated Flask session and revokes the associated server/device session IDs.
+- The device-session/revocation lifecycle is useful infrastructure to reuse, but it does not by itself establish native bearer authentication, refresh rotation or replay protection.
+
+### Existing transport API surface
+
+- `POST /api/transport/ride-options` is anonymous-allowed and quote-only. It requires all four resolved pickup/dropoff coordinates. Each option returns an authoritative fare/currency/version and `quote_token`; display-currency amounts are indicative. It deliberately does not query driver supply or contact drivers.
+- `POST /api/transport/bookings` is currently an admin/system creation resource, not an ordinary rider booking endpoint. The rider booking action is currently routed through the authenticated web flow. The mobile User app therefore needs a rider-authorized JSON booking command that reuses the existing quote validation and canonical booking service.
+- `GET /api/transport/bookings/<booking_reference>` is protected by Flask `login_required` and owner/admin checks. It is not yet proven to accept mobile bearer credentials.
+- `POST /api/transport/rides/<booking_reference>/payment/settle-wallet` is an owner-scoped authenticated settlement retry. The amount and currency derive from the stored booking.
+- Driver offer endpoints exist under `/api/transport/drivers/me/offers`, with POST accept and decline routes keyed by booking reference. Their resources use Flask `login_required` and resolve the driver's profile on the server.
+- Driver trip state is exposed through POST `/api/transport/drivers/me/trips/<booking_reference>/status`; post-trip cash receipt uses POST `/api/transport/drivers/me/trips/<booking_reference>/payment/confirm-cash`.
+- Driver status and location endpoints currently use `/drivers/<int:driver_id>/status` and `/drivers/<int:driver_id>/location`. They use internal numeric driver IDs and Flask session authentication. Before native wiring, add self-scoped `/drivers/me/status` and `/drivers/me/location` routes or prove a public-ID contract; do not expose internal database IDs to the app.
+- The existing driver offer contract is polled. Do not promise push delivery until device registration, FCM/APNs delivery, revocation and retry handling are implemented.
+
+### Existing wallet API surface
+
+- `GET /api/wallet/me` and `GET /api/wallet/transactions` require Flask `login_required`.
+- Wallet writes such as deposit, withdrawal and transfer also use CSRF validation, frozen-account checks and rate limits. Native auth integration must preserve those controls and add idempotency; do not simply remove CSRF or treat an Authorization header as sufficient proof.
+- Wallet remains the canonical source of balances, invoices, payments, refunds, ledger movements and payouts.
+
+See `api-inventory.md` for the route inventory and native readiness assessment.
