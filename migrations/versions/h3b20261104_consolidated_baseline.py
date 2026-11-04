@@ -28831,8 +28831,16 @@ _SCHEMA_SQL = (
 )
 
 def upgrade():
-    op.get_bind().exec_driver_sql(
+    bind = op.get_bind()
+    bind.exec_driver_sql(
         _SCHEMA_SQL,
+        execution_options={"no_parameters": True}
+    )
+    # pg_dump deliberately clears search_path while restoring objects.
+    # Restore the application's public schema before Alembic records this
+    # revision in alembic_version on the same connection.
+    bind.exec_driver_sql(
+        "SET search_path = public",
         execution_options={"no_parameters": True}
     )
 
