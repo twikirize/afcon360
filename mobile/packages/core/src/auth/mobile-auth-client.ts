@@ -27,6 +27,16 @@ type TokenPayload = {
   user?: MobileIdentity;
 };
 
+type RegistrationEnvelope = Envelope<{
+  registration_token?: string;
+  email?: string;
+  expires_in?: number;
+  message?: string;
+  username?: string;
+}> & {
+  registration_pending?: boolean;
+};
+
 export class MobileAuthClient {
   private readonly client: MobileClientKind;
   private readonly store: SecureTokenStore;
@@ -79,6 +89,68 @@ export class MobileAuthClient {
     }
     if (error instanceof Error) return new MobileAuthError(error.message);
     return new MobileAuthError("AFCON360 could not complete that request.");
+  }
+
+  async register(input: {
+    username: string;
+    email: string;
+    password: string;
+    full_name?: string;
+  }): Promise<{
+    verificationRequired: boolean;
+    registrationToken?: string;
+    email: string;
+    message: string;
+    expiresIn?: number;
+  }> {
+    try {
+      const response = await this.api.post<RegistrationEnvelope>("/api/mobile/v1/auth/register", input);
+      if (!response.success) {
+        throw new MobileAuthError(response.message ?? "AFCON360 could not create the account.", response.code ?? "registration_failed");
+      }
+      const data = response.data ?? {};
+      if (response.registration_pending && !data.registration_token) {
+        throw new MobileAuthError("The verification service returned an incomplete response. Please try again.", "registration_response_invalid");
+      }
+      return {
+        verificationRequired: !!response.registration_pending,
+        registrationToken: data.registration_token,
+        email: data.email ?? input.email,
+        message: data.message ?? response.message ?? "Your account request was accepted.",
+        expiresIn: data.expires_in
+      };
+    } catch (error) {
+      throw await this.envelopeError(error);
+    }
+  }
+
+  async verifyRegistration(registrationToken: string, code: string): Promise<string> {
+    try {
+      const response = await this.api.post<Envelope<{ message?: string }>>("/api/mobile/v1/auth/register/verify", {
+        registration_token: registrationToken,
+        code: code.trim()
+      });
+      if (!response.success) {
+        throw new MobileAuthError(response.message ?? "We could not verify that code.", response.code ?? "registration_verification_failed");
+      }
+      return response.data?.message ?? response.message ?? "Your email is verified. You can sign in.";
+    } catch (error) {
+      throw await this.envelopeError(error);
+    }
+  }
+
+  async resendRegistrationCode(registrationToken: string): Promise<string> {
+    try {
+      const response = await this.api.post<Envelope<{ message?: string }>>("/api/mobile/v1/auth/register/resend", {
+        registration_token: registrationToken
+      });
+      if (!response.success) {
+        throw new MobileAuthError(response.message ?? "We could not resend the verification code.", response.code ?? "registration_resend_failed");
+      }
+      return response.data?.message ?? response.message ?? "A new verification code has been sent.";
+    } catch (error) {
+      throw await this.envelopeError(error);
+    }
   }
 
   async signIn(identifier: string, password: string): Promise<MobileLoginResult> {
