@@ -303,6 +303,7 @@
           <li class="menu-item workspace-context-menu">{{ render_workspace_context_switcher('desktop') }}</li>
         {% endif %}
         <li class="menu-item"><a href="{{ url_for('index') }}">Home</a></li>
+        <li class="menu-item"><a href="{{ url_for('public_app_download') }}">Download App</a></li>
 
         <li class="menu-item has-dropdown">
           <a href="{{ safe_url('events.list') }}">Events</a>
@@ -610,6 +611,7 @@
         {{ render_workspace_context_switcher('drawer') }}
       {% endif %}
       <a class="drawer-link" href="{{ url_for('index') }}">🏠 Home</a>
+      <a class="drawer-link" href="{{ url_for('public_app_download') }}"><i class="bi bi-download me-2"></i>Download App</a>
 
       <div class="drawer-accordion">
         <div class="drawer-accordion-head">
@@ -772,6 +774,7 @@
       <div>&copy; {{ app_name or "AFCON 360" }}</div>
       <div class="links">
         <a href="{{ url_for('index') }}">Home</a> &middot;
+        <a href="{{ url_for('public_app_download') }}">Download App</a> &middot;
         <a href="/support">Support</a>
       </div>
     </div>
