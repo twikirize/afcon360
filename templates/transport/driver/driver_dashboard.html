@@ -8,16 +8,16 @@
   #driverDashboard .driver-location-map {
     width: 100%;
     min-width: 0;
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-lg);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: var(--radius-lg, 12px);
     overflow: hidden;
-    background: var(--bg-surface);
+    background: var(--bg-surface, #fff);
   }
   #driverDashboard .driver-location-map__canvas {
     width: 100%;
     height: 300px;
     min-height: 240px;
-    background: var(--bg-surface-alt);
+    background: var(--bg-surface-alt, #f8fafc);
   }
   #driverDashboard .driver-location-map__canvas .leaflet-container {
     width: 100%;
@@ -352,6 +352,7 @@
            data-geo-map-status="pending"
            data-tile-url="{{ map_config.tile_url_template }}"
            data-tile-attribution="{{ map_config.tile_attribution }}"
+           data-tile-source-label="{{ map_config.tile_source_label }}"
            data-default-lat="{{ map_config.default_center.latitude }}"
            data-default-lng="{{ map_config.default_center.longitude }}"
            data-default-zoom="{{ map_config.default_zoom }}"
