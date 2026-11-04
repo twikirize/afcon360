@@ -169,7 +169,7 @@
       <span>·</span>
       <span style="color:var(--green);font-weight:600;">
         Rider fare estimate: {{ o0_display_currency }}
-        {% if o0_display_currency in ['UGX', 'TZS', 'RWF', 'JPY', 'KRW', 'VND', 'XAF', 'XOF'] %}
+        {% if o0_display_currency in ['UGX', 'RWF', 'JPY', 'KRW', 'VND', 'XAF', 'XOF'] %}
           {{ '%.0f'|format(o0_display_amount|float) }}
         {% else %}
           {{ '%.2f'|format(o0_display_amount|float) }}
