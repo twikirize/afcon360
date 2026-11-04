@@ -49,6 +49,12 @@ Status is evidence-based. A green code/build check is not store approval.
 - [ ] Internal/closed testing, pre-launch report, device matrix and policy checks passed.
 - [ ] Review accepted and official Play URLs verified before preview links are replaced.
 
+## Native feature scope and reviewer access
+
+The current User binary includes native sign-in/MFA, ride location search and fare quotation, payment-method selection and ride requests, ride activity, Wallet balance/status display and account controls. Accommodation, tourism and events launch the existing AFCON360 website in the system browser. Describe this accurately in screenshots, store copy and review notes; do not imply every service is a native screen or that payment capture occurs in the ride request flow.
+
+For Apple review, the native ride and account experience must be clearly useful beyond a collection of website links. Keep the ride flow live, complete and testable, and provide a reviewer account with working MFA instructions or a full-featured demo mode. Apple requires a complete, functional submission and access to account-based features during review; Guideline 4.2 expects utility beyond a repackaged website.
+
 ## Apple App Store
 
 - [ ] Apple Developer Program membership and App Store Connect access active.
