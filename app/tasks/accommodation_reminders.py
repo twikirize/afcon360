@@ -22,102 +22,172 @@ from app.accommodation.services.readiness_service import AccommodationReadinessS
 from app.notifications.models import NotificationModule, NotificationType
 
 
-@shared_task(name="accommodation.send_registration_reminders")
-def send_registration_reminders():
+@shared_task(name="accommodation.send_registration_reminders", bind=True)
+def send_registration_reminders(
+    self,
+    batch_size: int = 5,
+    after_72h_id: int = 0,
+    after_48h_id: int = 0,
+    after_24h_id: int = 0,
+    after_post_booking_id: int = 0,
+):
     """
-    Send reminders for incomplete guest registration.
+    Send bounded pages of incomplete-guest-registration reminders.
 
-    Triggers:
-    1. 72 hours before check-in (first reminder)
-    2. 48 hours before check-in (second reminder)
-    3. 24 hours before check-in (final warning)
-    4. 24 hours after booking creation (if status is CONFIRMED or PENDING_APPROVAL)
+    Each reminder class has its own keyset cursor because the time windows
+    overlap. A stable reminder key prevents hourly Beat runs and continuation
+    pages from sending the same reminder twice for the same booking/check-in.
     """
     now = datetime.now(timezone.utc)
+    batch_size = max(1, min(int(batch_size), 25))
+    cursors = {
+        "72h": max(0, int(after_72h_id)),
+        "48h": max(0, int(after_48h_id)),
+        "24h": max(0, int(after_24h_id)),
+        "post_booking_24h": max(0, int(after_post_booking_id)),
+    }
 
-    # 72h before check-in reminder
+    status_filter = [
+        AccommodationBookingStatus.CONFIRMED.value,
+        AccommodationBookingStatus.PENDING_APPROVAL.value,
+    ]
     cutoff_72h = now + timedelta(hours=72)
-    upcoming_72h = AccommodationBooking.query.filter(
-        AccommodationBooking.check_in <= cutoff_72h,
-        AccommodationBooking.check_in > now,
-        AccommodationBooking.status.in_([
-            AccommodationBookingStatus.CONFIRMED.value,
-            AccommodationBookingStatus.PENDING_APPROVAL.value,
-        ]),
-    ).all()
-
-    for booking in upcoming_72h:
-        if not _is_fully_registered(booking.id):
-            _send_notification(
-                booking,
-                NotificationType.BOOKING_UPDATE,
-                "Complete guest registration soon",
-                f"Guest registration for booking {booking.booking_reference} is still incomplete. "
-                f"Check-in is on {booking.check_in.isoformat()}. Please register all guests within 72 hours.",
-            )
-
-    # 48h before check-in reminder
     cutoff_48h = now + timedelta(hours=48)
-    upcoming_48h = AccommodationBooking.query.filter(
-        AccommodationBooking.check_in <= cutoff_48h,
-        AccommodationBooking.check_in > now,
-        AccommodationBooking.status.in_([
-            AccommodationBookingStatus.CONFIRMED.value,
-            AccommodationBookingStatus.PENDING_APPROVAL.value,
-        ]),
-    ).all()
-
-    for booking in upcoming_48h:
-        if not _is_fully_registered(booking.id):
-            _send_notification(
-                booking,
-                NotificationType.BOOKING_UPDATE,
-                "Guest registration required before check-in",
-                f"Guest registration for booking {booking.booking_reference} is still incomplete. "
-                f"Check-in is on {booking.check_in.isoformat()}. Host may deny check-in without completed registration.",
-            )
-
-    # 24h before check-in reminder (final warning)
     cutoff_24h = now + timedelta(hours=24)
-    upcoming_24h = AccommodationBooking.query.filter(
-        AccommodationBooking.check_in <= cutoff_24h,
-        AccommodationBooking.check_in > now,
-        AccommodationBooking.status.in_([
-            AccommodationBookingStatus.CONFIRMED.value,
-            AccommodationBookingStatus.PENDING_APPROVAL.value,
-        ]),
-    ).all()
-
-    for booking in upcoming_24h:
-        if not _is_fully_registered(booking.id):
-            _send_notification(
-                booking,
-                NotificationType.BOOKING_UPDATE,
-                "URGENT: Guest registration deadline approaching",
-                f"Guest registration for booking {booking.booking_reference} is still incomplete. "
-                f"Check-in is tomorrow ({booking.check_in.isoformat()}). Incomplete registration will block check-in.",
-            )
-
-    # 24h after booking reminder
     reminder_cutoff = now - timedelta(hours=24)
-    recent_bookings = AccommodationBooking.query.filter(
-        AccommodationBooking.created_at <= reminder_cutoff,
-        AccommodationBooking.status.in_([
-            AccommodationBookingStatus.CONFIRMED.value,
-            AccommodationBookingStatus.PENDING_APPROVAL.value,
-        ]),
-    ).all()
 
-    for booking in recent_bookings:
-        if not _is_fully_registered(booking.id):
+    pages = {
+        "72h": (
+            AccommodationBooking.query.filter(
+                AccommodationBooking.check_in <= cutoff_72h,
+                AccommodationBooking.check_in > now,
+                AccommodationBooking.status.in_(status_filter),
+                AccommodationBooking.id > cursors["72h"],
+            )
+            .order_by(AccommodationBooking.id.asc())
+            .limit(batch_size)
+            .all()
+        ),
+        "48h": (
+            AccommodationBooking.query.filter(
+                AccommodationBooking.check_in <= cutoff_48h,
+                AccommodationBooking.check_in > now,
+                AccommodationBooking.status.in_(status_filter),
+                AccommodationBooking.id > cursors["48h"],
+            )
+            .order_by(AccommodationBooking.id.asc())
+            .limit(batch_size)
+            .all()
+        ),
+        "24h": (
+            AccommodationBooking.query.filter(
+                AccommodationBooking.check_in <= cutoff_24h,
+                AccommodationBooking.check_in > now,
+                AccommodationBooking.status.in_(status_filter),
+                AccommodationBooking.id > cursors["24h"],
+            )
+            .order_by(AccommodationBooking.id.asc())
+            .limit(batch_size)
+            .all()
+        ),
+        "post_booking_24h": (
+            AccommodationBooking.query.filter(
+                AccommodationBooking.created_at <= reminder_cutoff,
+                AccommodationBooking.status.in_(status_filter),
+                AccommodationBooking.id > cursors["post_booking_24h"],
+            )
+            .order_by(AccommodationBooking.id.asc())
+            .limit(batch_size)
+            .all()
+        ),
+    }
+
+    templates = {
+        "72h": (
+            "Complete guest registration soon",
+            lambda b: (
+                f"Guest registration for booking {b.booking_reference} is still incomplete. "
+                f"Check-in is on {b.check_in.isoformat()}. Please register all guests within 72 hours."
+            ),
+        ),
+        "48h": (
+            "Guest registration required before check-in",
+            lambda b: (
+                f"Guest registration for booking {b.booking_reference} is still incomplete. "
+                f"Check-in is on {b.check_in.isoformat()}. Host may deny check-in without completed registration."
+            ),
+        ),
+        "24h": (
+            "URGENT: Guest registration deadline approaching",
+            lambda b: (
+                f"Guest registration for booking {b.booking_reference} is still incomplete. "
+                f"Check-in is tomorrow ({b.check_in.isoformat()}). Incomplete registration will block check-in."
+            ),
+        ),
+        "post_booking_24h": (
+            "Complete your guest registration",
+            lambda b: (
+                f"Please complete guest registration for booking {b.booking_reference}. "
+                f"Check-in is on {b.check_in.isoformat()}."
+            ),
+        ),
+    }
+
+    sent = {key: 0 for key in pages}
+    examined = {key: len(rows) for key, rows in pages.items()}
+    next_cursors = dict(cursors)
+
+    for reminder_key, bookings in pages.items():
+        title, message_for = templates[reminder_key]
+        for booking in bookings:
+            if _is_fully_registered(booking.id):
+                continue
+            check_in_marker = (
+                booking.check_in.isoformat()
+                if hasattr(booking.check_in, "isoformat")
+                else str(booking.check_in)
+            )
+            dedupe_key = (
+                f"accommodation_guest_registration:{reminder_key}:"
+                f"{booking.id}:{check_in_marker}"
+            )
             _send_notification(
                 booking,
                 NotificationType.BOOKING_UPDATE,
-                "Complete your guest registration",
-                f"Please complete guest registration for booking {booking.booking_reference}. "
-                f"Check-in is on {booking.check_in.isoformat()}.",
+                title,
+                message_for(booking),
+                dedupe_key=dedupe_key,
             )
+            sent[reminder_key] += 1
 
+        if len(bookings) >= batch_size:
+            next_cursors[reminder_key] = bookings[-1].id
+
+    continuation_queued = any(
+        len(pages[key]) >= batch_size for key in pages
+    )
+    if continuation_queued:
+        try:
+            self.apply_async(
+                kwargs={
+                    "batch_size": batch_size,
+                    "after_72h_id": next_cursors["72h"],
+                    "after_48h_id": next_cursors["48h"],
+                    "after_24h_id": next_cursors["24h"],
+                    "after_post_booking_id": next_cursors["post_booking_24h"],
+                },
+                countdown=5,
+            )
+        except Exception:
+            logger.exception("Could not schedule next accommodation registration-reminder page")
+            continuation_queued = False
+
+    return {
+        "sent": sent,
+        "examined": examined,
+        "batch_size": batch_size,
+        "continuation_queued": continuation_queued,
+    }
 
 @shared_task(name="accommodation.send_pre_arrival_request_reminder", bind=True)
 def send_pre_arrival_request_reminder(
@@ -445,22 +515,51 @@ def detect_no_shows(
 
 
 def _is_fully_registered(booking_id: int) -> bool:
-    """Check if all required guests are registered for a booking."""
+    """Check registration completeness without loading every guest row."""
     try:
-        registrations = GuestRegistration.query.filter_by(booking_id=booking_id).all()
-        if not registrations:
+        registrations = GuestRegistration.query.filter_by(
+            booking_id=booking_id
+        )
+        if not registrations.first():
             return False
-        return all(r.status in ("completed", "skipped") for r in registrations)
+        incomplete = registrations.filter(
+            ~GuestRegistration.status.in_(("completed", "skipped"))
+        ).first()
+        return incomplete is None
     except Exception:
         return False
 
 
-def _send_notification(booking, notification_type, title: str, message: str):
-    """Best-effort notification sender; swallows failures to keep task idempotent."""
+def _send_notification(
+    booking,
+    notification_type,
+    title: str,
+    message: str,
+    dedupe_key: str = None,
+):
+    """Best-effort notification sender with optional durable deduplication."""
     try:
+        from app.notifications.models import Notification
         from app.notifications.services import NotificationService
-        # Determine recipient: Owner if claimed, otherwise booker
+
+        # Determine recipient: Owner if claimed, otherwise booker.
         recipient_id = booking.booking_owner_id or booking.booked_by_user_id
+        if not recipient_id:
+            return
+
+        context = {"booking_reference": booking.booking_reference}
+        if dedupe_key:
+            existing = Notification.query.filter_by(
+                user_id=recipient_id,
+                type=getattr(notification_type, "value", notification_type),
+                module=NotificationModule.ACCOMMODATION.value,
+            ).filter(
+                Notification.context["reminder_key"].astext == dedupe_key
+            ).first()
+            if existing:
+                return
+            context["reminder_key"] = dedupe_key
+
         NotificationService.send(
             user_id=recipient_id,
             notification_type=notification_type,
@@ -468,7 +567,7 @@ def _send_notification(booking, notification_type, title: str, message: str):
             title=title,
             message=message,
             channels=["in_app", "email"],
-            data={"booking_reference": booking.booking_reference},
+            data=context,
         )
     except Exception as e:
         print(f"Notification failed for booking {booking.booking_reference}: {e}")
