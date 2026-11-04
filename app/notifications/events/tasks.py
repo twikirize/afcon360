@@ -77,7 +77,7 @@ def _with_app(fn):
 
 # ----------------------------------------------------------------------
 @shared_task(name='events.relay_outbox', bind=True, max_retries=3)
-def relay_outbox_task(self, limit: int = 200) -> dict:
+def relay_outbox_task(self, limit: int = 25) -> dict:
     """Publish committed outbox rows to the event bus."""
     t0 = time.monotonic()
     def _run():
@@ -108,7 +108,7 @@ def relay_outbox_task(self, limit: int = 200) -> dict:
 
 # ----------------------------------------------------------------------
 @shared_task(name='events.dispatch_webhooks', bind=True, max_retries=3)
-def dispatch_webhooks_task(self, limit: int = 50) -> dict:
+def dispatch_webhooks_task(self, limit: int = 10) -> dict:
     """Deliver queued partner webhooks with signing + retry."""
     t0 = time.monotonic()
     def _run():
@@ -132,7 +132,7 @@ def dispatch_webhooks_task(self, limit: int = 50) -> dict:
 
 # ----------------------------------------------------------------------
 @shared_task(name='events.retry_dead_letters')
-def retry_dead_letters_task(limit: int = 50) -> dict:
+def retry_dead_letters_task(limit: int = 10) -> dict:
     """
     Requeue outbox rows that dead-lettered because the bus was down.
 
@@ -166,8 +166,12 @@ def retry_dead_letters_task(limit: int = 50) -> dict:
 
 
 # ----------------------------------------------------------------------
-@shared_task(name='events.cleanup_ledger')
-def cleanup_ledger_task(retention_days: int = 365, batch: int = 5000) -> dict:
+@shared_task(name='events.cleanup_ledger', bind=True)
+def cleanup_ledger_task(
+    self,
+    retention_days: int = 365,
+    batch: int = 100,
+) -> dict:
     """
     Prune the event ledger past the compliance retention window.
 
