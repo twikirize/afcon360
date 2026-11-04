@@ -177,7 +177,12 @@
       </span>
       {% if o0_fare.get('display_is_approximate') %}
       <span class="ws-muted" style="font-size:11px;">
-        Approximate Wallet-currency display · base fare {{ o0_base_currency }}
+        {% if o0_fare.get('display_currency_basis') == 'operating_country' %}
+          Approximate operating-market display ({{ o0_fare.get('operating_country_code') }})
+        {% else %}
+          Approximate Wallet-home display
+        {% endif %}
+        · base fare {{ o0_base_currency }}
         {{ ('%.2f'|format(o0_fare.get('amount')|float)).rstrip('0').rstrip('.') }}
         · not your net earnings
         {% if o0_fare.get('display_rate_attribution_url') %}
