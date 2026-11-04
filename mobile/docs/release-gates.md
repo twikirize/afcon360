@@ -5,7 +5,8 @@ A release advances only when evidence for its gate is recorded.
 ## Gate 0 — repository and local build
 
 - [ ] SDK 58 workspace installs with pnpm.
-- [ ] Both apps pass expo-doctor and TypeScript checks.
+- [ ] Both apps pass Expo SDK compatibility checks, Expo Doctor and TypeScript checks.
+- [ ] Metro exports succeed for both Android and iOS bundles for both apps.
 - [ ] Android development builds install on a physical device.
 - [ ] iOS development builds install on a real iPhone.
 - [ ] Icons, splash screens, privacy strings and brand assets are approved.

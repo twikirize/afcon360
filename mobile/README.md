@@ -32,4 +32,4 @@ Confirm legal ownership and store-account availability before public release. EA
 
 The /apps page intentionally shows development status instead of fake store buttons. Add official store URLs only after signed builds pass testing and store approval.
 
-Read docs/backend-contracts.md, docs/release-gates.md and AGENTS.md before adding behavior.
+Read docs/backend-contracts.md, docs/api-inventory.md, docs/release-gates.md and AGENTS.md before adding behavior.
