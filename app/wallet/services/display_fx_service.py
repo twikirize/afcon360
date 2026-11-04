@@ -105,7 +105,10 @@ def _fetch_base_rates(base: str) -> Optional[Dict[str, Any]]:
             )
         except (TypeError, ValueError, OverflowError, OSError):
             next_update = updated_at + timedelta(hours=24)
-        cache_until = max(now + timedelta(minutes=5), next_update)
+        cache_until = min(
+            max(now + timedelta(minutes=5), next_update),
+            now + timedelta(hours=24),
+        )
         table = {
             "rates": rates,
             "updated_at": updated_at,
