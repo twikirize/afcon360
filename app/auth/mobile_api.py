@@ -795,7 +795,7 @@ def mobile_driver_location():
 @_bearer_required("driver")
 def mobile_driver_active_trip():
     from app.transport.models import Booking
-    from app.utils.enums import BookingStatus
+    from app.utils.enums import BookingStatus, PaymentStatus
     profile, error, status = _current_driver()
     if error:
         return jsonify(error), status
