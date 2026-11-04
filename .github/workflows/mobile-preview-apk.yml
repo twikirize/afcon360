@@ -43,9 +43,6 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install JavaScript workspace
         working-directory: mobile
         run: pnpm install --no-frozen-lockfile
@@ -56,35 +53,97 @@ jobs:
           pnpm --filter @afcon360/user-app exec expo install --check
           pnpm --filter @afcon360/driver-app exec expo install --check
 
+      - name: Install Android platform and build tools
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort | tail -n 1)"
+          if [ -z "$SDKMANAGER" ]; then echo "Android sdkmanager not found"; exit 1; fi
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
+
+      - name: Create internal preview signing key
+        run: |
+          mkdir -p "$HOME/.android"
+          keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android \
+            -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=AFCON360,C=UG"
+
       - name: Prebuild User Android project
         working-directory: mobile
         run: pnpm --filter @afcon360/user-app exec expo prebuild --platform android --no-install --clean
 
-      - name: Report User Android target SDK
+      - name: Configure User preview build signing
         working-directory: mobile/apps/user/android
-        run: grep -R -n "targetSdkVersion" build.gradle app/build.gradle || true
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const file = "app/build.gradle";
+          let source = fs.readFileSync(file, "utf8");
+          const buildTypes = source.indexOf("buildTypes {");
+          const release = source.indexOf("release {", buildTypes);
+          if (buildTypes < 0 || release < 0) throw new Error("Could not locate Android release buildType");
+          const insertAt = release + "release {".length;
+          source = source.slice(0, insertAt) + "\n            signingConfig signingConfigs.debug" + source.slice(insertAt);
+          fs.writeFileSync(file, source);
+          NODE
+          grep -R -n "targetSdkVersion" build.gradle app/build.gradle || true
 
-      - name: Build User debug APK
+      - name: Build User standalone preview APK
         working-directory: mobile/apps/user/android
-        run: ./gradlew --no-daemon --stacktrace assembleDebug
+        run: ./gradlew --no-daemon --stacktrace assembleRelease
+
+      - name: Sign User preview APK
+        working-directory: mobile/apps/user/android
+        run: |
+          APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          test -n "$APK"
+          zipalign -p -f 4 "$APK" "$RUNNER_TEMP/user-aligned.apk"
+          apksigner sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android \
+            --key-pass pass:android --out "$GITHUB_WORKSPACE/mobile/release-user.apk" "$RUNNER_TEMP/user-aligned.apk"
+          apksigner verify --verbose "$GITHUB_WORKSPACE/mobile/release-user.apk"
 
       - name: Prebuild Driver Android project
         working-directory: mobile
         run: pnpm --filter @afcon360/driver-app exec expo prebuild --platform android --no-install --clean
 
-      - name: Report Driver Android target SDK
+      - name: Configure Driver preview build signing
         working-directory: mobile/apps/driver/android
-        run: grep -R -n "targetSdkVersion" build.gradle app/build.gradle || true
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const file = "app/build.gradle";
+          let source = fs.readFileSync(file, "utf8");
+          const buildTypes = source.indexOf("buildTypes {");
+          const release = source.indexOf("release {", buildTypes);
+          if (buildTypes < 0 || release < 0) throw new Error("Could not locate Android release buildType");
+          const insertAt = release + "release {".length;
+          source = source.slice(0, insertAt) + "\n            signingConfig signingConfigs.debug" + source.slice(insertAt);
+          fs.writeFileSync(file, source);
+          NODE
+          grep -R -n "targetSdkVersion" build.gradle app/build.gradle || true
 
-      - name: Build Driver debug APK
+      - name: Build Driver standalone preview APK
         working-directory: mobile/apps/driver/android
-        run: ./gradlew --no-daemon --stacktrace assembleDebug
+        run: ./gradlew --no-daemon --stacktrace assembleRelease
+
+      - name: Sign Driver preview APK
+        working-directory: mobile/apps/driver/android
+        run: |
+          APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          test -n "$APK"
+          zipalign -p -f 4 "$APK" "$RUNNER_TEMP/driver-aligned.apk"
+          apksigner sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android \
+            --key-pass pass:android --out "$GITHUB_WORKSPACE/mobile/release-driver.apk" "$RUNNER_TEMP/driver-aligned.apk"
+          apksigner verify --verbose "$GITHUB_WORKSPACE/mobile/release-driver.apk"
 
       - name: Stage preview APKs and checksums
         run: |
           mkdir -p mobile/release
-          cp mobile/apps/user/android/app/build/outputs/apk/debug/app-debug.apk mobile/release/AFCON360-User-preview.apk
-          cp mobile/apps/driver/android/app/build/outputs/apk/debug/app-debug.apk mobile/release/AFCON360-Driver-preview.apk
+          cp mobile/release-user.apk mobile/release/AFCON360-User-preview.apk
+          cp mobile/release-driver.apk mobile/release/AFCON360-Driver-preview.apk
           cd mobile/release
           sha256sum *.apk > SHA256SUMS.txt
           ls -lh
