@@ -239,7 +239,11 @@ def process_event_registration(self, registration_id: int, event_slug: str, task
     time_limit=330,
     acks_late=True
 )
-def expire_pending_registrations(self, batch_size: int = 25):
+def expire_pending_registrations(
+    self,
+    batch_size: int = 25,
+    after_registration_id: int = 0,
+):
     """
     REAPER TASK: Expire pending registrations after 2 hours.
     Runs every 5 minutes via Celery beat.
@@ -249,14 +253,16 @@ def expire_pending_registrations(self, batch_size: int = 25):
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=2)
 
         batch_size = max(1, min(int(batch_size), 50))
+        after_registration_id = max(0, int(after_registration_id))
         expired_registrations = (
             db.session.query(EventRegistration)
             .filter(
                 EventRegistration.payment_status == EventRegistration.PAYMENT_PENDING,
                 EventRegistration.status == EventRegistration.STATUS_PENDING_PAYMENT,
                 EventRegistration.created_at <= cutoff_time,
+                EventRegistration.id > after_registration_id,
             )
-            .order_by(EventRegistration.created_at.asc(), EventRegistration.id.asc())
+            .order_by(EventRegistration.id.asc())
             .limit(batch_size)
             .with_for_update(of=EventRegistration, skip_locked=True)
             .all()
@@ -329,10 +335,13 @@ def expire_pending_registrations(self, batch_size: int = 25):
             )
 
             continuation_queued = False
-            if expired_count == batch_size:
+            if len(expired_registrations) >= batch_size:
                 try:
                     self.apply_async(
-                        kwargs={"batch_size": batch_size},
+                        kwargs={
+                            "batch_size": batch_size,
+                            "after_registration_id": expired_registrations[-1].id,
+                        },
                         countdown=5,
                     )
                     continuation_queued = True
@@ -349,7 +358,7 @@ def expire_pending_registrations(self, batch_size: int = 25):
                 'timestamp': datetime.now(timezone.utc).isoformat(),
             }
 
-        return {
+            return {
             'expired_count': 0,
             'capacity_released': {},
             'batch_size': batch_size,
@@ -528,13 +537,18 @@ def release_expired_capacity(self, event_id, ticket_type_id, seats_to_release=1)
     time_limit=330,
     acks_late=True,
 )
-def release_expired_ticket_holds(self, batch_size: int = 25):
+def release_expired_ticket_holds(
+    self,
+    batch_size: int = 25,
+    after_hold_id: int = 0,
+):
     """Release a small ordered page of expired TicketHolds.
 
     Requeues a short continuation when a full page was found, allowing the
     worker to return to the broker between pages.
     """
     batch_size = max(1, min(int(batch_size), 50))
+    after_hold_id = max(0, int(after_hold_id))
     app = _flask_app()
     with app.app_context():
         try:
@@ -547,8 +561,9 @@ def release_expired_ticket_holds(self, batch_size: int = 25):
                 .filter(
                     TicketHold.status == ReservationStatus.RESERVED,
                     TicketHold.expires_at <= now,
+                    TicketHold.id > after_hold_id,
                 )
-                .order_by(TicketHold.expires_at.asc(), TicketHold.id.asc())
+                .order_by(TicketHold.id.asc())
                 .limit(batch_size)
                 .with_for_update(skip_locked=True)
                 .all()
@@ -562,10 +577,13 @@ def release_expired_ticket_holds(self, batch_size: int = 25):
                 logger.info("Released %s expired ticket holds", released)
 
             continuation_queued = False
-            if len(expired) >= batch_size and released == len(expired):
+            if len(expired) >= batch_size:
                 try:
                     self.apply_async(
-                        kwargs={"batch_size": batch_size},
+                        kwargs={
+                            "batch_size": batch_size,
+                            "after_hold_id": expired[-1].id,
+                        },
                         countdown=5,
                     )
                     continuation_queued = True
