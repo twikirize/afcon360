@@ -362,6 +362,88 @@ jobs:
           # Keep this as one command: android-emulator-runner executes each script line in a new shell.
           script: bash mobile/scripts/verify-android-emulator-install.sh "$APP" "$EXPECTED_PACKAGE" "${{ matrix.api-level }}"
 
+  apk-manifest-audit:
+    name: Audit packaged User APK permissions and components
+    needs: [prepare-android-validation, build-preview-apk]
+    if: >-
+      needs.prepare-android-validation.result == 'success' &&
+      (needs.build-preview-apk.result == 'success' || needs.build-preview-apk.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      APP: user
+      EXPECTED_PACKAGE: space.pamoja.afcon360.user
+    steps:
+      - name: Download the exact APK selected for this validation run
+        uses: actions/download-artifact@v8
+        with:
+          name: afcon360-user-preview-apk
+          path: ${{ runner.temp }}/afcon360-user-artifact
+          run-id: ${{ needs.prepare-android-validation.outputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Inspect packaged Android manifest, permissions and signatures
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --install 'build-tools;37.0.0' >/dev/null
+          AAPT="$SDK_ROOT/build-tools/37.0.0/aapt"
+          APKSIGNER="$SDK_ROOT/build-tools/37.0.0/apksigner"
+          APKANALYZER="$(find "$SDK_ROOT/cmdline-tools" -type f -name apkanalyzer | sort | tail -n 1)"
+          test -x "$AAPT"
+          test -x "$APKSIGNER"
+          test -n "$APKANALYZER"
+
+          APK="$(find "$RUNNER_TEMP/afcon360-user-artifact" -type f -name '*.apk' -print -quit)"
+          INFO="$(find "$RUNNER_TEMP/afcon360-user-artifact" -type f -name 'user-build-info.txt' -print -quit)"
+          test -s "$APK"
+          test -s "$INFO"
+
+          mkdir -p "$RUNNER_TEMP/afcon360-manifest-audit"
+          REPORT="$RUNNER_TEMP/afcon360-manifest-audit"
+          "$APKANALYZER" manifest print "$APK" > "$REPORT/AndroidManifest.xml"
+          "$AAPT" dump permissions "$APK" > "$REPORT/permissions.txt"
+          "$AAPT" dump xmltree "$APK" AndroidManifest.xml > "$REPORT/manifest-tree.txt"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > "$REPORT/signature.txt" 2>&1
+          cp "$INFO" "$REPORT/build-info.txt"
+
+          grep -Fxq "package=$EXPECTED_PACKAGE" "$INFO"
+          grep -Eq 'android:allowBackup="false"' "$REPORT/AndroidManifest.xml"
+          if grep -Eq 'android:debuggable="true"|android:usesCleartextTraffic="true"' "$REPORT/AndroidManifest.xml"; then
+            echo "::error::APK manifest enables debuggable mode or cleartext traffic."
+            exit 1
+          fi
+
+          {
+            echo "# AFCON360 User APK manifest audit"
+            echo
+            echo "Artifact build provenance:"
+            cat "$INFO"
+            echo
+            echo "## Declared permissions"
+            cat "$REPORT/permissions.txt"
+            echo
+            echo "## Manifest application/component security attributes"
+            grep -E 'uses-permission|<activity|<activity-alias|<service|<receiver|<provider|android:(name|exported|permission|allowBackup|debuggable|usesCleartextTraffic|taskAffinity)' "$REPORT/AndroidManifest.xml" || true
+            echo
+            echo "## APK signing certificate"
+            cat "$REPORT/signature.txt"
+          } > "$REPORT/audit-summary.md"
+
+          cat "$REPORT/audit-summary.md"
+
+      - name: Upload manifest audit evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: afcon360-user-apk-manifest-audit
+          path: ${{ runner.temp }}/afcon360-manifest-audit/
+          if-no-files-found: error
+          retention-days: 30
+
   ios-compatibility:
     # Phase 1 is Android User only; resume this unchanged job after that gate passes.
     if: ${{ false }}
