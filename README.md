@@ -571,6 +571,18 @@ Interpreting that old `15:00` as UTC would move the event three hours later. The
 
 Never apply `AT TIME ZONE 'UTC'` to a value proven to be Nairobi wall time. That would treat the Nairobi clock reading as UTC and shift the actual instant by three hours.
 
+**Important safeguard for legacy production transitions:** this Nairobi interpretation is not a blanket rule for every naive column in every historical database. Audit each source column against its writer code, migration history and applicable time period. A retired database's current `SHOW TimeZone` value does not establish how its naive values were originally written. Classify every source as proven Nairobi wall time, proven another IANA timezone, already-aware, or unknown/mixed. Unknown or mixed provenance is BLOCKED; do not guess or apply a database-wide conversion.
+
+For a column proven to contain Nairobi wall time, make the interpretation explicit in the migration while the migration session remains UTC:
+
+```sql
+ALTER TABLE example
+  ALTER COLUMN legacy_time TYPE TIMESTAMPTZ
+  USING legacy_time AT TIME ZONE 'Africa/Nairobi';
+```
+
+This expression interprets the naive wall-clock value as Nairobi local time and produces the corresponding absolute instant. Use the proven IANA zone for other source data. Preserve already-aware values without shifting them. Do not set a new migration session to `Africa/Nairobi`; the old session-level setting belongs only to controlled reproduction of the preserved historical TZ-UNIFY chain, not new V1/V2+ migrations. Any data conversion requires a human-approved contract and an isolated rehearsal before production.
+
 ### How to use Alembic
 
 ```powershell
