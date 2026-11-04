@@ -1,0 +1,122 @@
+name: Native mobile auth PostgreSQL contract tests
+
+on:
+  push:
+    branches:
+      - feat/native-mobile-apps-20261104
+    paths:
+      - "app/__init__.py"
+      - "app/auth/mobile_api.py"
+      - "app/auth/mobile_tokens.py"
+      - "app/auth/pending_registration.py"
+      - "app/auth/registration_policy.py"
+      - "app/auth/validators.py"
+      - "app/auth/services.py"
+      - "mobile/packages/core/src/auth/**"
+      - "mobile/apps/user/app/login.tsx"
+      - "mobile/apps/user/app/register.tsx"
+      - "mobile/packages/ui/src/auth.tsx"
+      - "tests/auth/test_mobile_registration_api.py"
+      - ".github/workflows/mobile-auth-postgres-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-auth-postgres-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-auth-contract:
+    name: PostgreSQL 15 — native login and registration API contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: afcon360_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d afcon360_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      APP_ENV: testing
+      FLASK_ENV: testing
+      DISABLE_REDIS: "1"
+      SOCKETIO_ENABLED: "false"
+      LOG_LEVEL: WARNING
+      SECRET_KEY: "ci-only-not-a-production-secret"
+      SECURITY_SALT: "ci-only-security-salt-value-long-enough-for-tests-2026"
+      ENCRYPTION_KEY: "ci-only-not-a-production-key"
+      TEST_DATABASE_URL: postgresql://postgres@localhost:5432/afcon360_test
+      DATABASE_URL: postgresql://postgres@localhost:5432/afcon360_test
+      TEST_DB_LOCK_TIMEOUT: "60"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Configure passwordless CI PostgreSQL authentication
+        shell: bash
+        run: |
+          umask 077
+          printf 'localhost:5432:afcon360_test:postgres:postgres\n' > "$HOME/.pgpass"
+          chmod 600 "$HOME/.pgpass"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install project and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Compile the native auth backend modules
+        run: |
+          python -m py_compile \
+            app/__init__.py \
+            app/auth/mobile_api.py \
+            app/auth/mobile_tokens.py \
+            app/auth/pending_registration.py \
+            app/auth/registration_policy.py \
+            app/auth/validators.py \
+            app/auth/services.py
+
+      - name: Require one Alembic head
+        run: |
+          python - <<'PY'
+          from alembic.config import Config
+          from alembic.script import ScriptDirectory
+
+          config = Config("migrations/alembic.ini")
+          config.set_main_option("script_location", "migrations")
+          heads = ScriptDirectory.from_config(config).get_heads()
+          print("Alembic heads:", heads)
+          if len(heads) != 1:
+              raise SystemExit(f"Expected one Alembic head; found {len(heads)}")
+          PY
+
+      - name: Build the disposable PostgreSQL test schema
+        run: python -m flask --app 'app:create_app()' db upgrade
+
+      - name: Run native auth and registration contract tests
+        run: python -m pytest -q --timeout=120 tests/auth/test_mobile_registration_api.py
