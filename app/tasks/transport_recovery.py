@@ -126,7 +126,8 @@ def dispatch_recovery(
     # render is the fast path; this beat catches riders who closed the tab.
     no_match_closed = []
     candidates = []
-    batch = max(1, min(int(batch or 10), 25))
+    batch_size = 10
+    after_booking_id = max(0, int(after_booking_id))
     try:
         from flask import current_app
 
@@ -136,8 +137,7 @@ def dispatch_recovery(
             current_app.config.get("TRANSPORT_DISPATCH_RECOVERY_BATCH", 10)
             if batch is None else batch
         )
-        batch = max(1, min(int(configured_batch), 25))
-        after_booking_id = max(0, int(after_booking_id))
+        batch_size = max(1, min(int(configured_batch), 25))
         window = int(current_app.config.get("TRANSPORT_MATCHING_WINDOW_SECONDS", 180))
         from app.transport.services.assignment_service import CLAIMABLE_STATUSES
 
@@ -149,7 +149,7 @@ def dispatch_recovery(
                 Booking.id > after_booking_id,
             )
             .order_by(Booking.id.asc())
-            .limit(batch)
+            .limit(batch_size)
             .all()
         )
         for booking in candidates:
@@ -184,11 +184,11 @@ def dispatch_recovery(
     # Continue with the next keyset page as a separate task so the worker
     # returns to the broker between small slices. Failed items are still
     # passed over in this scan and are eligible again on the next Beat run.
-    if candidates and len(candidates) >= batch:
+    if candidates and len(candidates) >= batch_size:
         try:
             self.apply_async(
                 kwargs={
-                    "batch": batch,
+                    "batch": batch_size,
                     "after_booking_id": candidates[-1].id,
                 },
                 countdown=5,
