@@ -111,7 +111,7 @@ def test_public_offline_fallback_page(client):
 
     worker = client.get("/transport/sw.js").get_data(as_text=True)
     assert "isSafeOfflineResponse" in worker
-    assert "const VERSION = '2.0.6'" in worker
+    assert "const VERSION = '2.0.7'" in worker
 
 
 def test_global_shortcuts_resolve(client):
@@ -124,7 +124,7 @@ def test_global_shortcuts_resolve(client):
 
 def test_driver_service_worker_precaches_shared_dashboard_map_assets():
     worker = (STATIC / "transport/sw.js").read_text(encoding="utf-8")
-    assert "const VERSION = '2.0.6'" in worker
+    assert "const VERSION = '2.0.7'" in worker
     assert "'/static/js/geo/geo-map.js'" in worker
     assert "'/static/js/modules/transport/driver-dashboard-map.js'" in worker
     # External tile/CDN resources are network-only; only first-party static
