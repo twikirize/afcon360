@@ -47,6 +47,32 @@ The available saved item is an earlier analysis note, not the original raw MobSF
 7. **Device evidence:** emulator install/launch passed, but physical Android testing and live-like sign-in, booking, deletion, Wallet and network-failure journeys are still outstanding.
 8. **Apple:** no iOS result is claimed while the iOS job is disabled. Build and TestFlight validation with the currently required Xcode 26 / iOS 26 SDK must be completed before App Store submission.
 
+## Account deletion — confirmed cross-module gap (high priority)
+
+The current shared deletion service performs strong identity/session actions: it reauthenticates by password and enrolled TOTP/backup code, blocks protected accounts and certain active transport obligations, revokes device/server sessions, tombstones the User sign-in record, anonymizes the general UserProfile, retires driver location/contact data, invalidates MFA/recovery/PIN material and revokes user-owned API keys.
+
+That is **not yet a complete account-data deletion implementation**. Source inspection found additional user-linked records and snapshots that the service does not scrub or classify:
+
+| Domain | Confirmed fields / relationship | Risk and required decision |
+|---|---|---|
+| Events | `EventRegistration` retains `full_name`, `email`, `phone`, `nationality`, `id_number` even when `user_id` is set null; `EventGuest` retains name/email/phone; `Waitlist` retains email/phone. | Map which fields are needed for ticket validity, safety, fraud or statutory evidence. Erase/anonymize non-required PII; time-limit and restrict access to legally required identity evidence. Preserve ticket/payment integrity without displaying deleted-person details to ordinary event users. |
+| Accommodation | `AccommodationBooking` may hold `guest_name/email/phone`, `owner_email`, `primary_guest_name/email/phone`, `booked_by_name_snapshot/email_snapshot`, special requests, guest instructions and context metadata, as well as multiple User foreign keys. | Check upcoming/active stays and guest rosters before allowing closure. Preserve only booking/payment/dispute evidence that has an approved legal basis; scrub non-required contact snapshots, special requests and personal metadata after obligations end. |
+| Transport | `Booking` keeps pickup/dropoff addresses, contact names/phones, coordinates and metadata; `TransportPassenger` keeps name/email/phone snapshots even if its `user_id` is cleared. | Resolve active/upcoming trips and safety/dispute obligations. Retain only minimum necessary ride/settlement evidence; remove or pseudonymize passenger/contact snapshots and location precision when no longer needed. |
+| Wallet / payment identity | `PaymentIdentityModel` keeps active verified phone/email/AFCON360-ID addressability. The recipient resolver selects `is_active=True` identities and accepts an account only when its status is ACTIVE. User soft deletion does not execute database FK cascade. `AccountModel` has independent `status` and `is_frozen` state. | Do not leave deleted users discoverable as payment recipients. Deactivate their active payment identities and close/freeze the associated user wallet under an approved balance, payout, refund and dispute process. Never zero/delete ledger entries or silently forfeit a positive balance. |
+| Financial/audit/KYC | Account and ledger ownership, wallet transactions, KYC evidence and audit references are intentionally durable. | Define a record-by-record statutory/contractual retention matrix: data item, lawful purpose, jurisdiction, retention start/event, exact period, access roles, deletion/anonymization action and expiry job. “May be retained where required” is not an adequate published retention schedule. |
+
+### Required safe remediation sequence
+
+1. Build a complete user-data inventory across Identity, Profile, Transport, Accommodation, Events, Wallet, payment providers, uploads/object storage, notifications, analytics and audit sinks. Include JSON/metadata fields and processor copies, not just FK relationships.
+2. Define which outstanding service obligations must be completed, cancelled, transferred or refunded before account closure. Extend the current active-transport checks to active/upcoming accommodation and event obligations where applicable. Do not trap users indefinitely; provide a documented support/escalation path.
+3. Revoke login/device/API credentials and deactivate reusable payment identities. For wallets, use the wallet's controlled freeze/closure process and provide a lawful path for remaining funds, pending payouts, reversals and chargebacks. Keep the ledger immutable.
+4. Apply domain-owned anonymization/deletion functions in one coordinated transaction or an idempotent deletion job with per-domain completion state, retry, audit and failure handling. Avoid ad-hoc cross-module bulk updates in Identity.
+5. Keep legally required ticket, contract, KYC, AML, accounting and dispute records only where there is a documented legal basis and retention period. Restrict access and remove direct identifiers that are not needed for the retained purpose.
+6. Add integration tests per domain: before/after queries for each PII category, active obligation rejection, positive wallet balance, unsettled payment, retry/idempotency, payment-recipient lookup after deletion, and retained-evidence authorization.
+7. Publish exact retention categories/periods and external deletion-request handling only after the data controller/legal adviser approves them. Then verify both the in-app and public web deletion paths against the same service.
+
+**Do not declare account deletion store-ready until these tests and the retention schedule are complete.** The current UI and shared service exist, but they establish only identity tombstoning/profile anonymization plus session/credential revocation—not erasure of every personal record held by AFCON360 or its processors.
+
 ## Workflow/security operations
 
 - The current PR-capable workflow has `actions: read` and `contents: read`, no stable signing-secret references and no publish job.
