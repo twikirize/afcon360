@@ -26,6 +26,14 @@ Status is evidence-based. A green code/build check is not store approval.
 - [x] Draft User and Driver store listing names, short descriptions and full descriptions prepared in `docs/store-listing-copy.md`.
 - [ ] Final icons, splash screens, screenshots, store graphics and localized listing copy approved.
 
+## Cross-platform compatibility evidence
+
+- [ ] Both User and Driver pass Android API 24 (minimum), API 29, API 33 and API 36 install-and-launch checks.
+- [ ] Both User and Driver pass iOS simulator build/install/launch checks with iOS 16.4 deployment target and current iOS 26.4 simulator.
+- [ ] Physical Android devices across older, mid-range and current OS releases pass fresh install and same-key update tests.
+- [ ] Physical iPhone/iPad devices on the minimum supported iOS release and current iOS release pass install, launch, permissions and update tests.
+- [ ] Actual tested device models, OS versions, run links and failures are recorded before store submission.
+
 ## Android / Google Play
 
 - [ ] Play Console account, legal developer identity, access roles and contact verified.
