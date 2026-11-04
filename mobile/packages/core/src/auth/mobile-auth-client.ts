@@ -163,9 +163,15 @@ export class MobileAuthClient {
     if (!access && !refresh) return null;
     try {
       return await this.getMe();
-    } catch {
-      await this.store.clearTokens();
-      return null;
+    } catch (error) {
+      // A revoked/expired credential is cleared by the refresh path. Preserve
+      // credentials after transient server/network failures so users are not
+      // silently signed out during an outage.
+      if (error instanceof MobileAuthError && error.status && error.status >= 500) {
+        throw error;
+      }
+      if (!await this.store.getAccessToken() && !await this.store.getRefreshToken()) return null;
+      throw error;
     }
   }
 
@@ -194,4 +200,3 @@ export class MobileAuthClient {
   }
 }
 
-export { MobileAuthError };

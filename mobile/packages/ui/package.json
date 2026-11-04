@@ -11,5 +11,15 @@
   },
   "devDependencies": {
     "@types/react": "~19.3.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.tsx",
+      "default": "./src/index.tsx"
+    },
+    "./auth": {
+      "types": "./src/auth.tsx",
+      "default": "./src/auth.tsx"
+    }
   }
 }

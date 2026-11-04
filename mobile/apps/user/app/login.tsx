@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Alert, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -16,7 +16,9 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
 
-  if (!loading && user) router.replace("/(tabs)");
+  useEffect(() => {
+    if (!loading && user) router.replace("/(tabs)");
+  }, [loading, user, router]);
 
   const showError = (error: unknown) => {
     Alert.alert("Sign-in unsuccessful", error instanceof MobileAuthError ? error.message : "AFCON360 could not sign you in. Check your connection and try again.");
@@ -41,7 +43,7 @@ export default function LoginScreen() {
             <>
               <AuthField label="Username or email" value={identifier} onChangeText={setIdentifier} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" placeholder="Your AFCON360 username or email" returnKeyType="next" />
               <AuthField label="Password" value={password} onChangeText={setPassword} secureTextEntry autoComplete="password" placeholder="Your password" />
-              <AuthSubmit label="Sign in securely" loading={signingIn} disabled={!identifier.trim() || !password} onPress={() => signIn(identifier, password).then(() => { if (!mfaChallenge) router.replace("/(tabs)"); }).catch(showError)} />
+              <AuthSubmit label="Sign in securely" loading={signingIn} disabled={!identifier.trim() || !password} onPress={() => signIn(identifier, password).then(needsMfa => { if (!needsMfa) router.replace("/(tabs)"); }).catch(showError)} />
               <AuthLink label="Create an AFCON360 account" onPress={() => WebBrowser.openBrowserAsync(SITE + "/register")} />
               <AuthLink label="Forgot your password?" onPress={() => WebBrowser.openBrowserAsync(SITE + "/reset/request")} />
             </>

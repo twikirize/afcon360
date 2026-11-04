@@ -1,9 +1,14 @@
 import React from "react";
-import { Tabs } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 import { Text } from "react-native";
 import { palette } from "@afcon360/mobile-ui";
+import { ActivityIndicator, View } from "react-native";
+import { useAuth } from "../../src/auth/AuthProvider";
 const symbols: Record<string, string> = { index: "⌂", trips: "↗", earnings: "◈", account: "○" };
 export default function DriverTabs() {
+  const { user, loading } = useAuth();
+  if (loading) return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: palette.canvas }}><ActivityIndicator color={palette.green} /></View>;
+  if (!user) return <Redirect href="/login" />;
   return <Tabs screenOptions={({ route }) => ({
     headerShown: false, tabBarActiveTintColor: palette.green, tabBarInactiveTintColor: palette.muted,
     tabBarLabelStyle: { fontSize: 10, fontWeight: "700" },

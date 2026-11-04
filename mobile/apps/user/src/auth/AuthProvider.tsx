@@ -7,7 +7,7 @@ type AuthContextValue = {
   loading: boolean;
   signingIn: boolean;
   mfaChallenge: string | null;
-  signIn(identifier: string, password: string): Promise<void>;
+  signIn(identifier: string, password: string): Promise<boolean>;
   verifyMfa(code: string): Promise<void>;
   cancelMfa(): void;
   logout(): Promise<void>;
@@ -41,10 +41,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const result = await authClient.signIn(identifier, password);
         if (result.mfaRequired) {
           setMfaChallenge(result.challengeToken);
-          return;
+          return true;
         }
         setUser(result.user);
         setMfaChallenge(null);
+        return false;
       } finally {
         setSigningIn(false);
       }
