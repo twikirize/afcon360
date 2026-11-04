@@ -159,6 +159,22 @@ def test_driver_wizard_commit_declares_intention_without_vehicles(db_session):
     assert AccountModel.query.filter_by(user_id=user.id).count() == wallets_before
 
 
+def test_driver_wizard_requires_supported_operating_country(db_session):
+    """A driver cannot register without choosing an allowed operating market."""
+    from app.auth.onboarding_routes import _commit_driver_onboarding
+
+    user = _make_user(db_session)
+    wizard = _driver_wizard_data()
+    wizard["step3"]["operating_country_code"] = ""
+
+    with pytest.raises(ValueError, match="operating country"):
+        _commit_driver_onboarding(user, wizard)
+
+    assert DriverProfile.query.filter_by(
+        user_id=user.id, is_deleted=False,
+    ).count() == 0
+
+
 def test_driver_wizard_commit_guard_prevents_duplicate_driver_profile(db_session):
     """Re-committing driver onboarding must be rejected at the write point."""
     from app.auth.onboarding_routes import _commit_driver_onboarding
