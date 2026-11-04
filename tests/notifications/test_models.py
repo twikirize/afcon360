@@ -104,6 +104,7 @@ class TestNotificationModel:
 
         assert notification.status == NotificationStatus.SENT
         assert notification.sent_at is not None
+        assert notification.last_attempt_at is not None
 
     def test_mark_delivered(self, db_session):
         """Test marking a notification as delivered."""
@@ -122,6 +123,7 @@ class TestNotificationModel:
 
         assert notification.status == NotificationStatus.DELIVERED
         assert notification.delivered_at is not None
+        assert notification.last_attempt_at is not None
 
     def test_mark_failed(self, db_session):
         """Test marking a notification as failed."""
@@ -140,6 +142,7 @@ class TestNotificationModel:
 
         assert notification.status == NotificationStatus.FAILED
         assert notification.error_message == "SMTP connection failed"
+        assert notification.last_attempt_at is not None
 
     def test_increment_attempts(self, db_session):
         """Test incrementing delivery attempts."""
