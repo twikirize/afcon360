@@ -17,7 +17,8 @@ Status is evidence-based. A green code/build check is not store approval.
 - [x] Wallet amounts and payment state are server-provided; no client ledger or fare authority.
 - [x] In-app sign-out and account deletion controls exist; the deletion handler revokes sessions/API keys, clears MFA/recovery/PIN credentials, anonymizes direct profile identifiers and retains only separately controlled KYC/financial/audit records as required.
 - [x] Public web account-deletion initiation route exists at `/apps/delete-account`, alongside the in-app deletion control. End-to-end user testing and final retention-policy approval remain outstanding.
-- [x] APK workflow, preview release link, checksum and download/share UI are configured.
+- [x] Parallel APK workflow, SHA-256 verification, download/share UI and stable preview-release URLs are configured.
+- [ ] Stable internal preview keystore is stored in GitHub Actions secrets; actual APK assets and checksum are not published until this is configured and the build passes.
 - [ ] Live-like end-to-end tests for native login/MFA/refresh replay/revocation, rider booking commitment, driver offer assignment, trip lifecycle, Wallet settlement and deletion.
 - [ ] Verify external deletion requests through web login, including incorrect password, missing/invalid TOTP, protected account rejection, and retained-record disclosure.
 - [ ] Real-device testing on low-memory Android phones and supported iPhones, including permission denial, network loss and app upgrade.
@@ -27,7 +28,7 @@ Status is evidence-based. A green code/build check is not store approval.
 
 - [ ] Play Console account, legal developer identity, access roles and contact verified.
 - [ ] User and Driver package IDs reserved in the intended Play Console account.
-- [ ] Production signing key and Play App Signing configured.
+- [ ] Production signing key and Play App Signing configured. The internal preview signing key must remain separate from production signing.
 - [ ] Production-signed AAB generated; preview APK is not a store binary.
 - [ ] Generated target SDK verified as Android 16 / API 36 or higher. Google's published rule requires API 36+ for new app submissions and updates from 31 August 2026.
 - [ ] Store listing text, support URL, 512×512 icon, 1024×500 feature graphic and phone/tablet screenshots prepared.
@@ -59,6 +60,19 @@ Status is evidence-based. A green code/build check is not store approval.
 - [ ] Retention periods for KYC/identity, security sessions, precise location, rides, Wallet and audit records approved and published.
 - [ ] Support and safety escalation contacts published and tested.
 - [ ] Signing-key custody, rollback, minimum supported app version and update cadence documented.
+
+## GitHub Actions preview signing setup
+
+The parallel APK workflow requires a stable test signing certificate so testers can install later preview builds as updates rather than uninstalling the app each time. Do not commit the keystore or its passwords.
+
+Create a dedicated internal preview keystore on a trusted workstation, then add these encrypted secrets under **GitHub repository → Settings → Secrets and variables → Actions**:
+
+- `AFCON360_PREVIEW_KEYSTORE_BASE64` — base64 output of the keystore file.
+- `AFCON360_PREVIEW_KEYSTORE_PASSWORD` — keystore password.
+- `AFCON360_PREVIEW_KEY_ALIAS` — key alias inside the keystore.
+- `AFCON360_PREVIEW_KEY_PASSWORD` — private-key password.
+
+Keep a secure offline backup of the keystore and passwords. Loss of this key prevents in-place updates to already distributed preview APKs. This preview key is not the Play App Signing production key.
 
 ## Distribution labels
 
