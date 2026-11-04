@@ -75,6 +75,8 @@ Create a dedicated internal preview keystore on a trusted workstation, then add 
 
 Keep a secure offline backup of the keystore and passwords. Loss of this key prevents in-place updates to already distributed preview APKs. This preview key is not the Play App Signing production key.
 
+For Windows PowerShell commands and the exact encrypted GitHub secrets required before APK publishing, follow the [internal Android preview signing setup](preview-signing-setup.md).
+
 ## Distribution labels
 
 - **Internal preview APK:** directly installable Android test binary from the GitHub `mobile-preview` prerelease. Debug-signed and not eligible for Play Console submission.

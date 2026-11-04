@@ -50,3 +50,6 @@ The workflow publishes two debug-signed internal preview APKs to the GitHub prer
 ### Preview APK signing secret
 
 The GitHub Actions APK workflow intentionally fails closed until a stable test keystore is configured. Add the four encrypted repository secrets documented in `docs/store-submission-checklist.md`. The signing keystore is never committed to this public repository and must be backed up securely. This test key is distinct from the production Play App Signing key.
+
+
+For Windows PowerShell instructions to create and add the stable internal preview signing key, see docs/preview-signing-setup.md. Do not add the keystore or password to Git.
