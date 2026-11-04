@@ -112,11 +112,11 @@ jobs:
           }
           if (end < 0) throw new Error("Could not find end of Android release build type");
           let block = source.slice(release, end);
-          const signing = /signingConfig\\s+signingConfigs\\.[A-Za-z0-9_]+/;
+          const signing = /signingConfig\s+signingConfigs\.[A-Za-z0-9_]+/;
           if (signing.test(block)) {
             block = block.replace(signing, "signingConfig signingConfigs.debug");
           } else {
-            block = block.replace("release {", "release {\\n            signingConfig signingConfigs.debug");
+            block = block.replace("release {", "release {\n            signingConfig signingConfigs.debug");
           }
           source = source.slice(0, release) + block + source.slice(end);
           fs.writeFileSync(path, source);
@@ -138,8 +138,8 @@ jobs:
           FINAL_APK="$GITHUB_WORKSPACE/mobile/release/$APP-preview.apk"
           apksigner verify --verbose "$FINAL_APK"
           BADGING="$(aapt dump badging "$FINAL_APK")"
-          PACKAGE="$(printf '%s\\n' "$BADGING" | sed -n "s/^package: name='\\\\([^']*\\\\)'.*/\\\\1/p" | head -n 1)"
-          TARGET="$(printf '%s\\n' "$BADGING" | sed -n "s/.*targetSdkVersion:'\\\\([0-9]*\\\\)'.*/\\\\1/p" | head -n 1)"
+          PACKAGE="$(printf '%s\n' "$BADGING" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -n 1)"
+          TARGET="$(printf '%s\n' "$BADGING" | sed -n "s/.*targetSdkVersion:'\([0-9]*\)'.*/\1/p" | head -n 1)"
           test "$PACKAGE" = "$EXPECTED_PACKAGE"
           test -n "$TARGET" && test "$TARGET" -ge 36
           echo "Verified $APP APK package=$PACKAGE targetSdkVersion=$TARGET"
