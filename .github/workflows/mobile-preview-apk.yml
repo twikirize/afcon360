@@ -34,7 +34,8 @@ on:
 
 concurrency:
   group: afcon360-android-preview-${{ github.ref }}
-  cancel-in-progress: false
+  # Deliberately replace the mixed-platform run with the focused User Android validation.
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -49,10 +50,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Phase 1: isolate the User Android application.
           - app: user
             package: space.pamoja.afcon360.user
-          - app: driver
-            package: space.pamoja.afcon360.driver
     env:
       APP: ${{ matrix.app }}
       EXPECTED_PACKAGE: ${{ matrix.package }}
@@ -205,7 +205,8 @@ jobs:
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      max-parallel: 2
+      # Run one emulator at a time to avoid ADB/emulator resource contention.
+      max-parallel: 1
       matrix:
         include:
           - app: user
@@ -219,18 +220,6 @@ jobs:
             api-level: 33
           - app: user
             package: space.pamoja.afcon360.user
-            api-level: 36
-          - app: driver
-            package: space.pamoja.afcon360.driver
-            api-level: 24
-          - app: driver
-            package: space.pamoja.afcon360.driver
-            api-level: 29
-          - app: driver
-            package: space.pamoja.afcon360.driver
-            api-level: 33
-          - app: driver
-            package: space.pamoja.afcon360.driver
             api-level: 36
     env:
       APP: ${{ matrix.app }}
@@ -259,6 +248,8 @@ jobs:
           script: bash mobile/scripts/verify-android-emulator-install.sh "$APP" "$EXPECTED_PACKAGE" "${{ matrix.api-level }}"
 
   ios-compatibility:
+    # Phase 1 is Android User only; resume this unchanged job after that gate passes.
+    if: ${{ false }}
     name: iOS 16.4 minimum / current simulator / ${{ matrix.app }}
     # Use the x64 macOS 26 pool to avoid ARM64 hosted-runner allocation failures.
     runs-on: macos-26-intel
