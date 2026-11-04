@@ -569,13 +569,13 @@ def wallet_create_page():
     # Get user profile for pre-filling
     from app.profile.models import get_profile_by_user
     profile = get_profile_by_user(current_user.public_id)
-    nationality = getattr(profile, 'nationality', 'UG') if profile else 'UG'
+    home_country = (getattr(profile, "country", None) or "").strip() if profile else ""
     from app.wallet.services.home_currency_service import resolve_home_currency
     default_currency = resolve_home_currency(current_user)
-    
+
     return render_template(
         'wallet/wallet_create.html',
-        nationality=nationality,
+        home_country=home_country,
         default_currency=default_currency,
     )
 
