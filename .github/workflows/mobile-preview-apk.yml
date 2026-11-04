@@ -1,0 +1,138 @@
+name: AFCON360 Android preview APKs
+
+on:
+  push:
+    branches:
+      - feat/native-mobile-apps-20261104
+    paths:
+      - "mobile/**"
+      - "app/auth/**"
+      - "app/transport/**"
+      - "app/__init__.py"
+      - "templates/mobile_apps/**"
+      - ".github/workflows/mobile-preview-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android-preview-apks:
+    name: Build internal User and Driver APKs
+    runs-on: ubuntu-latest
+    env:
+      EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.1"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.4
+          run_install: false
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install JavaScript workspace
+        working-directory: mobile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Check Expo SDK compatibility
+        working-directory: mobile
+        run: |
+          pnpm --filter @afcon360/user-app exec expo install --check
+          pnpm --filter @afcon360/driver-app exec expo install --check
+
+      - name: Prebuild User Android project
+        working-directory: mobile
+        run: pnpm --filter @afcon360/user-app exec expo prebuild --platform android --no-install --clean
+
+      - name: Report User Android target SDK
+        working-directory: mobile/apps/user/android
+        run: grep -R -n "targetSdkVersion" build.gradle app/build.gradle || true
+
+      - name: Build User debug APK
+        working-directory: mobile/apps/user/android
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - name: Prebuild Driver Android project
+        working-directory: mobile
+        run: pnpm --filter @afcon360/driver-app exec expo prebuild --platform android --no-install --clean
+
+      - name: Report Driver Android target SDK
+        working-directory: mobile/apps/driver/android
+        run: grep -R -n "targetSdkVersion" build.gradle app/build.gradle || true
+
+      - name: Build Driver debug APK
+        working-directory: mobile/apps/driver/android
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - name: Stage preview APKs and checksums
+        run: |
+          mkdir -p mobile/release
+          cp mobile/apps/user/android/app/build/outputs/apk/debug/app-debug.apk mobile/release/AFCON360-User-preview.apk
+          cp mobile/apps/driver/android/app/build/outputs/apk/debug/app-debug.apk mobile/release/AFCON360-Driver-preview.apk
+          cd mobile/release
+          sha256sum *.apk > SHA256SUMS.txt
+          ls -lh
+          cat SHA256SUMS.txt
+
+      - name: Upload APK workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: afcon360-android-preview-apks
+          path: mobile/release/*
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Update stable internal preview tag
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const ref = "tags/mobile-preview";
+            try {
+              await github.rest.git.getRef({ owner, repo, ref });
+              await github.rest.git.updateRef({
+                owner, repo, ref, sha: context.sha, force: true
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.git.createRef({
+                owner, repo, ref: "refs/" + ref, sha: context.sha
+              });
+            }
+
+      - name: Publish internal preview APK download links
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mobile-preview
+          target_commitish: ${{ github.sha }}
+          name: AFCON360 internal Android preview
+          prerelease: true
+          make_latest: false
+          overwrite_files: true
+          files: |
+            mobile/release/AFCON360-User-preview.apk
+            mobile/release/AFCON360-Driver-preview.apk
+            mobile/release/SHA256SUMS.txt
+          body: |
+            Internal tester distribution only.
+
+            These are debug-signed Android preview APKs. They are directly installable for testing, but are not production-signed Google Play releases and must not be submitted to Play Console. Android may require the tester to allow installation from the source used to download the file.
+
+            Production Android requires a signed AAB and Play App Signing. iPhone installation requires a separate signed iOS build and Apple distribution process.

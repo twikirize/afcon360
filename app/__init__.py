@@ -2657,6 +2657,11 @@ def create_app(config_object=None) -> Flask:
         """Public landing page for AFCON360 native mobile applications."""
         return render_template('mobile_apps/index.html')
 
+    @app.route('/apps/privacy')
+    def mobile_apps_privacy():
+        """Working privacy notice draft for native apps; legal approval is still required."""
+        return render_template('mobile_apps/privacy.html')
+
     @app.route('/api/csrf-token', methods=['GET'])
     @csrf.exempt
     def issue_csrf_token():

@@ -33,3 +33,10 @@ Confirm legal ownership and store-account availability before public release. EA
 The /apps page intentionally shows development status instead of fake store buttons. Add official store URLs only after signed builds pass testing and store approval.
 
 Read docs/backend-contracts.md, docs/api-inventory.md, docs/release-gates.md and AGENTS.md before adding behavior.
+
+
+## Direct APK sharing
+
+The Android preview workflow publishes User and Driver APKs to the GitHub prerelease named `mobile-preview`. These are debug-signed internal test builds, not Google Play releases. The website `/apps` provides download and share links. Never submit a preview APK to Play Console.
+
+Production Android builds use the `production` EAS profile to produce a signed AAB. iOS production distribution requires Apple Developer membership, signing and a signed IPA. See `docs/store-submission-checklist.md` before production release.

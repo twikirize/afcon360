@@ -41,3 +41,46 @@ A release advances only when evidence for its gate is recorded.
 - [ ] Production release has rollback and version-support plans.
 
 Creating this scaffold does not imply store submission or production deployment.
+
+## Gate 4 — direct APK sharing
+
+- [ ] User and Driver Android preview APKs built and published from the controlled release workflow.
+- [ ] APK download URLs return HTTP 200 and package identities are verified.
+- [ ] SHA-256 checksums are published with both APKs.
+- [ ] Download/share page labels previews as test builds, not production/store binaries.
+- [ ] No preview APK is presented as an iPhone installer or a Play Store release.
+
+## Gate 5 — Play Store submission
+
+- [ ] Play Console developer account, legal identity and access roles verified.
+- [ ] Both application IDs reserved in the intended Play Console account.
+- [ ] Production signing key and Play App Signing configured; signed AAB generated.
+- [ ] Android target SDK verified at API 36 or higher for new submissions under the currently published requirement.
+- [ ] Listing text, support URL, 512×512 icon, 1024×500 feature graphic and device screenshots prepared.
+- [ ] Approved privacy policy, Data safety, App access, content rating, target audience, ads and permissions declarations completed.
+- [ ] Reviewer access/demo credentials tested.
+- [ ] Internal/closed track, pre-launch report, device matrix and policy checks passed.
+- [ ] Review accepted and official store URL verified before replacing preview status.
+
+## Gate 6 — Apple App Store submission
+
+- [ ] Apple Developer Program and App Store Connect access.
+- [ ] Bundle IDs registered and distribution signing configured.
+- [ ] Signed IPA uploaded to TestFlight and tested on physical devices.
+- [ ] Approved privacy policy linked inside both apps and in App Store Connect.
+- [ ] App Privacy disclosures match actual data types, purposes, linkage and processors.
+- [ ] In-app account deletion tested end-to-end.
+- [ ] Location purpose strings match foreground-only driver location.
+- [ ] App Review notes include working User and Driver demo accounts/instructions, including MFA.
+- [ ] Icons, screenshots, descriptions, support URL, age rating, pricing and availability completed.
+- [ ] Review accepted and official listing URL verified.
+
+## Legal and operational sign-off
+
+- [ ] Privacy notice approved by AFCON360's data controller/legal adviser for each launch jurisdiction.
+- [ ] Provider inventory, processing countries, legal basis and cross-border safeguards confirmed.
+- [ ] Retention periods for identity/KYC, sessions, precise location, trips, Wallet and audit records approved.
+- [ ] Support and safety escalation contacts published and tested.
+- [ ] Signing-key custody, rollback, app version support and update cadence documented.
+
+The APK path is for internal testers only. Play submission requires a production-signed AAB; iOS requires a separately signed IPA.
