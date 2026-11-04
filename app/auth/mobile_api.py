@@ -584,6 +584,7 @@ def mobile_me():
 
 
 @mobile_api_bp.post("/transport/ride-options")
+@limiter.limit("30 per minute", key_func=get_remote_address)
 @_bearer_required("user")
 def mobile_ride_options():
     """Use the canonical quote-only Transport resource; no matching is started."""
@@ -654,8 +655,9 @@ def mobile_user_activity():
             if booking is not None:
                 item["booking_status"] = str(getattr(booking.status, "value", booking.status))
                 driver = booking.driver
+                driver_user = getattr(driver, "user", None) if driver else None
                 item["driver"] = ({
-                    "display_name": getattr(driver.user, "display_name", None) or driver.driver_code,
+                    "display_name": getattr(driver_user, "display_name", None) or driver.driver_code,
                     "rating": float(driver.average_rating or 0),
                 } if driver else None)
                 vehicle = booking.vehicle

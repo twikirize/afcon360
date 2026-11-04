@@ -86,6 +86,7 @@ export default function RideScreen() {
   const [loadingQuotes, setLoadingQuotes] = useState(false);
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [idempotencyKey, setIdempotencyKey] = useState(() => "mobile-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2));
 
   const readyMethods = useMemo(() => paymentMethods.filter(item => item.status === "ready"), [paymentMethods]);
 
@@ -145,6 +146,7 @@ export default function RideScreen() {
     setSelectedQuote(quote);
     setPaymentMethods([]);
     setPaymentMethod("");
+    setIdempotencyKey("mobile-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2));
     setLoadingPayments(true);
     try {
       const response = await authClient.request<{ success: boolean; data?: { payment_methods?: PaymentMethod[] } }>(
@@ -166,7 +168,6 @@ export default function RideScreen() {
   async function requestRide() {
     if (!pickup || !dropoff || !selectedQuote || !paymentMethod) return;
     setSubmitting(true);
-    const idempotencyKey = "mobile-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
     try {
       const response = await authClient.request<{ success: boolean; booking_reference?: string; data?: { request_id?: string } }>(
         "/api/mobile/v1/transport/ride-requests",
@@ -190,8 +191,24 @@ export default function RideScreen() {
               osm_type: dropoff.osm_type,
               osm_id: dropoff.osm_id
             },
-            pickup_source: pickup.provider,
-            dropoff_source: dropoff.provider,
+            pickup_source: "search",
+            dropoff_source: "search",
+            pickup_geocode: {
+              label: pickup.label,
+              latitude: pickup.latitude,
+              longitude: pickup.longitude,
+              provider: pickup.provider,
+              osm_type: pickup.osm_type,
+              osm_id: pickup.osm_id
+            },
+            dropoff_geocode: {
+              label: dropoff.label,
+              latitude: dropoff.latitude,
+              longitude: dropoff.longitude,
+              provider: dropoff.provider,
+              osm_type: dropoff.osm_type,
+              osm_id: dropoff.osm_id
+            },
             service_type: "on_demand",
             vehicle_class: selectedQuote.vehicle_class,
             passenger_count: 1,

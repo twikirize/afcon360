@@ -26,6 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let active = true;
     authClient.restoreSession()
       .then(value => { if (active) setUser(value); })
+      .catch(() => { if (active) setUser(null); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
