@@ -460,172 +460,32 @@ def mobile_logout():
 @mobile_api_bp.post("/auth/account-deletion")
 @_bearer_required()
 def mobile_account_deletion():
-    """In-app account deletion: recent password proof, MFA, owner block and session revocation."""
+    """In-app account deletion backed by the shared account-closure service."""
     data = request.get_json(silent=True) or {}
-    password = data.get("password")
-    confirmation = data.get("confirmation")
-    mfa_code = str(data.get("mfa_code") or "").strip()
-    if confirmation != "DELETE MY ACCOUNT":
-        return _error("deletion_confirmation_invalid", 'Type "DELETE MY ACCOUNT" exactly to confirm.', 400)
-    if not isinstance(password, str) or not password or len(password) > 128:
-        return _error("password_required", "Enter your current password to confirm account deletion.", 400)
-
     user = g._afcon360_mobile_auth_context["user"]
-    if user.is_app_owner():
-        return _error("owner_deletion_blocked", "The platform owner account cannot be deleted from the app.", 403)
     try:
-        if not user.verify_password(password):
-            return _error("password_invalid", "The current password could not be verified.", 401)
-        if getattr(user, "mfa_enabled", False):
-            if not mfa_code:
-                return _error("mfa_required", "Enter your current authenticator or backup code.", 401)
-            from app.auth.routes import _verify_mfa_token
-            if not _verify_mfa_token(user, mfa_code, backup_code=(len(mfa_code) == 8)):
-                return _error("mfa_invalid", "The authenticator code is invalid or expired.", 401)
+        from app.auth.account_deletion_service import (
+            AccountDeletionError,
+            request_account_deletion,
+        )
+        result = request_account_deletion(
+            user=user,
+            password=data.get("password"),
+            confirmation=data.get("confirmation"),
+            mfa_code=str(data.get("mfa_code") or "").strip(),
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent"),
+        )
+    except AccountDeletionError as exc:
+        return _error(exc.code, exc.message, exc.status_code)
     except Exception:
         db.session.rollback()
-        logger.exception("Native account-deletion proof could not be verified")
-        return _error("deletion_verification_unavailable", "AFCON360 could not verify this deletion request.", 503)
-
-    from app.auth.sessions import (
-        revoke_all_device_sessions_for_user,
-        revoke_all_sessions_for_user,
-    )
-    from app.identity.models.user import Session as DeviceSession
-    active_ids = [
-        row.session_id for row in DeviceSession.query.filter_by(
-            user_id=user.id, revoked_at=None
-        ).all()
-    ]
-    public_id = str(user.public_id)
-    try:
-        revoke_all_device_sessions_for_user(user.id, reason="mobile_account_deletion")
-        revoke_all_sessions_for_user(public_id)
-        # Database session revocation is authoritative. Redis key deletion is
-        # best-effort because every bearer request also checks both DB session
-        # records and will fail closed if Redis is temporarily unavailable.
-        for session_id in active_ids:
-            try:
-                mark_mobile_session_revoked(session_id)
-            except Exception:
-                logger.warning(
-                    "Redis token cleanup deferred for deleted-account device session",
-                    exc_info=True,
-                )
-
-        # Retain the User row as an inactive tombstone so historical Wallet,
-        # booking, KYC, compliance and audit foreign keys remain intact.
-        # Access is revoked immediately; unique sign-in identifiers are
-        # replaced, and no cascading deletion can erase financial history.
-        user.is_deleted = True
-        user.is_active = False
-        user.deleted_at = datetime.now(timezone.utc)
-        user.email = f"deleted_{public_id}@deleted.local"
-        user.username = f"deleted_{public_id}"
-        user.email_verified = False
-        user.phone_verified = False
-        user.mfa_enabled = False
-        user.security_question = None
-        user.security_answer_hash = None
-        user.recovery_code = None
-        user.transaction_pin_hash = None
-        user.transaction_pin_failed_attempts = 0
-        user.transaction_pin_locked_until = None
-        user.is_agent = False
-        if hasattr(user, "phone"):
-            user.phone = None
-        if hasattr(user, "agent_code"):
-            user.agent_code = None
-        if hasattr(user, "password_hash"):
-            user.set_password(secrets.token_urlsafe(64))
-
-        # Scrub the personal profile that is separate from the login User
-        # record. Keep the profile row as a tombstone because KYC/booking/audit
-        # references may be legally retained; mark it deleted and clear direct
-        # contact/public-facing PII rather than cascading financial history.
-        from app.profile.models import get_profile_by_user
-        profile = get_profile_by_user(user)
-        if profile is not None:
-            profile.is_deleted = True
-            profile.deleted_at = datetime.now(timezone.utc)
-            profile.full_name = "Deleted account"
-            profile.display_name = "Deleted account"
-            profile.date_of_birth = None
-            profile.gender = None
-            profile.nationality = None
-            profile.address = None
-            profile.city = None
-            profile.country = None
-            profile.phone_number = None
-            profile.email = None
-            profile.email_verified = False
-            profile.phone_verified = False
-            profile.fan_team = None
-            profile.avatar_url = None
-            profile.bio = None
-            # Remove personal ID/contact pointers from the general profile.
-            # Any legally required KYC evidence remains in its separately
-            # controlled verification/audit records, not the public profile.
-            profile.id_type = None
-            profile.id_number = None
-            profile.id_document_url = None
-            profile.id_document_mime = None
-            profile.id_document_size = None
-            profile.rejected_reason = None
-        try:
-            from app.identity.models.user import MFASecret, APIKey
-            # Deactivate MFA and erase the stored authenticator/backup material.
-            for mfa_secret in MFASecret.query.filter_by(
-                user_id=user.id, is_active=True
-            ).all():
-                mfa_secret.is_active = False
-                mfa_secret.secret = "revoked"
-                mfa_secret.backup_codes = None
-                mfa_secret.device_name = None
-                mfa_secret.last_used = None
-
-            # Revoke any personal API credentials associated with the user.
-            api_keys = APIKey.query.filter_by(
-                owner_type="user", owner_id=user.id, revoked_at=None
-            ).all()
-            for api_key in api_keys:
-                api_key.revoked_at = datetime.now(timezone.utc)
-        except Exception:
-            logger.exception("Could not clear MFA/API credentials during account deletion")
-            raise
-        db.session.commit()
-        result = {
-            "status": "anonymized",
-            "message": (
-                "Your AFCON360 sign-in has been disabled and account identifiers "
-                "anonymized. Some KYC, booking, Wallet, safety and audit records "
-                "may be retained where required by law or platform obligations."
-            ),
-        }
-    except Exception:
-        db.session.rollback()
-        logger.exception("Native account deletion failed")
+        logger.exception("Native account deletion service failed unexpectedly")
         return _error(
             "account_deletion_failed",
             "AFCON360 could not complete the account deletion request. Please contact support.",
             503,
         )
-
-    # The account action is already committed. A downstream audit sink outage
-    # must not report the deletion as failed after it has actually succeeded.
-    try:
-        from app.audit.comprehensive_audit import AuditService
-        AuditService.security(
-            event_type="account_deletion_requested",
-            severity="WARNING",
-            description=f"User {public_id} requested account deletion (native app)",
-            user_id=user.id,
-            ip_address=request.remote_addr,
-            user_agent=request.headers.get("User-Agent"),
-        )
-    except Exception:
-        logger.exception("Account deletion completed but audit event delivery failed")
-
     return jsonify({"success": True, "data": result}), 200
 
 

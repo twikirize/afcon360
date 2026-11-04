@@ -25,6 +25,7 @@ export default function DriverAccount() {
       <ActionButton label="Share Android Driver APK" onPress={() => share("https://github.com/twikirize/afcon360/releases/download/mobile-preview/AFCON360-Driver-preview.apk", "AFCON360 Driver internal Android preview APK. Install only as a test build.")} />
       <ActionButton label="Privacy notice" onPress={() => WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")} />
       <ActionButton label="Delete AFCON360 account" onPress={() => router.push("/delete-account")} />
+      <ActionButton label="Account deletion website" onPress={() => WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/delete-account")} />
       <ActionButton label="Sign out" onPress={() => Alert.alert("Sign out", "Sign out this driver device?", [{ text: "Cancel", style: "cancel" }, { text: "Sign out", onPress: () => logout().then(() => router.replace("/login")).catch(() => router.replace("/login")) }])} />
     </Panel>
     <Text style={{ color: palette.muted, fontSize: 12 }}>Privacy and support: pamoja.space/support</Text>

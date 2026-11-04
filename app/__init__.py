@@ -2662,6 +2662,49 @@ def create_app(config_object=None) -> Flask:
         """Working privacy notice draft for native apps; legal approval is still required."""
         return render_template('mobile_apps/privacy.html')
 
+    @app.route('/apps/delete-account', methods=['GET', 'POST'])
+    def mobile_apps_delete_account():
+        """Public account-deletion resource required by mobile store policies.
+
+        GET explains the process and links to sign-in. POST requires an
+        authenticated owner, recent password proof, and MFA where enrolled.
+        """
+        from flask_login import current_user, logout_user
+        from flask import flash, session
+
+        if request.method == 'POST' and not current_user.is_authenticated:
+            return redirect(url_for('auth.login', next=request.url))
+
+        if request.method == 'POST':
+            try:
+                from app.auth.account_deletion_service import (
+                    AccountDeletionError,
+                    request_account_deletion,
+                )
+                result = request_account_deletion(
+                    user=current_user,
+                    password=request.form.get('password'),
+                    confirmation=request.form.get('confirmation'),
+                    mfa_code=(request.form.get('mfa_code') or '').strip(),
+                    ip_address=request.remote_addr,
+                    user_agent=request.headers.get('User-Agent'),
+                )
+            except AccountDeletionError as exc:
+                flash(exc.message, 'danger')
+                return render_template('mobile_apps/delete-account.html'), exc.status_code
+            except Exception:
+                db.session.rollback()
+                current_app.logger.exception("Website account deletion service failed")
+                flash("AFCON360 could not complete the request. Please try again or contact support.", "danger")
+                return render_template('mobile_apps/delete-account.html'), 503
+
+            logout_user()
+            session.clear()
+            flash(result.get("message") or "Your account deletion request was completed.", "success")
+            return redirect(url_for('mobile_apps_delete_account'))
+
+        return render_template('mobile_apps/delete-account.html')
+
     @app.route('/api/csrf-token', methods=['GET'])
     @csrf.exempt
     def issue_csrf_token():

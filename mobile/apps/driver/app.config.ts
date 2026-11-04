@@ -11,6 +11,6 @@ const config: ExpoConfig = {
     "expo-router", "expo-secure-store", "expo-dev-client",
     ["expo-location", { locationWhenInUsePermission: "Allow AFCON360 Driver to use your location while you are using the app for availability and trip navigation." }]
   ],
-  extra: { apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "" }
+  extra: { apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://www.pamoja.space" }
 };
 export default config;

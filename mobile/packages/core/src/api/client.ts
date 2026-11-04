@@ -24,7 +24,7 @@ export class ApiError extends Error {
 }
 
 function resolveBaseUrl(override?: string): string {
-  const raw = (override ?? process.env.EXPO_PUBLIC_API_BASE_URL ?? "").trim();
+  const raw = (override ?? process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://www.pamoja.space").trim();
   if (!raw) throw new Error("EXPO_PUBLIC_API_BASE_URL is not configured.");
   const parsed = new URL(raw);
   const localHosts = new Set(["localhost", "127.0.0.1", "10.0.2.2"]);
