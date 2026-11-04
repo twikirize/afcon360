@@ -134,73 +134,11 @@ def request_account_deletion(
             503,
         ) from exc
 
-    # Do not strand an active transport obligation by revoking the actor
-    # midway through a ride. Search requests and assigned trips must first
-    # reach a terminal state; post-trip cash must be explicitly receipted.
+    # Resolve all transport obligations before revoking this identity. A
+    # user must not leave a rider request searching, an accepted trip in
+    # progress, or a completed cash trip whose driver receipt is outstanding.
     from app.transport.models import Booking, DriverProfile, RideRequest
     from app.utils.enums import BookingStatus, PaymentStatus
-
-    active_statuses = (
-        BookingStatus.ASSIGNED,
-        BookingStatus.DRIVER_EN_ROUTE,
-        BookingStatus.PICKUP_ARRIVED,
-        BookingStatus.IN_PROGRESS,
-    )
-    rider_active_booking = Booking.query.filter(
-        Booking.user_id == user.id,
-        Booking.is_deleted.is_(False),
-        Booking.status.in_(active_statuses),
-    ).first()
-    if rider_active_booking is not None:
-        raise AccountDeletionError(
-            "active_ride_pending",
-            "Resolve your active ride before deleting this account. Complete or cancel the ride, then submit the deletion request again.",
-            409,
-        )
-
-    searching_request = RideRequest.query.filter_by(
-        user_id=user.id,
-        status="searching",
-        is_deleted=False,
-    ).first()
-    if searching_request is not None:
-        raise AccountDeletionError(
-            "ride_search_pending",
-            "An AFCON360 ride request is still searching for a driver. Wait for it to close or contact support before deleting this account.",
-            409,
-        )
-
-    driver_profile = DriverProfile.query.filter_by(
-        user_id=user.id,
-        is_deleted=False,
-    ).first()
-    if driver_profile is not None:
-        driver_active_booking = Booking.query.filter(
-            Booking.assigned_driver_id == driver_profile.id,
-            Booking.is_deleted.is_(False),
-            Booking.status.in_(active_statuses),
-        ).first()
-        if driver_active_booking is not None:
-            raise AccountDeletionError(
-                "driver_trip_pending",
-                "Complete or cancel your active driver trip before deleting this account. Contact AFCON360 support if the trip cannot be resolved.",
-                409,
-            )
-
-        unsettled_cash = Booking.query.filter(
-            Booking.booking_metadata["completed_by_driver_profile_id"].astext == str(driver_profile.id),
-            Booking.status == BookingStatus.COMPLETED,
-            Booking.payment_method == "cash",
-            Booking.payment_status == PaymentStatus.PENDING,
-            Booking.is_deleted.is_(False),
-        ).first()
-        if unsettled_cash is not None:
-            raise AccountDeletionError(
-                "cash_receipt_pending",
-                "Confirm the cash receipt for your completed trip before deleting this driver account.",
-                409,
-            )
-
     from app.auth.sessions import (
         revoke_all_device_sessions_for_user,
         revoke_all_sessions_for_user,
@@ -212,37 +150,30 @@ def request_account_deletion(
     )
     from sqlalchemy import func
 
-    # Do not orphan an accepted ride, active driver trip or unassigned
-    # request search when closing a marketplace identity. The user can retry
-    # deletion after the current transport obligation is finished.
-    driver_profile = None
+    active_statuses = [
+        getattr(BookingStatus, name)
+        for name in (
+            "CONFIRMED",
+            "ASSIGNED",
+            "DRIVER_EN_ROUTE",
+            "PICKUP_ARRIVED",
+            "IN_PROGRESS",
+        )
+        if hasattr(BookingStatus, name)
+    ]
     try:
-        from app.transport.models import Booking, DriverProfile, RideRequest
-        from app.utils.enums import BookingStatus, PaymentStatus
-
-        active_booking_statuses = [
-            getattr(BookingStatus, name)
-            for name in (
-                "CONFIRMED",
-                "ASSIGNED",
-                "DRIVER_EN_ROUTE",
-                "PICKUP_ARRIVED",
-                "IN_PROGRESS",
-            )
-            if hasattr(BookingStatus, name)
-        ]
-        rider_booking = (
+        rider_active_booking = (
             Booking.query.filter(
                 Booking.user_id == user.id,
                 Booking.is_deleted.is_(False),
-                Booking.status.in_(active_booking_statuses),
+                Booking.status.in_(active_statuses),
             ).first()
-            if active_booking_statuses else None
+            if active_statuses else None
         )
-        if rider_booking is not None:
+        if rider_active_booking is not None:
             raise AccountDeletionError(
-                "active_ride",
-                "Complete or cancel your active ride before closing this AFCON360 account.",
+                "active_ride_pending",
+                "Resolve your active ride before deleting this account. Complete or cancel the ride, then submit the deletion request again.",
                 409,
             )
 
@@ -253,8 +184,8 @@ def request_account_deletion(
         ).first()
         if searching_request is not None:
             raise AccountDeletionError(
-                "ride_matching_in_progress",
-                "Your ride is still being matched. Wait for matching to finish or cancel the request before closing this account.",
+                "ride_search_pending",
+                "An AFCON360 ride request is still searching for a driver. Wait for it to close or cancel it before deleting this account.",
                 409,
             )
 
@@ -263,31 +194,34 @@ def request_account_deletion(
             is_deleted=False,
         ).with_for_update().first()
         if driver_profile is not None:
-            driver_booking = (
+            driver_active_booking = (
                 Booking.query.filter(
                     Booking.assigned_driver_id == driver_profile.id,
                     Booking.is_deleted.is_(False),
-                    Booking.status.in_(active_booking_statuses),
+                    Booking.status.in_(active_statuses),
                 ).first()
-                if active_booking_statuses else None
+                if active_statuses else None
             )
-            unpaid_cash_trip = Booking.query.filter(
-                Booking.assigned_driver_id == driver_profile.id,
-                Booking.is_deleted.is_(False),
+            if driver_active_booking is not None:
+                raise AccountDeletionError(
+                    "driver_trip_pending",
+                    "Complete or hand over your active driver trip before deleting this account.",
+                    409,
+                )
+
+            # Completed trips can release assigned_driver_id. Use the
+            # canonical completing-driver metadata written by Transport.
+            unsettled_cash = Booking.query.filter(
+                Booking.booking_metadata["completed_by_driver_profile_id"].astext == str(driver_profile.id),
                 Booking.status == BookingStatus.COMPLETED,
                 Booking.payment_method == "cash",
                 Booking.payment_status == PaymentStatus.PENDING,
+                Booking.is_deleted.is_(False),
             ).first()
-            if driver_booking is not None:
-                raise AccountDeletionError(
-                    "active_driver_trip",
-                    "Complete or hand over your active driver trip before closing this AFCON360 account.",
-                    409,
-                )
-            if unpaid_cash_trip is not None:
+            if unsettled_cash is not None:
                 raise AccountDeletionError(
                     "cash_receipt_pending",
-                    "Confirm the cash receipt for your completed trip before closing this AFCON360 account.",
+                    "Confirm the cash receipt for your completed trip before deleting this driver account.",
                     409,
                 )
     except AccountDeletionError:

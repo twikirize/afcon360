@@ -18,6 +18,7 @@ Status is evidence-based. A green code/build check is not store approval.
 - [x] In-app sign-out and account deletion controls exist; the deletion handler revokes sessions/API keys, clears MFA/recovery/PIN credentials, anonymizes direct profile identifiers and retains only separately controlled KYC/financial/audit records as required.
 - [x] Public web account-deletion initiation route exists at `/apps/delete-account`, alongside the in-app deletion control. End-to-end user testing and final retention-policy approval remain outstanding.
 - [x] Parallel APK workflow, SHA-256 verification, download/share UI and stable preview-release URLs are configured.
+- [ ] Four stable preview-keystore GitHub Actions secrets configured, latest APK builds passed, combined assets/checksum published, and download URLs tested on physical Android devices.
 - [ ] Stable internal preview keystore is stored in GitHub Actions secrets; actual APK assets and checksum are not published until this is configured and the build passes.
 - [ ] Live-like end-to-end tests for native login/MFA/refresh replay/revocation, rider booking commitment, driver offer assignment, trip lifecycle, Wallet settlement and deletion.
 - [ ] Verify external deletion requests through web login, including incorrect password, missing/invalid TOTP, protected account rejection, and retained-record disclosure.

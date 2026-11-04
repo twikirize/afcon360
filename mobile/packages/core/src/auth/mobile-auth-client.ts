@@ -147,8 +147,17 @@ export class MobileAuthClient {
         }
         await this.saveTokens(response.data);
         return true;
-      } catch {
-        await this.store.clearTokens();
+      } catch (error) {
+        // A revoked or invalid refresh credential is terminal and must be
+        // removed. Network errors, rate limiting and 5xx responses are
+        // temporary: preserve the refresh credential so the user can retry
+        // after connectivity/service recovery instead of being signed out.
+        if (error instanceof ApiError &&
+            error.status >= 400 &&
+            error.status < 500 &&
+            error.status !== 429) {
+          await this.store.clearTokens();
+        }
         return false;
       } finally {
         this.refreshInFlight = null;
