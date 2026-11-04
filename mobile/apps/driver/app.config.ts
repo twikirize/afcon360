@@ -3,7 +3,7 @@ const config: ExpoConfig = {
   name: "AFCON360 Driver", slug: "afcon360-driver", scheme: "afcon360-driver",
   version: "1.0.0", orientation: "default", userInterfaceStyle: "automatic",
   ios: {
-    bundleIdentifier: "space.pamoja.afcon360.driver", supportsTablet: true,
+    bundleIdentifier: "space.pamoja.afcon360.driver", deploymentTarget: "16.4", supportsTablet: true,
     infoPlist: { NSLocationWhenInUseUsageDescription: "AFCON360 Driver uses your location while you are using the app to support availability and trip navigation." }
   },
   android: { package: "space.pamoja.afcon360.driver", adaptiveIcon: { backgroundColor: "#087A4B" } },
