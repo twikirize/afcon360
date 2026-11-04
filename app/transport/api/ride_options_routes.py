@@ -109,6 +109,17 @@ class RideOptionsResource(Resource):
                     return {"success": False, "error": f"Invalid latitude: {name}"}, 400
                 return {"success": False, "error": f"Invalid longitude: {name}"}, 400
 
+        # The rider's Wallet currency is a presentation preference only.
+        # The signed fare quote and eventual Wallet invoice stay denominated
+        # in the fare table's authoritative currency (currently USD).
+        preferred_currency = currency
+        if current_user.is_authenticated:
+            try:
+                from app.wallet.services.home_currency_service import get_user_home_currency
+                preferred_currency = get_user_home_currency(current_user)
+            except Exception:
+                logger.warning("Could not resolve rider home currency; retaining fare currency")
+
         # Fare discovery is quote-only: do not query online drivers, vehicles,
         # availability, or ETA before the rider accepts an exact quote.
         # Every supported class can be priced even when no driver is online.
@@ -121,7 +132,8 @@ class RideOptionsResource(Resource):
         dropoff = {"latitude": float(dropoff_lat), "longitude": float(dropoff_lng)}
 
         # The fare engine currently denominates transport quotes in its own
-        # currency. Never label a USD amount as UGX/KES/TZS or imply FX.
+        # currency. A separate Wallet-currency amount is display-only.
+        from app.wallet.services.display_fx_service import build_display_amount
         options = []
         active_tables, _, _ = fare_service.resolve_tables(at=quote_at)
         explicitly_priced_classes = set(
@@ -165,13 +177,19 @@ class RideOptionsResource(Resource):
                 logger.warning("Ride-option fare failed for %s: %s", vc_value, exc)
                 continue
 
+            display_fields = build_display_amount(
+                fare_total, quote_currency, preferred_currency
+            )
             options.append({
                 "vehicle_class": vc_value,
                 "display_name": _DISPLAY_NAMES.get(vc, vc_value.title()),
+                # fare_total/currency remain the signed, authoritative values.
                 "fare_total": fare_total,
                 "fare_breakdown": estimate["breakdown"],
                 "fare_version": estimate["version"],
                 "currency": quote_currency,
+                # display_* are non-authoritative, indicative UI fields only.
+                **display_fields,
                 "quote_token": quote_token,
             })
 
@@ -182,6 +200,8 @@ class RideOptionsResource(Resource):
             "data": {
                 "service_type":   service_type,
                 "currency":       (options[0]["currency"] if options else currency),
+                "home_currency":  preferred_currency,
+                "display_currency": (options[0]["display_currency"] if options else currency),
                 "distance_km":    float(distance_km) if distance_km is not None else None,
                 "distance_basis": distance_basis,
                 "options":        options,
@@ -189,7 +209,9 @@ class RideOptionsResource(Resource):
                     "Fare estimate only. This endpoint does not query driver "
                     "or vehicle availability and does not contact drivers. "
                     "Matching starts only after the rider confirms the quoted "
-                    "amount and selects an available payment method."
+                    "amount and selects an available payment method. Any "
+                    "home-currency amount is an indicative display estimate; "
+                    "the signed quote and Wallet invoice remain in the fare currency."
                 ),
             },
         }, 200

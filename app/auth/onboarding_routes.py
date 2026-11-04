@@ -293,6 +293,9 @@ def driver_onboarding(step: int = 1):
                 "vehicle_year": request.form.get("vehicle_year"),
                 "plate_number": request.form.get("plate_number", "").strip(),
                 "vehicle_type": request.form.get("vehicle_type", "").strip(),
+                "operating_country_code": request.form.get(
+                    "operating_country_code", ""
+                ).strip().upper(),
             }
 
             # COMMIT EVERYTHING
@@ -349,6 +352,18 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> Any:
     # Canonical identity lives in UserProfile; driver onboarding may read it
     # but must not write it. step1 data remains transport/session-only.
     step2 = data.get("step2", {})
+    step3 = data.get("step3", {})
+
+    # Operating country is a separate Transport declaration, never derived
+    # from nationality. Current individual-driver launch markets are UG/KE/TZ.
+    from app.utils.validators import resolve_country_code
+    operating_country_code = resolve_country_code(
+        step3.get("operating_country_code", "")
+    )
+    if operating_country_code not in {"UG", "KE", "TZ"}:
+        raise ValueError(
+            "Choose a supported driver operating country: Uganda, Kenya, or Tanzania."
+        )
 
     with db_transaction("Driver onboarding commit"):
         # Canonical UserProfile identity is a READ-ONLY source for driver
@@ -399,6 +414,10 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> Any:
             max_passenger_capacity=4,
             max_luggage_capacity=2,
             commission_rate=Decimal('15.00'),
+            driver_metadata={
+                "operating_country_code": operating_country_code,
+                "operating_country_verified": False,
+            },
         )
         db.session.add(driver)
         db.session.flush()

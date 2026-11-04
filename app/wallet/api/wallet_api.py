@@ -333,7 +333,7 @@ def create_wallet():
         "status": "success",
         "data": {
             "account_id": "uuid",
-            "currency": "UGX",
+            "currency": "resolved home currency",
             "created_at": "2025-01-01T00:00:00+00:00"
         }
     }
@@ -354,10 +354,24 @@ def create_wallet():
                 "message": "You already have a wallet account."
             }), 409
 
-        # Create new account
+        # Use the same home-currency resolver as browser onboarding. The caller
+        # may request a supported currency explicitly; otherwise Wallet derives
+        # the first account currency from the user's profile country.
+        from app.wallet.services.home_currency_service import resolve_home_currency
+        data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return jsonify({
+                'status': 'error',
+                'code': 'INVALID_REQUEST',
+                'message': 'A JSON object is required.'
+            }), 400
+        currency = resolve_home_currency(
+            current_user,
+            requested_currency=data.get('currency'),
+        )
         account = AccountModel(
             user_id=current_user.id,
-            currency='UGX'
+            currency=currency
         )
         db.session.add(account)
         db.session.commit()
@@ -371,7 +385,15 @@ def create_wallet():
             }
         }), 201
 
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({
+            "status": "error",
+            "code": "UNSUPPORTED_HOME_CURRENCY",
+            "message": str(e)
+        }), 400
     except Exception as e:
+        db.session.rollback()
         current_app.logger.error(f"Wallet creation error for user {current_user.public_id}: {e}")
         return jsonify({
             "status": "error",

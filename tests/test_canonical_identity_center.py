@@ -471,6 +471,7 @@ class TestIdentitySecurityBoundary:
         r3 = client.post(
             "/onboarding/driver/step/3",
             data={
+                "operating_country_code": "UG",
                 "vehicle_make": "Toyota",
                 "vehicle_model": "Hiace",
                 "vehicle_year": "2019",

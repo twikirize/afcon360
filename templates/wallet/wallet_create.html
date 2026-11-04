@@ -302,29 +302,29 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     
                     <div style="margin-bottom: 24px;">
-                        <label class="form-label">Primary Account Currency</label>
+                        <label class="form-label">Your Wallet Home Currency</label>
                         <select name="currency" class="form-select" required>
-                            <option value="UGX">UGX — Ugandan Shilling (Local Default)</option>
-                            <option value="USD">USD — US Dollar</option>
-                            <option value="KES">KES — Kenyan Shilling</option>
-                            <option value="TZS">TZS — Tanzanian Shilling</option>
-                            <option value="NGN">NGN — Nigerian Naira</option>
-                            <option value="EUR">EUR — Euro</option>
-                            <option value="GBP">GBP — British Pound</option>
+                            <option value="UGX" {% if default_currency == 'UGX' %}selected{% endif %}>UGX — Ugandan Shilling</option>
+                            <option value="USD" {% if default_currency == 'USD' %}selected{% endif %}>USD — US Dollar</option>
+                            <option value="KES" {% if default_currency == 'KES' %}selected{% endif %}>KES — Kenyan Shilling</option>
+                            <option value="TZS" {% if default_currency == 'TZS' %}selected{% endif %}>TZS — Tanzanian Shilling</option>
+                            <option value="NGN" {% if default_currency == 'NGN' %}selected{% endif %}>NGN — Nigerian Naira</option>
+                            <option value="EUR" {% if default_currency == 'EUR' %}selected{% endif %}>EUR — Euro</option>
+                            <option value="GBP" {% if default_currency == 'GBP' %}selected{% endif %}>GBP — British Pound</option>
                         </select>
-                        <p style="font-size: 11px; color: var(--muted); margin-top: 6px;">You can hold multiple currencies later.</p>
-                    </div>
-
-                    <div style="margin-bottom: 24px;">
-                        <label class="form-label">Nationality</label>
-                        <select name="nationality" class="form-select" required>
-                            <option value="UG" {% if nationality == 'UG' %}selected{% endif %}>Uganda</option>
-                            <option value="KE" {% if nationality == 'KE' %}selected{% endif %}>Kenya</option>
-                            <option value="TZ" {% if nationality == 'TZ' %}selected{% endif %}>Tanzania</option>
-                            <option value="NG" {% if nationality == 'NG' %}selected{% endif %}>Nigeria</option>
-                            <option value="RW" {% if nationality == 'RW' %}selected{% endif %}>Rwanda</option>
-                            <option value="OTHER">Other</option>
-                        </select>
+                        {% if home_country %}
+                        <p style="font-size: 11px; color: var(--muted); margin-top: 6px;">
+                            Suggested from the country in your Profile: <strong>{{ home_country }}</strong>.
+                            This becomes your primary Wallet currency. It is based on your current country, not your nationality.
+                            <a href="{{ url_for('profile.account_settings') }}">Update Profile country</a> before creating the Wallet if you live elsewhere.
+                        </p>
+                        {% else %}
+                        <p style="font-size: 11px; color: var(--muted); margin-top: 6px;">
+                            No country is set in your Profile, so the platform default is suggested.
+                            Choose the currency you want as your Wallet home currency, or
+                            <a href="{{ url_for('profile.account_settings') }}">update your Profile country</a>.
+                        </p>
+                        {% endif %}
                     </div>
                     
                     <div class="terms-box" id="termsBox">

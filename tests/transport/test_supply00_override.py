@@ -48,6 +48,9 @@ def _driver_data(uid):
         'email': f'driver_{uid}@gmail.com',
         'date_of_birth': '1990-01-01',
         'nationality': 'KE',
+        # Deliberately differs from nationality: this driver is registered
+        # to operate in Uganda, independent of their nationality.
+        'operating_country_code': 'UG',
         'languages_spoken': ['en'],
         'vehicle_classes': ['comfort'],
         'service_types': ['on_demand'],
@@ -336,6 +339,8 @@ def test_T7_register_driver_auto_approve_false_gives_F_F(app, monkeypatch):
         assert drv.is_online is False
         assert drv.is_available is False
         assert drv.compliance_status == ComplianceStatus.PENDING_REVIEW
+        assert drv.driver_metadata["operating_country_code"] == "UG"
+        assert drv.driver_metadata["operating_country_verified"] is False
 
     # register_driver creates a provider_participations row for the user;
     # deleting the User would null its user_id via ORM cascade and trip

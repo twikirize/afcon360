@@ -1359,7 +1359,7 @@
       <p id="paymentMethodError" class="bolt-payment-error" role="alert" hidden>
         Select an available payment method to continue.
       </p>
-      <p class="bolt-sub">No driver search has started yet. Tapping confirm accepts the displayed fare and begins matching. You are not charged now; payment is due at trip completion.</p>
+      <p class="bolt-sub">No driver search has started yet. Confirm accepts the authoritative fare shown in the original fare currency, not the approximate home-currency display. Matching begins after confirmation. You are not charged now; payment is due at trip completion.</p>
       {# Request commitment is separate from driver acceptance. #}
       <button type="submit" class="bolt-cta" id="btnConfirm">
         <span id="btnConfirmMain">Confirm Fare & Request Ride</span>
@@ -1459,6 +1459,9 @@
     stage: 'a', dest: '', pickup: '',
     svcType: '{{ default_service }}', vip: false,
     selectedClass: null, selectedFare: null, selectedName: null,
+    selectedDisplayFare: null, displayCurrency: null, displayRate: 1,
+    displayIsApproximate: false, displayRateAt: null,
+    displayAttributionUrl: null,
     fareBreakdown: null, distanceKm: null, fareQuoteToken: null,
     // UI-14-D1-followup: the rider's chosen class, kept as a preference
     // across Edit-trip navigation. Only ever honored against freshly
@@ -1541,7 +1544,19 @@
     return isFinite(n) ? n : null;
   }
   function fmtCur(n, cur){
-    return (cur || 'USD') + ' ' + Number(n || 0).toFixed(2);
+    cur = cur || 'USD';
+    var digits = (cur === 'UGX' || cur === 'RWF' ||
+      cur === 'JPY' || cur === 'KRW' || cur === 'VND') ? 0 : 2;
+    var amount = Number(n || 0);
+    if (!isFinite(amount)) amount = 0;
+    try {
+      return cur + ' ' + amount.toLocaleString(undefined, {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits
+      });
+    } catch (e) {
+      return cur + ' ' + amount.toFixed(digits);
+    }
   }
   function syncPaymentChoice(){
     var chosen = document.querySelector('input[name="payment_method_choice"]:checked');
@@ -1910,6 +1925,13 @@
       note = '~' + Number(data.distance_km).toFixed(1) +
         ' km · estimated fare only. No driver has been contacted yet.';
     }
+    if (data && data.home_currency && data.display_currency === data.home_currency &&
+        data.display_currency !== data.currency) {
+      note += ' Home-currency amounts are indicative estimates; the signed fare and Wallet invoice remain ' +
+        data.currency + '.';
+    } else if (data && data.home_currency && data.display_currency !== data.home_currency) {
+      note += ' Home-currency conversion is unavailable, so the fare currency is shown.';
+    }
     tripMeta.textContent = note;
   }
 
@@ -1933,9 +1955,23 @@
 
   function renderOptions(opts, currency){
     optionsBox.innerHTML = '<div class="bolt-vehgrid">' + opts.map(function(o){
+      var displayCurrency = o.display_currency || currency;
+      var displayAmount = o.display_amount != null ? Number(o.display_amount) : Number(o.fare_total);
+      var isHomeDisplay = o.display_is_home_currency === true && displayCurrency !== currency;
+      var priceSub = isHomeDisplay
+        ? '<span class="bolt-veh-sub">Indicative display · base fare ' +
+          esc(fmtCur(o.fare_total, currency)) + '</span>'
+        : '<span class="bolt-veh-sub">Authoritative fare ' +
+          esc(fmtCur(o.fare_total, currency)) + '</span>';
       return '<button type="button" class="bolt-veh" ' +
         'data-class="' + esc(o.vehicle_class) + '" ' +
         'data-fare="' + esc(o.fare_total) + '" ' +
+        'data-display-fare="' + esc(displayAmount) + '" ' +
+        'data-display-currency="' + esc(displayCurrency) + '" ' +
+        'data-display-rate="' + esc(o.display_rate || '1') + '" ' +
+        'data-display-approx="' + (o.display_is_approximate ? '1' : '0') + '" ' +
+        'data-display-rate-at="' + esc(o.display_rate_at || '') + '" ' +
+        'data-display-attribution="' + esc(o.display_rate_attribution_url || '') + '" ' +
         'data-name="' + esc(o.display_name) + '" ' +
         'data-quote-token="' + esc(o.quote_token) + '" ' +
         'data-breakdown="' + esc(JSON.stringify(o.fare_breakdown || {})) + '" ' +
@@ -1943,9 +1979,9 @@
         'data-currency="' + esc(currency) + '">' +
         '<span class="bolt-veh-ico"><i class="fas ' + vehicleIcon(o.vehicle_class) + '"></i></span>' +
         '<span class="bolt-veh-name">' + esc(o.display_name) + '</span>' +
-        '<span class="bolt-veh-price">' + esc(currency) + ' ' + Number(o.fare_total).toFixed(2) + '</span>' +
+        '<span class="bolt-veh-price">' + esc(fmtCur(displayAmount, displayCurrency)) + '</span>' +
         '<span class="bolt-veh-eta">Estimated fare</span>' +
-        '<span class="bolt-veh-sub">Driver matching starts after confirmation</span>' +
+        priceSub +
         '</button>';
     }).join('') + '</div>';
 
@@ -1980,6 +2016,13 @@
     // preference. It is only honored against fresh options on reload.
     state.preferredClass = el.dataset.class;
     state.selectedFare = Number(el.dataset.fare);
+    state.selectedDisplayFare = Number(el.dataset.displayFare || el.dataset.fare);
+    state.displayCurrency = el.dataset.displayCurrency || currency;
+    state.displayRate = Number(el.dataset.displayRate || 1);
+    if (!isFinite(state.displayRate) || state.displayRate <= 0) state.displayRate = 1;
+    state.displayIsApproximate = el.dataset.displayApprox === '1';
+    state.displayRateAt = el.dataset.displayRateAt || null;
+    state.displayAttributionUrl = el.dataset.displayAttribution || null;
     state.selectedName = el.dataset.name;
     state.currency = currency;
     try { state.fareBreakdown = JSON.parse(el.dataset.breakdown || '{}'); }
@@ -1988,7 +2031,9 @@
     hVehicleCls.value = state.selectedClass;
     // UI-14-F1: Review is only reachable with a committable schedule.
     btnReview.disabled = !isScheduleValid();
-    reviewAmt.textContent = currency + ' ' + state.selectedFare.toFixed(2);
+    reviewAmt.textContent = fmtCur(
+      state.selectedDisplayFare, state.displayCurrency || currency
+    ) + (state.displayIsApproximate ? ' (approx.)' : '');
     showFarePanel(currency);
   }
 
@@ -1996,12 +2041,14 @@
     if (!state.fareBreakdown) { hideFarePanel(); return; }
     var b = state.fareBreakdown;
     var km = state.distanceKm;
-    fbBase.textContent = fmtCur(b.base_fare, currency);
+    var rate = state.displayRate || 1;
+    var displayCurrency = state.displayCurrency || currency;
+    fbBase.textContent = fmtCur(Number(b.base_fare || 0) * rate, displayCurrency);
     fbKm.textContent = km != null ? Number(km).toFixed(1) : '—';
-    fbDistance.textContent = fmtCur(b.distance_charge, currency);
+    fbDistance.textContent = fmtCur(Number(b.distance_charge || 0) * rate, displayCurrency);
     fbMult.textContent = '× ' + Number(b.class_multiplier || 1).toFixed(2);
     fbSurge.textContent = '× ' + Number(b.surge_multiplier || 1).toFixed(2);
-    fbTotal.textContent = fmtCur(state.selectedFare, currency);
+    fbTotal.textContent = fmtCur(state.selectedDisplayFare, displayCurrency);
     farePanel.classList.add('is-visible');
   }
   function hideFarePanel(){ farePanel.classList.remove('is-visible'); }
@@ -2023,20 +2070,40 @@
     sumPickup.textContent = state.pickup || '—';
     sumDest.textContent = state.dest || '—';
     sumRide.textContent = state.selectedName
-      ? state.selectedName + ' · ' + fmtCur(state.selectedFare, state.currency || 'USD')
+      ? state.selectedName + ' · ' +
+        fmtCur(state.selectedDisplayFare, state.displayCurrency || state.currency || 'USD') +
+        (state.displayIsApproximate
+          ? ' (approx.; base ' + fmtCur(state.selectedFare, state.currency || 'USD') + ')'
+          : '')
       : '—';
 
     var b = state.fareBreakdown, km = state.distanceKm;
     if (b) {
       fareRows.innerHTML =
-        fareRow('Base fare', fmtCur(b.base_fare, 'USD')) +
+        (state.displayIsApproximate
+          ? fareRow('Indicative home-currency display',
+                    fmtCur(state.selectedDisplayFare, state.displayCurrency), true)
+          : '') +
+        fareRow('Base fare', fmtCur(b.base_fare, state.currency || 'USD')) +
         fareRow('Distance (' + (km != null ? Number(km).toFixed(1) + ' km' : '—') + ')',
-                fmtCur(b.distance_charge, 'USD')) +
+                fmtCur(b.distance_charge, state.currency || 'USD')) +
         fareRow('Class multiplier', '× ' + Number(b.class_multiplier || 1).toFixed(2)) +
         fareRow('Surge', '× ' + Number(b.surge_multiplier || 1).toFixed(2)) +
-        fareRow('Total', fmtCur(state.selectedFare, state.currency || 'USD'), true);
+        fareRow('Authoritative fare / Wallet invoice currency',
+                fmtCur(state.selectedFare, state.currency || 'USD'), true) +
+        (state.displayAttributionUrl
+          ? '<div class="bolt-sub">Indicative rates by <a href="' +
+            esc(state.displayAttributionUrl) + '" target="_blank" rel="noopener noreferrer">ExchangeRate-API</a>' +
+            (state.displayRateAt ? ' · updated ' + esc(state.displayRateAt) : '') + '.</div>'
+          : '');
     } else {
-      fareRows.innerHTML = fareRow('Total', fmtCur(state.selectedFare, state.currency || 'USD'), true);
+      fareRows.innerHTML =
+        (state.displayIsApproximate
+          ? fareRow('Indicative home-currency display',
+                    fmtCur(state.selectedDisplayFare, state.displayCurrency), true)
+          : '') +
+        fareRow('Authoritative fare / Wallet invoice currency',
+                fmtCur(state.selectedFare, state.currency || 'USD'), true);
     }
     confirmTimeSub.textContent = state.schedule === 'later'
       // UI-14-F1: never imply a schedule exists when the time is
