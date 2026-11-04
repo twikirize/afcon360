@@ -17,19 +17,19 @@ Status is evidence-based. A green code/build check is not store approval.
 - [x] Wallet amounts and payment state are server-provided; no client ledger or fare authority.
 - [x] In-app sign-out and account deletion controls exist; the deletion handler revokes sessions/API keys, clears MFA/recovery/PIN credentials, anonymizes direct profile identifiers and retains only separately controlled KYC/financial/audit records as required.
 - [x] Public web account-deletion initiation route exists at `/apps/delete-account`, alongside the in-app deletion control. End-to-end user testing and final retention-policy approval remain outstanding.
-- [x] Parallel APK workflow, SHA-256 verification, download/share UI and stable preview-release URLs are configured.
-- [ ] Four stable preview-keystore GitHub Actions secrets configured, latest APK builds passed, combined assets/checksum published, and download URLs tested on physical Android devices.
-- [ ] Stable internal preview keystore is stored in GitHub Actions secrets; actual APK assets and checksum are not published until this is configured and the build passes.
+- [x] PR-safe User Android validation workflow can build or reuse a checksum-verified APK artifact; the current workflow does not publish a stable GitHub Release.
+- [ ] Stable, in-place-updatable internal preview distribution is designed in a separate trusted workflow; current per-run CI signing keys are intentionally disposable and must not be stored as repository-level secrets.
 - [ ] Live-like end-to-end tests for native login/MFA/refresh replay/revocation, rider booking commitment, driver offer assignment, trip lifecycle, Wallet settlement and deletion.
-- [ ] Verify external deletion requests through web login, including incorrect password, missing/invalid TOTP, protected account rejection, and retained-record disclosure.
+- [ ] Verify external and in-app deletion end-to-end, including incorrect password, missing/invalid TOTP, protected-account rejection, actual deletion of non-retained data, and documented legally required retention.
 - [ ] Real-device testing on low-memory Android phones and supported iPhones, including permission denial, network loss and app upgrade.
 - [x] Draft User and Driver store listing names, short descriptions and full descriptions prepared in `docs/store-listing-copy.md`.
 - [ ] Final icons, splash screens, screenshots, store graphics and localized listing copy approved.
 
 ## Cross-platform compatibility evidence
 
-- [ ] Both User and Driver pass Android API 24 (minimum), API 29, API 33 and API 36 install-and-launch checks.
-- [ ] Both User and Driver pass iOS simulator build/install/launch checks with iOS 16.4 deployment target and current iOS 26.4 simulator.
+- [x] User Android app passed install-and-launch checks on API 24, 29, 33 and 36 in [Run #53](https://github.com/twikirize/afcon360/actions/runs/41924848966).
+- [ ] Driver Android API 24/29/33/36 matrix passes; Driver is intentionally outside the current validation phase.
+- [ ] User and Driver iOS simulator build/install/launch checks pass with iOS 16.4 deployment target and current iOS 26 SDK; the current iOS job is disabled and has no passing evidence.
 - [ ] Physical Android devices across older, mid-range and current OS releases pass fresh install and same-key update tests.
 - [ ] Physical iPhone/iPad devices on the minimum supported iOS release and current iOS release pass install, launch, permissions and update tests.
 - [ ] Actual tested device models, OS versions, run links and failures are recorded before store submission.
@@ -42,7 +42,8 @@ Status is evidence-based. A green code/build check is not store approval.
 - [ ] Production-signed AAB generated; preview APK is not a store binary.
 - [ ] Generated target SDK verified as Android 16 / API 36 or higher. Google's published rule requires API 36+ for new app submissions and updates from 31 August 2026.
 - [ ] Final store listing text and metadata approved; support URL, 512×512 icon, 1024×500 feature graphic and phone/tablet screenshots prepared.
-- [ ] Approved privacy policy, Data safety declaration, App access, content rating, target audience, ads and permission declarations completed.
+- [ ] Approved privacy policy is live, public, non-editable and accessible globally; Data safety, App access, content rating, target audience, ads and permission declarations match the actual app and all included SDKs.
+- [ ] Financial features declaration completed accurately in Play Console. Review whether the Wallet balance and ride-payment functionality constitutes mobile payments/digital-wallet functionality; do not select “no financial features” without confirming the feature set.
 - [ ] Reviewer credentials/instructions tested for both customer and driver experiences.
 - [ ] Financial-services declarations and any applicable payment policy requirements reviewed.
 - [ ] Internal/closed testing, pre-launch report, device matrix and policy checks passed.
@@ -56,7 +57,7 @@ Status is evidence-based. A green code/build check is not store approval.
 - [ ] Signed IPA built and uploaded to TestFlight.
 - [ ] Approved privacy policy URL linked inside both apps and in App Store Connect.
 - [ ] App Privacy labels reflect actual data types, purposes, linkage and third-party processing.
-- [ ] In-app account deletion tested end-to-end.
+- [ ] In-app and external web account deletion tested end-to-end; verify that data not legally retained is actually deleted, and disclose retained record categories, legal basis and retention periods.
 - [ ] Location purpose text matches the foreground-only Driver behavior.
 - [ ] App Review notes include working demo accounts and MFA instructions for both apps.
 - [ ] Final descriptions, icons, screenshots, support URL, age rating, pricing and availability complete.
@@ -64,7 +65,7 @@ Status is evidence-based. A green code/build check is not store approval.
 
 ## Privacy, legal and operational sign-off
 
-- [ ] Privacy notice approved by AFCON360's data controller/legal adviser for each launch jurisdiction; current `/apps/privacy` page is a working draft only.
+- [ ] Privacy notice approved by AFCON360's data controller/legal adviser for each launch jurisdiction. The current `/apps/privacy` page explicitly identifies itself as a working draft and is a Google Play / Apple submission blocker.
 - [ ] Data controller identity/contact, lawful bases, data-subject rights and complaint channels confirmed for Uganda and every launch jurisdiction.
 - [ ] Actual GEO/geocoding and Wallet/payment provider inventory, processing countries, contracts and cross-border safeguards confirmed.
 - [ ] Retention periods for KYC/identity, security sessions, precise location, rides, Wallet and audit records approved and published.
@@ -73,18 +74,13 @@ Status is evidence-based. A green code/build check is not store approval.
 
 ## GitHub Actions preview signing setup
 
-The parallel APK workflow requires a stable test signing certificate so testers can install later preview builds as updates rather than uninstalling the app each time. Do not commit the keystore or its passwords.
+The current PR-capable workflow uses a new ephemeral CI signing key per APK build, masks its password, has read-only token permissions and does not publish a Release. The downloaded APK is an Actions artifact; it is not guaranteed to accept an in-place update from a future artifact signed with a different temporary key.
 
-Create a dedicated internal preview keystore on a trusted workstation (see `docs/android-preview-signing-setup.md` for Windows PowerShell steps), then add these encrypted secrets under **GitHub repository → Settings → Secrets and variables → Actions**:
+Do **not** add the former `AFCON360_PREVIEW_KEYSTORE_*` values as repository-level Actions secrets. Remove those repository secrets if they exist. A same-repository pull request can propose edits to a PR-triggered workflow, so stable signing keys must not be accessible to that workflow.
 
-- `AFCON360_PREVIEW_KEYSTORE_BASE64` — base64 output of the keystore file.
-- `AFCON360_PREVIEW_KEYSTORE_PASSWORD` — keystore password.
-- `AFCON360_PREVIEW_KEY_ALIAS` — key alias inside the keystore.
-- `AFCON360_PREVIEW_KEY_PASSWORD` — private-key password.
+If stable internal distribution becomes necessary, create a separate trusted release workflow that pull requests cannot modify and protect its signing key in a GitHub Environment with required approval and an allowlist of trusted release branches. Never use preview signing material for Google Play production signing.
 
-Keep a secure offline backup of the keystore and passwords. Loss of this key prevents in-place updates to already distributed preview APKs. This preview key is not the Play App Signing production key.
-
-For Windows PowerShell commands and the exact encrypted GitHub secrets required before APK publishing, follow the [internal Android preview signing setup](preview-signing-setup.md).
+See [the current preview-signing policy](preview-signing-setup.md).
 
 ## Distribution labels
 
