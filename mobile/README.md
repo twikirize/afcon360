@@ -19,7 +19,7 @@ Both use Expo SDK 58, React Native 0.88.1, React 19.3 and TypeScript 6. Flask re
 
 ## What is still a release gate
 
-The branch is not merged or deployed. No live-like end-to-end run or physical-device acceptance has been completed. The Android internal preview build must finish and its package/target SDK/signature be verified before APK links can be considered live. Direct APKs are signed with a dedicated internal preview key, not the production Play App Signing key.
+The branch is not merged or deployed. The User Android APK was built and verified in Run #48, then installed and launched successfully on Android API 24, 29, 33 and 36 in Run #53. This is emulator evidence only: live-like end-to-end and physical-device acceptance remain outstanding. The current PR workflow uses a disposable CI signing key and uploads an Actions artifact; it does not publish a stable preview Release.
 
 Production Android requires a Play App Signing AAB. iOS requires a signed App Store/TestFlight archive. EAS projects must be linked and both developer accounts, privacy/legal disclosures, icons/screenshots, review accounts and store reviews remain outstanding. The privacy page is a working draft, not the approved store policy.
 
@@ -36,7 +36,7 @@ There is no single Android/iOS binary. The source, shared packages, API contract
 
 ## Supported operating-system baseline
 
-The current Expo SDK 58 baseline is Android 7.0+ (API 24) and iOS 16.4+. Android builds compile with SDK 37 and target API 36 to meet the current Google Play submission requirement. CI checks Android API 24, 29, 33 and 36, and builds/installs both apps on an iOS 26.4 simulator while asserting the iOS 16.4 deployment target. Physical-device testing remains required before release.
+The current Expo SDK 58 baseline is Android 7.0+ (API 24) and iOS 16.4+. Android builds compile with SDK 37 and target API 36. CI has verified the User Android app on API 24, 29, 33 and 36. Driver Android and both iOS simulator matrices are not currently enabled; physical-device testing remains required before release.
 
 See [platform compatibility and release matrix](docs/platform-compatibility.md) for the current policy and evidence gates.
 
@@ -61,12 +61,11 @@ Read `docs/backend-contracts.md`, `docs/api-inventory.md`, `docs/store-submissio
 
 ## Direct APK sharing
 
-The workflow publishes two internally preview-key-signed Android APKs to the GitHub prerelease named `mobile-preview` only after both standalone Android builds, package identity, target API and signature checks pass. The website `/apps` exposes the download/share links. Never submit these APKs to Play Console.
+The current pull-request workflow validates only the User Android APK. It uses an ephemeral CI key, uploads a run-scoped Actions artifact and does not publish or update the `mobile-preview` Release. Never submit a preview APK to Play Console.
 
 
-### Preview APK signing secret
+### Preview APK signing
 
-The GitHub Actions APK workflow intentionally fails closed until a stable test keystore is configured. Follow `docs/android-preview-signing-setup.md`, then add the four encrypted repository secrets documented in `docs/store-submission-checklist.md`. The signing keystore is never committed to this public repository and must be backed up securely. This test key is distinct from the production Play App Signing key.
+The current PR-capable workflow generates a disposable CI signing key inside the signing step, masks its password, has read-only GitHub token permissions and does not publish a Release. Do not add stable preview-key credentials as repository-level Actions secrets. If those old secrets exist, remove them. Any future stable tester distribution must use a separate trusted workflow and protected GitHub Environment, not a PR-editable workflow.
 
-
-For Windows PowerShell instructions to create and add the stable internal preview signing key, see docs/preview-signing-setup.md. Do not add the keystore or password to Git.
+See [the current preview-signing policy](docs/preview-signing-setup.md).
