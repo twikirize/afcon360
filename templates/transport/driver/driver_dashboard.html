@@ -196,6 +196,11 @@
         · base fare currency {{ o0_base_currency }} · not your net earnings
       </span>
       {% endif %}
+      {% if o0_fare.get('operating_country_code') and not o0_fare.get('operating_country_verified') %}
+      <span class="ws-muted" style="font-size:11px;">
+        Operating country {{ o0_fare.get('operating_country_code') }} declared · verification pending
+      </span>
+      {% endif %}
       {% endif %}
       {% if o0.get('distance_km') is not none %}
       <span>·</span><span>Est. {{ ('%.1f'|format(o0.get('distance_km')|float)) }} km</span>
