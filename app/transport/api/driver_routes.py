@@ -691,6 +691,16 @@ class DriverOfferListResource(Resource):
             request_offers = []
         known = {o.get("booking_reference") for o in offers}
         offers.extend(o for o in request_offers if o.get("booking_reference") not in known)
+        try:
+            from app.transport.services.currency_presentation_service import (
+                enrich_driver_offers_with_home_currency,
+            )
+            offers = enrich_driver_offers_with_home_currency(offers, profile)
+        except Exception:
+            logger.warning(
+                "Driver offer home-currency presentation unavailable; keeping base fare",
+                exc_info=True,
+            )
         return {"success": True, "data": {"offers": offers}}
 
 
