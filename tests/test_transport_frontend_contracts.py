@@ -117,3 +117,4 @@ def test_csrf_refresh_does_not_rotate_session_seed():
     assert "session.pop('csrf_token'" not in refresh
     assert 'Cache-Control"] = "private, no-store, max-age=0"' in refresh
     assert 'Vary"] = "Cookie"' in refresh
+
