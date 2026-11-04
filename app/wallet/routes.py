@@ -108,7 +108,7 @@ def get_account(user_id, currency='UGX', owner_type=None):
     return account
 
 
-def get_or_create_account(user_id, currency='UGX'):
+def get_or_create_account(user_id, currency=None):
     """
     Get existing account OR create one if it doesn't exist.
     This is the main function for wallet access - creates wallet on first use.
@@ -135,6 +135,9 @@ def get_or_create_account(user_id, currency='UGX'):
         internal_id = user.id
     else:
         internal_id = user_id
+        user = User.query.get(internal_id)
+        if not user:
+            return None
     
     # Try to find existing account (one account per user - unique constraint)
     account = AccountModel.query.filter_by(
@@ -143,6 +146,11 @@ def get_or_create_account(user_id, currency='UGX'):
     ).first()
     
     if not account:
+        # Resolve the user's primary/home currency once, at first-wallet creation.
+        # An explicit onboarding choice overrides the profile-country default.
+        from app.wallet.services.home_currency_service import resolve_home_currency
+        currency = resolve_home_currency(user, requested_currency=currency)
+
         # Create new account (verified defaults to False in model)
         account = AccountModel(
             id=str(uuid4()),
@@ -562,8 +570,14 @@ def wallet_create_page():
     from app.profile.models import get_profile_by_user
     profile = get_profile_by_user(current_user.public_id)
     nationality = getattr(profile, 'nationality', 'UG') if profile else 'UG'
+    from app.wallet.services.home_currency_service import resolve_home_currency
+    default_currency = resolve_home_currency(current_user)
     
-    return render_template('wallet/wallet_create.html', nationality=nationality)
+    return render_template(
+        'wallet/wallet_create.html',
+        nationality=nationality,
+        default_currency=default_currency,
+    )
 
 
 @wallet_bp.route('/create', methods=['POST'])
@@ -603,8 +617,18 @@ def wallet_create():
             flash('You already have a wallet.', 'info')
             return redirect(url_for('wallet.wallet_dashboard'))
 
-        # Get currency from form (default to UGX)
-        currency = request.form.get('currency', 'UGX')
+        # The selected currency becomes the user's primary Wallet/home currency.
+        # The resolver validates explicit choices and supplies the country default
+        # when the form does not provide one.
+        from app.wallet.services.home_currency_service import resolve_home_currency
+        try:
+            currency = resolve_home_currency(
+                current_user,
+                requested_currency=request.form.get('currency') or None,
+            )
+        except ValueError as exc:
+            flash(str(exc), 'danger')
+            return redirect(url_for('wallet.wallet_create_page'))
 
         # Start wallet creation tracker
         from app.wallet.services.wallet_creation_tracker import (
