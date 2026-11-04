@@ -2635,11 +2635,20 @@ def create_app(config_object=None) -> Flask:
     @app.route('/api/csrf-token', methods=['GET'])
     @csrf.exempt
     def issue_csrf_token():
-        """Issue a fresh CSRF token. Client calls this when told its token expired."""
+        """Issue a fresh signed token without rotating the session CSRF secret.
+
+        Flask-WTF's token embeds a timestamp around the session-bound secret.
+        Calling generate_csrf() therefore refreshes the token's time window
+        without invalidating tokens already held by another open tab or an
+        in-flight request. Rotating session['csrf_token'] here would create
+        avoidable "tokens do not match" failures across the same session.
+        """
         from flask_wtf.csrf import generate_csrf
-        from flask import session
-        session.pop('csrf_token', None)   # delete the cached expired token
-        return jsonify({"csrf_token": generate_csrf()})
+
+        response = jsonify({"csrf_token": generate_csrf()})
+        response.headers["Cache-Control"] = "private, no-store, max-age=0"
+        response.headers["Vary"] = "Cookie"
+        return response
 
     @app.errorhandler(CSRFError)
     def handle_csrf_error(e):
