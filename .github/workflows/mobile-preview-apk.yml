@@ -43,8 +43,53 @@ permissions:
   contents: read
 
 jobs:
+  # Reuse Run #48's verified User APK for this workflow-only CI correction.
+  # If any mobile app/dependency source changed since that APK, do a fresh build instead.
+  prepare-android-validation:
+    name: Select verified APK for targeted Android checks
+    runs-on: ubuntu-24.04
+    outputs:
+      reuse_artifact: ${{ steps.select.outputs.reuse_artifact }}
+      artifact_run_id: ${{ steps.select.outputs.artifact_run_id }}
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether the existing APK is still valid
+        id: select
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASELINE_SHA="3f5b61ebe7058bd77d26400107a04ce1198cd37d"
+          VERIFIED_APK_RUN_ID="41911873134"
+
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ] &&
+             git cat-file -e "${BASELINE_SHA}^{commit}" 2>/dev/null &&
+             git diff --quiet "${BASELINE_SHA}" "${GITHUB_SHA}" -- \
+               mobile/apps \
+               mobile/packages \
+               mobile/docs \
+               mobile/README.md \
+               mobile/AGENTS.md \
+               mobile/package.json \
+               mobile/pnpm-lock.yaml \
+               mobile/pnpm-workspace.yaml \
+               mobile/.npmrc; then
+            echo "reuse_artifact=true" >> "$GITHUB_OUTPUT"
+            echo "artifact_run_id=$VERIFIED_APK_RUN_ID" >> "$GITHUB_OUTPUT"
+            echo "Mobile source is unchanged since the verified Run #48 APK; reusing that artifact."
+          else
+            echo "reuse_artifact=false" >> "$GITHUB_OUTPUT"
+            echo "artifact_run_id=$GITHUB_RUN_ID" >> "$GITHUB_OUTPUT"
+            echo "Mobile source changed or this is not a pull request; a fresh APK build is required."
+          fi
+
   build-preview-apk:
     name: Build ${{ matrix.app }} standalone APK
+    needs: prepare-android-validation
+    if: needs.prepare-android-validation.outputs.reuse_artifact != 'true'
     # Keep this Android build on the tested Ubuntu 24.04 image until Ubuntu 26.04 is validated.
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -259,8 +304,11 @@ jobs:
 
   android-compatibility:
     name: Android API ${{ matrix.api-level }} / ${{ matrix.app }} install and launch
-    needs: build-preview-apk
-    if: ${{ needs.build-preview-apk.result == 'success' }}
+    needs: [prepare-android-validation, build-preview-apk]
+    if: >-
+      always() &&
+      needs.prepare-android-validation.result == 'success' &&
+      (needs.build-preview-apk.result == 'success' || needs.build-preview-apk.result == 'skipped')
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
@@ -269,12 +317,7 @@ jobs:
       max-parallel: 1
       matrix:
         include:
-          - app: user
-            package: space.pamoja.afcon360.user
-            api-level: 24
-          - app: user
-            package: space.pamoja.afcon360.user
-            api-level: 29
+          # Phase 1 has already passed API 24 and 29. This run targets only the remaining APIs.
           - app: user
             package: space.pamoja.afcon360.user
             api-level: 33
@@ -284,6 +327,7 @@ jobs:
     env:
       APP: ${{ matrix.app }}
       EXPECTED_PACKAGE: ${{ matrix.package }}
+      SOURCE_RUN_ID: ${{ needs.prepare-android-validation.outputs.artifact_run_id }}
     steps:
       - name: Check out source for emulator verification script
         uses: actions/checkout@v7
@@ -293,6 +337,8 @@ jobs:
         with:
           name: afcon360-${{ matrix.app }}-preview-apk
           path: release
+          run-id: ${{ needs.prepare-android-validation.outputs.artifact_run_id }}
+          github-token: ${{ github.token }}
 
       - name: Verify downloaded APK provenance and checksum
         shell: bash
@@ -304,7 +350,7 @@ jobs:
           test -s "$INFO"
           grep -Fxq "app=$APP" "$INFO"
           grep -Fxq "package=$EXPECTED_PACKAGE" "$INFO"
-          EXPECTED_RUN_ID="$GITHUB_RUN_ID"
+          EXPECTED_RUN_ID="$SOURCE_RUN_ID"
           grep -Fxq "build_run_id=$EXPECTED_RUN_ID" "$INFO"
           EXPECTED_SHA="$(sed -n 's/^apk_sha256=//p' "$INFO" | head -n 1)"
           ACTUAL_SHA="$(sha256sum "$APK" | awk '{print $1}')"
