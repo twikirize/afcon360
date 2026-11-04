@@ -333,7 +333,7 @@ def create_wallet():
         "status": "success",
         "data": {
             "account_id": "uuid",
-            "currency": "UGX",
+            "currency": "resolved home currency",
             "created_at": "2025-01-01T00:00:00+00:00"
         }
     }
