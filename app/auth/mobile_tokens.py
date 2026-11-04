@@ -197,7 +197,7 @@ def require_mobile_context(expected_client: str | None = None) -> tuple[dict | N
     return context, None
 
 
-def rotate_mobile_refresh_token(refresh_token: str, *, access_token: str, refresh_record: dict) -> int:
+def rotate_mobile_refresh_token(refresh_token: str, *, new_refresh_token: str, refresh_record: dict) -> int:
     """Atomically consume a refresh token once and store its replacement.
 
     Returns 1 for success, 0 for invalid token, -1 for replay, -2 for revoked
@@ -207,9 +207,10 @@ def rotate_mobile_refresh_token(refresh_token: str, *, access_token: str, refres
     redis = _redis()
     old_key = _token_key("refresh", refresh_token)
     used_key = _token_key("refresh-used", refresh_token)
-    new_key = _token_key("refresh", access_token)  # caller passes new refresh secret
+    new_key = _token_key("refresh", new_refresh_token)
     session_id = str(refresh_record.get("session_id") or "")
     revoked_key = _revoked_key(session_id)
+    session_key = _session_key(session_id)
     new_value = json.dumps(refresh_record, separators=(",", ":"))
     script = """
     if redis.call('EXISTS', KEYS[4]) == 1 then return -2 end
@@ -221,15 +222,18 @@ def rotate_mobile_refresh_token(refresh_token: str, *, access_token: str, refres
     redis.call('DEL', KEYS[1])
     redis.call('SET', KEYS[2], current, 'EX', ARGV[1])
     redis.call('SET', KEYS[3], ARGV[2], 'EX', ARGV[3])
+    redis.call('SADD', KEYS[5], KEYS[3])
+    redis.call('EXPIRE', KEYS[5], ARGV[3])
     return 1
     """
     result = redis.eval(
         script,
-        4,
+        5,
         old_key,
         used_key,
         new_key,
         revoked_key,
+        session_key,
         REFRESH_TTL_SECONDS,
         new_value,
         REFRESH_TTL_SECONDS,

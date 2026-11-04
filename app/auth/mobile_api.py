@@ -133,6 +133,19 @@ def _complete_native_login(user, client: str, device_id: str, device_name: str, 
         ).first()
         if stored is None:
             raise RuntimeError("Device session was not persisted")
+        # The existing ServerSession is the durable revocation record used by
+        # Auth. Its expiry must cover the Identity device-session lifetime or
+        # native refresh would be cut off by the shorter browser default (12h).
+        from app.auth.sessions import ServerSession
+        server_record = ServerSession.query.filter_by(
+            session_id=server_session_id,
+            user_id=str(user.public_id),
+            is_revoked=False,
+        ).first()
+        if server_record is None:
+            raise RuntimeError("Native server session was not persisted")
+        server_record.expires_at = stored.expires_at
+        db.session.commit()
     except Exception:
         logger.exception("Native token issuance failed")
         try:
@@ -354,13 +367,34 @@ def mobile_refresh():
         if resolved is None:
             return _error("refresh_invalid", "The device session is expired or has been revoked.", 401)
 
+        # Extend the existing Identity device session using its canonical
+        # sliding-expiry/90-day-cap policy, then keep ServerSession aligned.
+        from app.auth.sessions import ServerSession, touch_device_session
+        from app.identity.models.user import Session as DeviceSession
+        touch_device_session(str(old_record.get("session_id")))
+        device_record = DeviceSession.query.filter_by(
+            session_id=str(old_record.get("session_id")),
+            user_id=resolved["user"].id,
+            revoked_at=None,
+        ).first()
+        server_record = ServerSession.query.filter_by(
+            session_id=str(old_record.get("server_session_id")),
+            user_id=str(resolved["user"].public_id),
+            is_revoked=False,
+        ).first()
+        if device_record is None or server_record is None:
+            return _error("refresh_invalid", "The device session is expired or has been revoked.", 401)
+        if server_record.expires_at != device_record.expires_at:
+            server_record.expires_at = device_record.expires_at
+            db.session.commit()
+
         new_access = secrets.token_urlsafe(48)
         new_refresh = secrets.token_urlsafe(64)
         new_record = dict(old_record, token_type="refresh", issued_at=int(datetime.now(timezone.utc).timestamp()))
         new_access_record = dict(old_record, token_type="access", issued_at=int(datetime.now(timezone.utc).timestamp()))
         rotation_status = rotate_mobile_refresh_token(
             old_refresh,
-            access_token=new_refresh,
+            new_refresh_token=new_refresh,
             refresh_record=new_record,
         )
         if rotation_status == -1:
@@ -476,22 +510,34 @@ def mobile_create_ride_request():
     if any(data.get(field) is None for field in required):
         return _error("ride_request_incomplete", "Pickup, destination, signed fare, payment choice and idempotency key are required.", 400)
 
-    # Preserve the same commitment gates as transport.book_transport and the
-    # existing REST RideRequestCreateResource.
+    # Native requests do not have a browser session flag. Re-check the
+    # canonical Profile and KYC records directly and return JSON gate errors.
     from flask_login import current_user
+    from app.profile.models import get_profile_by_user
+    from app.auth.kyc_compliance import calculate_kyc_tier
     user = current_user
-    profile_gate = require_profile_completion(lambda: None)
-    kyc_gate = require_kyc_tier(2)(lambda: None)
-    # The decorators return a response when their gate fails; use a tiny
-    # guarded view invocation to avoid creating a request if either denies.
     try:
-        denied = profile_gate()
-        if denied is not None:
-            return denied
-        denied = kyc_gate()
-        if denied is not None:
-            return denied
+        profile = get_profile_by_user(user)
+        if profile is None or not bool(getattr(profile, "profile_completed", False)):
+            return _error(
+                "profile_completion_required",
+                "Complete your AFCON360 profile before requesting a ride.",
+                403,
+            )
+        kyc_info = calculate_kyc_tier(user.id)
+        if int(kyc_info.get("tier", 0)) < 2:
+            return jsonify({
+                "success": False,
+                "code": "kyc_upgrade_required",
+                "message": "Complete the required identity verification before requesting a ride.",
+                "data": {
+                    "required_tier": 2,
+                    "current_tier": int(kyc_info.get("tier", 0)),
+                    "missing_requirements": kyc_info.get("missing_requirements", []),
+                },
+            }), 403
     except Exception:
+        db.session.rollback()
         logger.exception("Native ride commitment gate failed closed")
         return _error("booking_gate_unavailable", "AFCON360 could not verify booking eligibility.", 503)
 
