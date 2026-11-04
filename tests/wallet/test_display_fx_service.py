@@ -110,3 +110,24 @@ def test_zero_decimal_home_currency_rounds_to_whole_units(app, monkeypatch):
     assert result["display_amount"] == 3801.0
     assert result["display_currency"] == "UGX"
     assert result["display_is_approximate"] is True
+
+def test_tzs_keeps_two_minor_unit_decimal_places(app, monkeypatch):
+    display_fx_service._clear_process_cache_for_tests()
+    now = datetime.now(timezone.utc)
+    payload = {
+        "result": "success",
+        "base_code": "USD",
+        "time_last_update_unix": int(now.timestamp()),
+        "time_next_update_unix": int((now + timedelta(hours=24)).timestamp()),
+        "rates": {"USD": 1, "TZS": 2500.25},
+    }
+    monkeypatch.setattr(
+        display_fx_service.requests,
+        "get",
+        lambda url, timeout: _Response(payload),
+    )
+    with app.app_context():
+        result = display_fx_service.build_display_amount(1, "USD", "TZS")
+
+    assert result["display_amount"] == 2500.25
+    assert result["display_currency"] == "TZS"
