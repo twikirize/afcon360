@@ -1,0 +1,56 @@
+name: Mobile workspace CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - "app/__init__.py"
+      - "templates/base.html"
+      - "templates/mobile_apps/**"
+      - ".github/workflows/mobile-workspace.yml"
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - "app/__init__.py"
+      - "templates/base.html"
+      - "templates/mobile_apps/**"
+      - ".github/workflows/mobile-workspace.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mobile-typecheck:
+    name: Expo dependency and TypeScript checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.1"
+
+      - name: Enable pnpm through Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.12.4 --activate
+          pnpm --version
+
+      - name: Install workspace dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Check Expo SDK dependency compatibility
+        run: |
+          pnpm --filter @afcon360/user-app exec expo install --check
+          pnpm --filter @afcon360/driver-app exec expo install --check
+
+      - name: Type-check both native applications
+        run: pnpm typecheck
