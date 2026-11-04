@@ -255,16 +255,23 @@ def test_location_publish_updates_timestamp(app, client, db_session):
     driver = _seed_driver(app)
     _login(client, driver)
 
+    # Set driver online first (required for location publishing)
+    with app.app_context():
+        profile = db.session.get(DriverProfile, driver.driver_profile_id)
+        profile.is_online = True
+        profile.is_available = True
+        db.session.commit()
+
     resp = client.post(
         f"/api/transport/drivers/{driver.driver_profile_id}/location",
-        json={"latitude": 0.3136, "longitude": 32.5811, "accuracy": 5.0},
+        json={"latitude": 0.2894496334026239, "longitude": 32.543398222422596, "accuracy": 5.0},
     )
     assert resp.status_code == 204, resp.get_data(as_text=True)
     assert resp.data == b""
     db_session.expire_all()
     profile = db_session.get(DriverProfile, driver.driver_profile_id)
     assert profile.location_updated_at is not None
-    assert profile.last_location["latitude"] == 0.3136
+    assert profile.last_location["latitude"] == 0.2894496334026239
 
 
 def test_offers_empty_for_new_driver(app, client, db_session):
