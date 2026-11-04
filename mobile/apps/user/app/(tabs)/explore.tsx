@@ -1,10 +1,30 @@
 import React from "react";
-import { AppScreen, PageHeader, Panel, SectionTitle, ServiceTile } from "@afcon360/mobile-ui";
+import { useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
+import { ActionButton, AppScreen, PageHeader, Panel, SectionTitle, ServiceTile } from "@afcon360/mobile-ui";
+
+const SITE = "https://www.pamoja.space";
+
 export default function Explore() {
+  const router = useRouter();
   return <AppScreen>
-    <PageHeader eyebrow="Explore" title="Make more of the journey." description="AFCON360 brings connected travel services together. Availability and booking actions will appear when the mobile API is ready." />
-    <Panel><SectionTitle>Transport</SectionTitle><ServiceTile title="Rides" description="On-demand and scheduled transport, with fare details before confirmation." symbol="🚘" /></Panel>
-    <Panel><SectionTitle>Accommodation</SectionTitle><ServiceTile title="Stays" description="Discover properties, review room availability and manage reservations." symbol="🏨" /></Panel>
-    <Panel><SectionTitle>Tourism and events</SectionTitle><ServiceTile title="Tours and experiences" description="Explore places and packages offered by local providers." symbol="🧭" /><ServiceTile title="Events" description="Discover events and keep registrations together." symbol="🎟️" /></Panel>
+    <PageHeader eyebrow="Explore" title="Make more of the journey." description="Use the native ride flow or open the existing AFCON360 services for stays, events and tourism." />
+    <Panel>
+      <SectionTitle>Transport</SectionTitle>
+      <ServiceTile title="Rides" description="On-demand transport with resolved locations, signed fares and server-certified payment options." symbol="🚘" />
+      <ActionButton label="Book a ride" onPress={() => router.push("/ride")} />
+    </Panel>
+    <Panel>
+      <SectionTitle>Accommodation</SectionTitle>
+      <ServiceTile title="Stays" description="Discover properties and manage accommodation reservations." symbol="🏨" />
+      <ActionButton label="Explore stays" onPress={() => WebBrowser.openBrowserAsync(SITE + "/accommodation")} />
+    </Panel>
+    <Panel>
+      <SectionTitle>Tourism and events</SectionTitle>
+      <ServiceTile title="Tours and experiences" description="Explore packages and local providers." symbol="🧭" />
+      <ActionButton label="Explore tourism" onPress={() => WebBrowser.openBrowserAsync(SITE + "/tourism")} />
+      <ServiceTile title="Events" description="Discover events and registrations." symbol="🎟️" />
+      <ActionButton label="Browse events" onPress={() => WebBrowser.openBrowserAsync(SITE + "/events")} />
+    </Panel>
   </AppScreen>;
 }

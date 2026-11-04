@@ -1,4 +1,5 @@
 import * as Location from "expo-location";
+
 export async function requestForegroundDriverLocation() {
   const permission = await Location.requestForegroundPermissionsAsync();
   if (permission.status !== "granted") return { granted: false as const, permission };
@@ -10,6 +11,8 @@ export async function requestForegroundDriverLocation() {
       latitude: current.coords.latitude,
       longitude: current.coords.longitude,
       accuracy: current.coords.accuracy,
+      speed: current.coords.speed,
+      heading: current.coords.heading,
       observedAt: current.timestamp
     }
   };
