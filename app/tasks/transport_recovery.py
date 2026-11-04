@@ -77,9 +77,13 @@ def _with_app_context(fn):
     return wrapper
 
 
-@celery_app.task(name="transport.dispatch_recovery")
+@celery_app.task(name="transport.dispatch_recovery", bind=True)
 @_with_app_context
-def dispatch_recovery() -> dict:
+def dispatch_recovery(
+    self,
+    batch: int = None,
+    after_booking_id: int = 0,
+) -> dict:
     """Defensive sweep of expired/orphaned Redis offers PLUS rediscovery of
     CONFIRMED+unassigned bookings (pool -> ranker -> transient offer).
 
@@ -126,13 +130,12 @@ def dispatch_recovery() -> dict:
 
         from app.transport.services.matching_service import MatchingService
 
-        batch = max(
-            1,
-            min(
-                int(current_app.config.get("TRANSPORT_DISPATCH_RECOVERY_BATCH", 10)),
-                25,
-            ),
+        configured_batch = (
+            current_app.config.get("TRANSPORT_DISPATCH_RECOVERY_BATCH", 10)
+            if batch is None else batch
         )
+        batch = max(1, min(int(configured_batch), 25))
+        after_booking_id = max(0, int(after_booking_id))
         window = int(current_app.config.get("TRANSPORT_MATCHING_WINDOW_SECONDS", 180))
         from app.transport.services.assignment_service import CLAIMABLE_STATUSES
 
@@ -141,7 +144,11 @@ def dispatch_recovery() -> dict:
                 Booking.status.in_(CLAIMABLE_STATUSES),
                 Booking.assigned_driver_id.is_(None),
                 Booking.is_deleted.is_(False),
-            ).limit(batch).all()
+                Booking.id > after_booking_id,
+            )
+            .order_by(Booking.id.asc())
+            .limit(batch)
+            .all()
         )
         for booking in candidates:
             try:
@@ -172,6 +179,25 @@ def dispatch_recovery() -> dict:
     finally:
         db.session.rollback()
 
+    # Continue with the next keyset page as a separate task so the worker
+    # returns to the broker between small slices. Failed items are still
+    # passed over in this scan and are eligible again on the next Beat run.
+    if candidates and len(candidates) >= batch:
+        try:
+            self.apply_async(
+                kwargs={
+                    "batch": batch,
+                    "after_booking_id": candidates[-1].id,
+                },
+                countdown=5,
+            )
+            result["continuation_queued"] = True
+        except Exception:
+            logger.exception("Could not schedule next dispatch-recovery page")
+            result["continuation_queued"] = False
+    else:
+        result["continuation_queued"] = False
+
     # Durable request-first offers have their own PostgreSQL lifecycle.
     # Expire unanswered attempts and resume requests that committed before
     # transient dispatch failure; this recovery path never creates a Booking.
@@ -201,6 +227,7 @@ def stall_recovery(
     stall_seconds: int = None,
     dry_run: bool = False,
     batch: int = 25,
+    after_booking_id: int = 0,
 ) -> dict:
     """Cancel bookings stuck ASSIGNED with no driver en-route.
 
@@ -237,14 +264,16 @@ def stall_recovery(
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=timeout)
 
         batch = max(1, min(int(batch), 50))
+        after_booking_id = max(0, int(after_booking_id))
         candidates = (
             Booking.query.filter(
                 Booking.status == BookingStatus.ASSIGNED.value,
                 Booking.driver_en_route_at.is_(None),
                 Booking.is_deleted.is_(False),
                 Booking.driver_assigned_at < cutoff,
+                Booking.id > after_booking_id,
             )
-            .order_by(Booking.driver_assigned_at.asc(), Booking.id.asc())
+            .order_by(Booking.id.asc())
             .limit(batch)
             .all()
         )
@@ -288,6 +317,7 @@ def stall_recovery(
                         "stall_seconds": timeout,
                         "dry_run": False,
                         "batch": batch,
+                        "after_booking_id": candidates[-1].id,
                     },
                     countdown=5,
                 )
