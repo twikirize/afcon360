@@ -7,10 +7,14 @@ Works unmodified on Windows (dev), and Linux (Oracle Cloud / AWS / any prod host
 Pool selection is automatic based on platform, with an env-var override
 for edge cases (WSL, Docker-on-Windows, CI runners, etc).
 
-Start workers:
+Dedicated worker pools (use on hosts with enough RAM):
     celery -A app.celery_app worker -Q critical -c 4 -P threads -n critical@%h
     celery -A app.celery_app worker -Q default  -c 4 -P threads -n default@%h
     celery -A app.celery_app worker -Q bulk     -c 4 -P threads -n bulk@%h
+
+Constrained 1 GiB host (one execution slot; no hard queue isolation):
+    celery -A app.celery_app worker -Q critical,default,bulk -c 1 -P prefork \
+        -n shared@%h --prefetch-multiplier=1 --max-tasks-per-child=50
 
 Start beat scheduler (runs periodic tasks):
     celery -A app.celery_app beat -l info
@@ -252,14 +256,16 @@ def make_celery(app=None):
         # still occupies the only execution slot. Larger hosts can use the
         # three dedicated worker commands documented above.
         task_routes={
-            # Dispatch, payment, permissions: tight latency budget, must never
-            # share a pool with anything that might block on I/O.
+            # Critical work remains on its own broker queue. The constrained
+            # Server 2 worker consumes all queues in one process, so this gives
+            # queue-level organization, NOT hard execution isolation.
             "transport.*": {"queue": "critical"},
             "wallet.*":    {"queue": "critical"},
-            # Event backbone periodic sweeps: bounded and idempotent, but
-            # they touch Redis and the outbox; isolate from bulk.
+            # Event backbone periodic sweeps use the default queue; larger
+            # deployments may assign them a dedicated worker pool.
             "events.*":    {"queue": "default"},
-            # Everything user-visible but not latency-critical.
+            # Background work remains separated at the broker; on a shared
+            # 1 GiB worker it still shares the single execution slot.
             "notifications.*":  {"queue": "bulk"},
             "accommodation.*":  {"queue": "bulk"},
             "media.*":          {"queue": "bulk"},
