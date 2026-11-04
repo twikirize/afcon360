@@ -216,7 +216,6 @@ jobs:
           app/notifications/models.py
           app/events/tasks.py
           app/celery_app.py
-          docker-entrypoint.sh
           tests/test_celery_small_batch_contracts.py
           tests/notifications/test_scheduled_notification_delivery.py
           app/utils/validators.py
@@ -270,6 +269,9 @@ jobs:
           tests/test_org_workspace.py
           tests/test_org_host_production_path.py
           tests/test_events_ownership_characterization.py
+
+      - name: Validate Celery Docker entrypoint shell syntax
+        run: bash -n docker-entrypoint.sh
 
       - name: Parse changed Jinja templates without database access
         run: |
