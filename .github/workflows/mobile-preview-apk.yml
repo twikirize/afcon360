@@ -1,4 +1,4 @@
-# Cross-platform mobile compatibility gate and Android preview distribution.
+# Pull-request-safe Android compatibility validation. Stable signing/publishing is intentionally separate.
 name: AFCON360 Mobile compatibility and Android preview builds
 
 on:
@@ -37,7 +37,7 @@ concurrency:
   # Deliberately replace the mixed-platform run with the focused User Android validation.
   cancel-in-progress: true
 
-# Keep ordinary build/test jobs read-only. The publication job gets write access separately.
+# This PR-capable workflow never receives signing secrets or write-capable tokens.
 permissions:
   actions: read
   contents: read
@@ -152,42 +152,9 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/37.0.0" >> "$GITHUB_PATH"
 
-      # PR code is untrusted for signing purposes: never expose the long-lived preview key to it.
-      # Only a trusted push to the dedicated feature integration branch receives that key.
-      - name: Load stable preview signing key for trusted branch builds
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/feat/native-mobile-apps-20261104' }}
-        env:
-          AFCON360_PREVIEW_KEYSTORE_BASE64: ${{ secrets.AFCON360_PREVIEW_KEYSTORE_BASE64 }}
-          AFCON360_PREVIEW_KEYSTORE_PASSWORD: ${{ secrets.AFCON360_PREVIEW_KEYSTORE_PASSWORD }}
-          AFCON360_PREVIEW_KEY_ALIAS: ${{ secrets.AFCON360_PREVIEW_KEY_ALIAS }}
-          AFCON360_PREVIEW_KEY_PASSWORD: ${{ secrets.AFCON360_PREVIEW_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          for name in AFCON360_PREVIEW_KEYSTORE_BASE64 AFCON360_PREVIEW_KEYSTORE_PASSWORD AFCON360_PREVIEW_KEY_ALIAS AFCON360_PREVIEW_KEY_PASSWORD; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Missing GitHub Actions secret: $name"
-              echo "Configure the four AFCON360_PREVIEW_KEYSTORE_* secrets documented in mobile/docs/store-submission-checklist.md."
-              exit 1
-            fi
-          done
-          KEYSTORE="$RUNNER_TEMP/afcon360-preview.keystore"
-          printf '%s' "$AFCON360_PREVIEW_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
-          test -s "$KEYSTORE"
-          keytool -list -keystore "$KEYSTORE" \
-            -storepass "$AFCON360_PREVIEW_KEYSTORE_PASSWORD" \
-            -alias "$AFCON360_PREVIEW_KEY_ALIAS" >/dev/null
-          {
-            printf 'AFCON360_SIGNING_KEYSTORE=%s\n' "$KEYSTORE"
-            printf 'AFCON360_SIGNING_STORE_PASSWORD=%s\n' "$AFCON360_PREVIEW_KEYSTORE_PASSWORD"
-            printf 'AFCON360_SIGNING_KEY_ALIAS=%s\n' "$AFCON360_PREVIEW_KEY_ALIAS"
-            printf 'AFCON360_SIGNING_KEY_PASSWORD=%s\n' "$AFCON360_PREVIEW_KEY_PASSWORD"
-            printf 'AFCON360_SIGNING_KEY_TYPE=stable-preview\n'
-          } >> "$GITHUB_ENV"
-
-      # Pull-request builds use a throwaway signing identity so PR-controlled scripts
-      # cannot read or exfiltrate the stable preview signing key.
-      - name: Generate ephemeral signing key for PR and manual validation
-        if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/feat/native-mobile-apps-20261104') }}
+      # Every build in this PR-capable workflow uses a throwaway key.
+      # No reusable signing secret is mapped into any job or step here.
+      - name: Generate ephemeral CI signing key
         run: |
           set -euo pipefail
           KEYSTORE="$RUNNER_TEMP/afcon360-ephemeral-ci.keystore"
@@ -317,7 +284,13 @@ jobs:
       max-parallel: 1
       matrix:
         include:
-          # Phase 1 has already passed API 24 and 29. This run targets only the remaining APIs.
+          # Reconfirm the complete supported Android matrix against the verified User APK.
+          - app: user
+            package: space.pamoja.afcon360.user
+            api-level: 24
+          - app: user
+            package: space.pamoja.afcon360.user
+            api-level: 29
           - app: user
             package: space.pamoja.afcon360.user
             api-level: 33
@@ -505,103 +478,3 @@ jobs:
           xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH"
           xcrun simctl launch "$SIMULATOR_UDID" "$EXPECTED_BUNDLE_ID"
           echo "PASS: $APP installed and launched on iOS 26.4; deployment minimum is iOS $MIN_IOS."
-
-  publish-preview:
-    name: Publish verified User and Driver APKs
-    permissions:
-      actions: read
-      contents: write
-    needs: [build-preview-apk, android-compatibility, ios-compatibility]
-    if: needs.build-preview-apk.result == 'success' && needs.android-compatibility.result == 'success' && needs.ios-compatibility.result == 'success' && github.event_name != 'pull_request'
-    # Keep preview publication on Ubuntu 24.04 until Ubuntu 26.04 is validated.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - name: Prepare release directory
-        run: mkdir -p mobile/release
-
-      - name: Download User APK artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: afcon360-user-preview-apk
-          path: mobile/release
-
-      - name: Download Driver APK artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: afcon360-driver-preview-apk
-          path: mobile/release
-
-      - name: Name APKs and calculate checksums
-        run: |
-          mv mobile/release/user-preview.apk mobile/release/AFCON360-User-preview.apk
-          mv mobile/release/driver-preview.apk mobile/release/AFCON360-Driver-preview.apk
-          cd mobile/release
-          sha256sum AFCON360-User-preview.apk AFCON360-Driver-preview.apk > SHA256SUMS.txt
-          ls -lh
-          cat SHA256SUMS.txt
-
-      - name: Upload combined release artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: afcon360-android-preview-apks
-          path: mobile/release/*
-          if-no-files-found: error
-          retention-days: 90
-
-      - name: Confirm this build is still the branch head
-        id: current
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const response = await github.rest.git.getRef({
-              owner,
-              repo,
-              ref: "heads/feat/native-mobile-apps-20261104"
-            });
-            const isCurrent = response.data.object.sha === context.sha;
-            core.setOutput("is_current", String(isCurrent));
-            if (!isCurrent) {
-              core.warning("A newer feature-branch commit exists; this APK will remain a workflow artifact and will not replace the public preview.");
-            }
-
-      - name: Update stable internal preview tag
-        if: steps.current.outputs.is_current == 'true'
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const ref = "tags/mobile-preview";
-            try {
-              await github.rest.git.getRef({ owner, repo, ref });
-              await github.rest.git.updateRef({
-                owner, repo, ref, sha: context.sha, force: true
-              });
-            } catch (error) {
-              if (error.status !== 404) throw error;
-              await github.rest.git.createRef({
-                owner, repo, ref: "refs/" + ref, sha: context.sha
-              });
-            }
-
-      - name: Publish internal preview APK download links
-        if: steps.current.outputs.is_current == 'true'
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: mobile-preview
-          target_commitish: ${{ github.sha }}
-          name: AFCON360 internal Android preview
-          prerelease: true
-          make_latest: false
-          overwrite_files: true
-          files: |
-            mobile/release/AFCON360-User-preview.apk
-            mobile/release/AFCON360-Driver-preview.apk
-            mobile/release/SHA256SUMS.txt
-          body: |
-            Internal tester distribution only.
-
-            These are Android preview APKs signed with AFCON360's dedicated internal preview key. They are directly installable for testing, but are not signed with the production Play App Signing key and must not be submitted to Play Console. Android may require the tester to allow installation from the source used to download the file.
-
-            Production Android requires a signed AAB and Play App Signing. iPhone installation requires a separate signed iOS build and Apple distribution process.
