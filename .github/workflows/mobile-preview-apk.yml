@@ -366,6 +366,7 @@ jobs:
     name: Audit packaged User APK permissions and components
     needs: [prepare-android-validation, build-preview-apk]
     if: >-
+      always() &&
       needs.prepare-android-validation.result == 'success' &&
       (needs.build-preview-apk.result == 'success' || needs.build-preview-apk.result == 'skipped')
     runs-on: ubuntu-24.04
