@@ -291,6 +291,171 @@ def mobile_login():
     )
 
 
+@mobile_api_bp.post("/auth/register")
+@limiter.limit("10 per minute", key_func=get_remote_address)
+def mobile_register():
+    """Create an AFCON360 User account using the canonical web registration services.
+
+    The native client never stores a password server-side. If the owner policy
+    requires email verification, only the existing pending-registration OTP
+    service may create the account after a valid code is submitted.
+    """
+    data = request.get_json(silent=True) or {}
+    username = str(data.get("username") or "").strip()
+    email = str(data.get("email") or "").strip()
+    password = data.get("password")
+    full_name = str(data.get("full_name") or "").strip()[:120] or None
+
+    if not username or not email or not isinstance(password, str) or not password:
+        return _error("registration_fields_required", "Enter a username, email address and password.", 400)
+    if len(username) > 64 or len(email) > 255 or len(password) > 128:
+        return _error("registration_input_too_long", "One or more registration fields exceed the allowed length.", 400)
+
+    from app.auth.registration_policy import email_password_signup_allowed, email_verification_required
+    if not email_password_signup_allowed():
+        return _error("signup_disabled", "Email and password registration is currently unavailable. Please contact AFCON360 support.", 403)
+
+    from app.auth.validators import validate_registration
+    valid, message = validate_registration(username, password, email)
+    if not valid:
+        return _error("registration_invalid", message or "Check your registration details and try again.", 400)
+
+    user_agent = request.headers.get("User-Agent", "AFCON360 Native")
+    if email_verification_required():
+        from app.auth.pending_registration import start_pending_registration
+        result = start_pending_registration(
+            username=username,
+            password=password,
+            email=email,
+            full_name=full_name,
+            ip=request.remote_addr,
+            user_agent=user_agent,
+        )
+        if not result.success:
+            if result.retry_after:
+                status = 429
+            elif result.code in {"email_exists", "username_exists"}:
+                status = 409
+            else:
+                status = 400
+            response, _ = _error(
+                result.code or "registration_unavailable",
+                result.message or "We could not start account verification. Please try again.",
+                status,
+            )
+            if result.retry_after:
+                response.headers["Retry-After"] = str(max(1, int(result.retry_after)))
+            return response, status
+
+        # The opaque token is a short-lived capability for this single
+        # registration. The client keeps it in memory only; never return
+        # the password hash, OTP, or any debug delivery code.
+        return jsonify({
+            "success": True,
+            "registration_pending": True,
+            "data": {
+                "registration_token": result.token,
+                "email": result.email,
+                "expires_in": int(current_app.config.get("SIGNUP_OTP_TTL", 600)),
+                "message": result.message,
+            },
+        }), 202
+
+    from app.auth.services import register_user
+    try:
+        user = register_user(
+            username=username,
+            password=password,
+            email=email,
+            full_name=full_name,
+            ip_address=request.remote_addr,
+            user_agent=user_agent,
+        )
+    except ValueError as exc:
+        db.session.rollback()
+        return _error("registration_conflict", str(exc), 409)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native account registration failed")
+        return _error("registration_unavailable", "AFCON360 could not create your account right now. Please try again.", 503)
+
+    return jsonify({
+        "success": True,
+        "registration_pending": False,
+        "data": {
+            "username": user.username,
+            "email": user.email,
+            "message": "Your account has been created. You can now sign in.",
+        },
+    }), 201
+
+
+@mobile_api_bp.post("/auth/register/verify")
+@limiter.limit("10 per minute", key_func=get_remote_address)
+def mobile_register_verify():
+    data = request.get_json(silent=True) or {}
+    token = str(data.get("registration_token") or "").strip()
+    code = str(data.get("code") or "").strip()
+    if not token or len(token) > 256 or not code or len(code) > 6:
+        return _error("registration_verification_invalid", "Enter the 6-digit code sent to your email.", 400)
+
+    from app.auth.pending_registration import verify_pending_registration
+    result = verify_pending_registration(
+        token,
+        code,
+        ip=request.remote_addr,
+        user_agent=request.headers.get("User-Agent", "AFCON360 Native"),
+    )
+    if not result.success:
+        status = {
+            "expired": 410,
+            "too_many_attempts": 429,
+            "creation_failed": 503,
+            "creation_rejected": 409,
+        }.get(result.code, 400)
+        return jsonify({
+            "success": False,
+            "code": result.code or "registration_verification_failed",
+            "message": result.message or "We could not verify that code.",
+            "remaining_attempts": result.remaining_attempts,
+        }), status
+
+    return jsonify({
+        "success": True,
+        "data": {
+            "message": result.message or "Your email is verified. You can now sign in.",
+            "already_existed": bool(result.already_existed),
+        },
+    }), 200
+
+
+@mobile_api_bp.post("/auth/register/resend")
+@limiter.limit("5 per hour", key_func=get_remote_address)
+def mobile_register_resend():
+    data = request.get_json(silent=True) or {}
+    token = str(data.get("registration_token") or "").strip()
+    if not token or len(token) > 256:
+        return _error("registration_token_invalid", "Your verification session has expired. Please start again.", 400)
+
+    from app.auth.pending_registration import restart_pending_registration
+    result = restart_pending_registration(token=token, ip=request.remote_addr)
+    if not result.success:
+        status = 410 if result.code == "expired" else (429 if result.retry_after else 400)
+        response, _ = _error(
+            result.code or "registration_resend_failed",
+            result.message or "We could not resend the verification code.",
+            status,
+        )
+        if result.retry_after:
+            response.headers["Retry-After"] = str(max(1, int(result.retry_after)))
+        return response, status
+
+    return jsonify({
+        "success": True,
+        "data": {"message": result.message or "A new verification code has been sent."},
+    }), 200
+
+
 @mobile_api_bp.post("/auth/mfa/verify")
 @limiter.limit("5 per minute", key_func=get_remote_address)
 def mobile_mfa_verify():
