@@ -1,3 +1,4 @@
+# Trigger first signed Android preview build.
 name: AFCON360 Android preview APKs
 
 on:
