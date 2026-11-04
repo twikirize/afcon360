@@ -2,7 +2,7 @@
  * AFCON360 Transport
  * Production Secure Service Worker
  *
- * Version: 2.0.4
+ * Version: 2.0.7
  *
  * SECURITY GUARANTEES:
  * 1. Never cache authenticated HTML.
@@ -22,7 +22,7 @@
 
 'use strict';
 
-const VERSION = '2.0.5';
+const VERSION = '2.0.7';
 
 const CACHE_PREFIX = 'afcon360-static-';
 const CACHE_NAME = `${CACHE_PREFIX}v${VERSION}`;
@@ -39,6 +39,8 @@ const PRECACHE_ASSETS = [
     '/static/js/modules/transport/driver-dashboard.js',
     '/static/js/modules/transport/driver_alerts.js',
     '/static/js/modules/transport/driver_offer_poll.js',
+    '/static/js/modules/transport/driver-dashboard-map.js',
+    '/static/js/geo/geo-map.js',
 
     '/static/icons/icon-192.png',
     '/static/icons/icon-512.png',

@@ -2634,18 +2634,73 @@ def driver_dashboard():
     except (TypeError, ValueError):
         ping_interval = 120
 
-    # Determine which dashboard version to use based on system config
-    from app.models.system_config import SystemConfig
-    dashboard_version = SystemConfig.get('driver_dashboard_version', '3')  # '1', '2', or '3'
-    template_map = {
-        '1': 'transport/driver/driver_dashboard_RESTORED_WORKING.html',
-        '2': 'transport/driver/driver_dashboard_FINAL_WORKING.html',
-        '3': 'transport/driver/driver_dashboard_new.html',
-    }
-    template = template_map.get(dashboard_version, template_map['3'])
+    # The canonical driver URL serves the integrated seven-panel workspace.
+    # Prototype alternatives remain available only through their explicit
+    # preview/version routes; a SystemConfig flag must not silently replace
+    # the production dashboard with a standalone prototype.
+    template = "transport/driver/driver_dashboard.html"
+
+    # Read-only network opportunity count: confirmed bookings still awaiting
+    # a driver claim. This uses the same lifecycle state as the dispatch queue.
+    try:
+        open_requests_count = Booking.query.filter_by(
+            is_deleted=False,
+            status=BookingStatus.CONFIRMED,
+            assigned_driver_id=None,
+        ).count()
+    except Exception:
+        db.session.rollback()
+        logger.warning("Driver dashboard opportunity count unavailable", exc_info=True)
+        open_requests_count = 0
+
+    # The shared notification table stores subject/body; the dashboard card
+    # expects title/message. Project the two fields without mutating records,
+    # and keep this preview strictly scoped to this user's transport notices.
+    notifications = []
+    notification_unread = 0
+    try:
+        from types import SimpleNamespace as _NotificationView
+        from app.notifications.models import Notification, NotificationModule
+
+        notification_query = Notification.query.filter_by(
+            user_id=current_user.id,
+            module=NotificationModule.TRANSPORT.value,
+            is_deleted=False,
+        )
+        notification_unread = notification_query.filter_by(is_read=False).count()
+        notification_rows = (
+            notification_query
+            .order_by(Notification.created_at.desc())
+            .limit(5)
+            .all()
+        )
+        notifications = [
+            _NotificationView(
+                title=row.subject or "Notification",
+                message=row.body or "",
+                is_read=bool(row.is_read),
+                created_at=row.created_at.isoformat() if row.created_at else "",
+            )
+            for row in notification_rows
+        ]
+    except Exception:
+        db.session.rollback()
+        logger.warning(
+            "Driver transport-notification preview unavailable for user %s",
+            _uid(),
+            exc_info=True,
+        )
+
+    # Shared GEO renderer configuration is public/browser-safe (tile URL,
+    # attribution and default centre only). It keeps the driver map on the
+    # supported Leaflet renderer rather than the retired MapLibre prototype.
+    from app.geo.config import load_geo_config
+    from app.geo.map_renderer import build_public_map_config
+    map_config = build_public_map_config(load_geo_config(current_app))
 
     return _json_or_template(
         template,
+        map_config=map_config,
         driver_profile=profile,
         bookings=bookings,
         upcoming=upcoming,
@@ -2659,6 +2714,13 @@ def driver_dashboard():
         offers=offers,
         offer_count=offer_count,
         active_trip=active_trip,
+        open_requests_count=open_requests_count,
+        scheduled_routes=scheduled_routes,
+        switchable_vehicles=switchable_vehicles,
+        vehicle_history=vehicle_history,
+        incidents=incidents,
+        notifications=notifications,
+        notification_unread=notification_unread,
     )
 
 

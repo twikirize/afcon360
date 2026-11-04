@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard 1 - Original (b84ffd8^)</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=DM+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="/static/css/global/theme-variables.css">
+  <link rel="stylesheet" href="/static/css/global/dark-mode.css">
+  <link rel="stylesheet" href="/static/css/modules/transport/base.css">
+  <link rel="stylesheet" href="/static/css/global/style.css">
+  <link rel="stylesheet" href="/static/css/global/theme-components.css">
+  <style nonce="preview">
+    /* Inline CSS from b84ffd8^ - the working original */
+    .ck-panel { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; align-items: start; }
+    .ck-panel--full { grid-template-columns: 1fr; }
+    .ck-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+    .ck-full { grid-column: 1 / -1; }
+    html.ck-js .ck-panel:not(.ck-active) { display: none; }
+    .ck-hero { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; background: linear-gradient(135deg, var(--bg-surface), var(--bg-elevated)); border: 1px solid var(--border-light); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 18px 22px; margin-bottom: 16px; }
+    .ck-hero-avatar { width: 62px; height: 62px; border-radius: 50%; background: linear-gradient(135deg, var(--amber), var(--blue)); display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 800; font-size: 1.4rem; color: #000; flex-shrink: 0; }
+    .ck-hero-info { flex: 1; min-width: 220px; }
+    .ck-hero-name { font-family: var(--font-display); font-weight: 800; font-size: 1.25rem; line-height: 1.2; }
+    .ck-hero-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-muted); margin-top: 6px; }
+    .ck-status { display: flex; align-items: center; gap: 14px; padding: 10px 18px; background: var(--bg-elevated); border: 1px solid var(--border-light); border-radius: 12px; }
+    .ck-status-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+    .ck-status-value { font-size: 0.88rem; font-weight: 700; }
+    .toggle { position: relative; display: inline-block; width: 46px; height: 26px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; cursor: pointer; inset: 0; background: var(--bg-hover); border: 1px solid var(--border-light); border-radius: 26px; transition: 0.2s; }
+    .toggle-slider::before { content: ''; position: absolute; width: 20px; height: 20px; left: 2px; top: 2px; background: var(--text-muted); border-radius: 50%; transition: 0.2s; }
+    .toggle input:checked + .toggle-slider { background: var(--green); border-color: var(--green); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(20px); background: #000; }
+    .ck-focus { position: relative; grid-column: 1 / -1; border-radius: var(--radius-lg); border: 1px solid var(--border-light); background: linear-gradient(135deg, var(--bg-surface), var(--bg-elevated)); box-shadow: var(--shadow-card); padding: 24px 26px; margin-bottom: 4px; overflow: hidden; }
+    .ck-focus::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, var(--amber), var(--green)); opacity: 0.85; }
+    .ck-pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-display); font-weight: 700; font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase; padding: 5px 12px; border-radius: 999px; }
+    .ck-pill--green { background: var(--green-dim); color: var(--green); }
+    .ck-pill--amber { background: var(--amber-dim); color: var(--amber); }
+    .ck-focus-checks { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 9px; }
+    .ck-check { display: flex; align-items: flex-start; gap: 10px; font-size: 0.84rem; }
+    .ck-check > .fa { margin-top: 2px; font-size: 0.95rem; }
+    .ck-check--ok > .fa { color: var(--green); }
+    .ck-check--bad > .fa { color: var(--red); }
+    .ck-check-label { font-weight: 600; }
+    .ck-check-hint { font-size: 0.74rem; color: var(--text-muted); margin-top: 1px; }
+    .ck-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+    .ck-metrics .stat-card { margin: 0; }
+    .ws-card .card-header { align-items: center; }
+    .ws-card .card-header .badge { margin-left: auto; }
+    .ws-empty { padding: 22px 16px; text-align: center; color: var(--text-muted); font-size: 0.82rem; }
+    .ws-empty i { font-size: 1.4rem; opacity: 0.35; margin-bottom: 8px; display: block; }
+    @media (max-width: 1200px) { .ck-panel { grid-template-columns: 1fr; } }
+    @media (max-width: 900px)  { .ck-panel { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<div class="t-shell ck-shell" style="min-height:100vh;background:var(--bg-surface-alt);">
+  <aside class="ck-pane" style="width:280px;background:var(--bg-surface);border-right:1px solid var(--border-light);display:flex;flex-direction:column;height:100vh;position:fixed;left:0;top:0;z-index:100;">
+    <div class="ck-pane-header" style="padding:16px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
+      <div class="ck-brand" style="display:flex;align-items:center;gap:8px;font-family:var(--font-display);font-weight:800;font-size:1.1rem;color:var(--brand-primary);"><i class="fa-solid fa-bus"></i><span>AFCON360</span></div>
+    </div>
+    <nav class="ck-pane-nav" style="flex:1;padding:12px;overflow-y:auto;">
+      <a href="#" class="ck-pane-item active" data-ck-nav="home"><i class="fa-solid fa-house"></i> Home</a>
+      <a href="#" class="ck-pane-item" data-ck-nav="earnings"><i class="fa-solid fa-sack-dollar"></i> Earnings</a>
+      <a href="#" class="ck-pane-item" data-ck-nav="trips"><i class="fa-solid fa-route"></i> Trips</a>
+      <a href="#" class="ck-pane-item" data-ck-nav="vehicles"><i class="fa-solid fa-van-shuttle"></i> Vehicle</a>
+      <a href="#" class="ck-pane-item" data-ck-nav="account"><i class="fa-solid fa-user"></i> Account</a>
+    </nav>
+    <div style="padding:16px;border-top:1px solid var(--border-light);">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+        <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--amber),var(--blue));display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:800;font-size:1.1rem;color:#000;">AF</div>
+        <div><div style="font-weight:600;">John Driver</div><div style="font-size:0.75rem;color:var(--text-muted);font-family:var(--font-mono);">AFCTESTDRV001</div></div>
+      </div>
+      <button style="width:100%;padding:12px;border:none;border-radius:8px;background:transparent;color:var(--text-muted);font:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
+    </div>
+  </aside>
+
+  <main style="margin-left:280px;min-height:100vh;display:flex;flex-direction:column;">
+    <header style="height:64px;background:var(--bg-surface);border-bottom:1px solid var(--border-light);display:flex;align-items:center;gap:16px;padding:0 16px;position:sticky;top:0;z-index:50;">
+      <div style="flex:1;max-width:400px;position:relative;"><i class="fa-solid fa-magnifying-glass" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);"></i><input type="search" placeholder="Search transport..." style="width:100%;padding:8px 12px 8px 44px;border:1px solid var(--border-light);border-radius:999px;background:var(--bg-surface-alt);font-size:0.9rem;"></div>
+      <div style="display:flex;align-items:center;gap:8px;"><span style="font-family:var(--font-mono);font-size:0.8rem;font-weight:600;color:var(--brand-primary);background:var(--green-dim);padding:4px 12px;border-radius:999px;">AFCTESTDRV001</span>
+        <button style="width:44px;height:44px;border:none;background:transparent;border-radius:8px;color:var(--text-secondary);font-size:1.1rem;cursor:pointer;" aria-label="Safety"><i class="fa-solid fa-shield-halved"></i></button>
+        <button style="width:44px;height:44px;border:none;background:transparent;border-radius:8px;color:var(--text-secondary);font-size:1.1rem;cursor:pointer;" aria-label="Support"><i class="fa-solid fa-headset"></i></button>
+        <button style="width:44px;height:44px;border:none;background:transparent;border-radius:8px;color:var(--text-secondary);font-size:1.1rem;cursor:pointer;position:relative;" aria-label="Notifications"><i class="fa-solid fa-bell"></i><span style="position:absolute;top:6px;right:6px;width:8px;height:8px;background:var(--red);border-radius:50%;border:2px solid var(--bg-surface);"></span></button>
+      </div>
+    </header>
+
+    <div style="flex:1;overflow-y:auto;padding:16px 24px;">
+      <div id="driverDashboard" data-driver-id="179" data-csrf="test" data-ping-interval="30000" data-is-online="1">
+        <section class="ck-panel ck-active" data-panel="home">
+          <div class="ck-hero ck-full">
+            <div class="ck-hero-avatar">JD</div>
+            <div class="ck-hero-info">
+              <div class="ck-hero-name">John Driver</div>
+              <div class="ck-hero-meta">
+                <span class="badge" style="background:var(--green-dim);color:var(--green);padding:4px 10px;border-radius:999px;font-size:0.7rem;font-weight:700;">Approved</span>
+                <span><i class="fa-solid fa-star" style="color:var(--amber)"></i> 4.8</span>
+                <span>AFCTESTDRV001</span>
+                <span><i class="fa-solid fa-van-shuttle"></i> TEST-DRV-001</span>
+              </div>
+            </div>
+            <div class="ck-status" title="Availability">
+              <div>
+                <div class="ck-status-label">Online status</div>
+                <div class="ck-status-value" data-online-label>Online</div>
+              </div>
+              <label class="toggle" style="display:flex;align-items:center;justify-content:space-between;width:100%;cursor:pointer;">
+                <span style="display:flex;align-items:center;gap:12px;"><i class="fa-solid fa-circle" style="color:var(--green);font-size:1.2rem;"></i><span><strong>GO ONLINE</strong><br><small style="font-weight:400;">Tap to start receiving rides</small></span></span>
+                <input type="checkbox" data-online-toggle checked />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="ck-focus ck-full ck-focus--live">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;"><div class="ck-pill ck-pill--green">Ready to go live</div><span style="font-family:var(--font-mono);font-size:0.72rem;color:var(--text-muted);margin-left:auto;">Ready</span></div>
+            <div style="font-family:var(--font-display);font-weight:800;font-size:clamp(1.15rem,2.6vw,1.55rem);line-height:1.25;color:var(--text-primary);margin-bottom:8px;"><i class="fa-solid fa-check-circle"></i> Go-live ready</div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:0.8rem;color:var(--text-muted);margin-bottom:16px;">Complete the requirements below to start receiving rides.</div>
+            <ul class="ck-focus-checks">
+              <li class="ck-check ck-check--ok"><i class="fa-solid fa-check-circle"></i><div><div class="ck-check-label">Active driver profile</div><div class="ck-check-hint"></div></div></li>
+              <li class="ck-check ck-check--ok"><i class="fa-solid fa-check-circle"></i><div><div class="ck-check-label">Identity verification (KYC)</div><div class="ck-check-hint"></div></div></li>
+              <li class="ck-check ck-check--ok"><i class="fa-solid fa-check-circle"></i><div><div class="ck-check-label">Not suspended or blocked</div><div class="ck-check-hint"></div></div></li>
+              <li class="ck-check ck-check--ok"><i class="fa-solid fa-check-circle"></i><div><div class="ck-check-label">Compliance approval</div><div class="ck-check-hint"></div></div></li>
+              <li class="ck-check ck-check--ok"><i class="fa-solid fa-check-circle"></i><div><div class="ck-check-label">Valid driver licence</div><div class="ck-check-hint"></div></div></li>
+              <li class="ck-check ck-check--ok"><i class="fa-solid fa-check-circle"></i><div><div class="ck-check-label">Assigned vehicle</div><div class="ck-check-hint"></div></div></li>
+            </ul>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-primary go-online-cta" style="padding:12px 24px;border:none;border-radius:8px;font-weight:700;cursor:pointer;background:var(--green);color:#fff;display:flex;align-items:center;gap:8px;"><i class="fa-solid fa-power-off"></i> Go Online</button></div>
+          </div>
+
+          <div style="background:var(--bg-surface);border:1px solid var(--border-light);border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-top:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg-surface-alt);border-bottom:1px solid var(--border-light);border-radius:10px 10px 0 0;"><span style="font-family:var(--font-display);font-weight:700;font-size:0.9rem;"><i class="fa-solid fa-satellite-dish" style="margin-right:8px;"></i> Location Publishing</span></div>
+            <div style="padding:16px;">
+              <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-light);"><span style="color:var(--text-muted);font-size:0.82rem;">Ping interval</span><span style="color:var(--text-primary);font-weight:600;font-size:0.82rem;">Every 30s while online</span></div>
+              <div style="padding:12px;background:var(--green-dim);color:var(--green);border-radius:8px;font-size:0.85rem;margin-top:8px;">Publish failed (500). Retrying next tick.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="ck-panel" data-panel="earnings" style="display:none;">
+          <div style="background:var(--bg-surface);border:1px solid var(--border-light);border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg-surface-alt);border-bottom:1px solid var(--border-light);border-radius:10px 10px 0 0;"><span style="font-family:var(--font-display);font-weight:700;font-size:0.9rem;"><i class="fa-solid fa-wallet" style="margin-right:8px;"></i> Earnings</span></div>
+            <div style="padding:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+              <div style="background:var(--bg-surface);border:1px solid var(--border-light);border-radius:10px;padding:16px;text-align:center;"><div style="width:44px;height:44px;border-radius:12px;background:rgba(45,90,45,0.12);color:var(--brand-primary);display:inline-flex;align-items:center;justify-content:center;font-size:1.2rem;margin-bottom:8px;"><i class="fa-solid fa-money-bill-wave"></i></div><div style="font-family:var(--font-display);font-size:1.5rem;font-weight:800;color:var(--green);">KES 2,450</div><div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-top:4px;">Today</div></div>
+              <div style="background:var(--bg-surface);border:1px solid var(--border-light);border-radius:10px;padding:16px;text-align:center;"><div style="width:44px;height:44px;border-radius:12px;background:rgba(45,90,45,0.12);color:var(--brand-primary);display:inline-flex;align-items:center;justify-content:center;font-size:1.2rem;margin-bottom:8px;"><i class="fa-solid fa-calendar-week"></i></div><div style="font-family:var(--font-display);font-size:1.5rem;font-weight:800;color:var(--green);">KES 14,800</div><div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-top:4px;">This Week</div></div>
+              <div style="background:var(--bg-surface);border:1px solid var(--border-light);border-radius:10px;padding:16px;text-align:center;"><div style="width:44px;height:44px;border-radius:12px;background:rgba(37,99,235,0.12);color:#2563eb;display:inline-flex;align-items:center;justify-content:center;font-size:1.2rem;margin-bottom:8px;"><i class="fa-solid fa-calendar-days"></i></div><div style="font-family:var(--font-display);font-size:1.5rem;font-weight:800;color:#2563eb;">KES 52,300</div><div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-top:4px;">This Month</div></div>
+            </div>
+          </div>
+          <div style="background:var(--bg-surface);border:1px solid var(--border-light);border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg-surface-alt);border-bottom:1px solid var(--border-light);border-radius:10px 10px 0 0;"><span style="font-family:var(--font-display);font-weight:700;font-size:0.9rem;"><i class="fa-solid fa-clock"></i> Recent Trips</span></div>
+            <div style="padding:0;">
+              <div style="display:flex;align-items:center;gap:16px;padding:12px 16px;border-bottom:1px solid var(--border-light);"><div style="display:flex;flex-direction:column;align-items:center;min-width:60px;"><span style="font-family:var(--font-mono);font-size:0.82rem;font-weight:700;">08:30</span><span style="font-size:0.66rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">25 min</span></div><div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:0.82rem;margin-bottom:2px;">CBD → Westlands</div><div style="font-size:0.7rem;color:var(--text-muted);"><span style="background:var(--green-dim);color:var(--green);padding:2px 8px;border-radius:999px;font-size:0.65rem;font-weight:700;">Completed</span> <span style="margin-left:8px;"><i class="fa-solid fa-money-bill"></i> KES 450</span></div></div></div>
+              <div style="display:flex;align-items:center;gap:16px;padding:12px 16px;border-bottom:1px solid var(--border-light);"><div style="display:flex;flex-direction:column;align-items:center;min-width:60px;"><span style="font-family:var(--font-mono);font-size:0.82rem;font-weight:700;">06:15</span><span style="font-size:0.66rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">18 min</span></div><div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:0.82rem;margin-bottom:2px;">Airport → CBD</div><div style="font-size:0.7rem;color:var(--text-muted);"><span style="background:var(--green-dim);color:var(--green);padding:2px 8px;border-radius:999px;font-size:0.65rem;font-weight:700;">Completed</span> <span style="margin-left:8px;"><i class="fa-solid fa-money-bill"></i> KES 1,200</span></div></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="ck-panel" data-panel="trips" style="display:none;">
+          <div style="background:var(--bg-surface);border:1px solid var(--border-light);border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg-surface-alt);border-bottom:1px solid var(--border-light);border-radius:10px 10px 0 0;"><span style="font-family:var(--font-display);font-weight:700;font-size:0.9rem;"><i class="fa-solid fa-route"></i> Trip History</span></div>
+            <div style="padding:0;">
+              <div style="display:flex;align-items:center;gap:16px;padding:12px 16px;border-bottom:1px solid var(--border-light);"><div style="display:flex;flex-direction:column;align-items:center;min-width:60px;"><span style="font-family:var(--font-mono);font-size:0.82rem;font-weight:700;">08:30</span><span style="font-size:0.66rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">25 min</span></div><div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:0.82rem;margin-bottom:2px;">CBD → Westlands</div><div style="font-size:0.7rem;color:var(--text-muted);"><span style="background:var(--green-dim);color:var(--green);padding:2px 8px;border-radius:999px;font-size:0.65rem;font-weight:700;">Completed</span> <span style="margin-left:8px;"><i class="fa-solid fa-money-bill"></i> KES 450</span></div></div>
+              <div style="display:flex;align-items:center;gap:16px;padding:12px 16px;border-bottom:1px solid var(--border-light);"><div style="display:flex;flex-direction:column;align-items:center;min-width:60px;"><span style="font-family:var(--font-mono);font-size:0.82rem;font-weight:700;">06:15</span><span style="font-size:0.66rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">18 min</span></div><div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:0.82rem;margin-bottom:2px;">Airport → CBD</div><div style="font-size:0.7rem;color:var(--text-muted);"><span style="background:var(--green-dim);color:var(--green);padding:2px 8px;border-radius:999px;font-size:0.65rem;font-weight:700;">Completed</span> <span style="margin-left:8px;"><i class="fa-solid fa-money-bill"></i> KES 1,200</span></div></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="ck-panel" data-panel="vehicle" style="display:none;">
+          <div style="background:var(--bg-surface);border:1px solid var(--border-light);border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg-surface-alt);border-bottom:1px solid var(--border-light);border-radius:10px 10px 0 0;"><span style="font-family:var(--font-display);font-weight:700;font-size:0.9rem;"><i class="fa-solid fa-van-shuttle"></i> Assigned Vehicle</span></div>
+            <div style="padding:16px;display:flex;align-items:center;gap:12px;"><div style="width:56px;height:56px;background:rgba(45,90,45,0.12);border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--brand-primary);font-size:1.5rem;"><i class="fa-solid fa-van-shuttle"></i></div><div style="flex:1;"><div style="font-weight:600;font-size:0.88rem;">Toyota Corolla</div><div style="font-size:0.74rem;color:var(--text-muted);">TEST-DRV-001 • Silver • 2022</div></div><div style="display:flex;gap:8px;"><button style="padding:8px 16px;border:1px solid var(--border-medium);background:transparent;border-radius:8px;color:var(--text-secondary);font-weight:600;cursor:pointer;"><i class="fa-solid fa-pen"></i> Edit</button><button style="padding:8px 16px;border:1px solid var(--border-medium);background:transparent;border-radius:8px;color:var(--text-secondary);font-weight:600;cursor:pointer;"><i class="fa-solid fa-file-alt"></i> Docs</button></div></div>
+          </div>
+          <div style="background:var(--bg-surface);border:1px solid var(--border-light);border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg-surface-alt);border-bottom:1px solid var(--border-light);border-radius:10px 10px 0 0;"><span style="font-family:var(--font-display);font-weight:700;font-size:0.9rem;"><i class="fa-solid fa-wrench"></i> Vehicle Documents</span></div>
+            <div style="padding:0;"><div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border-light);"><div style="display:flex;align-items:center;gap:12px;"><i class="fa-solid fa-file" style="color:var(--text-muted);font-size:1.2rem;"></i><div><div style="font-weight:500;font-size:0.9rem;">Insurance</div><div style="font-size:0.75rem;color:var(--text-muted);">Expires 15 Jan 2027</div></div></div><span style="background:var(--green-dim);color:var(--green);padding:4px 10px;border-radius:999px;font-size:0.7rem;font-weight:700;">Approved</span></div></div>
+          </div>
+        </section>
+
+        <section class="ck-panel" data-panel="account" style="display:none;">
+          <div style="background:var(--bg-surface);border:1px solid var(--border-light);border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg-surface-alt);border-bottom:1px solid var(--border-light);border-radius:10px 10px 0 0;"><span style="font-family:var(--font-display);font-weight:700;font-size:0.9rem;"><i class="fa-solid fa-user"></i> Profile</span></div>
+            <div style="padding:16px;"><div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-light);"><span style="color:var(--text-muted);font-size:0.82rem;">Name</span><span style="color:var(--text-primary);font-weight:600;font-size:0.82rem;">John Driver</span></div><div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-light);"><span style="color:var(--text-muted);font-size:0.82rem;">Email</span><span style="color:var(--text-primary);font-weight:600;font-size:0.82rem;">john@driver.com</span></div><div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-light);"><span style="color:var(--text-muted);font-size:0.82rem;">Phone</span><span style="color:var(--text-primary);font-weight:600;font-size:0.82rem;">+254 700 000 101</span></div><div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-light);"><span style="color:var(--text-muted);font-size:0.82rem;">Driver Code</span><span style="color:var(--text-primary);font-weight:600;font-size:0.82rem;">AFCTESTDRV001</span></div><div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-light);"><span style="color:var(--text-muted);font-size:0.82rem;">License</span><span style="color:var(--text-primary);font-weight:600;font-size:0.82rem;">DL12345678</span></div><div style="display:flex;justify-content:space-between;padding:8px 0;"><span style="color:var(--text-muted);font-size:0.82rem;">Status</span><span style="color:var(--text-primary);font-weight:600;font-size:0.82rem;"><span style="background:var(--green-dim);color:var(--green);padding:4px 10px;border-radius:999px;font-size:0.7rem;font-weight:700;">Approved</span></span></div></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <nav style="display:none;position:fixed;bottom:0;left:0;right:0;height:72px;background:var(--bg-surface);border-top:1px solid var(--border-light);box-shadow:0 -4px 20px rgba(0,0,0,0.08);z-index:100;padding:8px 16px;environment(safe-area-inset-bottom);" class="ck-dock">
+    <a href="#" class="ck-tab active" data-ck-nav="home"><i class="fa-solid fa-house"></i><span>Home</span></a>
+    <a href="#" class="ck-tab" data-ck-nav="earnings"><i class="fa-solid fa-wallet"></i><span>Earn</span></a>
+    <a href="#" class="ck-tab" data-ck-nav="trips"><i class="fa-solid fa-route"></i><span>Trips</span></a>
+    <a href="#" class="ck-tab" data-ck-nav="vehicles"><i class="fa-solid fa-van-shuttle"></i><span>Vehicle</span></a>
+    <a href="#" class="ck-tab" data-ck-nav="account"><i class="fa-solid fa-user"></i><span>Account</span></a>
+  </nav>
+</div>
+
+<script>
+document.documentElement.classList.add('ck-js');
+
+function showPanel(name) {
+  document.querySelectorAll('.ck-panel').forEach(p => p.classList.toggle('ck-active', p.dataset.panel === name));
+  document.querySelectorAll('.ck-pane-item').forEach(b => b.classList.toggle('active', b.dataset.ckNav === name));
+  document.querySelectorAll('.ck-tab').forEach(b => b.classList.toggle('active', b.dataset.ckNav === name));
+}
+
+document.querySelectorAll('[data-ck-nav]').forEach(btn => {
+  btn.addEventListener('click', e => { e.preventDefault(); showPanel(btn.dataset.ckNav); });
+});
+
+showPanel('home');
+</script>
+</body>
+</html>

@@ -9,6 +9,7 @@ template) renders HTTP 200 with the workspace sections for a real
 driver-context session established through the real switch route.
 """
 
+import re
 import uuid
 
 import pytest
@@ -56,6 +57,10 @@ def test_driver_dashboard_renders_200_for_driver_context(app, client):
     assert resp.status_code == 200
     html = resp.data.decode("utf-8")
     assert code in html
+    assert 'id="driverMap"' in html
+    assert 'data-geo-map-status="pending"' in html
+    assert 'data-tile-url="' in html
+    assert 'data-tile-attribution="' in html
     assert "UndefinedError" not in html
     assert "Traceback" not in html
 
@@ -109,3 +114,52 @@ def test_driver_dashboard_offer_sound_picker(app, client):
     assert "window.AFCONDriverSound" in alerts_script
     assert "customSoundFile" in html
     assert "customSoundRemove" in html
+
+def test_csrf_refresh_keeps_existing_dashboard_token_valid(app, client):
+    """A refresh must not invalidate a token already held by another tab."""
+    user_id, code = _seed_driver(app)
+    _login_as(app, client, user_id)
+    switched = client.post(
+        "/switch-context",
+        json={"type": "driver", "public_ref": code,
+              "public_id": code, "role": "driver"},
+    )
+    assert switched.status_code == 200
+
+    dashboard = client.get("/transport/driver-dashboard")
+    assert dashboard.status_code == 200
+    match = re.search(
+        r'<meta name="csrf-token" content="([^"]+)"',
+        dashboard.get_data(as_text=True),
+    )
+    assert match, "driver shell did not render its session-bound CSRF token"
+    page_token = match.group(1)
+
+    previous_setting = app.config.get("WTF_CSRF_ENABLED", False)
+    app.config["WTF_CSRF_ENABLED"] = True
+    try:
+        refreshed = client.get("/api/csrf-token")
+        assert refreshed.status_code == 200
+        assert refreshed.headers.get("Cache-Control", "").startswith("private, no-store")
+        vary_values = {
+            value.strip().lower()
+            for value in refreshed.headers.get("Vary", "").split(",")
+        }
+        assert "cookie" in vary_values
+        assert refreshed.get_json()["csrf_token"]
+
+        from app.transport.models import DriverProfile
+        with app.app_context():
+            driver_id = DriverProfile.query.filter_by(
+                driver_code=code, is_deleted=False
+            ).one().id
+
+        response = client.post(
+            f"/api/transport/drivers/{driver_id}/status",
+            json={"is_online": False},
+            headers={"X-CSRFToken": page_token},
+        )
+        assert response.status_code == 200, response.get_data(as_text=True)
+
+    finally:
+        app.config["WTF_CSRF_ENABLED"] = previous_setting

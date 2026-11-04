@@ -85,3 +85,36 @@ def test_rider_progress_includes_no_show_and_dispute_states():
     assert "'disputed'" in sync
     assert "No-show" in sync
     assert "Disputed — under review" in sync
+
+def test_driver_dashboard_map_uses_shared_geo_renderer_without_duplicate_publisher():
+    template = _read("templates/transport/driver/driver_dashboard.html")
+    route = _read("app/transport/routes.py")
+    adapter = _read("static/js/modules/transport/driver-dashboard-map.js")
+    assert "build_public_map_config(load_geo_config(current_app))" in route
+    assert "map_config=map_config" in route
+    assert 'id="driverMap"' in template
+    assert 'data-geo-map-status="pending"' in template
+    assert "cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" in template
+    assert "cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" in template
+    assert "js/geo/geo-map.js" in template
+    assert "driver-dashboard-map.js" in template
+    assert "maplibre" not in template.lower()
+    assert "window.GeoMap.init" in adapter
+    assert "navigator.geolocation.getCurrentPosition" in adapter
+    # This adapter may centre a local map, but never publishes location or
+    # performs a second GPS watch. driver-dashboard.js owns server publishing.
+    assert "fetch(" not in adapter
+    assert "XMLHttpRequest" not in adapter
+    assert "navigator.geolocation.watchPosition" not in adapter
+
+
+def test_csrf_refresh_does_not_rotate_session_seed():
+    app_init = _read("app/__init__.py")
+    start = app_init.index("def issue_csrf_token():")
+    end = app_init.index("@app.errorhandler(CSRFError)", start)
+    refresh = app_init[start:end]
+    assert "generate_csrf()" in refresh
+    assert "session.pop('csrf_token'" not in refresh
+    assert 'Cache-Control"] = "private, no-store, max-age=0"' in refresh
+    assert 'Vary"] = "Cookie"' in refresh
+

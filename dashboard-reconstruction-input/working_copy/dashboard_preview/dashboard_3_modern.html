@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Dashboard 3 - Modern Standalone (Uber/Bolt Style)</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=DM+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="/static/css/global/theme-variables.css">
+  <link rel="stylesheet" href="/static/css/global/dark-mode.css">
+  <link rel="stylesheet" href="/static/css/modules/transport/base.css">
+  <link rel="stylesheet" href="/static/css/global/style.css">
+  <link rel="stylesheet" href="/static/css/global/theme-components.css">
+  <link rel="stylesheet" href="/static/lib/maplibre-gl/maplibre-gl.css">
+  <style nonce="preview">
+    :root {
+      --dd-brand: #2d5a2d;
+      --brand-primary: #2d5a2d;
+      --brand-primary-dark: #1a3a1a;
+      --brand-accent: #ffcc00;
+      --green: #15803d;
+      --green-dim: #dcfce7;
+      --amber: #f59e0b;
+      --amber-dim: #fef3c7;
+      --blue: #2563eb;
+      --blue-dim: #dbeafe;
+      --red: #dc2626;
+      --red-dim: #fee2e2;
+      --gray: #6b7280;
+      --gray-dim: #f3f4f6;
+      --bg-surface: #ffffff;
+      --bg-surface-alt: #f8faf8;
+      --bg-elevated: #ffffff;
+      --bg-hover: #f0f4f0;
+      --text-primary: #1a1a1a;
+      --text-secondary: #374151;
+      --text-muted: #6b7280;
+      --border-light: #e5e7eb;
+      --border-medium: #d1d5db;
+      --border-dark: #9ca3af;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+      --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+      --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+      --radius-sm: 6px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --radius-xl: 16px;
+      --radius-full: 9999px;
+      --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-8: 32px;
+      --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
+      --font-mono: 'DM Mono', 'SF Mono', monospace;
+      --font-display: 'Syne', var(--font-sans);
+      --dd-pane-width: 280px;
+      --dd-topbar-height: 64px;
+      --dd-dock-height: 72px;
+      --dd-sheet-peek: 100px;
+      --dd-sheet-expanded: 65vh;
+    }
+    @media (prefers-color-scheme: dark) { :root:not(.light-mode), body.dark-mode {
+      --bg-surface: #1e1e1e; --bg-surface-alt: #252525; --bg-elevated: #2a2a2a; --bg-hover: #333333;
+      --text-primary: #f3f4f6; --text-secondary: #d1d5db; --text-muted: #9ca3af;
+      --border-light: #374151; --border-medium: #4b5563; --border-dark: #6b7280;
+    } }
+    *, *::before, *::after { box-sizing: border-box; }
+    .dd-shell { display: grid; grid-template-columns: var(--dd-pane-width) 1fr; grid-template-rows: var(--dd-topbar-height) 1fr; grid-template-areas: "pane topbar" "pane main"; min-height: 100vh; background: var(--bg-surface-alt); overflow: hidden; font-family: var(--font-sans); }
+    .dd-pane { grid-area: pane; background: var(--bg-surface); border-right: 1px solid var(--border-light); display: flex; flex-direction: column; z-index: 100; transition: transform 0.3s ease; }
+    .dd-pane-header { display: flex; align-items: center; justify-content: space-between; padding: var(--space-4); border-bottom: 1px solid var(--border-light); }
+    .dd-brand { display: flex; align-items: center; gap: var(--space-2); font-family: var(--font-display); font-weight: 800; font-size: 1.1rem; color: var(--brand-primary); }
+    .dd-brand i { font-size: 1.3rem; }
+    .dd-pane-close { display: none; width: 40px; height: 40px; border: none; background: transparent; border-radius: var(--radius-md); color: var(--text-muted); font-size: 1.2rem; cursor: pointer; }
+    .dd-pane-nav { flex: 1; padding: var(--space-3); overflow-y: auto; }
+    .dd-pane-item { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); color: var(--text-secondary); text-decoration: none; font-weight: 500; font-size: 0.95rem; transition: all 0.2s ease; margin-bottom: var(--space-1); position: relative; }
+    .dd-pane-item:hover { background: var(--bg-hover); color: var(--brand-primary); }
+    .dd-pane-item.active { background: var(--green-dim); color: var(--green); }
+    .dd-pane-item.active::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 3px; height: 24px; background: var(--green); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+    .dd-pane-item i { width: 24px; text-align: center; font-size: 1.1rem; }
+    .dd-badge { margin-left: auto; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: var(--radius-full); background: var(--green-dim); color: var(--green); }
+    .dd-pane-footer { padding: var(--space-4); border-top: 1px solid var(--border-light); }
+    .dd-driver-mini { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); }
+    .dd-mini-avatar { width: 44px; height: 44px; border-radius: var(--radius-full); background: linear-gradient(135deg, var(--amber), var(--blue)); display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 800; font-size: 1.1rem; color: #000; }
+    .dd-mini-name { font-weight: 600; font-size: 0.9rem; }
+    .dd-mini-code { font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono); }
+    .dd-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 90; opacity: 0; transition: opacity 0.3s ease; }
+    .dd-overlay.visible { display: block; opacity: 1; }
+    .dd-main { grid-area: main; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .dd-topbar { grid-area: topbar; height: var(--dd-topbar-height); background: var(--bg-surface); border-bottom: 1px solid var(--border-light); display: flex; align-items: center; gap: var(--space-4); padding: 0 var(--space-4); position: sticky; top: 0; z-index: 50; }
+    .dd-hamburger { display: none; width: 44px; height: 44px; border: none; background: transparent; border-radius: var(--radius-md); color: var(--text-primary); font-size: 1.25rem; cursor: pointer; align-items: center; justify-content: center; }
+    .dd-hamburger:hover { background: var(--bg-hover); }
+    .dd-search { flex: 1; max-width: 400px; position: relative; }
+    .dd-search i { position: absolute; left: var(--space-3); top: 50%; transform: translateY(-50%); color: var(--text-muted); }
+    .dd-search input { width: 100%; padding: var(--space-2) var(--space-3) var(--space-2) 44px; border: 1px solid var(--border-light); border-radius: var(--radius-full); background: var(--bg-surface-alt); font-size: 0.9rem; color: var(--text-primary); outline: none; transition: all 0.2s; }
+    .dd-search input:focus { border-color: var(--brand-primary); box-shadow: 0 0 0 3px var(--green-dim); }
+    .dd-topbar-actions { display: flex; align-items: center; gap: var(--space-2); }
+    .dd-driver-code { font-family: var(--font-mono); font-size: 0.8rem; font-weight: 600; color: var(--brand-primary); background: var(--green-dim); padding: 4px 12px; border-radius: var(--radius-full); }
+    .dd-icon-btn { width: 44px; height: 44px; border: none; background: transparent; border-radius: var(--radius-md); color: var(--text-secondary); font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; transition: all 0.2s; }
+    .dd-icon-btn:hover { background: var(--bg-hover); color: var(--brand-primary); }
+    .dd-notif-dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; background: var(--red); border-radius: 50%; border: 2px solid var(--bg-surface); }
+    .dd-panels { flex: 1; overflow-y: auto; padding: var(--space-4) var(--space-6); }
+    .dd-panel { display: none; animation: ddFadeIn 0.2s ease; }
+    .dd-panel.active { display: block; }
+    @keyframes ddFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .dd-card { background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: var(--radius-xl); box-shadow: var(--shadow-sm); margin-bottom: var(--space-4); overflow: hidden; }
+    .dd-card-header { padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--border-light); background: var(--bg-surface-alt); }
+    .dd-card-header h2 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 1.1rem; color: var(--text-primary); display: flex; align-items: center; gap: var(--space-2); }
+    .dd-card-header h2 i { color: var(--brand-primary); }
+    .dd-card-body { padding: var(--space-5); }
+    .dd-hero { display: grid; grid-template-columns: 72px 1fr auto; gap: var(--space-4); align-items: center; padding: var(--space-5); background: linear-gradient(135deg, var(--bg-surface), var(--bg-elevated)); border: 1px solid var(--border-light); border-radius: var(--radius-xl); box-shadow: var(--shadow-md); margin-bottom: var(--space-4); }
+    .dd-hero-avatar { width: 72px; height: 72px; border-radius: var(--radius-full); background: linear-gradient(135deg, var(--amber), var(--blue)); display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 800; font-size: 1.5rem; color: #000; flex-shrink: 0; }
+    .dd-hero-name { margin: 0 0 var(--space-1); font-family: var(--font-display); font-weight: 800; font-size: 1.35rem; color: var(--text-primary); }
+    .dd-hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono); }
+    .dd-hero-meta i { color: var(--amber); }
+    .dd-hero-status { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); text-align: right; min-width: 160px; }
+    .dd-status-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+    .dd-status-value { font-weight: 700; font-size: 1rem; color: var(--text-primary); }
+    .dd-toggle { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
+    .dd-toggle input { display: none; }
+    .dd-toggle-slider { width: 52px; height: 28px; background: var(--border-medium); border-radius: var(--radius-full); position: relative; transition: background 0.2s; }
+    .dd-toggle-slider::before { content: ''; position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; background: var(--text-muted); border-radius: 50%; transition: transform 0.2s, background 0.2s; box-shadow: var(--shadow-sm); }
+    .dd-toggle input:checked + .dd-toggle-slider { background: var(--green); }
+    .dd-toggle input:checked + .dd-toggle-slider::before { transform: translateX(24px); background: #fff; }
+    .dd-alert { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); margin-bottom: var(--space-4); font-size: 0.875rem; line-height: 1.5; }
+    .dd-alert i { flex-shrink: 0; margin-top: 2px; font-size: 1.1rem; }
+    .dd-alert-warning { background: var(--amber-dim); border: 1px solid var(--amber); color: #92400e; }
+    .dd-alert-warning i { color: var(--amber); }
+    .dd-alert-error { background: var(--red-dim); border: 1px solid var(--red); color: #991b1b; }
+    .dd-alert-error i { color: var(--red); }
+    .dd-golive-card { border: 1px solid var(--border-light); }
+    .dd-golive-card.ready { border-color: var(--green); }
+    .dd-golive-card.pending { border-color: var(--amber); }
+    .dd-pill { display: inline-flex; align-items: center; gap: var(--space-2); padding: 6px 14px; border-radius: var(--radius-full); font-family: var(--font-display); font-weight: 700; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .dd-pill-green { background: var(--green-dim); color: var(--green); }
+    .dd-pill-amber { background: var(--amber-dim); color: var(--amber); }
+    .dd-pill-blue { background: var(--blue-dim); color: var(--blue); }
+    .dd-pill-gray { background: var(--gray-dim); color: var(--gray); }
+    .dd-golive-card h3 { margin: 0 0 var(--space-2); font-size: 1.05rem; }
+    .dd-golive-card p { margin: 0 0 var(--space-4); color: var(--text-muted); font-size: 0.9rem; }
+    .dd-checklist { list-style: none; padding: 0; margin: 0 0 var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+    .dd-checklist-item { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-3); background: var(--bg-surface-alt); border-radius: var(--radius-lg); }
+    .dd-checklist-item.ok { border-left: 3px solid var(--green); }
+    .dd-checklist-item.bad { border-left: 3px solid var(--red); }
+    .dd-checklist-item i { font-size: 1.1rem; flex-shrink: 0; margin-top: 2px; }
+    .dd-checklist-item.ok i { color: var(--green); }
+    .dd-checklist-item.bad i { color: var(--red); }
+    .dd-check-label { font-weight: 600; font-size: 0.9rem; }
+    .dd-check-hint { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+    .dd-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); }
+    .dd-metric { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4); background: var(--bg-surface-alt); border-radius: var(--radius-lg); }
+    .dd-metric-icon { width: 48px; height: 48px; border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: center; font-size: 1.25rem; flex-shrink: 0; }
+    .dd-metric-icon.green { background: var(--green-dim); color: var(--green); }
+    .dd-metric-icon.blue { background: var(--blue-dim); color: var(--blue); }
+    .dd-metric-icon.amber { background: var(--amber-dim); color: var(--amber); }
+    .dd-metric-value { font-family: var(--font-display); font-weight: 800; font-size: 1.35rem; color: var(--text-primary); line-height: 1.2; }
+    .dd-metric-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+    .dd-trip-list { display: flex; flex-direction: column; gap: var(--space-2); }
+    .dd-trip-item { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-4); background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: var(--radius-lg); transition: all 0.2s; }
+    .dd-trip-item:hover { border-color: var(--brand-primary); box-shadow: var(--shadow-sm); }
+    .dd-trip-time { display: flex; flex-direction: column; align-items: center; min-width: 70px; text-align: center; }
+    .dd-trip-time-main { font-family: var(--font-mono); font-weight: 700; font-size: 1rem; color: var(--text-primary); }
+    .dd-trip-duration { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .dd-trip-date { font-size: 0.65rem; color: var(--text-muted); margin-top: 2px; }
+    .dd-trip-details { flex: 1; min-width: 0; }
+    .dd-trip-route { font-weight: 600; font-size: 0.9rem; color: var(--text-primary); margin-bottom: var(--space-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dd-trip-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 0.75rem; color: var(--text-muted); }
+    .dd-trip-meta i { margin-right: 4px; }
+    .dd-btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-3) var(--space-5); border: none; border-radius: var(--radius-lg); font-family: var(--font-sans); font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .dd-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .dd-btn-block { width: 100%; }
+    .dd-btn-sm { padding: var(--space-2) var(--space-3); font-size: 0.8rem; }
+    .dd-btn-primary { background: var(--brand-primary); color: #fff; }
+    .dd-btn-primary:hover:not(:disabled) { background: var(--brand-primary-dark); }
+    .dd-btn-outline { background: transparent; border: 1px solid var(--border-medium); color: var(--text-secondary); }
+    .dd-btn-outline:hover { border-color: var(--brand-primary); color: var(--brand-primary); background: var(--green-dim); }
+    .dd-btn-ghost { background: transparent; color: var(--text-secondary); }
+    .dd-btn-ghost:hover { color: var(--brand-primary); background: var(--bg-hover); }
+    .dd-btn-warning { background: var(--amber); color: #1a1a1a; }
+    .dd-btn-warning:hover:not(:disabled) { background: #d97706; }
+    .dd-btn-danger { background: var(--red); color: #fff; }
+    .dd-btn-danger:hover { background: #b91c1c; }
+    .dd-dock { display: none; position: fixed; bottom: 0; left: 0; right: 0; height: var(--dd-dock-height); background: var(--bg-surface); border-top: 1px solid var(--border-light); box-shadow: 0 -4px 20px rgba(0,0,0,0.08); z-index: 100; padding: var(--space-2) var(--space-4) env(safe-area-inset-bottom); }
+    .dd-dock-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--text-muted); text-decoration: none; font-size: 0.7rem; font-weight: 500; padding: var(--space-1) 0; border-radius: var(--radius-md); transition: all 0.2s; }
+    .dd-dock-item.active { color: var(--brand-primary); }
+    .dd-dock-item i { font-size: 1.25rem; }
+    .dd-dock-item:hover { color: var(--brand-primary); background: var(--bg-hover); }
+    .dd-map-container { position: relative; height: 50vh; min-height: 350px; max-height: 600px; border-radius: var(--radius-xl); overflow: hidden; background: var(--bg-surface); border: 1px solid var(--border-light); box-shadow: var(--shadow-md); }
+    .dd-map { width: 100%; height: 100%; }
+    .dd-sheet { position: absolute; bottom: 0; left: 0; right: 0; z-index: 20; background: var(--bg-surface); border-top: 1px solid var(--border-light); border-radius: var(--radius-xl) var(--radius-xl) 0 0; box-shadow: 0 -4px 20px rgba(0,0,0,0.15); max-height: var(--dd-sheet-expanded); display: flex; flex-direction: column; transition: max-height 0.3s cubic-bezier(0.4,0,0.2,1); }
+    .dd-sheet.peeking { max-height: var(--dd-sheet-peek); }
+    .dd-sheet.expanded { max-height: var(--dd-sheet-expanded); }
+    .dd-sheet-handle { width: 44px; height: 6px; background: var(--border-medium); border-radius: var(--radius-full); margin: var(--space-3) auto var(--space-2); cursor: grab; touch-action: none; transition: background 0.2s; }
+    .dd-sheet-handle:active { cursor: grabbing; background: var(--brand-primary); }
+    .dd-sheet-content { padding: 0 var(--space-5) var(--space-5); overflow-y: auto; flex: 1; }
+    .dd-sheet-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: var(--space-4); font-size: 1rem; font-weight: 700; border-radius: var(--radius-lg); margin-bottom: var(--space-4); }
+    .dd-toggle-content { display: flex; align-items: center; gap: var(--space-3); text-align: left; }
+    .dd-toggle-content i { font-size: 1.3rem; }
+    .dd-toggle-content strong { display: block; font-size: 1rem; }
+    .dd-toggle-content small { display: block; font-weight: 400; font-size: 0.8rem; opacity: 0.8; }
+    .dd-sheet-toggle-input { display: none; }
+    .dd-sheet-meta { display: flex; justify-content: space-between; padding: var(--space-3) var(--space-1); margin-bottom: var(--space-4); border-top: 1px solid var(--border-light); border-bottom: 1px solid var(--border-light); }
+    .dd-sheet-meta-item { display: flex; flex-direction: column; gap: 2px; }
+    .dd-sheet-meta-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+    .dd-sheet-meta-value { font-family: var(--font-mono); font-weight: 700; font-size: 1.1rem; color: var(--text-primary); }
+    .dd-sheet-actions { display: flex; gap: var(--space-3); }
+    .dd-sheet-actions .dd-btn { flex: 1; }
+    @media (max-width: 1024px) { .dd-shell { grid-template-columns: 1fr; grid-template-areas: "topbar" "main"; } .dd-pane { position: fixed; top: 0; left: 0; bottom: 0; width: var(--dd-pane-width); max-width: 85vw; transform: translateX(-100%); box-shadow: var(--shadow-xl); z-index: 100; } .dd-pane.open { transform: translateX(0); } .dd-pane-close { display: flex; } .dd-overlay.visible { display: block; } .dd-hamburger { display: flex; } .dd-search { max-width: none; } .dd-driver-code { display: none; } }
+    @media (max-width: 640px) { :root { --dd-topbar-height: 56px; } .dd-topbar { padding: 0 var(--space-3); } .dd-panels { padding: var(--space-3) var(--space-4); padding-bottom: calc(var(--dd-dock-height) + var(--space-4)); } .dd-metrics { grid-template-columns: 1fr; } .dd-card-header h2 { font-size: 1rem; } .dd-hero { grid-template-columns: 56px 1fr; grid-template-rows: auto auto; gap: var(--space-3); } .dd-hero-avatar { width: 56px; height: 56px; } .dd-hero-status { grid-column: 2; grid-row: 1; align-items: flex-start; text-align: left; } .dd-dock { display: flex; } }
+    @media (max-width: 480px) { .dd-sheet-actions { flex-direction: column; } .dd-sheet-actions .dd-btn { width: 100%; } .dd-vehicle-main { flex-wrap: wrap; } .dd-vehicle-actions { width: 100%; } .dd-vehicle-actions .dd-btn { flex: 1; } }
+  </style>
+</head>
+<body>
+<div class="dd-shell" id="ddShell">
+  <aside class="dd-pane" id="ddPane" role="navigation" aria-label="Driver workspace">
+    <div class="dd-pane-header"><div class="dd-brand"><i class="fa-solid fa-bus"></i><span>AFCON360</span></div><button class="dd-pane-close" id="ddPaneClose" aria-label="Close menu"><i class="fa-solid fa-xmark"></i></button></div>
+    <nav class="dd-pane-nav"><a href="#" class="dd-pane-item active" data-panel="home"><i class="fa-solid fa-house"></i><span>Home</span></a><a href="#" class="dd-pane-item" data-panel="earnings"><i class="fa-solid fa-wallet"></i><span>Earnings</span><span class="dd-badge" id="ddTodayEarningsBadge">KES 2,450</span></a><a href="#" class="dd-pane-item" data-panel="trips"><i class="fa-solid fa-route"></i><span>Trips</span></a><a href="#" class="dd-pane-item" data-panel="vehicle"><i class="fa-solid fa-van-shuttle"></i><span>Vehicle</span></a><a href="#" class="dd-pane-item" data-panel="account"><i class="fa-solid fa-user"></i><span>Account</span></a></nav>
+    <div class="dd-pane-footer"><div class="dd-driver-mini" id="ddDriverMini"><div class="dd-mini-avatar">JD</div><div class="dd-mini-info"><div class="dd-mini-name">John Driver</div><div class="dd-mini-code">AFCTESTDRV001</div></div></div><button class="dd-btn dd-btn-ghost" id="ddLogoutBtn"><i class="fa-solid fa-right-from-bracket"></i> Logout</button></div>
+  </aside>
+  <div class="dd-overlay" id="ddOverlay" aria-hidden="true"></div>
+  <main class="dd-main" role="main">
+    <header class="dd-topbar"><button class="dd-hamburger" id="ddHamburger" aria-label="Open menu" aria-expanded="false"><i class="fa-solid fa-bars"></i></button><div class="dd-search" id="ddSearch"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Search transport..." aria-label="Search transport"></div><div class="dd-topbar-actions"><span class="dd-driver-code" id="ddDriverCode">AFCTESTDRV001</span><button class="dd-icon-btn" id="ddSafetyBtn" aria-label="Safety Toolkit"><i class="fa-solid fa-shield-halved"></i></button><button class="dd-icon-btn" id="ddSupportBtn" aria-label="Support"><i class="fa-solid fa-headset"></i></button><button class="dd-icon-btn" id="ddNotificationsBtn" aria-label="Notifications"><i class="fa-solid fa-bell"></i><span class="dd-notif-dot" id="ddNotifDot" aria-hidden="true"></span></button></div></header>
+    <div class="dd-panels" id="ddPanels">
+      <section class="dd-panel active" data-panel="home" role="region" aria-label="Home">
+        <div class="dd-hero"><div class="dd-hero-avatar">JD</div><div class="dd-hero-info"><h1 class="dd-hero-name">John Driver</h1><div class="dd-hero-meta"><span class="dd-badge" style="background:var(--green-dim);color:var(--green);padding:4px 10px;border-radius:999px;font-size:0.7rem;font-weight:700;">Approved</span><span><i class="fa-solid fa-star"></i> 4.8</span><span>AFCTESTDRV001</span><span><i class="fa-solid fa-van-shuttle"></i> TEST-DRV-001</span></div></div><div class="dd-hero-status"><div class="dd-status-label">Status</div><div class="dd-status-value" id="ddOnlineLabel">Online</div><label class="dd-toggle"><input type="checkbox" id="ddOnlineToggle" checked><span class="dd-toggle-slider"></span></label></div></div>
+        <div class="dd-card dd-golive-card ready"><div class="dd-card-header"><div class="dd-pill dd-pill-green">Ready to go live</div></div><div class="dd-card-body"><h3>Go-live ready</h3><p>Complete the requirements below to start receiving rides.</p><ul class="dd-checklist"><li class="dd-checklist-item ok"><i class="fa-solid fa-circle-check"></i><div><div class="dd-check-label">Active driver profile</div><div class="dd-check-hint"></div></div></li><li class="dd-checklist-item ok"><i class="fa-solid fa-circle-check"></i><div><div class="dd-check-label">Identity verification (KYC)</div><div class="dd-check-hint"></div></div></li><li class="dd-checklist-item ok"><i class="fa-solid fa-circle-check"></i><div><div class="dd-check-label">Not suspended or blocked</div><div class="dd-check-hint"></div></div></li><li class="dd-checklist-item ok"><i class="fa-solid fa-circle-check"></i><div><div class="dd-check-label">Compliance approval</div><div class="dd-check-hint"></div></div></li><li class="dd-checklist-item ok"><i class="fa-solid fa-circle-check"></i><div><div class="dd-check-label">Valid driver licence</div><div class="dd-check-hint"></div></div></li><li class="dd-checklist-item ok"><i class="fa-solid fa-circle-check"></i><div><div class="dd-check-label">Assigned vehicle</div><div class="dd-check-hint"></div></div></li></ul><button class="dd-btn dd-btn-primary dd-btn-block" id="ddGoOnlineCta"><i class="fa-solid fa-power-off"></i> Go Online</button></div></div>
+        <div class="dd-map-section"><div class="dd-map-container" id="ddMapContainer"><div id="ddMap" class="dd-map"></div></div><div class="dd-sheet" id="ddSheet" role="region" aria-label="Driver controls"><div class="dd-sheet-handle" id="ddSheetHandle" tabindex="0" aria-label="Drag to expand"></div><div class="dd-sheet-content"><button class="dd-btn dd-btn-primary dd-btn-block dd-sheet-toggle" id="ddSheetToggle"><span class="dd-toggle-content"><i class="fa-solid fa-circle" style="color:var(--green)"></i><div><strong>GO ONLINE</strong><small>Tap to start receiving rides</small></div></span><input type="checkbox" id="ddSheetOnlineToggle" checked class="dd-sheet-toggle-input"></button><div class="dd-sheet-meta"><div class="dd-sheet-meta-item"><span class="dd-sheet-meta-label">Earnings/hr</span><span class="dd-sheet-meta-value" id="ddSheetEarnings">KES 450/hr</span></div><div class="dd-sheet-meta-item"><span class="dd-sheet-meta-label">Daily Goal</span><span class="dd-sheet-meta-value" id="ddSheetGoal">KES 5,000</span></div></div><div class="dd-sheet-actions"><button class="dd-btn dd-btn-primary" id="ddNavigateBtn"><i class="fa-solid fa-location-dot"></i> Navigate</button><button class="dd-btn dd-btn-outline" id="ddSupportBtnSheet"><i class="fa-solid fa-headset"></i> Support</button></div></div></div></div></section>
+      <section class="dd-panel" data-panel="earnings" role="region" aria-label="Earnings"><div class="dd-card"><div class="dd-card-header"><h2><i class="fa-solid fa-wallet"></i> Earnings Overview</h2></div><div class="dd-card-body"><div class="dd-metrics"><div class="dd-metric"><div class="dd-metric-icon green"><i class="fa-solid fa-money-bill-wave"></i></div><div class="dd-metric-info"><div class="dd-metric-value" id="ddTodayEarnings">KES 2,450</div><div class="dd-metric-label">Today</div></div></div><div class="dd-metric"><div class="dd-metric-icon green"><i class="fa-solid fa-calendar-week"></i></div><div class="dd-metric-info"><div class="dd-metric-value" id="ddWeekEarnings">KES 14,800</div><div class="dd-metric-label">This Week</div></div></div><div class="dd-metric"><div class="dd-metric-icon blue"><i class="fa-solid fa-calendar-days"></i></div><div class="dd-metric-info"><div class="dd-metric-value" id="ddMonthEarnings">KES 52,300</div><div class="dd-metric-label">This Month</div></div></div></div></div><div class="dd-card"><div class="dd-card-header"><h2><i class="fa-solid fa-clock"></i> Recent Trips</h2></div><div class="dd-card-body dd-trip-list" id="ddRecentTrips"><div class="dd-trip-item"><div class="dd-trip-time"><span class="dd-trip-time-main">08:30</span><span class="dd-trip-duration">25 min</span></div><div class="dd-trip-details"><div class="dd-trip-route">CBD → Westlands</div><div class="dd-trip-meta"><span class="dd-badge" style="background:var(--green-dim);color:var(--green);padding:2px 8px;border-radius:999px;font-size:0.65rem;font-weight:700;">Completed</span><span style="margin-left:8px;"><i class="fa-solid fa-money-bill"></i> KES 450</span></div></div></div><div class="dd-trip-item"><div class="dd-trip-time"><span class="dd-trip-time-main">06:15</span><span class="dd-trip-duration">18 min</span></div><div class="dd-trip-details"><div class="dd-trip-route">Airport → CBD</div><div class="dd-trip-meta"><span class="dd-badge" style="background:var(--green-dim);color:var(--green);padding:2px 8px;border-radius:999px;font-size:0.65rem;font-weight:700;">Completed</span><span style="margin-left:8px;"><i class="fa-solid fa-money-bill"></i> KES 1,200</span></div></div></div></div></section>
+      <section class="dd-panel" data-panel="trips" role="region" aria-label="Trips"><div class="dd-card"><div class="dd-card-header"><h2><i class="fa-solid fa-route"></i> Trip History</h2></div><div class="dd-card-body dd-trip-list" id="ddAllTrips"><div class="dd-trip-item"><div class="dd-trip-time"><span class="dd-trip-time-main">08:30</span><span class="dd-trip-date">12 Nov</span></div><div class="dd-trip-details"><div class="dd-trip-route">CBD → Westlands</div><div class="dd-trip-meta"><span class="dd-badge" style="background:var(--green-dim);color:var(--green);padding:2px 8px;border-radius:999px;font-size:0.65rem;font-weight:700;">Completed</span><span style="margin-left:8px;"><i class="fa-solid fa-money-bill"></i> KES 450</span><span style="margin-left:8px;"><i class="fa-solid fa-road"></i> 8.5 km</span></div></div><button class="dd-btn dd-btn-ghost dd-btn-sm"><i class="fa-solid fa-eye"></i> Details</button></div><div class="dd-trip-item"><div class="dd-trip-time"><span class="dd-trip-time-main">06:15</span><span class="dd-trip-date">12 Nov</span></div><div class="dd-trip-details"><div class="dd-trip-route">Airport → CBD</div><div class="dd-trip-meta"><span class="dd-badge" style="background:var(--green-dim);color:var(--green);padding:2px 8px;border-radius:999px;font-size:0.65rem;font-weight:700;">Completed</span><span style="margin-left:8px;"><i class="fa-solid fa-money-bill"></i> KES 1,200</span><span style="margin-left:8px;"><i class="fa-solid fa-road"></i> 18.2 km</span></div></div><button class="dd-btn dd-btn-ghost dd-btn-sm"><i class="fa-solid fa-eye"></i> Details</button></div></div></div></section>
+      <section class="dd-panel" data-panel="vehicle" role="region" aria-label="Vehicle"><div class="dd-card"><div class="dd-card-header"><h2><i class="fa-solid fa-van-shuttle"></i> Assigned Vehicle</h2></div><div class="dd-card-body"><div class="dd-vehicle-main"><div class="dd-vehicle-icon"><i class="fa-solid fa-van-shuttle"></i></div><div class="dd-vehicle-info"><h3>Toyota Corolla</h3><p>TEST-DRV-001 • Silver • 2022</p></div><div class="dd-vehicle-actions"><button class="dd-btn dd-btn-outline" data-vehicle-id="1" id="ddEditVehicleBtn"><i class="fa-solid fa-pen"></i> Edit</button><button class="dd-btn dd-btn-outline" data-action="docs"><i class="fa-solid fa-file-alt"></i> Docs</button></div></div></div></div><div class="dd-card"><div class="dd-card-header"><h2><i class="fa-solid fa-wrench"></i> Vehicle Documents</h2></div><div class="dd-card-body" id="ddVehicleDocs"><div class="dd-doc-item"><div class="dd-doc-info"><i class="fa-solid fa-file"></i><div><div class="dd-doc-type">Insurance</div><div class="dd-doc-hint">Expires 15 Jan 2027</div></div></div><span class="dd-badge" style="background:var(--green-dim);color:var(--green);padding:2px 8px;border-radius:999px;font-size:0.65rem;font-weight:700;">Approved</span></div></div></div></section>
+      <section class="dd-panel" data-panel="account" role="region" aria-label="Account"><div class="dd-card"><div class="dd-card-header"><h2><i class="fa-solid fa-user"></i> Profile</h2></div><div class="dd-card-body"><div class="dd-profile-field"><span class="dd-profile-label">Name</span><span class="dd-profile-value">John Driver</span></div><div class="dd-profile-field"><span class="dd-profile-label">Email</span><span class="dd-profile-value">john@driver.com</span></div><div class="dd-profile-field"><span class="dd-profile-label">Phone</span><span class="dd-profile-value">+254 700 000 101</span></div><div class="dd-profile-field"><span class="dd-profile-label">Driver Code</span><span class="dd-profile-value">AFCTESTDRV001</span></div><div class="dd-profile-field"><span class="dd-profile-label">License</span><span class="dd-profile-value">DL12345678</span></div><div class="dd-profile-field"><span class="dd-profile-label">Status</span><span class="dd-profile-value"><span style="background:var(--green-dim);color:var(--green);padding:4px 10px;border-radius:999px;font-size:0.7rem;font-weight:700;">Approved</span></span></div></div></div><div class="dd-card"><div class="dd-card-header"><h2><i class="fa-solid fa-shield-halved"></i> Go-Live Requirements</h2></div><div class="dd-card-body"><ul class="dd-checklist"><li class="dd-checklist-item ok"><i class="fa-solid fa-circle-check"></i><div><div class="dd-check-label">Active driver profile</div><div class="dd-check-hint"></div></div></li><li class="dd-checklist-item ok"><i class="fa-solid fa-circle-check"></i><div><div class="dd-check-label">Identity verification (KYC)</div><div class="dd-check-hint"></div></div></li><li class="dd-checklist-item ok"><i class="fa-solid fa-circle-check"></i><div><div class="dd-check-label">Not suspended or blocked</div><div class="dd-check-hint"></div></div></li><li class="dd-checklist-item ok"><i class="fa-solid fa-circle-check"></i><div><div class="dd-check-label">Compliance approval</div><div class="dd-check-hint"></div></div></li><li class="dd-checklist-item ok"><i class="fa-solid fa-circle-check"></i><div><div class="dd-check-label">Valid driver licence</div><div class="dd-check-hint"></div></div></li><li class="dd-checklist-item ok"><i class="fa-solid fa-circle-check"></i><div><div class="dd-check-label">Assigned vehicle</div><div class="dd-check-hint"></div></div></li></ul></div></div><div class="dd-card"><div class="dd-card-header"><h2><i class="fa-solid fa-headset"></i> Support</h2></div><div class="dd-card-body"><a href="#" class="dd-btn dd-btn-primary dd-btn-block"><i class="fa-solid fa-life-ring"></i> Help Center</a><a href="tel:+254700000000" class="dd-btn dd-btn-outline dd-btn-block"><i class="fa-solid fa-phone"></i> Call Support</a><a href="https://wa.me/254700000000" target="_blank" class="dd-btn dd-btn-outline dd-btn-block"><i class="fa-brands fa-whatsapp"></i> WhatsApp Support</a><button class="dd-btn dd-btn-outline dd-btn-block" id="ddChatSupportBtn"><i class="fa-solid fa-comment-dots"></i> Live Chat</button></div></div><div class="dd-actions"><button class="dd-btn dd-btn-primary" id="ddEditProfileBtn"><i class="fa-solid fa-user-pen"></i> Edit Profile</button><button class="dd-btn dd-btn-outline" id="ddSettingsBtn"><i class="fa-solid fa-gear"></i> Settings</button><button class="dd-btn dd-btn-ghost" id="ddLogoutBtn2"><i class="fa-solid fa-right-from-bracket"></i> Logout</button></div></section>
+    </div>
+  </main>
+  <nav class="dd-dock" id="ddDock" role="navigation" aria-label="Mobile navigation"><a href="#" class="dd-dock-item active" data-panel="home"><i class="fa-solid fa-house"></i><span>Home</span></a><a href="#" class="dd-dock-item" data-panel="earnings"><i class="fa-solid fa-wallet"></i><span>Earn</span></a><a href="#" class="dd-dock-item" data-panel="trips"><i class="fa-solid fa-route"></i><span>Trips</span></a><a href="#" class="dd-dock-item" data-panel="vehicle"><i class="fa-solid fa-van-shuttle"></i><span>Vehicle</span></a><a href="#" class="dd-dock-item" data-panel="account"><i class="fa-solid fa-user"></i><span>Account</span></a></nav>
+</div>
+
+<script>
+document.documentElement.classList.add('ck-js');
+
+const state = { currentPanel: 'home', isOnline: true };
+const els = {};
+
+function cacheElements() {
+  els.shell = document.getElementById('ddShell');
+  els.pane = document.getElementById('ddPane');
+  els.overlay = document.getElementById('ddOverlay');
+  els.hamburger = document.getElementById('ddHamburger');
+  els.paneClose = document.getElementById('ddPaneClose');
+  els.paneItems = document.querySelectorAll('.dd-pane-item[data-panel]');
+  els.dockItems = document.querySelectorAll('.dd-dock-item[data-panel]');
+  els.panels = document.querySelectorAll('.dd-panel[data-panel]');
+  els.onlineToggle = document.getElementById('ddOnlineToggle');
+  els.onlineLabel = document.getElementById('ddOnlineLabel');
+  els.sheet = document.getElementById('ddSheet');
+  els.sheetHandle = document.getElementById('ddSheetHandle');
+  els.sheetToggle = document.getElementById('ddSheetToggle');
+  els.sheetOnlineToggle = document.getElementById('ddSheetOnlineToggle');
+  els.navigateBtn = document.getElementById('ddNavigateBtn');
+  els.supportBtnSheet = document.getElementById('ddSupportBtnSheet');
+  els.safetyBtn = document.getElementById('ddSafetyBtn');
+  els.supportBtn = document.getElementById('ddSupportBtn');
+  els.closeSafetyModal = document.getElementById('ddCloseSafetyModal');
+  els.closeSupportModal = document.getElementById('ddCloseSupportModal');
+  els.safetyModal = document.getElementById('ddSafetyModal');
+  els.supportModal = document.getElementById('ddSupportModal');
+  els.emergencyBtn = document.getElementById('ddEmergencyBtn');
+  els.shareTripBtn = document.getElementById('ddShareTripBtn');
+  els.goOnlineCta = document.getElementById('ddGoOnlineCta');
+  els.editProfileBtn = document.getElementById('ddEditProfileBtn');
+  els.settingsBtn = document.getElementById('ddSettingsBtn');
+  els.logoutBtn = document.getElementById('ddLogoutBtn');
+  els.logoutBtn2 = document.getElementById('ddLogoutBtn2');
+  els.editVehicleBtn = document.getElementById('ddEditVehicleBtn');
+  els.chatSupportBtn = document.getElementById('ddChatSupportBtn');
+}
+
+function showPanel(panelName) {
+  if (!panelName || panelName === state.currentPanel) return;
+  els.panels.forEach(p => { const isActive = p.dataset.panel === panelName; p.classList.toggle('active', isActive); p.setAttribute('aria-hidden', !isActive); });
+  els.paneItems.forEach(btn => { btn.classList.toggle('active', btn.dataset.panel === panelName); btn.setAttribute('aria-current', btn.dataset.panel === panelName ? 'page' : 'false'); });
+  els.dockItems.forEach(btn => { btn.classList.toggle('active', btn.dataset.panel === panelName); });
+  state.currentPanel = panelName;
+  closeMobilePane();
+}
+
+function openMobilePane() { els.pane.classList.add('open'); els.overlay.classList.add('visible'); els.hamburger.setAttribute('aria-expanded', 'true'); document.body.style.overflow = 'hidden'; }
+function closeMobilePane() { els.pane.classList.remove('open'); els.overlay.classList.remove('visible'); els.hamburger.setAttribute('aria-expanded', 'false'); document.body.style.overflow = ''; }
+
+function bindPanelNavigation() {
+  els.paneItems.forEach(btn => { btn.addEventListener('click', e => { e.preventDefault(); showPanel(btn.dataset.panel); }); });
+  els.dockItems.forEach(btn => { btn.addEventListener('click', e => { e.preventDefault(); showPanel(btn.dataset.panel); }); });
+}
+
+function bindMobilePane() {
+  els.hamburger.addEventListener('click', openMobilePane);
+  els.paneClose.addEventListener('click', closeMobilePane);
+  els.overlay.addEventListener('click', closeMobilePane);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && els.pane.classList.contains('open')) closeMobilePane(); });
+}
+
+function initBottomSheet() {
+  if (!els.sheet || !els.sheetHandle) return;
+  const handleDragStart = (clientY) => { state.isDraggingSheet = true; state.sheetDragStartY = clientY; state.sheetDragStartHeight = els.sheet.offsetHeight; els.sheet.classList.remove('peeking', 'expanded'); document.body.style.userSelect = 'none'; };
+  const handleDragMove = (clientY) => { if (!state.isDraggingSheet) return; const delta = state.sheetDragStartY - clientY; const maxH = window.innerHeight * 0.85; const minH = 100; let newH = Math.min(maxH, Math.max(minH, state.sheetDragStartHeight + delta)); els.sheet.style.maxHeight = newH + 'px'; };
+  const handleDragEnd = () => { if (!state.isDraggingSheet) return; state.isDraggingSheet = false; document.body.style.userSelect = ''; const h = els.sheet.offsetHeight; const midpoint = window.innerHeight * 0.4; if (h < midpoint) { els.sheet.classList.add('peeking'); els.sheet.classList.remove('expanded'); els.sheet.style.maxHeight = '100px'; state.sheetState = 'peeking'; } else { els.sheet.classList.add('expanded'); els.sheet.classList.remove('peeking'); els.sheet.style.maxHeight = '65vh'; state.sheetState = 'expanded'; } setTimeout(() => { els.sheet.style.maxHeight = ''; }, 300); };
+  els.sheetHandle.addEventListener('mousedown', e => { e.preventDefault(); handleDragStart(e.clientY); document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp); });
+  els.sheetHandle.addEventListener('touchstart', e => { handleDragStart(e.touches[0].clientY); document.addEventListener('touchmove', onTouchMove, { passive: true }); document.addEventListener('touchend', onTouchEnd); }, { passive: true });
+  function onMouseMove(e) { handleDragMove(e.clientY); }
+  function onMouseUp() { document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp); handleDragEnd(); }
+  function onTouchMove(e) { handleDragMove(e.touches[0].clientY); }
+  function onTouchEnd() { document.removeEventListener('touchmove', onTouchMove); document.removeEventListener('touchend', onTouchEnd); handleDragEnd(); }
+  els.sheetHandle.addEventListener('click', e => { if (state.isDraggingSheet) return; toggleSheet(); });
+}
+function toggleSheet() { if (state.sheetState === 'peeking') expandSheet(); else peekSheet(); }
+function expandSheet() { els.sheet.classList.remove('peeking'); els.sheet.classList.add('expanded'); state.sheetState = 'expanded'; }
+function peekSheet() { els.sheet.classList.remove('expanded'); els.sheet.classList.add('peeking'); state.sheetState = 'peeking'; }
+
+function bindOnlineToggle() {
+  if (els.onlineToggle) els.onlineToggle.addEventListener('change', () => { state.isOnline = els.onlineToggle.checked; updateOnlineUI(state.isOnline); });
+  if (els.sheetOnlineToggle) els.sheetOnlineToggle.addEventListener('change', () => { state.isOnline = els.sheetOnlineToggle.checked; updateOnlineUI(state.isOnline); });
+  if (els.sheetToggle) els.sheetToggle.addEventListener('click', () => { const newState = !els.sheetOnlineToggle.checked; els.sheetOnlineToggle.checked = newState; state.isOnline = newState; updateOnlineUI(newState); });
+  if (els.goOnlineCta) els.goOnlineCta.addEventListener('click', () => { if (els.onlineToggle) { els.onlineToggle.checked = true; state.isOnline = true; updateOnlineUI(true); } });
+}
+function updateOnlineUI(online) {
+  const label = online ? 'Online' : 'Offline';
+  const badgeText = online ? 'Receiving rides' : 'Tap to go online';
+  const badgeClass = online ? 'dd-btn-primary' : 'dd-btn-warning';
+  if (els.onlineLabel) els.onlineLabel.textContent = label;
+  if (els.sheetOnlineToggle) els.sheetOnlineToggle.checked = online;
+  if (els.sheetToggle) { els.sheetToggle.className = 'dd-btn dd-btn-block dd-sheet-toggle ' + (online ? 'dd-btn-primary' : 'dd-btn-warning'); const small = els.sheetToggle.querySelector('small'); if (small) small.textContent = online ? 'Tap to go offline' : 'Tap to start receiving rides'; }
+}
+
+function initMap() {
+  const container = document.getElementById('ddMap');
+  if (!container || container.dataset.mapInitialized) return;
+  container.dataset.mapInitialized = 'true';
+  if (typeof maplibregl !== 'undefined') {
+    try {
+      const map = new maplibregl.Map({ container: 'ddMap', style: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#e8f0e8' } }] }, center: [32.5825, 0.3476], zoom: 13, attributionControl: false });
+      map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+      map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), 'top-right');
+    } catch (e) { console.warn('[DriverDashboard] Map init failed:', e); }
+  }
+}
+
+function init() {
+  cacheElements();
+  bindPanelNavigation();
+  bindMobilePane();
+  initBottomSheet();
+  bindOnlineToggle();
+  initMap();
+  showPanel('home');
+  window.__ddDashboard = { showPanel, state, map: () => state.map };
+  console.log('[DriverDashboard v3] Initialized');
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+</script>
+</body>
+</html>
