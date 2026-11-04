@@ -5,7 +5,7 @@ import { authClient } from "../../src/services/api";
 import { requestForegroundDriverLocation } from "../../src/location/permissions";
 import { MobileAuthError } from "@afcon360/mobile-core";
 
-type DriverProfile = { driver_code: string; verification_tier: string; compliance_status: string; is_online: boolean; is_available: boolean; go_live: { ready: boolean; items?: Array<{ label?: string; requirement?: string; complete?: boolean }> } };
+type DriverProfile = { driver_code: string; verification_tier: string; compliance_status: string; is_online: boolean; is_available: boolean; go_live: { ready: boolean; checks?: Array<{ key: string; label: string; ok: boolean; required: boolean; hint?: string }> } };
 type Offer = { booking_reference: string; status: string; ttl_remaining?: number; pickup?: { text?: string }; destination?: { text?: string }; fare_estimate?: { amount?: number; currency?: string }; ride_class?: string; passenger_count?: number; vehicle?: { make?: string; model?: string; license_plate?: string } };
 type ActiveTrip = { booking_reference: string; status: string; pickup?: { address?: string }; dropoff?: { address?: string }; payment_method?: string; payment_status?: string; fare_amount?: string; currency?: string };
 
@@ -114,7 +114,7 @@ export default function DriverHome() {
           {!profile.go_live?.ready && !profile.is_online ? (
             <View style={{ gap: 4 }}>
               <Text style={{ fontWeight: "800", color: palette.ink }}>Go-live requirements</Text>
-              {(profile.go_live?.items ?? []).map((item, index) => <Text key={index} style={{ color: palette.muted, fontSize: 12 }}>• {item.label ?? item.requirement ?? "Requirement"}: {item.complete ? "Complete" : "Action required"}</Text>)}
+              {(profile.go_live?.checks ?? []).filter(item => item.required).map(item => <Text key={item.key} style={{ color: palette.muted, fontSize: 12 }}>• {item.label}: {item.ok ? "Complete" : (item.hint || "Action required")}</Text>)}
             </View>
           ) : null}
           <ActionButton label={busy ? "Please wait…" : "Share current location"} disabled={busy || !profile.is_online} onPress={sendLocation} />

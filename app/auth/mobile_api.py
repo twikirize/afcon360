@@ -526,6 +526,31 @@ def mobile_account_deletion():
             user.phone = None
         if hasattr(user, "password_hash"):
             user.set_password(secrets.token_urlsafe(64))
+
+        # Scrub the personal profile that is separate from the login User
+        # record. Keep the profile row as a tombstone because KYC/booking/audit
+        # references may be legally retained; mark it deleted and clear direct
+        # contact/public-facing PII rather than cascading financial history.
+        from app.profile.models import get_profile_by_user
+        profile = get_profile_by_user(user)
+        if profile is not None:
+            profile.is_deleted = True
+            profile.deleted_at = datetime.now(timezone.utc)
+            profile.full_name = "Deleted account"
+            profile.display_name = "Deleted account"
+            profile.date_of_birth = None
+            profile.gender = None
+            profile.nationality = None
+            profile.address = None
+            profile.city = None
+            profile.country = None
+            profile.phone_number = None
+            profile.email = None
+            profile.email_verified = False
+            profile.phone_verified = False
+            profile.fan_team = None
+            profile.avatar_url = None
+            profile.bio = None
         try:
             from app.identity.models.user import MFASecret
             MFASecret.query.filter_by(user_id=user.id, is_active=True).update(
