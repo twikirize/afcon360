@@ -568,46 +568,53 @@ class AvailabilityService:
         return result
 
     @staticmethod
-    def release_expired_holds(hold_minutes: int = 15) -> int:
+    def release_expired_holds(
+        hold_minutes: int = 15,
+        batch_size: int = 25,
+    ) -> dict:
         """
-        Release temporary holds that have expired.
+        Release one bounded page of expired temporary holds.
 
-        Args:
-            hold_minutes: Maximum age of payment holds before they're considered expired.
-                          Approval holds use their own approval_sla_hours.
-
-        Returns:
-            Number of expired holds released
+        Returns the number released and whether another page may remain. The
+        caller schedules continuation as a separate Celery task so the worker
+        returns to the broker between pages.
         """
         from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
 
-        # Expire old BlockedDate-based holds (legacy cleanup)
+        batch_size = max(1, min(int(batch_size), 100))
+        now = datetime.now(timezone.utc)
         expired_time = now - timedelta(minutes=hold_minutes)
 
-        expired_blocked = BlockedDate.query.filter(
-            BlockedDate.reason == AccommodationBlockedReason.TEMPORARY_HOLD.value,
-            BlockedDate.created_at < expired_time
-        ).all()
-
+        expired_blocked = (
+            BlockedDate.query.filter(
+                BlockedDate.reason == AccommodationBlockedReason.TEMPORARY_HOLD.value,
+                BlockedDate.created_at < expired_time,
+            )
+            .order_by(BlockedDate.id.asc())
+            .limit(batch_size)
+            .all()
+        )
         count = len(expired_blocked)
         for hold in expired_blocked:
             db.session.delete(hold)
 
-        # Expire RoomHold records
-        expired_room_holds = RoomHold.query.filter(
-            RoomHold.status == "active",
-            RoomHold.expires_at <= now,
-        ).all()
+        expired_room_holds = (
+            RoomHold.query.filter(
+                RoomHold.status == "active",
+                RoomHold.expires_at <= now,
+            )
+            .order_by(RoomHold.id.asc())
+            .limit(batch_size)
+            .all()
+        )
 
         for hold in expired_room_holds:
             if hold.hold_type == "approval":
-                # Approval holds expire based on approval_sla_hours
+                # Approval holds expire based on their approval SLA.
                 if hold.approval_sla_hours and hold.expires_at <= now:
                     hold.mark_expired()
                     count += 1
             else:
-                # Payment holds expire based on hold_minutes
                 hold.mark_expired()
                 count += 1
 
@@ -616,7 +623,14 @@ class AvailabilityService:
         if count > 0:
             logger.info(f"Released {count} expired temporary holds")
 
-        return count
+        return {
+            "released": count,
+            "batch_size": batch_size,
+            "has_more": (
+                len(expired_blocked) >= batch_size
+                or len(expired_room_holds) >= batch_size
+            ),
+        }
 
     @staticmethod
     def unblock_dates(
