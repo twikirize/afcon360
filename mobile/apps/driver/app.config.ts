@@ -8,7 +8,7 @@ const config: ExpoConfig = {
   },
   android: { package: "space.pamoja.afcon360.driver", adaptiveIcon: { backgroundColor: "#087A4B" } },
   plugins: [
-    "expo-router", "expo-secure-store",
+    "expo-router", "expo-secure-store", "expo-dev-client",
     ["expo-location", { locationWhenInUsePermission: "Allow AFCON360 Driver to use your location while you are using the app for availability and trip navigation." }]
   ],
   extra: { apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "" }

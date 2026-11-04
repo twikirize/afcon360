@@ -2,6 +2,7 @@ name: Mobile workspace CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
     paths:
       - "mobile/**"
@@ -10,7 +11,7 @@ on:
       - "templates/mobile_apps/**"
       - ".github/workflows/mobile-workspace.yml"
   push:
-    branches: [main]
+    branches: ["**"]
     paths:
       - "mobile/**"
       - "app/__init__.py"
