@@ -9,6 +9,15 @@ def _registration_payload():
     }
 
 
+def test_native_login_route_is_registered_by_app_factory(app):
+    rules = [
+        rule for rule in app.url_map.iter_rules()
+        if rule.rule == "/api/mobile/v1/auth/login"
+    ]
+    assert rules
+    assert any("POST" in rule.methods for rule in rules)
+
+
 def test_native_registration_uses_pending_email_verification(client, monkeypatch):
     from app.auth import registration_policy, validators, pending_registration
 
