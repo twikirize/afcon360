@@ -1,15 +1,15 @@
 import type { ExpoConfig } from "expo/config";
 
 const config: ExpoConfig = {
-  name: "AFCON360",
+  name: process.env.AFCON360_PREVIEW_BUILD === "true" ? "AFCON360 Preview" : "AFCON360",
   slug: "afcon360-user",
-  scheme: "afcon360",
+  scheme: process.env.AFCON360_PREVIEW_BUILD === "true" ? "afcon360-preview" : "afcon360",
   version: "1.0.0",
   orientation: "default",
   userInterfaceStyle: "automatic",
   ios: { bundleIdentifier: "space.pamoja.afcon360.user", deploymentTarget: "16.4", supportsTablet: true },
   android: {
-    package: "space.pamoja.afcon360.user",
+    package: process.env.AFCON360_PREVIEW_BUILD === "true" ? "space.pamoja.afcon360.user.preview" : "space.pamoja.afcon360.user",
     allowBackup: false,
     // Use the Android system photo/document picker for future user-selected uploads.
     // The User app does not need broad legacy shared-storage or overlay access.
