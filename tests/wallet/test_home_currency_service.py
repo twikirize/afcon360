@@ -52,3 +52,13 @@ def test_unsupported_explicit_currency_is_rejected(app):
         home_currency_service.resolve_home_currency(
             SimpleNamespace(id=1), requested_currency="XYZ"
         )
+
+def test_nationality_is_not_used_as_missing_residence(app, monkeypatch):
+    profile = SimpleNamespace(country=None, nationality="Uganda")
+    monkeypatch.setattr(home_currency_service, "_profile_for", lambda _user: profile)
+    app.config["WALLET_DEFAULT_HOME_CURRENCY"] = "USD"
+
+    with app.app_context():
+        assert home_currency_service.resolve_home_currency(
+            SimpleNamespace(id=1)
+        ) == "USD"
