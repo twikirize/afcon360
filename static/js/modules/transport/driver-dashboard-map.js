@@ -23,8 +23,8 @@
     if (!state) return;
     state.textContent = message;
     state.classList.toggle('badge-amber', !!isError);
-    state.classList.toggle('badge-green', !isError);
-    state.classList.toggle('badge-gray', false);
+    state.classList.toggle('badge-green', false);
+    state.classList.toggle('badge-gray', !isError);
   }
 
   function boot() {
@@ -96,10 +96,10 @@
       var suffix = when && !Number.isNaN(when.getTime())
         ? ' · recorded ' + when.toLocaleString() : '';
       setState('Last published position', false);
-      if (note) note.textContent = 'Showing the last position saved by the dashboard' + suffix + '. It may not be the device’s current position.';
+      if (note) note.textContent = 'Showing the last position saved by the dashboard' + suffix + '. It may not be the device’s current position. Tiles: ' + (container.dataset.tileSourceLabel || 'configured map source') + '.';
     } else {
       setState('Default map area', false);
-      if (note) note.textContent = 'This is the default map centre, not a tracked driver location. The dashboard GPS publisher will report a position when it has a valid fix.';
+      if (note) note.textContent = 'This is the default map centre, not a tracked driver location. Tiles: ' + (container.dataset.tileSourceLabel || 'configured map source') + '. The dashboard GPS publisher will report a position when it has a valid fix.';
     }
 
     if (locateButton) {
