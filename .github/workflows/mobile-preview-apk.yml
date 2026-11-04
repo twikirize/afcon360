@@ -1,5 +1,5 @@
-# Trigger first signed Android preview build.
-name: AFCON360 Android preview APKs
+# Pull-request-safe Android compatibility validation. Stable signing/publishing is intentionally separate.
+name: AFCON360 Mobile compatibility and Android preview builds
 
 on:
   push:
@@ -8,6 +8,23 @@ on:
     paths:
       - "mobile/apps/**"
       - "mobile/packages/**"
+      - "mobile/docs/**"
+      - "mobile/README.md"
+      - "mobile/AGENTS.md"
+      - "mobile/package.json"
+      - "mobile/pnpm-lock.yaml"
+      - "mobile/pnpm-workspace.yaml"
+      - "mobile/.npmrc"
+      - ".github/workflows/mobile-preview-apk.yml"
+  pull_request:
+    branches:
+      - feat/native-mobile-apps-20261104
+    paths:
+      - "mobile/apps/**"
+      - "mobile/packages/**"
+      - "mobile/docs/**"
+      - "mobile/README.md"
+      - "mobile/AGENTS.md"
       - "mobile/package.json"
       - "mobile/pnpm-lock.yaml"
       - "mobile/pnpm-workspace.yaml"
@@ -16,50 +33,92 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: afcon360-android-preview-${{ github.ref }}
+  group: afcon360-user-android-${{ github.ref }}
+  # Deliberately replace the mixed-platform run with the focused User Android validation.
   cancel-in-progress: true
 
+# This PR-capable workflow never receives signing secrets or write-capable tokens.
 permissions:
-  contents: write
+  actions: read
+  contents: read
 
 jobs:
+  # Reuse Run #48's verified User APK for this workflow-only CI correction.
+  # If any mobile app/dependency source changed since that APK, do a fresh build instead.
+  prepare-android-validation:
+    name: Select verified APK for targeted Android checks
+    runs-on: ubuntu-24.04
+    outputs:
+      reuse_artifact: ${{ steps.select.outputs.reuse_artifact }}
+      artifact_run_id: ${{ steps.select.outputs.artifact_run_id }}
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether the existing APK is still valid
+        id: select
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASELINE_SHA="3f5b61ebe7058bd77d26400107a04ce1198cd37d"
+          VERIFIED_APK_RUN_ID="41911873134"
+
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ] &&
+             git cat-file -e "${BASELINE_SHA}^{commit}" 2>/dev/null &&
+             git diff --quiet "${BASELINE_SHA}" "${GITHUB_SHA}" -- \
+               mobile/apps \
+               mobile/packages \
+               mobile/package.json \
+               mobile/pnpm-lock.yaml \
+               mobile/pnpm-workspace.yaml \
+               mobile/.npmrc; then
+            echo "reuse_artifact=true" >> "$GITHUB_OUTPUT"
+            echo "artifact_run_id=$VERIFIED_APK_RUN_ID" >> "$GITHUB_OUTPUT"
+            echo "Mobile source is unchanged since the verified Run #48 APK; reusing that artifact."
+          else
+            echo "reuse_artifact=false" >> "$GITHUB_OUTPUT"
+            echo "artifact_run_id=$GITHUB_RUN_ID" >> "$GITHUB_OUTPUT"
+            echo "Mobile source changed or this is not a pull request; a fresh APK build is required."
+          fi
+
   build-preview-apk:
     name: Build ${{ matrix.app }} standalone APK
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    needs: prepare-android-validation
+    if: needs.prepare-android-validation.outputs.reuse_artifact != 'true'
+    # Keep this Android build on the tested Ubuntu 24.04 image until Ubuntu 26.04 is validated.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Phase 1: isolate the User Android application.
           - app: user
-            package: space.pamoja.afcon360.user
-          - app: driver
-            package: space.pamoja.afcon360.driver
+            package: space.pamoja.afcon360.user.preview
     env:
       APP: ${{ matrix.app }}
       EXPECTED_PACKAGE: ${{ matrix.package }}
+      AFCON360_PREVIEW_BUILD: "true"
       EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
-      AFCON360_PREVIEW_KEYSTORE_BASE64: ${{ secrets.AFCON360_PREVIEW_KEYSTORE_BASE64 }}
-      AFCON360_PREVIEW_KEYSTORE_PASSWORD: ${{ secrets.AFCON360_PREVIEW_KEYSTORE_PASSWORD }}
-      AFCON360_PREVIEW_KEY_ALIAS: ${{ secrets.AFCON360_PREVIEW_KEY_ALIAS }}
-      AFCON360_PREVIEW_KEY_PASSWORD: ${{ secrets.AFCON360_PREVIEW_KEY_PASSWORD }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22.13.1"
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.12.4
           run_install: false
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -81,25 +140,15 @@ jobs:
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort | tail -n 1)"
           if [ -z "$SDKMANAGER" ]; then echo "Android sdkmanager not found"; exit 1; fi
           yes | "$SDKMANAGER" --licenses >/dev/null
-          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
+          # Android SDK Manager currently publishes API 37 as android-37.0,
+          # while Gradle's compileSdkVersion 37 lookup expects android-37.
+          "$SDKMANAGER" "platform-tools" "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.1.12297006"
+          if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
+            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+          fi
+          test -s "$ANDROID_HOME/platforms/android-37/android.jar"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
-          echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
-
-      - name: Load stable internal preview signing key
-        run: |
-          for name in AFCON360_PREVIEW_KEYSTORE_BASE64 AFCON360_PREVIEW_KEYSTORE_PASSWORD AFCON360_PREVIEW_KEY_ALIAS AFCON360_PREVIEW_KEY_PASSWORD; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Missing GitHub Actions secret: $name"
-              echo "Configure the four AFCON360_PREVIEW_KEYSTORE_* secrets documented in mobile/docs/store-submission-checklist.md."
-              exit 1
-            fi
-          done
-          mkdir -p "$HOME/.android"
-          printf '%s' "$AFCON360_PREVIEW_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/afcon360-preview.keystore"
-          test -s "$HOME/.android/afcon360-preview.keystore"
-          keytool -list -keystore "$HOME/.android/afcon360-preview.keystore" \
-            -storepass "$AFCON360_PREVIEW_KEYSTORE_PASSWORD" \
-            -alias "$AFCON360_PREVIEW_KEY_ALIAS" >/dev/null
+          echo "$ANDROID_HOME/build-tools/37.0.0" >> "$GITHUB_PATH"
 
       - name: Generate native Android project
         working-directory: mobile
@@ -144,126 +193,367 @@ jobs:
       - name: Sign and verify APK package, SDK and payload
         working-directory: mobile
         run: |
+          set -euo pipefail
+          # Create the throwaway key only when signing, keeping its password out of
+          # GITHUB_ENV and away from every other build/upload step.
+          umask 077
+          KEYSTORE="$RUNNER_TEMP/afcon360-ephemeral-ci.keystore"
+          PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$PASSWORD"
+          keytool -genkeypair -noprompt -storetype JKS \
+            -keystore "$KEYSTORE" -storepass "$PASSWORD" -keypass "$PASSWORD" \
+            -alias afcon360-ci -dname "CN=AFCON360 CI Test,O=Pamoja,C=UG" \
+            -keyalg RSA -keysize 2048 -validity 2
+          export AFCON360_SIGNING_KEYSTORE="$KEYSTORE"
+          export AFCON360_SIGNING_STORE_PASSWORD="$PASSWORD"
+          export AFCON360_SIGNING_KEY_ALIAS="afcon360-ci"
+          export AFCON360_SIGNING_KEY_PASSWORD="$PASSWORD"
+          AFCON360_SIGNING_KEY_TYPE="ephemeral-ci"
           APK="$(find "apps/$APP/android/app/build/outputs/apk/release" -name '*.apk' -type f | head -n 1)"
           test -n "$APK"
           mkdir -p release
           zipalign -p -f 4 "$APK" "$RUNNER_TEMP/$APP-aligned.apk"
-          apksigner sign --ks "$HOME/.android/afcon360-preview.keystore" \
-            --ks-pass env:AFCON360_PREVIEW_KEYSTORE_PASSWORD \
-            --ks-key-alias "$AFCON360_PREVIEW_KEY_ALIAS" \
-            --key-pass env:AFCON360_PREVIEW_KEY_PASSWORD \
+          apksigner sign --ks "$AFCON360_SIGNING_KEYSTORE" \
+            --ks-pass env:AFCON360_SIGNING_STORE_PASSWORD \
+            --ks-key-alias "$AFCON360_SIGNING_KEY_ALIAS" \
+            --key-pass env:AFCON360_SIGNING_KEY_PASSWORD \
             --out "release/$APP-preview.apk" "$RUNNER_TEMP/$APP-aligned.apk"
           FINAL_APK="$GITHUB_WORKSPACE/mobile/release/$APP-preview.apk"
           apksigner verify --verbose "$FINAL_APK"
           BADGING="$(aapt dump badging "$FINAL_APK")"
           PACKAGE="$(printf '%s\n' "$BADGING" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -n 1)"
+          MINIMUM="$(printf '%s\n' "$BADGING" | sed -n "s/.*sdkVersion:'\([0-9]*\)'.*/\1/p" | head -n 1)"
           TARGET="$(printf '%s\n' "$BADGING" | sed -n "s/.*targetSdkVersion:'\([0-9]*\)'.*/\1/p" | head -n 1)"
           test "$PACKAGE" = "$EXPECTED_PACKAGE"
+          test "$MINIMUM" = "24"
           test -n "$TARGET" && test "$TARGET" -ge 36
-          echo "Verified $APP APK package=$PACKAGE targetSdkVersion=$TARGET"
+          echo "Verified $APP APK package=$PACKAGE minSdkVersion=$MINIMUM targetSdkVersion=$TARGET"
           unzip -l "$FINAL_APK" > "$RUNNER_TEMP/$APP-apk-contents.txt"
           grep -q 'classes.dex' "$RUNNER_TEMP/$APP-apk-contents.txt"
 
+          # Assert the setting in the final packaged manifest, not only in app.config.ts.
+          APKANALYZER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name apkanalyzer | sort | tail -n 1)"
+          if [ -n "$APKANALYZER" ]; then
+            MANIFEST_XML="$("$APKANALYZER" manifest print "$FINAL_APK")"
+            printf '%s\n' "$MANIFEST_XML" | grep -Eq 'android:allowBackup="false"'
+          else
+            MANIFEST_TREE="$(aapt dump xmltree "$FINAL_APK" AndroidManifest.xml)"
+            printf '%s\n' "$MANIFEST_TREE" | grep -Eq 'android:allowBackup[^=]*=.*(false|0x0)'
+          fi
+          echo "Verified Android app backup is disabled in the packaged manifest."
+
+          APK_SHA256="$(sha256sum "$FINAL_APK" | awk '{print $1}')"
+          cat > "release/$APP-build-info.txt" <<EOF
+          app=$APP
+          package=$PACKAGE
+          min_sdk=$MINIMUM
+          target_sdk=$TARGET
+          source_sha=$GITHUB_SHA
+          build_run_id=$GITHUB_RUN_ID
+          signing_key_type=$AFCON360_SIGNING_KEY_TYPE
+          apk_sha256=$APK_SHA256
+          EOF
+
       - name: Upload verified app APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: afcon360-${{ matrix.app }}-preview-apk
-          path: mobile/release/${{ matrix.app }}-preview.apk
+          path: |
+            mobile/release/${{ matrix.app }}-preview.apk
+            mobile/release/${{ matrix.app }}-build-info.txt
           if-no-files-found: error
           retention-days: 90
 
-  publish-preview:
-    name: Publish verified User and Driver APKs
-    needs: build-preview-apk
-    if: needs.build-preview-apk.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  android-compatibility:
+    name: Android API ${{ matrix.api-level }} / ${{ matrix.app }} install and launch
+    needs: [prepare-android-validation, build-preview-apk]
+    if: >-
+      always() &&
+      needs.prepare-android-validation.result == 'success' &&
+      (needs.build-preview-apk.result == 'success' || needs.build-preview-apk.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      # Each matrix entry runs on its own GitHub-hosted VM with an independent ADB server.
+      # Run all four Android API levels concurrently; GitHub may queue jobs if the account limit is reached.
+      max-parallel: 4
+      matrix:
+        include:
+          # Reconfirm the complete supported Android matrix against the verified User APK.
+          - app: user
+            package: space.pamoja.afcon360.user.preview
+            api-level: 24
+          - app: user
+            package: space.pamoja.afcon360.user.preview
+            api-level: 29
+          - app: user
+            package: space.pamoja.afcon360.user.preview
+            api-level: 33
+          - app: user
+            package: space.pamoja.afcon360.user.preview
+            api-level: 36
+    env:
+      APP: ${{ matrix.app }}
+      EXPECTED_PACKAGE: ${{ matrix.package }}
+      SOURCE_RUN_ID: ${{ needs.prepare-android-validation.outputs.artifact_run_id }}
     steps:
-      - name: Prepare release directory
-        run: mkdir -p mobile/release
+      - name: Check out source for emulator verification script
+        uses: actions/checkout@v7
 
-      - name: Download User APK artifact
-        uses: actions/download-artifact@v4
+      - name: Download signed APK
+        uses: actions/download-artifact@v8
+        with:
+          name: afcon360-${{ matrix.app }}-preview-apk
+          path: release
+          run-id: ${{ needs.prepare-android-validation.outputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify downloaded APK provenance and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="release/$APP-preview.apk"
+          INFO="release/$APP-build-info.txt"
+          test -s "$APK"
+          test -s "$INFO"
+          grep -Fxq "app=$APP" "$INFO"
+          grep -Fxq "package=$EXPECTED_PACKAGE" "$INFO"
+          EXPECTED_RUN_ID="$SOURCE_RUN_ID"
+          grep -Fxq "build_run_id=$EXPECTED_RUN_ID" "$INFO"
+          EXPECTED_SHA="$(sed -n 's/^apk_sha256=//p' "$INFO" | head -n 1)"
+          ACTUAL_SHA="$(sha256sum "$APK" | awk '{print $1}')"
+          test -n "$EXPECTED_SHA" && test "$EXPECTED_SHA" = "$ACTUAL_SHA"
+          echo "Verified $APP APK from build run $EXPECTED_RUN_ID; source commit $(sed -n 's/^source_sha=//p' "$INFO" | head -n 1)."
+
+      # The Linux runner has /dev/kvm, but the runner user may not have permission
+      # to access it. Enable KVM before android-emulator-runner probes acceleration.
+      - name: Enable and verify KVM hardware acceleration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -e /dev/kvm ]; then
+            echo "::error::/dev/kvm is unavailable on this GitHub runner; refusing a slow, unreliable software-emulation fallback."
+            exit 1
+          fi
+
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          # Apply permissions immediately to the already-created device node too.
+          sudo chmod 0666 /dev/kvm
+
+          ls -l /dev/kvm
+          test -r /dev/kvm
+          test -w /dev/kvm
+
+          echo "KVM device permissions are verified. The emulator action will install the SDK and launch with hardware acceleration required."
+
+      - name: Install and launch on Android API ${{ matrix.api-level }}
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
+          disable-animations: true
+          emulator-boot-timeout: 600
+          # Keep this as one command: android-emulator-runner executes each script line in a new shell.
+          script: bash mobile/scripts/verify-android-emulator-install.sh "$APP" "$EXPECTED_PACKAGE" "${{ matrix.api-level }}"
+
+  apk-manifest-audit:
+    name: Audit packaged User APK permissions and components
+    needs: [prepare-android-validation, build-preview-apk]
+    if: >-
+      always() &&
+      needs.prepare-android-validation.result == 'success' &&
+      (needs.build-preview-apk.result == 'success' || needs.build-preview-apk.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      APP: user
+      EXPECTED_PACKAGE: space.pamoja.afcon360.user.preview
+    steps:
+      - name: Download the exact APK selected for this validation run
+        uses: actions/download-artifact@v8
         with:
           name: afcon360-user-preview-apk
-          path: mobile/release
+          path: ${{ runner.temp }}/afcon360-user-artifact
+          run-id: ${{ needs.prepare-android-validation.outputs.artifact_run_id }}
+          github-token: ${{ github.token }}
 
-      - name: Download Driver APK artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: afcon360-driver-preview-apk
-          path: mobile/release
-
-      - name: Name APKs and calculate checksums
+      - name: Inspect packaged Android manifest, permissions and signatures
+        shell: bash
         run: |
-          mv mobile/release/user-preview.apk mobile/release/AFCON360-User-preview.apk
-          mv mobile/release/driver-preview.apk mobile/release/AFCON360-Driver-preview.apk
-          cd mobile/release
-          sha256sum AFCON360-User-preview.apk AFCON360-Driver-preview.apk > SHA256SUMS.txt
-          ls -lh
-          cat SHA256SUMS.txt
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --install 'build-tools;37.0.0' >/dev/null
+          AAPT="$SDK_ROOT/build-tools/37.0.0/aapt"
+          APKSIGNER="$SDK_ROOT/build-tools/37.0.0/apksigner"
+          APKANALYZER="$(find "$SDK_ROOT/cmdline-tools" -type f -name apkanalyzer | sort | tail -n 1)"
+          test -x "$AAPT"
+          test -x "$APKSIGNER"
+          test -n "$APKANALYZER"
 
-      - name: Upload combined release artifact
-        uses: actions/upload-artifact@v4
+          APK="$(find "$RUNNER_TEMP/afcon360-user-artifact" -type f -name '*.apk' -print -quit)"
+          INFO="$(find "$RUNNER_TEMP/afcon360-user-artifact" -type f -name 'user-build-info.txt' -print -quit)"
+          test -s "$APK"
+          test -s "$INFO"
+
+          mkdir -p "$RUNNER_TEMP/afcon360-manifest-audit"
+          REPORT="$RUNNER_TEMP/afcon360-manifest-audit"
+          "$APKANALYZER" manifest print "$APK" > "$REPORT/AndroidManifest.xml"
+          "$AAPT" dump permissions "$APK" > "$REPORT/permissions.txt"
+          "$AAPT" dump xmltree "$APK" AndroidManifest.xml > "$REPORT/manifest-tree.txt"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > "$REPORT/signature.txt" 2>&1
+          cp "$INFO" "$REPORT/build-info.txt"
+
+          grep -Fxq "package=$EXPECTED_PACKAGE" "$INFO"
+          grep -Eq 'android:allowBackup="false"' "$REPORT/AndroidManifest.xml"
+          if grep -Eq 'android:debuggable="true"|android:usesCleartextTraffic="true"' "$REPORT/AndroidManifest.xml"; then
+            echo "::error::APK manifest enables debuggable mode or cleartext traffic."
+            exit 1
+          fi
+
+          {
+            echo "# AFCON360 User APK manifest audit"
+            echo
+            echo "Artifact build provenance:"
+            cat "$INFO"
+            echo
+            echo "## Declared permissions"
+            cat "$REPORT/permissions.txt"
+            echo
+            echo "## Manifest application/component security attributes"
+            grep -E 'uses-permission|<activity|<activity-alias|<service|<receiver|<provider|android:(name|exported|permission|allowBackup|debuggable|usesCleartextTraffic|taskAffinity)' "$REPORT/AndroidManifest.xml" || true
+            echo
+            echo "## APK signing certificate"
+            cat "$REPORT/signature.txt"
+          } > "$REPORT/audit-summary.md"
+
+          cat "$REPORT/audit-summary.md"
+
+      - name: Upload manifest audit evidence
+        uses: actions/upload-artifact@v7
         with:
-          name: afcon360-android-preview-apks
-          path: mobile/release/*
+          name: afcon360-user-apk-manifest-audit
+          path: ${{ runner.temp }}/afcon360-manifest-audit/
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 30
 
-      - name: Confirm this build is still the branch head
-        id: current
-        uses: actions/github-script@v7
+  ios-compatibility:
+    # Phase 1 is Android User only; resume this unchanged job after that gate passes.
+    if: ${{ false }}
+    name: iOS 16.4 minimum / current simulator / ${{ matrix.app }}
+    # Use the x64 macOS 26 pool to avoid ARM64 hosted-runner allocation failures.
+    runs-on: macos-26-intel
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: user
+            bundle-id: space.pamoja.afcon360.user
+          - app: driver
+            bundle-id: space.pamoja.afcon360.driver
+    env:
+      APP: ${{ matrix.app }}
+      EXPECTED_BUNDLE_ID: ${{ matrix.bundle-id }}
+      EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
         with:
-          script: |
-            const { owner, repo } = context.repo;
-            const response = await github.rest.git.getRef({
-              owner,
-              repo,
-              ref: "heads/feat/native-mobile-apps-20261104"
+          node-version: "22.13.1"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.4
+          run_install: false
+
+      - name: Confirm supported Xcode toolchain
+        run: |
+          xcodebuild -version
+          XCODE_VERSION="$(xcodebuild -version | awk '/^Xcode / {print $2; exit}')"
+          XCODE_MAJOR="${XCODE_VERSION%%.*}"
+          test "$XCODE_MAJOR" -ge 26
+
+      - name: Install app workspace dependencies
+        working-directory: mobile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Check Expo dependency compatibility
+        working-directory: mobile
+        run: pnpm --filter "@afcon360/${{ matrix.app }}-app" exec expo install --check
+
+      - name: Generate native iOS project and install Pods
+        working-directory: mobile
+        run: pnpm --filter "@afcon360/${{ matrix.app }}-app" exec expo prebuild --platform ios --clean
+
+      - name: Build, install and launch on current iOS simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          IOS_DIR="$GITHUB_WORKSPACE/mobile/apps/$APP/ios"
+          WORKSPACE="$(find "$IOS_DIR" -maxdepth 2 -type d -name '*.xcworkspace' ! -path '*/Pods/*' -print -quit)"
+          test -n "$WORKSPACE"
+
+          SCHEME="$(xcodebuild -list -json -workspace "$WORKSPACE" | node -e '
+            let input = "";
+            process.stdin.on("data", chunk => input += chunk);
+            process.stdin.on("end", () => {
+              const data = JSON.parse(input);
+              const schemes = data.workspace && data.workspace.schemes || [];
+              if (!schemes.length) process.exit(2);
+              process.stdout.write(schemes[0]);
             });
-            const isCurrent = response.data.object.sha === context.sha;
-            core.setOutput("is_current", String(isCurrent));
-            if (!isCurrent) {
-              core.warning("A newer feature-branch commit exists; this APK will remain a workflow artifact and will not replace the public preview.");
-            }
+          ')"
+          test -n "$SCHEME"
 
-      - name: Update stable internal preview tag
-        if: steps.current.outputs.is_current == 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const ref = "tags/mobile-preview";
-            try {
-              await github.rest.git.getRef({ owner, repo, ref });
-              await github.rest.git.updateRef({
-                owner, repo, ref, sha: context.sha, force: true
-              });
-            } catch (error) {
-              if (error.status !== 404) throw error;
-              await github.rest.git.createRef({
-                owner, repo, ref: "refs/" + ref, sha: context.sha
-              });
-            }
+          SIMULATOR_UDID="$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          candidates = []
+          for runtime, devices in data.get("devices", {}).items():
+              if "SimRuntime.iOS-26-4" not in runtime:
+                  continue
+              for device in devices:
+                  if device.get("isAvailable") and device.get("name", "").startswith("iPhone"):
+                      candidates.append(device["udid"])
+          if not candidates:
+              raise SystemExit("No available iOS 26.4 iPhone simulator found on macos-26.")
+          print(candidates[0])
+          ')"
 
-      - name: Publish internal preview APK download links
-        if: steps.current.outputs.is_current == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: mobile-preview
-          target_commitish: ${{ github.sha }}
-          name: AFCON360 internal Android preview
-          prerelease: true
-          make_latest: false
-          overwrite_files: true
-          files: |
-            mobile/release/AFCON360-User-preview.apk
-            mobile/release/AFCON360-Driver-preview.apk
-            mobile/release/SHA256SUMS.txt
-          body: |
-            Internal tester distribution only.
+          xcrun simctl boot "$SIMULATOR_UDID"
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
 
-            These are Android preview APKs signed with AFCON360's dedicated internal preview key. They are directly installable for testing, but are not signed with the production Play App Signing key and must not be submitted to Play Console. Android may require the tester to allow installation from the source used to download the file.
+          DERIVED_DATA="$RUNNER_TEMP/afcon360-ios-derived-data"
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
 
-            Production Android requires a signed AAB and Play App Signing. iPhone installation requires a separate signed iOS build and Apple distribution process.
+          APP_PATH="$(find "$DERIVED_DATA/Build/Products/Debug-iphonesimulator" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          MIN_IOS="$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP_PATH/Info.plist")"
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")"
+          test "$MIN_IOS" = "16.4"
+          test "$BUNDLE_ID" = "$EXPECTED_BUNDLE_ID"
+
+          xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH"
+          xcrun simctl launch "$SIMULATOR_UDID" "$EXPECTED_BUNDLE_ID"
+          echo "PASS: $APP installed and launched on iOS 26.4; deployment minimum is iOS $MIN_IOS."
