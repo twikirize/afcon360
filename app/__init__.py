@@ -2632,6 +2632,11 @@ def create_app(config_object=None) -> Flask:
                 right_ads=[],
             )
 
+    @app.route('/apps')
+    def mobile_apps():
+        """Public landing page for AFCON360 native mobile applications."""
+        return render_template('mobile_apps/index.html')
+
     @app.route('/api/csrf-token', methods=['GET'])
     @csrf.exempt
     def issue_csrf_token():

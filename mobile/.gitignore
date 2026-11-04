@@ -1,0 +1,14 @@
+node_modules/
+.pnpm-store/
+.expo/
+dist/
+web-build/
+coverage/
+.env
+.env.*
+!.env.example
+*.keystore
+*.jks
+*.p8
+*.p12
+*.mobileprovision

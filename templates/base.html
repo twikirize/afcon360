@@ -303,6 +303,7 @@
           <li class="menu-item workspace-context-menu">{{ render_workspace_context_switcher('desktop') }}</li>
         {% endif %}
         <li class="menu-item"><a href="{{ url_for('index') }}">Home</a></li>
+        <li class="menu-item"><a href="{{ url_for('mobile_apps') }}">Get the Apps</a></li>
 
         <li class="menu-item has-dropdown">
           <a href="{{ safe_url('events.list') }}">Events</a>
@@ -772,6 +773,7 @@
       <div>&copy; {{ app_name or "AFCON 360" }}</div>
       <div class="links">
         <a href="{{ url_for('index') }}">Home</a> &middot;
+        <a href="{{ url_for('mobile_apps') }}">Get the Apps</a> &middot;
         <a href="/support">Support</a>
       </div>
     </div>

@@ -1,0 +1,17 @@
+{
+  "name": "afcon360-mobile-workspace",
+  "private": true,
+  "packageManager": "pnpm@10.12.4",
+  "engines": { "node": ">=22.13.0" },
+  "scripts": {
+    "user:start": "pnpm --filter @afcon360/user-app start",
+    "driver:start": "pnpm --filter @afcon360/driver-app start",
+    "user:android": "pnpm --filter @afcon360/user-app android",
+    "driver:android": "pnpm --filter @afcon360/driver-app android",
+    "user:ios": "pnpm --filter @afcon360/user-app ios",
+    "driver:ios": "pnpm --filter @afcon360/driver-app ios",
+    "user:typecheck": "pnpm --filter @afcon360/user-app typecheck",
+    "driver:typecheck": "pnpm --filter @afcon360/driver-app typecheck",
+    "typecheck": "pnpm user:typecheck && pnpm driver:typecheck"
+  }
+}
