@@ -373,53 +373,34 @@ def _notify_stall_cancelled(booking: Booking) -> None:
         )
 
 
-@celery_app.task(name="transport.scheduled_route_execution")
+@celery_app.task(name="transport.scheduled_route_execution", bind=True)
 @_with_app_context
-def scheduled_route_execution(batch: int = None, dry_run: bool = False) -> dict:
-    """Resolve due ScheduledRoute departures into the canonical dispatch chain.
+def scheduled_route_execution(
+    self,
+    batch: int = None,
+    dry_run: bool = False,
+    route_id: int = None,
+    departure_marker: str = None,
+    after_booking_id: int = 0,
+) -> dict:
+    """Claim at most one due route and dispatch a bounded page of bookings.
 
-    A ScheduledRoute is *due* when:
-
-        next_departure <= now
-        AND is_active IS TRUE
-        AND is_cancelled IS FALSE
-        AND is_deleted IS FALSE
-        AND (last_departure IS NULL OR last_departure < next_departure)
-
-    The ``last_departure`` guard is the idempotency/claim marker: the departure
-    at a given ``next_departure`` is executed once. The claim is a guarded
-    UPDATE (``SET last_departure = next_departure WHERE still unclaimed``); only
-    the worker whose UPDATE returns exactly one row proceeds, so concurrent
-    beats/workers cannot double-execute a departure.
-
-    For each claimed route, the route's attached CONFIRMED+unassigned bookings
-    (``Booking.assigned_route_id``) advance through the existing dispatch
-    lifecycle via ``MatchingService.discover_and_offer`` -- the SAME entry point
-    used by ``dispatch_recovery`` -- producing a transient offer per booking that
-    a driver later accepts through the canonical ``AssignmentService.claim``
-    (ASSIGNED -> DriverTrip). No new booking is created (Booking.user_id is NOT
-    NULL; there is no departure-instance entity), so this is per-user scheduled
-    Booking progression, not ScheduledRoute instance creation.
-
-    ``next_departure`` is intentionally NOT rolled forward here: ``schedule_pattern``
-    is never parsed anywhere and the recurrence interval must not be invented.
-    Operators re-arm the next slot through the route API.
-
-    Args:
-        batch: Max routes to consider per run (default config
-            ``TRANSPORT_SCHEDULED_EXECUTION_BATCH`` / 25).
-        dry_run: When True, report due routes without claiming or dispatching.
-
-    Returns:
-        dict: considered / claimed / bookings dispatched / offers created.
+    A continuation is tied to the exact claimed last_departure marker.
+    This allows large routes to yield between pages without requiring a
+    schema change or claiming the same departure twice. The regular Beat
+    invocation starts a new route scan; a failed booking remains eligible
+    for the normal dispatch-recovery sweep.
     """
     result = {
-        "candidates": [],
         "considered": 0,
+        "candidates": [],
         "claimed": [],
-        "dry_run": dry_run,
+        "route_id": route_id,
         "bookings_dispatched": [],
         "offers_created": 0,
+        "batch_size": 10,
+        "continuation_queued": False,
+        "dry_run": dry_run,
     }
     try:
         from flask import current_app
@@ -427,84 +408,148 @@ def scheduled_route_execution(batch: int = None, dry_run: bool = False) -> dict:
         from app.transport.services.assignment_service import CLAIMABLE_STATUSES
         from app.transport.services.matching_service import MatchingService
 
-        if batch is None:
-            batch = int(
-                current_app.config.get("TRANSPORT_SCHEDULED_EXECUTION_BATCH", 25)
-            )
-
-        now = datetime.now(timezone.utc)
-        due_routes = (
-            ScheduledRoute.query.filter(
-                ScheduledRoute.next_departure.is_not(None),
-                ScheduledRoute.next_departure <= now,
-                ScheduledRoute.is_active.is_(True),
-                ScheduledRoute.is_cancelled.is_(False),
-                ScheduledRoute.is_deleted.is_(False),
-                or_(
-                    ScheduledRoute.last_departure.is_(None),
-                    ScheduledRoute.last_departure < ScheduledRoute.next_departure,
-                ),
-            )
-            .order_by(ScheduledRoute.next_departure.asc())
-            .limit(batch)
-            .all()
+        configured_batch = (
+            current_app.config.get("TRANSPORT_SCHEDULED_ROUTE_BOOKING_BATCH", 10)
+            if batch is None else batch
         )
+        batch_size = max(1, min(int(configured_batch), 25))
+        result["batch_size"] = batch_size
+        after_booking_id = max(0, int(after_booking_id))
+        now = datetime.now(timezone.utc)
 
-        result["considered"] = len(due_routes)
-        result["candidates"] = [r.id for r in due_routes]
+        if route_id is None:
+            due_route = (
+                ScheduledRoute.query.filter(
+                    ScheduledRoute.next_departure.is_not(None),
+                    ScheduledRoute.next_departure <= now,
+                    ScheduledRoute.is_active.is_(True),
+                    ScheduledRoute.is_cancelled.is_(False),
+                    ScheduledRoute.is_deleted.is_(False),
+                    or_(
+                        ScheduledRoute.last_departure.is_(None),
+                        ScheduledRoute.last_departure < ScheduledRoute.next_departure,
+                    ),
+                )
+                .order_by(ScheduledRoute.next_departure.asc(), ScheduledRoute.id.asc())
+                .first()
+            )
+            if due_route is None:
+                return result
 
-        for route in due_routes:
+            result["considered"] = 1
+            result["candidates"] = [due_route.id]
             if dry_run:
-                continue
+                return result
 
+            departure_at = due_route.next_departure
             claimed = (
                 ScheduledRoute.query.filter(
-                    ScheduledRoute.id == route.id,
+                    ScheduledRoute.id == due_route.id,
+                    ScheduledRoute.is_active.is_(True),
+                    ScheduledRoute.is_cancelled.is_(False),
+                    ScheduledRoute.is_deleted.is_(False),
                     or_(
                         ScheduledRoute.last_departure.is_(None),
                         ScheduledRoute.last_departure < ScheduledRoute.next_departure,
                     ),
                 )
                 .update(
-                    {ScheduledRoute.last_departure: route.next_departure},
+                    {ScheduledRoute.last_departure: departure_at},
                     synchronize_session=False,
                 )
             )
             db.session.commit()
             if claimed != 1:
-                # Another worker claimed this departure between query and update.
-                continue
+                result["claim_skipped"] = True
+                return result
 
-            result["claimed"].append(route.id)
+            route_id = due_route.id
+            departure_marker = departure_at.isoformat()
+            after_booking_id = 0
+            result["route_id"] = route_id
+            result["claimed"] = [route_id]
+        else:
+            # Continue only the exact departure originally claimed. A
+            # cancelled/deleted route or changed marker stops continuation.
+            route = db.session.get(ScheduledRoute, int(route_id))
+            if route is None or not (
+                route.is_active and not route.is_cancelled and not route.is_deleted
+            ):
+                result["stopped"] = "route_unavailable"
+                return result
+            if not departure_marker:
+                result["stopped"] = "missing_departure_marker"
+                return result
+            try:
+                expected_departure = datetime.fromisoformat(departure_marker)
+            except ValueError:
+                result["stopped"] = "invalid_departure_marker"
+                return result
+            if route.last_departure is None or route.last_departure != expected_departure:
+                result["stopped"] = "departure_marker_changed"
+                return result
 
-            dispatched = (
-                Booking.query.filter(
-                    Booking.assigned_route_id == route.id,
-                    Booking.status.in_(CLAIMABLE_STATUSES),
-                    Booking.assigned_driver_id.is_(None),
-                    Booking.is_deleted.is_(False),
-                )
-                .order_by(Booking.id.asc())
-                .all()
+        # The route is claimed already. Read one booking page, then return
+        # control to the broker before scheduling the next page.
+        bookings = (
+            Booking.query.filter(
+                Booking.assigned_route_id == route_id,
+                Booking.status.in_(CLAIMABLE_STATUSES),
+                Booking.assigned_driver_id.is_(None),
+                Booking.is_deleted.is_(False),
+                Booking.id > after_booking_id,
             )
+            .order_by(Booking.id.asc())
+            .limit(batch_size)
+            .all()
+        )
 
-            for booking in dispatched:
+        for booking in bookings:
+            try:
                 outcome = MatchingService.discover_and_offer(booking.id)
                 result["bookings_dispatched"].append(booking.id)
                 result["offers_created"] += int(outcome.get("offers_created", 0))
-                logger.info(
-                    f"Scheduled route {route.id} due {route.next_departure.isoformat()} "
-                    f"dispatched booking {booking.id}"
+            except Exception:
+                db.session.rollback()
+                logger.exception(
+                    "Scheduled route %s dispatch failed for booking %s",
+                    route_id,
+                    booking.id,
                 )
 
-        if result["claimed"]:
-            logger.info(
-                f"Transport scheduled-route execution claimed {len(result['claimed'])} "
-                f"departure(s): {result['claimed']}, "
-                f"dispatched {len(result['bookings_dispatched'])} booking(s)"
-            )
+        if len(bookings) >= batch_size:
+            try:
+                self.apply_async(
+                    kwargs={
+                        "batch": batch_size,
+                        "dry_run": False,
+                        "route_id": route_id,
+                        "departure_marker": departure_marker,
+                        "after_booking_id": bookings[-1].id,
+                    },
+                    countdown=5,
+                )
+                result["continuation_queued"] = True
+            except Exception:
+                logger.exception(
+                    "Could not schedule next scheduled-route booking page for route %s",
+                    route_id,
+                )
+
+        result["examined"] = len(bookings)
+        result["after_booking_id"] = (
+            bookings[-1].id if bookings else after_booking_id
+        )
+        logger.info(
+            "Scheduled route %s departure %s examined %s bookings; dispatched %s; continuation=%s",
+            route_id,
+            departure_marker,
+            len(bookings),
+            len(result["bookings_dispatched"]),
+            result["continuation_queued"],
+        )
     except Exception as e:
-        logger.error(f"Transport scheduled-route execution failed: {e}", exc_info=True)
+        logger.error("Scheduled-route execution failed: %s", e, exc_info=True)
         result["error"] = str(e)
     finally:
         db.session.rollback()
