@@ -2,7 +2,7 @@
  * AFCON360 Transport
  * Production Secure Service Worker
  *
- * Version: 2.0.4
+ * Version: 2.0.6
  *
  * SECURITY GUARANTEES:
  * 1. Never cache authenticated HTML.
