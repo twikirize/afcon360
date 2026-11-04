@@ -161,13 +161,18 @@ def test_ride_options_empty_body_returns_labeled_defaults(app, anonymous_client)
     assert {o["vehicle_class"] for o in data["options"]} == _priced_vehicle_classes(app)
     required = {
         "vehicle_class", "display_name", "fare_total", "fare_breakdown",
-        "fare_version", "currency", "quote_token",
+        "fare_version", "currency", "display_amount", "display_currency",
+        "display_is_home_currency", "display_is_approximate", "quote_token",
     }
     for option in data["options"]:
         assert set(option) >= required
         assert not ({"available_count", "capacity", "luggage",
                      "eta_minutes", "eta_basis"} & set(option))
         assert option["fare_total"] > 0
+        assert option["display_amount"] == option["fare_total"]
+        assert option["display_currency"] == "USD"
+        assert option["display_is_home_currency"] is True
+        assert option["display_is_approximate"] is False
         assert option["quote_token"]
 
 
