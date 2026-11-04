@@ -62,6 +62,8 @@ jobs:
         run: |
           export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort | tail -n 1)"
           if [ -z "$SDKMANAGER" ]; then echo "Android sdkmanager not found"; exit 1; fi
           yes | "$SDKMANAGER" --licenses >/dev/null
@@ -116,7 +118,8 @@ jobs:
           test "$PACKAGE" = "space.pamoja.afcon360.user"
           test -n "$TARGET" && test "$TARGET" -ge 36
           echo "Verified User APK package=$PACKAGE targetSdkVersion=$TARGET"
-          unzip -l "$FINAL_APK" | grep -q 'classes.dex'
+          unzip -l "$FINAL_APK" > "$RUNNER_TEMP/user-apk-contents.txt"
+          grep -q 'classes.dex' "$RUNNER_TEMP/user-apk-contents.txt"
 
       - name: Prebuild Driver Android project
         working-directory: mobile
@@ -158,7 +161,8 @@ jobs:
           test "$PACKAGE" = "space.pamoja.afcon360.driver"
           test -n "$TARGET" && test "$TARGET" -ge 36
           echo "Verified Driver APK package=$PACKAGE targetSdkVersion=$TARGET"
-          unzip -l "$FINAL_APK" | grep -q 'classes.dex'
+          unzip -l "$FINAL_APK" > "$RUNNER_TEMP/driver-apk-contents.txt"
+          grep -q 'classes.dex' "$RUNNER_TEMP/driver-apk-contents.txt"
 
       - name: Stage preview APKs and checksums
         run: |
