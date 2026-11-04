@@ -19,9 +19,10 @@ def enrich_driver_offers_with_home_currency(
 ) -> List[Dict[str, Any]]:
     """Add indicative display amounts using the driver's operating-market currency.
 
-    The driver's persisted Wallet home currency is used only when no supported
-    operating country is declared. The base offer amount/currency remains
-    authoritative. Missing/stale FX falls back to the original currency.
+    A declared, supported operating country controls the display currency.
+    If no operating country is recorded, keep the original fare currency;
+    never infer a driver's operating market from nationality or Wallet currency.
+    Missing/stale FX also falls back to the original fare currency.
     """
     rows = list(offers or [])
     if not rows or driver_profile is None:
@@ -31,13 +32,9 @@ def enrich_driver_offers_with_home_currency(
         user = getattr(driver_profile, "user", None)
         if user is None:
             return rows
-        from app.wallet.services.home_currency_service import (
-            get_user_home_currency,
-            home_currency_for_country,
-        )
+        from app.wallet.services.home_currency_service import home_currency_for_country
         from app.wallet.services.display_fx_service import build_display_amount
 
-        wallet_home_currency = get_user_home_currency(user)
         metadata = getattr(driver_profile, "driver_metadata", None) or {}
         if not isinstance(metadata, dict):
             metadata = {}
@@ -45,9 +42,8 @@ def enrich_driver_offers_with_home_currency(
             metadata.get("operating_country_code") or ""
         ).strip().upper() or None
         operating_currency = home_currency_for_country(operating_country_code)
-        display_currency = operating_currency or wallet_home_currency
         display_currency_basis = (
-            "operating_country" if operating_currency else "wallet_home_currency"
+            "operating_country" if operating_currency else "fare_currency"
         )
     except Exception:
         logger.warning(
@@ -63,6 +59,7 @@ def enrich_driver_offers_with_home_currency(
         if isinstance(fare, dict) and fare.get("amount") is not None:
             base_currency = str(fare.get("currency") or "USD").upper()
             try:
+                display_currency = operating_currency or base_currency
                 display_fields = build_display_amount(
                     fare.get("amount"), base_currency, display_currency
                 )
@@ -70,7 +67,6 @@ def enrich_driver_offers_with_home_currency(
                     **fare,
                     **display_fields,
                     "operating_currency": operating_currency,
-                    "wallet_home_currency": wallet_home_currency,
                     "operating_country_code": operating_country_code,
                     "operating_country_verified": bool(
                         metadata.get("operating_country_verified")
@@ -79,10 +75,9 @@ def enrich_driver_offers_with_home_currency(
                     "display_label": (
                         "Indicative operating-market gross fare estimate"
                         if display_currency_basis == "operating_country"
-                        else "Indicative Wallet-home gross fare estimate"
+                        else "Gross fare estimate — operating country not set; base fare currency shown"
                     ),
                 }
-                item["home_currency"] = wallet_home_currency
                 item["display_currency_basis"] = display_currency_basis
                 item["operating_country_code"] = operating_country_code
             except Exception:
