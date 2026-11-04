@@ -160,7 +160,9 @@ def send_registration_reminders(
             )
             sent[reminder_key] += 1
 
-        if len(bookings) >= batch_size:
+        if bookings:
+            # Advance even when this category has fewer than one full page;
+            # another category may be the one requiring continuation.
             next_cursors[reminder_key] = bookings[-1].id
 
     continuation_queued = any(
