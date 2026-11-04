@@ -302,7 +302,7 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     
                     <div style="margin-bottom: 24px;">
-                        <label class="form-label">Primary Account Currency</label>
+                        <label class="form-label">Your Wallet Home Currency</label>
                         <select name="currency" class="form-select" required>
                             <option value="UGX" {% if default_currency == 'UGX' %}selected{% endif %}>UGX — Ugandan Shilling</option>
                             <option value="USD" {% if default_currency == 'USD' %}selected{% endif %}>USD — US Dollar</option>
