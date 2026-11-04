@@ -8,6 +8,9 @@ on:
     paths:
       - "mobile/apps/**"
       - "mobile/packages/**"
+      - "mobile/docs/**"
+      - "mobile/README.md"
+      - "mobile/AGENTS.md"
       - "mobile/package.json"
       - "mobile/pnpm-lock.yaml"
       - "mobile/pnpm-workspace.yaml"
@@ -19,6 +22,9 @@ on:
     paths:
       - "mobile/apps/**"
       - "mobile/packages/**"
+      - "mobile/docs/**"
+      - "mobile/README.md"
+      - "mobile/AGENTS.md"
       - "mobile/package.json"
       - "mobile/pnpm-lock.yaml"
       - "mobile/pnpm-workspace.yaml"
@@ -93,9 +99,9 @@ jobs:
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort | tail -n 1)"
           if [ -z "$SDKMANAGER" ]; then echo "Android sdkmanager not found"; exit 1; fi
           yes | "$SDKMANAGER" --licenses >/dev/null
-          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
+          "$SDKMANAGER" "platform-tools" "platforms;android-37" "build-tools;37.0.0" "ndk;27.1.12297006"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
-          echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/build-tools/37.0.0" >> "$GITHUB_PATH"
 
       - name: Load stable internal preview signing key
         run: |
@@ -169,61 +175,14 @@ jobs:
           apksigner verify --verbose "$FINAL_APK"
           BADGING="$(aapt dump badging "$FINAL_APK")"
           PACKAGE="$(printf '%s\n' "$BADGING" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -n 1)"
+          MINIMUM="$(printf '%s\n' "$BADGING" | sed -n "s/.*sdkVersion:'\([0-9]*\)'.*/\1/p" | head -n 1)"
           TARGET="$(printf '%s\n' "$BADGING" | sed -n "s/.*targetSdkVersion:'\([0-9]*\)'.*/\1/p" | head -n 1)"
           test "$PACKAGE" = "$EXPECTED_PACKAGE"
+          test "$MINIMUM" = "24"
           test -n "$TARGET" && test "$TARGET" -ge 36
-          echo "Verified $APP APK package=$PACKAGE targetSdkVersion=$TARGET"
+          echo "Verified $APP APK package=$PACKAGE minSdkVersion=$MINIMUM targetSdkVersion=$TARGET"
           unzip -l "$FINAL_APK" > "$RUNNER_TEMP/$APP-apk-contents.txt"
           grep -q 'classes.dex' "$RUNNER_TEMP/$APP-apk-contents.txt"
-
-      - name: Install and launch APK on Android 16 emulator
-        uses: reactivecircus/android-emulator-runner@v2.38.0
-        with:
-          api-level: 36
-          target: google_apis
-          arch: x86_64
-          profile: pixel_7
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          disable-animations: true
-          emulator-boot-timeout: 600
-          script: |
-            set -eu
-            APK="$GITHUB_WORKSPACE/mobile/release/$APP-preview.apk"
-            test -s "$APK"
-
-            adb wait-for-device
-            adb logcat -c
-
-            if ! adb install -r "$APK"; then
-              echo "::error::Android Package Manager rejected the $APP APK."
-              echo "::group::Recent Android install diagnostics"
-              adb logcat -d -t 2500 | tail -n 500 || true
-              echo "::endgroup::"
-              exit 1
-            fi
-
-            adb shell monkey -p "$EXPECTED_PACKAGE" -c android.intent.category.LAUNCHER 1
-
-            started=0
-            for attempt in $(seq 1 12); do
-              if adb shell pidof "$EXPECTED_PACKAGE" >/dev/null 2>&1; then
-                started=1
-                break
-              fi
-              sleep 5
-            done
-
-            if [ "$started" -ne 1 ]; then
-              echo "::error::The $APP app installed but did not remain running after launch."
-              echo "::group::Recent Android launch diagnostics"
-              adb logcat -d -t 2500 | tail -n 500 || true
-              adb shell dumpsys activity activities || true
-              echo "::endgroup::"
-              exit 1
-            fi
-
-            echo "Android emulator installed and launched $APP ($EXPECTED_PACKAGE) successfully."
-            adb shell dumpsys activity activities | grep -F "$EXPECTED_PACKAGE" || true
 
       - name: Upload verified app APK
         uses: actions/upload-artifact@v7
@@ -233,10 +192,217 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  android-compatibility:
+    name: Android API ${{ matrix.api-level }} / ${{ matrix.app }} install and launch
+    needs: build-preview-apk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: user
+            package: space.pamoja.afcon360.user
+            api-level: 24
+          - app: user
+            package: space.pamoja.afcon360.user
+            api-level: 29
+          - app: user
+            package: space.pamoja.afcon360.user
+            api-level: 33
+          - app: user
+            package: space.pamoja.afcon360.user
+            api-level: 36
+          - app: driver
+            package: space.pamoja.afcon360.driver
+            api-level: 24
+          - app: driver
+            package: space.pamoja.afcon360.driver
+            api-level: 29
+          - app: driver
+            package: space.pamoja.afcon360.driver
+            api-level: 33
+          - app: driver
+            package: space.pamoja.afcon360.driver
+            api-level: 36
+    env:
+      APP: ${{ matrix.app }}
+      EXPECTED_PACKAGE: ${{ matrix.package }}
+    steps:
+      - name: Download signed APK
+        uses: actions/download-artifact@v8
+        with:
+          name: afcon360-${{ matrix.app }}-preview-apk
+          path: release
+
+      - name: Install and launch on Android API ${{ matrix.api-level }}
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: |
+            set -eu
+            APK="$GITHUB_WORKSPACE/release/$APP-preview.apk"
+            test -s "$APK"
+
+            adb wait-for-device
+            adb logcat -c
+            if ! adb install "$APK"; then
+              echo "::error::Android Package Manager rejected $APP on API ${{ matrix.api-level }}."
+              echo "::group::Install diagnostics"
+              adb logcat -d -t 2500 | tail -n 500 || true
+              echo "::endgroup::"
+              exit 1
+            fi
+
+            if ! adb shell monkey -p "$EXPECTED_PACKAGE" -c android.intent.category.LAUNCHER 1; then
+              echo "::error::Android could not launch $APP on API ${{ matrix.api-level }}."
+              adb logcat -d -t 2500 | tail -n 500 || true
+              exit 1
+            fi
+
+            started=0
+            attempt=1
+            while [ "$attempt" -le 12 ]; do
+              if adb shell ps | grep -F "$EXPECTED_PACKAGE" >/dev/null 2>&1; then
+                started=1
+                break
+              fi
+              sleep 5
+              attempt=$((attempt + 1))
+            done
+
+            if [ "$started" -ne 1 ]; then
+              echo "::error::The $APP app installed but did not stay running on API ${{ matrix.api-level }}."
+              echo "::group::Launch diagnostics"
+              adb logcat -d -t 2500 | tail -n 500 || true
+              adb shell dumpsys activity activities || true
+              echo "::endgroup::"
+              exit 1
+            fi
+
+            echo "PASS: $APP installed and launched on Android API ${{ matrix.api-level }}."
+            adb shell getprop ro.build.version.release
+            adb shell getprop ro.build.version.sdk
+
+  ios-compatibility:
+    name: iOS 16.4 minimum / current simulator / ${{ matrix.app }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: user
+            bundle-id: space.pamoja.afcon360.user
+          - app: driver
+            bundle-id: space.pamoja.afcon360.driver
+    env:
+      APP: ${{ matrix.app }}
+      EXPECTED_BUNDLE_ID: ${{ matrix.bundle-id }}
+      EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.13.1"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.4
+          run_install: false
+
+      - name: Confirm supported Xcode toolchain
+        run: |
+          xcodebuild -version
+          XCODE_VERSION="$(xcodebuild -version | awk '/^Xcode / {print $2; exit}')"
+          XCODE_MAJOR="${XCODE_VERSION%%.*}"
+          test "$XCODE_MAJOR" -ge 26
+
+      - name: Install app workspace dependencies
+        working-directory: mobile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Check Expo dependency compatibility
+        working-directory: mobile
+        run: pnpm --filter "@afcon360/${{ matrix.app }}-app" exec expo install --check
+
+      - name: Generate native iOS project and install Pods
+        working-directory: mobile
+        run: pnpm --filter "@afcon360/${{ matrix.app }}-app" exec expo prebuild --platform ios --clean
+
+      - name: Build, install and launch on current iOS simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          IOS_DIR="$GITHUB_WORKSPACE/mobile/apps/$APP/ios"
+          WORKSPACE="$(find "$IOS_DIR" -maxdepth 2 -type d -name '*.xcworkspace' ! -path '*/Pods/*' -print -quit)"
+          test -n "$WORKSPACE"
+
+          SCHEME="$(xcodebuild -list -json -workspace "$WORKSPACE" | node -e '
+            let input = "";
+            process.stdin.on("data", chunk => input += chunk);
+            process.stdin.on("end", () => {
+              const data = JSON.parse(input);
+              const schemes = data.workspace && data.workspace.schemes || [];
+              if (!schemes.length) process.exit(2);
+              process.stdout.write(schemes[0]);
+            });
+          ')"
+          test -n "$SCHEME"
+
+          SIMULATOR_UDID="$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          candidates = []
+          for runtime, devices in data.get("devices", {}).items():
+              if "SimRuntime.iOS-26-4" not in runtime:
+                  continue
+              for device in devices:
+                  if device.get("isAvailable") and device.get("name", "").startswith("iPhone"):
+                      candidates.append(device["udid"])
+          if not candidates:
+              raise SystemExit("No available iOS 26.4 iPhone simulator found on macos-26.")
+          print(candidates[0])
+          ')"
+
+          xcrun simctl boot "$SIMULATOR_UDID"
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+
+          DERIVED_DATA="$RUNNER_TEMP/afcon360-ios-derived-data"
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+          APP_PATH="$(find "$DERIVED_DATA/Build/Products/Debug-iphonesimulator" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          MIN_IOS="$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP_PATH/Info.plist")"
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")"
+          test "$MIN_IOS" = "16.4"
+          test "$BUNDLE_ID" = "$EXPECTED_BUNDLE_ID"
+
+          xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH"
+          xcrun simctl launch "$SIMULATOR_UDID" "$EXPECTED_BUNDLE_ID"
+          echo "PASS: $APP installed and launched on iOS 26.4; deployment minimum is iOS $MIN_IOS."
+
   publish-preview:
     name: Publish verified User and Driver APKs
-    needs: build-preview-apk
-    if: needs.build-preview-apk.result == 'success' && github.event_name != 'pull_request'
+    needs: [build-preview-apk, android-compatibility, ios-compatibility]
+    if: needs.build-preview-apk.result == 'success' && needs.android-compatibility.result == 'success' && needs.ios-compatibility.result == 'success' && github.event_name != 'pull_request'
     # Keep preview publication on Ubuntu 24.04 until Ubuntu 26.04 is validated.
     runs-on: ubuntu-24.04
     timeout-minutes: 10
