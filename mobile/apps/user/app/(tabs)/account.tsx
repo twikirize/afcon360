@@ -1,5 +1,6 @@
 import React from "react";
 import { Alert, Share, Text } from "react-native";
+import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
 import { AppScreen, PageHeader, Panel, SectionTitle, ServiceTile, StatusPill, ActionButton, palette } from "@afcon360/mobile-ui";
 import { useAuth } from "../../src/auth/AuthProvider";
@@ -7,9 +8,9 @@ import { useAuth } from "../../src/auth/AuthProvider";
 export default function Account() {
   const router = useRouter();
   const { user, logout } = useAuth();
-  const share = async () => {
-    try { await Share.share({ message: "AFCON360 — travel, transport, stays and experiences across East Africa: https://www.pamoja.space/apps", url: "https://www.pamoja.space/apps" }); }
-    catch { Alert.alert("Share unavailable", "Copy this link: https://www.pamoja.space/apps"); }
+  const share = async (url: string, message: string) => {
+    try { await Share.share({ message, url }); }
+    catch { Alert.alert("Share unavailable", "Copy this link: " + url); }
   };
   return <AppScreen>
     <PageHeader eyebrow="Account" title="Your AFCON360 identity." description="Your account, roles and verification state are owned by AFCON360 identity services." />
@@ -19,7 +20,9 @@ export default function Account() {
       <Text style={{ color: palette.muted, fontSize: 12 }}>{user?.email ?? ""}</Text>
       <ServiceTile title="Identity and verification" description="Profile and KYC status are returned by AFCON360 Identity." symbol="✓" />
       <ServiceTile title="Secure device session" description="Access credentials are kept in the device secure store and can be revoked by signing out." symbol="🔐" />
-      <ActionButton label="Share AFCON360" onPress={share} />
+      <ActionButton label="Share AFCON360 app page" onPress={() => share("https://www.pamoja.space/apps", "AFCON360 — official app information and downloads.")} />
+      <ActionButton label="Share Android User APK" onPress={() => share("https://github.com/twikirize/afcon360/releases/download/mobile-preview/AFCON360-User-preview.apk", "AFCON360 User internal Android preview APK. Install only as a test build.")} />
+      <ActionButton label="Privacy notice" onPress={() => WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")} />
       <ActionButton label="Delete AFCON360 account" onPress={() => router.push("/delete-account")} />
       <ActionButton label="Sign out" onPress={() => Alert.alert("Sign out", "Sign out of AFCON360 on this device?", [{ text: "Cancel", style: "cancel" }, { text: "Sign out", onPress: () => logout().then(() => router.replace("/login")).catch(() => router.replace("/login")) }])} />
     </Panel>

@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}AFCON360 Apps — Mobile{% endblock %}
+{% block title %}AFCON360 Apps — User and Driver{% endblock %}
 
 {% block styles %}
 <style nonce="{{ csp_nonce }}">
   .mobile-apps-page { max-width: 1080px; margin: 0 auto; padding: 38px 18px 56px; }
-  .mobile-apps-hero { text-align: center; max-width: 760px; margin: 0 auto 32px; }
+  .mobile-apps-hero { text-align: center; max-width: 780px; margin: 0 auto 32px; }
   .mobile-apps-kicker { color: #087a4b; font-weight: 800; letter-spacing: .14em; font-size: .75rem; text-transform: uppercase; }
   .mobile-apps-hero h1 { margin: 10px 0; font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 800; }
   .mobile-apps-hero p { color: var(--text-secondary, #68776f); line-height: 1.7; }
@@ -15,39 +15,108 @@
   .mobile-app-card p { color: var(--text-secondary, #68776f); line-height: 1.65; }
   .mobile-app-mark { width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; background: #e5f3eb; color: #075c39; font-size: 1.4rem; font-weight: 900; }
   .mobile-app-status { display: inline-block; border-radius: 999px; padding: 7px 11px; background: #fff4d9; color: #815500; font-size: .75rem; font-weight: 800; }
-  .mobile-app-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
-  .mobile-app-links a { display: inline-block; border-radius: 10px; padding: 10px 14px; background: #087a4b; color: #fff; font-weight: 700; text-decoration: none; }
+  .mobile-app-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; align-items: center; }
+  .mobile-app-links a, .mobile-app-links button { display: inline-block; border: 0; border-radius: 10px; padding: 10px 14px; background: #087a4b; color: #fff; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
+  .mobile-app-links .secondary { background: #e5f3eb; color: #075c39; }
+  .mobile-app-store { display: inline-block; margin-top: 12px; color: var(--text-secondary, #68776f); font-size: .85rem; }
   .mobile-app-note { margin-top: 22px; padding: 18px; border-radius: 14px; background: var(--bg-surface-alt, #f0f4f1); color: var(--text-secondary, #58675f); line-height: 1.65; }
+  .mobile-app-note a { color: #075c39; font-weight: 700; }
   @media (max-width: 680px) { .mobile-apps-grid { grid-template-columns: 1fr; } .mobile-apps-page { padding-top: 24px; } }
 </style>
 {% endblock %}
 
 {% block content %}
 <section class="mobile-apps-page">
+  {% set app_page_url = request.url_root.rstrip('/') + '/apps' %}
+  {% set user_apk = 'https://github.com/twikirize/afcon360/releases/download/mobile-preview/AFCON360-User-preview.apk' %}
+  {% set driver_apk = 'https://github.com/twikirize/afcon360/releases/download/mobile-preview/AFCON360-Driver-preview.apk' %}
+  {% set user_play = config.get('AFCON360_USER_PLAY_STORE_URL') %}
+  {% set user_ios = config.get('AFCON360_USER_APP_STORE_URL') %}
+  {% set driver_play = config.get('AFCON360_DRIVER_PLAY_STORE_URL') %}
+  {% set driver_ios = config.get('AFCON360_DRIVER_APP_STORE_URL') %}
   <header class="mobile-apps-hero">
     <div class="mobile-apps-kicker">One platform · Every journey</div>
     <h1>AFCON360 in your pocket.</h1>
-    <p>Dedicated mobile experiences for customers and drivers, connected to the same trusted AFCON360 platform.</p>
+    <p>Choose the customer app or the dedicated driver app. Download an Android preview, share its link, or use the official store listing when it is published.</p>
+    <div class="mobile-app-links" style="justify-content:center">
+      <button type="button" class="secondary" data-share-url="{{ app_page_url }}" data-share-title="AFCON360 Apps">Share app page</button>
+    </div>
   </header>
+
   <div class="mobile-apps-grid">
     <article class="mobile-app-card">
       <div class="mobile-app-mark" aria-hidden="true">360</div>
       <h2>AFCON360 User</h2>
       <p>Book transport, discover stays and experiences, follow your activity and access your AFCON360 wallet.</p>
-      <span class="mobile-app-status">Android and iPhone · In development</span>
-      <div class="mobile-app-links"><a href="/user/dashboard">Open user web experience</a></div>
+      <span class="mobile-app-status">Android internal preview · Not a Play Store release</span>
+      <div class="mobile-app-links">
+        <a href="{{ user_apk }}">Download User APK</a>
+        <button type="button" class="secondary" data-share-url="{{ user_apk }}" data-share-title="AFCON360 User APK">Share APK link</button>
+      </div>
+      {% if user_play %}<a class="mobile-app-store" href="{{ user_play }}">Google Play listing</a>{% else %}<span class="mobile-app-store">Google Play listing: pending publishing</span>{% endif %}
+      {% if user_ios %}<span> · </span><a class="mobile-app-store" href="{{ user_ios }}">Apple App Store listing</a>{% else %}<span class="mobile-app-store">Apple App Store listing: pending publishing</span>{% endif %}
+      <div class="mobile-app-links"><a class="secondary" href="/user/dashboard">Open user web experience</a></div>
     </article>
+
     <article class="mobile-app-card">
       <div class="mobile-app-mark" aria-hidden="true">↗</div>
       <h2>AFCON360 Driver</h2>
       <p>A focused driver workspace for availability, ride offers, trip operations, vehicle details and earnings.</p>
-      <span class="mobile-app-status">Android and iPhone · In development</span>
-      <div class="mobile-app-links"><a href="/transport/driver-dashboard">Open driver web app</a></div>
+      <span class="mobile-app-status">Android internal preview · Not a Play Store release</span>
+      <div class="mobile-app-links">
+        <a href="{{ driver_apk }}">Download Driver APK</a>
+        <button type="button" class="secondary" data-share-url="{{ driver_apk }}" data-share-title="AFCON360 Driver APK">Share APK link</button>
+      </div>
+      {% if driver_play %}<a class="mobile-app-store" href="{{ driver_play }}">Google Play listing</a>{% else %}<span class="mobile-app-store">Google Play listing: pending publishing</span>{% endif %}
+      {% if driver_ios %}<span> · </span><a class="mobile-app-store" href="{{ driver_ios }}">Apple App Store listing</a>{% else %}<span class="mobile-app-store">Apple App Store listing: pending publishing</span>{% endif %}
+      <div class="mobile-app-links"><a class="secondary" href="/transport/driver-dashboard">Open driver web app</a></div>
     </article>
   </div>
+
   <div class="mobile-app-note">
-    <strong>Store downloads are not published yet.</strong>
-    Official Google Play and Apple App Store links will be added after the native apps pass device testing, security review and store approval. Until then, existing web experiences remain available.
+    <strong>APK note:</strong> these are internal Android preview links, not store releases. Android may ask you to allow installation from the download source. An APK cannot be installed on an iPhone. Production Android publishing uses a signed AAB; iPhone publishing uses a separately signed iOS build.
+    <br />
+    <a href="/apps/privacy">Read the working privacy notice draft</a> · <a href="/support">Support</a>
   </div>
 </section>
+
+<script nonce="{{ csp_nonce }}">
+(function () {
+  function fallbackCopy(url) {
+    var helper = document.createElement("textarea");
+    helper.value = url;
+    helper.setAttribute("readonly", "");
+    helper.style.position = "absolute";
+    helper.style.left = "-9999px";
+    document.body.appendChild(helper);
+    helper.select();
+    var copied = false;
+    try { copied = document.execCommand("copy"); } catch (_) {}
+    document.body.removeChild(helper);
+    window.alert(copied ? "Link copied. Paste it into WhatsApp or any chat." : url);
+  }
+  document.querySelectorAll("[data-share-url]").forEach(function (button) {
+    button.addEventListener("click", async function () {
+      var url = button.getAttribute("data-share-url");
+      var title = button.getAttribute("data-share-title") || "AFCON360";
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: title, text: "Get AFCON360: " + title, url: url });
+          return;
+        } catch (error) {
+          if (error && error.name === "AbortError") return;
+        }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+          await navigator.clipboard.writeText(url);
+          window.alert("Link copied. Paste it into WhatsApp or any chat.");
+          return;
+        } catch (_) {}
+      }
+      fallbackCopy(url);
+    });
+  });
+})();
+</script>
 {% endblock %}
