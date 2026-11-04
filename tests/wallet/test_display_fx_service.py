@@ -131,3 +131,23 @@ def test_tzs_keeps_two_minor_unit_decimal_places(app, monkeypatch):
 
     assert result["display_amount"] == 2500.25
     assert result["display_currency"] == "TZS"
+
+def test_provider_failure_is_negative_cached_for_vehicle_option_batch(app, monkeypatch):
+    display_fx_service._clear_process_cache_for_tests()
+    calls = []
+
+    def failed_get(url, timeout):
+        calls.append(url)
+        raise OSError("provider unavailable")
+
+    monkeypatch.setattr(display_fx_service.requests, "get", failed_get)
+    with app.app_context():
+        first = display_fx_service.build_display_amount(10, "USD", "KES")
+        second = display_fx_service.build_display_amount(20, "USD", "KES")
+
+    assert len(calls) == 1
+    assert first["display_currency"] == "USD"
+    assert second["display_currency"] == "USD"
+    assert first["display_amount"] == 10.0
+    assert second["display_amount"] == 20.0
+    assert first["display_is_approximate"] is False
