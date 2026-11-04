@@ -334,37 +334,29 @@ def expire_pending_registrations(
                 f"released {len(capacity_released)} capacity buckets"
             )
 
-            continuation_queued = False
-            if len(expired_registrations) >= batch_size:
-                try:
-                    self.apply_async(
-                        kwargs={
-                            "batch_size": batch_size,
-                            "after_registration_id": expired_registrations[-1].id,
-                        },
-                        countdown=5,
-                    )
-                    continuation_queued = True
-                except Exception:
-                    logger.exception(
-                        "Could not schedule the next pending-registration batch"
-                    )
+        continuation_queued = False
+        if len(expired_registrations) >= batch_size:
+            try:
+                self.apply_async(
+                    kwargs={
+                        "batch_size": batch_size,
+                        "after_registration_id": expired_registrations[-1].id,
+                    },
+                    countdown=5,
+                )
+                continuation_queued = True
+            except Exception:
+                logger.exception(
+                    "Could not schedule the next pending-registration batch"
+                )
 
-            return {
-                'expired_count': expired_count,
-                'capacity_released': capacity_released,
-                'batch_size': batch_size,
-                'continuation_queued': continuation_queued,
-                'timestamp': datetime.now(timezone.utc).isoformat(),
-            }
-
-            return {
-            'expired_count': 0,
-            'capacity_released': {},
-            'batch_size': batch_size,
-            'continuation_queued': False,
+        return {
+            "expired_count": expired_count,
+            "capacity_released": capacity_released,
+            "batch_size": batch_size,
+            "continuation_queued": continuation_queued,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-
 
 @celery_app.task(
     bind=True,
