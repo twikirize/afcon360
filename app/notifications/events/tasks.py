@@ -179,6 +179,7 @@ def cleanup_ledger_task(
     trimmed far more aggressively (30 days) since the ledger is the durable
     record — the outbox is only a staging queue.
     """
+    batch = max(1, min(int(batch), 500))
     t0 = time.monotonic()
     def _run():
         from .models import DomainEvent, EventStatus, OutboxEvent, OutboxStatus, ProcessedEvent
@@ -213,7 +214,25 @@ def cleanup_ledger_task(
 
         logger.info('Ledger cleanup: %s', removed)
         _heartbeat("events.cleanup_ledger", t0, **removed)
-        return removed
+
+        continuation_queued = any(count >= batch for count in removed.values())
+        if continuation_queued:
+            try:
+                self.apply_async(
+                    kwargs={"retention_days": retention_days, "batch": batch},
+                    countdown=5,
+                )
+            except Exception:
+                logger.exception(
+                    "Could not schedule the next event-ledger cleanup batch"
+                )
+                continuation_queued = False
+
+        return {
+            **removed,
+            "batch_size": batch,
+            "continuation_queued": continuation_queued,
+        }
 
     return _with_app(_run)
 
