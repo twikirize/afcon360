@@ -62,3 +62,9 @@ def test_nationality_is_not_used_as_missing_residence(app, monkeypatch):
         assert home_currency_service.resolve_home_currency(
             SimpleNamespace(id=1)
         ) == "USD"
+
+def test_operating_country_maps_to_supported_market_currency():
+    assert home_currency_service.home_currency_for_country("KE") == "KES"
+    assert home_currency_service.home_currency_for_country("Uganda") == "UGX"
+    assert home_currency_service.home_currency_for_country("TZ") == "TZS"
+    assert home_currency_service.home_currency_for_country("Unknown") is None
