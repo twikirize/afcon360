@@ -35,6 +35,42 @@ export function AuthField(props: TextInputProps & { label: string }) {
   );
 }
 
+export function AuthPasswordField({
+  label,
+  visible,
+  onToggle,
+  ...inputProps
+}: TextInputProps & {
+  label: string;
+  visible: boolean;
+  onToggle(): void;
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.passwordWrap}>
+        <TextInput
+          {...inputProps}
+          accessibilityLabel={label}
+          placeholderTextColor={palette.muted}
+          secureTextEntry={!visible}
+          style={[styles.input, styles.passwordInput, inputProps.style]}
+        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={visible ? "Hide password" : "Show password"}
+          accessibilityState={{ selected: visible }}
+          hitSlop={10}
+          onPress={onToggle}
+          style={styles.passwordToggle}
+        >
+          <Text style={styles.passwordToggleText}>{visible ? "Hide" : "Show"}</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 export function AuthSubmit({
   label,
   loading,
@@ -76,6 +112,10 @@ const styles = StyleSheet.create({
     minHeight: 52, borderWidth: 1, borderColor: palette.border, borderRadius: 13,
     backgroundColor: palette.surface, paddingHorizontal: 14, color: palette.ink, fontSize: 15
   },
+  passwordWrap: { position: "relative", justifyContent: "center" },
+  passwordInput: { paddingRight: 76 },
+  passwordToggle: { position: "absolute", right: 13, minHeight: 42, justifyContent: "center", paddingHorizontal: 5 },
+  passwordToggleText: { color: palette.greenDark, fontSize: 13, fontWeight: "800" },
   submit: { minHeight: 52, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: palette.green, paddingHorizontal: 18 },
   disabled: { backgroundColor: "#9AA9A0" },
   pressed: { opacity: 0.85 },
