@@ -1,7 +1,9 @@
-"""Driver-facing home-currency presentation for Transport offers.
+"""Driver-facing operating-market currency presentation for Transport offers.
 
-This service only adds display fields. It never rewrites the signed fare,
-request amount, Wallet invoice, driver earnings, or settlement denomination.
+The declared driver operating country is preferred for offer display. The
+persisted Wallet home currency is the fallback for legacy profiles without an
+operating-country declaration. This only adds display fields: it never rewrites
+the signed fare, request amount, Wallet invoice, earnings, or settlement.
 """
 from __future__ import annotations
 
@@ -15,10 +17,11 @@ def enrich_driver_offers_with_home_currency(
     offers: Iterable[Dict[str, Any]],
     driver_profile: Any,
 ) -> List[Dict[str, Any]]:
-    """Add indicative display amounts using the driver's existing Wallet currency.
+    """Add indicative display amounts using the driver's operating-market currency.
 
-    The base offer amount/currency remains authoritative. When FX is missing or
-    stale, the original amount/currency is shown and offers still render.
+    The driver's persisted Wallet home currency is used only when no supported
+    operating country is declared. The base offer amount/currency remains
+    authoritative. Missing/stale FX falls back to the original currency.
     """
     rows = list(offers or [])
     if not rows or driver_profile is None:
@@ -70,7 +73,11 @@ def enrich_driver_offers_with_home_currency(
                     "wallet_home_currency": wallet_home_currency,
                     "operating_country_code": operating_country_code,
                     "display_currency_basis": display_currency_basis,
-                    "display_label": "Indicative gross fare estimate",
+                    "display_label": (
+                        "Indicative operating-market gross fare estimate"
+                        if display_currency_basis == "operating_country"
+                        else "Indicative Wallet-home gross fare estimate"
+                    ),
                 }
                 item["home_currency"] = wallet_home_currency
                 item["display_currency_basis"] = display_currency_basis
