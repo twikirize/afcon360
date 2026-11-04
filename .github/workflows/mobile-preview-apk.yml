@@ -379,10 +379,7 @@ jobs:
           test -r /dev/kvm
           test -w /dev/kvm
 
-          EMULATOR="${ANDROID_HOME:-/usr/local/lib/android/sdk}/emulator/emulator"
-          test -x "$EMULATOR"
-          "$EMULATOR" -accel-check
-          echo "KVM is accessible and Android Emulator acceleration is available."
+          echo "KVM device permissions are verified. The emulator action will install the SDK and launch with hardware acceleration required."
 
       - name: Install and launch on Android API ${{ matrix.api-level }}
         uses: reactivecircus/android-emulator-runner@v2.38.0
@@ -391,7 +388,7 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_7
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
           disable-animations: true
           emulator-boot-timeout: 600
           # Keep this as one command: android-emulator-runner executes each script line in a new shell.
