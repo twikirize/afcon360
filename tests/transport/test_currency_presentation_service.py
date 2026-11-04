@@ -2,7 +2,7 @@
 from types import SimpleNamespace
 
 from app.transport.services import currency_presentation_service
-from app.wallet.services import display_fx_service, home_currency_service
+from app.wallet.services import display_fx_service
 
 
 def test_driver_without_operating_country_keeps_base_fare_currency(monkeypatch):
