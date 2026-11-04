@@ -71,14 +71,15 @@ def _driver_wizard_data(include_step3_vehicle=True):
             "licence_class": "B",
         },
     }
+    data["step3"] = {"operating_country_code": "UG"}
     if include_step3_vehicle:
-        data["step3"] = {
+        data["step3"].update({
             "vehicle_make": "Toyota",
             "vehicle_model": "Corolla",
             "vehicle_year": "2020",
             "plate_number": f"UAY{uuid.uuid4().hex[:4].upper()}",
             "vehicle_type": "sedan",
-        }
+        })
     return data
 
 
