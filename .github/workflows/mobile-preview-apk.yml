@@ -96,10 +96,11 @@ jobs:
         include:
           # Phase 1: isolate the User Android application.
           - app: user
-            package: space.pamoja.afcon360.user
+            package: space.pamoja.afcon360.user.preview
     env:
       APP: ${{ matrix.app }}
       EXPECTED_PACKAGE: ${{ matrix.package }}
+      AFCON360_PREVIEW_BUILD: "true"
       EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
     steps:
       - name: Check out source
@@ -281,16 +282,16 @@ jobs:
         include:
           # Reconfirm the complete supported Android matrix against the verified User APK.
           - app: user
-            package: space.pamoja.afcon360.user
+            package: space.pamoja.afcon360.user.preview
             api-level: 24
           - app: user
-            package: space.pamoja.afcon360.user
+            package: space.pamoja.afcon360.user.preview
             api-level: 29
           - app: user
-            package: space.pamoja.afcon360.user
+            package: space.pamoja.afcon360.user.preview
             api-level: 33
           - app: user
-            package: space.pamoja.afcon360.user
+            package: space.pamoja.afcon360.user.preview
             api-level: 36
     env:
       APP: ${{ matrix.app }}
@@ -373,7 +374,7 @@ jobs:
     timeout-minutes: 15
     env:
       APP: user
-      EXPECTED_PACKAGE: space.pamoja.afcon360.user
+      EXPECTED_PACKAGE: space.pamoja.afcon360.user.preview
     steps:
       - name: Download the exact APK selected for this validation run
         uses: actions/download-artifact@v8
