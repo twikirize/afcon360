@@ -18,7 +18,7 @@ SUPPORTED_HOME_CURRENCIES = frozenset({
 })
 
 # Country-of-residence defaults. ISO country codes and common profile country
-# names are accepted. Country takes precedence over nationality.
+# names are accepted. Nationality is not a residence signal.
 COUNTRY_HOME_CURRENCY = {
     "UG": "UGX",
     "UGANDA": "UGX",
@@ -94,9 +94,9 @@ def resolve_home_currency(
 ) -> str:
     """Resolve the first Wallet's home currency.
 
-    An explicit selection is validated and wins. Otherwise use the user's
-    profile country, then nationality as a legacy fallback, then the
-    configured platform default (USD unless explicitly configured).
+    An explicit Wallet home-currency choice is validated and wins. Otherwise
+    use the user's declared profile country of residence, then the configured
+    platform default. Nationality is deliberately never used as residence.
     """
     if requested_currency not in (None, ""):
         return validate_home_currency(requested_currency)
@@ -106,12 +106,6 @@ def resolve_home_currency(
         country_currency = _country_currency(getattr(profile, "country", None))
         if country_currency:
             return validate_home_currency(country_currency)
-
-        nationality_currency = _country_currency(
-            getattr(profile, "nationality", None)
-        )
-        if nationality_currency:
-            return validate_home_currency(nationality_currency)
 
     configured_default = current_app.config.get(
         "WALLET_DEFAULT_HOME_CURRENCY", "USD"
