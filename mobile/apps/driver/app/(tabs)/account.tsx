@@ -9,7 +9,7 @@ export default function DriverAccount() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const share = async (url: string, message: string) => {
-    try { await Share.share({ message, url }); }
+    try { await Share.share({ message: message + " " + url, url }); }
     catch { Alert.alert("Share unavailable", "Copy this link: " + url); }
   };
   return <AppScreen>
