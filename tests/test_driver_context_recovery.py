@@ -7,6 +7,7 @@ session. Operational go-live permissions remain independent.
 """
 
 import uuid
+from html.parser import HTMLParser
 
 
 def _seed_driver(app, tier="PLATFORM_VERIFIED"):
@@ -36,6 +37,18 @@ def _login(client, username):
                                        "password": "TestPassword123!"},
                        follow_redirects=False)
 
+
+
+class _OnlineToggleParser(HTMLParser):
+    """Detect a rendered go-live control without matching script text."""
+
+    def __init__(self):
+        super().__init__()
+        self.found = False
+
+    def handle_starttag(self, tag, attrs):
+        if any(name == "data-online-toggle" for name, _ in attrs):
+            self.found = True
 
 def test_verified_driver_login_keeps_personal_default_and_bookmark_opens_workspace(app, client):
     username, code = _seed_driver(app)
@@ -72,7 +85,12 @@ def test_pending_driver_keeps_personal_default_but_can_enter_workspace_without_g
     assert page.status_code == 200
     html = page.data.decode("utf-8")
     assert "Go-live checklist" in html or "Requirements" in html
-    assert "data-online-toggle" not in html
+    # Inspect actual element attributes, not JavaScript selector text.
+    # The shared dashboard script legitimately references this selector even
+    # when the go-live control is withheld from pending drivers.
+    parser = _OnlineToggleParser()
+    parser.feed(html)
+    assert not parser.found
 
     with client.session_transaction() as stored:
         assert stored.get("active_context_type") == "personal"
