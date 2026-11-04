@@ -16,6 +16,7 @@ Status is evidence-based. A green code/build check is not store approval.
 - [x] Driver location is foreground-only and only requested after explicit driver action; background tracking is not enabled.
 - [x] Wallet amounts and payment state are server-provided; no client ledger or fare authority.
 - [x] In-app sign-out and account deletion controls exist; the deletion handler revokes sessions/API keys, clears MFA/recovery/PIN credentials, anonymizes direct profile identifiers and retains only separately controlled KYC/financial/audit records as required.
+- [x] Public web account-deletion initiation route exists at `/apps/delete-account`, alongside the in-app deletion control. End-to-end user testing and final retention-policy approval remain outstanding.
 - [x] APK workflow, preview release link, checksum and download/share UI are configured.
 - [ ] Live-like end-to-end tests for native login/MFA/refresh replay/revocation, rider booking commitment, driver offer assignment, trip lifecycle, Wallet settlement and deletion.
 - [ ] Real-device testing on low-memory Android phones and supported iPhones, including permission denial, network loss and app upgrade.
