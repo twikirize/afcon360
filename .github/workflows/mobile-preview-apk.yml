@@ -251,54 +251,13 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
           emulator-boot-timeout: 600
-          script: |
-            set -eu
-            APK="$GITHUB_WORKSPACE/release/$APP-preview.apk"
-            test -s "$APK"
-
-            adb wait-for-device
-            adb logcat -c
-            if ! adb install "$APK"; then
-              echo "::error::Android Package Manager rejected $APP on API ${{ matrix.api-level }}."
-              echo "::group::Install diagnostics"
-              adb logcat -d -t 2500 | tail -n 500 || true
-              echo "::endgroup::"
-              exit 1
-            fi
-
-            if ! adb shell monkey -p "$EXPECTED_PACKAGE" -c android.intent.category.LAUNCHER 1; then
-              echo "::error::Android could not launch $APP on API ${{ matrix.api-level }}."
-              adb logcat -d -t 2500 | tail -n 500 || true
-              exit 1
-            fi
-
-            started=0
-            attempt=1
-            while [ "$attempt" -le 12 ]; do
-              if adb shell ps | grep -F "$EXPECTED_PACKAGE" >/dev/null 2>&1; then
-                started=1
-                break
-              fi
-              sleep 5
-              attempt=$((attempt + 1))
-            done
-
-            if [ "$started" -ne 1 ]; then
-              echo "::error::The $APP app installed but did not stay running on API ${{ matrix.api-level }}."
-              echo "::group::Launch diagnostics"
-              adb logcat -d -t 2500 | tail -n 500 || true
-              adb shell dumpsys activity activities || true
-              echo "::endgroup::"
-              exit 1
-            fi
-
-            echo "PASS: $APP installed and launched on Android API ${{ matrix.api-level }}."
-            adb shell getprop ro.build.version.release
-            adb shell getprop ro.build.version.sdk
+          # Keep this as one command: android-emulator-runner executes each script line in a new shell.
+          script: bash mobile/scripts/verify-android-emulator-install.sh "$APP" "$EXPECTED_PACKAGE" "${{ matrix.api-level }}"
 
   ios-compatibility:
     name: iOS 16.4 minimum / current simulator / ${{ matrix.app }}
-    runs-on: macos-26
+    # Use the x64 macOS 26 pool to avoid ARM64 hosted-runner allocation failures.
+    runs-on: macos-26-intel
     timeout-minutes: 60
     strategy:
       fail-fast: false
