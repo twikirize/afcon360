@@ -34,7 +34,11 @@ export default function Trips() {
       setLoading(false);
     }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    const interval = setInterval(() => { void load(); }, 10000);
+    return () => clearInterval(interval);
+  }, [load]);
 
   async function advance(action: string) {
     if (!trip) return;

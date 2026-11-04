@@ -35,7 +35,11 @@ export default function DriverHome() {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    const interval = setInterval(() => { void load(); }, 6000);
+    return () => clearInterval(interval);
+  }, [load]);
 
   async function toggleOnline() {
     if (!profile) return;

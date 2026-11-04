@@ -497,55 +497,76 @@ def mobile_account_deletion():
             user_id=user.id, revoked_at=None
         ).all()
     ]
+    public_id = str(user.public_id)
     try:
         revoke_all_device_sessions_for_user(user.id, reason="mobile_account_deletion")
-        revoke_all_sessions_for_user(str(user.public_id))
-        # DB revocation is authoritative; Redis cleanup is best-effort because
-        # the request loader also checks the Identity session row each time.
+        revoke_all_sessions_for_user(public_id)
+        # Database session revocation is authoritative. Redis key deletion is
+        # best-effort because every bearer request also checks both DB session
+        # records and will fail closed if Redis is temporarily unavailable.
         for session_id in active_ids:
             try:
                 mark_mobile_session_revoked(session_id)
             except Exception:
-                logger.warning("Redis token cleanup deferred for deleted-account device session", exc_info=True)
-
-        from app.audit.comprehensive_audit import AuditService, AuditSeverity
-        verified = bool(getattr(user, "is_verified", False) or (getattr(user, "kyc_level", 0) or 0) > 0)
-        public_id = str(user.public_id)
-        if verified:
-            user.is_deleted = True
-            user.deleted_at = datetime.now(timezone.utc)
-            user.email = f"deleted_{public_id}@deleted.local"
-            user.username = f"deleted_{public_id}"
-            user.phone = None
-            db.session.commit()
-            AuditService.security(
-                event_type="account_deletion_requested",
-                severity=AuditSeverity.WARNING,
-                description=f"Verified user {public_id} requested account deletion (native app)",
-                user_id=user.id,
-                ip_address=request.remote_addr,
-            )
-            result = {"status": "anonymized", "message": "Your account has been anonymized and scheduled for permanent removal under AFCON360 retention policy."}
-        else:
-            internal_id = user.id
-            db.session.delete(user)
-            db.session.commit()
-            # Keep the same durable audit event used by the existing web flow.
-            try:
-                AuditService.security(
-                    event_type="account_deleted",
-                    severity=AuditSeverity.WARNING,
-                    description=f"Unverified user {public_id} deleted their account (native app)",
-                    user_id=internal_id,
-                    ip_address=request.remote_addr,
+                logger.warning(
+                    "Redis token cleanup deferred for deleted-account device session",
+                    exc_info=True,
                 )
-            except Exception:
-                logger.exception("Account was deleted but the post-delete audit event could not be written")
-            result = {"status": "deleted", "message": "Your account has been deleted."}
+
+        # Retain the User row as an inactive tombstone so historical Wallet,
+        # booking, KYC, compliance and audit foreign keys remain intact.
+        # Access is revoked immediately; unique sign-in identifiers are
+        # replaced, and no cascading deletion can erase financial history.
+        user.is_deleted = True
+        user.is_active = False
+        user.deleted_at = datetime.now(timezone.utc)
+        user.email = f"deleted_{public_id}@deleted.local"
+        user.username = f"deleted_{public_id}"
+        if hasattr(user, "phone"):
+            user.phone = None
+        if hasattr(user, "password_hash"):
+            user.set_password(secrets.token_urlsafe(64))
+        try:
+            from app.identity.models.user import MFASecret
+            MFASecret.query.filter_by(user_id=user.id, is_active=True).update(
+                {"is_active": False},
+                synchronize_session=False,
+            )
+        except Exception:
+            logger.exception("Could not disable all MFA credentials during account deletion")
+            raise
+        db.session.commit()
+        result = {
+            "status": "anonymized",
+            "message": (
+                "Your AFCON360 sign-in has been disabled and account identifiers "
+                "anonymized. Some KYC, booking, Wallet, safety and audit records "
+                "may be retained where required by law or platform obligations."
+            ),
+        }
     except Exception:
         db.session.rollback()
         logger.exception("Native account deletion failed")
-        return _error("account_deletion_failed", "AFCON360 could not complete the account deletion request. Please contact support.", 503)
+        return _error(
+            "account_deletion_failed",
+            "AFCON360 could not complete the account deletion request. Please contact support.",
+            503,
+        )
+
+    # The account action is already committed. A downstream audit sink outage
+    # must not report the deletion as failed after it has actually succeeded.
+    try:
+        from app.audit.comprehensive_audit import AuditService
+        AuditService.security(
+            event_type="account_deletion_requested",
+            severity="WARNING",
+            description=f"User {public_id} requested account deletion (native app)",
+            user_id=user.id,
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent"),
+        )
+    except Exception:
+        logger.exception("Account deletion completed but audit event delivery failed")
 
     return jsonify({"success": True, "data": result}), 200
 
