@@ -81,17 +81,25 @@ def request_account_deletion(
             )
 
         from app.identity.models.user import MFASecret
-        active_mfa = MFASecret.query.filter_by(
+        active_mfa_rows = MFASecret.query.filter_by(
             user_id=user.id,
             is_active=True,
-        ).first()
-        if active_mfa is not None and active_mfa.mfa_type != "totp":
+        ).all()
+        unsupported_mfa = [
+            row.mfa_type for row in active_mfa_rows
+            if row.mfa_type != "totp"
+        ]
+        if unsupported_mfa:
             raise AccountDeletionError(
                 "mfa_method_unsupported",
                 "This account uses an MFA method that cannot currently be reverified in the self-service deletion flow. Update to an authenticator app or contact AFCON360 support.",
                 422,
             )
-        if getattr(user, "mfa_enabled", False) or active_mfa is not None:
+        active_mfa = next(
+            (row for row in active_mfa_rows if row.mfa_type == "totp"),
+            None,
+        )
+        if getattr(user, "mfa_enabled", False) or active_mfa_rows:
             if active_mfa is None:
                 raise AccountDeletionError(
                     "mfa_enrollment_unavailable",

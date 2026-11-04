@@ -47,10 +47,25 @@ export class MobileAuthClient {
 
   private async saveTokens(payload: TokenPayload): Promise<void> {
     if (!payload.access_token || !payload.refresh_token) {
+      await this.store.clearTokens();
       throw new MobileAuthError("The authentication service returned incomplete credentials.", "token_response_invalid");
     }
-    await this.store.setAccessToken(payload.access_token);
-    await this.store.setRefreshToken(payload.refresh_token);
+    try {
+      // SecureStore writes are separate OS operations, not one transaction.
+      // If either write fails, remove any partial credential pair.
+      await this.store.setAccessToken(payload.access_token);
+      await this.store.setRefreshToken(payload.refresh_token);
+    } catch (error) {
+      try {
+        await this.store.clearTokens();
+      } catch {
+        // Preserve the original secure-storage failure for the caller.
+      }
+      throw new MobileAuthError(
+        error instanceof Error ? error.message : "AFCON360 could not securely store the sign-in credentials.",
+        "secure_storage_failed"
+      );
+    }
   }
 
   private async envelopeError(error: unknown): Promise<MobileAuthError> {
@@ -117,7 +132,10 @@ export class MobileAuthClient {
     if (this.refreshInFlight) return this.refreshInFlight;
     this.refreshInFlight = (async () => {
       const refreshToken = await this.store.getRefreshToken();
-      if (!refreshToken) return false;
+      if (!refreshToken) {
+        await this.store.clearTokens();
+        return false;
+      }
       try {
         // Call the base client directly to prevent recursive 401 refresh loops.
         const response = await this.api.post<Envelope<TokenPayload>>("/api/mobile/v1/auth/refresh", {
