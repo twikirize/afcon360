@@ -2,7 +2,7 @@
  * AFCON360 Transport
  * Production Secure Service Worker
  *
- * Version: 2.0.6
+ * Version: 2.0.7
  *
  * SECURITY GUARANTEES:
  * 1. Never cache authenticated HTML.
@@ -22,7 +22,7 @@
 
 'use strict';
 
-const VERSION = '2.0.6';
+const VERSION = '2.0.7';
 
 const CACHE_PREFIX = 'afcon360-static-';
 const CACHE_NAME = `${CACHE_PREFIX}v${VERSION}`;
