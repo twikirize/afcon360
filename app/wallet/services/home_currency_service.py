@@ -138,7 +138,9 @@ def get_user_home_currency(user: Any) -> str:
             owner_type=AccountOwnerType.USER,
         ).first()
         if account is not None:
-            return validate_home_currency(account.currency)
+            # The persisted account denomination is authoritative even when it
+            # is a legacy currency no longer offered for new Wallets.
+            return str(account.currency or "USD").strip().upper()
     except Exception:
         # Display/quote discovery should remain available when Wallet has no
         # account yet. It must not create an account as a side effect.
