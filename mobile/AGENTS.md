@@ -12,3 +12,6 @@
 10. Keep user and driver identifiers, schemes, permissions and EAS projects separate.
 11. No production DB changes, migrations, deployments, store submissions or credential changes without a separately approved work item.
 12. Keep dense administration/reporting on desktop unless specifically required on mobile.
+
+13. Keep one shared mobile source system: place behavior common to User and Driver in `mobile/packages/`; only app identity, navigation differences and genuine platform-specific behavior belong under each app. Do not fork shared business logic for Android versus iOS.
+14. Maintain explicit platform minimums and test the oldest supported Android API, representative Android releases, the current Android target, and current iOS simulator. A build-only green check is not installation or runtime evidence.
