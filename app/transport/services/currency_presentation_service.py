@@ -69,9 +69,12 @@ def enrich_driver_offers_with_home_currency(
                 item["fare_estimate"] = {
                     **fare,
                     **display_fields,
-                    "home_currency": display_currency,
+                    "operating_currency": operating_currency,
                     "wallet_home_currency": wallet_home_currency,
                     "operating_country_code": operating_country_code,
+                    "operating_country_verified": bool(
+                        metadata.get("operating_country_verified")
+                    ),
                     "display_currency_basis": display_currency_basis,
                     "display_label": (
                         "Indicative operating-market gross fare estimate"
