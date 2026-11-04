@@ -103,19 +103,20 @@ def dispatch_recovery(
             (closed bookings with reasons).
     """
     result = {"checked": 0, "cleaned": 0}
-    try:
-        from app.transport.services.offer_service import OfferService
+    if after_booking_id == 0:
+        try:
+            from app.transport.services.offer_service import OfferService
 
-        # sweep_expired() returns an int (keys cleaned), not a tuple.
-        # "checked" is not tracked by the callee; report 0 rather than
-        # echoing cleaned.
-        changed = OfferService.sweep_expired()
-        result = {"checked": 0, "cleaned": int(changed or 0)}
-        if changed:
-            logger.info(f"Transport dispatch recovery cleaned {changed} expired offers")
-    except Exception as e:
-        logger.error(f"Transport dispatch recovery sweep failed: {e}", exc_info=True)
-        result = {"checked": 0, "cleaned": 0, "error": str(e)}
+            # sweep_expired() returns an int (keys cleaned), not a tuple.
+            # "checked" is not tracked by the callee; report 0 rather than
+            # echoing cleaned.
+            changed = OfferService.sweep_expired()
+            result = {"checked": 0, "cleaned": int(changed or 0)}
+            if changed:
+                logger.info(f"Transport dispatch recovery cleaned {changed} expired offers")
+        except Exception as e:
+            logger.error(f"Transport dispatch recovery sweep failed: {e}", exc_info=True)
+            result = {"checked": 0, "cleaned": 0, "error": str(e)}
 
     rediscovered = 0
     offers_created = 0
@@ -203,16 +204,17 @@ def dispatch_recovery(
     # Durable request-first offers have their own PostgreSQL lifecycle.
     # Expire unanswered attempts and resume requests that committed before
     # transient dispatch failure; this recovery path never creates a Booking.
-    try:
-        from app.transport.services.ride_request_dispatch_service import (
-            RideRequestDispatchService,
-        )
-        result["request_first_recovery"] = RideRequestDispatchService.recover_expired(
-            batch=max(1, min(int(os.environ.get("TRANSPORT_REQUEST_RECOVERY_BATCH", "25")), 50))
-        )
-    except Exception:
-        logger.error("Request-first dispatch recovery failed", exc_info=True)
-        result["request_first_recovery"] = {"error": "recovery_failed"}
+    if after_booking_id == 0:
+        try:
+            from app.transport.services.ride_request_dispatch_service import (
+                RideRequestDispatchService,
+            )
+            result["request_first_recovery"] = RideRequestDispatchService.recover_expired(
+                batch=max(1, min(int(os.environ.get("TRANSPORT_REQUEST_RECOVERY_BATCH", "25")), 50))
+            )
+        except Exception:
+            logger.error("Request-first dispatch recovery failed", exc_info=True)
+            result["request_first_recovery"] = {"error": "recovery_failed"}
 
     if rediscovered:
         logger.info(
