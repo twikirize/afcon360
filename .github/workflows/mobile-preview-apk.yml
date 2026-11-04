@@ -31,11 +31,6 @@ on:
       - "mobile/.npmrc"
       - ".github/workflows/mobile-preview-apk.yml"
   workflow_dispatch:
-    inputs:
-      apk_run_id:
-        description: "Existing successful APK build run ID to retest without rebuilding (leave blank for a fresh build)."
-        required: false
-        type: string
 
 concurrency:
   group: afcon360-user-android-${{ github.ref }}
@@ -50,7 +45,6 @@ permissions:
 jobs:
   build-preview-apk:
     name: Build ${{ matrix.app }} standalone APK
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.apk_run_id == '' }}
     # Keep this Android build on the tested Ubuntu 24.04 image until Ubuntu 26.04 is validated.
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -65,10 +59,6 @@ jobs:
       APP: ${{ matrix.app }}
       EXPECTED_PACKAGE: ${{ matrix.package }}
       EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
-      AFCON360_PREVIEW_KEYSTORE_BASE64: ${{ secrets.AFCON360_PREVIEW_KEYSTORE_BASE64 }}
-      AFCON360_PREVIEW_KEYSTORE_PASSWORD: ${{ secrets.AFCON360_PREVIEW_KEYSTORE_PASSWORD }}
-      AFCON360_PREVIEW_KEY_ALIAS: ${{ secrets.AFCON360_PREVIEW_KEY_ALIAS }}
-      AFCON360_PREVIEW_KEY_PASSWORD: ${{ secrets.AFCON360_PREVIEW_KEY_PASSWORD }}
     steps:
       - name: Check out source
         uses: actions/checkout@v7
@@ -117,8 +107,17 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/37.0.0" >> "$GITHUB_PATH"
 
-      - name: Load stable internal preview signing key
+      # PR code is untrusted for signing purposes: never expose the long-lived preview key to it.
+      # Only a trusted push to the dedicated feature integration branch receives that key.
+      - name: Load stable preview signing key for trusted branch builds
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/feat/native-mobile-apps-20261104' }}
+        env:
+          AFCON360_PREVIEW_KEYSTORE_BASE64: ${{ secrets.AFCON360_PREVIEW_KEYSTORE_BASE64 }}
+          AFCON360_PREVIEW_KEYSTORE_PASSWORD: ${{ secrets.AFCON360_PREVIEW_KEYSTORE_PASSWORD }}
+          AFCON360_PREVIEW_KEY_ALIAS: ${{ secrets.AFCON360_PREVIEW_KEY_ALIAS }}
+          AFCON360_PREVIEW_KEY_PASSWORD: ${{ secrets.AFCON360_PREVIEW_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
           for name in AFCON360_PREVIEW_KEYSTORE_BASE64 AFCON360_PREVIEW_KEYSTORE_PASSWORD AFCON360_PREVIEW_KEY_ALIAS AFCON360_PREVIEW_KEY_PASSWORD; do
             if [ -z "${!name}" ]; then
               echo "::error::Missing GitHub Actions secret: $name"
@@ -126,12 +125,39 @@ jobs:
               exit 1
             fi
           done
-          mkdir -p "$HOME/.android"
-          printf '%s' "$AFCON360_PREVIEW_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/afcon360-preview.keystore"
-          test -s "$HOME/.android/afcon360-preview.keystore"
-          keytool -list -keystore "$HOME/.android/afcon360-preview.keystore" \
+          KEYSTORE="$RUNNER_TEMP/afcon360-preview.keystore"
+          printf '%s' "$AFCON360_PREVIEW_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          test -s "$KEYSTORE"
+          keytool -list -keystore "$KEYSTORE" \
             -storepass "$AFCON360_PREVIEW_KEYSTORE_PASSWORD" \
             -alias "$AFCON360_PREVIEW_KEY_ALIAS" >/dev/null
+          {
+            printf 'AFCON360_SIGNING_KEYSTORE=%s\n' "$KEYSTORE"
+            printf 'AFCON360_SIGNING_STORE_PASSWORD=%s\n' "$AFCON360_PREVIEW_KEYSTORE_PASSWORD"
+            printf 'AFCON360_SIGNING_KEY_ALIAS=%s\n' "$AFCON360_PREVIEW_KEY_ALIAS"
+            printf 'AFCON360_SIGNING_KEY_PASSWORD=%s\n' "$AFCON360_PREVIEW_KEY_PASSWORD"
+            printf 'AFCON360_SIGNING_KEY_TYPE=stable-preview\n'
+          } >> "$GITHUB_ENV"
+
+      # Pull-request builds use a throwaway signing identity so PR-controlled scripts
+      # cannot read or exfiltrate the stable preview signing key.
+      - name: Generate ephemeral signing key for PR and manual validation
+        if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/feat/native-mobile-apps-20261104') }}
+        run: |
+          set -euo pipefail
+          KEYSTORE="$RUNNER_TEMP/afcon360-ephemeral-ci.keystore"
+          PASSWORD="$(openssl rand -hex 24)"
+          keytool -genkeypair -noprompt -storetype JKS \
+            -keystore "$KEYSTORE" -storepass "$PASSWORD" -keypass "$PASSWORD" \
+            -alias afcon360-ci -dname "CN=AFCON360 CI Test,O=Pamoja,C=UG" \
+            -keyalg RSA -keysize 2048 -validity 2
+          {
+            printf 'AFCON360_SIGNING_KEYSTORE=%s\n' "$KEYSTORE"
+            printf 'AFCON360_SIGNING_STORE_PASSWORD=%s\n' "$PASSWORD"
+            printf 'AFCON360_SIGNING_KEY_ALIAS=afcon360-ci\n'
+            printf 'AFCON360_SIGNING_KEY_PASSWORD=%s\n' "$PASSWORD"
+            printf 'AFCON360_SIGNING_KEY_TYPE=ephemeral-ci\n'
+          } >> "$GITHUB_ENV"
 
       - name: Generate native Android project
         working-directory: mobile
@@ -180,10 +206,10 @@ jobs:
           test -n "$APK"
           mkdir -p release
           zipalign -p -f 4 "$APK" "$RUNNER_TEMP/$APP-aligned.apk"
-          apksigner sign --ks "$HOME/.android/afcon360-preview.keystore" \
-            --ks-pass env:AFCON360_PREVIEW_KEYSTORE_PASSWORD \
-            --ks-key-alias "$AFCON360_PREVIEW_KEY_ALIAS" \
-            --key-pass env:AFCON360_PREVIEW_KEY_PASSWORD \
+          apksigner sign --ks "$AFCON360_SIGNING_KEYSTORE" \
+            --ks-pass "pass:$AFCON360_SIGNING_STORE_PASSWORD" \
+            --ks-key-alias "$AFCON360_SIGNING_KEY_ALIAS" \
+            --key-pass "pass:$AFCON360_SIGNING_KEY_PASSWORD" \
             --out "release/$APP-preview.apk" "$RUNNER_TEMP/$APP-aligned.apk"
           FINAL_APK="$GITHUB_WORKSPACE/mobile/release/$APP-preview.apk"
           apksigner verify --verbose "$FINAL_APK"
@@ -217,6 +243,7 @@ jobs:
           target_sdk=$TARGET
           source_sha=$GITHUB_SHA
           build_run_id=$GITHUB_RUN_ID
+          signing_key_type=$AFCON360_SIGNING_KEY_TYPE
           apk_sha256=$APK_SHA256
           EOF
 
@@ -233,7 +260,7 @@ jobs:
   android-compatibility:
     name: Android API ${{ matrix.api-level }} / ${{ matrix.app }} install and launch
     needs: build-preview-apk
-    if: ${{ always() && (needs.build-preview-apk.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.apk_run_id != '')) }}
+    if: ${{ needs.build-preview-apk.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
@@ -266,8 +293,6 @@ jobs:
         with:
           name: afcon360-${{ matrix.app }}-preview-apk
           path: release
-          run-id: ${{ inputs.apk_run_id || github.run_id }}
-          github-token: ${{ github.token }}
 
       - name: Verify downloaded APK provenance and checksum
         shell: bash
@@ -279,7 +304,7 @@ jobs:
           test -s "$INFO"
           grep -Fxq "app=$APP" "$INFO"
           grep -Fxq "package=$EXPECTED_PACKAGE" "$INFO"
-          EXPECTED_RUN_ID="${{ inputs.apk_run_id || github.run_id }}"
+          EXPECTED_RUN_ID="$GITHUB_RUN_ID"
           grep -Fxq "build_run_id=$EXPECTED_RUN_ID" "$INFO"
           EXPECTED_SHA="$(sed -n 's/^apk_sha256=//p' "$INFO" | head -n 1)"
           ACTUAL_SHA="$(sha256sum "$APK" | awk '{print $1}')"
