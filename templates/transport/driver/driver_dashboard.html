@@ -69,7 +69,7 @@
 {% set readiness_badge = 'green' if go_live and go_live.ready else 'amber' %}
 
 {# ============================ HOME ============================ #}
-<section class="ck-panel ck-active" data-panel="home">
+<section class="ck-panel ck-active" data-panel="home" aria-label="Home workspace">
 
   {# Identity hero #}
   <div class="ck-hero ck-full">
@@ -77,7 +77,7 @@
       {{ (driver_profile.user.name or driver_profile.driver_code)[:2].upper() if driver_profile.user else driver_profile.driver_code[:2].upper() }}
     </div>
     <div class="ck-hero-info">
-      <div class="ck-hero-name">{{ driver_profile.user.name if driver_profile.user else 'Driver' }}</div>
+      <h1 class="ck-hero-name">{{ driver_profile.user.name if driver_profile.user else 'Driver' }}</h1>
       <div class="ck-hero-meta">
         <span class="badge badge-{{ compliance_badge }}">{{ compliance|replace('_',' ')|title }}</span>
         <span><i class="fa-solid fa-star" style="color:var(--amber)"></i>
@@ -98,6 +98,7 @@
       </div>
       <label class="toggle">
         <input type="checkbox" id="onlineToggle" data-online-toggle
+               aria-label="Set driver availability to online or offline"
                data-url="{{ url_for('transport_api.driver_go_live_status', driver_id=driver_profile.id) }}"
                {{ 'checked' if driver_profile.is_online }} />
         <span class="toggle-slider"></span>
@@ -347,7 +348,7 @@
       <span class="card-title"><i class="fa-solid fa-map-location-dot"></i> Driver location map</span>
       <span id="driverMapState" class="badge badge-gray" role="status" aria-live="polite">Preparing map…</span>
     </div>
-    <div class="driver-location-map__canvas">
+    <div class="driver-location-map__canvas" role="region" aria-label="Driver location map">
       <div id="driverMap"
            data-geo-map-status="pending"
            data-tile-url="{{ map_config.tile_url_template }}"
@@ -540,7 +541,7 @@
 </section>
 
 {# ============================ STATUS ============================ #}
-<section class="ck-panel ck-panel--full" data-panel="status">
+<section class="ck-panel ck-panel--full" data-panel="status" aria-label="Driver status and preferences">
 
   <div class="card ws-card">
     <div class="card-header">
@@ -567,6 +568,7 @@
         <span class="ck-status-value" data-online-label>{{ 'Online' if driver_profile.is_online else 'Offline' }}</span>
         <label class="toggle" style="transform:scale(1.2); transform-origin:right center;">
           <input type="checkbox" data-online-toggle
+                 aria-label="Set driver availability to online or offline"
                  data-url="{{ url_for('transport_api.driver_go_live_status', driver_id=driver_profile.id) }}"
                  {{ 'checked' if driver_profile.is_online }} />
           <span class="toggle-slider"></span>
@@ -591,7 +593,7 @@
 </section>
 
 {# ============================ TRIPS ============================ #}
-<section class="ck-panel ck-panel--full" data-panel="trips">
+<section class="ck-panel ck-panel--full" data-panel="trips" aria-label="Trips and booking history">
 
   <div class="card ws-card">
     <div class="card-header">
@@ -755,7 +757,7 @@
 </section>
 
 {# ============================ EARNINGS ============================ #}
-<section class="ck-panel" data-panel="earnings">
+<section class="ck-panel" data-panel="earnings" aria-label="Earnings and performance">
   <div class="ck-col">
     <div class="card ws-card">
       <div class="card-header"><span class="card-title"><i class="fa-solid fa-sack-dollar"></i> Total captured earnings</span></div>
@@ -788,7 +790,7 @@
 </section>
 
 {# ============================ ASSIGNMENTS ============================ #}
-<section class="ck-panel" data-panel="assignments">
+<section class="ck-panel" data-panel="assignments" aria-label="Assignments and scheduled work">
   <div class="ck-col">
     <div class="card ws-card">
       <div class="card-header"><span class="card-title"><i class="fa-solid fa-van-shuttle"></i> Current assignment</span></div>
@@ -896,7 +898,7 @@
 </section>
 
 {# ============================ VEHICLES ============================ #}
-<section class="ck-panel" data-panel="vehicles">
+<section class="ck-panel" data-panel="vehicles" aria-label="Vehicles">
   <div class="ck-col">
     <div class="card ws-card">
       <div class="card-header">
@@ -1043,7 +1045,7 @@
 </section>
 
 {# ============================ ACCOUNT ============================ #}
-<section class="ck-panel" data-panel="account">
+<section class="ck-panel" data-panel="account" aria-label="Driver account settings">
   <div class="ck-col">
     <div class="card ws-card">
       <div class="card-header">
