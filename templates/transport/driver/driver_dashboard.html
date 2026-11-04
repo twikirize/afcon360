@@ -2,6 +2,54 @@
 {% block title %}Driver{% endblock %}
 {% block breadcrumb %}<span class="sep">/</span><span class="current">Driver</span>{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<style nonce="{{ csp_nonce }}">
+  #driverDashboard .driver-location-map {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: var(--bg-surface);
+  }
+  #driverDashboard .driver-location-map__canvas {
+    width: 100%;
+    height: 300px;
+    min-height: 240px;
+    background: var(--bg-surface-alt);
+  }
+  #driverDashboard .driver-location-map__canvas .leaflet-container {
+    width: 100%;
+    height: 100%;
+    font: inherit;
+  }
+  #driverDashboard .driver-location-map__tools {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 12px 14px;
+    border-top: 1px solid var(--border-light);
+  }
+  #driverDashboard .driver-location-map__note {
+    min-width: 0;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+  @media (max-width: 600px) {
+    #driverDashboard .driver-location-map__canvas {
+      height: 260px;
+      min-height: 220px;
+    }
+    #driverDashboard .driver-location-map__tools {
+      align-items: stretch;
+    }
+  }
+</style>
+{% endblock %}
 
 {% block content %}
 <div id="driverDashboard"
@@ -291,6 +339,34 @@
         <span class="ws-k">Network</span>
         <span id="dcNetStatus" class="ws-v dc-toast ok">Online</span>
       </div>
+    </div>
+  </div>
+
+  <div class="card ws-card ck-full driver-location-map">
+    <div class="card-header">
+      <span class="card-title"><i class="fa-solid fa-map-location-dot"></i> Driver location map</span>
+      <span id="driverMapState" class="badge badge-gray" role="status" aria-live="polite">Preparing map…</span>
+    </div>
+    <div class="driver-location-map__canvas">
+      <div id="driverMap"
+           data-geo-map-status="pending"
+           data-tile-url="{{ map_config.tile_url_template }}"
+           data-tile-attribution="{{ map_config.tile_attribution }}"
+           data-default-lat="{{ map_config.default_center.latitude }}"
+           data-default-lng="{{ map_config.default_center.longitude }}"
+           data-default-zoom="{{ map_config.default_zoom }}"
+           data-last-lat="{{ driver_profile.last_location.get('latitude') if driver_profile.last_location and driver_profile.last_location.get('latitude') is not none else '' }}"
+           data-last-lng="{{ driver_profile.last_location.get('longitude') if driver_profile.last_location and driver_profile.last_location.get('longitude') is not none else '' }}"
+           data-last-ts="{{ driver_profile.location_updated_at.isoformat() if driver_profile.location_updated_at else '' }}"
+           aria-label="Map showing the driver's last published position when available"></div>
+    </div>
+    <div class="driver-location-map__tools">
+      <span id="driverMapNote" class="driver-location-map__note">
+        The map uses the shared GEO renderer. A default map centre is not a tracked driver location.
+      </span>
+      <button type="button" class="btn btn-secondary btn-sm" id="driverMapLocateBtn">
+        <i class="fa-solid fa-location-crosshairs"></i> Center on this device
+      </button>
     </div>
   </div>
 
@@ -1195,4 +1271,7 @@
 {% block extra_js %}
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/driver-dashboard.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/driver_offer_poll.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/geo/geo-map.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/driver-dashboard-map.js') }}"></script>
 {% endblock %}
