@@ -1,9 +1,8 @@
 """Driver-facing operating-market currency presentation for Transport offers.
 
-The declared driver operating country is preferred for offer display. The
-persisted Wallet home currency is the fallback for legacy profiles without an
-operating-country declaration. This only adds display fields: it never rewrites
-the signed fare, request amount, Wallet invoice, earnings, or settlement.
+A declared operating country determines the display currency. Without one, the
+original fare currency is retained. This adds display fields only; it never
+rewrites the signed fare, request amount, Wallet invoice, earnings, or settlement.
 """
 from __future__ import annotations
 
@@ -13,7 +12,7 @@ from typing import Any, Dict, Iterable, List
 logger = logging.getLogger(__name__)
 
 
-def enrich_driver_offers_with_home_currency(
+def enrich_driver_offers_with_operating_currency(
     offers: Iterable[Dict[str, Any]],
     driver_profile: Any,
 ) -> List[Dict[str, Any]]:
@@ -47,7 +46,7 @@ def enrich_driver_offers_with_home_currency(
         )
     except Exception:
         logger.warning(
-            "Could not resolve driver operating/Wallet currency for offer display",
+            "Could not resolve driver operating currency for offer display",
             exc_info=True,
         )
         return rows
