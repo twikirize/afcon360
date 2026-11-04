@@ -23,6 +23,23 @@ The branch is not merged or deployed. No live-like end-to-end run or physical-de
 
 Production Android requires a Play App Signing AAB. iOS requires a signed App Store/TestFlight archive. EAS projects must be linked and both developer accounts, privacy/legal disclosures, icons/screenshots, review accounts and store reviews remain outstanding. The privacy page is a working draft, not the approved store policy.
 
+## One shared source system and supported platforms
+
+AFCON360 is maintained as one Git repository and one React Native/Expo workspace. User and Driver remain separate products, but common UI, API, authentication, session, wallet and domain logic belongs in `mobile/packages/` and is consumed by both apps under `mobile/apps/`. Platform-specific native permissions and operating-system integrations remain in each app's Expo config.
+
+The same source tree produces different signed deliverables:
+- Google Play: production Android App Bundle (`.aab`) for each app.
+- Direct Android testing: internally signed preview APK (`.apk`) for each app; never submit these preview APKs to Play.
+- Apple App Store/TestFlight: separately signed iOS archive/IPA for each app.
+
+There is no single Android/iOS binary. The source, shared packages, API contracts, app behavior and release version are kept together; each store receives its platform-native output and platform-specific signing.
+
+## Supported operating-system baseline
+
+The current Expo SDK 58 baseline is Android 7.0+ (API 24) and iOS 16.4+. Android builds compile with SDK 37 and target API 36 to meet the current Google Play submission requirement. CI checks Android API 24, 29, 33 and 36, and builds/installs both apps on an iOS 26.4 simulator while asserting the iOS 16.4 deployment target. Physical-device testing remains required before release.
+
+See [platform compatibility and release matrix](docs/platform-compatibility.md) for the current policy and evidence gates.
+
 ## Requirements and commands
 
 Node.js 22.13+, pnpm 10, Android SDK for local Android builds and macOS/Xcode for local iOS builds. From this directory:
