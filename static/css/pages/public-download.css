@@ -1,0 +1,268 @@
+/* AFCON360 public download landing page — scoped to .download-page */
+main#main:has(.download-page) {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background: #f5f7f1;
+  box-shadow: none;
+}
+.download-page {
+  --dl-green: #103b2a;
+  --dl-deep: #082419;
+  --dl-gold: #f4c542;
+  --dl-lime: #c8e66b;
+  --dl-ink: #13251b;
+  --dl-muted: #66756b;
+  width: 100%;
+  overflow: hidden;
+  color: var(--dl-ink);
+  background: #f5f7f1;
+  font-family: var(--font-family-body, 'Open Sans', sans-serif);
+}
+.download-page * { box-sizing: border-box; }
+.download-page a { text-decoration: none; }
+.download-page a:focus-visible { outline: 3px solid var(--dl-gold); outline-offset: 4px; }
+.download-hero {
+  min-height: 640px;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: #fff;
+  background:
+    radial-gradient(ellipse at 77% 47%, rgba(47,119,75,.45), transparent 35%),
+    radial-gradient(ellipse at 18% 90%, rgba(244,197,66,.12), transparent 35%),
+    linear-gradient(118deg, #071e15 0%, #0c3323 52%, #123d2a 100%);
+}
+.download-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: .18;
+  background-image: linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px);
+  background-size: 54px 54px;
+  mask-image: linear-gradient(90deg, #000, transparent 90%);
+}
+.download-hero::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  width: 700px;
+  height: 700px;
+  right: -220px;
+  top: -230px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 50%;
+  box-shadow: 0 0 0 50px rgba(255,255,255,.025), 0 0 0 100px rgba(255,255,255,.02), 0 0 0 150px rgba(255,255,255,.015);
+}
+.download-hero-inner {
+  width: min(1180px, calc(100% - 64px));
+  min-height: 640px;
+  margin: 0 auto;
+  padding: 86px 0 100px;
+  position: relative;
+  z-index: 2;
+}
+.download-kicker, .download-eyebrow, .download-section-kicker, .download-app-overline {
+  font-family: var(--font-family-heading, 'Montserrat', sans-serif);
+  font-weight: 800;
+  letter-spacing: .16em;
+}
+.download-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 13px;
+  border: 1px solid rgba(200,230,107,.35);
+  border-radius: 99px;
+  color: var(--dl-lime);
+  font-size: 10px;
+}
+.download-kicker-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dl-gold); box-shadow: 0 0 14px var(--dl-gold); }
+.download-eyebrow { margin: 36px 0 14px; color: rgba(255,255,255,.65); font-size: 11px; }
+.download-eyebrow span { color: var(--dl-gold); padding: 0 7px; }
+.download-hero h1 {
+  max-width: 690px;
+  margin: 0;
+  color: #fff;
+  font-family: var(--font-family-heading, 'Montserrat', sans-serif);
+  font-size: clamp(3.25rem, 7vw, 6.3rem);
+  font-weight: 900;
+  letter-spacing: -.075em;
+  line-height: .94;
+}
+.download-hero h1 span { color: var(--dl-gold); }
+.download-intro {
+  max-width: 535px;
+  margin: 25px 0 0;
+  color: rgba(255,255,255,.76);
+  font-size: 16px;
+  line-height: 1.8;
+}
+.download-hero-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 24px; margin-top: 32px; }
+.download-primary-cta, .download-web-cta, .download-final-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  min-height: 54px;
+  padding: 0 22px;
+  background: var(--dl-gold);
+  color: #14271c !important;
+  font-family: var(--font-family-heading, 'Montserrat', sans-serif);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .11em;
+  border-radius: 4px;
+  transition: transform .2s ease, background .2s ease, box-shadow .2s ease;
+}
+.download-primary-cta:hover, .download-web-cta:hover, .download-final-link:hover { transform: translateY(-3px); background: #ffda65; box-shadow: 0 12px 28px rgba(0,0,0,.2); }
+.download-text-cta { color: #fff !important; font-size: 13px; font-weight: 700; }
+.download-text-cta i { color: var(--dl-gold); margin-left: 5px; }
+.download-hero-foot { display: flex; align-items: center; gap: 15px; position: absolute; bottom: 37px; left: 0; color: rgba(255,255,255,.55); font-family: var(--font-family-heading, 'Montserrat', sans-serif); font-size: 9px; font-weight: 800; letter-spacing: .14em; }
+.download-hero-foot i { color: var(--dl-gold); margin-right: 5px; }
+.download-hero-foot-line { width: 38px; height: 1px; background: var(--dl-gold); opacity: .65; }
+.download-hero-art { position: absolute; width: 470px; height: 470px; right: max(4vw, calc((100vw - 1250px)/2)); top: 90px; z-index: 1; }
+.download-orbit { position: absolute; inset: 28px; border: 1px solid rgba(255,255,255,.2); border-radius: 50%; transform: rotate(-24deg) scaleY(.72); }
+.download-orbit-two { inset: 0; border-color: rgba(244,197,66,.42); transform: rotate(32deg) scaleY(.72); }
+.download-ball {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 230px;
+  height: 230px;
+  left: 120px;
+  top: 105px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 26%, #fff7d7, #f4c542 56%, #b8871d);
+  color: #123b29;
+  font-size: 116px;
+  box-shadow: 0 28px 90px rgba(0,0,0,.38), inset -18px -20px 40px rgba(83,51,0,.16), 0 0 80px rgba(244,197,66,.2);
+  transform: rotate(-17deg);
+}
+.download-art-label { position: absolute; z-index: 2; color: rgba(255,255,255,.85); font-family: var(--font-family-heading, 'Montserrat', sans-serif); font-size: 10px; font-weight: 800; letter-spacing: .2em; }
+.download-art-label strong { color: var(--dl-gold); }
+.download-art-label-top { top: 48px; right: 45px; }
+.download-art-label-bottom { bottom: 53px; left: 48px; }
+.download-art-label-bottom span { color: var(--dl-gold); margin-left: 5px; }
+.download-art-number { position: absolute; z-index: -1; right: -4px; bottom: -42px; color: rgba(255,255,255,.055); font-family: var(--font-family-heading, 'Montserrat', sans-serif); font-size: 190px; font-weight: 900; letter-spacing: -.1em; }
+.download-hero-bottom { position: absolute; bottom: 0; right: 0; left: 0; display: flex; justify-content: center; gap: 20px; padding: 13px; color: #102a1e; background: var(--dl-gold); font-family: var(--font-family-heading, 'Montserrat', sans-serif); font-size: 9px; font-weight: 900; letter-spacing: .17em; }
+.download-hero-bottom span:nth-child(2) { color: #fff; }
+.download-intro-band { display: flex; align-items: center; justify-content: center; gap: 25px; padding: 34px 28px; background: #e9efdf; }
+.download-intro-mark { color: var(--dl-green); font-family: var(--font-family-heading, 'Montserrat', sans-serif); font-size: 29px; font-weight: 900; letter-spacing: -.08em; }
+.download-intro-band p { max-width: 760px; margin: 0; color: #5c6b60; font-size: 14px; line-height: 1.7; }
+.download-intro-band strong { color: var(--dl-ink); }
+.download-apps-section { width: min(1180px, calc(100% - 56px)); margin: 0 auto; padding: 96px 0 90px; }
+.download-section-heading { display: flex; justify-content: space-between; align-items: end; gap: 30px; margin-bottom: 35px; }
+.download-section-kicker { margin: 0 0 12px; color: #788b5a; font-size: 10px; }
+.download-section-heading h2, .download-web-copy h2, .download-final-cta h2 {
+  margin: 0;
+  color: var(--dl-ink);
+  font-family: var(--font-family-heading, 'Montserrat', sans-serif);
+  font-size: clamp(2.15rem, 4vw, 3.6rem);
+  font-weight: 900;
+  letter-spacing: -.065em;
+  line-height: 1.05;
+  border: 0;
+}
+.download-section-heading h2 span, .download-web-copy h2 span, .download-final-cta h2 span { color: #7d9e38; }
+.download-section-note { max-width: 320px; margin: 0 0 5px; color: var(--dl-muted); font-size: 13px; line-height: 1.7; }
+.download-app-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 24px; }
+.download-app-card { position: relative; overflow: hidden; padding: 25px 27px 0; background: #fff; border: 1px solid #e4e9de; border-radius: 10px; box-shadow: 0 16px 45px rgba(23,54,34,.06); }
+.download-card-topline { display: flex; justify-content: space-between; align-items: center; color: #88958a; font-family: var(--font-family-heading, 'Montserrat', sans-serif); font-size: 9px; font-weight: 800; letter-spacing: .14em; }
+.download-card-role { color: #7b963e; }
+.download-app-visual { height: 220px; position: relative; display: flex; justify-content: center; align-items: center; margin: 14px -27px 0; overflow: hidden; background: linear-gradient(130deg, #edf3e7, #dce8d1); }
+.download-driver-visual { background: linear-gradient(130deg, #e8eee6, #cdddcf); }
+.download-visual-glow { position: absolute; width: 220px; height: 220px; border-radius: 50%; background: rgba(255,255,255,.62); filter: blur(3px); }
+.download-phone { position: relative; z-index: 1; width: 110px; height: 194px; padding: 7px; border: 4px solid #1a2920; border-radius: 21px; background: #111d16; box-shadow: 0 15px 30px rgba(15,39,24,.3); transform: rotate(-7deg); }
+.download-driver-visual .download-phone { transform: rotate(7deg); }
+.download-phone-speaker { width: 28px; height: 3px; margin: 0 auto 6px; border-radius: 5px; background: #56665a; }
+.download-phone-screen { height: 164px; overflow: hidden; padding: 9px 7px; border-radius: 11px; background: linear-gradient(155deg, #174a31, #0b261a); color: #fff; }
+.download-phone-brand { font-family: var(--font-family-heading, 'Montserrat', sans-serif); font-size: 9px; font-weight: 900; letter-spacing: -.04em; }
+.download-phone-brand span { color: var(--dl-gold); }
+.download-phone-ball { display: grid; place-items: center; height: 76px; margin: 5px 0; border-radius: 7px; background: linear-gradient(145deg, #2b7049, #153c29); font-size: 39px; }
+.download-phone-line { height: 5px; margin: 7px 0; border-radius: 5px; background: rgba(255,255,255,.65); }
+.download-phone-line.short { width: 60%; background: rgba(255,255,255,.3); }
+.download-phone-pills { display: flex; gap: 5px; margin-top: 10px; }
+.download-phone-pills i { width: 17px; height: 17px; border-radius: 5px; background: var(--dl-gold); }
+.download-phone-pills i:nth-child(2) { background: #8fbf64; }.download-phone-pills i:nth-child(3) { background: #fff; opacity: .7; }
+.download-visual-stamp { position: absolute; right: 23%; bottom: 22px; color: #365b3c; font-family: var(--font-family-heading, 'Montserrat', sans-serif); font-size: 9px; font-weight: 900; letter-spacing: .17em; }
+.download-driver-route { display: flex; align-items: center; justify-content: space-between; height: 74px; margin: 7px 0; padding: 0 8px; border: 1px solid rgba(255,255,255,.2); border-radius: 7px; }
+.download-driver-route span { width: 9px; height: 9px; border: 2px solid var(--dl-gold); border-radius: 50%; }
+.download-driver-route b { flex: 1; height: 1px; margin: 0 6px; background: repeating-linear-gradient(90deg, var(--dl-gold) 0 4px, transparent 4px 8px); }
+.download-driver-status { margin-top: 12px; padding: 6px 3px; border-radius: 4px; background: var(--dl-gold); color: #172b1e; text-align: center; font-size: 7px; font-weight: 900; letter-spacing: .1em; }
+.download-app-copy { padding: 25px 0 20px; }
+.download-app-overline { margin: 0 0 8px; color: #82945c; font-size: 9px; }
+.download-app-copy h3 { margin: 0 0 9px; color: var(--dl-ink); font-family: var(--font-family-heading, 'Montserrat', sans-serif); font-size: 25px; font-weight: 900; letter-spacing: -.05em; }
+.download-app-copy > p:last-child { max-width: 460px; margin: 0; color: #69776c; font-size: 13px; line-height: 1.7; }
+.download-platform-list { border-top: 1px solid #e9eee6; }
+.download-platform-row { display: flex; align-items: center; justify-content: space-between; gap: 15px; min-height: 54px; border-bottom: 1px solid #e9eee6; }
+.download-platform-name { color: #344b3b; font-size: 12px; font-weight: 700; }
+.download-platform-name i { width: 23px; display: inline-block; color: #719244; font-size: 15px; }
+.download-platform-link { color: #245d3b !important; font-size: 11px; font-weight: 800; }
+.download-platform-link:hover { color: #9b7410 !important; }
+.download-platform-soon { padding: 5px 8px; border: 1px solid #e3e9dd; border-radius: 3px; color: #879287; font-family: var(--font-family-heading, 'Montserrat', sans-serif); font-size: 8px; font-weight: 800; letter-spacing: .08em; }
+.download-card-footer { display: flex; justify-content: space-between; padding: 16px 0; color: #879287; font-family: var(--font-family-heading, 'Montserrat', sans-serif); font-size: 8px; font-weight: 800; letter-spacing: .12em; }
+.download-card-footer strong { color: #719244; }
+.download-web-banner { display: flex; align-items: center; gap: 26px; width: min(1180px, calc(100% - 56px)); margin: 0 auto 90px; padding: 35px 40px; border-radius: 9px; background: #e8efdf; }
+.download-web-symbol { display: grid; place-items: center; width: 66px; height: 66px; flex: 0 0 66px; border-radius: 50%; background: var(--dl-green); color: var(--dl-gold); font-size: 26px; }
+.download-web-copy { flex: 1; }
+.download-web-copy .download-section-kicker { margin-bottom: 8px; }
+.download-web-copy h2 { font-size: clamp(1.5rem, 3vw, 2.2rem); }
+.download-web-copy > p:last-child { max-width: 620px; margin: 10px 0 0; color: #647267; font-size: 12px; line-height: 1.7; }
+.download-web-cta { flex: 0 0 auto; }
+.download-final-cta { position: relative; overflow: hidden; padding: 76px 24px 84px; background: #0b2b1d; color: #fff; text-align: center; }
+.download-final-cta .download-section-kicker { color: var(--dl-lime); }
+.download-final-cta h2 { position: relative; z-index: 1; color: #fff; }
+.download-final-cta h2 span { color: var(--dl-gold); }
+.download-final-cta > p:not(.download-section-kicker) { position: relative; z-index: 1; max-width: 580px; margin: 16px auto 25px; color: rgba(255,255,255,.68); font-size: 13px; line-height: 1.8; }
+.download-final-link { position: relative; z-index: 1; min-height: 48px; }
+.download-final-watermark { position: absolute; right: 4%; bottom: -115px; color: rgba(255,255,255,.035); font-family: var(--font-family-heading, 'Montserrat', sans-serif); font-size: 330px; font-weight: 900; letter-spacing: -.12em; line-height: 1; pointer-events: none; }
+@media (max-width: 1050px) {
+  .download-hero-art { right: -75px; opacity: .7; transform: scale(.82); transform-origin: center right; }
+  .download-hero-inner { width: min(100% - 48px, 900px); }
+  .download-hero h1, .download-intro { max-width: 570px; }
+}
+@media (max-width: 760px) {
+  .download-hero, .download-hero-inner { min-height: 680px; }
+  .download-hero-inner { width: calc(100% - 40px); padding: 62px 0 105px; }
+  .download-hero-art { width: 300px; height: 300px; top: auto; right: -72px; bottom: 15px; transform: scale(.76); opacity: .52; }
+  .download-ball { width: 190px; height: 190px; left: 55px; top: 55px; font-size: 92px; }
+  .download-orbit { inset: 20px; }
+  .download-orbit-two { inset: 0; }
+  .download-art-label-top { top: 15px; right: 14px; }
+  .download-art-label-bottom { bottom: 17px; left: 14px; }
+  .download-art-number { font-size: 130px; bottom: -35px; }
+  .download-hero h1 { font-size: clamp(3.2rem, 12vw, 5.2rem); }
+  .download-intro { max-width: 470px; font-size: 14px; }
+  .download-hero-foot { bottom: 43px; flex-wrap: wrap; font-size: 8px; }
+  .download-hero-bottom { gap: 9px; font-size: 7px; letter-spacing: .1em; }
+  .download-intro-band { gap: 15px; padding: 25px 22px; }
+  .download-intro-mark { font-size: 24px; }
+  .download-intro-band p { font-size: 12px; }
+  .download-apps-section { width: calc(100% - 36px); padding: 68px 0 62px; }
+  .download-section-heading { display: block; margin-bottom: 25px; }
+  .download-section-note { margin-top: 13px; }
+  .download-app-grid { grid-template-columns: 1fr; gap: 18px; }
+  .download-web-banner { width: calc(100% - 36px); flex-wrap: wrap; gap: 18px; margin-bottom: 60px; padding: 25px 22px; }
+  .download-web-symbol { width: 52px; height: 52px; flex-basis: 52px; font-size: 21px; }
+  .download-web-copy { flex-basis: calc(100% - 75px); }
+  .download-web-cta { width: 100%; }
+}
+@media (max-width: 420px) {
+  .download-hero, .download-hero-inner { min-height: 700px; }
+  .download-kicker { font-size: 8px; letter-spacing: .12em; }
+  .download-eyebrow { font-size: 9px; }
+  .download-hero h1 { font-size: 3.1rem; }
+  .download-hero-actions { align-items: flex-start; flex-direction: column; gap: 17px; }
+  .download-hero-foot { gap: 9px; }
+  .download-app-card { padding-right: 20px; padding-left: 20px; }
+  .download-app-visual { margin-right: -20px; margin-left: -20px; }
+  .download-platform-row { gap: 8px; }
+  .download-platform-name { font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .download-page *, .download-page *::before, .download-page *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}
