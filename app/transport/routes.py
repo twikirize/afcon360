@@ -2519,6 +2519,17 @@ def driver_dashboard():
             logger.warning(
                 f"Error loading request-first offers for profile {_uid()}: {e}"
             )
+    if profile is not None and offers:
+        try:
+            from app.transport.services.currency_presentation_service import (
+                enrich_driver_offers_with_home_currency,
+            )
+            offers = enrich_driver_offers_with_home_currency(offers, profile)
+        except Exception:
+            logger.warning(
+                "Driver offer home-currency presentation unavailable; keeping base fare",
+                exc_info=True,
+            )
     offer_count = len(offers)
 
     # GO-LIVE capability: entering the Driver Workspace is participation;
