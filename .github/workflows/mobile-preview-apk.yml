@@ -187,7 +187,7 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 600
           script: |
-            set -euo pipefail
+            set -eu
             APK="$GITHUB_WORKSPACE/mobile/release/$APP-preview.apk"
             test -s "$APK"
 
