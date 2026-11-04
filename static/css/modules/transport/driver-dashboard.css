@@ -5,32 +5,14 @@
     /transport/driver-dashboard
     ============================================================= */
 
-/* ── 1. Global Theme Variables ───────────────────── */
-body.afcon-root,
-html.afcon-root {
-  --brand-primary: #2d5a2d;
-  --brand-primary-rgb: 45, 90, 45;
-  --brand-primary-dark: #1a3a1a;
-  --brand-primary-light: #e8f0e8;
-  --brand-primary-hover: #3a6b3a;
-  --brand-accent: #ffcc00;
-  --brand-accent-rgb: 255, 204, 0;
-  --brand-accent-dark: #b88605;
-  --success: #006400;
-  --danger: #dc3545;
-  --warning: #b88605;
-  --info: #17a2b8;
-  --text-primary: #1a1a1a;
-  --text-secondary: #374151;
-  --text-muted: #495057;
-  --bg-body: #f2f4f2;
-  --bg-surface: #ffffff;
-  --bg-surface-alt: #f8f9fa;
-  --bg-elevated: #ffffff;
-  --border-light: #e9ecef;
-  --border-medium: #dee2e6;
-  --font-family-heading: 'Montserrat', sans-serif;
-  --font-family-body: 'Open Sans', sans-serif;
+/* ── Shared theme integration ─────────────────────────────────────
+   Colours are owned by the global theme token layer. Keep only font
+   aliases for legacy component rules, mapped to the Transport shell's
+   loaded font families so dark mode and user preferences stay effective.
+   ───────────────────────────────────────────────────────────────── */
+body.afcon-root {
+  --font-family-heading: var(--font-display, 'Syne', sans-serif);
+  --font-family-body: var(--font-body, 'DM Sans', sans-serif);
 }
 
 /* ── 2. Override transport/base.css globals ──────── */
@@ -1381,3 +1363,301 @@ html.ck-js :where(#driverDashboard) .ck-panel:not(.ck-active) { display: none; }
 /* Responsive --------------------------------------------------------- */
 @media (max-width: 1200px) { :where(#driverDashboard) .ck-panel { grid-template-columns: 1fr; } }
 @media (max-width: 900px)  { :where(#driverDashboard) .ck-panel { grid-template-columns: 1fr; } }
+
+
+/* ================================================================
+   DRIVER PWA — MOBILE-FIRST REFINEMENT
+   The drawer retains all seven workspaces. The bottom dock surfaces
+   the five frequent destinations; Status remains one tap from Home
+   and Assignments remains available in the drawer.
+   ================================================================ */
+
+/* High-contrast status text over the existing semantic tint surfaces. */
+#driverDashboard {
+  --driver-status-amber-ink: #854d0e;
+  --driver-status-blue-ink: #1e40af;
+}
+#driverDashboard .ck-pill--amber,
+#driverDashboard .badge-amber {
+  color: var(--driver-status-amber-ink);
+}
+#driverDashboard .ck-pill--blue,
+#driverDashboard .badge-blue {
+  color: var(--driver-status-blue-ink);
+}
+body.dark-mode #driverDashboard {
+  --driver-status-amber-ink: #fcd34d;
+  --driver-status-blue-ink: #93c5fd;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not(.light-mode) body:not(.light-mode):not(.dark-mode) #driverDashboard {
+    --driver-status-amber-ink: #fcd34d;
+    --driver-status-blue-ink: #93c5fd;
+  }
+}
+
+/* The switch remains keyboard-operable while presenting a visible focus ring. */
+#driverDashboard .toggle {
+  width: 52px;
+  height: 44px;
+  min-width: 52px;
+}
+#driverDashboard .toggle input {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+#driverDashboard .toggle .toggle-slider {
+  top: 6px;
+  bottom: 6px;
+  left: 0;
+  right: 0;
+}
+#driverDashboard .toggle .toggle-slider::before {
+  width: 22px;
+  height: 22px;
+  top: 4px;
+  left: 4px;
+}
+#driverDashboard .toggle input:checked + .toggle-slider::before {
+  transform: translateX(20px);
+}
+#driverDashboard .toggle input:focus-visible + .toggle-slider {
+  outline: 3px solid var(--ring-color, var(--brand-primary));
+  outline-offset: 3px;
+}
+
+/* Long addresses and identifiers must wrap instead of widening the app. */
+#driverDashboard .offer-body,
+#driverDashboard .offer-title,
+#driverDashboard .offer-meta,
+#driverDashboard .trip-info,
+#driverDashboard .trip-route,
+#driverDashboard .vehicle-name,
+#driverDashboard .incident-meta {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+#driverDashboard .ck-hero-name {
+  margin: 0;
+}
+
+/* Five primary phone destinations; secondary workspaces stay in the drawer. */
+@media (max-width: 900px) {
+  .t-shell.ck-shell {
+    padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  .t-shell.ck-shell .ck-pane {
+    height: 100dvh;
+    min-height: 100vh;
+    padding-top: calc(20px + env(safe-area-inset-top, 0px)) !important;
+  }
+  .ck-dock {
+    background: var(--bg-surface) !important;
+    border-top-color: var(--border-light);
+    padding: 6px 4px max(8px, env(safe-area-inset-bottom, 0px));
+    gap: 2px;
+  }
+  .ck-dock > [data-ck-nav="status"],
+  .ck-dock > [data-ck-nav="assignments"] {
+    display: none !important;
+  }
+  .ck-dock .ck-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 48px !important;
+    padding: 6px 2px;
+    gap: 3px;
+    font-size: clamp(0.64rem, 2.2vw, 0.72rem);
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+  .ck-dock .ck-tab i {
+    font-size: 1.25rem;
+  }
+  .ck-dock .ck-tab:focus-visible {
+    outline: 3px solid var(--ring-color, var(--brand-primary));
+    outline-offset: -2px;
+  }
+}
+
+/* Phone layout: reduce dead space, enlarge primary actions, prevent clipping. */
+@media (max-width: 767px) {
+  .t-shell.ck-shell .ck-main {
+    min-width: 0;
+  }
+  .t-shell.ck-shell .t-content {
+    min-width: 0;
+    padding: 12px;
+    padding-bottom: 8px;
+  }
+  #driverDashboard {
+    min-width: 0;
+    width: 100%;
+  }
+  #driverDashboard .ck-panel {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  #driverDashboard .ck-col {
+    min-width: 0;
+    gap: 12px;
+  }
+  #driverDashboard .ck-hero {
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  #driverDashboard .ck-hero-info {
+    flex: 1 1 150px;
+    min-width: 0;
+  }
+  #driverDashboard .ck-hero-name {
+    font-size: 1.1rem;
+    overflow-wrap: anywhere;
+  }
+  #driverDashboard .ck-hero-meta {
+    gap: 7px;
+    font-size: 0.72rem;
+  }
+  #driverDashboard .ck-status {
+    width: 100%;
+    min-height: 48px;
+    justify-content: space-between;
+  }
+  #driverDashboard .ck-focus {
+    padding: 18px 16px;
+    border-radius: 14px;
+  }
+  #driverDashboard .ck-focus-title {
+    font-size: clamp(1.05rem, 4vw, 1.3rem);
+    overflow-wrap: anywhere;
+  }
+  #driverDashboard .ck-focus-sub {
+    font-size: 0.82rem;
+  }
+  #driverDashboard .ck-focus-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  #driverDashboard .ck-focus-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 48px;
+    padding: 10px 8px;
+    white-space: normal;
+  }
+  #driverDashboard .ck-focus-actions .btn:only-child {
+    grid-column: 1 / -1;
+  }
+  #driverDashboard .offer-row {
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px;
+  }
+  #driverDashboard .offer-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  #driverDashboard .offer-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 48px;
+    padding: 10px 8px;
+    white-space: normal;
+  }
+  #driverDashboard .trip-card {
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px;
+  }
+  #driverDashboard .ck-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  #driverDashboard .ck-metrics .stat-card {
+    min-width: 0;
+    padding: 12px 8px;
+  }
+  #driverDashboard .ck-metrics .stat-value {
+    font-size: clamp(1rem, 4vw, 1.35rem);
+    overflow-wrap: anywhere;
+  }
+  #driverDashboard .card-header {
+    gap: 8px;
+    padding: 12px;
+  }
+  #driverDashboard .card-title {
+    min-width: 0;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+  #driverDashboard .workspace-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  #driverDashboard .workspace-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 48px;
+    white-space: normal;
+  }
+  #driverDashboard .driver-location-map__tools .btn {
+    min-height: 44px;
+  }
+}
+
+/* Compact phones: protect the header and keep the five-tab dock legible. */
+@media (max-width: 430px) {
+  .t-shell.ck-shell .t-content {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .t-shell.ck-shell .topbar-profile {
+    display: none !important;
+  }
+  .t-shell.ck-shell .topbar-actions {
+    gap: 5px !important;
+  }
+  .t-shell.ck-shell .topbar-btn {
+    width: 38px;
+    height: 38px;
+  }
+  #driverDashboard .ck-hero-avatar {
+    width: 52px;
+    height: 52px;
+  }
+  #driverDashboard .ck-focus-top {
+    justify-content: flex-start;
+  }
+  #driverDashboard .ck-focus-phase {
+    margin-left: 0;
+  }
+}
+
+/* Honour the device's motion preference as well as the in-app setting. */
+@media (prefers-reduced-motion: reduce) {
+  #driverDashboard .ck-live-dot {
+    animation: none !important;
+  }
+  .t-shell.ck-shell .ck-pane,
+  .t-shell.ck-shell .ck-overlay,
+  .ck-dock .ck-tab {
+    transition: none !important;
+  }
+}
