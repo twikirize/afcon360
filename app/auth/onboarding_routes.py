@@ -416,7 +416,7 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> Any:
             commission_rate=Decimal('15.00'),
             driver_metadata={
                 "operating_country_code": operating_country_code,
-                "operating_country_status": "declared_pending_review",
+                "operating_country_verified": False,
             },
         )
         db.session.add(driver)
