@@ -121,3 +121,15 @@ Attempted to introduce thread-safe TTL locking and 503 status codes. This was **
 - The old alternate-template safety controls were audited. Trip-share has no matching backend route in this branch; audio recording has no evidenced consent/storage endpoint; and the prototype's emergency/support phone numbers are hard-coded to Kenya. These controls were not copied as fake features. Existing incident, support, notification, and account areas remain the canonical sources until configurable, secure regional services are available.
 - CSRF refresh no longer deletes/rotates the session's underlying CSRF secret. A new timestamped token is issued with private no-store headers so refreshing one page does not invalidate tokens held by other tabs or requests in flight. A driver-status regression test pins that contract.
 - Verification status at record time: the prior dashboard selection gate passed 48 focused tests. The new map/PWA/CSRF additions still require the updated local focused test run and browser verification; no production data, database schema, or migrations were changed.
+
+
+## Driver PWA mobile UX refinement — 2026-11-04
+
+- Created the isolated branch `feat/driver-pwa-mobile-ux-20261104` from validated reconstruction baseline `6488740e83b673a50bfcab387c0c45a597a095c7`.
+- Kept the existing installable driver PWA identity and route (`/transport/driver-dashboard`, `/transport/`, `standalone`) unchanged. The service worker cache version advances to 2.0.7 so installed clients refresh the updated presentation. Its privacy boundary remains unchanged: no authenticated HTML, API responses, CSRF tokens, or private data are cached.
+- On phones, the bottom dock prioritises Home, Trips, Earnings, Vehicles, and Account. Status and Assignments remain available in the seven-item workspace drawer; the Status toggle is also exposed on Home. No workspace or action is removed.
+- Improved phone layout with safe-area-aware drawer/dock spacing, compact header handling on narrow phones, larger primary action targets, wrapping for long addresses/references, and a two-column metrics layout.
+- Added accessible names for the main heading, workspace sections, driver-availability switches, search, breadcrumb, and top-bar actions. The availability switch keeps a visible keyboard focus indicator.
+- Reconnected legacy component font aliases to the existing Syne/DM Sans Transport font tokens and removed fixed light-mode colour overrides so global theme preferences remain authoritative. Amber/blue status text receives stronger contrast, and reduced-motion system preference suppresses the live pulse animation.
+- No changes to the frozen `driver-dashboard.js`, GPS publishing, trip/payment APIs, database schema, migrations, manifest identity, or backend behavior.
+- Verification: static source contracts added in `tests/test_driver_pwa_mobile_ux.py`; existing PWA tests updated for cache version 2.0.7. Local pytest/browser verification is still required after pulling this branch.
