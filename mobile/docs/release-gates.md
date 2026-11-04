@@ -41,16 +41,16 @@ A release advances only when evidence for its gate is recorded. CI and source in
 - [ ] Accessibility, dynamic text, safe areas and light/dark appearance tested.
 - [ ] No secrets, tokens, private data or sensitive diagnostics appear in logs.
 
-## Gate 3 — direct APK sharing
+## Gate 3 — direct APK testing and distribution
 
-- [x] Matrix workflow is configured to build User and Driver APKs in parallel.
-- [x] Workflow requires a stable private preview signing key, verifies package identity, target API, signature and DEX payload, and publishes only after both builds pass.
-- [x] Website and both native Account screens include APK and app-page share links.
-- [ ] Four stable preview-keystore GitHub Actions secrets configured by repository owner.
-- [ ] Both latest-branch APK jobs complete successfully.
-- [ ] Combined prerelease contains both APKs and SHA-256 checksums.
-- [ ] User and Driver APK download URLs return HTTP 200 and install on tested Android devices.
-- [ ] Preview APKs remain labelled as internal test builds, not Play Store or iPhone releases.
+- [x] Current PR-safe workflow uses read-only GitHub token permissions, no stable signing-secret references, no publishing job and an ephemeral CI signing key.
+- [x] User APK package identity, minSdk 24, targetSdk 36, v2/v3 signature, DEX payload and packaged `allowBackup=false` were verified in Run #48.
+- [x] The same checksum-verified User APK installed and launched on Android API 24, 29, 33 and 36 in [Run #53](https://github.com/twikirize/afcon360/actions/runs/41924848966).
+- [ ] Rebuild after the signing-password masking change and inspect logs to confirm no ephemeral credential is exposed. A run that reuses the existing APK does not execute a fresh build.
+- [ ] Driver Android matrix and Driver APK build pass.
+- [ ] Physical Android device install, app update, login and network tests pass.
+- [ ] Stable internal distribution is designed in a separate trusted workflow if needed; do not add signing keys to PR-accessible repository secrets.
+- [ ] Preview APK is clearly labelled as an internal test build, not a Play Store or iPhone installer.
 
 ## Gate 4 — Google Play
 
@@ -59,10 +59,10 @@ A release advances only when evidence for its gate is recorded. CI and source in
 - [ ] Production signing key and Play App Signing configured; signed AAB generated.
 - [ ] Target SDK verified at API 36 or higher in the production AAB.
 - [ ] App names, short/full descriptions, support URL, 512×512 icons, 1024×500 feature graphics and phone/tablet screenshots prepared.
-- [ ] Approved privacy policy and Data safety declaration match actual app data, SDKs and processors.
+- [ ] Approved, globally accessible privacy policy and Data safety declaration match actual data, SDKs, processors, retention and deletion practices. The current privacy page is explicitly a working draft and blocks store submission.
 - [ ] App access/reviewer instructions include test credentials and MFA steps for both apps.
-- [ ] Content rating, target audience, ads, permissions and any financial-services declarations completed truthfully.
-- [ ] In-app and web account-deletion experience tested; Play deletion-policy requirements and retained-record disclosures reviewed.
+- [ ] Content rating, target audience, ads, permissions and Play Financial features declaration completed truthfully; assess Wallet and ride-payment capabilities rather than assuming no financial features.
+- [ ] In-app and external web account deletion tested end-to-end; verify deletion of data not required to be retained and document retained categories, legal grounds and exact retention periods.
 - [ ] Internal/closed testing, pre-launch report, device matrix and policy checks passed.
 - [ ] Review accepted and official Play URLs verified before replacing preview status.
 
