@@ -1,14 +1,37 @@
 {
-  "name": "@afcon360/user-app", "version": "0.1.0", "private": true,
+  "name": "@afcon360/user-app",
+  "version": "0.1.0",
+  "private": true,
   "main": "expo-router/entry",
-  "scripts": { "start": "expo start", "android": "expo start --android", "ios": "expo start --ios", "typecheck": "tsc --noEmit" },
-  "dependencies": {
-    "@afcon360/mobile-core": "workspace:*", "@afcon360/mobile-ui": "workspace:*",
-    "expo": "~58.0.22", "expo-constants": "~58.0.0", "expo-linking": "~58.0.0",
-    "expo-router": "~58.0.19", "expo-secure-store": "~58.0.2", "expo-splash-screen": "~58.0.0",
-    "expo-status-bar": "~58.0.0", "expo-system-ui": "~58.0.0", "expo-web-browser": "~58.0.0",
-    "react": "19.3.0", "react-native": "0.88.0",
-    "react-native-safe-area-context": "~5.10.1", "react-native-screens": "~4.30.0"
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "typecheck": "tsc --noEmit"
   },
-  "devDependencies": { "@types/react": "~19.3.0", "typescript": "~6.0.3" }
+  "dependencies": {
+    "@afcon360/mobile-core": "workspace:*",
+    "@afcon360/mobile-ui": "workspace:*",
+    "expo": "~58.0.22",
+    "expo-constants": "~58.0.0",
+    "expo-linking": "~58.0.0",
+    "expo-router": "~58.0.19",
+    "expo-secure-store": "~58.0.2",
+    "expo-splash-screen": "~58.0.0",
+    "expo-status-bar": "~58.0.0",
+    "expo-system-ui": "~58.0.0",
+    "expo-web-browser": "~58.0.0",
+    "react": "19.3.0",
+    "react-native": "0.88.0",
+    "react-native-safe-area-context": "~5.10.1",
+    "react-native-screens": "~4.30.0",
+    "expo-dev-client": "~58.0.18",
+    "react-native-gesture-handler": "~3.3.0",
+    "react-native-reanimated": "4.7.1",
+    "react-native-worklets": "0.13.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.3.0",
+    "typescript": "~6.0.3"
+  }
 }
