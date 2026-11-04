@@ -571,6 +571,8 @@ class AvailabilityService:
     def release_expired_holds(
         hold_minutes: int = 15,
         batch_size: int = 25,
+        after_blocked_id: int = 0,
+        after_room_hold_id: int = 0,
     ) -> dict:
         """
         Release one bounded page of expired temporary holds.
@@ -585,10 +587,13 @@ class AvailabilityService:
         now = datetime.now(timezone.utc)
         expired_time = now - timedelta(minutes=hold_minutes)
 
+        after_blocked_id = max(0, int(after_blocked_id))
+        after_room_hold_id = max(0, int(after_room_hold_id))
         expired_blocked = (
             BlockedDate.query.filter(
                 BlockedDate.reason == AccommodationBlockedReason.TEMPORARY_HOLD.value,
                 BlockedDate.created_at < expired_time,
+                BlockedDate.id > after_blocked_id,
             )
             .order_by(BlockedDate.id.asc())
             .limit(batch_size)
@@ -602,6 +607,7 @@ class AvailabilityService:
             RoomHold.query.filter(
                 RoomHold.status == "active",
                 RoomHold.expires_at <= now,
+                RoomHold.id > after_room_hold_id,
             )
             .order_by(RoomHold.id.asc())
             .limit(batch_size)
@@ -629,6 +635,16 @@ class AvailabilityService:
             "has_more": (
                 len(expired_blocked) >= batch_size
                 or len(expired_room_holds) >= batch_size
+            ),
+            "after_blocked_id": (
+                expired_blocked[-1].id
+                if len(expired_blocked) >= batch_size
+                else after_blocked_id
+            ),
+            "after_room_hold_id": (
+                expired_room_holds[-1].id
+                if len(expired_room_holds) >= batch_size
+                else after_room_hold_id
             ),
         }
 
