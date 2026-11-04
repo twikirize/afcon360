@@ -522,8 +522,20 @@ def mobile_account_deletion():
         user.deleted_at = datetime.now(timezone.utc)
         user.email = f"deleted_{public_id}@deleted.local"
         user.username = f"deleted_{public_id}"
+        user.email_verified = False
+        user.phone_verified = False
+        user.mfa_enabled = False
+        user.security_question = None
+        user.security_answer_hash = None
+        user.recovery_code = None
+        user.transaction_pin_hash = None
+        user.transaction_pin_failed_attempts = 0
+        user.transaction_pin_locked_until = None
+        user.is_agent = False
         if hasattr(user, "phone"):
             user.phone = None
+        if hasattr(user, "agent_code"):
+            user.agent_code = None
         if hasattr(user, "password_hash"):
             user.set_password(secrets.token_urlsafe(64))
 
@@ -551,6 +563,15 @@ def mobile_account_deletion():
             profile.fan_team = None
             profile.avatar_url = None
             profile.bio = None
+            # Remove personal ID/contact pointers from the general profile.
+            # Any legally required KYC evidence remains in its separately
+            # controlled verification/audit records, not the public profile.
+            profile.id_type = None
+            profile.id_number = None
+            profile.id_document_url = None
+            profile.id_document_mime = None
+            profile.id_document_size = None
+            profile.rejected_reason = None
         try:
             from app.identity.models.user import MFASecret, APIKey
             # Deactivate MFA and erase the stored authenticator/backup material.

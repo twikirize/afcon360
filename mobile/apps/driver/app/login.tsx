@@ -35,7 +35,7 @@ export default function LoginScreen() {
           {mfaChallenge ? (
             <>
               <AuthNotice>This sign-in challenge expires shortly and can only be used once. Never share your authenticator code.</AuthNotice>
-              <AuthField label="Authenticator code" value={code} onChangeText={setCode} keyboardType="number-pad" autoComplete="one-time-code" maxLength={8} placeholder="6-digit code or backup code" />
+              <AuthField label="Authenticator code" value={code} onChangeText={setCode} keyboardType="default" autoCapitalize="characters" autoCorrect={false} autoComplete="one-time-code" maxLength={8} placeholder="6-digit code or backup code" />
               <AuthSubmit label="Verify and continue" loading={signingIn} disabled={code.trim().length < 6} onPress={() => verifyMfa(code).then(() => router.replace("/(tabs)")).catch(showError)} />
               <AuthLink label="Use a different account" onPress={() => { cancelMfa(); setCode(""); setPassword(""); }} />
             </>
