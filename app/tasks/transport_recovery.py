@@ -126,7 +126,13 @@ def dispatch_recovery() -> dict:
 
         from app.transport.services.matching_service import MatchingService
 
-        batch = int(current_app.config.get("TRANSPORT_DISPATCH_RECOVERY_BATCH", 50))
+        batch = max(
+            1,
+            min(
+                int(current_app.config.get("TRANSPORT_DISPATCH_RECOVERY_BATCH", 10)),
+                25,
+            ),
+        )
         window = int(current_app.config.get("TRANSPORT_MATCHING_WINDOW_SECONDS", 180))
         from app.transport.services.assignment_service import CLAIMABLE_STATUSES
 
@@ -174,7 +180,7 @@ def dispatch_recovery() -> dict:
             RideRequestDispatchService,
         )
         result["request_first_recovery"] = RideRequestDispatchService.recover_expired(
-            batch=int(os.environ.get("TRANSPORT_REQUEST_RECOVERY_BATCH", "100"))
+            batch=max(1, min(int(os.environ.get("TRANSPORT_REQUEST_RECOVERY_BATCH", "25")), 50))
         )
     except Exception:
         logger.error("Request-first dispatch recovery failed", exc_info=True)
@@ -188,9 +194,14 @@ def dispatch_recovery() -> dict:
     return result
 
 
-@celery_app.task(name="transport.stall_recovery")
+@celery_app.task(name="transport.stall_recovery", bind=True)
 @_with_app_context
-def stall_recovery(stall_seconds: int = None, dry_run: bool = False) -> dict:
+def stall_recovery(
+    self,
+    stall_seconds: int = None,
+    dry_run: bool = False,
+    batch: int = 25,
+) -> dict:
     """Cancel bookings stuck ASSIGNED with no driver en-route.
 
     A booking satisfies the stall condition when:
@@ -225,13 +236,17 @@ def stall_recovery(stall_seconds: int = None, dry_run: bool = False) -> dict:
         timeout = stall_seconds or TRANSPORT_STALL_TIMEOUT_SECONDS
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=timeout)
 
+        batch = max(1, min(int(batch), 50))
         candidates = (
             Booking.query.filter(
                 Booking.status == BookingStatus.ASSIGNED.value,
                 Booking.driver_en_route_at.is_(None),
                 Booking.is_deleted.is_(False),
                 Booking.driver_assigned_at < cutoff,
-            ).all()
+            )
+            .order_by(Booking.driver_assigned_at.asc(), Booking.id.asc())
+            .limit(batch)
+            .all()
         )
 
         recovered = []
@@ -265,11 +280,30 @@ def stall_recovery(stall_seconds: int = None, dry_run: bool = False) -> dict:
                 f"Transport stall recovery handled {len(recovered)} "
                 f"stalled booking(s): {recovered}"
             )
+        continuation_queued = False
+        if not dry_run and len(candidates) >= batch:
+            try:
+                self.apply_async(
+                    kwargs={
+                        "stall_seconds": timeout,
+                        "dry_run": False,
+                        "batch": batch,
+                    },
+                    countdown=5,
+                )
+                continuation_queued = True
+            except Exception:
+                logger.exception(
+                    "Could not schedule the next stall-recovery batch; Beat will retry"
+                )
+
         return {
             "candidates": [b.id for b in candidates],
             "recovered": recovered,
             "dry_run": dry_run,
             "timeout_seconds": timeout,
+            "batch_size": batch,
+            "continuation_queued": continuation_queued,
         }
     except Exception as e:
         logger.error(f"Transport stall recovery failed: {e}", exc_info=True)
@@ -483,8 +517,12 @@ def scheduled_booking_dispatch(batch: int = None, dry_run: bool = False) -> dict
         from app.transport.services.matching_service import MatchingService
 
         if batch is None:
-            batch = int(
-                current_app.config.get("TRANSPORT_SCHEDULED_DISPATCH_BATCH", 100)
+            batch = max(
+                1,
+                min(
+                    int(current_app.config.get("TRANSPORT_SCHEDULED_DISPATCH_BATCH", 25)),
+                    50,
+                ),
             )
 
         now = datetime.now(timezone.utc)
