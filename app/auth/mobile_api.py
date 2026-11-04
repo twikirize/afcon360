@@ -457,6 +457,99 @@ def mobile_logout():
     return jsonify({"success": True, "data": {"revoked": bool(revoked)}}), 200
 
 
+@mobile_api_bp.post("/auth/account-deletion")
+@_bearer_required()
+def mobile_account_deletion():
+    """In-app account deletion: recent password proof, MFA, owner block and session revocation."""
+    data = request.get_json(silent=True) or {}
+    password = data.get("password")
+    confirmation = data.get("confirmation")
+    mfa_code = str(data.get("mfa_code") or "").strip()
+    if confirmation != "DELETE MY ACCOUNT":
+        return _error("deletion_confirmation_invalid", 'Type "DELETE MY ACCOUNT" exactly to confirm.', 400)
+    if not isinstance(password, str) or not password or len(password) > 128:
+        return _error("password_required", "Enter your current password to confirm account deletion.", 400)
+
+    user = g._afcon360_mobile_auth_context["user"]
+    if user.is_app_owner():
+        return _error("owner_deletion_blocked", "The platform owner account cannot be deleted from the app.", 403)
+    try:
+        if not user.verify_password(password):
+            return _error("password_invalid", "The current password could not be verified.", 401)
+        if getattr(user, "mfa_enabled", False):
+            if not mfa_code:
+                return _error("mfa_required", "Enter your current authenticator or backup code.", 401)
+            from app.auth.routes import _verify_mfa_token
+            if not _verify_mfa_token(user, mfa_code, backup_code=(len(mfa_code) == 8)):
+                return _error("mfa_invalid", "The authenticator code is invalid or expired.", 401)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native account-deletion proof could not be verified")
+        return _error("deletion_verification_unavailable", "AFCON360 could not verify this deletion request.", 503)
+
+    from app.auth.sessions import (
+        revoke_all_device_sessions_for_user,
+        revoke_all_sessions_for_user,
+    )
+    from app.identity.models.user import Session as DeviceSession
+    active_ids = [
+        row.session_id for row in DeviceSession.query.filter_by(
+            user_id=user.id, revoked_at=None
+        ).all()
+    ]
+    try:
+        revoke_all_device_sessions_for_user(user.id, reason="mobile_account_deletion")
+        revoke_all_sessions_for_user(str(user.public_id))
+        # DB revocation is authoritative; Redis cleanup is best-effort because
+        # the request loader also checks the Identity session row each time.
+        for session_id in active_ids:
+            try:
+                mark_mobile_session_revoked(session_id)
+            except Exception:
+                logger.warning("Redis token cleanup deferred for deleted-account device session", exc_info=True)
+
+        from app.audit.comprehensive_audit import AuditService, AuditSeverity
+        verified = bool(getattr(user, "is_verified", False) or (getattr(user, "kyc_level", 0) or 0) > 0)
+        public_id = str(user.public_id)
+        if verified:
+            user.is_deleted = True
+            user.deleted_at = datetime.now(timezone.utc)
+            user.email = f"deleted_{public_id}@deleted.local"
+            user.username = f"deleted_{public_id}"
+            user.phone = None
+            db.session.commit()
+            AuditService.security(
+                event_type="account_deletion_requested",
+                severity=AuditSeverity.WARNING,
+                description=f"Verified user {public_id} requested account deletion (native app)",
+                user_id=user.id,
+                ip_address=request.remote_addr,
+            )
+            result = {"status": "anonymized", "message": "Your account has been anonymized and scheduled for permanent removal under AFCON360 retention policy."}
+        else:
+            internal_id = user.id
+            db.session.delete(user)
+            db.session.commit()
+            # Keep the same durable audit event used by the existing web flow.
+            try:
+                AuditService.security(
+                    event_type="account_deleted",
+                    severity=AuditSeverity.WARNING,
+                    description=f"Unverified user {public_id} deleted their account (native app)",
+                    user_id=internal_id,
+                    ip_address=request.remote_addr,
+                )
+            except Exception:
+                logger.exception("Account was deleted but the post-delete audit event could not be written")
+            result = {"status": "deleted", "message": "Your account has been deleted."}
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native account deletion failed")
+        return _error("account_deletion_failed", "AFCON360 could not complete the account deletion request. Please contact support.", 503)
+
+    return jsonify({"success": True, "data": result}), 200
+
+
 @mobile_api_bp.get("/auth/me")
 @_bearer_required()
 def mobile_me():
@@ -488,6 +581,95 @@ def mobile_me():
             "contexts": contexts,
         },
     }), 200
+
+
+@mobile_api_bp.post("/transport/ride-options")
+@_bearer_required("user")
+def mobile_ride_options():
+    """Use the canonical quote-only Transport resource; no matching is started."""
+    from app.transport.api.ride_options_routes import RideOptionsResource
+    return RideOptionsResource().post()
+
+
+@mobile_api_bp.post("/transport/payment-methods/options")
+@_bearer_required("user")
+def mobile_payment_method_options():
+    data = request.get_json(silent=True) or {}
+    currency = str(data.get("currency") or "").strip().upper()
+    amount = data.get("amount")
+    if not currency or amount is None:
+        return _error("payment_options_incomplete", "A fare currency and amount are required.", 400)
+    try:
+        from app.transport.services.payment_methods import get_available_transport_payment_methods
+        methods = get_available_transport_payment_methods(
+            user_id=g._afcon360_mobile_auth_context["user"].id,
+            currency_code=currency,
+            amount=amount,
+            payment_timing="pay_on_completion",
+        )
+    except Exception:
+        logger.exception("Could not resolve Wallet-certified native payment methods")
+        return _error("payment_methods_unavailable", "AFCON360 could not load available payment methods.", 503)
+    return jsonify({
+        "success": True,
+        "data": {
+            "currency": currency,
+            "payment_methods": methods,
+        },
+    }), 200
+
+
+@mobile_api_bp.get("/activity")
+@_bearer_required("user")
+def mobile_user_activity():
+    from app.transport.models import Booking, RideRequest, SearchCycle
+    from app.transport.services.ride_request_service import serialize_request
+    user = g._afcon360_mobile_auth_context["user"]
+    rows = (
+        RideRequest.query
+        .filter_by(user_id=user.id, is_deleted=False)
+        .order_by(RideRequest.created_at.desc())
+        .limit(30)
+        .all()
+    )
+    items = []
+    for ride_request in rows:
+        cycle = (
+            SearchCycle.query
+            .filter_by(ride_request_id=ride_request.id, is_deleted=False)
+            .order_by(SearchCycle.cycle_number.desc())
+            .first()
+        )
+        if cycle is None:
+            continue
+        item = serialize_request(ride_request, cycle)
+        item["booking_reference"] = ride_request.public_id
+        item["converted"] = ride_request.status == "converted"
+        item["terminal_reason"] = cycle.terminal_reason
+        if item["converted"]:
+            booking = Booking.query.filter_by(
+                ride_request_id=ride_request.id,
+                is_deleted=False,
+            ).first()
+            if booking is not None:
+                item["booking_status"] = str(getattr(booking.status, "value", booking.status))
+                driver = booking.driver
+                item["driver"] = ({
+                    "display_name": getattr(driver.user, "display_name", None) or driver.driver_code,
+                    "rating": float(driver.average_rating or 0),
+                } if driver else None)
+                vehicle = booking.vehicle
+                item["vehicle"] = ({
+                    "make": vehicle.make,
+                    "model": vehicle.model,
+                    "license_plate": vehicle.license_plate,
+                } if vehicle else None)
+                item["payment"] = {
+                    "method": booking.payment_method,
+                    "status": str(getattr(booking.payment_status, "value", booking.payment_status)),
+                }
+        items.append(item)
+    return jsonify({"success": True, "data": {"items": items}}), 200
 
 
 @mobile_api_bp.post("/transport/ride-requests")
