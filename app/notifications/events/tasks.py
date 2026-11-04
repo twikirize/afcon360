@@ -190,19 +190,49 @@ def cleanup_ledger_task(
 
         removed = {'events': 0, 'outbox': 0, 'processed': 0}
         try:
-            removed['outbox'] = OutboxEvent.query.filter(
-                OutboxEvent.status == OutboxStatus.PUBLISHED.value,
-                OutboxEvent.published_at < working_cutoff,
-            ).limit(batch).delete(synchronize_session=False) or 0
+            # SQLAlchemy ORM Query.delete() cannot be combined with LIMIT.
+            # Select bounded primary-key pages, then delete only those IDs.
+            outbox_ids = [
+                row[0] for row in db.session.query(OutboxEvent.id)
+                .filter(
+                    OutboxEvent.status == OutboxStatus.PUBLISHED.value,
+                    OutboxEvent.published_at < working_cutoff,
+                )
+                .order_by(OutboxEvent.id.asc())
+                .limit(batch)
+                .all()
+            ]
+            if outbox_ids:
+                removed['outbox'] = OutboxEvent.query.filter(
+                    OutboxEvent.id.in_(outbox_ids)
+                ).delete(synchronize_session=False) or 0
 
-            removed['processed'] = ProcessedEvent.query.filter(
-                ProcessedEvent.processed_at < working_cutoff,
-            ).limit(batch).delete(synchronize_session=False) or 0
+            processed_ids = [
+                row[0] for row in db.session.query(ProcessedEvent.id)
+                .filter(ProcessedEvent.processed_at < working_cutoff)
+                .order_by(ProcessedEvent.id.asc())
+                .limit(batch)
+                .all()
+            ]
+            if processed_ids:
+                removed['processed'] = ProcessedEvent.query.filter(
+                    ProcessedEvent.id.in_(processed_ids)
+                ).delete(synchronize_session=False) or 0
 
-            removed['events'] = DomainEvent.query.filter(
-                DomainEvent.occurred_at < ledger_cutoff,
-                DomainEvent.status == EventStatus.PROCESSED.value,
-            ).limit(batch).delete(synchronize_session=False) or 0
+            event_ids = [
+                row[0] for row in db.session.query(DomainEvent.id)
+                .filter(
+                    DomainEvent.occurred_at < ledger_cutoff,
+                    DomainEvent.status == EventStatus.PROCESSED.value,
+                )
+                .order_by(DomainEvent.id.asc())
+                .limit(batch)
+                .all()
+            ]
+            if event_ids:
+                removed['events'] = DomainEvent.query.filter(
+                    DomainEvent.id.in_(event_ids)
+                ).delete(synchronize_session=False) or 0
 
             db.session.commit()
         except Exception as exc:
