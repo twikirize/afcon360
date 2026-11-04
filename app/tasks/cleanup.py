@@ -18,6 +18,8 @@ def cleanup_expired_holds(
     self,
     hold_minutes: int = 15,
     batch_size: int = 25,
+    after_blocked_id: int = 0,
+    after_room_hold_id: int = 0,
 ) -> dict:
     """
     Release temporary holds that have expired.
@@ -33,6 +35,8 @@ def cleanup_expired_holds(
         result = AvailabilityService.release_expired_holds(
             hold_minutes=hold_minutes,
             batch_size=batch_size,
+            after_blocked_id=after_blocked_id,
+            after_room_hold_id=after_room_hold_id,
         )
         if result["released"] > 0:
             logger.info(
@@ -47,6 +51,8 @@ def cleanup_expired_holds(
                     kwargs={
                         "hold_minutes": hold_minutes,
                         "batch_size": batch_size,
+                        "after_blocked_id": result["after_blocked_id"],
+                        "after_room_hold_id": result["after_room_hold_id"],
                     },
                     countdown=5,
                 )
