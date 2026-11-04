@@ -11,6 +11,16 @@
     <form method="POST" action="{{ url_for('onboarding.driver_onboarding', step=3) }}" class="ob-form" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="ob-field">
+        <label>Country of Operation <span class="ob-req">*</span></label>
+        <select name="operating_country_code" required>
+          <option value="">Choose where you will accept rides</option>
+          <option value="UG" {% if data.get('step3', {}).get('operating_country_code') == 'UG' %}selected{% endif %}>Uganda</option>
+          <option value="KE" {% if data.get('step3', {}).get('operating_country_code') == 'KE' %}selected{% endif %}>Kenya</option>
+          <option value="TZ" {% if data.get('step3', {}).get('operating_country_code') == 'TZ' %}selected{% endif %}>Tanzania</option>
+        </select>
+        <span class="ob-hint">Select the country where your driving licence, vehicle registration and insurance will be reviewed for Transport operations. This declaration does not authorize cross-border driving.</span>
+      </div>
+      <div class="ob-field">
         <label>Make <span class="ob-req">*</span></label>
         <input type="text" name="vehicle_make" required>
       </div>
