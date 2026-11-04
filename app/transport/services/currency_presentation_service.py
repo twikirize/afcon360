@@ -28,13 +28,27 @@ def enrich_driver_offers_with_home_currency(
         user = getattr(driver_profile, "user", None)
         if user is None:
             return rows
-        from app.wallet.services.home_currency_service import get_user_home_currency
+        from app.wallet.services.home_currency_service import (
+            get_user_home_currency,
+            home_currency_for_country,
+        )
         from app.wallet.services.display_fx_service import build_display_amount
 
-        home_currency = get_user_home_currency(user)
+        wallet_home_currency = get_user_home_currency(user)
+        metadata = getattr(driver_profile, "driver_metadata", None) or {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        operating_country_code = str(
+            metadata.get("operating_country_code") or ""
+        ).strip().upper() or None
+        operating_currency = home_currency_for_country(operating_country_code)
+        display_currency = operating_currency or wallet_home_currency
+        display_currency_basis = (
+            "operating_country" if operating_currency else "wallet_home_currency"
+        )
     except Exception:
         logger.warning(
-            "Could not resolve driver Wallet currency for offer display",
+            "Could not resolve driver operating/Wallet currency for offer display",
             exc_info=True,
         )
         return rows
@@ -47,15 +61,20 @@ def enrich_driver_offers_with_home_currency(
             base_currency = str(fare.get("currency") or "USD").upper()
             try:
                 display_fields = build_display_amount(
-                    fare.get("amount"), base_currency, home_currency
+                    fare.get("amount"), base_currency, display_currency
                 )
                 item["fare_estimate"] = {
                     **fare,
                     **display_fields,
-                    "home_currency": home_currency,
+                    "home_currency": display_currency,
+                    "wallet_home_currency": wallet_home_currency,
+                    "operating_country_code": operating_country_code,
+                    "display_currency_basis": display_currency_basis,
                     "display_label": "Indicative gross fare estimate",
                 }
-                item["home_currency"] = home_currency
+                item["home_currency"] = wallet_home_currency
+                item["display_currency_basis"] = display_currency_basis
+                item["operating_country_code"] = operating_country_code
             except Exception:
                 # The offer itself must not be lost because a display-only
                 # conversion failed; preserve the untouched base fare.
