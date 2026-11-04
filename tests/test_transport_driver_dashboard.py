@@ -59,7 +59,8 @@ def test_driver_dashboard_renders_200_for_driver_context(app, client):
     assert code in html
     assert 'id="driverMap"' in html
     assert 'data-geo-map-status="pending"' in html
-    assert "tile.openstreetmap.org" in html
+    assert 'data-tile-url="' in html
+    assert 'data-tile-attribution="' in html
     assert "UndefinedError" not in html
     assert "Traceback" not in html
 
