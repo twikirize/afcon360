@@ -3,7 +3,7 @@ import { Alert, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { AppScreen, PageHeader, Panel, StatusPill, palette } from "@afcon360/mobile-ui";
-import { AuthField, AuthLink, AuthNotice, AuthShell, AuthSubmit } from "@afcon360/mobile-ui/auth";
+import { AuthField, AuthLink, AuthNotice, AuthPasswordField, AuthShell, AuthSubmit } from "@afcon360/mobile-ui/auth";
 import { MobileAuthError } from "@afcon360/mobile-core";
 import { useAuth } from "../src/auth/AuthProvider";
 
@@ -14,6 +14,7 @@ export default function LoginScreen() {
   const { user, loading, signingIn, mfaChallenge, signIn, verifyMfa, cancelMfa } = useAuth();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [code, setCode] = useState("");
 
   useEffect(() => {
@@ -42,9 +43,9 @@ export default function LoginScreen() {
           ) : (
             <>
               <AuthField label="Username or email" value={identifier} onChangeText={setIdentifier} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" placeholder="Your AFCON360 username or email" returnKeyType="next" />
-              <AuthField label="Password" value={password} onChangeText={setPassword} secureTextEntry autoComplete="password" placeholder="Your password" />
+              <AuthPasswordField label="Password" value={password} onChangeText={setPassword} visible={showPassword} onToggle={() => setShowPassword(value => !value)} autoComplete="password" placeholder="Your password" />
               <AuthSubmit label="Sign in securely" loading={signingIn} disabled={!identifier.trim() || !password} onPress={() => signIn(identifier, password).then(needsMfa => { if (!needsMfa) router.replace("/(tabs)"); }).catch(showError)} />
-              <AuthLink label="Create an AFCON360 account" onPress={() => WebBrowser.openBrowserAsync(SITE + "/register")} />
+              <AuthLink label="Create an AFCON360 account" onPress={() => router.push("/register")} />
               <AuthLink label="Forgot your password?" onPress={() => WebBrowser.openBrowserAsync(SITE + "/reset/request")} />
             </>
           )}
