@@ -57,6 +57,9 @@ def test_driver_dashboard_renders_200_for_driver_context(app, client):
     assert resp.status_code == 200
     html = resp.data.decode("utf-8")
     assert code in html
+    assert 'id="driverMap"' in html
+    assert 'data-geo-map-status="pending"' in html
+    assert "tile.openstreetmap.org" in html
     assert "UndefinedError" not in html
     assert "Traceback" not in html
 
@@ -140,7 +143,6 @@ def test_csrf_refresh_keeps_existing_dashboard_token_valid(app, client):
         assert refreshed.headers.get("Vary") == "Cookie"
         assert refreshed.get_json()["csrf_token"]
 
-        from app.extensions import db
         from app.transport.models import DriverProfile
         with app.app_context():
             driver_id = DriverProfile.query.filter_by(
