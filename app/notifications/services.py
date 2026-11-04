@@ -281,6 +281,7 @@ class NotificationService:
         phone: str = None,
         force_external: bool = False,
         module: Union[str, 'NotificationModule'] = None,
+        existing_notification: Notification = None,
     ) -> Optional[Notification]:
         """
         Send a notification to a user across configured channels.
@@ -305,6 +306,9 @@ class NotificationService:
                 events, wallet, tourism, ...). SHOULD be passed explicitly —
                 shared types like `booking_confirmed` are emitted by several
                 modules and cannot be disambiguated from the type alone.
+            existing_notification: Optional scheduled notification row to
+                deliver in place. When supplied, no duplicate Notification row
+                is created; its lifecycle status is updated by this delivery.
 
         Returns:
             Notification record or None on failure
@@ -338,25 +342,52 @@ class NotificationService:
                 )
                 return None
 
-            # Create notification record
-            notification = Notification(
-                user_id=user_id,
-                email=recipient_email,
-                phone=recipient_phone,
-                type=notification_type,
-                module=cls._resolve_module(module, notification_type),
-                channel=NotificationChannel(channels[0]) if len(channels) == 1 else NotificationChannel.IN_APP,
-                context=data or context or {},
-                subject=title,
-                body=message,
-                priority=priority,
-                status=NotificationStatus.PENDING,
-                scheduled_for=None,
-                attempts=0,
-                external_id=str(uuid.uuid4()),
-                link=link,
-                is_read=False,
-            )
+            # Update a scheduled row in place when the task is delivering
+            # an existing Notification. This avoids creating a second inbox
+            # record and leaves the original scheduled row's lifecycle state
+            # authoritative for the scheduler.
+            if existing_notification is not None:
+                if existing_notification.user_id != user_id:
+                    raise ValueError(
+                        "existing_notification recipient does not match user_id"
+                    )
+                notification = existing_notification
+                notification.email = recipient_email
+                notification.phone = recipient_phone
+                notification.type = notification_type
+                notification.module = cls._resolve_module(module, notification_type)
+                notification.channel = (
+                    NotificationChannel(channels[0])
+                    if len(channels) == 1
+                    else NotificationChannel.IN_APP
+                )
+                notification.context = data or context or notification.context or {}
+                notification.subject = title
+                notification.body = message
+                notification.priority = priority
+                notification.status = NotificationStatus.PENDING
+                notification.scheduled_for = None
+                notification.link = link
+            else:
+                notification = Notification(
+                    user_id=user_id,
+                    email=recipient_email,
+                    phone=recipient_phone,
+                    type=notification_type,
+                    module=cls._resolve_module(module, notification_type),
+                    channel=NotificationChannel(channels[0]) if len(channels) == 1 else NotificationChannel.IN_APP,
+                    context=data or context or {},
+                    subject=title,
+                    body=message,
+                    priority=priority,
+                    status=NotificationStatus.PENDING,
+                    scheduled_for=None,
+                    attempts=0,
+                    external_id=str(uuid.uuid4()),
+                    link=link,
+                    is_read=False,
+                )
+
             db.session.add(notification)
             db.session.flush()
 
