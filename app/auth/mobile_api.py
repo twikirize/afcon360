@@ -799,16 +799,32 @@ def mobile_driver_active_trip():
     profile, error, status = _current_driver()
     if error:
         return jsonify(error), status
+    from sqlalchemy import and_, or_
     active_statuses = [
         BookingStatus.ASSIGNED,
         BookingStatus.DRIVER_EN_ROUTE,
         BookingStatus.PICKUP_ARRIVED,
         BookingStatus.IN_PROGRESS,
     ]
+    # Completing a trip releases the vehicle/dispatch assignment. Keep a
+    # cash-paid trip visible only to the driver who actually completed it
+    # until Wallet records the explicit cash receipt; completion alone is not
+    # proof that the rider handed over cash.
+    completed_cash_receipt = and_(
+        Booking.status == BookingStatus.COMPLETED,
+        Booking.payment_method == "cash",
+        Booking.payment_status == PaymentStatus.PENDING,
+        Booking.booking_metadata["completed_by_driver_profile_id"].astext == str(profile.id),
+    )
     booking = Booking.query.filter(
-        Booking.assigned_driver_id == profile.id,
         Booking.is_deleted.is_(False),
-        Booking.status.in_(active_statuses),
+        or_(
+            and_(
+                Booking.assigned_driver_id == profile.id,
+                Booking.status.in_(active_statuses),
+            ),
+            completed_cash_receipt,
+        ),
     ).order_by(Booking.updated_at.desc()).first()
     if booking is None:
         return jsonify({"success": True, "data": None}), 200
