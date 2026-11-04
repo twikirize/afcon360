@@ -19,7 +19,10 @@ fi
 
 ls -lh "$APK"
 adb wait-for-device
-adb logcat -c
+# Clearing the emulator log buffer is diagnostic-only; older Android images may reject it.
+if ! adb logcat -c >/dev/null 2>&1; then
+  echo "::warning::Could not clear the emulator log buffer; continuing with install and launch verification."
+fi
 
 if ! adb install "$APK"; then
   echo "::error::Android Package Manager rejected $APP on API $API_LEVEL."
