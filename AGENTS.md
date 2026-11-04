@@ -547,67 +547,97 @@ A deliberately authorized baseline reconstruction or migration-history squash, s
 
 ---
 
-## 51. Timezone Unification (Permanent Rule — TZ-UNIFY, 28 October 2026)
+## 51. UTC Time Architecture and Legacy Timestamp Conversion (Permanent Rule — 4 November 2026)
 
-**Applies to every agent, every model change, every timestamp write or comparison, forever.**
+**Applies to every agent, every model change, every timestamp write/comparison, and every migration.**
 
-AFCON360 stores and computes time in **UTC, timezone-aware, end to end**. The naive/aware mixed-schema era is closed. Do not reopen it.
+AFCON360's permanent time standard is **UTC, timezone-aware end to end**. PostgreSQL server and application sessions use UTC. `Africa/Nairobi` is **not** the permanent database timezone; it is used only to interpret historical naive values whose documented provenance is Nairobi wall time.
 
-### 51.1 The rules
+### 51.1 Permanent rules
 
-1. Every `DateTime` column is declared `DateTime(timezone=True)`. A naive `DateTime` column or model default is a defect; fix it at the declaration, not at the call site.
-2. Application code must never compare a naive datetime with an aware one. Use aware values everywhere: `datetime.now(timezone.utc)`, never `datetime.now()` or `utcnow()`.
-3. If legacy or external input arrives naive, it is treated as UTC unless a documented source proves otherwise; coerce to aware at the boundary and leave the storage layer untouched.
-4. Display-side conversion to a user's timezone happens **only at the presentation edge** (templates, serializers). Never convert in models, services, or the database layer.
-5. Templates and serializers must not re-shift UTC values that the edge already renders correctly.
+1. Every SQLAlchemy timestamp column uses `DateTime(timezone=True)`. New naive timestamp columns are prohibited.
+2. Store and compare aware instants in UTC. Use `datetime.now(timezone.utc)`; never use naive `datetime.now()` or `datetime.utcnow()`.
+3. PostgreSQL server, application connection, migration and test sessions must use UTC by default. Verify with `SHOW TimeZone;` and expect `UTC`. Set `PGTZ=UTC` for ordinary migration/test processes where an explicit client setting is needed.
+4. Do not use `Africa/Nairobi` as a global/session default for current application operation or ordinary V1/V2+ migrations.
+5. Convert to a user's or provider's local timezone only at the presentation or explicitly timezone-aware scheduling boundary. Never silently change stored instants in models or services.
+6. Naive external input is not automatically UTC unless its interface contract says so. Require a documented source timezone, then convert to an aware UTC instant at the boundary. Unknown provenance means STOP and investigate.
 
-### 51.2 The historical nuance — keep this, or you will corrupt data
+### 51.2 Why Africa/Nairobi appeared in the historical migrations
 
-Legacy naive columns were **not** UTC — they held `Africa/Nairobi` wall-clock (the DB session TZ), even though the app wrote `datetime.now(timezone.utc)` into them.
+The old application wrote aware UTC datetimes into PostgreSQL columns declared without timezone support. At the time, the PostgreSQL session timezone was `Africa/Nairobi`. PostgreSQL therefore converted the incoming instant to Nairobi wall time before the naive column discarded the timezone information.
 
-- The TZ-UNIFY conversions (TZ-UNIFY-01/02/02b/03: `c4b306c2ed73` → `c8c6a2c5a3f9` → `31287acd4eb8` → `85776e36d829` → `fc87cdbd0e6a`) therefore ran **plain `ALTER COLUMN TYPE TIMESTAMPTZ` under `PGTZ=Africa/Nairobi`**.
-- Do **not** invent new `AT TIME ZONE 'UTC'` conversions for these columns; that would shift every legacy value by +3 hours.
-- Any new naive→aware conversion must first prove the legacy values' timezone with the temp-table insertion probe before it runs.
+Example:
 
-### 51.3 Migration-chain facts (do not disturb)
+- Historical naive value: `15:00` (documented Nairobi wall time, UTC+3).
+- Correct interpretation: `15:00 Africa/Nairobi`.
+- Same instant in the permanent storage standard: `12:00 UTC`.
 
-- The repaired chain `c4b → c8c6 → 31287 → 85776 → fc87` is the authoritative history for the conversion; `85776e36d829`'s 370 index recreations are the deliberate inverse of `c8c6`'s 366 drops plus 4 genuinely new indexes. Do not trim them and do not fix collisions with `checkfirst=True`.
-- Fresh-install reproducibility was proven on 28 October 2026: an empty database upgraded to `fc87cdbd0e6a` with full catalog parity to production (226 tables, 4,260 columns, 0 naive, 983 aware). Keep a fresh-install upgrade + parity check in the verification routine for any future timestamp-touching migration.
-- The original `c8c6a2c5a3f9`/`31287acd4eb8` source frames were recovered from compiled artifacts during the authorized 28 October 2026 repair; they are compensated restorations, verified byte-equivalent in op stream, not decompiler output.
+This is recovery of the original instant, not a change to the event time. Interpreting that historical `15:00` as UTC would move the event three hours later.
 
-### 51.4 Verification hook
+### 51.3 Historical migration rule — do not generalize it
 
-When a task touches timestamps: `information_schema.columns` naive count must remain **0** and aware count must remain **983** (plus intentional new columns), on prod AND test. Report both counts in the work item's evidence.
+The historical TZ-UNIFY revisions used plain PostgreSQL `ALTER COLUMN TYPE TIMESTAMPTZ` while the migration process had `PGTZ=Africa/Nairobi`. That session setting supplied the interpretation for the legacy naive values.
 
----
+- The old conversion sequence was `c4b306c2ed73` → `c8c6a2c5a3f9` → `31287acd4eb8` → `85776e36d829` → `fc87cdbd0e6a`.
+- Those revisions are preserved historical source under `migrations/_preserved_h3a_chain_20261104/versions/`; they are not the active V1 migration chain.
+- Do not set `PGTZ=Africa/Nairobi` for ordinary current migrations, application sessions, or V1 installs.
+- Do not replay, reapply, or edit those historical migrations as a shortcut. Their original session-timezone assumption is relevant only when reproducing that exact historical chain in an isolated, authorized environment.
 
-## 52. Migration Architecture & Fresh-Install Law (Permanent Rule — 28 October 2026)
+### 51.4 Rules for any future naive-to-aware data conversion
 
-**Applies to every agent, every migration task. Companion to §20, §49, §51.**
+A future conversion must be designed for the specific source columns and proven source history. Never infer historical timezone from the database's current `SHOW TimeZone` value.
 
-### 52.1 The architecture
+1. Identify the exact columns, rows, writer paths, and period being converted.
+2. Prove the source timezone from migration history, application behavior, logs, or a controlled temporary-table insertion probe.
+3. If and only if the values are proven to be Nairobi wall time, interpret them explicitly as Nairobi time (for example, PostgreSQL expression `legacy_timestamp AT TIME ZONE 'Africa/Nairobi'`) and store the resulting aware instant in a UTC-configured database session.
+4. If a different source timezone is proven, use that IANA timezone. If provenance is mixed or unknown, stop; do not apply one blanket conversion.
+5. Preserve already-aware timestamps as their existing instants. Do not shift them merely to make their displayed clock value look like UTC.
+6. Test representative values around ordinary dates and daylight-saving transitions where applicable; verify row counts, null counts, boundary cases, and before/after instants in an isolated rehearsal before any approved production operation.
+7. Never use `AT TIME ZONE 'UTC'` on values proven to be Nairobi wall time. It would interpret the wall clock as UTC and shift the real instant by three hours.
 
-AFCON360 has **one linear Alembic chain, one head**:
+For ordinary V1/V2+ schema migrations, leave existing aware timestamps as instants and keep the migration session in UTC. A schema change that does not convert legacy naive data must not introduce a timezone conversion.
 
-`h3a20261020` (frozen static baseline, root) → `c076b257b11d` → `1792869659` → `d3ba8c51f407` → `1793011323` → `1793013676` → `c4b306c2ed73` → `c8c6a2c5a3f9` → `31287acd4eb8` → `85776e36d829` → `fc87cdbd0e6a` [head]
+### 51.5 Current V1 verification baseline
 
-- The root baseline is **frozen DDL**: an explicit reviewable statement list. It does not import current models and never calls `create_all()`.
-- All ordinary revisions come from Flask-Migrate autogeneration out of the models (canonical source, model registry). Hand-patching is prohibited per §20.
-- Fresh install = full replay from empty; it must end catalog-identical to production. This is the migration contract, not an aspiration.
+The H3-B V1 baseline (`h3b20261104`) was clean-installed on PostgreSQL 15.19 and verified with:
 
-### 52.2 How agents use it
+- 228 application tables
+- 49 PostgreSQL enums
+- 0 naive timestamp columns
+- 993 timezone-aware timestamp columns
+- PostgreSQL timezone: `UTC`
 
-1. Inspect before anything: `flask db heads` (expect exactly one), `current`, `history`, `db check`.
-2. Ordinary change: edit the model → owner runs `flask db migrate` → agent inspects the generated file against §20.8 (every intended change, nothing more) → incomplete ⇒ fix the source and regenerate, never patch the artifact → owner runs `flask db upgrade`.
-3. Test paths use the migration-built `*_test` database (§21). A fresh-install proof — empty disposable DB, `flask db upgrade` zero errors, `flask db check` clean, catalog counts vs production — is **required evidence for any migration that touches timestamps, indexes, or constraints**.
+For a migration that touches timestamp types or timestamp data, report the before/after naive and aware column counts and prove the intended instant semantics on an isolated migration-built database. The expected V1 starting point is zero naive timestamp columns; any intentional new timestamp column must remain timezone-aware.
 
-### 52.3 Why (the lesson, in one paragraph)
+## 52. Migration Architecture & Fresh-Install Law (Permanent Rule — 4 November 2026)
 
-The TZ-UNIFY saga (Oct 2026) proved the alternatives fail: a deleted applied revision stranded databases at an unreachable `alembic_version`; autogeneration run against an already-converted database produced a symptom-only revision that skipped 441 conversions and duplicated 366 indexes; and a stamped-ahead database passed unit tests while its chain could not rebuild the schema. Therefore: never delete or rewrite an applied migration (restore with owner approval + structural-equivalence proof — as done 2026-10-28 for `c8c6a2c5a3f9`/`31287acd4eb8`); never stamp to hide drift; never mask duplicate-index defects with `checkfirst=True`; a revision ID and a green test suite are never, by themselves, proof of schema state.
+**Applies to every agent and every migration task. Companion to §20, §48 and §51.**
 
-### 52.4 Future direction under evaluation
+### 52.1 Current architecture
 
-The backlog (`MIGRATION-BASELINE-FUTURE`) records an owner-unscheduled evaluation of provisioning fresh installs from a periodically re-frozen static baseline (baseline-create-all class) instead of full-history replay. Until that decision, §52.1 expansion and replay rules govern. Any baseline re-freeze follows the §20.3.1/§48.8 authorized-reconstruction gates: owner approval, reviewable frozen DDL, no runtime model imports, and a catalog-parity gate against both prod and test.
+AFCON360 now uses a consolidated static V1 baseline followed by ordinary incremental migrations:
+
+- Active V1 root: `h3b20261104`, implemented by `migrations/versions/h3b20261104_consolidated_baseline.py`.
+- V1 is frozen, explicit schema DDL. It does not import runtime application models or call `metadata.create_all()`.
+- The former H3-A history is preserved under `migrations/_preserved_h3a_chain_20261104/versions/`; it is historical reference, not the active chain to replay for new installations.
+- Fresh installations start from the V1 baseline. Future approved schema changes become ordinary V2+ incremental Alembic revisions generated from the canonical model source.
+- The verified V1 clean-install result on PostgreSQL 15.19 was 228 application tables, 49 enums, 0 naive timestamp columns, 993 timezone-aware timestamp columns, and UTC database timezone.
+
+Do not restore the old H3-A chain as the active path, create a second baseline, or stamp an existing database to conceal a lineage mismatch. Existing production transition is a separately authorized data-preservation exercise; it is not permission to overwrite or casually upgrade the old production database.
+
+### 52.2 How agents use migrations
+
+1. Inspect the repository's active migration directory, configured Alembic environment, target database identity, current revision and heads before proposing a migration. Do not infer the active chain from archived files.
+2. For an ordinary schema change, correct the canonical model/source first. The owner runs `flask db migrate -m "description"`; inspect the generated revision for every intended change and no unrelated changes. If autogeneration is incomplete, fix the source/configuration and regenerate; never hand-patch the generated file.
+3. Use a migration-built isolated PostgreSQL `*_test` database. Keep PostgreSQL server/session timezone at UTC; for ordinary migration/test commands set `PGTZ=UTC` when needed and verify with `SHOW TimeZone;`.
+4. The owner reviews and authorizes `flask db upgrade`. No agent may apply migrations to production or perform data-changing operations without explicit documented authorization.
+5. For any timestamp-touching migration, follow §51. A normal V1/V2+ migration must not set `PGTZ=Africa/Nairobi`; that setting belongs only to controlled reproduction of the historical TZ-UNIFY conversion chain.
+6. A fresh-install proof must start from an empty disposable database, install V1, apply all subsequent incremental revisions, reach the single active head, pass `flask db check`, and compare schema/catalog counts. For timestamp changes, also verify zero naive columns and the intended UTC instant semantics.
+7. Never use `stamp`, manual DDL, `create_all()`, or a database-name/revision assumption to hide uncertainty or drift.
+
+### 52.3 Why this architecture exists
+
+The consolidated V1 baseline gives new installations one reproducible starting schema without requiring replay of the retired H3-A history. Incremental revisions preserve forward evolution after V1. The historical TZ-UNIFY work also demonstrated that migration session timezone is part of data semantics: a correct revision run under the wrong timezone can silently alter instants. Therefore, V1 and all ordinary future work use UTC; Nairobi interpretation is narrowly scoped to proven legacy naive data.
 
 ---
 
