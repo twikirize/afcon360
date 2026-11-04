@@ -37,12 +37,15 @@ concurrency:
   # Deliberately replace the mixed-platform run with the focused User Android validation.
   cancel-in-progress: true
 
+# Keep ordinary build/test jobs read-only. The publication job gets write access separately.
 permissions:
-  contents: write
+  actions: read
+  contents: read
 
 jobs:
   build-preview-apk:
     name: Build ${{ matrix.app }} standalone APK
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.apk_run_id == '' }}
     # Keep this Android build on the tested Ubuntu 24.04 image until Ubuntu 26.04 is validated.
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -190,17 +193,42 @@ jobs:
           unzip -l "$FINAL_APK" > "$RUNNER_TEMP/$APP-apk-contents.txt"
           grep -q 'classes.dex' "$RUNNER_TEMP/$APP-apk-contents.txt"
 
+          # Assert the setting in the final packaged manifest, not only in app.config.ts.
+          APKANALYZER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name apkanalyzer | sort | tail -n 1)"
+          if [ -n "$APKANALYZER" ]; then
+            MANIFEST_XML="$("$APKANALYZER" manifest print "$FINAL_APK")"
+            printf '%s\n' "$MANIFEST_XML" | grep -Eq 'android:allowBackup="false"'
+          else
+            MANIFEST_TREE="$(aapt dump xmltree "$FINAL_APK" AndroidManifest.xml)"
+            printf '%s\n' "$MANIFEST_TREE" | grep -Eq 'android:allowBackup[^=]*=.*(false|0x0)'
+          fi
+          echo "Verified Android app backup is disabled in the packaged manifest."
+
+          APK_SHA256="$(sha256sum "$FINAL_APK" | awk '{print $1}')"
+          cat > "release/$APP-build-info.txt" <<EOF
+          app=$APP
+          package=$PACKAGE
+          min_sdk=$MINIMUM
+          target_sdk=$TARGET
+          source_sha=$GITHUB_SHA
+          build_run_id=$GITHUB_RUN_ID
+          apk_sha256=$APK_SHA256
+          EOF
+
       - name: Upload verified app APK
         uses: actions/upload-artifact@v7
         with:
           name: afcon360-${{ matrix.app }}-preview-apk
-          path: mobile/release/${{ matrix.app }}-preview.apk
+          path: |
+            mobile/release/${{ matrix.app }}-preview.apk
+            mobile/release/${{ matrix.app }}-build-info.txt
           if-no-files-found: error
           retention-days: 90
 
   android-compatibility:
     name: Android API ${{ matrix.api-level }} / ${{ matrix.app }} install and launch
     needs: build-preview-apk
+    if: ${{ always() && (needs.build-preview-apk.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.apk_run_id != '')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
@@ -233,6 +261,25 @@ jobs:
         with:
           name: afcon360-${{ matrix.app }}-preview-apk
           path: release
+          run-id: ${{ inputs.apk_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify downloaded APK provenance and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="release/$APP-preview.apk"
+          INFO="release/$APP-build-info.txt"
+          test -s "$APK"
+          test -s "$INFO"
+          grep -Fxq "app=$APP" "$INFO"
+          grep -Fxq "package=$EXPECTED_PACKAGE" "$INFO"
+          EXPECTED_RUN_ID="${{ inputs.apk_run_id || github.run_id }}"
+          grep -Fxq "build_run_id=$EXPECTED_RUN_ID" "$INFO"
+          EXPECTED_SHA="$(sed -n 's/^apk_sha256=//p' "$INFO" | head -n 1)"
+          ACTUAL_SHA="$(sha256sum "$APK" | awk '{print $1}')"
+          test -n "$EXPECTED_SHA" && test "$EXPECTED_SHA" = "$ACTUAL_SHA"
+          echo "Verified $APP APK from build run $EXPECTED_RUN_ID; source commit $(sed -n 's/^source_sha=//p' "$INFO" | head -n 1)."
 
       - name: Install and launch on Android API ${{ matrix.api-level }}
         uses: reactivecircus/android-emulator-runner@v2.38.0
@@ -361,6 +408,9 @@ jobs:
 
   publish-preview:
     name: Publish verified User and Driver APKs
+    permissions:
+      actions: read
+      contents: write
     needs: [build-preview-apk, android-compatibility, ios-compatibility]
     if: needs.build-preview-apk.result == 'success' && needs.android-compatibility.result == 'success' && needs.ios-compatibility.result == 'success' && github.event_name != 'pull_request'
     # Keep preview publication on Ubuntu 24.04 until Ubuntu 26.04 is validated.
