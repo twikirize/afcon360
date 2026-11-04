@@ -26,7 +26,7 @@ _CACHE_LOCK = threading.RLock()
 _BASE_CACHE: Dict[str, Dict[str, Any]] = {}
 
 # Currencies whose ISO 4217 minor-unit precision is zero.
-_ZERO_DECIMAL = frozenset({"UGX", "TZS", "RWF", "JPY", "KRW", "VND", "XAF", "XOF"})
+_ZERO_DECIMAL = frozenset({"UGX", "RWF", "JPY", "KRW", "VND", "XAF", "XOF"})
 
 
 def _utcnow() -> datetime:
