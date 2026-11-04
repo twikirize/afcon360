@@ -304,15 +304,15 @@
                     <div style="margin-bottom: 24px;">
                         <label class="form-label">Primary Account Currency</label>
                         <select name="currency" class="form-select" required>
-                            <option value="UGX">UGX — Ugandan Shilling (Local Default)</option>
-                            <option value="USD">USD — US Dollar</option>
-                            <option value="KES">KES — Kenyan Shilling</option>
-                            <option value="TZS">TZS — Tanzanian Shilling</option>
-                            <option value="NGN">NGN — Nigerian Naira</option>
-                            <option value="EUR">EUR — Euro</option>
-                            <option value="GBP">GBP — British Pound</option>
+                            <option value="UGX" {% if default_currency == 'UGX' %}selected{% endif %}>UGX — Ugandan Shilling</option>
+                            <option value="USD" {% if default_currency == 'USD' %}selected{% endif %}>USD — US Dollar</option>
+                            <option value="KES" {% if default_currency == 'KES' %}selected{% endif %}>KES — Kenyan Shilling</option>
+                            <option value="TZS" {% if default_currency == 'TZS' %}selected{% endif %}>TZS — Tanzanian Shilling</option>
+                            <option value="NGN" {% if default_currency == 'NGN' %}selected{% endif %}>NGN — Nigerian Naira</option>
+                            <option value="EUR" {% if default_currency == 'EUR' %}selected{% endif %}>EUR — Euro</option>
+                            <option value="GBP" {% if default_currency == 'GBP' %}selected{% endif %}>GBP — British Pound</option>
                         </select>
-                        <p style="font-size: 11px; color: var(--muted); margin-top: 6px;">You can hold multiple currencies later.</p>
+                        <p style="font-size: 11px; color: var(--muted); margin-top: 6px;">Suggested from your profile country. This becomes your primary Wallet account currency; choose another supported currency before creating the Wallet if needed.</p>
                     </div>
 
                     <div style="margin-bottom: 24px;">
