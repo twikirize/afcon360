@@ -192,8 +192,13 @@
       </span>
       {% else %}
       <span class="ws-muted" style="font-size:11px;">
-        {% if o0.get('distance_basis') == 'straight_line_planner' %}Estimated fare{% else %}Estimated fare — approx. distance{% endif %}
-        · base fare currency {{ o0_base_currency }} · not your net earnings
+        {% if o0_fare.get('display_currency_basis') == 'fare_currency' %}
+          Operating country not set · showing base fare currency {{ o0_base_currency }}
+        {% else %}
+          {% if o0.get('distance_basis') == 'straight_line_planner' %}Estimated fare{% else %}Estimated fare — approx. distance{% endif %}
+          · operating-market currency {{ o0_display_currency }}
+        {% endif %}
+        · not your net earnings
       </span>
       {% endif %}
       {% if o0_fare.get('operating_country_code') and not o0_fare.get('operating_country_verified') %}
