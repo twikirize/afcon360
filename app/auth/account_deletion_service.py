@@ -85,7 +85,19 @@ def request_account_deletion(
             user_id=user.id,
             is_active=True,
         ).first()
+        if active_mfa is not None and active_mfa.mfa_type != "totp":
+            raise AccountDeletionError(
+                "mfa_method_unsupported",
+                "This account uses an MFA method that cannot currently be reverified in the self-service deletion flow. Update to an authenticator app or contact AFCON360 support.",
+                422,
+            )
         if getattr(user, "mfa_enabled", False) or active_mfa is not None:
+            if active_mfa is None:
+                raise AccountDeletionError(
+                    "mfa_enrollment_unavailable",
+                    "Your account requires MFA, but no active authenticator is available. Restore MFA through AFCON360 support before deleting this account.",
+                    403,
+                )
             if not mfa_code:
                 raise AccountDeletionError(
                     "mfa_required",

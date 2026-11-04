@@ -42,7 +42,8 @@ jobs:
             app/__init__.py \
             app/auth/sessions.py \
             app/auth/mobile_tokens.py \
-            app/auth/mobile_api.py
+            app/auth/mobile_api.py \
+            app/auth/account_deletion_service.py
 
       - name: Parse native app website templates
         run: |

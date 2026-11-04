@@ -19,6 +19,7 @@ Status is evidence-based. A green code/build check is not store approval.
 - [x] Public web account-deletion initiation route exists at `/apps/delete-account`, alongside the in-app deletion control. End-to-end user testing and final retention-policy approval remain outstanding.
 - [x] APK workflow, preview release link, checksum and download/share UI are configured.
 - [ ] Live-like end-to-end tests for native login/MFA/refresh replay/revocation, rider booking commitment, driver offer assignment, trip lifecycle, Wallet settlement and deletion.
+- [ ] Verify external deletion requests through web login, including incorrect password, missing/invalid TOTP, protected account rejection, and retained-record disclosure.
 - [ ] Real-device testing on low-memory Android phones and supported iPhones, including permission denial, network loss and app upgrade.
 - [ ] Final icons, splash screens, screenshots, store graphics and localized listing copy approved.
 
