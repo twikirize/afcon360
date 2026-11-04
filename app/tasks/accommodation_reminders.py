@@ -119,8 +119,12 @@ def send_registration_reminders():
             )
 
 
-@shared_task(name="accommodation.send_pre_arrival_request_reminder")
-def send_pre_arrival_request_reminder():
+@shared_task(name="accommodation.send_pre_arrival_request_reminder", bind=True)
+def send_pre_arrival_request_reminder(
+    self,
+    batch_size: int = 25,
+    after_booking_id: int = 0,
+):
     """
     Pre-arrival special-request nudge (Addendum 1 §2).
 
@@ -143,10 +147,18 @@ def send_pre_arrival_request_reminder():
     now = datetime.now(timezone.utc)
     target_date = now.date() + timedelta(days=3)
 
-    candidates = AccommodationBooking.query.filter(
-        AccommodationBooking.check_in == target_date,
-        AccommodationBooking.status == AccommodationBookingStatus.CONFIRMED.value,
-    ).all()
+    batch_size = max(1, min(int(batch_size), 50))
+    after_booking_id = max(0, int(after_booking_id))
+    candidates = (
+        AccommodationBooking.query.filter(
+            AccommodationBooking.check_in == target_date,
+            AccommodationBooking.status == AccommodationBookingStatus.CONFIRMED.value,
+            AccommodationBooking.id > after_booking_id,
+        )
+        .order_by(AccommodationBooking.id.asc())
+        .limit(batch_size)
+        .all()
+    )
 
     sent = 0
     for booking in candidates:
@@ -161,11 +173,11 @@ def send_pre_arrival_request_reminder():
                 user_id=recipient_id,
                 type=NotificationType.BOOKING_UPDATE.value,
                 module=NotificationModule.ACCOMMODATION.value,
-            ).all()
-            if any(
-                (n.context or {}).get("booking_reference") == booking.booking_reference
-                for n in existing
-            ):
+            ).filter(
+                Notification.context["booking_reference"].astext
+                == booking.booking_reference
+            ).first()
+            if existing:
                 continue
 
             link = None
@@ -203,7 +215,25 @@ def send_pre_arrival_request_reminder():
             db.session.rollback()
             print(f"Pre-arrival request reminder failed for booking {booking.id}: {e}")
 
-    return f"Sent {sent} pre-arrival request reminder(s)"
+    continuation_queued = False
+    if len(candidates) >= batch_size:
+        try:
+            self.apply_async(
+                kwargs={
+                    "batch_size": batch_size,
+                    "after_booking_id": candidates[-1].id,
+                },
+                countdown=5,
+            )
+            continuation_queued = True
+        except Exception:
+            logger.exception("Could not schedule next pre-arrival reminder batch")
+
+    return {
+        "sent": sent,
+        "batch_size": batch_size,
+        "continuation_queued": continuation_queued,
+    }
 
 
 @shared_task(name="accommodation.enforce_registration_deadlines")
@@ -235,20 +265,33 @@ def enforce_registration_deadlines():
             )
 
 
-@shared_task(name="accommodation.expire_unapproved_bookings")
-def expire_unapproved_bookings():
+@shared_task(name="accommodation.expire_unapproved_bookings", bind=True)
+def expire_unapproved_bookings(
+    self,
+    batch_size: int = 25,
+    after_booking_id: int = 0,
+):
     """
     Cancel bookings where the host didn't approve within the approval deadline.
     Also releases associated holds and inventory blocks.
     """
     now = datetime.now(timezone.utc)
 
-    expired_bookings = AccommodationBooking.query.filter(
-        AccommodationBooking.status == AccommodationBookingStatus.PENDING_APPROVAL.value,
-        AccommodationBooking.approval_deadline != None,
-        AccommodationBooking.approval_deadline <= now,
-    ).all()
+    batch_size = max(1, min(int(batch_size), 50))
+    after_booking_id = max(0, int(after_booking_id))
+    expired_bookings = (
+        AccommodationBooking.query.filter(
+            AccommodationBooking.status == AccommodationBookingStatus.PENDING_APPROVAL.value,
+            AccommodationBooking.approval_deadline != None,
+            AccommodationBooking.approval_deadline <= now,
+            AccommodationBooking.id > after_booking_id,
+        )
+        .order_by(AccommodationBooking.id.asc())
+        .limit(batch_size)
+        .all()
+    )
 
+    expired_count = 0
     for booking in expired_bookings:
         try:
             # Release holds
@@ -282,6 +325,7 @@ def expire_unapproved_bookings():
             booking.cancelled_at = now
             booking.cancellation_reason = "Host approval expired"
             db.session.commit()
+            expired_count += 1
 
             _send_notification(
                 booking,
@@ -294,9 +338,34 @@ def expire_unapproved_bookings():
             db.session.rollback()
             print(f"Failed to expire booking {booking.id}: {e}")
 
+    continuation_queued = False
+    if len(expired_bookings) >= batch_size:
+        try:
+            self.apply_async(
+                kwargs={
+                    "batch_size": batch_size,
+                    "after_booking_id": expired_bookings[-1].id,
+                },
+                countdown=5,
+            )
+            continuation_queued = True
+        except Exception:
+            logger.exception("Could not schedule next unapproved-booking expiry batch")
 
-@shared_task(name="accommodation.detect_no_shows")
-def detect_no_shows():
+    return {
+        "expired": expired_count,
+        "examined": len(expired_bookings),
+        "batch_size": batch_size,
+        "continuation_queued": continuation_queued,
+    }
+
+
+@shared_task(name="accommodation.detect_no_shows", bind=True)
+def detect_no_shows(
+    self,
+    batch_size: int = 25,
+    after_booking_id: int = 0,
+):
     """
     Auto-detect no-shows: a CONFIRMED booking whose check-in date has passed
     by more than the configured grace window and that was never checked in.
@@ -312,11 +381,19 @@ def detect_no_shows():
     grace_hours = int(SystemConfig.get("accommodation_no_show_grace_hours", 24))
     cutoff_date = (now - timedelta(hours=grace_hours)).date()
 
-    candidates = AccommodationBooking.query.filter(
-        AccommodationBooking.status == AccommodationBookingStatus.CONFIRMED.value,
-        AccommodationBooking.check_in < cutoff_date,
-        AccommodationBooking.is_checked_in == False,  # noqa: E712
-    ).all()
+    batch_size = max(1, min(int(batch_size), 50))
+    after_booking_id = max(0, int(after_booking_id))
+    candidates = (
+        AccommodationBooking.query.filter(
+            AccommodationBooking.status == AccommodationBookingStatus.CONFIRMED.value,
+            AccommodationBooking.check_in < cutoff_date,
+            AccommodationBooking.is_checked_in == False,  # noqa: E712
+            AccommodationBooking.id > after_booking_id,
+        )
+        .order_by(AccommodationBooking.id.asc())
+        .limit(batch_size)
+        .all()
+    )
 
     processed = 0
     for booking in candidates:
@@ -345,7 +422,26 @@ def detect_no_shows():
             db.session.rollback()
             print(f"Failed to mark no-show for booking {booking.id}: {e}")
 
-    return processed
+    continuation_queued = False
+    if len(candidates) >= batch_size:
+        try:
+            self.apply_async(
+                kwargs={
+                    "batch_size": batch_size,
+                    "after_booking_id": candidates[-1].id,
+                },
+                countdown=5,
+            )
+            continuation_queued = True
+        except Exception:
+            logger.exception("Could not schedule next no-show detection batch")
+
+    return {
+        "processed": processed,
+        "examined": len(candidates),
+        "batch_size": batch_size,
+        "continuation_queued": continuation_queued,
+    }
 
 
 def _is_fully_registered(booking_id: int) -> bool:
