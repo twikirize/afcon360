@@ -6,7 +6,18 @@ const config: ExpoConfig = {
     bundleIdentifier: "space.pamoja.afcon360.driver", deploymentTarget: "16.4", supportsTablet: true,
     infoPlist: { NSLocationWhenInUseUsageDescription: "AFCON360 Driver uses your location while you are using the app to support availability and trip navigation." }
   },
-  android: { package: "space.pamoja.afcon360.driver", allowBackup: false, adaptiveIcon: { backgroundColor: "#087A4B" } },
+  android: {
+    package: "space.pamoja.afcon360.driver",
+    allowBackup: false,
+    // Driver media/document selection should use scoped system pickers, not broad storage.
+    // The app has no full-screen overlay feature requiring special app access.
+    blockedPermissions: [
+      "android.permission.READ_EXTERNAL_STORAGE",
+      "android.permission.WRITE_EXTERNAL_STORAGE",
+      "android.permission.SYSTEM_ALERT_WINDOW"
+    ],
+    adaptiveIcon: { backgroundColor: "#087A4B" }
+  },
   plugins: [
     "expo-router", "expo-secure-store", "expo-dev-client",
     ["expo-location", { locationWhenInUsePermission: "Allow AFCON360 Driver to use your location while you are using the app for availability and trip navigation." }]
