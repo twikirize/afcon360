@@ -885,11 +885,31 @@ class NotificationService:
         return True
 
     @classmethod
-    def resend_failed(cls, max_retries: int = 3) -> int:
+    def resend_failed(cls, max_retries: int = 3, limit: int = 10) -> int:
         """
-        Resend failed notifications with exponential backoff.
+        Resend a bounded page of failed notifications with exponential backoff.
+
+        Oldest attempts are selected first. A row's last_attempt_at timestamp
+        advances after each attempt so a persistently failing first page cannot
+        starve later notifications.
         """
-        failed = Notification.query.filter_by(status=NotificationStatus.FAILED).all()
+        limit = max(1, min(int(limit), 100))
+        failed = (
+            Notification.query.filter(
+                Notification.status == NotificationStatus.FAILED,
+                db.or_(
+                    Notification.attempts.is_(None),
+                    Notification.attempts < max_retries,
+                ),
+            )
+            .order_by(
+                Notification.last_attempt_at.asc().nullsfirst(),
+                Notification.id.asc(),
+            )
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+            .all()
+        )
         # Runtime import: `User` is declared only under TYPE_CHECKING at
         # the top of this module, but db.session.get(User, ...) below
         # needs the real class at runtime. Same local-import pattern as
@@ -906,7 +926,7 @@ class NotificationService:
             delay = calculate_backoff(notification.attempts or 0)
             logger.info(
                 f"Resending notification {notification.id} after {delay}s delay "
-                f"(attempt {notification.attempts + 1})"
+                f"(attempt {(notification.attempts or 0) + 1})"
             )
 
             notification.increment_attempts()
@@ -933,8 +953,9 @@ class NotificationService:
                     notification.mark_failed(str(e))
                     cls._log_delivery(notification.id, notification.channel, 'failure', {'error': str(e)})
 
-        if resent > 0:
-            db.session.commit()
+        # Persist failed attempts too; otherwise a provider failure could leave
+        # the row stuck in PENDING after the pre-delivery commit above.
+        db.session.commit()
         return resent
 
     @classmethod
