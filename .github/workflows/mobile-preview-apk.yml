@@ -13,6 +13,17 @@ on:
       - "mobile/pnpm-workspace.yaml"
       - "mobile/.npmrc"
       - ".github/workflows/mobile-preview-apk.yml"
+  pull_request:
+    branches:
+      - feat/native-mobile-apps-20261104
+    paths:
+      - "mobile/apps/**"
+      - "mobile/packages/**"
+      - "mobile/package.json"
+      - "mobile/pnpm-lock.yaml"
+      - "mobile/pnpm-workspace.yaml"
+      - "mobile/.npmrc"
+      - ".github/workflows/mobile-preview-apk.yml"
   workflow_dispatch:
 
 concurrency:
@@ -27,7 +38,7 @@ jobs:
     name: Build ${{ matrix.app }} standalone APK
     # Keep this Android build on the tested Ubuntu 24.04 image until Ubuntu 26.04 is validated.
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -165,6 +176,55 @@ jobs:
           unzip -l "$FINAL_APK" > "$RUNNER_TEMP/$APP-apk-contents.txt"
           grep -q 'classes.dex' "$RUNNER_TEMP/$APP-apk-contents.txt"
 
+      - name: Install and launch APK on Android 16 emulator
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: |
+            set -euo pipefail
+            APK="$GITHUB_WORKSPACE/mobile/release/$APP-preview.apk"
+            test -s "$APK"
+
+            adb wait-for-device
+            adb logcat -c
+
+            if ! adb install -r "$APK"; then
+              echo "::error::Android Package Manager rejected the $APP APK."
+              echo "::group::Recent Android install diagnostics"
+              adb logcat -d -t 2500 | tail -n 500 || true
+              echo "::endgroup::"
+              exit 1
+            fi
+
+            adb shell monkey -p "$EXPECTED_PACKAGE" -c android.intent.category.LAUNCHER 1
+
+            started=0
+            for attempt in $(seq 1 12); do
+              if adb shell pidof "$EXPECTED_PACKAGE" >/dev/null 2>&1; then
+                started=1
+                break
+              fi
+              sleep 5
+            done
+
+            if [ "$started" -ne 1 ]; then
+              echo "::error::The $APP app installed but did not remain running after launch."
+              echo "::group::Recent Android launch diagnostics"
+              adb logcat -d -t 2500 | tail -n 500 || true
+              adb shell dumpsys activity activities || true
+              echo "::endgroup::"
+              exit 1
+            fi
+
+            echo "Android emulator installed and launched $APP ($EXPECTED_PACKAGE) successfully."
+            adb shell dumpsys activity activities | grep -F "$EXPECTED_PACKAGE" || true
+
       - name: Upload verified app APK
         uses: actions/upload-artifact@v7
         with:
@@ -176,8 +236,8 @@ jobs:
   publish-preview:
     name: Publish verified User and Driver APKs
     needs: build-preview-apk
-    if: needs.build-preview-apk.result == 'success'
-    # Keep this Android build on the tested Ubuntu 24.04 image until Ubuntu 26.04 is validated.
+    if: needs.build-preview-apk.result == 'success' && github.event_name != 'pull_request'
+    # Keep preview publication on Ubuntu 24.04 until Ubuntu 26.04 is validated.
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
