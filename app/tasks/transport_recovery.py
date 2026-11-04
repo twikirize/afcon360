@@ -125,6 +125,8 @@ def dispatch_recovery(
     # bookings still genuinely matching are re-offered. The rider page
     # render is the fast path; this beat catches riders who closed the tab.
     no_match_closed = []
+    candidates = []
+    batch = max(1, min(int(batch or 10), 25))
     try:
         from flask import current_app
 
