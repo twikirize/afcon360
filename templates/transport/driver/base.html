@@ -1,6 +1,6 @@
 {# Driver Workspace shell — dedicated to the authenticated driver persona.
    Left pane layout: a contained, sticky navigation pane beside the content.
-   Six workspaces: HOME, STATUS, TRIPS, EARNINGS, ASSIGNMENTS, ACCOUNT.
+   Seven workspaces: HOME, STATUS, TRIPS, EARNINGS, ASSIGNMENTS, VEHICLES, ACCOUNT.
    Pane nav buttons carry data-ck-nav and dispatch to window.__ckSwitchView
    (defined in driver_dashboard.html extra_js).
    Mobile: pane becomes an off-canvas drawer; a bottom dock mirrors the pane. #}
@@ -67,7 +67,7 @@
       </button>
     </div>
 
-    <nav class="ck-pane-nav">
+    <nav class="ck-pane-nav" aria-label="Driver workspace sections">
       <div class="nav-section-label">Workspace</div>
 
       <button type="button" class="ck-pane-item" data-ck-nav="home">
@@ -122,7 +122,7 @@
       </button>
 
       <nav class="breadcrumb">
-        <a href="{{ safe_url('transport.driver_dashboard') }}">
+        <a href="{{ safe_url('transport.driver_dashboard') }}" aria-label="Driver dashboard home">
           <i class="fa-solid fa-house"></i>
         </a>
         {% block breadcrumb %}{% endblock %}
@@ -130,7 +130,7 @@
 
       <div class="topbar-search">
         <i class="fa-solid fa-magnifying-glass"></i>
-        <input type="text" placeholder="Search transport..." id="globalSearch" />
+        <input type="text" placeholder="Search transport..." id="globalSearch" aria-label="Search transport" />
         <div id="searchResults" class="search-results-dropdown"></div>
       </div>
 
@@ -155,13 +155,13 @@
         {% from "components/workspace_context_switcher.html" import render_workspace_context_switcher with context %}
         {{ render_workspace_context_switcher('driver') }}
         {% include 'components/notification_bell.html' %}
-        <a href="{{ url_for('index') }}" class="topbar-btn" id="backToSiteBtn" title="Back to main site">
+        <a href="{{ url_for('index') }}" class="topbar-btn" id="backToSiteBtn" title="Back to main site" aria-label="Return to AFCON360 home">
           <i class="fa-solid fa-globe"></i>
         </a>
-        <button class="topbar-btn" id="installAppBtn" title="Install Driver App" hidden>
+        <button class="topbar-btn" id="installAppBtn" title="Install Driver App" aria-label="Install AFCON360 Driver app" hidden>
           <i class="fa-solid fa-download"></i>
         </button>
-        <button class="topbar-btn" title="Refresh" id="refreshBtn">
+        <button class="topbar-btn" title="Refresh" id="refreshBtn" aria-label="Refresh driver workspace">
           <i class="fa-solid fa-rotate"></i>
         </button>
       </div>
@@ -193,7 +193,7 @@
 </div>
 
 <!-- ==================== MOBILE DOCK — mirrors the pane ==================== -->
-<nav class="ck-dock" aria-label="Driver workspace">
+<nav class="ck-dock" aria-label="Primary driver navigation">
   <button type="button" class="ck-tab" data-ck-nav="home"><i class="fa-solid fa-house"></i>Home</button>
   <button type="button" class="ck-tab" data-ck-nav="status"><i class="fa-solid fa-signal"></i>Status</button>
   <button type="button" class="ck-tab" data-ck-nav="trips"><i class="fa-solid fa-route"></i>Trips</button>
