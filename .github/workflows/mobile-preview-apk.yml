@@ -34,7 +34,7 @@ on:
 
 concurrency:
   group: afcon360-android-preview-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -205,6 +205,7 @@ jobs:
     timeout-minutes: 40
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - app: user
@@ -261,7 +262,7 @@ jobs:
     name: iOS 16.4 minimum / current simulator / ${{ matrix.app }}
     # Use the x64 macOS 26 pool to avoid ARM64 hosted-runner allocation failures.
     runs-on: macos-26-intel
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
