@@ -1,57 +1,54 @@
-# AFCON360 mobile API inventory
+# AFCON360 native API inventory
 
-**Inspected against:** `twikirize/afcon360` main at `37f5d2c3b6ad606a6fa269693f6416aacce6c8f2` (4 November 2026).
+**Implementation branch:** `feat/native-mobile-apps-20261104` (PR #21, draft, not merged/deployed). Original source baseline inspected at `37f5d2c3b6ad606a6fa269693f6416aacce6c8f2`.
 
-This is a source inventory, not a claim that these routes are already native-ready. Flask `login_required` means the current session-based authentication path unless a route-specific bearer contract is verified.
+All native client routes below are bearer-only under `/api/mobile/v1`. Protected routes pin Flask-Login request identity to the validated bearer-token owner. Existing domain resources/services remain authoritative.
 
-## Customer / User app
+## Identity and session
 
-| Capability | Existing route | Current state | Mobile work |
-|---|---|---|---|
-| Fare discovery | `POST /api/transport/ride-options` | Anonymous quote-only endpoint; requires resolved pickup/dropoff coordinates; returns signed `quote_token`, fare currency/version and breakdown | Reuse after confirming response schema/version contract |
-| Create ride booking | Current authenticated web booking flow | REST `POST /api/transport/bookings` is admin/system-only | Add rider-authorized JSON command that reuses signed quote validation and canonical BookingService |
-| View booking/trip | `GET /api/transport/bookings/<booking_reference>` | Authenticated; owner/admin check; browser session auth not native-proven | Add native auth and verify minimal owner-scoped response |
-| Retry Wallet settlement | `POST /api/transport/rides/<booking_reference>/payment/settle-wallet` | Authenticated, owner scoped; amount and currency derive from stored booking | Adapt to native auth; never accept client amount/currency |
-| Wallet balance | `GET /api/wallet/me` | Authenticated browser session | Add native auth support and verify minimal wallet response |
-| Wallet transactions | `GET /api/wallet/transactions` | Authenticated browser session | Add native auth support and paging schema |
-| Deposit / withdraw / transfer | `POST /api/wallet/deposit`, `/withdraw`, `/transfer` | Authenticated; CSRF, frozen-account controls and rate limits; writes require idempotency | Preserve all controls; native CSRF design must be reviewed with native auth |
-
-## Driver app
-
-| Capability | Existing route | Current state | Mobile work |
-|---|---|---|---|
-| View offers | `GET /api/transport/drivers/me/offers` | Authenticated; server resolves driver's profile | Native auth and tested polling/reconnect contract |
-| Accept offer | `POST /api/transport/drivers/me/offers/<booking_reference>/accept` | Authenticated, public booking reference | Native auth; preserve atomic assignment/ownership checks |
-| Decline offer | `POST /api/transport/drivers/me/offers/<booking_reference>/decline` | Authenticated, public booking reference | Native auth; preserve expiry and offer state checks |
-| Trip progress | `POST /api/transport/drivers/me/trips/<booking_reference>/status` | Authenticated, public booking reference; server owns transitions | Native auth; add read endpoint for active trip and lifecycle state |
-| Confirm cash receipt | `POST /api/transport/drivers/me/trips/<booking_reference>/payment/confirm-cash` | Authenticated; explicit post-trip cash receipt | Native auth; preserve one-time/idempotent settlement semantics |
-| Change availability | `POST /api/transport/drivers/<driver_id>/status` | Authenticated, but path uses an internal driver ID | Add self-scoped `/drivers/me/status` route and verify go-live gates |
-| Publish location | `POST /api/transport/drivers/<driver_id>/location` | Authenticated; existing mobile comment; path uses internal driver ID | Add self-scoped `/drivers/me/location` or a verified public-ID route; trace freshness, dedupe and ownership |
-| Earnings | `dashboard_service.get_driver_earnings` | Service-level capability found; a driver-safe mobile REST read contract not established | Add owner-scoped REST endpoint that reads canonical records; do not calculate on device |
-
-## Auth and identity
-
-| Capability | Existing source | Current state |
+| Capability | Native route | Current implementation |
 |---|---|---|
-| Sign in | `POST /login` in `app/auth/routes.py` | HTML form and redirect; browser Flask-Login session |
-| Device record | `start_device_session()` in `app/auth/sessions.py` | Creates existing `sessions` record and returns opaque UUID |
-| Device revocation | `revoke_device_session()` | Existing revoke timestamp/reason and audit event |
-| Native access/refresh token | No confirmed route/contract found in inspected source | Must design and security-test before app sign-in |
-| Role/context | Existing Identity/Auth context services | Server must resolve role, organization membership, driver profile and eligibility for every request |
+| Password sign-in | `POST /auth/login` | Uses existing `authenticate_user()`, account lockout and device session. |
+| MFA | `POST /auth/mfa/verify` | TOTP/backup codes only. SMS MFA remains unsupported by the canonical Auth verifier. |
+| Refresh | `POST /auth/refresh` | Rotating, one-use opaque refresh tokens; replay revokes the device session. |
+| Logout | `POST /auth/logout` | Revokes current Identity device session and Auth server session. |
+| Identity | `GET /auth/me` | Minimal user identity and eligible contexts. |
+| Account closure | `POST /auth/account-deletion` | Shared closure service, reauth, MFA, session/API-key revocation, identifier scrubbing and record retention controls. |
+| Web deletion resource | `GET/POST /apps/delete-account` | Public information page; POST requires signed-in owner, current password, confirmation and TOTP when enabled. |
 
-## Prioritized backend integration work
+## User
 
-1. **MOB-AUTH-01:** Native login/MFA, short-lived access credentials, refresh-secret hashing and rotation, replay detection, device revocation, logout and `/me`. Reuse Auth, Identity, MFA, audit and device-session policy; do not create a second user system.
-2. **MOB-RIDE-01:** Rider-authorized JSON booking endpoint using the existing signed fare quote and booking service; include idempotency and exact quote-expiry/state behavior.
-3. **MOB-DRIVER-01:** Self-scoped go-live and location endpoints that resolve the current driver's profile without internal IDs in client paths.
-4. **MOB-DRIVER-02:** Owner-scoped active-trip/earnings read APIs and documented offer polling cadence/reconnect behavior.
-5. **MOB-WALLET-01:** Native auth compatibility for read and write wallet APIs while preserving freeze policy, ledger ownership, CSRF/idempotency protections and audit.
-6. **MOB-PUSH-01:** Device registration and revocation, APNs/FCM, offer/trip notification policy, retry and deep-link authorization.
+| Capability | Native route | Domain owner / behavior |
+|---|---|---|
+| Search places | `GET /geo/api/geocode` | GEO; provider-evidenced results and required attribution. |
+| Fare discovery | `POST /transport/ride-options` | Transport; signed quote, no driver availability lookup or matching. |
+| Payment readiness | `POST /transport/payment-methods/options` | Transport adapter delegates to Wallet certification. |
+| Request ride | `POST /transport/ride-requests` | Request-first Transport service; signed quote, resolved geocode evidence, idempotency, Wallet invoice, profile/KYC gate. |
+| Track request | `GET /transport/ride-requests/<reference>` | Rider-owned state; driver/vehicle detail only when assigned. |
+| Activity | `GET /activity` | Recent ride requests and converted booking/payment data. |
+| Booking detail | `GET /transport/bookings/<reference>` | Existing owner-scoped booking reader. |
+| Retry Wallet settlement | `POST /transport/rides/<reference>/payment/settle-wallet` | Existing Wallet-owned settlement; server amount/currency. |
+| Wallet balance | Existing `GET /api/wallet/me` | Existing Wallet balance reader; no client calculation. |
 
-## Non-goals
+## Driver
 
-- Do not make apps connect directly to PostgreSQL.
-- Do not create a client-side fare engine, booking state machine or wallet ledger.
-- Do not label offer creation as booking confirmation.
-- Do not enable continuous background location before permission, privacy, platform and battery gates pass.
-- Do not cache authenticated HTML, API responses, access tokens or refresh credentials in the service worker or AsyncStorage.
+| Capability | Native route | Domain owner / behavior |
+|---|---|---|
+| Driver home/readiness | `GET /driver/me` | Resolves current driver's profile; uses `can_go_live()`. |
+| Offer polling | `GET /driver/offers` | Existing legacy + request-first offer services. |
+| Accept/decline | `POST /driver/offers/<reference>/accept`, `/decline` | Existing assignment and offer ownership/expiry validation. |
+| Availability | `POST /driver/status` | Existing go-live and provider status services; no client-selected driver ID. |
+| Foreground GPS | `POST /driver/location` | Existing TrackingService; user-initiated while using app only. |
+| Active trip | `GET /driver/trips/active` | Own assigned trip or completed unpaid cash receipt belonging to the completing driver. |
+| Trip state | `POST /driver/trips/<reference>/status` | Existing Transport trip transition table. |
+| Cash receipt | `POST /driver/trips/<reference>/payment/confirm-cash` | Existing Wallet invoice receipt; only after completion and actual cash handover. |
+| Earnings | `GET /driver/earnings` | Completed + captured trips grouped by currency. |
+
+## Not yet implemented
+
+- Wallet deposits, withdrawals, transfers, transaction history, refunds and PIN flows.
+- Native accommodation, event/ticket and tourism booking.
+- Push notifications/APNs/FCM, device token registration and real-time trip streaming.
+- Continuous/background driver location.
+- Native SMS MFA support until Auth has a complete verified SMS-login contract.
+- Physical device tests, live-like auth/booking/deletion end-to-end tests, EAS project linking and store release.

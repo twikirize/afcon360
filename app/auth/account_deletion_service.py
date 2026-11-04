@@ -145,6 +145,95 @@ def request_account_deletion(
     )
     from sqlalchemy import func
 
+    # Do not orphan an accepted ride, active driver trip or unassigned
+    # request search when closing a marketplace identity. The user can retry
+    # deletion after the current transport obligation is finished.
+    driver_profile = None
+    try:
+        from app.transport.models import Booking, DriverProfile, RideRequest
+        from app.utils.enums import BookingStatus, PaymentStatus
+
+        active_booking_statuses = [
+            getattr(BookingStatus, name)
+            for name in (
+                "CONFIRMED",
+                "ASSIGNED",
+                "DRIVER_EN_ROUTE",
+                "PICKUP_ARRIVED",
+                "IN_PROGRESS",
+            )
+            if hasattr(BookingStatus, name)
+        ]
+        rider_booking = (
+            Booking.query.filter(
+                Booking.user_id == user.id,
+                Booking.is_deleted.is_(False),
+                Booking.status.in_(active_booking_statuses),
+            ).first()
+            if active_booking_statuses else None
+        )
+        if rider_booking is not None:
+            raise AccountDeletionError(
+                "active_ride",
+                "Complete or cancel your active ride before closing this AFCON360 account.",
+                409,
+            )
+
+        searching_request = RideRequest.query.filter(
+            RideRequest.user_id == user.id,
+            RideRequest.is_deleted.is_(False),
+            RideRequest.status.in_(("searching", "converting")),
+        ).first()
+        if searching_request is not None:
+            raise AccountDeletionError(
+                "ride_matching_in_progress",
+                "Your ride is still being matched. Wait for matching to finish or cancel the request before closing this account.",
+                409,
+            )
+
+        driver_profile = DriverProfile.query.filter_by(
+            user_id=user.id,
+            is_deleted=False,
+        ).with_for_update().first()
+        if driver_profile is not None:
+            driver_booking = (
+                Booking.query.filter(
+                    Booking.assigned_driver_id == driver_profile.id,
+                    Booking.is_deleted.is_(False),
+                    Booking.status.in_(active_booking_statuses),
+                ).first()
+                if active_booking_statuses else None
+            )
+            unpaid_cash_trip = Booking.query.filter(
+                Booking.assigned_driver_id == driver_profile.id,
+                Booking.is_deleted.is_(False),
+                Booking.status == BookingStatus.COMPLETED,
+                Booking.payment_method == "cash",
+                Booking.payment_status == PaymentStatus.PENDING,
+            ).first()
+            if driver_booking is not None:
+                raise AccountDeletionError(
+                    "active_driver_trip",
+                    "Complete or hand over your active driver trip before closing this AFCON360 account.",
+                    409,
+                )
+            if unpaid_cash_trip is not None:
+                raise AccountDeletionError(
+                    "cash_receipt_pending",
+                    "Confirm the cash receipt for your completed trip before closing this AFCON360 account.",
+                    409,
+                )
+    except AccountDeletionError:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.exception("Could not verify active transport obligations before account closure")
+        raise AccountDeletionError(
+            "active_service_check_unavailable",
+            "AFCON360 could not verify your active rides and driver obligations. Please try again.",
+            503,
+        ) from exc
+
     active_device_ids = [
         row.session_id
         for row in DeviceSession.query.filter_by(
@@ -235,6 +324,23 @@ def request_account_deletion(
             profile.id_document_mime = None
             profile.id_document_size = None
             profile.rejected_reason = None
+
+        # Retire the operational DriverProfile but preserve the row for
+        # historical bookings/audit foreign keys. It must not remain visible
+        # to matching or publish a stale last-known location after account
+        # closure. Active driver trips were checked before session revocation.
+        if driver_profile is not None:
+            driver_profile.is_deleted = True
+            driver_profile.is_online = False
+            driver_profile.is_available = False
+            driver_profile.last_seen_at = None
+            driver_profile.last_location = None
+            driver_profile.location_updated_at = None
+            driver_profile.emergency_contact_name = None
+            driver_profile.emergency_contact_phone = None
+            driver_profile.emergency_contact_relationship = None
+            driver_profile.license_number_encrypted = None
+            driver_profile.background_check_reference = None
 
         # Erase active authenticator and backup-code material, not just flags.
         for secret in MFASecret.query.filter_by(

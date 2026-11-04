@@ -180,6 +180,11 @@ def _bearer_required(expected_client: str | None = None):
             if error:
                 return error
             g._afcon360_mobile_auth_context = context
+            # Flask-Login normally prefers a browser session cookie over a
+            # request_loader identity. A native caller must be authenticated
+            # as exactly the bearer-token owner even if it also sends a stale
+            # or foreign browser cookie. Pin current_user for this request.
+            g._login_user = context["user"]
             return fn(*args, **kwargs)
         return wrapped
     return decorate

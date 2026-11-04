@@ -2,41 +2,46 @@
 
 Two separate native products share one React Native foundation:
 
-- AFCON360 User — customers, riders and fans.
-- AFCON360 Driver — approved drivers and transport operators.
+- **AFCON360 User** — customers, riders and fans.
+- **AFCON360 Driver** — approved drivers and transport operators.
 
-Both use Expo SDK 58, React Native 0.88, React 19.3 and TypeScript 6. Flask remains the system of record. Mobile apps use authenticated APIs and never connect directly to PostgreSQL.
+Both use Expo SDK 58, React Native 0.88.1, React 19.3 and TypeScript 6. Flask remains the system of record. Mobile clients use HTTPS APIs and never connect directly to PostgreSQL.
 
-## Delivery stage
+## Implemented in this branch
 
-This branch establishes native workspaces, phone-first navigation shells, shared UI/API foundations, app identifiers, EAS build profiles and the public website /apps landing page.
+- Separate Android application IDs and iOS bundle IDs.
+- Shared native UI, HTTPS API client and operating-system SecureStore.
+- Native password login, TOTP/backup-code MFA, 10-minute access tokens, 30-day rotating refresh credentials and device logout/revocation. SMS MFA is intentionally unsupported until the existing Auth verifier supports it.
+- User ride flow: GEO search, signed fare quotes, Wallet-certified payment methods, request-first Transport creation, activity and tracking.
+- Driver flow: go-live checklist, offer polling/accept/decline, trip progress, foreground driver-initiated GPS, cash receipt confirmation and currency-separated captured earnings.
+- In-app account closure plus the web deletion resource at `/apps/delete-account`.
+- Website app/share page at `/apps`, preview APK pipeline and Android/iOS EAS profiles.
 
-This is not a store-ready release. Native authentication is the first backend gate: the current web session/CSRF flow is browser-oriented and must not be copied into native storage or assumed to be a bearer-token API. Live bookings, wallet operations, driver offers, GPS publishing and push notifications remain disabled until server contracts are implemented and tested.
+## What is still a release gate
 
-## Requirements
+The branch is not merged or deployed. No live-like end-to-end run or physical-device acceptance has been completed. The Android internal preview build must finish and its package/target SDK/signature be verified before APK links can be considered live. Direct APKs are debug-signed tester builds, not Play Store releases.
 
-Node.js 22.13+, pnpm 10, Android Studio for local Android builds, macOS/Xcode for local iOS builds, and an Expo account for EAS builds. Set EXPO_PUBLIC_API_BASE_URL to the approved API base URL; never put secrets in EXPO_PUBLIC variables.
+Production Android requires a Play App Signing AAB. iOS requires a signed App Store/TestFlight archive. EAS projects must be linked and both developer accounts, privacy/legal disclosures, icons/screenshots, review accounts and store reviews remain outstanding. The privacy page is a working draft, not the approved store policy.
 
-## Commands
+## Requirements and commands
 
-From this directory run corepack enable, pnpm install, then pnpm user:start or pnpm driver:start. Use pnpm user:typecheck and pnpm driver:typecheck for type checks. iOS local builds require macOS; cloud iOS builds can use EAS.
+Node.js 22.13+, pnpm 10, Android SDK for local Android builds and macOS/Xcode for local iOS builds. From this directory:
+
+- `pnpm install`
+- `pnpm user:start` or `pnpm driver:start`
+- `pnpm user:typecheck` and `pnpm driver:typecheck`
+
+Set `EXPO_PUBLIC_API_BASE_URL` to the approved HTTPS API base URL. Never put secrets in `EXPO_PUBLIC` variables.
 
 ## App identities
 
 | Product | Android package | iOS bundle ID | Scheme |
 |---|---|---|---|
-| User | space.pamoja.afcon360.user | space.pamoja.afcon360.user | afcon360 |
-| Driver | space.pamoja.afcon360.driver | space.pamoja.afcon360.driver | afcon360-driver |
+| User | `space.pamoja.afcon360.user` | `space.pamoja.afcon360.user` | `afcon360` |
+| Driver | `space.pamoja.afcon360.driver` | `space.pamoja.afcon360.driver` | `afcon360-driver` |
 
-Confirm legal ownership and store-account availability before public release. EAS projects must be created and linked independently.
-
-The /apps page intentionally shows development status instead of fake store buttons. Add official store URLs only after signed builds pass testing and store approval.
-
-Read docs/backend-contracts.md, docs/api-inventory.md, docs/release-gates.md and AGENTS.md before adding behavior.
-
+Read `docs/backend-contracts.md`, `docs/api-inventory.md`, `docs/store-submission-checklist.md` and `AGENTS.md` before changing server contracts.
 
 ## Direct APK sharing
 
-The Android preview workflow publishes User and Driver APKs to the GitHub prerelease named `mobile-preview`. These are debug-signed internal test builds, not Google Play releases. The website `/apps` provides download and share links. Never submit a preview APK to Play Console.
-
-Production Android builds use the `production` EAS profile to produce a signed AAB. iOS production distribution requires Apple Developer membership, signing and a signed IPA. See `docs/store-submission-checklist.md` before production release.
+The workflow publishes two debug-signed internal preview APKs to the GitHub prerelease named `mobile-preview` only after both standalone Android builds, package identity, target API and signature checks pass. The website `/apps` exposes the download/share links. Never submit these APKs to Play Console.
