@@ -25,7 +25,8 @@ permissions:
 jobs:
   build-preview-apk:
     name: Build ${{ matrix.app }} standalone APK
-    runs-on: ubuntu-latest
+    # Keep this Android build on the tested Ubuntu 24.04 image until Ubuntu 26.04 is validated.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -45,21 +46,21 @@ jobs:
       AFCON360_PREVIEW_KEY_PASSWORD: ${{ secrets.AFCON360_PREVIEW_KEY_PASSWORD }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22.13.1"
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.12.4
           run_install: false
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -165,7 +166,7 @@ jobs:
           grep -q 'classes.dex' "$RUNNER_TEMP/$APP-apk-contents.txt"
 
       - name: Upload verified app APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: afcon360-${{ matrix.app }}-preview-apk
           path: mobile/release/${{ matrix.app }}-preview.apk
@@ -176,20 +177,21 @@ jobs:
     name: Publish verified User and Driver APKs
     needs: build-preview-apk
     if: needs.build-preview-apk.result == 'success'
-    runs-on: ubuntu-latest
+    # Keep this Android build on the tested Ubuntu 24.04 image until Ubuntu 26.04 is validated.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Prepare release directory
         run: mkdir -p mobile/release
 
       - name: Download User APK artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: afcon360-user-preview-apk
           path: mobile/release
 
       - name: Download Driver APK artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: afcon360-driver-preview-apk
           path: mobile/release
@@ -204,7 +206,7 @@ jobs:
           cat SHA256SUMS.txt
 
       - name: Upload combined release artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: afcon360-android-preview-apks
           path: mobile/release/*
@@ -213,7 +215,7 @@ jobs:
 
       - name: Confirm this build is still the branch head
         id: current
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const { owner, repo } = context.repo;
@@ -230,7 +232,7 @@ jobs:
 
       - name: Update stable internal preview tag
         if: steps.current.outputs.is_current == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const { owner, repo } = context.repo;
@@ -249,7 +251,7 @@ jobs:
 
       - name: Publish internal preview APK download links
         if: steps.current.outputs.is_current == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: mobile-preview
           target_commitish: ${{ github.sha }}
