@@ -597,6 +597,18 @@ A future conversion must be designed for the specific source columns and proven 
 
 For ordinary V1/V2+ schema migrations, leave existing aware timestamps as instants and keep the migration session in UTC. A schema change that does not convert legacy naive data must not introduce a timezone conversion.
 
+**Critical production-transition safeguard:** the historical Nairobi rule is not blanket authorization to interpret every naive column in every old database as Nairobi time. In particular, a restored database at a retired revision must be audited column-by-column against the actual writer history and period. The fact that earlier TZ-UNIFY revisions used Nairobi, or that the current database reports UTC, does not by itself prove the provenance of every column. Record the evidence and classify each source column as proven Nairobi, proven another IANA timezone, already-aware, or unknown/mixed. Unknown/mixed provenance is BLOCKED until resolved.
+
+For an explicitly approved conversion of a column proven to contain Nairobi wall time, the intended PostgreSQL expression is:
+
+```sql
+ALTER TABLE example
+  ALTER COLUMN legacy_time TYPE TIMESTAMPTZ
+  USING legacy_time AT TIME ZONE 'Africa/Nairobi';
+```
+
+Run this only in an isolated, authorized rehearsal first, with the destination/session timezone UTC. The expression interprets the naive clock reading in Nairobi and returns the corresponding absolute instant. Do not replace it with `USING legacy_time AT TIME ZONE 'UTC'`. Do not use a session-wide Nairobi setting for a new migration: explicit per-column interpretation makes the exceptional source semantics visible in the migration.
+
 ### 51.5 Current V1 verification baseline
 
 The H3-B V1 baseline (`h3b20261104`) was clean-installed on PostgreSQL 15.19 and verified with:
