@@ -7,6 +7,7 @@ Status is evidence-based. A green code/build check is not store approval.
 - [x] Separate User and Driver native packages with distinct Android application IDs and iOS bundle IDs.
 - [x] Shared React Native foundation with strict TypeScript checks.
 - [x] Native Identity authentication reuses the existing User, MFA, DeviceSession and audit models; no parallel user/role system.
+- [x] Account closure revokes device/server sessions and personal API keys, erases active MFA/recovery/PIN secrets, disables login and scrubs direct profile identifiers while preserving legally controlled KYC/financial/audit records.
 - [x] Short-lived access credentials, refresh rotation, reuse detection and device logout/revocation.
 - [x] Production API client requires HTTPS and resolves current user/driver ownership server-side.
 - [x] User ride flow uses GEO geocoding, signed Transport fare quotes, request-first ride creation and Wallet-certified payment options.
