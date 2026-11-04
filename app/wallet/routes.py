@@ -115,7 +115,7 @@ def get_or_create_account(user_id, currency=None):
     
     Args:
         user_id: Can be either internal BIGINT id or public_id (UUID string)
-        currency: Currency code (default: UGX)
+        currency: Optional supported primary/home currency; otherwise derived from profile country
     
     Returns:
         Account object (existing or newly created)
