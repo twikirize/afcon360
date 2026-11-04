@@ -84,7 +84,7 @@ See [the current preview-signing policy](preview-signing-setup.md).
 
 ## Distribution labels
 
-- **Internal preview APK:** directly installable Android test binary from the GitHub `mobile-preview` prerelease. Signed with a private preview keystore, separate from production Play App Signing, and not eligible for Play Console submission.
+- **Internal preview APK:** run-scoped GitHub Actions artifact for direct Android testing. The current PR workflow uses an ephemeral CI signing key; it is not a stable update channel and is not eligible for Play Console submission.
 - **Google Play:** production-signed AAB distributed and updated by Play.
 - **Apple App Store:** separately signed IPA reviewed and distributed by Apple.
 - **Share URL:** canonical `https://www.pamoja.space/apps` page; official store listing URLs are added only after approval.
