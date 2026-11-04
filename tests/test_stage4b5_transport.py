@@ -141,6 +141,8 @@ def test_driver_wizard_commit_declares_intention_without_vehicles(db_session):
         user_id=user.id, is_deleted=False,
     ).all()
     assert len(profiles) == 1
+    assert profiles[0].driver_metadata["operating_country_code"] == "UG"
+    assert profiles[0].driver_metadata["operating_country_verified"] is False
 
     # Exactly one TRANSPORT INTENT row, subject = individual.
     intentions = ProviderParticipation.query.filter_by(
