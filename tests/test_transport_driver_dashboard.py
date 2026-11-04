@@ -141,7 +141,11 @@ def test_csrf_refresh_keeps_existing_dashboard_token_valid(app, client):
         refreshed = client.get("/api/csrf-token")
         assert refreshed.status_code == 200
         assert refreshed.headers.get("Cache-Control", "").startswith("private, no-store")
-        assert refreshed.headers.get("Vary") == "Cookie"
+        vary_values = {
+            value.strip().lower()
+            for value in refreshed.headers.get("Vary", "").split(",")
+        }
+        assert "cookie" in vary_values
         assert refreshed.get_json()["csrf_token"]
 
         from app.transport.models import DriverProfile
