@@ -2632,6 +2632,61 @@ def create_app(config_object=None) -> Flask:
                 right_ads=[],
             )
 
+    @app.route('/download', methods=['GET'])
+    def public_app_download():
+        """Public app availability page; only official store destinations are activated."""
+        from urllib.parse import urlsplit
+
+        def _official_store_url(env_name, expected_host):
+            value = os.getenv(env_name, '').strip()
+            if not value or any(ord(char) < 32 or ord(char) == 127 for char in value):
+                return None
+            try:
+                parsed = urlsplit(value)
+                port = parsed.port
+            except ValueError:
+                return None
+
+            if (
+                parsed.scheme.lower() != 'https'
+                or parsed.hostname != expected_host
+                or parsed.username is not None
+                or parsed.password is not None
+                or port not in (None, 443)
+                or parsed.path in ('', '/')
+            ):
+                return None
+            return value
+
+        applications = [
+            {
+                'name': 'AFCON360 User',
+                'description': 'For fans and travellers exploring events, transport, stays and experiences.',
+                'android_url': _official_store_url(
+                    'AFCON360_USER_ANDROID_STORE_URL', 'play.google.com'
+                ),
+                'ios_url': _official_store_url(
+                    'AFCON360_USER_IOS_STORE_URL', 'apps.apple.com'
+                ),
+            },
+            {
+                'name': 'AFCON360 Driver',
+                'description': 'For approved transport partners managing driver activity and trip requests.',
+                'android_url': _official_store_url(
+                    'AFCON360_DRIVER_ANDROID_STORE_URL', 'play.google.com'
+                ),
+                'ios_url': _official_store_url(
+                    'AFCON360_DRIVER_IOS_STORE_URL', 'apps.apple.com'
+                ),
+            },
+        ]
+
+        return render_template(
+            'public_download.html',
+            applications=applications,
+            web_platform_url=url_for('index'),
+        )
+
     @app.route('/api/csrf-token', methods=['GET'])
     @csrf.exempt
     def issue_csrf_token():
