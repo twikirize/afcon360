@@ -70,6 +70,8 @@ def send_notification_task(self, notification_id: int) -> dict:
                 channels=[notification.channel] if notification.channel else ['in_app'],
                 link=notification.link,
                 priority=notification.priority,
+                module=notification.module,
+                existing_notification=notification,
             )
 
             if result:
@@ -162,30 +164,46 @@ def notify_kyc_approved_task(user_id: int, kyc_record_id: int) -> dict:
     max_retries=3,
     default_retry_delay=120,
 )
-def schedule_reminders_task(self) -> dict:
+def schedule_reminders_task(self, batch_size: int = 25) -> dict:
     """
-    Celery Beat task: queries pending notifications where scheduled_for <= now
-    and dispatches them.
+    Dispatch a bounded page of due notifications.
+
+    Each delivery updates the original scheduled row in place. Unprocessed
+    rows remain pending for the next Beat tick; queued delivery messages expire
+    if the worker cannot reach them before the next tick.
     """
+    batch_size = max(1, min(int(batch_size), 100))
     app = create_app()
     with app.app_context():
         try:
             now = datetime.now(timezone.utc)
-            pending = Notification.query.filter(
-                Notification.scheduled_for <= now,
-                Notification.status == NotificationStatus.PENDING,
-            ).all()
+            pending = (
+                Notification.query.filter(
+                    Notification.scheduled_for <= now,
+                    Notification.status == NotificationStatus.PENDING,
+                )
+                .order_by(Notification.scheduled_for.asc(), Notification.id.asc())
+                .limit(batch_size)
+                .all()
+            )
 
             dispatched = 0
             for notification in pending:
                 try:
-                    send_notification_task.delay(notification.id)
+                    send_notification_task.apply_async(
+                        args=(notification.id,),
+                        expires=55,
+                    )
                     dispatched += 1
                 except Exception as e:
                     logger.error(f"Failed to dispatch reminder {notification.id}: {e}")
 
             logger.info(f"Dispatched {dispatched} scheduled reminders out of {len(pending)} pending")
-            return {"dispatched": dispatched, "pending": len(pending)}
+            return {
+                "dispatched": dispatched,
+                "pending": len(pending),
+                "batch_size": batch_size,
+            }
         except SQLAlchemyError as e:
             logger.error(f"DB error in schedule_reminders: {e}")
             self.retry(exc=e, countdown=60)
@@ -194,32 +212,48 @@ def schedule_reminders_task(self) -> dict:
 
 @shared_task(
     name="notifications.cleanup_old",
+    bind=True,
 )
-def cleanup_old_notifications_task(days: int = 30) -> dict:
+def cleanup_old_notifications_task(
+    self,
+    days: int = 30,
+    batch_size: int = 100,
+) -> dict:
     """
     Celery Beat task: archives notification logs older than `days` days
     and soft-deletes old read notifications.
     """
+    batch_size = max(1, min(int(batch_size), 500))
     app = create_app()
     with app.app_context():
         try:
             cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
-            # Soft-delete old read notifications
-            old_read = Notification.query.filter(
-                Notification.is_read == True,
-                Notification.read_at < cutoff,
-                Notification.is_deleted == False,
-            ).all()
+            # Soft-delete one stable page of old read notifications.
+            old_read = (
+                Notification.query.filter(
+                    Notification.is_read == True,
+                    Notification.read_at < cutoff,
+                    Notification.is_deleted == False,
+                )
+                .order_by(Notification.id.asc())
+                .limit(batch_size)
+                .all()
+            )
             soft_deleted = len(old_read)
             for notification in old_read:
                 notification.soft_delete()
 
             # Delete old notification logs
             from app.notifications.models import NotificationLog
-            old_logs = NotificationLog.query.filter(
-                NotificationLog.attempted_at < cutoff,
-            ).all()
+            old_logs = (
+                NotificationLog.query.filter(
+                    NotificationLog.attempted_at < cutoff,
+                )
+                .order_by(NotificationLog.id.asc())
+                .limit(batch_size)
+                .all()
+            )
             log_count = len(old_logs)
             for log in old_logs:
                 db.session.delete(log)
@@ -228,10 +262,29 @@ def cleanup_old_notifications_task(days: int = 30) -> dict:
                 db.session.commit()
 
             logger.info(
-                f"Cleanup complete: soft_deleted={soft_deleted}, "
+                f"Cleanup batch complete: soft_deleted={soft_deleted}, "
                 f"logs_deleted={log_count}"
             )
-            return {"soft_deleted": soft_deleted, "logs_deleted": log_count}
+
+            continuation_queued = (
+                len(old_read) >= batch_size or len(old_logs) >= batch_size
+            )
+            if continuation_queued:
+                try:
+                    self.apply_async(
+                        kwargs={"days": days, "batch_size": batch_size},
+                        countdown=5,
+                    )
+                except Exception:
+                    logger.exception("Could not schedule the next notification-cleanup batch")
+                    continuation_queued = False
+
+            return {
+                "soft_deleted": soft_deleted,
+                "logs_deleted": log_count,
+                "batch_size": batch_size,
+                "continuation_queued": continuation_queued,
+            }
         except SQLAlchemyError as e:
             db.session.rollback()
             logger.error(f"DB error in cleanup_old_notifications: {e}")
@@ -248,7 +301,7 @@ def resend_failed_task(max_retries: int = 3) -> dict:
     app = create_app()
     with app.app_context():
         try:
-            count = NotificationService.resend_failed(max_retries=max_retries)
+            count = NotificationService.resend_failed(max_retries=max_retries, limit=10)
             logger.info(f"Resent {count} failed notifications")
             return {"resent": count}
         except Exception as e:
