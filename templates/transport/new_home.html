@@ -1545,7 +1545,7 @@
   }
   function fmtCur(n, cur){
     cur = cur || 'USD';
-    var digits = (cur === 'UGX' || cur === 'TZS' || cur === 'RWF' ||
+    var digits = (cur === 'UGX' || cur === 'RWF' ||
       cur === 'JPY' || cur === 'KRW' || cur === 'VND') ? 0 : 2;
     var amount = Number(n || 0);
     if (!isFinite(amount)) amount = 0;
