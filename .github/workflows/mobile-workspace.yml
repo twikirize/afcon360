@@ -55,3 +55,13 @@ jobs:
 
       - name: Type-check both native applications
         run: pnpm typecheck
+
+      - name: Bundle User app for Android and iOS
+        run: |
+          pnpm --filter @afcon360/user-app exec expo export --platform android --output-dir /tmp/afcon360-user-android
+          pnpm --filter @afcon360/user-app exec expo export --platform ios --output-dir /tmp/afcon360-user-ios
+
+      - name: Bundle Driver app for Android and iOS
+        run: |
+          pnpm --filter @afcon360/driver-app exec expo export --platform android --output-dir /tmp/afcon360-driver-android
+          pnpm --filter @afcon360/driver-app exec expo export --platform ios --output-dir /tmp/afcon360-driver-ios
