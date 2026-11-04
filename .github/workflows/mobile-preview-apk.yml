@@ -33,7 +33,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: afcon360-android-preview-${{ github.ref }}
+  group: afcon360-user-android-${{ github.ref }}
   # Deliberately replace the mixed-platform run with the focused User Android validation.
   cancel-in-progress: true
 
