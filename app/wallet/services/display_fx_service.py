@@ -48,6 +48,8 @@ def _fetch_base_rates(base: str) -> Optional[Dict[str, Any]]:
     with _CACHE_LOCK:
         cached = _BASE_CACHE.get(base)
         if cached and cached["cache_until"] > now:
+            if cached.get("unavailable"):
+                return None
             return cached
 
     endpoint = str(current_app.config.get(
@@ -59,7 +61,7 @@ def _fetch_base_rates(base: str) -> Optional[Dict[str, Any]]:
     url = endpoint.format(base=base)
 
     try:
-        response = requests.get(url, timeout=(2.5, 4.0))
+        response = requests.get(url, timeout=(1.5, 2.5))
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, dict) or payload.get("result") != "success":
@@ -123,6 +125,14 @@ def _fetch_base_rates(base: str) -> Optional[Dict[str, Any]]:
         # No stale or mock-rate fallback. This is display-only, so callers
         # safely show the signed fare denomination when conversion is absent.
         logger.warning("Indicative FX lookup unavailable for %s: %s", base, type(exc).__name__)
+        # Avoid retrying the same failed provider request for every vehicle
+        # option in one quote response. This is only a short negative cache;
+        # no stale/estimated rate is stored or returned.
+        with _CACHE_LOCK:
+            _BASE_CACHE[base] = {
+                "unavailable": True,
+                "cache_until": now + timedelta(seconds=30),
+            }
         return None
 
 
