@@ -39,11 +39,11 @@ jobs:
         with:
           node-version: "22.13.1"
 
-      - name: Enable pnpm through Corepack
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.12.4 --activate
-          pnpm --version
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.4
+          run_install: false
 
       - name: Install workspace dependencies
         run: pnpm install --no-frozen-lockfile
