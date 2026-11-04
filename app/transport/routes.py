@@ -2680,8 +2680,16 @@ def driver_dashboard():
             exc_info=True,
         )
 
+    # Shared GEO renderer configuration is public/browser-safe (tile URL,
+    # attribution and default centre only). It keeps the driver map on the
+    # supported Leaflet renderer rather than the retired MapLibre prototype.
+    from app.geo.config import load_geo_config
+    from app.geo.map_renderer import build_public_map_config
+    map_config = build_public_map_config(load_geo_config(current_app))
+
     return _json_or_template(
         template,
+        map_config=map_config,
         driver_profile=profile,
         bookings=bookings,
         upcoming=upcoming,
