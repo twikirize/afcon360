@@ -119,6 +119,7 @@ _STEP2_DATA = {
     "licence_class": "B",
 }
 _STEP3_DATA = {
+    "operating_country_code": "UG",
     "vehicle_make": "Toyota",
     "vehicle_model": "Corolla",
     "vehicle_year": "2021",
