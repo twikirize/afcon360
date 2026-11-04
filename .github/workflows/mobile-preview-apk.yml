@@ -235,6 +235,9 @@ jobs:
       APP: ${{ matrix.app }}
       EXPECTED_PACKAGE: ${{ matrix.package }}
     steps:
+      - name: Check out source for emulator verification script
+        uses: actions/checkout@v7
+
       - name: Download signed APK
         uses: actions/download-artifact@v8
         with:
