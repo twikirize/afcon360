@@ -2522,9 +2522,9 @@ def driver_dashboard():
     if profile is not None and offers:
         try:
             from app.transport.services.currency_presentation_service import (
-                enrich_driver_offers_with_home_currency,
+                enrich_driver_offers_with_operating_currency,
             )
-            offers = enrich_driver_offers_with_home_currency(offers, profile)
+            offers = enrich_driver_offers_with_operating_currency(offers, profile)
         except Exception:
             logger.warning(
                 "Driver offer home-currency presentation unavailable; keeping base fare",
