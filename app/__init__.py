@@ -1673,9 +1673,14 @@ def create_app(config_object=None) -> Flask:
 
     # 2. Register API Blueprints
     from app.media.routes import media_bp
-    api_blueprints = [wallet_api_bp, fx_api_bp, webhooks_bp, admin_api_bp, media_bp]
+    from app.auth.mobile_api import mobile_api_bp
+    api_blueprints = [wallet_api_bp, fx_api_bp, webhooks_bp, admin_api_bp, media_bp, mobile_api_bp]
     for bp in api_blueprints:
         app.register_blueprint(bp)
+    # Native endpoints authenticate with explicit Bearer tokens and never
+    # rely on browser cookies, so cookie-CSRF protection is not their boundary.
+    # Only this bearer-only blueprint is exempt; existing cookie APIs remain protected.
+    csrf.exempt(mobile_api_bp)
 
     # Register media admin blueprint
     try:
@@ -2578,6 +2583,21 @@ def create_app(config_object=None) -> Flask:
             current_app.logger.warning(
                 f"USER_LOADER exception public_id={public_id}"
             )
+            return None
+
+    @login_manager.request_loader
+    def load_mobile_bearer_user(req):
+        """Resolve native Authorization: Bearer credentials through Redis + Identity sessions.
+
+        Browser cookies remain the normal Flask-Login mechanism. This loader
+        never trusts a user ID or role supplied by a mobile client.
+        """
+        try:
+            from app.auth.mobile_tokens import load_mobile_bearer_context
+            context = load_mobile_bearer_context(req)
+            return context["user"] if context else None
+        except Exception:
+            current_app.logger.exception("Native bearer identity resolution failed")
             return None
 
     def invalidate_user_cache(public_id):
