@@ -522,87 +522,101 @@ enum-reconciliation roadmap.
 - **CATALOGUED Category B**: Notifications (4), Audit (4), Events (4),
   Accommodation (20+), Profile (if any), Wallet (if any)
 
-## Database migrations — architecture, how to use, and why
+## Database migrations — architecture, time rules, and how to use
 
-One single, linear Alembic chain. One head. No shortcuts.
+AFCON360 uses one consolidated V1 baseline followed by ordinary incremental Alembic migrations. New installations do not replay the retired H3-A migration history.
 
 ### The architecture
 
-```
-h3a20261020 (frozen static baseline, root)
-  → c076b257b11d → 1792869659 → d3ba8c51f407 → 1793011323 → 1793013676
-  → c4b306c2ed73 (TZ-UNIFY-01) → c8c6a2c5a3f9 (TZ-UNIFY-02)
-  → 31287acd4eb8 (TZ-UNIFY-02b) → 85776e36d829 (TZ-UNIFY-02 index recreation)
-  → fc87cdbd0e6a (TZ-UNIFY-03)   [head]
+- **V1 baseline:** revision `h3b20261104`, file `migrations/versions/h3b20261104_consolidated_baseline.py`.
+- **V1 is frozen explicit DDL:** it is reviewable static schema, not a runtime import of models and not `metadata.create_all()`.
+- **Historical H3-A chain:** preserved under `migrations/_preserved_h3a_chain_20261104/versions/` for reference. It is not the active chain for fresh installs or new work.
+- **V2 and later:** ordinary incremental Alembic revisions generated from the canonical SQLAlchemy model/source after review.
+- **Verified V1 clean install (PostgreSQL 15.19):** 228 application tables, 49 enums, 0 naive timestamp columns, 993 timezone-aware timestamp columns, database timezone `UTC`.
+
+A revision number alone does not prove schema parity. Verify the actual database catalog and target identity.
+
+### Permanent timestamp rule: UTC
+
+**UTC is AFCON360's permanent database and application storage standard. Africa/Nairobi is not the permanent database timezone.**
+
+- All timestamp columns use timezone-aware types (`DateTime(timezone=True)` / PostgreSQL `TIMESTAMPTZ`).
+- Store and compare aware UTC instants. Use `datetime.now(timezone.utc)`; never create naive application timestamps with `datetime.now()` or `datetime.utcnow()`.
+- PostgreSQL server, application sessions, migration sessions and test sessions use UTC. Verify with `SHOW TimeZone;` and expect `UTC`.
+- For ordinary V1/V2+ migration and test commands, use `PGTZ=UTC` when an explicit client timezone setting is required.
+- Convert to a user's local timezone only at the presentation/scheduling boundary. Do not shift stored instants to local wall time.
+- A naive external timestamp is not automatically UTC unless its input contract explicitly says so. Establish its source timezone before converting it to an aware UTC instant.
+
+### Why historical conversion used Africa/Nairobi
+
+The legacy application wrote aware UTC values into PostgreSQL columns that did not retain timezone information. The PostgreSQL session timezone was Africa/Nairobi, so PostgreSQL first represented the incoming instant as Nairobi wall time and then the naive column discarded the timezone.
+
+For example, historical naive `15:00` with proven Nairobi provenance means:
+
+- `15:00 Africa/Nairobi` (UTC+3)
+- `12:00 UTC` (same real-world instant)
+
+Interpreting that old `15:00` as UTC would move the event three hours later. The old TZ-UNIFY revisions therefore ran their plain `ALTER COLUMN TYPE TIMESTAMPTZ` conversions with `PGTZ=Africa/Nairobi`. That was a narrowly scoped historical data-interpretation requirement, not the desired permanent database setting.
+
+**Do not use `PGTZ=Africa/Nairobi` for ordinary current migrations, application operation, or V1 installation.** The old TZ-UNIFY files are preserved historical source, not the active V1 chain.
+
+### How to handle timestamps during a future migration
+
+1. **No legacy naive data conversion:** keep the migration session at UTC. Use timezone-aware model/database types. Do not add a timezone conversion just because a migration touches a timestamp-related table.
+2. **Legacy naive data must be converted:** identify the exact columns and prove their source timezone from migration history, writer code, logs or a controlled temporary-table probe. The database's current timezone does not establish the historical timezone.
+3. **Known Nairobi wall time:** explicitly interpret the source as Nairobi time (for example, PostgreSQL `legacy_timestamp AT TIME ZONE 'Africa/Nairobi'`) while the destination database/session remains UTC. This produces a `TIMESTAMPTZ` instant.
+4. **Different or mixed provenance:** use the proven IANA timezone per source. If provenance is unknown or mixed and cannot be separated, stop and report BLOCKED; do not guess or apply a blanket conversion.
+5. **Already-aware source values:** preserve their existing instants. Do not shift them merely to change the displayed clock value.
+6. **Before any authorized production operation:** rehearse on an isolated PostgreSQL clone; compare row counts, nulls and representative before/after instants; verify zero naive timestamp columns and UTC session timezone. Obtain the required human approval before any production migration or data change.
+
+Never apply `AT TIME ZONE 'UTC'` to a value proven to be Nairobi wall time. That would treat the Nairobi clock reading as UTC and shift the actual instant by three hours.
+
+**Important safeguard for legacy production transitions:** this Nairobi interpretation is not a blanket rule for every naive column in every historical database. Audit each source column against its writer code, migration history and applicable time period. A retired database's current `SHOW TimeZone` value does not establish how its naive values were originally written. Classify every source as proven Nairobi wall time, proven another IANA timezone, already-aware, or unknown/mixed. Unknown or mixed provenance is BLOCKED; do not guess or apply a database-wide conversion.
+
+For a column proven to contain Nairobi wall time, make the interpretation explicit in the migration while the migration session remains UTC:
+
+```sql
+ALTER TABLE example
+  ALTER COLUMN legacy_time TYPE TIMESTAMPTZ
+  USING legacy_time AT TIME ZONE 'Africa/Nairobi';
 ```
 
-- **The root is a frozen baseline**: `h3a20261020_static_baseline.py` contains an
-  explicit, reviewable `_DDL` statement list. It does not import application
-  models and never calls `metadata.create_all()`.
-- **Everything else is ordinary autogeneration** via `flask db migrate`
-  (Flask-Migrate/Alembic) from the SQLAlchemy models, which are the
-  canonical source driven by the model registry.
-- **Fresh installs are a replay, not a rebuild**: `flask db upgrade` from an
-  empty database must produce a catalog identical to production. This was
-  proven on 2026-10-28 (226 tables, 4,260 columns, 1,746 indexes, 3,068
-  constraints, 0 naive timestamps, 983 aware). Keep that proof current:
-  whenever a timestamp- or index-touching migration lands, re-run the
-  fresh-install replay and compare counts.
-- **Revision IDs are not proof of schema.** `alembic_version` records the
-  current revision only. IDs can match while schemas diverge; compare catalogs.
+This expression interprets the naive wall-clock value as Nairobi local time and produces the corresponding absolute instant. Use the proven IANA zone for other source data. Preserve already-aware values without shifting them. Do not set a new migration session to `Africa/Nairobi`; the old session-level setting belongs only to controlled reproduction of the preserved historical TZ-UNIFY chain, not new V1/V2+ migrations. Any data conversion requires a human-approved contract and an isolated rehearsal before production.
 
-### How to use it
+### How to use Alembic
 
 ```powershell
-# inspect (always safe, run these first)
-python -m flask db heads          # expect exactly one head
-python -m flask db current        # which revision is the connected DB at
-python -m flask db history        # the linear chain
-python -m flask db check          # models vs this database
+# Use the project's intended environment and an isolated PostgreSQL *_test database.
+$env:APP_ENV = 'testing'
+$env:FLASK_ENV = 'testing'
+$env:PGTZ = 'UTC'
 
-# ordinary schema change (agents propose, owner runs)
-# 1. change the model (source of truth)
-# 2. owner runs:
+# Inspect the active chain and the actual connected database.
+python -m flask db heads       # expect one active head
+python -m flask db current     # verify the target revision
+python -m flask db history     # inspect active history, not preserved archives
+python -m flask db check       # models vs this database
+
+# Ordinary schema change: agent proposes; owner reviews and runs.
+# 1. Correct the canonical model/source.
+# 2. Owner generates the migration:
 python -m flask db migrate -m "description"
-# 3. inspect the generated file — it must contain every intended change and
-#    nothing else; if autogeneration missed something, fix the SOURCE and
-#    regenerate. Never hand-patch the migration file.
-# 4. after review, owner runs:
+
+# 3. Review the generated file: all intended changes, no unrelated changes.
+#    If autogeneration is incomplete, fix the source and regenerate.
+#    Never hand-patch the generated migration.
+# 4. After review and authorization, owner applies it:
 python -m flask db upgrade
+
+# Confirm the migration connection is still using UTC:
+python -c "from sqlalchemy import create_engine,text; from app import create_app; app=create_app(); e=create_engine(app.config['SQLALCHEMY_DATABASE_URI']); c=e.connect(); print(c.execute(text('SHOW TimeZone')).scalar()); c.close(); e.dispose()"
 ```
 
-For test/verification environments, point at the migration-built `*_test`
-database (`APP_ENV=testing`, `TEST_DATABASE_URL`) — never a model-bootstrap
-schema. If a migration adapts legacy naive timestamps, keep the documented
-`PGTZ=Africa/Nairobi` upgrade convention and AGENTS.md §51.2's history rules.
+Do not copy the illustrative connection probe into production without first confirming the application's configured target. Never expose credentials in commands or output.
 
-### Running a fresh-install proof (required comparator)
+### Fresh-install proof
 
-```powershell
-$env:APP_ENV='testing'; $env:FLASK_ENV='testing'
-$env:TEST_DATABASE_URL='postgresql://<user>@localhost:5432/<disposable_db>'
-$env:DISABLE_REDIS='1'
-dropdb -w -U <user> -h localhost --if-exists <disposable_db>
-createdb -w -U <user> -h localhost <disposable_db>
-python -m flask db upgrade     # must reach head with zero errors
-python -m flask db check       # expect: No new upgrade operations detected
-# then compare table/column/index/constraint counts against production
-```
-
-### Why we decided this (the TZ-UNIFY lesson)
-
-Between 16–20 November and October 2026 the TZ-UNIFY work demonstrated the
-failure mode of every alternative: an applied revision whose file was deleted
-stranded databases ("Can't locate revision"); autogeneration against an
-already-converted database produced a "symptom" migration (`85776e36d829`)
-that skipped conversion history and duplicated 366 existing indexes, breaking
-fresh installs; and a branded-ahead database passed unit tests while failing
-the chain. The rules now in place: **never delete or rewrite an applied
-migration** (restore instead, with owner approval and a structural-equivalence
-proof), **never stamp a database to hide drift**, never rely on
-`checkfirst=True` to mask a duplicate-index defect, and verify every
-migration batch with an empty-database replay. See AGENTS.md §48, §51, and
-§52 for the enforceable forms.
+For a migration release, use a disposable empty PostgreSQL database: install the V1 baseline, apply each approved incremental revision, verify one active head, run `flask db check`, and compare schema/catalog counts. For timestamp changes, record naive/aware column counts and prove that the actual instants are preserved. The verified V1 starting point is **0 naive / 993 aware**; intentional new timestamp columns must also be timezone-aware.
 
 ## Socket.IO Async Mode Decision
 
