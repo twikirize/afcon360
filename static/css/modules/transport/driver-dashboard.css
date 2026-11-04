@@ -1488,6 +1488,15 @@ body.dark-mode #driverDashboard {
 
 /* Phone layout: reduce dead space, enlarge primary actions, prevent clipping. */
 @media (max-width: 767px) {
+  #driverDashboard .btn-sm {
+    min-height: 44px;
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+  #driverDashboard .form-control,
+  #driverDashboard .form-select {
+    min-height: 44px;
+  }
   .t-shell.ck-shell .ck-main {
     min-width: 0;
   }
