@@ -111,3 +111,13 @@ Attempted to introduce thread-safe TTL locking and 503 status codes. This was **
 
 ---
 *Log initialized by Gemini CLI Agent on Saturday, 13 June 2026.*
+
+## Driver dashboard convergence — 2026-11-04
+
+- Kept the original seven-panel cockpit at `/transport/driver-dashboard` as the canonical workspace. The selected `driver-dashboard.js` remains frozen at blob `91e742af75ccbf5069d43bc6da3b50c73cd5af0d`; it continues to own GPS acquisition, server publishing, dashboard actions, alert sounds, and status indicators.
+- Added a compact Home map through the shared GEO/Leaflet boundary (`build_public_map_config` + `window.GeoMap.init`). It shows a saved last-published position only when valid; otherwise the map labels the default centre as a default, not a driver location. The explicit device-centering action is local-only and does not post or duplicate the dashboard GPS publisher.
+- MapLibre prototype dependencies were intentionally not carried forward: the MapLibre bundle/style and the standalone prototype CSS/JS paths are absent, and the GEO renderer documentation explicitly defers MapLibre. The old MapLibre adapter remains unused.
+- The driver shell continues to own the transport manifest, install identity, alert layer, and `/transport/sw.js` registration. Service-worker cache version advanced to 2.0.6 and now precaches the two first-party map modules. CDN Leaflet and map tiles remain network-only; map failure does not disable dashboard operations.
+- The old alternate-template safety controls were audited. Trip-share has no matching backend route in this branch; audio recording has no evidenced consent/storage endpoint; and the prototype's emergency/support phone numbers are hard-coded to Kenya. These controls were not copied as fake features. Existing incident, support, notification, and account areas remain the canonical sources until configurable, secure regional services are available.
+- CSRF refresh no longer deletes/rotates the session's underlying CSRF secret. A new timestamped token is issued with private no-store headers so refreshing one page does not invalidate tokens held by other tabs or requests in flight. A driver-status regression test pins that contract.
+- Verification status at record time: the prior dashboard selection gate passed 48 focused tests. The new map/PWA/CSRF additions still require the updated local focused test run and browser verification; no production data, database schema, or migrations were changed.
