@@ -180,7 +180,7 @@
         {% if o0_fare.get('display_currency_basis') == 'operating_country' %}
           Approximate operating-market display ({{ o0_fare.get('operating_country_code') }})
         {% else %}
-          Approximate Wallet-home display
+          Approximate currency display
         {% endif %}
         · base fare {{ o0_base_currency }}
         {{ ('%.2f'|format(o0_fare.get('amount')|float)).rstrip('0').rstrip('.') }}
