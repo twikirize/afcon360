@@ -153,6 +153,55 @@ export class MobileAuthClient {
     }
   }
 
+  async requestPasswordReset(identifier: string): Promise<{ message: string; expiresIn: number }> {
+    try {
+      const response = await this.api.post<Envelope<{ message?: string; expires_in?: number }>>(
+        "/api/mobile/v1/auth/password-reset/request",
+        { identifier: identifier.trim() }
+      );
+      if (!response.success) {
+        throw new MobileAuthError(
+          response.message ?? "AFCON360 could not start the password reset.",
+          response.code ?? "password_reset_request_failed"
+        );
+      }
+      return {
+        message: response.data?.message ?? response.message ?? "If the account exists, a reset code has been sent.",
+        expiresIn: response.data?.expires_in ?? 600
+      };
+    } catch (error) {
+      throw await this.envelopeError(error);
+    }
+  }
+
+  async confirmPasswordReset(
+    identifier: string,
+    code: string,
+    newPassword: string,
+    confirmPassword: string
+  ): Promise<string> {
+    try {
+      const response = await this.api.post<Envelope<{ message?: string }>>(
+        "/api/mobile/v1/auth/password-reset/confirm",
+        {
+          identifier: identifier.trim(),
+          code: code.trim(),
+          new_password: newPassword,
+          confirm_password: confirmPassword
+        }
+      );
+      if (!response.success) {
+        throw new MobileAuthError(
+          response.message ?? "AFCON360 could not complete the password reset.",
+          response.code ?? "password_reset_failed"
+        );
+      }
+      return response.data?.message ?? response.message ?? "Your password has been reset. Sign in with your new password.";
+    } catch (error) {
+      throw await this.envelopeError(error);
+    }
+  }
+
   async signIn(identifier: string, password: string): Promise<MobileLoginResult> {
     try {
       const deviceId = await this.store.getDeviceId();
