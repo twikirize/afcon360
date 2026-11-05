@@ -676,9 +676,10 @@ def test_mobile_password_reset_success_uses_canonical_reset_and_revokes_device_s
     monkeypatch.setattr(mobile_password_reset, "store_incr", lambda *args, **kwargs: 1)
     monkeypatch.setattr(mobile_password_reset, "store_delete", lambda key: True)
     monkeypatch.setattr(
-        OTPService,
-        "verify_otp",
-        staticmethod(lambda **kwargs: (True, "OTP verified")),
+        mobile_password_reset,
+        "store_compare_and_delete",
+        lambda key, expected_hash: key == "otp:password-reset-success-user:mobile_password_reset"
+        and expected_hash == OTPService.hash_otp("193827"),
     )
     monkeypatch.setattr(tokens, "generate_reset_token", lambda public_id: "signed-reset-token")
     monkeypatch.setattr(
