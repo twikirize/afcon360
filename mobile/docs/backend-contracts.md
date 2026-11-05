@@ -19,8 +19,12 @@ Audit baseline: `37f5d2c3b6ad606a6fa269693f6416aacce6c8f2` (main, 4 November 202
 | POST | `/api/mobile/v1/auth/logout` | Revokes the current device and server sessions. |
 | GET | `/api/mobile/v1/auth/me` | Returns minimal account identity and eligible contexts. |
 | POST | `/api/mobile/v1/auth/account-deletion` | Reauthenticates and calls the shared account-closure service. |
+| POST | `/api/mobile/v1/auth/password-reset/request` | Sends a short-lived email code when an active account with a registered email matches; always returns the same generic 202 response to avoid account enumeration. |
+| POST | `/api/mobile/v1/auth/password-reset/confirm` | Validates the one-time code, applies the canonical password-strength policy, changes the password and revokes existing server/device sessions. |
 
 Access tokens are random opaque values, with only SHA-256 digests as Redis keys; access lifetime is 10 minutes and refresh lifetime is 30 days. Redis and the existing Identity `Session` plus Auth `ServerSession` records are checked fail-closed on protected requests. Refresh replay revokes the device session. No new database table or migration was added.
+
+Native password recovery uses a six-digit code delivered to the account's registered email address. The code expires after 10 minutes, is stored as a keyed hash, is rate-limited, and is atomically consumed once; incorrect attempts do not consume the code. The request endpoint deliberately gives the same response when no matching active account exists. A successful password reset revokes previous server and native device sessions. The User and Driver apps keep this flow inside their native screens.
 
 **MFA limitation:** native sign-in and account deletion currently support enrolled TOTP and TOTP backup codes only. Existing SMS MFA is not a completed verifier in the Auth implementation; native sign-in rejects it rather than treating an SMS code as valid. This needs a canonical Auth decision before supporting SMS.
 
