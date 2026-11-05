@@ -331,7 +331,7 @@ class OTPService:
                     logger.info(f"[OTP EMAIL] Delivered {purpose} code to {email}")
                     return {
                         "success": True,
-                        "message": "Code sent.",
+                        "message": ("Password reset code sent." if purpose == "password_reset" else "Verification code sent."),
                         "code": "sent",
                         "dev_fallback": False,
                     }
