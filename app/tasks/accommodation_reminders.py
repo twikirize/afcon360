@@ -9,6 +9,8 @@ Scheduled reminder tasks for the accommodation module:
 - Property completeness notifications (NEW)
 """
 
+import logging
+
 from celery import shared_task
 from datetime import datetime, timezone, timedelta
 from app.extensions import db
@@ -20,6 +22,9 @@ from app.models.system_config import SystemConfig
 from app.accommodation.state_machine.booking_states import BookingStateMachine
 from app.accommodation.services.readiness_service import AccommodationReadinessService
 from app.notifications.models import NotificationModule, NotificationType
+
+
+logger = logging.getLogger(__name__)
 
 
 @shared_task(name="accommodation.send_registration_reminders", bind=True)
