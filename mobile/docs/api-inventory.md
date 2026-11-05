@@ -2,13 +2,15 @@
 
 **Implementation branch:** `feat/native-mobile-apps-20261104` (PR #21, draft, not merged/deployed). Original source baseline inspected at `37f5d2c3b6ad606a6fa269693f6416aacce6c8f2`.
 
-All native client routes below are bearer-only under `/api/mobile/v1`. Protected routes pin Flask-Login request identity to the validated bearer-token owner. Existing domain resources/services remain authoritative.
+Protected native client routes under `/api/mobile/v1` are bearer-only and pin Flask-Login request identity to the validated bearer-token owner. Public exceptions are the password-reset request/confirmation endpoints and the existing anonymous GEO place-search route. Existing domain resources/services remain authoritative.
 
 ## Identity and session
 
 | Capability | Native route | Current implementation |
 |---|---|---|
 | Password sign-in | `POST /auth/login` | Uses existing `authenticate_user()`, account lockout and device session. |
+| Password reset request | `POST /auth/password-reset/request` | Enumeration-safe username/email lookup; 6-digit code sent to the registered email address. |
+| Password reset confirm | `POST /auth/password-reset/confirm` | Five-attempt, 10-minute OTP verification; password rules and session revocation are server-owned. |
 | MFA | `POST /auth/mfa/verify` | TOTP/backup codes only. SMS MFA remains unsupported by the canonical Auth verifier. |
 | Refresh | `POST /auth/refresh` | Rotating, one-use opaque refresh tokens; replay revokes the device session. |
 | Logout | `POST /auth/logout` | Revokes current Identity device session and Auth server session. |
