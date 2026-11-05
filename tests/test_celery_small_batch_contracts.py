@@ -33,3 +33,50 @@ def test_every_numeric_beat_tick_expires_before_its_next_interval():
         assert 0 < expires < interval, (
             f"{name} must expire stale queued ticks before the next interval"
         )
+
+def test_expired_approval_hold_with_missing_legacy_sla_does_not_block_page(
+    monkeypatch,
+):
+    """The stored expires_at is authoritative even for legacy NULL-SLA holds."""
+    from datetime import datetime, timedelta, timezone
+
+    from app.accommodation.models.availability import BlockedDate, RoomHold
+    from app.accommodation.services.availability_service import AvailabilityService
+    from app.extensions import db
+
+    class _Query:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def filter(self, *criteria):
+            return self
+
+        def order_by(self, *criteria):
+            return self
+
+        def limit(self, amount):
+            return self
+
+        def all(self):
+            return self.rows
+
+    class _LegacyApprovalHold:
+        id = 42
+        status = "active"
+        hold_type = "approval"
+        approval_sla_hours = None
+        expires_at = datetime.now(timezone.utc) - timedelta(hours=1)
+
+        def mark_expired(self):
+            self.status = "expired"
+
+    legacy_hold = _LegacyApprovalHold()
+    monkeypatch.setattr(BlockedDate, "query", _Query([]))
+    monkeypatch.setattr(RoomHold, "query", _Query([legacy_hold]))
+    commit = monkeypatch.setattr(db.session, "commit", lambda: None)
+
+    result = AvailabilityService.release_expired_holds(batch_size=25)
+
+    assert legacy_hold.status == "expired"
+    assert result["released"] == 1
+    assert result["has_more"] is False
