@@ -20,8 +20,8 @@ Android preview builds are not production store releases.
 - Add AFCON360 User and Driver app sections.
 - Show Android and iOS availability honestly.
 - Provide a working link to the existing web platform.
-- Add Download App links to desktop navigation,
-  mobile navigation and the global footer.
+- Keep Download App out of the primary desktop menu and mobile drawer.
+- Retain one persistent Download App link in the global footer.
 - Make the page responsive and accessible.
 - Add automated tests for public access and link safety.
 - Allow official HTTPS store links to be configured later.
@@ -54,7 +54,8 @@ distribution URL is configured. Otherwise show Coming Soon.
 - Both applications display correctly.
 - Android and iOS unavailable states are accurate.
 - Web link works.
-- Desktop, mobile and footer navigation link to /download.
+- The global footer links to /download.
+- The primary desktop menu and mobile drawer do not duplicate the download link.
 - Invalid or non-HTTPS external URLs are never activated.
 - Targeted automated tests pass using the PostgreSQL test database.
 
