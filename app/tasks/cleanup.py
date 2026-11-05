@@ -9,11 +9,14 @@ import logging
 from datetime import datetime, timezone, timedelta
 from app.celery_app import celery_app
 from app.accommodation.services.availability_service import AvailabilityService
+from app.extensions import db
+from app.tasks.context import with_flask_app_context
 
 logger = logging.getLogger(__name__)
 
 
 @celery_app.task(name="accommodation.cleanup_expired_holds", bind=True)
+@with_flask_app_context
 def cleanup_expired_holds(
     self,
     hold_minutes: int = 15,
@@ -64,6 +67,8 @@ def cleanup_expired_holds(
             **result,
             "continuation_queued": continuation_queued,
         }
-    except Exception as e:
-        logger.error(f"Cleanup task failed: {e}", exc_info=True)
-        return {"released": 0, "error": str(e), "continuation_queued": False}
+    except Exception:
+        db.session.rollback()
+        logger.exception("Cleanup task failed")
+        # Do not return an error dictionary: Celery would record that as SUCCESS.
+        raise
