@@ -97,7 +97,7 @@ def test_transport_offer_expiry_sweep_uses_bounded_scan_cursors(monkeypatch):
         def scan(self, cursor, match, count):
             self.scans.append((cursor, match, count))
             if "transport:driver:" in match:
-                return (5, [b"transport:driver:17:offers"]) if cursor == 0 else (0, [])
+                return (0, [b"transport:driver:17:offers"]) if cursor == 0 else (0, [])
             return (
                 (9, [b"transport:offer:index:booking:STALE"])
                 if cursor == 0 else (0, [])
@@ -128,7 +128,7 @@ def test_transport_offer_expiry_sweep_uses_bounded_scan_cursors(monkeypatch):
 
     first = OfferService.sweep_expired_page(batch_size=50)
     assert first["cleared"] == 2
-    assert first["driver_cursor"] == 5
+    assert first["driver_cursor"] == -1
     assert first["index_cursor"] == 9
     assert first["has_more"] is True
     assert fake.removed_members == [b"STALE"]
@@ -141,4 +141,9 @@ def test_transport_offer_expiry_sweep_uses_bounded_scan_cursors(monkeypatch):
         index_cursor=first["index_cursor"],
     )
     assert second["has_more"] is False
+    assert second["driver_cursor"] == -1
+    assert second["index_cursor"] == -1
     assert second["cleared"] == 0
+    # Driver SCAN finished on page one and must not restart while the index
+    # cursor is still progressing.
+    assert sum("transport:driver:" in match for _, match, _ in fake.scans) == 1
