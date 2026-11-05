@@ -1,13 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { Alert, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
 import { AppScreen, PageHeader, Panel, StatusPill, palette } from "@afcon360/mobile-ui";
 import { AuthField, AuthLink, AuthNotice, AuthPasswordField, AuthShell, AuthSubmit } from "@afcon360/mobile-ui/auth";
 import { MobileAuthError } from "@afcon360/mobile-core";
 import { useAuth } from "../src/auth/AuthProvider";
-
-const SITE = "https://www.pamoja.space";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -46,7 +43,7 @@ export default function LoginScreen() {
               <AuthPasswordField label="Password" value={password} onChangeText={setPassword} visible={showPassword} onToggle={() => setShowPassword(value => !value)} autoComplete="password" placeholder="Your password" />
               <AuthSubmit label="Sign in securely" loading={signingIn} disabled={!identifier.trim() || !password} onPress={() => signIn(identifier, password).then(needsMfa => { if (!needsMfa) router.replace("/(tabs)"); }).catch(showError)} />
               <AuthLink label="Create an AFCON360 account" onPress={() => router.push("/register")} />
-              <AuthLink label="Forgot your password?" onPress={() => WebBrowser.openBrowserAsync(SITE + "/reset/request")} />
+              <AuthLink label="Forgot your password?" onPress={() => router.push("/forgot-password")} />
             </>
           )}
         </Panel>
