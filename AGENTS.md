@@ -651,6 +651,21 @@ Do not restore the old H3-A chain as the active path, create a second baseline, 
 
 The consolidated V1 baseline gives new installations one reproducible starting schema without requiring replay of the retired H3-A history. Incremental revisions preserve forward evolution after V1. The historical TZ-UNIFY work also demonstrated that migration session timezone is part of data semantics: a correct revision run under the wrong timezone can silently alter instants. Therefore, V1 and all ordinary future work use UTC; Nairobi interpretation is narrowly scoped to proven legacy naive data.
 
+
+## 53. Deployment Boundary and Branch Ownership (Permanent Rule)
+
+**The deployable website and server application are owned by `main`. Native mobile client work is isolated from server delivery.**
+
+1. `main` is the canonical integration and deployment branch for the public website, web frontend, Flask application, server-rendered templates, APIs, authentication/session services, business logic, models, database migrations, server configuration, deployment/worker configuration, and tests or CI that validate those server components.
+2. A feature does not become mobile-only merely because it is needed by a mobile app. Any API endpoint, token/session implementation, account/deletion service, database/model change, server template/page, or other server runtime dependency belongs in a separate PR targeting `main`.
+3. The native-app branch is limited to `mobile/**`, mobile-specific build/preview workflows (including `.github/workflows/mobile-preview-apk.yml` and `.github/workflows/mobile-workspace.yml`), and mobile-client documentation. It must not carry new Flask, template, migration, database, or server-runtime changes as part of the app-only PR.
+4. Backend contract/regression workflows that test server code (for example `.github/workflows/mobile-auth-postgres-tests.yml`) belong with the server changes on `main`, not in the app-only change set.
+5. If a native client needs a new backend capability, first submit and verify the server change against `main`; then base or retarget the app-only PR on the branch containing that server work. After the server PR is merged, retarget the app-only PR to `main`. Do not duplicate or cherry-pick the backend changes into the app PR.
+6. Website and server changes must never be deployed from a mobile feature branch. Merging to `main` is still separate from production deployment, which follows the approved backup, verification, and release gates.
+7. The public app-download contract is stable: `/download`, `templates/public_download.html`, the User/Driver preview artifact destinations, and the validated `AFCON360_USER_*` / `AFCON360_DRIVER_*` store-link environment variables must remain unchanged during unrelated mobile development. Change them only in a dedicated, reviewed download-contract task with explicit approval and contract tests.
+
+**Required review question:** Does this change execute on the server, render the website, alter server data/contracts, or validate server behavior? If yes, it belongs in a PR targeting `main`. Does it only build/run the native User or Driver client? If yes, it belongs in the mobile-app PR.
+
 ---
 
 *End of Directive. Begin with UNDERSTAND.*

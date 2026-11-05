@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}AFCON360 Mobile Privacy Notice — Draft{% endblock %}
+{% block content %}
+<section style="max-width:900px;margin:0 auto;padding:32px 18px 56px;line-height:1.7">
+  <p><strong>WORKING DRAFT — NOT APPROVED FOR STORE SUBMISSION</strong></p>
+  <h1>AFCON360 Mobile Privacy Notice</h1>
+  <p>This working draft describes the current User and Driver mobile application design. AFCON360's data controller and legal adviser must review and approve it, including the rules in each launch country, before it is treated as the official privacy policy.</p>
+  <h2>Information the apps use</h2>
+  <ul>
+    <li><strong>Account and identity:</strong> AFCON360 account identifier, username, email address, authentication and MFA state, and account context returned by Identity.</li>
+    <li><strong>Device and session security:</strong> app-install identifier, device label, IP address, device/user-agent metadata, session identifiers and security/revocation events.</li>
+    <li><strong>Places and rides:</strong> location-search text, selected pickup/destination coordinates and geocoding-provider evidence; ride requests, fare quotes and transport state.</li>
+    <li><strong>Driver location:</strong> the Driver app requests foreground location permission only when the driver taps the location-sharing action. The current mobile app does not enable continuous background tracking.</li>
+    <li><strong>Wallet and payments:</strong> the User app displays Wallet-provided balance, invoice and payment status. Payment credentials and settlement are handled by AFCON360 Wallet and its configured payment providers; this app is not a card-data vault.</li>
+  </ul>
+  <h2>How information is used</h2>
+  <p>Information supports sign-in and account protection, profile and role checks, place discovery, transport requests and dispatch, driver trip operations and safety, Wallet display, support, fraud prevention and legal/accounting obligations.</p>
+  <h2>Sharing and service providers</h2>
+  <p>Relevant information is processed by AFCON360 Identity, Transport, GEO and Wallet services, and by configured geocoding and payment providers when their services are used. The final policy must name the actual providers, processing countries and safeguards. This draft is not a complete subprocessor inventory.</p>
+  <h2>Location choices</h2>
+  <p>Place search can be used by entering a place name. The Driver app asks for foreground location permission only when the driver chooses to publish a location. Denying this permission leaves other app areas available, although location-dependent driver operations may be unavailable.</p>
+  <h2>Retention and deletion</h2>
+  <p>You can sign out and revoke your current device session. The apps provide an in-app account deletion request. Verified accounts may be anonymized rather than immediately erased, and some records may be retained where required for financial, safety, fraud-prevention, dispute-resolution or legal obligations. AFCON360 must confirm and publish exact retention periods and the data-request contact after legal review; this draft does not establish a fixed schedule.</p>
+  <h2>Security</h2>
+  <p>Mobile credentials are stored using the operating system's secure storage. Production API requests use HTTPS. Access credentials are short-lived, refresh credentials rotate and device sessions can be revoked.</p>
+  <h2>Your choices and support</h2>
+  <p>You can sign out and revoke the current app session from Account. You can request account deletion within the app or through the public <a href="/apps/delete-account">AFCON360 account-deletion page</a>. Contact AFCON360 through the official <a href="/support">support page</a> for questions and data requests.</p>
+  <h2>Details still requiring approval</h2>
+  <ul>
+    <li>Data-controller legal name, registration/contact details and privacy contact.</li>
+    <li>Actual third-party providers and cross-border processing.</li>
+    <li>Specific retention periods and lawful bases for each data category.</li>
+    <li>Effective date, approval owner and jurisdiction-specific rights/complaint channels.</li>
+  </ul>
+  <p><strong>This is a working draft, not the approved privacy policy required for store submission.</strong></p>
+  <p><a href="/apps">Back to AFCON360 Apps</a></p>
+</section>
+{% endblock %}
