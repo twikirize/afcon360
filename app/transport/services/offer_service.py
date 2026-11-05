@@ -915,11 +915,19 @@ class OfferService:
         cleared = 0
 
         try:
-            next_driver_cursor, driver_keys = redis_client.scan(
-                cursor=int(driver_cursor or 0),
-                match=f"{cls.PREFIX_DRIVER}:*:offers",
-                count=batch_size,
-            )
+            # -1 is the completed sentinel. Without it, a cursor that reached
+            # zero would restart from the beginning while the other key pattern
+            # was still being scanned.
+            if int(driver_cursor) >= 0:
+                next_driver_cursor, driver_keys = redis_client.scan(
+                    cursor=int(driver_cursor),
+                    match=f"{cls.PREFIX_DRIVER}:*:offers",
+                    count=batch_size,
+                )
+                next_driver_cursor = int(next_driver_cursor or 0)
+            else:
+                next_driver_cursor, driver_keys = -1, []
+
             for dkey in driver_keys or []:
                 driver_id = cls._driver_id_from_key(dkey)
                 if driver_id is None:
@@ -941,11 +949,16 @@ class OfferService:
                         logger.debug("Could not prune stale offer refs from %s", dkey,
                                      exc_info=True)
 
-            next_index_cursor, index_keys = redis_client.scan(
-                cursor=int(index_cursor or 0),
-                match=f"{cls.PREFIX_INDEX}:booking:*",
-                count=batch_size,
-            )
+            if int(index_cursor) >= 0:
+                next_index_cursor, index_keys = redis_client.scan(
+                    cursor=int(index_cursor),
+                    match=f"{cls.PREFIX_INDEX}:booking:*",
+                    count=batch_size,
+                )
+                next_index_cursor = int(next_index_cursor or 0)
+            else:
+                next_index_cursor, index_keys = -1, []
+
             prefix = f"{cls.PREFIX_INDEX}:booking:"
             for ref_key in index_keys or []:
                 booking_ref = _to_str(ref_key)
@@ -962,11 +975,14 @@ class OfferService:
                         logger.debug("Could not prune stale offer index %s", ref_key,
                                      exc_info=True)
 
+            # A just-finished cursor is encoded as -1 in continuation args.
+            next_driver_cursor = -1 if next_driver_cursor == 0 else next_driver_cursor
+            next_index_cursor = -1 if next_index_cursor == 0 else next_index_cursor
             return {
                 "cleared": cleared,
-                "driver_cursor": int(next_driver_cursor or 0),
-                "index_cursor": int(next_index_cursor or 0),
-                "has_more": bool(next_driver_cursor or next_index_cursor),
+                "driver_cursor": next_driver_cursor,
+                "index_cursor": next_index_cursor,
+                "has_more": next_driver_cursor >= 0 or next_index_cursor >= 0,
                 "batch_size": batch_size,
             }
         except Exception as exc:
