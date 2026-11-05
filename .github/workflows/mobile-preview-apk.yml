@@ -435,7 +435,7 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild -version
-          XCODE_VERSION="$(xcodebuild -version | awk '/^Xcode / {print $2; exit}')"
+          XCODE_VERSION="$(xcodebuild -version | sed -n '1s/^Xcode //p')"
           MINIMUM_XCODE="26.4"
           LOWEST="$(printf '%s\n' "$MINIMUM_XCODE" "$XCODE_VERSION" | sort -V | head -n 1)"
           if [ "$LOWEST" != "$MINIMUM_XCODE" ]; then
