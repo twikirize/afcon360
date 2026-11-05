@@ -220,6 +220,7 @@ class OTPService:
         purpose: str = "email_verification",
         user_id: Optional[int] = None,
         max_retries: int = 3,
+        expires_in_minutes: int = 30,
     ) -> Dict[str, Any]:
         """
         Send an OTP by email and report the *real* delivery outcome.
@@ -281,30 +282,44 @@ class OTPService:
                 )
                 from app.notifications.channel_handlers.email import EmailHandler
 
+                is_password_reset = purpose == "password_reset"
                 notification = Notification(
                     user_id=user_id,
                     email=email,
-                    type=NotificationType.VERIFICATION_EMAIL,
+                    type=(
+                        NotificationType.PASSWORD_RESET
+                        if is_password_reset else NotificationType.VERIFICATION_EMAIL
+                    ),
                     channel=NotificationChannel.EMAIL,
                     module=NotificationModule.ACCOUNT,
                     status=NotificationStatus.PENDING,
-                    subject="AFCON360 Email Verification Code",
+                    subject=(
+                        "AFCON360 Password Reset Code"
+                        if is_password_reset else "AFCON360 Email Verification Code"
+                    ),
                     body=(
-                        f"Your AFCON360 verification code is: {otp}\n"
-                        f"Or verify in one click: {verification_link}\n"
-                        f"This code expires in 30 minutes. If you didn't request it, ignore this email."
+                        (
+                            f"Your AFCON360 password reset code is: {otp}\\n"
+                            f"This code expires in {expires_in_minutes} minutes. "
+                            "If you didn't request it, ignore this email."
+                        )
+                        if is_password_reset else (
+                            f"Your AFCON360 verification code is: {otp}\\n"
+                            f"Or verify in one click: {verification_link}\\n"
+                            f"This code expires in {expires_in_minutes} minutes. "
+                            "If you didn't request it, ignore this email."
+                        )
                     ),
                     context={
                         'otp': otp,
                         'verification_code': otp,
                         'user_name': email.split('@')[0],
                         'verification_link': verification_link,
-                        # Matches EMAIL_OTP_TTL (1800s) in app/auth/email.py;
-                        # the magic-link token lasts longer (EMAIL_VERIFY_EXPIRY).
-                        'expires_in_minutes': 30,
+                        'expires_in_minutes': expires_in_minutes,
+                        'purpose': purpose,
                     },
                     priority='high',
-                    link=verification_link,
+                    link=None if is_password_reset else verification_link,
                 )
 
                 result = EmailHandler().deliver(
@@ -313,10 +328,10 @@ class OTPService:
                 )
 
                 if result.get('success'):
-                    logger.info(f"[OTP EMAIL] Delivered verification code to {email}")
+                    logger.info(f"[OTP EMAIL] Delivered {purpose} code to {email}")
                     return {
                         "success": True,
-                        "message": "Verification code sent.",
+                        "message": "Code sent.",
                         "code": "sent",
                         "dev_fallback": False,
                     }
