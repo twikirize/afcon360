@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - feat/native-mobile-apps-20261104
+      - feat/driver-app-polish-ios-validation-20261105
     paths:
       - "mobile/apps/**"
       - "mobile/packages/**"
