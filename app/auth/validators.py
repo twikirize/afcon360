@@ -9,7 +9,7 @@ def validate_password_strength(password):
     """Apply the account password rules without revalidating username or email."""
     if not isinstance(password, str) or len(password) < 10:
         return False, "Password must be at least 10 characters long"
-    categories = [r"[A-Z]", r"[a-z]", r"\\d", r"[^A-Za-z0-9]"]
+    categories = [r"[A-Z]", r"[a-z]", r"\d", r"[^A-Za-z0-9]"]
     if sum(bool(re.search(pattern, password)) for pattern in categories) < 3:
         return False, "Password must include at least 3 of: uppercase, lowercase, number, symbol"
     return True, ""
