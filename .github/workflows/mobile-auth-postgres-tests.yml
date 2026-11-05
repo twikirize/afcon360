@@ -10,6 +10,7 @@ on:
       - "app/auth/mobile_api.py"
       - "app/auth/mobile_tokens.py"
       - "app/auth/otp_service.py"
+      - "app/notifications/channel_handlers/email.py"
       - "app/auth/otp_store.py"
       - "app/auth/mobile_password_reset.py"
       - "templates/notifications/email/password_reset.html"
@@ -37,6 +38,7 @@ on:
       - "app/auth/mobile_api.py"
       - "app/auth/mobile_tokens.py"
       - "app/auth/otp_service.py"
+      - "app/notifications/channel_handlers/email.py"
       - "app/auth/otp_store.py"
       - "app/auth/mobile_password_reset.py"
       - "templates/notifications/email/password_reset.html"
@@ -126,6 +128,7 @@ jobs:
             app/auth/mobile_tokens.py \
             app/auth/mobile_password_reset.py \
             app/auth/otp_service.py \
+            app/notifications/channel_handlers/email.py \
             app/auth/otp_store.py \
             app/auth/pending_registration.py \
             app/auth/registration_policy.py \
