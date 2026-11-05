@@ -180,8 +180,16 @@ def make_celery(app=None):
             "schedule": 3600.0,  # hourly due-check; actual dump respects BACKUP_FREQUENCY
         },
 
+        # --- Transport transient-offer index cleanup ---
+        # Redis SCAN is processed a page at a time; continuations yield to the
+        # worker between pages instead of issuing a server-blocking KEYS scan.
+        "transport-offer-expiry-sweep": {
+            "task": "transport.offer_expiry_sweep",
+            "schedule": 60.0,  # every minute; Redis TTL remains the primary expiry
+        },
+
         # --- Transport dispatch recovery (TH-3-D2) ---
-        # Defensive sweep of orphaned transient offers (TTL is primary).
+        # Redis offer-index cleanup runs separately in bounded SCAN pages.
         "transport-dispatch-recovery": {
             "task": "transport.dispatch_recovery",
             "schedule": 60.0,  # every minute
