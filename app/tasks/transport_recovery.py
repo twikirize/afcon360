@@ -119,25 +119,14 @@ def dispatch_recovery(
     batch: int = None,
     after_booking_id: int = 0,
 ) -> dict:
-    """Defensive sweep of expired/orphaned Redis offers PLUS rediscovery of
-    CONFIRMED+unassigned bookings (pool -> ranker -> transient offer).
+    """Rediscover a bounded page of CONFIRMED+unassigned bookings.
 
-    Offer TTLs are the primary expiry mechanism; the sweep is a safety net for
-    orphaned offer keys. Rediscovery re-advertises ranked candidates for
-    bookings that never got an offer (offer loss, Redis outage restart,
-    mid-flight crash before creation). Redis is never authoritative — the
-    booking stays CONFIRMED/unassigned until a driver's claim commits.
-
-    MATCH-01-owned: per booking, check-then-rediscover — expired matching
-    windows close as NO_MATCH (no_supply / all_rejected) instead of being
-    re-offered forever.
-
-    Returns:
-        dict: sweep results (checked / cleaned), rediscovery results
-            (bookings considered / offers created) and no_match results
-            (closed bookings with reasons).
+    Expired Redis offer-index cleanup is handled separately by
+    transport.offer_expiry_sweep using incremental SCAN cursors. Redis is
+    never authoritative — the booking stays CONFIRMED/unassigned until a
+    driver's claim commits.
     """
-    result = {"checked": 0, "cleaned": 0}
+    result = {}
     rediscovered = 0
     offers_created = 0
     # MATCH-01-owned safety net (review Condition 2): per booking,
