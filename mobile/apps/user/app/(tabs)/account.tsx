@@ -21,7 +21,6 @@ export default function Account() {
       <ServiceTile title="Identity and verification" description="Profile and KYC status are returned by AFCON360 Identity." symbol="✓" />
       <ServiceTile title="Secure device session" description="Access credentials are kept in the device secure store and can be revoked by signing out." symbol="🔐" />
       <ActionButton label="Share AFCON360 app page" onPress={() => share("https://www.pamoja.space/apps", "AFCON360 — official app information and downloads.")} />
-      <ActionButton label="Share Android User APK" onPress={() => share("https://github.com/twikirize/afcon360/releases/download/mobile-preview/AFCON360-User-preview.apk", "AFCON360 User internal Android preview APK. Install only as a test build.")} />
       <ActionButton label="Privacy notice (website)" onPress={() => WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")} />
       <ActionButton label="Delete AFCON360 account" onPress={() => router.push("/delete-account")} />
       <ActionButton label="Sign out" onPress={() => Alert.alert("Sign out", "Sign out of AFCON360 on this device?", [{ text: "Cancel", style: "cancel" }, { text: "Sign out", onPress: () => logout().then(() => router.replace("/login")).catch(() => router.replace("/login")) }])} />
