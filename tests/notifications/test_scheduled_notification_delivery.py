@@ -83,3 +83,74 @@ def test_scheduled_notification_delivery_reuses_original_row(
     assert delivered.status == NotificationStatus.DELIVERED
     assert delivered.scheduled_for is None
     assert Notification.query.filter_by(user_id=user.id).count() == original_count
+
+
+def test_scheduled_reminder_batches_advance_without_starving_later_rows(
+    app, db_session, monkeypatch
+):
+    """A queued page must not be selected again before later pending rows."""
+    from app.notifications.tasks import (
+        schedule_reminders_task,
+        send_notification_task,
+    )
+
+    now = datetime.now(timezone.utc)
+    rows = [
+        Notification(
+            type=NotificationType.BOOKING_CONFIRMED,
+            module=NotificationModule.ACCOMMODATION,
+            channel=NotificationChannel.IN_APP,
+            subject=f"Scheduled reminder {index}",
+            body="Reminder test",
+            status=NotificationStatus.PENDING,
+            scheduled_for=now - timedelta(minutes=1),
+        )
+        for index in range(30)
+    ]
+    db_session.add_all(rows)
+    db_session.commit()
+
+    dispatched_ids = []
+    continuation_calls = []
+
+    def fake_send_apply_async(*, args, expires):
+        assert expires == 55
+        dispatched_ids.append(args[0])
+        return None
+
+    def fake_scheduler_apply_async(*, kwargs, countdown):
+        continuation_calls.append((kwargs, countdown))
+        return None
+
+    monkeypatch.setattr(
+        "app.notifications.tasks.create_app",
+        lambda: app,
+    )
+    monkeypatch.setattr(
+        send_notification_task,
+        "apply_async",
+        fake_send_apply_async,
+    )
+    monkeypatch.setattr(
+        schedule_reminders_task,
+        "apply_async",
+        fake_scheduler_apply_async,
+    )
+
+    first = schedule_reminders_task.run(batch_size=25)
+    assert first["dispatched"] == 25
+    assert first["continuation_queued"] is True
+    assert len(set(dispatched_ids)) == 25
+    assert len(continuation_calls) == 1
+
+    # The continuation should select the five untouched rows, not repeat the
+    # first 25 whose broker messages have not yet reached the worker.
+    second = schedule_reminders_task.run(batch_size=25)
+    assert second["dispatched"] == 5
+    assert second["continuation_queued"] is False
+    assert len(dispatched_ids) == 30
+    assert len(set(dispatched_ids)) == 30
+
+    third = schedule_reminders_task.run(batch_size=25)
+    assert third["dispatched"] == 0
+    assert len(dispatched_ids) == 30
