@@ -15,8 +15,10 @@ const approved = [
 const nativeResetRoutes = [
   ["apps/user/app/login.tsx", 'router.push("/forgot-password")'],
   ["apps/driver/app/login.tsx", 'router.push("/forgot-password")'],
-  ["apps/user/app/forgot-password.tsx", "authClient.requestPasswordReset(identifier)"],
-  ["apps/driver/app/forgot-password.tsx", "authClient.requestPasswordReset(identifier)"],
+  ["apps/user/app/forgot-password.tsx", "<PasswordResetFlow"],
+  ["apps/driver/app/forgot-password.tsx", "<PasswordResetFlow"],
+  ["packages/core/src/auth/mobile-auth-client.ts", "/api/mobile/v1/auth/password-reset/request"],
+  ["packages/ui/src/auth.tsx", "export function PasswordResetFlow"],
 ];
 
 for (const [relative, snippet] of nativeResetRoutes) {
