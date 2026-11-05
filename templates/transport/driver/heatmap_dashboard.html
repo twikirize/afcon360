@@ -1,0 +1,975 @@
+{% extends "transport/driver/base.html" %}
+{% block title %}Heatmap & Demand{% endblock %}
+{% block breadcrumb %}<span class="sep">/</span><span class="current">Heatmap & Demand</span>{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/heatmap-dashboard.css') }}">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<style nonce="{{ csp_nonce }}">
+  /* Map container */
+  #heatmapMap {
+    width: 100%;
+    height: 100%;
+    min-height: 500px;
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    background: var(--bg-surface-alt);
+  }
+  #heatmapMap .leaflet-container {
+    font-family: var(--font-body);
+    background: var(--bg-surface-alt);
+  }
+  .leaflet-popup-content-wrapper {
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+  }
+  .leaflet-popup-content {
+    margin: 12px 16px;
+    font-family: var(--font-body);
+  }
+  .leaflet-popup-tip {
+    box-shadow: var(--shadow-lg);
+  }
+  
+  /* Custom marker styles */
+  .hotspot-marker {
+    background: transparent;
+    border: none;
+  }
+  .hotspot-pulse {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    animation: hotspotPulse 2s ease-out infinite;
+    transform-origin: center;
+  }
+  .hotspot-core {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 12px;
+    height: 12px;
+    margin: -6px 0 0 -6px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    z-index: 1;
+  }
+  .hotspot-label {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    margin-top: 4px;
+  }
+  
+  @keyframes hotspotPulse {
+    0% { transform: scale(0.5); opacity: 0.6; }
+    70% { transform: scale(2.5); opacity: 0; }
+    100% { transform: scale(2.5); opacity: 0; }
+  }
+  
+  .driver-marker {
+    background: transparent;
+    border: none;
+  }
+  .driver-pulse {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 24px;
+    height: 24px;
+    margin: -12px 0 0 -12px;
+    border-radius: 50%;
+    background: rgba(37, 99, 235, 0.4);
+    opacity: 0;
+    transform: scale(0.5);
+    animation: driverPulse 2s ease-out infinite;
+  }
+  .driver-dot {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 16px;
+    height: 16px;
+    margin: -8px 0 0 -8px;
+    border-radius: 50%;
+    background: #2563eb;
+    border: 3px solid #ffffff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    z-index: 1;
+  }
+  
+  @keyframes driverPulse {
+    0% { transform: scale(0.5); opacity: 0.6; }
+    70% { transform: scale(2.5); opacity: 0; }
+    100% { transform: scale(2.5); opacity: 0; }
+  }
+  
+  /* Map controls */
+  .map-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 12px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    margin-bottom: 12px;
+  }
+  .map-toolbar .search-input {
+    flex: 1;
+    min-width: 200px;
+    position: relative;
+  }
+  .map-toolbar .search-input i {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+  }
+  .map-toolbar .search-input input {
+    width: 100%;
+    padding: 8px 12px 8px 40px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-full);
+    background: var(--bg-surface-alt);
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    outline: none;
+    transition: all 0.2s;
+  }
+  .map-toolbar .search-input input:focus {
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 3px var(--green-dim);
+  }
+  .map-toolbar .dropdown {
+    position: relative;
+  }
+  .map-toolbar .dropdown select {
+    padding: 8px 36px 8px 12px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface);
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+  }
+  .map-toolbar .dropdown select:focus {
+    outline: none;
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 3px var(--green-dim);
+  }
+  
+  /* GPS Status Footer */
+  .gps-status-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+  .gps-status-footer .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+  }
+  
+  /* Request Status Card */
+  .request-status-card {
+    text-align: center;
+    padding: 32px 24px;
+  }
+  .request-status-card .empty-icon {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: var(--bg-surface-alt);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px;
+    font-size: 2rem;
+    color: var(--text-muted);
+  }
+  .request-status-card h3 {
+    margin: 0 0 8px;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+  }
+  .request-status-card p {
+    margin: 0 0 16px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+  .tip-callout {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--amber-dim);
+    border: 1px solid var(--amber);
+    border-radius: var(--radius-lg);
+    color: #92400e;
+    font-size: 0.8rem;
+    line-height: 1.5;
+  }
+  .tip-callout i {
+    flex-shrink: 0;
+    margin-top: 2px;
+    font-size: 1rem;
+    color: var(--amber);
+  }
+  
+  /* Hot Zones List */
+  .hot-zone-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-bottom: 1px solid var(--border-light);
+    transition: background 0.2s;
+  }
+  .hot-zone-item:last-child {
+    border-bottom: none;
+  }
+  .hot-zone-item:hover {
+    background: var(--bg-hover);
+  }
+  .hot-zone-rank {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #EF4444, #F97316);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+  }
+  .hot-zone-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .hot-zone-name {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+  }
+  .hot-zone-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+  }
+  .hot-zone-demand {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .hot-zone-demand.high {
+    background: rgba(239, 68, 68, 0.12);
+    color: #EF4444;
+  }
+  .hot-zone-demand.medium {
+    background: rgba(249, 115, 22, 0.12);
+    color: #F97316;
+  }
+  .hot-zone-earnings {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 0.8rem;
+    color: var(--green);
+  }
+  .hot-zone-distance {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+  }
+  
+  /* KPI Cards */
+  .kpi-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-xl);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: all 0.2s;
+  }
+  .kpi-card:hover {
+    border-color: var(--brand-primary);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+  .kpi-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .kpi-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+  }
+  .kpi-icon.green { background: var(--green-dim); color: var(--green); }
+  .kpi-icon.blue { background: var(--blue-dim); color: var(--blue); }
+  .kpi-icon.amber { background: var(--amber-dim); color: var(--amber); }
+  .kpi-icon.purple { background: rgba(168, 85, 247, 0.12); color: #a855f7; }
+  .kpi-trend {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+  }
+  .kpi-trend.up { background: var(--green-dim); color: var(--green); }
+  .kpi-trend.neutral { background: var(--gray-dim); color: var(--gray); }
+  .kpi-value {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 1.5rem;
+    color: var(--text-primary);
+    line-height: 1.2;
+  }
+  .kpi-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+  }
+  
+  /* Earnings Chart Card */
+  .chart-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+  }
+  .chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: var(--bg-surface-alt);
+    border-bottom: 1px solid var(--border-light);
+  }
+  .chart-header h2 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text-primary);
+  }
+  .chart-header .dropdown select {
+    padding: 6px 28px 6px 10px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface);
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+  }
+  .chart-canvas {
+    padding: 20px;
+    height: 280px;
+    position: relative;
+  }
+  .chart-canvas canvas {
+    width: 100% !important;
+    height: 100% !important;
+  }
+  
+  /* Recent Trips List */
+  .trips-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+  }
+  .trips-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: var(--bg-surface-alt);
+    border-bottom: 1px solid var(--border-light);
+  }
+  .trips-header h2 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text-primary);
+  }
+  .trips-header .link-btn {
+    background: none;
+    border: none;
+    color: var(--green);
+    cursor: pointer;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+  .trip-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-light);
+    transition: background 0.2s;
+  }
+  .trip-item:last-child {
+    border-bottom: none;
+  }
+  .trip-item:hover {
+    background: var(--bg-hover);
+  }
+  .trip-time {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 64px;
+    text-align: center;
+  }
+  .trip-time-main {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+  }
+  .trip-duration {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .trip-details {
+    flex: 1;
+    min-width: 0;
+  }
+  .trip-route {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .trip-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+  }
+  .trip-meta i {
+    margin-right: 4px;
+  }
+  .trip-fare {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--green);
+  }
+  .trip-action {
+    padding: 8px 12px;
+    font-size: 0.75rem;
+  }
+  
+  /* Goals Card */
+  .goals-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+  }
+  .goals-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: var(--bg-surface-alt);
+    border-bottom: 1px solid var(--border-light);
+  }
+  .goals-header h2 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text-primary);
+  }
+  .goals-header .link-btn {
+    background: none;
+    border: none;
+    color: var(--green);
+    cursor: pointer;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+  .goal-item {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-light);
+  }
+  .goal-item:last-child {
+    border-bottom: none;
+  }
+  .goal-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+  }
+  .goal-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .goal-progress .progress-bar {
+    flex: 1;
+    height: 8px;
+    background: var(--bg-surface-alt);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+  }
+  .goal-progress .progress-fill {
+    height: 100%;
+    border-radius: var(--radius-full);
+    background: linear-gradient(90deg, var(--brand-primary), var(--green));
+    transition: width 0.5s ease;
+  }
+  .goal-progress .progress-text {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 80px;
+    text-align: right;
+  }
+  
+  /* Safety Card */
+  .safety-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-xl);
+    padding: 20px;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .safety-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-lg);
+    background: var(--blue-dim);
+    color: var(--blue);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    flex-shrink: 0;
+  }
+  .safety-content {
+    flex: 1;
+  }
+  .safety-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+  }
+  .safety-text {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+  .safety-link {
+    color: var(--green);
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .safety-link:hover {
+    text-decoration: underline;
+  }
+  
+  /* Right sidebar scroll */
+  .right-sidebar {
+    position: sticky;
+    top: 80px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+  }
+  
+  /* Responsive */
+  @media (max-width: 1200px) {
+    .heatmap-grid {
+      grid-template-columns: 1fr;
+    }
+    .right-sidebar {
+      position: static;
+      max-height: none;
+    }
+    .bottom-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .top-stats-banner {
+      flex-direction: column;
+      gap: 16px;
+      align-items: stretch;
+    }
+    .status-section {
+      text-align: center;
+    }
+    .mini-metrics {
+      justify-content: center;
+    }
+    .kpi-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .chart-canvas {
+      height: 220px;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    .kpi-grid {
+      grid-template-columns: 1fr;
+    }
+    .map-toolbar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .map-toolbar .search-input {
+      min-width: 0;
+    }
+    .map-toolbar .dropdown {
+      width: 100%;
+    }
+    .map-toolbar .dropdown select {
+      width: 100%;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="heatmapDashboard"
+     data-driver-id="{{ driver_profile.id if driver_profile else '' }}"
+     data-csrf="{{ raw_csrf_token }}"
+     data-driver-lat="{{ driver_profile.last_location.get('latitude') if driver_profile and driver_profile.last_location and driver_profile.last_location.get('latitude') is not none else '0.3476' }}"
+     data-driver-lng="{{ driver_profile.last_location.get('longitude') if driver_profile and driver_profile.last_location and driver_profile.last_location.get('longitude') is not none else '32.5825' }}"
+     data-driver-name="{{ driver_profile.user.name if driver_profile and driver_profile.user else 'AFCON360 Driver' }}"
+     data-driver-code="{{ driver_profile.driver_code if driver_profile else 'AFCTESTDRV001' }}"
+     data-is-online="{{ '1' if driver_profile and driver_profile.is_online else '0' }}"
+     data-trips-today="{{ driver_profile.total_trips|default(12) }}"
+     data-earnings-today="{{ earnings|default(145000) }}"
+     data-acceptance-rate="{{ driver_profile.acceptance_rate|default(98) }}"
+     data-rating="{{ '%.1f'|format(driver_profile.average_rating|float) if driver_profile and driver_profile.average_rating else '4.8' }}">
+
+  <!-- Top Header Bar -->
+  <header class="topbar heatmap-topbar">
+    <div class="topbar-left">
+      <div class="brand-logo">AFCON360 <span>DRIVER</span></div>
+    </div>
+    <div class="topbar-center">
+      <div class="greeting">Good morning</div>
+      <div class="driver-name" id="driverNameDisplay">AFCON360 Driver</div>
+      <div class="driver-id" id="driverCodeDisplay">AFCTESTDRV001</div>
+    </div>
+    <div class="topbar-right">
+      <div class="status-toggle" id="statusToggle">
+        <span class="status-dot online" id="statusDot"></span>
+        <span class="status-text" id="statusText">ONLINE</span>
+      </div>
+      <button class="icon-btn" id="notificationsBtn" aria-label="Notifications">
+        <i class="fa-solid fa-bell"></i>
+        <span class="notif-badge" id="notifBadge">3</span>
+      </button>
+      <div class="profile-dropdown">
+        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=driver" alt="Profile" class="profile-avatar">
+        <span class="profile-text">Israeli</span>
+        <i class="fa-solid fa-chevron-down"></i>
+      </div>
+    </div>
+  </header>
+
+  <main class="heatmap-main">
+    <!-- Top Status & Quick-Stats Banner -->
+    <section class="top-stats-banner">
+      <div class="status-section">
+        <h2>You're online</h2>
+        <p>Ready for trips — Stay online and move to busy areas to get more requests.</p>
+      </div>
+      <div class="mini-metrics">
+        <div class="mini-metric">
+          <div class="mini-metric-icon"><i class="fa-solid fa-route"></i></div>
+          <div class="mini-metric-info">
+            <div class="mini-metric-value" id="tripsToday">12</div>
+            <div class="mini-metric-label">Trips</div>
+          </div>
+        </div>
+        <div class="mini-metric">
+          <div class="mini-metric-icon earnings"><i class="fa-solid fa-money-bill-wave"></i></div>
+          <div class="mini-metric-info">
+            <div class="mini-metric-value" id="earningsToday">UGX 145,000</div>
+            <div class="mini-metric-label">Earned</div>
+          </div>
+        </div>
+        <div class="mini-metric">
+          <div class="mini-metric-icon rating"><i class="fa-solid fa-star"></i></div>
+          <div class="mini-metric-info">
+            <div class="mini-metric-value" id="ratingToday">4.8</div>
+            <div class="mini-metric-label">Rating</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Content Grid -->
+    <div class="heatmap-grid">
+      <!-- Left Column: Map -->
+      <div class="map-column">
+        <!-- Map Toolbar -->
+        <div class="map-toolbar">
+          <div class="search-input">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="search" id="mapSearch" placeholder="Search area, landmark..." aria-label="Search area">
+          </div>
+          <div class="dropdown">
+            <select id="demandToggle" aria-label="Demand filter">
+              <option value="all">All Demand</option>
+              <option value="high">High Demand</option>
+              <option value="medium">Medium Demand</option>
+              <option value="low">Low Demand</option>
+            </select>
+          </div>
+          <div class="dropdown">
+            <select id="trafficToggle" aria-label="Traffic filter">
+              <option value="off">Traffic: Off</option>
+              <option value="on">Traffic: On</option>
+              <option value="incidents">Incidents Only</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Map Container -->
+        <div class="map-container">
+          <div id="heatmapMap" role="region" aria-label="Demand heatmap map"></div>
+          
+          <!-- Map Controls -->
+          <div class="map-controls" aria-label="Map controls">
+            <button type="button" class="map-control-btn" id="zoomIn" aria-label="Zoom in"><i class="fa-solid fa-plus"></i></button>
+            <button type="button" class="map-control-btn" id="zoomOut" aria-label="Zoom out"><i class="fa-solid fa-minus"></i></button>
+            <button type="button" class="map-control-btn" id="recenterMap" aria-label="Recenter to my location"><i class="fa-solid fa-location-crosshairs"></i></button>
+          </div>
+        </div>
+
+        <!-- GPS Status Footer -->
+        <div class="gps-status-footer">
+          <span class="status-dot" id="gpsStatusDot"></span>
+          <span id="gpsStatusText">You're visible to riders — Good GPS signal • Updated just now</span>
+        </div>
+      </div>
+
+      <!-- Right Column: Demand Guidance & Hot Zones -->
+      <aside class="right-sidebar">
+        <!-- Request Status Card -->
+        <section class="card request-status-card">
+          <div class="empty-icon"><i class="fa-solid fa-bell-slash"></i></div>
+          <h3>No current requests</h3>
+          <p>You're available for new ride offers. They'll appear here instantly.</p>
+          <div class="tip-callout">
+            <i class="fa-solid fa-lightbulb"></i>
+            <span><strong>Tip:</strong> Head to a high demand zone — You're 3 km from Kololo where demand is high right now.</span>
+          </div>
+        </section>
+
+        <!-- Hot Zones Nearby Card -->
+        <section class="card hot-zones-card">
+          <div class="card-header">
+            <h2><i class="fa-solid fa-fire-flame-curved"></i> Hot Zones Nearby</h2>
+            <a href="#" class="link-btn">View map <i class="fa-solid fa-arrow-right"></i></a>
+          </div>
+          <div class="hot-zones-list" id="hotZonesList">
+            <!-- Populated by JS -->
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <!-- Bottom Grid Modules -->
+    <div class="bottom-grid">
+      <!-- Column 1: Daily KPIs & Weekly Analytics -->
+      <div class="bottom-column">
+        <!-- KPI Quad Cards -->
+        <div class="kpi-grid">
+          <article class="kpi-card">
+            <div class="kpi-header">
+              <div class="kpi-icon green"><i class="fa-solid fa-route"></i></div>
+              <span class="kpi-trend up"><i class="fa-solid fa-arrow-up"></i> 20%</span>
+            </div>
+            <div class="kpi-value" id="kpiTrips">12</div>
+            <div class="kpi-label">Trips Today</div>
+          </article>
+          <article class="kpi-card">
+            <div class="kpi-header">
+              <div class="kpi-icon green"><i class="fa-solid fa-money-bill-wave"></i></div>
+              <span class="kpi-trend up"><i class="fa-solid fa-arrow-up"></i> 35%</span>
+            </div>
+            <div class="kpi-value" id="kpiEarnings">UGX 145,000</div>
+            <div class="kpi-label">Earnings Today</div>
+          </article>
+          <article class="kpi-card">
+            <div class="kpi-header">
+              <div class="kpi-icon blue"><i class="fa-solid fa-check"></i></div>
+              <span class="kpi-trend up"><i class="fa-solid fa-arrow-up"></i> 5%</span>
+            </div>
+            <div class="kpi-value" id="kpiAcceptance">98%</div>
+            <div class="kpi-label">Acceptance Rate</div>
+          </article>
+          <article class="kpi-card">
+            <div class="kpi-header">
+              <div class="kpi-icon purple"><i class="fa-solid fa-star"></i></div>
+              <span class="kpi-trend neutral"><i class="fa-solid fa-minus"></i> 0%</span>
+            </div>
+            <div class="kpi-value" id="kpiRating">4.8</div>
+            <div class="kpi-label">Driver Rating</div>
+          </article>
+        </div>
+
+        <!-- Earnings This Week Chart -->
+        <section class="chart-card">
+          <div class="chart-header">
+            <h2><i class="fa-solid fa-chart-bar"></i> Earnings This Week</h2>
+            <div class="dropdown">
+              <select id="earningsPeriod" aria-label="Earnings period">
+                <option value="week" selected>This Week</option>
+                <option value="month">This Month</option>
+                <option value="year">This Year</option>
+              </select>
+            </div>
+          </div>
+          <div class="chart-canvas">
+            <canvas id="earningsChart" aria-label="Weekly earnings bar chart"></canvas>
+          </div>
+        </section>
+
+        <!-- Recent Trips List -->
+        <section class="trips-card">
+          <div class="trips-header">
+            <h2><i class="fa-solid fa-clock-rotate-left"></i> Recent Trips</h2>
+            <button type="button" class="link-btn">View all <i class="fa-solid fa-arrow-right"></i></button>
+          </div>
+          <div class="trips-list" id="recentTripsList">
+            <!-- Populated by JS -->
+          </div>
+        </section>
+      </div>
+
+      <!-- Column 2: Gamified Goals & Safety Guidelines -->
+      <div class="bottom-column">
+        <!-- Goals Card -->
+        <section class="goals-card">
+          <div class="goals-header">
+            <h2><i class="fa-solid fa-bullseye"></i> Daily Goals</h2>
+            <button type="button" class="link-btn">View all <i class="fa-solid fa-arrow-right"></i></button>
+          </div>
+          <div class="goal-item">
+            <div class="goal-label">
+              <span>Complete 20 trips today</span>
+              <div class="goal-progress">
+                <div class="progress-bar">
+                  <div class="progress-fill" id="tripsProgress" style="width: 60%;"></div>
+                </div>
+                <span class="progress-text" id="tripsProgressText">12/20</span>
+              </div>
+            </div>
+          </div>
+          <div class="goal-item">
+            <div class="goal-label">
+              <span>Earn UGX 300,000 today</span>
+              <div class="goal-progress">
+                <div class="progress-bar">
+                  <div class="progress-fill" id="earningsProgress" style="width: 48%;"></div>
+                </div>
+                <span class="progress-text" id="earningsProgressText">145,000/300,000</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Drive Safe Card -->
+        <section class="safety-card">
+          <div class="safety-icon"><i class="fa-solid fa-shield-halved"></i></div>
+          <div class="safety-content">
+            <h3 class="safety-title">Your safety matters</h3>
+            <p class="safety-text">Follow traffic rules, take breaks when needed, and keep a great rating. Your wellbeing is our priority.</p>
+            <a href="#" class="safety-link"><i class="fa-solid fa-arrow-right"></i> Safety guidelines</a>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}" src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script nonce="{{ csp_nonce }}" src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/heatmap-dashboard.js') }}"></script>
+{% endblock %}

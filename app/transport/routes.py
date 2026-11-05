@@ -243,6 +243,7 @@ _PUBLIC_ENDPOINTS = {
     "transport.vehicle_dashboard",
     "transport.driver_dashboard",
     "transport.driver_dashboard_slash",
+    "transport.driver_heatmap_dashboard",
     "transport.transport_service_worker",
     "transport.vehicle_marketplace",
     # Personal/driver/org vehicle detail surfaces enforce owner-scoped access
@@ -2721,6 +2722,53 @@ def driver_dashboard():
         incidents=incidents,
         notifications=notifications,
         notification_unread=notification_unread,
+    )
+
+
+# =========================================================================
+# Heatmap & Demand Driver Dashboard
+# =========================================================================
+
+@transport_bp.route("/driver/heatmap")
+@transport_bp.route("/driver/heatmap/")
+@module_enabled_required("transport")
+@login_required
+@active_context_required(ContextType.DRIVER)
+def driver_heatmap_dashboard():
+    """Heatmap & Demand Driver Dashboard with interactive map and demand analytics."""
+    logger.info(f"Heatmap dashboard accessed by user_id={_uid()}")
+    
+    # Get driver profile for the current user
+    from app.transport.models import DriverProfile
+    profile = DriverProfile.query.filter_by(user_id=current_user.id, is_deleted=False).first()
+    
+    if not profile:
+        flash("Driver profile not found. Please complete your driver registration.", "warning")
+        return redirect(url_for("transport.become_driver"))
+    
+    # Get dashboard data using the dashboard service
+    from app.transport.services import get_dashboard_service
+    dashboard_service = get_dashboard_service()
+    
+    # Get earnings and basic stats
+    earnings = dashboard_service._get_driver_earnings(profile.id) if hasattr(dashboard_service, '_get_driver_earnings') else 0
+    
+    # Get map configuration
+    from app.geo.config import load_geo_config
+    from app.geo.map_renderer import build_public_map_config
+    map_config = build_public_map_config(load_geo_config(current_app))
+    
+    # Get raw CSRF token for the template
+    from flask_wtf.csrf import generate_csrf
+    raw_csrf_token = generate_csrf()
+    
+    return _json_or_template(
+        "transport/driver/heatmap_dashboard.html",
+        map_config=map_config,
+        driver_profile=profile,
+        earnings=earnings,
+        raw_csrf_token=raw_csrf_token,
+        ping_interval_seconds=120,
     )
 
 
