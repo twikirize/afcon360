@@ -42,8 +42,13 @@ class EmailHandler(BaseChannelHandler):
                 user_id=notification.user_id,
             )
             try:
+                notification_type = getattr(
+                    notification.type,
+                    "value",
+                    notification.type,
+                )
                 html = template_loader.env.get_template(
-                    f"email/{notification.type}.html"
+                    f"email/{notification_type}.html"
                 ).render(**ctx)
             except Exception:
                 # Type-specific template missing -> use the generic default.
