@@ -9,17 +9,18 @@ Only verified public distribution links may be activated.
 Internal preview APKs must never be presented as public releases.
 
 ## 2. Current Behavior
-The website has a shared desktop navigation, mobile drawer
-and footer. There is currently no public download page.
+The public /download page presents the AFCON360 User and Driver apps.
+Each app card now includes a direct browser entry point to its existing
+web experience. Android and iOS store links remain conditional on verified
+official distribution URLs being configured.
 
-The website itself remains accessible through a browser.
-Android preview builds are not production store releases.
+Internal preview APKs are not public production downloads.
 
 ## 3. Scope-In
 - Add a public GET /download page.
 - Add AFCON360 User and Driver app sections.
 - Show Android and iOS availability honestly.
-- Provide a working link to the existing web platform.
+- Provide a working, app-specific browser link for the Fan experience and Driver Workspace.
 - Keep Download App out of the primary desktop menu and mobile drawer.
 - Retain one persistent Download App link in the global footer.
 - Make the page responsive and accessible.
@@ -46,14 +47,21 @@ Platform destinations:
 - iOS
 - Web
 
-An official download button appears only when a valid HTTPS
-distribution URL is configured. Otherwise show Coming Soon.
+Each app card always exposes its existing browser experience:
+- AFCON360 User → the public Pamoja web experience.
+- AFCON360 Driver → the authenticated Driver Workspace.
+
+An Android or iOS download button appears only when a valid HTTPS
+official store URL is configured (`AFCON360_USER_ANDROID_STORE_URL`,
+`AFCON360_USER_IOS_STORE_URL`, `AFCON360_DRIVER_ANDROID_STORE_URL`,
+`AFCON360_DRIVER_IOS_STORE_URL`). Otherwise show Coming Soon.
+Internal preview APK artifacts must not be linked from this public page.
 
 ## 6. Proof of Done
 - Anonymous visitors receive HTTP 200 at /download.
 - Both applications display correctly.
 - Android and iOS unavailable states are accurate.
-- Web link works.
+- Both app-specific browser links render with the expected destinations.
 - The global footer links to /download.
 - The primary desktop menu and mobile drawer do not duplicate the download link.
 - Invalid or non-HTTPS external URLs are never activated.
