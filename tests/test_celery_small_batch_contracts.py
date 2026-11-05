@@ -157,3 +157,128 @@ def test_transport_permission_purge_is_registered_as_a_celery_task():
         "app.tasks.transport_permission_purge.purge_expired_transport_permissions"
     )
     assert callable(purge_expired_transport_permissions.apply_async)
+
+
+def test_celery_task_context_is_created_lazily_and_cached(monkeypatch):
+    from flask import Flask, current_app, has_app_context
+
+    from app.tasks.context import (
+        _get_task_flask_app,
+        with_flask_app_context,
+    )
+
+    _get_task_flask_app.cache_clear()
+    task_app = Flask("celery-task-context-test")
+    factory_calls = []
+
+    def _create_app():
+        factory_calls.append(True)
+        return task_app
+
+    monkeypatch.setattr("app.create_app", _create_app)
+
+    @with_flask_app_context
+    def _task():
+        assert has_app_context()
+        return current_app.name
+
+    assert _task() == "celery-task-context-test"
+    assert _task() == "celery-task-context-test"
+    assert len(factory_calls) == 1
+    assert not has_app_context()
+
+    _get_task_flask_app.cache_clear()
+
+
+def test_celery_task_context_reuses_existing_context(monkeypatch):
+    from flask import Flask, current_app
+
+    from app.tasks.context import (
+        _get_task_flask_app,
+        with_flask_app_context,
+    )
+
+    _get_task_flask_app.cache_clear()
+    task_app = Flask("existing-celery-context")
+    factory_calls = []
+
+    def _create_app():
+        factory_calls.append(True)
+        return Flask("unexpected-second-app")
+
+    monkeypatch.setattr("app.create_app", _create_app)
+
+    @with_flask_app_context
+    def _task():
+        return current_app._get_current_object()
+
+    with task_app.app_context():
+        assert _task() is task_app
+
+    assert factory_calls == []
+    _get_task_flask_app.cache_clear()
+
+
+def test_context_required_celery_tasks_keep_the_context_wrapper():
+    from app.tasks.cleanup import cleanup_expired_holds
+    from app.tasks.accommodation_reminders import (
+        send_registration_reminders,
+        send_pre_arrival_request_reminder,
+        enforce_registration_deadlines,
+        expire_unapproved_bookings,
+        detect_no_shows,
+        notify_incomplete_properties,
+    )
+    from app.media.tasks import (
+        process_media_task,
+        process_pending_media,
+        cleanup_failed_media,
+    )
+
+    tasks = (
+        cleanup_expired_holds,
+        send_registration_reminders,
+        send_pre_arrival_request_reminder,
+        enforce_registration_deadlines,
+        expire_unapproved_bookings,
+        detect_no_shows,
+        notify_incomplete_properties,
+        process_media_task,
+        process_pending_media,
+        cleanup_failed_media,
+    )
+
+    for task in tasks:
+        assert hasattr(task.run, "__wrapped__"), (
+            f"{task.name} must retain the Flask-context task wrapper"
+        )
+
+
+def test_cleanup_expired_holds_surfaces_errors_as_task_failures(app, monkeypatch):
+    from app import create_app as _original_create_app
+    from flask import has_app_context
+
+    from app.accommodation.services.availability_service import AvailabilityService
+    from app.tasks.cleanup import cleanup_expired_holds
+    from app.tasks.context import _get_task_flask_app
+
+    _get_task_flask_app.cache_clear()
+    monkeypatch.setattr("app.create_app", lambda: app)
+
+    def _raise_without_context(**kwargs):
+        assert has_app_context()
+        raise RuntimeError("simulated hold cleanup database failure")
+
+    monkeypatch.setattr(
+        AvailabilityService,
+        "release_expired_holds",
+        staticmethod(_raise_without_context),
+    )
+
+    try:
+        with pytest.raises(RuntimeError, match="simulated hold cleanup database failure"):
+            cleanup_expired_holds.run()
+    finally:
+        _get_task_flask_app.cache_clear()
+        monkeypatch.setattr("app.create_app", _original_create_app)
+
