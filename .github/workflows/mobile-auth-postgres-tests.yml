@@ -18,6 +18,7 @@ on:
       - "mobile/apps/user/app/register.tsx"
       - "mobile/packages/ui/src/auth.tsx"
       - "tests/auth/test_mobile_registration_api.py"
+      - "tests/auth/test_mobile_token_redis.py"
       - "tests/auth/test_pending_registration_expiry.py"
       - "templates/public_download.html"
       - "tests/test_public_app_download.py"
@@ -35,6 +36,7 @@ on:
       - "app/auth/validators.py"
       - "app/auth/services.py"
       - "tests/auth/test_mobile_registration_api.py"
+      - "tests/auth/test_mobile_token_redis.py"
       - "tests/auth/test_pending_registration_expiry.py"
       - "templates/public_download.html"
       - "tests/test_public_app_download.py"
@@ -150,3 +152,8 @@ jobs:
           tests/auth/test_mobile_registration_api.py
           tests/auth/test_pending_registration_expiry.py
           tests/test_public_app_download.py
+
+      - name: Run native bearer-token lifecycle tests against Redis
+        env:
+          TEST_REDIS_URL: redis://localhost:6379/15
+        run: python -m pytest -q --timeout=60 tests/auth/test_mobile_token_redis.py
