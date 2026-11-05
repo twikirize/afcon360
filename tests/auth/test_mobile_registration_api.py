@@ -922,3 +922,112 @@ def test_password_reset_email_handler_renders_the_dedicated_html_template(client
     assert "482915" in html
     assert "10 minutes" in html
     assert "reset@example.test" in captured["message"].recipients
+
+def test_account_deletion_service_requires_exact_confirmation_before_any_database_work():
+    from app.auth.account_deletion_service import AccountDeletionError, request_account_deletion
+
+    try:
+        request_account_deletion(
+            user=None,
+            password="CurrentPassword#2026",
+            confirmation="DELETE",
+        )
+    except AccountDeletionError as exc:
+        assert exc.code == "deletion_confirmation_invalid"
+        assert exc.status_code == 400
+    else:
+        raise AssertionError("Account deletion must reject an inexact confirmation phrase")
+
+
+def test_account_deletion_service_requires_current_password():
+    from app.auth.account_deletion_service import AccountDeletionError, request_account_deletion
+
+    try:
+        request_account_deletion(
+            user=None,
+            password="",
+            confirmation="DELETE MY ACCOUNT",
+        )
+    except AccountDeletionError as exc:
+        assert exc.code == "password_required"
+        assert exc.status_code == 400
+    else:
+        raise AssertionError("Account deletion must require the current password")
+
+
+def test_account_deletion_service_blocks_platform_owner_before_password_verification():
+    from app.auth.account_deletion_service import AccountDeletionError, request_account_deletion
+
+    user = SimpleNamespace(
+        is_active=True,
+        is_deleted=False,
+        is_protected=False,
+        is_app_owner=lambda: True,
+        verify_password=lambda password: (_ for _ in ()).throw(
+            AssertionError("Owner deletion must be rejected before password verification")
+        ),
+    )
+
+    try:
+        request_account_deletion(
+            user=user,
+            password="CurrentPassword#2026",
+            confirmation="DELETE MY ACCOUNT",
+        )
+    except AccountDeletionError as exc:
+        assert exc.code == "owner_deletion_blocked"
+        assert exc.status_code == 403
+    else:
+        raise AssertionError("Self-service deletion must not close the platform owner account")
+
+
+def test_account_deletion_service_blocks_protected_accounts_before_password_verification():
+    from app.auth.account_deletion_service import AccountDeletionError, request_account_deletion
+
+    user = SimpleNamespace(
+        is_active=True,
+        is_deleted=False,
+        is_protected=True,
+        is_app_owner=lambda: False,
+        verify_password=lambda password: (_ for _ in ()).throw(
+            AssertionError("Protected deletion must be rejected before password verification")
+        ),
+    )
+
+    try:
+        request_account_deletion(
+            user=user,
+            password="CurrentPassword#2026",
+            confirmation="DELETE MY ACCOUNT",
+        )
+    except AccountDeletionError as exc:
+        assert exc.code == "protected_account"
+        assert exc.status_code == 403
+    else:
+        raise AssertionError("Protected accounts must use the authorized security process")
+
+
+def test_account_deletion_service_rejects_an_incorrect_current_password():
+    from app.auth.account_deletion_service import AccountDeletionError, request_account_deletion
+
+    user = SimpleNamespace(
+        id=91,
+        public_id="wrong-password-deletion-user",
+        is_active=True,
+        is_deleted=False,
+        is_protected=False,
+        is_app_owner=lambda: False,
+        verify_password=lambda password: False,
+    )
+
+    try:
+        request_account_deletion(
+            user=user,
+            password="IncorrectPassword#2026",
+            confirmation="DELETE MY ACCOUNT",
+        )
+    except AccountDeletionError as exc:
+        assert exc.code == "password_invalid"
+        assert exc.status_code == 401
+    else:
+        raise AssertionError("Account deletion must reject an incorrect current password")
