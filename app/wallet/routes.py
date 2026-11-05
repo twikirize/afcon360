@@ -1789,35 +1789,46 @@ def wallet_settings():
 @login_required
 @require_fresh_user
 def wallet_settings_update():
-    """Update wallet settings"""
-    try:
-        account = get_account(current_user.id)
-        if not account:
-            flash('You need to create a wallet first.', 'warning')
-            return redirect(url_for('wallet.wallet_dashboard'))
+  """Update wallet settings"""
+  from flask_wtf.csrf import validate_csrf
+  csrf_token = request.form.get('csrf_token')
+  if not csrf_token:
+      flash('Security token missing. Please try again.', 'danger')
+      return redirect(url_for('wallet.wallet_settings'))
+  try:
+      validate_csrf(csrf_token)
+  except Exception:
+      flash('Invalid security token. Please try again.', 'danger')
+      return redirect(url_for('wallet.wallet_settings'))
+    
+  try:
+      account = get_account(current_user.id)
+      if not account:
+          flash('You need to create a wallet first.', 'warning')
+          return redirect(url_for('wallet.wallet_dashboard'))
         
-        # Update currency preference if provided
-        new_currency = request.form.get('currency')
-        if new_currency and new_currency != account.currency:
-            from app.wallet.services.currency_service import CurrencyService
-            currency_service = CurrencyService()
-            if currency_service.validate_currency(new_currency):
-                flash('Currency change requires creating a new wallet account', 'info')
-            else:
-                flash('Invalid currency', 'danger')
+      # Update currency preference if provided
+      new_currency = request.form.get('currency')
+      if new_currency and new_currency != account.currency:
+          from app.wallet.services.currency_service import CurrencyService
+          currency_service = CurrencyService()
+          if currency_service.validate_currency(new_currency):
+              flash('Currency change requires creating a new wallet account', 'info')
+          else:
+              flash('Invalid currency', 'danger')
         
-        flash('Settings updated successfully!', 'success')
-        return redirect(url_for('wallet.wallet_settings'))
-    except Exception as e:
-        from app.utils.error_handler import log_error_to_audit
-        log_error_to_audit(
-            user_id=current_user.id if current_user.is_authenticated else None,
-            error_type="WALLET_SETTINGS_UPDATE_ERROR",
-            error_message=str(e),
-            context={"component": "wallet_settings_update"}
-        )
-        flash('Unable to update settings. Please try again later.', 'warning')
-        return redirect(url_for('wallet.wallet_settings'))
+      flash('Settings updated successfully!', 'success')
+      return redirect(url_for('wallet.wallet_settings'))
+  except Exception as e:
+      from app.utils.error_handler import log_error_to_audit
+      log_error_to_audit(
+          user_id=current_user.id if current_user.is_authenticated else None,
+          error_type="WALLET_SETTINGS_UPDATE_ERROR",
+          error_message=str(e),
+          context={"component": "wallet_settings_update"}
+      )
+      flash('Unable to update settings. Please try again later.', 'warning')
+      return redirect(url_for('wallet.wallet_settings'))
 
 
 # -----------------------------------------------------------------------------

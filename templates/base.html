@@ -298,10 +298,6 @@
 
     <nav class="main-nav desktop-nav" aria-label="Main menu">
       <ul class="menu">
-        {% if current_user.is_authenticated %}
-          {% from "components/workspace_context_switcher.html" import render_workspace_context_switcher with context %}
-          <li class="menu-item workspace-context-menu">{{ render_workspace_context_switcher('desktop') }}</li>
-        {% endif %}
         <li class="menu-item"><a href="{{ url_for('index') }}">Home</a></li>
 
         <li class="menu-item has-dropdown">
@@ -475,7 +471,11 @@
             </li>
 
             <li class="menu-item">
-              <a href="{% if current_user.is_app_owner() %}{{ url_for('admin.owner.dashboard') }}
+              <a href="{% if active_context and active_context.type.value == 'driver' %}{{ safe_url('transport.driver_dashboard') }}
+                       {% elif active_context and active_context.type.value == 'accommodation_host' %}{{ safe_url('accommodation.host_dashboard') }}
+                       {% elif active_context and active_context.type.value == 'organisation' %}{{ url_for('org.org_dashboard', org_id=active_context.public_id) }}
+                       {% elif active_context and active_context.type.value == 'event' %}{{ safe_url('events.admin_dashboard') }}
+                       {% elif current_user.is_app_owner() %}{{ url_for('admin.owner.dashboard') }}
                        {% elif current_user.has_global_role('super_admin') %}{{ url_for('admin.super_dashboard') }}
                        {% elif current_user.has_global_role('admin') %}{{ url_for('admin.super_dashboard') }}
                        {% elif current_user.has_global_role('auditor') %}{{ url_for('admin.auditor.dashboard') }}
@@ -485,13 +485,11 @@
                        {% elif current_user.has_global_role('event_manager') %}{{ safe_url('events.admin_dashboard') }}
                        {% elif current_user.has_global_role('organizer') %}{{ safe_url('events.my_events') }}
                        {% elif current_user.has_global_role('transport_admin') %}{{ safe_url('transport_admin.dashboard') }}
-                       {% elif current_user.has_global_role('driver') %}{{ safe_url('transport.driver_dashboard') }}
-                       {% elif current_user.has_global_role('host') %}{{ safe_url('accommodation.host.dashboard') }}
                        {% elif current_user.has_global_role('wallet_admin') %}{% if module_enabled('wallet') %}{{ safe_url('wallet.wallet_dashboard') }}{% else %}{{ url_for('admin.super_dashboard') }}{% endif %}
                        {% elif current_user.has_global_role('accommodation_admin') %}{% if module_enabled('accommodation') %}{{ url_for('accommodation.admin_dashboard') }}{% else %}{{ url_for('admin.super_dashboard') }}{% endif %}
-                       {% elif current_user.has_global_role('tourism_admin') %}{{ links.tourism_home if links.tourism_home != '#' else url_for('admin.super_dashboard') }}
-                        {% else %}{{ url_for('user.dashboard') }}{% endif %}"
-                  class="nav-dashboard-link">
+                        {% elif current_user.has_global_role('tourism_admin') %}{{ links.tourism_home if links.tourism_home != '#' else url_for('admin.super_dashboard') }}
+                          {% else %}{{ url_for('user.dashboard') }}{% endif %}"
+                   class="nav-dashboard-link">
                 <i class="bi bi-speedometer2 me-1"></i>Dashboard
               </a>
             </li>
@@ -518,14 +516,14 @@
                 <li>
                   <span class="drop-header drop-header--sub">
                     <span class="d-block fw-bold">{{ current_user.username }}</span>
-                    <span class="d-block" style="font-weight:400;font-size:0.7rem;color:#6c757d;">{{ current_user.email }}</span>
+                    <span class="d-block" style="font-weight:400;font-size:0.7rem;color:#6c757d;">{{ (active_context.role if active_context and active_context.type.value != 'personal' else active_global_role or (user_roles[0] if user_roles else 'User'))|title }}</span>
                   </span>
                 </li>
                 <li><hr class="drop-divider"></li>
                 {# ── Global Role Switching ── #}
                 {% set user_roles = current_user.roles|list %}
                 {% if user_roles|length > 1 or active_global_role %}
-                <li><span class="drop-header">👑 Global Persona</span></li>
+                <li><span class="drop-header">Global Persona</span></li>
                 <li>
                   <a class="drop-item" href="{{ url_for('auth.switch_role') }}" style="color: var(--brand-primary); font-weight: 500;">
                     <i class="fas fa-exchange-alt me-2"></i>
@@ -538,28 +536,7 @@
                 </li>
                 <li><hr class="drop-divider"></li>
                 {% endif %}
-                {% set nav_org_ctxs = [] %}
-                {% for ctx in available_contexts|default([]) %}
-                  {% if ctx.type.value == 'organisation' and nav_org_ctxs.append(ctx) %}{% endif %}
-                {% endfor %}
-                {% if nav_org_ctxs %}
-                <li><span class="drop-header">🏢 Switch to Organisation</span></li>
-                {% for ctx in nav_org_ctxs %}
-                <li>
-                  <form method="POST" action="{{ url_for('auth.switch_context') }}">
-                    <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
-                    <input type="hidden" name="type" value="organisation">
-                    <input type="hidden" name="public_id" value="{{ ctx.public_id }}">
-                    <input type="hidden" name="role" value="{{ ctx.role }}">
-                    <button type="submit" class="drop-item drop-item--btn">
-                      <i class="bi bi-building me-2"></i>{{ ctx.label.split(' — ', 1)[0] if ctx.label else 'Organisation' }}
-                      <span class="ms-1" style="opacity:.75;font-size:.72rem;">{{ (ctx.role or '').replace('_', ' ')|title }}</span>
-                    </button>
-                  </form>
-                </li>
-                {% endfor %}
-                <li><hr class="drop-divider"></li>
-                {% endif %}
+                {% include 'components/account_dropdown_contexts.html' %}
                 <li><a class="drop-item" href="{{ url_for('profile.account_overview') }}">
                   <i class="bi bi-person-badge me-2"></i>My Account</a></li>
                 <li><a class="drop-item" href="{{ url_for('profile.my_public_profile') }}">

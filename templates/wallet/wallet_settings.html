@@ -55,6 +55,7 @@
   </div>
   <div style="padding:20px;">
     <form method="POST" action="{{ safe_url('wallet.wallet_settings_update') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="form-group">
         <label class="form-label">Preferred Currency</label>
         <select name="currency" class="form-control" style="max-width:300px;">
