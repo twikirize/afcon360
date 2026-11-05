@@ -801,3 +801,86 @@ def test_native_password_reset_confirmation_delegates_to_shared_service(client, 
         "code": "123456",
         "new_password": "StrongPassword#2026",
     }
+
+def test_password_reset_otp_email_uses_dedicated_template_and_real_line_breaks(client, monkeypatch):
+    from app.auth.otp_service import OTPService
+    from app.notifications import models as notification_models
+    from app.notifications.channel_handlers import email as email_handler_module
+
+    captured = {}
+
+    class FakeNotification:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    def fake_deliver(self, notification, user_data):
+        captured["notification"] = notification
+        captured["user_data"] = user_data
+        return {"success": True, "response_body": "accepted"}
+
+    monkeypatch.setattr(notification_models, "Notification", FakeNotification)
+    monkeypatch.setattr(email_handler_module.EmailHandler, "deliver", fake_deliver)
+
+    with client.application.test_request_context("/"):
+        result = OTPService.send_email_otp_checked(
+            email="reset@example.test",
+            otp="482915",
+            purpose="password_reset",
+            user_id=82,
+            max_retries=1,
+            expires_in_minutes=10,
+        )
+
+    notification = captured["notification"]
+    assert result["success"] is True
+    assert notification.type == notification_models.NotificationType.PASSWORD_RESET
+    assert notification.subject == "AFCON360 Password Reset Code"
+    assert notification.context["purpose"] == "password_reset"
+    assert notification.context["otp"] == "482915"
+    assert notification.context["expires_in_minutes"] == 10
+    assert "482915" in notification.body
+    assert "10 minutes" in notification.body
+    assert "\\n" not in notification.body
+    assert "\n" in notification.body
+    assert notification.link is None
+    assert captured["user_data"] == {"email": "reset@example.test", "user_id": 82}
+
+
+def test_email_verification_otp_keeps_existing_notification_contract(client, monkeypatch):
+    from app.auth.otp_service import OTPService
+    from app.notifications import models as notification_models
+    from app.notifications.channel_handlers import email as email_handler_module
+
+    captured = {}
+
+    class FakeNotification:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    def fake_deliver(self, notification, user_data):
+        captured["notification"] = notification
+        return {"success": True}
+
+    monkeypatch.setattr(notification_models, "Notification", FakeNotification)
+    monkeypatch.setattr(email_handler_module.EmailHandler, "deliver", fake_deliver)
+
+    with client.application.test_request_context("/"):
+        result = OTPService.send_email_otp_checked(
+            email="verify@example.test",
+            otp="193827",
+            purpose="email_verification",
+            user_id=None,
+            max_retries=1,
+        )
+
+    notification = captured["notification"]
+    assert result["success"] is True
+    assert notification.type == notification_models.NotificationType.VERIFICATION_EMAIL
+    assert notification.subject == "AFCON360 Email Verification Code"
+    assert notification.context["purpose"] == "email_verification"
+    assert notification.context["otp"] == "193827"
+    assert notification.context["expires_in_minutes"] == 30
+    assert "193827" in notification.body
+    assert "Or verify in one click:" in notification.body
+    assert "\\n" not in notification.body
+    assert "\n" in notification.body
