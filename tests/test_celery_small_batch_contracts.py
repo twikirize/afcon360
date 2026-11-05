@@ -147,3 +147,13 @@ def test_transport_offer_expiry_sweep_uses_bounded_scan_cursors(monkeypatch):
     # Driver SCAN finished on page one and must not restart while the index
     # cursor is still progressing.
     assert sum("transport:driver:" in match for _, match, _ in fake.scans) == 1
+
+def test_transport_permission_purge_is_registered_as_a_celery_task():
+    from app.tasks.transport_permission_purge import (
+        purge_expired_transport_permissions,
+    )
+
+    assert purge_expired_transport_permissions.name == (
+        "app.tasks.transport_permission_purge.purge_expired_transport_permissions"
+    )
+    assert callable(purge_expired_transport_permissions.apply_async)
