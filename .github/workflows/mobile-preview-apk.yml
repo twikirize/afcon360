@@ -3,21 +3,6 @@
 name: AFCON360 Mobile Android and iOS compatibility
 
 on:
-  push:
-    branches:
-      - feat/native-mobile-apps-20261104
-      - feat/driver-app-polish-ios-validation-20261105
-    paths:
-      - "mobile/apps/**"
-      - "mobile/packages/**"
-      - "mobile/docs/**"
-      - "mobile/README.md"
-      - "mobile/AGENTS.md"
-      - "mobile/package.json"
-      - "mobile/pnpm-lock.yaml"
-      - "mobile/pnpm-workspace.yaml"
-      - "mobile/.npmrc"
-      - ".github/workflows/mobile-preview-apk.yml"
   pull_request:
     branches:
       - feat/native-mobile-apps-20261104
