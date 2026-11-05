@@ -19,6 +19,9 @@ def test_download_page_is_public_and_shows_both_apps(client, monkeypatch):
     html = response.get_data(as_text=True)
     assert "AFCON360 User" in html
     assert "AFCON360 Driver" in html
+    assert "Open Fan Experience" in html
+    assert "Open Driver Workspace" in html
+    assert 'href="/transport/driver-dashboard"' in html
     assert html.count("COMING SOON") == 4
     assert "AFCON360-User-preview.apk" not in html
     assert "AFCON360-Driver-preview.apk" not in html
