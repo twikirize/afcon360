@@ -354,6 +354,7 @@ jobs:
               tests/test_celery_small_batch_contracts.py
               tests/notifications/test_scheduled_notification_delivery.py
               tests/notifications/test_models.py
+              tests/test_transport_concurrent_claim.py::TestOfferService::test_sweep_expired_cleans_index
             )
             if [[ ${#TARGETS[@]} -eq 0 ]]; then
               echo "No failed-test targets are recorded."
