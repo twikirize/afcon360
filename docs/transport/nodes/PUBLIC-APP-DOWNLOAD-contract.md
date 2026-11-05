@@ -14,13 +14,14 @@ Each app card now includes a direct browser entry point to its existing
 web experience. Android and iOS store links remain conditional on verified
 official distribution URLs being configured.
 
-Internal preview APKs are not public production downloads.
+The page also links to the existing GitHub pre-release APK assets for both Android apps. These are internal test builds, not Play Store releases.
 
 ## 3. Scope-In
 - Add a public GET /download page.
 - Add AFCON360 User and Driver app sections.
 - Show Android and iOS availability honestly.
 - Provide a working, app-specific browser link for the Fan experience and Driver Workspace.
+- Link each Android card to its corresponding GitHub pre-Play APK asset, with an explicit internal-preview warning.
 - Keep Download App out of the primary desktop menu and mobile drawer.
 - Retain one persistent Download App link in the global footer.
 - Make the page responsive and accessible.
@@ -55,13 +56,14 @@ An Android or iOS download button appears only when a valid HTTPS
 official store URL is configured (`AFCON360_USER_ANDROID_STORE_URL`,
 `AFCON360_USER_IOS_STORE_URL`, `AFCON360_DRIVER_ANDROID_STORE_URL`,
 `AFCON360_DRIVER_IOS_STORE_URL`). Otherwise show Coming Soon.
-Internal preview APK artifacts must not be linked from this public page.
+GitHub pre-Play APKs may be linked only with clear internal-test labeling and an explicit warning that they are not Play Store releases.
 
 ## 6. Proof of Done
 - Anonymous visitors receive HTTP 200 at /download.
 - Both applications display correctly.
 - Android and iOS unavailable states are accurate.
 - Both app-specific browser links render with the expected destinations.
+- The User and Driver cards link to their corresponding GitHub pre-Play APK assets and clearly identify them as internal previews.
 - The global footer links to /download.
 - The primary desktop menu and mobile drawer do not duplicate the download link.
 - Invalid or non-HTTPS external URLs are never activated.
