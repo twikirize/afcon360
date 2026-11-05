@@ -103,21 +103,6 @@ def dispatch_recovery(
             (closed bookings with reasons).
     """
     result = {"checked": 0, "cleaned": 0}
-    if after_booking_id == 0:
-        try:
-            from app.transport.services.offer_service import OfferService
-
-            # sweep_expired() returns an int (keys cleaned), not a tuple.
-            # "checked" is not tracked by the callee; report 0 rather than
-            # echoing cleaned.
-            changed = OfferService.sweep_expired()
-            result = {"checked": 0, "cleaned": int(changed or 0)}
-            if changed:
-                logger.info(f"Transport dispatch recovery cleaned {changed} expired offers")
-        except Exception as e:
-            logger.error(f"Transport dispatch recovery sweep failed: {e}", exc_info=True)
-            result = {"checked": 0, "cleaned": 0, "error": str(e)}
-
     rediscovered = 0
     offers_created = 0
     # MATCH-01-owned safety net (review Condition 2): per booking,
