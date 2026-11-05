@@ -177,12 +177,25 @@ def schedule_reminders_task(self, batch_size: int = 25) -> dict:
     with app.app_context():
         try:
             now = datetime.now(timezone.utc)
+            # Only re-dispatch rows whose previous broker message had time to
+            # expire. Updating last_attempt_at after a successful publish moves
+            # those rows behind never-dispatched reminders, preventing the same
+            # first page from starving later rows when the worker is busy.
+            retry_cutoff = now - timedelta(seconds=55)
             pending = (
                 Notification.query.filter(
                     Notification.scheduled_for <= now,
                     Notification.status == NotificationStatus.PENDING,
+                    db.or_(
+                        Notification.last_attempt_at.is_(None),
+                        Notification.last_attempt_at <= retry_cutoff,
+                    ),
                 )
-                .order_by(Notification.scheduled_for.asc(), Notification.id.asc())
+                .order_by(
+                    Notification.last_attempt_at.asc().nullsfirst(),
+                    Notification.scheduled_for.asc(),
+                    Notification.id.asc(),
+                )
                 .limit(batch_size)
                 .all()
             )
@@ -194,15 +207,35 @@ def schedule_reminders_task(self, batch_size: int = 25) -> dict:
                         args=(notification.id,),
                         expires=55,
                     )
+                    notification.last_attempt_at = now
                     dispatched += 1
                 except Exception as e:
                     logger.error(f"Failed to dispatch reminder {notification.id}: {e}")
 
-            logger.info(f"Dispatched {dispatched} scheduled reminders out of {len(pending)} pending")
+            if dispatched:
+                db.session.commit()
+
+            continuation_queued = False
+            if len(pending) >= batch_size:
+                try:
+                    # Continue in another small task so a large reminder set
+                    # does not occupy the worker in one long invocation.
+                    self.apply_async(
+                        kwargs={"batch_size": batch_size},
+                        countdown=5,
+                    )
+                    continuation_queued = True
+                except Exception:
+                    logger.exception(
+                        "Could not schedule the next scheduled-reminder batch"
+                    )
+
+            logger.info(f"Dispatched {dispatched} scheduled reminders out of {len(pending)} eligible")
             return {
                 "dispatched": dispatched,
                 "pending": len(pending),
                 "batch_size": batch_size,
+                "continuation_queued": continuation_queued,
             }
         except SQLAlchemyError as e:
             logger.error(f"DB error in schedule_reminders: {e}")
