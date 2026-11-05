@@ -11,7 +11,7 @@ Both use Expo SDK 58, React Native 0.88.1, React 19.3 and TypeScript 6. Flask re
 
 - Separate Android application IDs and iOS bundle IDs.
 - Shared native UI, HTTPS API client and operating-system SecureStore.
-- Native password login, TOTP/backup-code MFA, 10-minute access tokens, 30-day rotating refresh credentials and device logout/revocation. SMS MFA is intentionally unsupported until the existing Auth verifier supports it.
+- Native password login, TOTP/backup-code MFA, 10-minute access tokens, 30-day rotating refresh credentials and device logout/revocation.\n- In-app password recovery using a one-time email code, followed by server-validated password replacement and session revocation. SMS MFA is intentionally unsupported until the existing Auth verifier supports it.
 - User ride flow: GEO search, signed fare quotes, Wallet-certified payment methods, request-first Transport creation, activity and tracking.
 - Driver flow: go-live checklist, offer polling/accept/decline, trip progress, foreground driver-initiated GPS, cash receipt confirmation and currency-separated captured earnings.
 - In-app account closure plus the web deletion resource at `/apps/delete-account`.
