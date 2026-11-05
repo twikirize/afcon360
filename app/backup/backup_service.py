@@ -414,16 +414,147 @@ class BackupService:
     # ------------------------------------------------------------------ #
     # Create backups
     # ------------------------------------------------------------------ #
+    def _upload_offsite_artifact(
+        self,
+        backup_path: str,
+        backup_type: str,
+        checksum: str,
+    ) -> Dict[str, Any]:
+        """Upload one local artifact to a private OCI bucket and verify its bytes.
+
+        This is opt-in. The bucket must be private and the configured identity
+        should have only the Object Storage permissions needed for this bucket.
+        A full streamed GET checksum is deliberate: multipart ETags are not a
+        reliable SHA-256 integrity check.
+        """
+        cfg = current_app.config
+        bucket = (cfg.get("BACKUP_OFFSITE_BUCKET") or "").strip()
+        access_key = cfg.get("BACKUP_OFFSITE_ACCESS_KEY")
+        secret_key = cfg.get("BACKUP_OFFSITE_SECRET_KEY")
+        endpoint = cfg.get("OCI_ENDPOINT_URL")
+        region = cfg.get("OCI_REGION")
+
+        missing = [
+            name for name, value in (
+                ("BACKUP_OFFSITE_BUCKET", bucket),
+                ("BACKUP_OFFSITE_ACCESS_KEY", access_key),
+                ("BACKUP_OFFSITE_SECRET_KEY", secret_key),
+                ("OCI_ENDPOINT_URL", endpoint),
+                ("OCI_REGION", region),
+            ) if not value
+        ]
+        if missing:
+            raise RuntimeError(
+                "Off-site backup is enabled but required settings are missing: "
+                + ", ".join(missing)
+            )
+
+        import boto3
+        from botocore.client import Config as BotoConfig
+
+        client = boto3.client(
+            "s3",
+            region_name=region,
+            endpoint_url=endpoint,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            config=BotoConfig(signature_version="s3"),
+        )
+
+        prefix = str(cfg.get("BACKUP_OFFSITE_PREFIX") or "afcon360/backups").strip("/")
+        environment = str(
+            cfg.get("BACKUP_OFFSITE_ENVIRONMENT")
+            or cfg.get("APP_ENV")
+            or cfg.get("FLASK_ENV")
+            or "production"
+        ).strip("/")
+        filename = os.path.basename(backup_path)
+        now = datetime.now(timezone.utc)
+        object_key = (
+            f"{prefix}/{environment}/{backup_type}/"
+            f"{now:%Y/%m}/{filename}"
+        )
+        file_size = os.path.getsize(backup_path)
+
+        client.upload_file(
+            backup_path,
+            bucket,
+            object_key,
+            ExtraArgs={
+                "Metadata": {
+                    "sha256": checksum,
+                    "backup-type": str(backup_type),
+                }
+            },
+        )
+
+        head = client.head_object(Bucket=bucket, Key=object_key)
+        remote_size = int(head.get("ContentLength", -1))
+        remote_metadata = {
+            str(key).lower(): str(value)
+            for key, value in (head.get("Metadata") or {}).items()
+        }
+        if remote_size != file_size:
+            raise RuntimeError(
+                f"Off-site backup size verification failed for {object_key}"
+            )
+        if remote_metadata.get("sha256") != checksum:
+            raise RuntimeError(
+                f"Off-site backup metadata checksum mismatch for {object_key}"
+            )
+
+        response = client.get_object(Bucket=bucket, Key=object_key)
+        body = response["Body"]
+        remote_hash = hashlib.sha256()
+        try:
+            for chunk in iter(lambda: body.read(1024 * 1024), b""):
+                remote_hash.update(chunk)
+        finally:
+            body.close()
+
+        if remote_hash.hexdigest() != checksum:
+            raise RuntimeError(
+                f"Off-site backup content checksum mismatch for {object_key}"
+            )
+
+        return {
+            "provider": "oci",
+            "bucket": bucket,
+            "object_key": object_key,
+            "uri": f"oci://{bucket}/{object_key}",
+            "size": file_size,
+            "sha256": checksum,
+            "verified": True,
+            "verified_at": datetime.now(timezone.utc).isoformat(),
+            "version_id": head.get("VersionId"),
+        }
+
     def _finalize_success(self, record: BackupRecord, backup_path: str,
                           metadata: Optional[Dict[str, Any]] = None) -> BackupRecord:
         record.file_path = backup_path
         record.file_name = os.path.basename(backup_path)
         record.file_size = os.path.getsize(backup_path)
         record.checksum = self._calculate_checksum(backup_path)
+
+        metadata_payload = dict(record.metadata_json or {})
+        metadata_payload.update(metadata or {})
+
+        # Keep local backups as the recovery source even when off-site
+        # replication is enabled. If upload/verification fails, the caller
+        # records FAILED while retaining the local artifact details.
+        if (
+            current_app.config.get("BACKUP_OFFSITE_ENABLED", False)
+            and record.backup_type in (BackupType.DATABASE, BackupType.FILES)
+        ):
+            metadata_payload["offsite"] = self._upload_offsite_artifact(
+                backup_path=backup_path,
+                backup_type=record.backup_type,
+                checksum=record.checksum,
+            )
+
+        record.metadata_json = metadata_payload or None
         record.status = BackupStatus.COMPLETED
         record.completed_at = datetime.now(timezone.utc)
-        if metadata:
-            record.metadata_json = metadata
         db.session.commit()
         return record
 
