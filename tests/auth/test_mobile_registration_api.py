@@ -257,3 +257,225 @@ def test_native_login_rejects_invalid_credentials(client, monkeypatch):
     assert body["success"] is False
     assert body["code"] == "invalid_credentials"
     assert "access_token" not in body
+
+
+def test_native_mobile_api_registers_the_expected_user_and_driver_routes(app):
+    expected = {
+        "/api/mobile/v1/auth/login",
+        "/api/mobile/v1/auth/register",
+        "/api/mobile/v1/auth/register/verify",
+        "/api/mobile/v1/auth/register/resend",
+        "/api/mobile/v1/auth/mfa/verify",
+        "/api/mobile/v1/auth/refresh",
+        "/api/mobile/v1/auth/logout",
+        "/api/mobile/v1/auth/account-deletion",
+        "/api/mobile/v1/auth/me",
+        "/api/mobile/v1/transport/ride-options",
+        "/api/mobile/v1/transport/payment-methods/options",
+        "/api/mobile/v1/transport/ride-requests",
+        "/api/mobile/v1/driver/me",
+        "/api/mobile/v1/driver/offers",
+        "/api/mobile/v1/driver/status",
+        "/api/mobile/v1/driver/location",
+        "/api/mobile/v1/driver/trips/active",
+        "/api/mobile/v1/driver/earnings",
+    }
+    registered = {rule.rule for rule in app.url_map.iter_rules()}
+    assert expected <= registered
+
+
+def test_native_protected_endpoints_reject_browser_cookie_without_bearer(client):
+    responses = [
+        client.get("/api/mobile/v1/auth/me", headers={"Cookie": "session=browser-session"}),
+        client.post("/api/mobile/v1/auth/logout", headers={"Cookie": "session=browser-session"}),
+        client.post(
+            "/api/mobile/v1/auth/account-deletion",
+            json={},
+            headers={"Cookie": "session=browser-session"},
+        ),
+    ]
+
+    for response in responses:
+        assert response.status_code == 401
+        assert response.get_json()["code"] == "mobile_auth_required"
+
+
+def test_native_refresh_rejects_missing_token_and_fails_closed_on_store_outage(client, monkeypatch):
+    from app.auth import mobile_api
+
+    missing = client.post("/api/mobile/v1/auth/refresh", json={})
+    assert missing.status_code == 401
+    assert missing.get_json()["code"] == "refresh_invalid"
+
+    def redis_unavailable():
+        raise RuntimeError("Redis unavailable for test")
+
+    monkeypatch.setattr(mobile_api, "_redis", redis_unavailable)
+    unavailable = client.post(
+        "/api/mobile/v1/auth/refresh",
+        json={"refresh_token": "syntactically-valid-but-unknown-refresh-token"},
+    )
+    assert unavailable.status_code == 503
+    assert unavailable.get_json()["code"] == "auth_service_unavailable"
+
+
+def test_native_client_context_cannot_cross_between_user_and_driver_apps(app, monkeypatch):
+    from app.auth import mobile_tokens
+
+    context = {
+        "user": SimpleNamespace(public_id="driver-user"),
+        "record": {"client": "driver"},
+    }
+    monkeypatch.setattr(
+        mobile_tokens,
+        "load_mobile_bearer_context",
+        lambda request: context,
+    )
+
+    with app.test_request_context("/api/mobile/v1/transport/ride-options"):
+        resolved, error = mobile_tokens.require_mobile_context("user")
+
+    assert resolved is None
+    assert error is not None
+    assert error[1] == 403
+    assert error[0].get_json()["code"] == "mobile_client_mismatch"
+
+
+def test_native_logout_revokes_device_server_and_mobile_token_sessions(client, monkeypatch):
+    from app.auth import mobile_api
+    from app.auth import sessions
+
+    user = SimpleNamespace(id=41, public_id="logout-user-public-id")
+    context = {
+        "user": user,
+        "record": {
+            "session_id": "device-session-logout-123",
+            "server_session_id": "server-session-logout-123",
+            "client": "user",
+        },
+    }
+    calls = {}
+
+    monkeypatch.setattr(
+        mobile_api,
+        "require_mobile_context",
+        lambda expected_client=None: (context, None),
+    )
+    monkeypatch.setattr(
+        sessions,
+        "revoke_device_session",
+        lambda session_id, **kwargs: calls.update(device=(session_id, kwargs)) or True,
+    )
+    monkeypatch.setattr(
+        sessions,
+        "revoke_session",
+        lambda session_id, **kwargs: calls.update(server=(session_id, kwargs)) or True,
+    )
+    monkeypatch.setattr(
+        mobile_api,
+        "mark_mobile_session_revoked",
+        lambda session_id: calls.update(redis=session_id),
+    )
+
+    response = client.post(
+        "/api/mobile/v1/auth/logout",
+        headers={"Authorization": "Bearer test-mobile-access-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["data"]["revoked"] is True
+    assert calls["device"][0] == "device-session-logout-123"
+    assert calls["device"][1]["user_id"] == user.id
+    assert calls["server"][0] == "server-session-logout-123"
+    assert calls["server"][1]["revoked_by_user_id"] == user.id
+    assert calls["redis"] == "device-session-logout-123"
+
+
+def test_native_account_deletion_delegates_to_shared_account_closure_service(client, monkeypatch):
+    from app.auth import mobile_api
+    from app.auth import account_deletion_service
+
+    user = SimpleNamespace(id=72, public_id="delete-user-public-id")
+    context = {
+        "user": user,
+        "record": {"session_id": "device-session-delete-123", "client": "user"},
+    }
+    captured = {}
+
+    monkeypatch.setattr(
+        mobile_api,
+        "require_mobile_context",
+        lambda expected_client=None: (context, None),
+    )
+
+    def fake_delete(**kwargs):
+        captured.update(kwargs)
+        return {"status": "anonymized", "message": "Account closure accepted."}
+
+    monkeypatch.setattr(account_deletion_service, "request_account_deletion", fake_delete)
+
+    response = client.post(
+        "/api/mobile/v1/auth/account-deletion",
+        headers={"Authorization": "Bearer test-mobile-access-token"},
+        json={
+            "password": "CurrentPassword#2026",
+            "confirmation": "DELETE MY ACCOUNT",
+            "mfa_code": "123456",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["data"]["status"] == "anonymized"
+    assert captured["user"] is user
+    assert captured["password"] == "CurrentPassword#2026"
+    assert captured["confirmation"] == "DELETE MY ACCOUNT"
+    assert captured["mfa_code"] == "123456"
+    assert "ip_address" in captured
+    assert "user_agent" in captured
+
+
+def test_native_token_issuance_stores_only_token_digests(monkeypatch):
+    from app.auth import mobile_tokens
+
+    operations = []
+
+    class FakePipeline:
+        def setex(self, *args):
+            operations.append(("setex", args))
+            return self
+
+        def sadd(self, *args):
+            operations.append(("sadd", args))
+            return self
+
+        def expire(self, *args):
+            operations.append(("expire", args))
+            return self
+
+        def execute(self):
+            return True
+
+    class FakeRedis:
+        def pipeline(self, transaction=True):
+            assert transaction is True
+            return FakePipeline()
+
+    monkeypatch.setattr(mobile_tokens, "_redis", lambda: FakeRedis())
+    generated = iter(("raw-access-token-secret", "raw-refresh-token-secret"))
+    monkeypatch.setattr(mobile_tokens.secrets, "token_urlsafe", lambda length: next(generated))
+
+    credentials = mobile_tokens.issue_mobile_tokens(
+        user_public_id="user-public-id",
+        session_id="device-session-id",
+        server_session_id="server-session-id",
+        client="user",
+        device_id="user-device-installation",
+    )
+
+    assert credentials["access_token"] == "raw-access-token-secret"
+    assert credentials["refresh_token"] == "raw-refresh-token-secret"
+    serialized_operations = repr(operations)
+    assert "raw-access-token-secret" not in serialized_operations
+    assert "raw-refresh-token-secret" not in serialized_operations
+    assert mobile_tokens._token_key("access", credentials["access_token"]) in serialized_operations
+    assert mobile_tokens._token_key("refresh", credentials["refresh_token"]) in serialized_operations
