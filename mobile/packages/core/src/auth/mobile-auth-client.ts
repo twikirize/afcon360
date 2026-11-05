@@ -153,6 +153,59 @@ export class MobileAuthClient {
     }
   }
 
+  async requestPasswordReset(identifier: string): Promise<{ message: string; expiresIn: number }> {
+    const normalized = identifier.trim();
+    if (!normalized) {
+      throw new MobileAuthError("Enter your AFCON360 username or email address.", "password_reset_identifier_required");
+    }
+    try {
+      const response = await this.api.post<Envelope<{ message?: string; expires_in?: number }>>(
+        "/api/mobile/v1/auth/password-reset/request",
+        { identifier: normalized }
+      );
+      if (!response.success || !response.data) {
+        throw new MobileAuthError(
+          response.message ?? "AFCON360 could not start the password reset.",
+          response.code ?? "password_reset_request_failed"
+        );
+      }
+      return {
+        message: response.data.message ?? "If an active account has a registered email address, a reset code has been sent.",
+        expiresIn: response.data.expires_in ?? 600
+      };
+    } catch (error) {
+      throw await this.envelopeError(error);
+    }
+  }
+
+  async confirmPasswordReset(input: {
+    identifier: string;
+    code: string;
+    newPassword: string;
+    confirmPassword: string;
+  }): Promise<string> {
+    try {
+      const response = await this.api.post<Envelope<{ message?: string }>>(
+        "/api/mobile/v1/auth/password-reset/confirm",
+        {
+          identifier: input.identifier.trim(),
+          code: input.code.trim(),
+          new_password: input.newPassword,
+          confirm_password: input.confirmPassword
+        }
+      );
+      if (!response.success || !response.data) {
+        throw new MobileAuthError(
+          response.message ?? "AFCON360 could not complete the password reset.",
+          response.code ?? "password_reset_failed"
+        );
+      }
+      return response.data.message ?? "Your password has been reset. Sign in with your new password.";
+    } catch (error) {
+      throw await this.envelopeError(error);
+    }
+  }
+
   async signIn(identifier: string, password: string): Promise<MobileLoginResult> {
     try {
       const deviceId = await this.store.getDeviceId();
