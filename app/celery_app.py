@@ -7,10 +7,14 @@ Works unmodified on Windows (dev), and Linux (Oracle Cloud / AWS / any prod host
 Pool selection is automatic based on platform, with an env-var override
 for edge cases (WSL, Docker-on-Windows, CI runners, etc).
 
-Start workers:
+Dedicated worker pools (use on hosts with enough RAM):
     celery -A app.celery_app worker -Q critical -c 4 -P threads -n critical@%h
     celery -A app.celery_app worker -Q default  -c 4 -P threads -n default@%h
     celery -A app.celery_app worker -Q bulk     -c 4 -P threads -n bulk@%h
+
+Constrained 1 GiB host (one execution slot; no hard queue isolation):
+    celery -A app.celery_app worker -Q critical,default,bulk -c 1 -P prefork \
+        -n shared@%h --prefetch-multiplier=1 --max-tasks-per-child=50
 
 Start beat scheduler (runs periodic tasks):
     celery -A app.celery_app beat -l info
@@ -206,6 +210,18 @@ def make_celery(app=None):
         },
     }
 
+    # Expire stale periodic invocations before the next scheduled tick.
+    # This prevents an offline/busy single-worker host from accumulating
+    # minutes or hours of obsolete sweep tasks in Redis. The next Beat tick
+    # will publish a fresh invocation. This is a queue-backlog control, not
+    # a runtime limit for a task that has already started.
+    for _entry in celery.conf.beat_schedule.values():
+        _interval = _entry.get("schedule")
+        if isinstance(_interval, (int, float)) and _interval > 0:
+            _options = dict(_entry.get("options") or {})
+            _options.setdefault("expires", max(5, int(_interval * 0.9)))
+            _entry["options"] = _options
+
     celery.conf.update(
         timezone="UTC",
         enable_utc=True,
@@ -216,7 +232,7 @@ def make_celery(app=None):
         # --- cross-platform worker pool (the actual fix) ---
         worker_pool=pool,
         worker_concurrency=concurrency,
-        worker_prefetch_multiplier=1 if pool != "prefork" else 4,
+        worker_prefetch_multiplier=1,
 
         # --- silences the CPendingDeprecationWarning you saw, and is
         # correct behavior for prod: retry connecting to the broker on
@@ -230,22 +246,26 @@ def make_celery(app=None):
         task_time_limit=30 * 60,
         task_soft_time_limit=25 * 60,
         result_expires=3600,
-        worker_max_tasks_per_child=200,  # recycle workers, avoids slow mem creep
+        worker_max_tasks_per_child=50,  # recycle prefork children regularly on the 1 GiB worker
 
-        # --- Priority routing ------------------------------------------------
-        # A slow bulk task must never be able to delay a dispatch recovery or
-        # a payment. Each class has its own worker pool started with the
-        # appropriate -Q flag. See the "Start workers" block at the top of
-        # this file for the exact commands.
+        # --- Queue routing ---------------------------------------------------
+        # The queue classes remain separate at the broker. On the 1 GiB
+        # production worker, one process subscribes to all three queues with
+        # concurrency=1 and prefetch=1. This limits reservation/backlog
+        # capture, but it is NOT hard isolation: an already-running bulk task
+        # still occupies the only execution slot. Larger hosts can use the
+        # three dedicated worker commands documented above.
         task_routes={
-            # Dispatch, payment, permissions: tight latency budget, must never
-            # share a pool with anything that might block on I/O.
+            # Critical work remains on its own broker queue. The constrained
+            # Server 2 worker consumes all queues in one process, so this gives
+            # queue-level organization, NOT hard execution isolation.
             "transport.*": {"queue": "critical"},
             "wallet.*":    {"queue": "critical"},
-            # Event backbone periodic sweeps: bounded and idempotent, but
-            # they touch Redis and the outbox; isolate from bulk.
+            # Event backbone periodic sweeps use the default queue; larger
+            # deployments may assign them a dedicated worker pool.
             "events.*":    {"queue": "default"},
-            # Everything user-visible but not latency-critical.
+            # Background work remains separated at the broker; on a shared
+            # 1 GiB worker it still shares the single execution slot.
             "notifications.*":  {"queue": "bulk"},
             "accommodation.*":  {"queue": "bulk"},
             "media.*":          {"queue": "bulk"},
