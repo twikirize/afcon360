@@ -77,7 +77,7 @@ def _with_app(fn):
 
 # ----------------------------------------------------------------------
 @shared_task(name='events.relay_outbox', bind=True, max_retries=3)
-def relay_outbox_task(self, limit: int = 200) -> dict:
+def relay_outbox_task(self, limit: int = 25) -> dict:
     """Publish committed outbox rows to the event bus."""
     t0 = time.monotonic()
     def _run():
@@ -108,7 +108,7 @@ def relay_outbox_task(self, limit: int = 200) -> dict:
 
 # ----------------------------------------------------------------------
 @shared_task(name='events.dispatch_webhooks', bind=True, max_retries=3)
-def dispatch_webhooks_task(self, limit: int = 50) -> dict:
+def dispatch_webhooks_task(self, limit: int = 10) -> dict:
     """Deliver queued partner webhooks with signing + retry."""
     t0 = time.monotonic()
     def _run():
@@ -132,7 +132,7 @@ def dispatch_webhooks_task(self, limit: int = 50) -> dict:
 
 # ----------------------------------------------------------------------
 @shared_task(name='events.retry_dead_letters')
-def retry_dead_letters_task(limit: int = 50) -> dict:
+def retry_dead_letters_task(limit: int = 10) -> dict:
     """
     Requeue outbox rows that dead-lettered because the bus was down.
 
@@ -166,8 +166,12 @@ def retry_dead_letters_task(limit: int = 50) -> dict:
 
 
 # ----------------------------------------------------------------------
-@shared_task(name='events.cleanup_ledger')
-def cleanup_ledger_task(retention_days: int = 365, batch: int = 5000) -> dict:
+@shared_task(name='events.cleanup_ledger', bind=True)
+def cleanup_ledger_task(
+    self,
+    retention_days: int = 365,
+    batch: int = 100,
+) -> dict:
     """
     Prune the event ledger past the compliance retention window.
 
@@ -175,6 +179,7 @@ def cleanup_ledger_task(retention_days: int = 365, batch: int = 5000) -> dict:
     trimmed far more aggressively (30 days) since the ledger is the durable
     record — the outbox is only a staging queue.
     """
+    batch = max(1, min(int(batch), 500))
     t0 = time.monotonic()
     def _run():
         from .models import DomainEvent, EventStatus, OutboxEvent, OutboxStatus, ProcessedEvent
@@ -185,19 +190,49 @@ def cleanup_ledger_task(retention_days: int = 365, batch: int = 5000) -> dict:
 
         removed = {'events': 0, 'outbox': 0, 'processed': 0}
         try:
-            removed['outbox'] = OutboxEvent.query.filter(
-                OutboxEvent.status == OutboxStatus.PUBLISHED.value,
-                OutboxEvent.published_at < working_cutoff,
-            ).limit(batch).delete(synchronize_session=False) or 0
+            # SQLAlchemy ORM Query.delete() cannot be combined with LIMIT.
+            # Select bounded primary-key pages, then delete only those IDs.
+            outbox_ids = [
+                row[0] for row in db.session.query(OutboxEvent.id)
+                .filter(
+                    OutboxEvent.status == OutboxStatus.PUBLISHED.value,
+                    OutboxEvent.published_at < working_cutoff,
+                )
+                .order_by(OutboxEvent.id.asc())
+                .limit(batch)
+                .all()
+            ]
+            if outbox_ids:
+                removed['outbox'] = OutboxEvent.query.filter(
+                    OutboxEvent.id.in_(outbox_ids)
+                ).delete(synchronize_session=False) or 0
 
-            removed['processed'] = ProcessedEvent.query.filter(
-                ProcessedEvent.processed_at < working_cutoff,
-            ).limit(batch).delete(synchronize_session=False) or 0
+            processed_ids = [
+                row[0] for row in db.session.query(ProcessedEvent.id)
+                .filter(ProcessedEvent.processed_at < working_cutoff)
+                .order_by(ProcessedEvent.id.asc())
+                .limit(batch)
+                .all()
+            ]
+            if processed_ids:
+                removed['processed'] = ProcessedEvent.query.filter(
+                    ProcessedEvent.id.in_(processed_ids)
+                ).delete(synchronize_session=False) or 0
 
-            removed['events'] = DomainEvent.query.filter(
-                DomainEvent.occurred_at < ledger_cutoff,
-                DomainEvent.status == EventStatus.PROCESSED.value,
-            ).limit(batch).delete(synchronize_session=False) or 0
+            event_ids = [
+                row[0] for row in db.session.query(DomainEvent.id)
+                .filter(
+                    DomainEvent.occurred_at < ledger_cutoff,
+                    DomainEvent.status == EventStatus.PROCESSED.value,
+                )
+                .order_by(DomainEvent.id.asc())
+                .limit(batch)
+                .all()
+            ]
+            if event_ids:
+                removed['events'] = DomainEvent.query.filter(
+                    DomainEvent.id.in_(event_ids)
+                ).delete(synchronize_session=False) or 0
 
             db.session.commit()
         except Exception as exc:
@@ -209,7 +244,25 @@ def cleanup_ledger_task(retention_days: int = 365, batch: int = 5000) -> dict:
 
         logger.info('Ledger cleanup: %s', removed)
         _heartbeat("events.cleanup_ledger", t0, **removed)
-        return removed
+
+        continuation_queued = any(count >= batch for count in removed.values())
+        if continuation_queued:
+            try:
+                self.apply_async(
+                    kwargs={"retention_days": retention_days, "batch": batch},
+                    countdown=5,
+                )
+            except Exception:
+                logger.exception(
+                    "Could not schedule the next event-ledger cleanup batch"
+                )
+                continuation_queued = False
+
+        return {
+            **removed,
+            "batch_size": batch,
+            "continuation_queued": continuation_queued,
+        }
 
     return _with_app(_run)
 

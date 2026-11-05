@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block head %}
+  {{ super() }}
+  <meta name="description" content="Get the AFCON360 fan and driver apps. Your East African football journey starts here — across Kenya, Tanzania and Uganda.">
+  <meta property="og:title" content="Get AFCON360 | Your journey. Your game.">
+  <meta property="og:description" content="One region. Three nations. One connected fan experience. Explore AFCON360 for fans and drivers.">
+  <meta property="og:type" content="website">
+{% endblock %}
+
+{% block styles %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/public-download.css') }}">
+{% endblock %}
+
+{% block content %}
+<section class="download-page" aria-labelledby="download-title">
+  <div class="download-hero">
+    <div class="download-hero-pattern" aria-hidden="true"></div>
+    <div class="download-hero-inner">
+      <div class="download-kicker"><span class="download-kicker-dot"></span> THE EAST AFRICAN GAME IS OURS</div>
+      <p class="download-eyebrow">KENYA <span>•</span> TANZANIA <span>•</span> UGANDA</p>
+      <h1 id="download-title">ONE REGION.<br><span>ONE GAME.</span><br>YOUR JOURNEY.</h1>
+      <p class="download-intro">The beautiful game brings us together. AFCON360 brings your whole journey together — from the first whistle to every experience beyond it.</p>
+      <div class="download-hero-actions">
+        <a class="download-primary-cta" href="#apps">GET THE APPS <i class="bi bi-arrow-down-right" aria-hidden="true"></i></a>
+        <a class="download-text-cta" href="{{ web_platform_url }}">Explore Pamoja on the web <i class="bi bi-arrow-up-right" aria-hidden="true"></i></a>
+      </div>
+      <div class="download-hero-foot">
+        <span><i class="bi bi-geo-alt-fill" aria-hidden="true"></i> EAST AFRICA, CONNECTED</span>
+        <span class="download-hero-foot-line" aria-hidden="true"></span>
+        <span>BUILT FOR THE FANS</span>
+      </div>
+    </div>
+    <div class="download-hero-art" aria-hidden="true">
+      <div class="download-orbit download-orbit-one"></div>
+      <div class="download-orbit download-orbit-two"></div>
+      <div class="download-ball">⚽</div>
+      <div class="download-art-label download-art-label-top">AFCON <strong>2027</strong></div>
+      <div class="download-art-label download-art-label-bottom">EAST AFRICA <span>✦</span></div>
+      <div class="download-art-number">360</div>
+    </div>
+    <div class="download-hero-bottom" aria-hidden="true"><span>THE ROAD TO 2027</span><span>✦</span><span>THE JOURNEY STARTS NOW</span></div>
+  </div>
+
+  <section class="download-intro-band" aria-label="About the platform">
+    <div class="download-intro-mark">360°</div>
+    <p>More than match day. <strong>Your gateway to the people, places and moments that make East Africa unforgettable.</strong></p>
+  </section>
+
+  <section class="download-apps-section" id="apps" aria-labelledby="apps-title">
+    <div class="download-section-heading">
+      <div>
+        <p class="download-section-kicker">CHOOSE YOUR SIDE OF THE JOURNEY</p>
+        <h2 id="apps-title">There’s an app <span>for that.</span></h2>
+      </div>
+      <p class="download-section-note">Two experiences. One connected region. Pick the app that fits your role.</p>
+    </div>
+
+    <div class="download-app-grid">
+      {% for app in applications %}
+      <article class="download-app-card {% if loop.first %}download-app-fans{% else %}download-app-driver{% endif %}">
+        <div class="download-card-topline">
+          <span class="download-card-index">0{{ loop.index }} / 02</span>
+          <span class="download-card-role">{% if loop.first %}FOR THE FANS{% else %}FOR THE DRIVERS{% endif %}</span>
+        </div>
+        <div class="download-app-visual {% if loop.first %}download-fan-visual{% else %}download-driver-visual{% endif %}" aria-hidden="true">
+          <div class="download-visual-glow"></div>
+          <div class="download-phone">
+            <div class="download-phone-speaker"></div>
+            <div class="download-phone-screen">
+              <div class="download-phone-brand">AFCON<span>360</span></div>
+              {% if loop.first %}
+                <div class="download-phone-ball">⚽</div>
+                <div class="download-phone-line"></div>
+                <div class="download-phone-line short"></div>
+                <div class="download-phone-pills"><i></i><i></i><i></i></div>
+              {% else %}
+                <div class="download-driver-route"><span></span><b></b><span></span></div>
+                <div class="download-phone-line"></div>
+                <div class="download-phone-line short"></div>
+                <div class="download-driver-status">READY TO GO</div>
+              {% endif %}
+            </div>
+          </div>
+          <span class="download-visual-stamp">{% if loop.first %}FAN MODE{% else %}DRIVER MODE{% endif %}</span>
+        </div>
+        <div class="download-app-copy">
+          <p class="download-app-overline">{% if loop.first %}FOLLOW THE GAME. FEEL THE REGION.{% else %}MOVE THE REGION FORWARD.{% endif %}</p>
+          <h3>{{ app.name }}</h3>
+          <p>{{ app.description }}</p>
+        </div>
+        <div class="download-platform-list">
+          <div class="download-platform-row">
+            <span class="download-platform-name"><i class="bi bi-android2" aria-hidden="true"></i> Android</span>
+            {% if app.android_url %}
+              <a class="download-platform-link" href="{{ app.android_url }}" target="_blank" rel="noopener noreferrer">Google Play <i class="bi bi-arrow-up-right" aria-hidden="true"></i></a>
+            {% else %}
+              <span class="download-platform-soon">COMING SOON</span>
+            {% endif %}
+          </div>
+          <div class="download-platform-row download-preplay-row">
+            <span class="download-platform-name"><i class="bi bi-android2" aria-hidden="true"></i> Pre-Play Android preview</span>
+            <a class="download-platform-link" href="{{ app.preplay_android_url }}" target="_blank" rel="noopener noreferrer">Download APK <i class="bi bi-download" aria-hidden="true"></i></a>
+          </div>
+          <div class="download-platform-row">
+            <span class="download-platform-name"><i class="bi bi-apple" aria-hidden="true"></i> iPhone / iPad</span>
+            {% if app.ios_url %}
+              <a class="download-platform-link" href="{{ app.ios_url }}" target="_blank" rel="noopener noreferrer">App Store <i class="bi bi-arrow-up-right" aria-hidden="true"></i></a>
+            {% else %}
+              <span class="download-platform-soon">COMING SOON</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="download-app-web-row">
+          <span class="download-platform-name"><i class="bi bi-globe2" aria-hidden="true"></i> Browser experience</span>
+          <a class="download-app-web-link" href="{{ app.web_url }}">{{ app.web_label }} <i class="bi bi-arrow-up-right" aria-hidden="true"></i></a>
+        </div>
+        <div class="download-card-footer">
+          <span>AFCON360 <strong>{% if loop.first %}FAN{% else %}PARTNER{% endif %}</strong> EXPERIENCE</span>
+          <span aria-hidden="true">✦</span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    <p class="download-preplay-notice"><strong>PRE-PLAY TEST BUILDS:</strong> These Android APKs are GitHub-hosted internal previews, not Google Play releases. They are intended for invited testing. You may need to uninstall a preview build before installing the official Play Store version.</p>
+  </section>
+
+  <section class="download-web-banner" aria-labelledby="web-title">
+    <div class="download-web-symbol" aria-hidden="true"><i class="bi bi-globe2"></i></div>
+    <div class="download-web-copy">
+      <p class="download-section-kicker">DON’T WANT TO INSTALL AN APP?</p>
+      <h2 id="web-title">The journey is already <span>online.</span></h2>
+      <p>Explore Pamoja from your browser. Discover the platform and stay connected while the mobile apps prepare for their official store launches.</p>
+    </div>
+    <a class="download-web-cta" href="{{ web_platform_url }}">VISIT PAMOJA <i class="bi bi-arrow-up-right" aria-hidden="true"></i></a>
+  </section>
+
+  <section class="download-final-cta">
+    <p class="download-section-kicker">THE REGION IS READY</p>
+    <h2>Be part of the <span>story.</span></h2>
+    <p>From the stands to the streets, from one border to the next — your East African experience starts with Pamoja.</p>
+    <a href="{{ web_platform_url }}" class="download-final-link">LET’S GO <i class="bi bi-arrow-up-right" aria-hidden="true"></i></a>
+    <div class="download-final-watermark" aria-hidden="true">360</div>
+  </section>
+</section>
+{% endblock %}

@@ -281,18 +281,24 @@ class Notification(BaseModel):
             self.status = NotificationStatus.DELIVERED
 
     def mark_sent(self):
+        now = datetime.now(timezone.utc)
         self.status = NotificationStatus.SENT
-        self.sent_at = datetime.now(timezone.utc)
+        self.sent_at = now
+        self.last_attempt_at = now
 
     def mark_delivered(self):
+        now = datetime.now(timezone.utc)
         self.status = NotificationStatus.DELIVERED
-        self.delivered_at = datetime.now(timezone.utc)
+        self.delivered_at = now
+        self.last_attempt_at = now
 
     def mark_failed(self, error: str):
+        now = datetime.now(timezone.utc)
         self.status = NotificationStatus.FAILED
         self.error_message = error
         self.last_error = error
-        self.sent_at = datetime.now(timezone.utc)
+        self.sent_at = now
+        self.last_attempt_at = now
 
     def increment_attempts(self):
         self.attempts = (self.attempts or 0) + 1

@@ -1,0 +1,107 @@
+{% set nav_driver_ctxs = [] %}
+{% set nav_host_ctxs = [] %}
+{% set nav_event_ctxs = [] %}
+{% set nav_org_ctxs = [] %}
+{% for ctx in available_contexts|default([]) %}
+  {% if ctx.type.value == 'driver' and nav_driver_ctxs.append(ctx) %}{% endif %}
+  {% if ctx.type.value == 'accommodation_host' and nav_host_ctxs.append(ctx) %}{% endif %}
+  {% if ctx.type.value == 'event' and nav_event_ctxs.append(ctx) %}{% endif %}
+  {% if ctx.type.value == 'organisation' and nav_org_ctxs.append(ctx) %}{% endif %}
+{% endfor %}
+
+{% if active_context and active_context.type.value != 'personal' %}
+<li><span class="drop-header">Personal</span></li>
+<li>
+  <form method="POST" action="{{ url_for('auth.switch_context') }}">
+    <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
+    <input type="hidden" name="type" value="personal">
+    <input type="hidden" name="role" value="user">
+    <button type="submit" class="drop-item drop-item--btn">
+      <i class="bi bi-person"></i>
+      <span>Personal</span>
+      <span class="context-role">User</span>
+    </button>
+  </form>
+</li>
+<li><hr class="drop-divider"></li>
+{% endif %}
+
+{% if nav_driver_ctxs %}
+<li><span class="drop-header">Driver</span></li>
+{% for ctx in nav_driver_ctxs %}
+<li>
+  <form method="POST" action="{{ url_for('auth.switch_context') }}">
+    <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
+    <input type="hidden" name="type" value="driver">
+    <input type="hidden" name="public_id" value="{{ ctx.public_id }}">
+    <input type="hidden" name="role" value="{{ ctx.role }}">
+    <button type="submit" class="drop-item drop-item--btn {% if active_context and active_context.type.value == 'driver' and active_context.public_id == ctx.public_id %}is-current{% endif %}">
+      <i class="bi bi-truck"></i>
+      <span>{{ ctx.label.split(' — ', 1)[0] if ctx.label else 'Driver' }}</span>
+      <span class="context-role">{{ (ctx.role or 'driver').replace('_', ' ')|title }}</span>
+    </button>
+  </form>
+</li>
+{% endfor %}
+<li><hr class="drop-divider"></li>
+{% endif %}
+
+{% if nav_host_ctxs %}
+<li><span class="drop-header">Accommodation Host</span></li>
+{% for ctx in nav_host_ctxs %}
+<li>
+  <form method="POST" action="{{ url_for('auth.switch_context') }}">
+    <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
+    <input type="hidden" name="type" value="accommodation_host">
+    <input type="hidden" name="public_id" value="{{ ctx.public_id }}">
+    <input type="hidden" name="role" value="{{ ctx.role }}">
+    <button type="submit" class="drop-item drop-item--btn {% if active_context and active_context.type.value == 'accommodation_host' and active_context.public_id == ctx.public_id %}is-current{% endif %}">
+      <i class="bi bi-house-door"></i>
+      <span>{{ ctx.label.split(' — ', 1)[0] if ctx.label else 'Host' }}</span>
+      <span class="context-role">{{ (ctx.role or 'host').replace('_', ' ')|title }}</span>
+    </button>
+  </form>
+</li>
+{% endfor %}
+<li><hr class="drop-divider"></li>
+{% endif %}
+
+{% if nav_event_ctxs %}
+<li><span class="drop-header">Event</span></li>
+{% for ctx in nav_event_ctxs %}
+<li>
+  <form method="POST" action="{{ url_for('auth.switch_context') }}">
+    <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
+    <input type="hidden" name="type" value="event">
+    <input type="hidden" name="public_id" value="{{ ctx.public_id }}">
+    <input type="hidden" name="role" value="{{ ctx.role }}">
+    <button type="submit" class="drop-item drop-item--btn {% if active_context and active_context.type.value == 'event' and active_context.public_id == ctx.public_id %}is-current{% endif %}">
+      <i class="bi bi-calendar-event"></i>
+      <span>{{ ctx.label.split(' — ', 1)[0] if ctx.label else 'Event' }}</span>
+      <span class="context-role">{{ (ctx.role or 'organizer').replace('_', ' ')|title }}</span>
+    </button>
+  </form>
+</li>
+{% endfor %}
+<li><hr class="drop-divider"></li>
+{% endif %}
+
+{% if nav_org_ctxs %}
+<li><span class="drop-header">Organisation</span></li>
+{% for ctx in nav_org_ctxs %}
+<li>
+  <form method="POST" action="{{ url_for('auth.switch_context') }}">
+    <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
+    <input type="hidden" name="type" value="organisation">
+    <input type="hidden" name="public_id" value="{{ ctx.public_id }}">
+    <input type="hidden" name="role" value="{{ ctx.role }}">
+    <button type="submit" class="drop-item drop-item--btn {% if active_context and active_context.type.value == 'organisation' and active_context.public_id == ctx.public_id %}is-current{% endif %}">
+      <i class="bi bi-building"></i>
+      <span>{{ ctx.label.split(' — ', 1)[0] if ctx.label else 'Organisation' }}</span>
+      <span class="context-role">{{ (ctx.role or 'member').replace('_', ' ')|title }}</span>
+    </button>
+  </form>
+</li>
+{% endfor %}
+<li><hr class="drop-divider"></li>
+{% endif %}

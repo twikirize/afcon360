@@ -281,6 +281,7 @@ class NotificationService:
         phone: str = None,
         force_external: bool = False,
         module: Union[str, 'NotificationModule'] = None,
+        existing_notification: Notification = None,
     ) -> Optional[Notification]:
         """
         Send a notification to a user across configured channels.
@@ -305,6 +306,9 @@ class NotificationService:
                 events, wallet, tourism, ...). SHOULD be passed explicitly —
                 shared types like `booking_confirmed` are emitted by several
                 modules and cannot be disambiguated from the type alone.
+            existing_notification: Optional scheduled notification row to
+                deliver in place. When supplied, no duplicate Notification row
+                is created; its lifecycle status is updated by this delivery.
 
         Returns:
             Notification record or None on failure
@@ -338,25 +342,52 @@ class NotificationService:
                 )
                 return None
 
-            # Create notification record
-            notification = Notification(
-                user_id=user_id,
-                email=recipient_email,
-                phone=recipient_phone,
-                type=notification_type,
-                module=cls._resolve_module(module, notification_type),
-                channel=NotificationChannel(channels[0]) if len(channels) == 1 else NotificationChannel.IN_APP,
-                context=data or context or {},
-                subject=title,
-                body=message,
-                priority=priority,
-                status=NotificationStatus.PENDING,
-                scheduled_for=None,
-                attempts=0,
-                external_id=str(uuid.uuid4()),
-                link=link,
-                is_read=False,
-            )
+            # Update a scheduled row in place when the task is delivering
+            # an existing Notification. This avoids creating a second inbox
+            # record and leaves the original scheduled row's lifecycle state
+            # authoritative for the scheduler.
+            if existing_notification is not None:
+                if existing_notification.user_id != user_id:
+                    raise ValueError(
+                        "existing_notification recipient does not match user_id"
+                    )
+                notification = existing_notification
+                notification.email = recipient_email
+                notification.phone = recipient_phone
+                notification.type = notification_type
+                notification.module = cls._resolve_module(module, notification_type)
+                notification.channel = (
+                    NotificationChannel(channels[0])
+                    if len(channels) == 1
+                    else NotificationChannel.IN_APP
+                )
+                notification.context = data or context or notification.context or {}
+                notification.subject = title
+                notification.body = message
+                notification.priority = priority
+                notification.status = NotificationStatus.PENDING
+                notification.scheduled_for = None
+                notification.link = link
+            else:
+                notification = Notification(
+                    user_id=user_id,
+                    email=recipient_email,
+                    phone=recipient_phone,
+                    type=notification_type,
+                    module=cls._resolve_module(module, notification_type),
+                    channel=NotificationChannel(channels[0]) if len(channels) == 1 else NotificationChannel.IN_APP,
+                    context=data or context or {},
+                    subject=title,
+                    body=message,
+                    priority=priority,
+                    status=NotificationStatus.PENDING,
+                    scheduled_for=None,
+                    attempts=0,
+                    external_id=str(uuid.uuid4()),
+                    link=link,
+                    is_read=False,
+                )
+
             db.session.add(notification)
             db.session.flush()
 
@@ -854,11 +885,31 @@ class NotificationService:
         return True
 
     @classmethod
-    def resend_failed(cls, max_retries: int = 3) -> int:
+    def resend_failed(cls, max_retries: int = 3, limit: int = 10) -> int:
         """
-        Resend failed notifications with exponential backoff.
+        Resend a bounded page of failed notifications with exponential backoff.
+
+        Oldest attempts are selected first. A row's last_attempt_at timestamp
+        advances after each attempt so a persistently failing first page cannot
+        starve later notifications.
         """
-        failed = Notification.query.filter_by(status=NotificationStatus.FAILED).all()
+        limit = max(1, min(int(limit), 100))
+        failed = (
+            Notification.query.filter(
+                Notification.status == NotificationStatus.FAILED,
+                db.or_(
+                    Notification.attempts.is_(None),
+                    Notification.attempts < max_retries,
+                ),
+            )
+            .order_by(
+                Notification.last_attempt_at.asc().nullsfirst(),
+                Notification.id.asc(),
+            )
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+            .all()
+        )
         # Runtime import: `User` is declared only under TYPE_CHECKING at
         # the top of this module, but db.session.get(User, ...) below
         # needs the real class at runtime. Same local-import pattern as
@@ -875,7 +926,7 @@ class NotificationService:
             delay = calculate_backoff(notification.attempts or 0)
             logger.info(
                 f"Resending notification {notification.id} after {delay}s delay "
-                f"(attempt {notification.attempts + 1})"
+                f"(attempt {(notification.attempts or 0) + 1})"
             )
 
             notification.increment_attempts()
@@ -902,8 +953,9 @@ class NotificationService:
                     notification.mark_failed(str(e))
                     cls._log_delivery(notification.id, notification.channel, 'failure', {'error': str(e)})
 
-        if resent > 0:
-            db.session.commit()
+        # Persist failed attempts too; otherwise a provider failure could leave
+        # the row stuck in PENDING after the pre-delivery commit above.
+        db.session.commit()
         return resent
 
     @classmethod

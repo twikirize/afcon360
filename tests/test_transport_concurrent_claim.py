@@ -103,6 +103,20 @@ class _FakeRedis:
             return list(all_keys)
         return sorted(k for k in all_keys if fnmatch.fnmatch(k, pattern))
 
+    def scan(self, cursor=0, match=None, count=10):
+        import fnmatch
+        pattern = match or "*"
+        all_keys = sorted(
+            key for key in (set(self._hash) | set(self._set))
+            if fnmatch.fnmatch(key, pattern)
+        )
+        start = int(cursor or 0)
+        page = all_keys[start:start + max(1, int(count))]
+        next_cursor = start + len(page)
+        if next_cursor >= len(all_keys):
+            next_cursor = 0
+        return next_cursor, page
+
     def expire(self, key, ttl):
         pass
 
