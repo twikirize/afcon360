@@ -22,6 +22,10 @@ def test_download_page_is_public_and_shows_both_apps(client, monkeypatch):
     assert "Open Fan Experience" in html
     assert "Open Driver Workspace" in html
     assert 'href="/transport/driver-dashboard"' in html
+    assert 'https://github.com/twikirize/afcon360/releases/download/mobile-preview/AFCON360-User-preview.apk' in html
+    assert 'https://github.com/twikirize/afcon360/releases/download/mobile-preview/AFCON360-Driver-preview.apk' in html
+    assert "PRE-PLAY TEST BUILDS" in html
+    assert "not Google Play releases" in html
     assert html.count("COMING SOON") == 4
     assert "AFCON360-User-preview.apk" not in html
     assert "AFCON360-Driver-preview.apk" not in html
