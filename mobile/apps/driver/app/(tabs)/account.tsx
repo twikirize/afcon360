@@ -22,7 +22,6 @@ export default function DriverAccount() {
       <ServiceTile title="Vehicle assignment" description="Vehicle ownership and assignment remain controlled by Transport." symbol="🚙" />
       <ServiceTile title="Support and safety" description="Safety and incident support is available through AFCON360." symbol="🛟" />
       <ActionButton label="Share AFCON360 Driver page" onPress={() => share("https://www.pamoja.space/apps", "AFCON360 Driver — official app information and downloads.")} />
-      <ActionButton label="Share Android Driver APK" onPress={() => share("https://github.com/twikirize/afcon360/releases/download/mobile-preview/AFCON360-Driver-preview.apk", "AFCON360 Driver internal Android preview APK. Install only as a test build.")} />
       <ActionButton label="Privacy notice (website)" onPress={() => WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")} />
       <ActionButton label="Delete AFCON360 account" onPress={() => router.push("/delete-account")} />
       <ActionButton label="Sign out" onPress={() => Alert.alert("Sign out", "Sign out this driver device?", [{ text: "Cancel", style: "cancel" }, { text: "Sign out", onPress: () => logout().then(() => router.replace("/login")).catch(() => router.replace("/login")) }])} />
