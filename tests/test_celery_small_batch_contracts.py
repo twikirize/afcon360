@@ -73,7 +73,7 @@ def test_expired_approval_hold_with_missing_legacy_sla_does_not_block_page(
     legacy_hold = _LegacyApprovalHold()
     monkeypatch.setattr(BlockedDate, "query", _Query([]))
     monkeypatch.setattr(RoomHold, "query", _Query([legacy_hold]))
-    commit = monkeypatch.setattr(db.session, "commit", lambda: None)
+    monkeypatch.setattr(db.session, "commit", lambda: None)
 
     result = AvailabilityService.release_expired_holds(batch_size=25)
 
