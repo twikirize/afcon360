@@ -615,14 +615,13 @@ class AvailabilityService:
         )
 
         for hold in expired_room_holds:
-            if hold.hold_type == "approval":
-                # Approval holds expire based on their approval SLA.
-                if hold.approval_sla_hours and hold.expires_at <= now:
-                    hold.mark_expired()
-                    count += 1
-            else:
-                hold.mark_expired()
-                count += 1
+            # expires_at is the persisted result of the hold's payment/approval
+            # SLA. Once the timestamp is due, expire every active hold. Requiring
+            # approval_sla_hours here would leave legacy approval rows with a
+            # NULL SLA active forever and repeatedly return them at the head of
+            # each bounded page.
+            hold.mark_expired()
+            count += 1
 
         db.session.commit()
 
