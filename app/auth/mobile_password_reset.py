@@ -6,7 +6,7 @@ import logging
 
 from sqlalchemy import func, or_
 
-from app.auth.otp_store import store_delete, store_incr
+from app.auth.otp_store import store_compare_and_delete, store_delete, store_incr
 from app.extensions import db
 
 logger = logging.getLogger(__name__)
@@ -42,6 +42,15 @@ def request_mobile_password_reset(identifier: str) -> bool:
         return False
 
     from app.auth.otp_service import OTPService
+    from flask import current_app
+
+    # Password-reset codes must be shared across all web workers. Never email a
+    # code that was silently placed in one process's in-memory fallback store.
+    if current_app.config.get("REDIS_REQUIRED", False):
+        from app.auth.otp_store import _redis
+        if _redis() is None:
+            logger.error("Required Redis unavailable; refusing native password-reset request")
+            return False
 
     otp = OTPService.generate_otp(length=6)
     otp_identifier = str(user.public_id)
@@ -104,11 +113,9 @@ def confirm_mobile_password_reset(
         store_delete(attempt_key)
         return False, "Too many incorrect codes. Request a new code."
 
-    verified, _message = OTPService.verify_otp(
-        identifier=otp_identifier,
-        otp=(code or "").strip(),
-        purpose=PASSWORD_RESET_OTP_PURPOSE,
-    )
+    expected_hash = OTPService.hash_otp((code or "").strip())
+    otp_key = f"otp:{otp_identifier}:{PASSWORD_RESET_OTP_PURPOSE}"
+    verified = store_compare_and_delete(otp_key, expected_hash)
     if not verified:
         return False, "The code is invalid or expired. Check it and try again."
 
