@@ -22,7 +22,7 @@ def test_download_page_is_public_and_shows_both_apps(client, monkeypatch):
     assert html.count("COMING SOON") == 4
     assert "AFCON360-User-preview.apk" not in html
     assert "AFCON360-Driver-preview.apk" not in html
-    assert html.count('href="/download"') >= 3  # desktop nav, mobile drawer, footer
+    assert html.count('href="/download"') == 1  # footer only
     assert 'href="/" ' in html or 'href="/">Explore Pamoja on the web' in html
 
 
