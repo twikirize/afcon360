@@ -409,10 +409,13 @@ class OTPService:
             except Exception:
                 base = "http://127.0.0.1:5000"
 
-            logger.warning(
-                "[DEV] OTP for %s: %s\n[DEV] Auto-verify: %s/verify-signup?code=%s",
-                email, otp, base, otp,
-            )
+            if purpose == "password_reset":
+                logger.warning("[DEV] Password-reset code for %s: %s", email, otp)
+            else:
+                logger.warning(
+                    "[DEV] OTP for %s: %s\\n[DEV] Auto-verify: %s/verify-signup?code=%s",
+                    email, otp, base, otp,
+                )
         except Exception:
             pass
 
