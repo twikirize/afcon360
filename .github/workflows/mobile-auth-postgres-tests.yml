@@ -19,6 +19,8 @@ on:
       - "mobile/packages/ui/src/auth.tsx"
       - "tests/auth/test_mobile_registration_api.py"
       - "tests/auth/test_pending_registration_expiry.py"
+      - "templates/public_download.html"
+      - "tests/test_public_app_download.py"
       - ".github/workflows/mobile-auth-postgres-tests.yml"
   pull_request:
     branches:
@@ -33,6 +35,8 @@ on:
       - "app/auth/services.py"
       - "tests/auth/test_mobile_registration_api.py"
       - "tests/auth/test_pending_registration_expiry.py"
+      - "templates/public_download.html"
+      - "tests/test_public_app_download.py"
       - ".github/workflows/mobile-auth-postgres-tests.yml"
   workflow_dispatch:
 
@@ -128,5 +132,9 @@ jobs:
       - name: Build the disposable PostgreSQL test schema
         run: python -m flask --app 'app:create_app()' db upgrade
 
-      - name: Run native auth and registration contract tests
-        run: python -m pytest -q --timeout=120 tests/auth/test_mobile_registration_api.py tests/auth/test_pending_registration_expiry.py
+      - name: Run native auth, registration, and public download contract tests
+        run: >-
+          python -m pytest -q --timeout=120
+          tests/auth/test_mobile_registration_api.py
+          tests/auth/test_pending_registration_expiry.py
+          tests/test_public_app_download.py
