@@ -46,7 +46,7 @@ export default function LoginScreen() {
               <AuthPasswordField label="Password" value={password} onChangeText={setPassword} visible={showPassword} onToggle={() => setShowPassword(value => !value)} autoComplete="password" placeholder="Your password" />
               <AuthSubmit label="Sign in securely" loading={signingIn} disabled={!identifier.trim() || !password} onPress={() => signIn(identifier, password).then(needsMfa => { if (!needsMfa) router.replace("/(tabs)"); }).catch(showError)} />
               <AuthLink label="Create an AFCON360 account" onPress={() => router.push("/register")} />
-              <AuthLink label="Forgot your password?" onPress={() => WebBrowser.openBrowserAsync(SITE + "/reset/request")} />
+              <AuthLink label="Reset password on website" onPress={() => WebBrowser.openBrowserAsync(SITE + "/reset/request")} />
             </>
           )}
         </Panel>
