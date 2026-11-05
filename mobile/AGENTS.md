@@ -12,6 +12,6 @@
 10. Keep user and driver identifiers, schemes, permissions and EAS projects separate.
 11. No production DB changes, migrations, deployments, store submissions or credential changes without a separately approved work item.
 12. Keep dense administration/reporting on desktop unless specifically required on mobile.
-
-13. Keep one shared mobile source system: place behavior common to User and Driver in `mobile/packages/`; only app identity, navigation differences and genuine platform-specific behavior belong under each app. Do not fork shared business logic for Android versus iOS.
-14. Maintain explicit platform minimums and test the oldest supported Android API, representative Android releases, the current Android target, and the current iOS simulator. A build-only green check is not installation or runtime evidence.
+13. This workspace and its app-only PR contain native client code and mobile build tooling only. Website templates, Flask routes, authentication/token services, account deletion, models, migrations, Docker/server configuration, and backend tests belong on `main` in a separate server PR.
+14. When a required API is missing or incorrect, do not add backend code to this branch. Record the contract gap and raise a server-side change against `main`; keep the app work based on that server PR until it merges, then retarget the app PR to `main`.
+15. Preserve the public website download contract. Do not change `/download`, `templates/public_download.html`, preview APK destinations, or the User/Driver store-link environment variable names as part of mobile-client work.
