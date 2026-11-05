@@ -133,3 +133,26 @@ def test_revoking_mobile_session_deletes_all_registered_token_keys(monkeypatch):
         assert client.exists(session_key) == 0
     finally:
         client.delete(access_key, refresh_key, session_key, revoked_key)
+
+def test_password_reset_otp_compare_and_delete_is_atomic_and_single_use(monkeypatch):
+    from app.auth import otp_store
+
+    client = _redis_client()
+    suffix = uuid.uuid4().hex
+    key = "otp:password-reset-user:" + suffix
+    expected_hash = "hmac-sha256-hash-" + suffix
+    monkeypatch.setattr(otp_store, "_redis", lambda: client)
+
+    try:
+        assert otp_store.store_set(key, expected_hash, ttl=600) is True
+
+        assert otp_store.store_compare_and_delete(key, "wrong-hash-" + suffix) is False
+        assert client.get(key) is not None
+
+        assert otp_store.store_compare_and_delete(key, expected_hash) is True
+        assert client.get(key) is None
+
+        # A second request with the same code must not succeed.
+        assert otp_store.store_compare_and_delete(key, expected_hash) is False
+    finally:
+        client.delete(key)
