@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/native-mobile-apps-20261104
+      - main
     paths:
       - "app/__init__.py"
       - "app/auth/mobile_api.py"
@@ -17,6 +18,21 @@ on:
       - "mobile/apps/user/app/register.tsx"
       - "mobile/packages/ui/src/auth.tsx"
       - "tests/auth/test_mobile_registration_api.py"
+      - "tests/auth/test_pending_registration_expiry.py"
+      - ".github/workflows/mobile-auth-postgres-tests.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "app/__init__.py"
+      - "app/auth/mobile_api.py"
+      - "app/auth/mobile_tokens.py"
+      - "app/auth/pending_registration.py"
+      - "app/auth/registration_policy.py"
+      - "app/auth/validators.py"
+      - "app/auth/services.py"
+      - "tests/auth/test_mobile_registration_api.py"
+      - "tests/auth/test_pending_registration_expiry.py"
       - ".github/workflows/mobile-auth-postgres-tests.yml"
   workflow_dispatch:
 
@@ -37,7 +53,7 @@ jobs:
         image: postgres:15
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_DB: afcon360_test
         ports:
           - 5432:5432
@@ -70,13 +86,6 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
-
-      - name: Configure passwordless CI PostgreSQL authentication
-        shell: bash
-        run: |
-          umask 077
-          printf 'localhost:5432:afcon360_test:postgres:postgres\n' > "$HOME/.pgpass"
-          chmod 600 "$HOME/.pgpass"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -120,4 +129,4 @@ jobs:
         run: python -m flask --app 'app:create_app()' db upgrade
 
       - name: Run native auth and registration contract tests
-        run: python -m pytest -q --timeout=120 tests/auth/test_mobile_registration_api.py
+        run: python -m pytest -q --timeout=120 tests/auth/test_mobile_registration_api.py tests/auth/test_pending_registration_expiry.py
