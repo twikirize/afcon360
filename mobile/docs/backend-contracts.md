@@ -14,6 +14,8 @@ Audit baseline: `37f5d2c3b6ad606a6fa269693f6416aacce6c8f2` (main, 4 November 202
 | Method | Endpoint | Purpose |
 |---|---|---|
 | POST | `/api/mobile/v1/auth/login` | Uses the canonical `authenticate_user()` password/lockout logic and creates existing server/device session records. |
+| POST | `/api/mobile/v1/auth/password-reset/request` | Enumeration-safe reset-code request by username or email; the server sends a 6-digit code to the registered address. |
+| POST | `/api/mobile/v1/auth/password-reset/confirm` | Verifies the one-time email code, applies the shared password strength rules and invalidates previous sessions. |
 | POST | `/api/mobile/v1/auth/mfa/verify` | Completes TOTP or backup-code verification through existing Auth verification logic. |
 | POST | `/api/mobile/v1/auth/refresh` | Rotates one-time opaque refresh tokens; detects replay and revokes the device/server session. |
 | POST | `/api/mobile/v1/auth/logout` | Revokes the current device and server sessions. |
@@ -22,7 +24,7 @@ Audit baseline: `37f5d2c3b6ad606a6fa269693f6416aacce6c8f2` (main, 4 November 202
 
 Access tokens are random opaque values, with only SHA-256 digests as Redis keys; access lifetime is 10 minutes and refresh lifetime is 30 days. Redis and the existing Identity `Session` plus Auth `ServerSession` records are checked fail-closed on protected requests. Refresh replay revokes the device session. No new database table or migration was added.
 
-**MFA limitation:** native sign-in and account deletion currently support enrolled TOTP and TOTP backup codes only. Existing SMS MFA is not a completed verifier in the Auth implementation; native sign-in rejects it rather than treating an SMS code as valid. This needs a canonical Auth decision before supporting SMS.
+Password recovery uses a 6-digit email code with a 10-minute lifetime and a five-attempt limit. The request response does not reveal whether an account exists. Password updates reuse the server password-change service and revoke prior sessions.\n\n**MFA limitation:** native sign-in and account deletion currently support enrolled TOTP and TOTP backup codes only. Existing SMS MFA is not a completed verifier in the Auth implementation; native sign-in rejects it rather than treating an SMS code as valid. This needs a canonical Auth decision before supporting SMS.
 
 ## Implemented User / Transport contract
 
