@@ -23,6 +23,7 @@ def test_download_page_is_public_and_shows_both_apps(client, monkeypatch):
     assert "AFCON360-User-preview.apk" not in html
     assert "AFCON360-Driver-preview.apk" not in html
     assert html.count('href="/download"') == 1  # footer only
+    assert html.count("Download App") == 1
     assert 'href="/" ' in html or 'href="/">Explore Pamoja on the web' in html
 
 
