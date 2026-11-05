@@ -173,6 +173,12 @@ class TestContextSwitchNavE2E:
         resp = client.get("/user/dashboard")
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
+        # The shared operating-context selector is a first-class nav item on
+        # both desktop and mobile, including the User Dashboard route.
+        assert html.count("workspace-context-switcher__summary") == 2
+        assert "Operating as" in html
+        assert "<strong>Personal</strong>" in html
+        assert html.index("workspace-context-switcher__summary") < html.index("Home")
         # Personal header (user has orgs, so the switcher block renders).
         assert PERSONAL_ORG_MARKER in html
         assert ORG_MENU_MARKER not in html

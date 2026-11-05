@@ -899,47 +899,71 @@ class OfferService:
     # Expiry sweep (defensive; Redis TTL is the primary expiry mechanism)
     # ------------------------------------------------------------------ #
     @classmethod
-    def sweep_expired(cls) -> int:
-        """Best-effort scan that prunes stale booking refs from driver
-        SETs and booking offer-index SETs.
+    def sweep_expired_page(
+        cls,
+        batch_size: int = 50,
+        driver_cursor: int = 0,
+        index_cursor: int = 0,
+    ) -> Dict[str, Any]:
+        """Prune one bounded SCAN page of stale driver and booking-index refs.
 
-        Redis TTL expires the offer HASH itself; this sweep cleans the
-        SET references that cannot have independent TTLs.
+        Redis SCAN is incremental and avoids the server-blocking KEYS command.
+        Cursors are passed through Celery continuations; duplicate SCAN results
+        are harmless because SREM/DEL are idempotent.
         """
+        batch_size = max(1, min(int(batch_size), 200))
         cleared = 0
 
         try:
-            driver_keys = redis_client.keys(f"{cls.PREFIX_DRIVER}:*:offers")
+            # -1 is the completed sentinel. Without it, a cursor that reached
+            # zero would restart from the beginning while the other key pattern
+            # was still being scanned.
+            if int(driver_cursor) >= 0:
+                next_driver_cursor, driver_keys = redis_client.scan(
+                    cursor=int(driver_cursor),
+                    match=f"{cls.PREFIX_DRIVER}:*:offers",
+                    count=batch_size,
+                )
+                next_driver_cursor = int(next_driver_cursor or 0)
+            else:
+                next_driver_cursor, driver_keys = -1, []
 
             for dkey in driver_keys or []:
-                try:
-                    members = redis_client.smembers(dkey)
-                except Exception:
-                    continue
-
                 driver_id = cls._driver_id_from_key(dkey)
                 if driver_id is None:
                     continue
+                try:
+                    members = redis_client.smembers(dkey) or []
+                except Exception:
+                    continue
 
                 stale = [
-                    m for m in (members or [])
-                    if cls.get_offer(_to_str(m), driver_id) is None
+                    member for member in members
+                    if cls.get_offer(_to_str(member), driver_id) is None
                 ]
-
                 if stale:
                     try:
                         redis_client.srem(dkey, *stale)
-                        cleared += 1
+                        cleared += len(stale)
                     except Exception:
-                        pass
+                        logger.debug("Could not prune stale offer refs from %s", dkey,
+                                     exc_info=True)
 
-            refs = redis_client.keys(f"{cls.PREFIX_INDEX}:*")
-
-            for ref_key in refs or []:
-                booking_ref = _to_str(ref_key).replace(
-                    f"{cls.PREFIX_INDEX}:booking:", ""
+            if int(index_cursor) >= 0:
+                next_index_cursor, index_keys = redis_client.scan(
+                    cursor=int(index_cursor),
+                    match=f"{cls.PREFIX_INDEX}:booking:*",
+                    count=batch_size,
                 )
+                next_index_cursor = int(next_index_cursor or 0)
+            else:
+                next_index_cursor, index_keys = -1, []
 
+            prefix = f"{cls.PREFIX_INDEX}:booking:"
+            for ref_key in index_keys or []:
+                booking_ref = _to_str(ref_key)
+                if booking_ref.startswith(prefix):
+                    booking_ref = booking_ref[len(prefix):]
                 if not booking_ref:
                     continue
 
@@ -948,11 +972,52 @@ class OfferService:
                         redis_client.delete(ref_key)
                         cleared += 1
                     except Exception:
-                        pass
+                        logger.debug("Could not prune stale offer index %s", ref_key,
+                                     exc_info=True)
 
+            # A just-finished cursor is encoded as -1 in continuation args.
+            next_driver_cursor = -1 if next_driver_cursor == 0 else next_driver_cursor
+            next_index_cursor = -1 if next_index_cursor == 0 else next_index_cursor
+            return {
+                "cleared": cleared,
+                "driver_cursor": next_driver_cursor,
+                "index_cursor": next_index_cursor,
+                "has_more": next_driver_cursor >= 0 or next_index_cursor >= 0,
+                "batch_size": batch_size,
+            }
         except Exception as exc:
-            logger.warning("offer sweep failed (Redis): %s", exc)
+            logger.warning("offer sweep page failed (Redis): %s", exc, exc_info=True)
+            return {
+                "cleared": cleared,
+                "driver_cursor": int(driver_cursor or 0),
+                "index_cursor": int(index_cursor or 0),
+                "has_more": False,
+                "batch_size": batch_size,
+                "error": type(exc).__name__,
+            }
 
+    @classmethod
+    def sweep_expired(cls, batch_size: int = 100) -> int:
+        """Synchronous compatibility wrapper for tests and maintenance tools.
+
+        Production Beat uses :meth:`sweep_expired_page` through a Celery
+        continuation task so the entire keyspace is never swept in one task.
+        """
+        driver_cursor = index_cursor = 0
+        cleared = 0
+        while True:
+            page = cls.sweep_expired_page(
+                batch_size=batch_size,
+                driver_cursor=driver_cursor,
+                index_cursor=index_cursor,
+            )
+            cleared += int(page.get("cleared", 0))
+            if page.get("error"):
+                break
+            driver_cursor = int(page.get("driver_cursor", 0))
+            index_cursor = int(page.get("index_cursor", 0))
+            if not page.get("has_more"):
+                break
         return cleared
 
 

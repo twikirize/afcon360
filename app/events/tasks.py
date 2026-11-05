@@ -239,7 +239,11 @@ def process_event_registration(self, registration_id: int, event_slug: str, task
     time_limit=330,
     acks_late=True
 )
-def expire_pending_registrations(self):
+def expire_pending_registrations(
+    self,
+    batch_size: int = 25,
+    after_registration_id: int = 0,
+):
     """
     REAPER TASK: Expire pending registrations after 2 hours.
     Runs every 5 minutes via Celery beat.
@@ -248,11 +252,21 @@ def expire_pending_registrations(self):
     with app.app_context():
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=2)
 
-        expired_registrations = db.session.query(EventRegistration).filter(
-            EventRegistration.payment_status == EventRegistration.PAYMENT_PENDING,
-            EventRegistration.status == EventRegistration.STATUS_PENDING_PAYMENT,
-            EventRegistration.created_at <= cutoff_time,
-        ).with_for_update(of=EventRegistration).all()
+        batch_size = max(1, min(int(batch_size), 50))
+        after_registration_id = max(0, int(after_registration_id))
+        expired_registrations = (
+            db.session.query(EventRegistration)
+            .filter(
+                EventRegistration.payment_status == EventRegistration.PAYMENT_PENDING,
+                EventRegistration.status == EventRegistration.STATUS_PENDING_PAYMENT,
+                EventRegistration.created_at <= cutoff_time,
+                EventRegistration.id > after_registration_id,
+            )
+            .order_by(EventRegistration.id.asc())
+            .limit(batch_size)
+            .with_for_update(of=EventRegistration, skip_locked=True)
+            .all()
+        )
 
         expired_count = 0
         capacity_released = {}
@@ -320,12 +334,29 @@ def expire_pending_registrations(self):
                 f"released {len(capacity_released)} capacity buckets"
             )
 
-            return {
-                'expired_count': expired_count,
-                'capacity_released': capacity_released,
-                'timestamp': datetime.now(timezone.utc).isoformat(),
-            }
+        continuation_queued = False
+        if len(expired_registrations) >= batch_size:
+            try:
+                self.apply_async(
+                    kwargs={
+                        "batch_size": batch_size,
+                        "after_registration_id": expired_registrations[-1].id,
+                    },
+                    countdown=5,
+                )
+                continuation_queued = True
+            except Exception:
+                logger.exception(
+                    "Could not schedule the next pending-registration batch"
+                )
 
+        return {
+            "expired_count": expired_count,
+            "capacity_released": capacity_released,
+            "batch_size": batch_size,
+            "continuation_queued": continuation_queued,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
 
 @celery_app.task(
     bind=True,
@@ -498,12 +529,18 @@ def release_expired_capacity(self, event_id, ticket_type_id, seats_to_release=1)
     time_limit=330,
     acks_late=True,
 )
-def release_expired_ticket_holds(self):
-    """Auto-release TicketHolds whose TTL has elapsed.
+def release_expired_ticket_holds(
+    self,
+    batch_size: int = 25,
+    after_hold_id: int = 0,
+):
+    """Release a small ordered page of expired TicketHolds.
 
-    Returns their seats to the inventory pool so capacity is never stranded.
-    Idempotent: a hold already released/expired is skipped by release_hold().
+    Requeues a short continuation when a full page was found, allowing the
+    worker to return to the broker between pages.
     """
+    batch_size = max(1, min(int(batch_size), 50))
+    after_hold_id = max(0, int(after_hold_id))
     app = _flask_app()
     with app.app_context():
         try:
@@ -516,8 +553,11 @@ def release_expired_ticket_holds(self):
                 .filter(
                     TicketHold.status == ReservationStatus.RESERVED,
                     TicketHold.expires_at <= now,
+                    TicketHold.id > after_hold_id,
                 )
-                .with_for_update()
+                .order_by(TicketHold.id.asc())
+                .limit(batch_size)
+                .with_for_update(skip_locked=True)
                 .all()
             )
             released = 0
@@ -527,7 +567,28 @@ def release_expired_ticket_holds(self):
             if released:
                 db.session.commit()
                 logger.info("Released %s expired ticket holds", released)
-            return {"released": released}
+
+            continuation_queued = False
+            if len(expired) >= batch_size:
+                try:
+                    self.apply_async(
+                        kwargs={
+                            "batch_size": batch_size,
+                            "after_hold_id": expired[-1].id,
+                        },
+                        countdown=5,
+                    )
+                    continuation_queued = True
+                except Exception:
+                    logger.exception(
+                        "Could not schedule the next expired-ticket-hold batch"
+                    )
+
+            return {
+                "released": released,
+                "batch_size": batch_size,
+                "continuation_queued": continuation_queued,
+            }
         except Exception as e:
             logger.error("release_expired_ticket_holds failed: %s", e)
             if self.request.retries < self.max_retries:

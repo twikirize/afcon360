@@ -206,6 +206,20 @@ jobs:
           app/geo
           scripts/seed_payment_methods.py
           app/tasks/transport_recovery.py
+          app/tasks/transport_permission_purge.py
+          app/transport/services/offer_service.py
+          app/tasks/webhook_processor.py
+          app/tasks/cleanup.py
+          app/tasks/accommodation_reminders.py
+          app/accommodation/services/availability_service.py
+          app/notifications/tasks.py
+          app/notifications/services.py
+          app/notifications/events/tasks.py
+          app/notifications/models.py
+          app/events/tasks.py
+          app/celery_app.py
+          tests/test_celery_small_batch_contracts.py
+          tests/notifications/test_scheduled_notification_delivery.py
           app/utils/validators.py
           tests/test_transport_booking_route_path.py
           tests/test_transport_ride_options.py
@@ -257,6 +271,9 @@ jobs:
           tests/test_org_workspace.py
           tests/test_org_host_production_path.py
           tests/test_events_ownership_characterization.py
+
+      - name: Validate Celery Docker entrypoint shell syntax
+        run: bash -n docker-entrypoint.sh
 
       - name: Parse changed Jinja templates without database access
         run: |
@@ -335,6 +352,13 @@ jobs:
           else
             echo "Running only the recorded failing tests."
             mapfile -t TARGETS < tests/ci/failed_test_targets.txt
+            TARGETS+=(
+              tests/test_celery_small_batch_contracts.py
+              tests/test_transport_concurrent_claim.py::TestOfferService::test_sweep_expired_cleans_index
+              tests/notifications/test_scheduled_notification_delivery.py
+              tests/notifications/test_models.py
+              tests/test_transport_concurrent_claim.py::TestOfferService::test_sweep_expired_cleans_index
+            )
             if [[ ${#TARGETS[@]} -eq 0 ]]; then
               echo "No failed-test targets are recorded."
               exit 2

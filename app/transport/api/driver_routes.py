@@ -472,6 +472,13 @@ class DriverLocationResource(Resource):
             )
             return {"success": False, "error": "not allowed to update this driver's location"}, 403
 
+        # Reject location updates from offline drivers
+        if not driver.is_online:
+            logger.info(
+                f"Location publish rejected: driver {driver_id} is offline"
+            )
+            return {"success": False, "error": "driver is offline; location publishing disabled"}, 403
+
         # Explicit numeric/range validation at API boundary
         try:
             if isinstance(data.get("latitude"), bool) or isinstance(data.get("longitude"), bool):

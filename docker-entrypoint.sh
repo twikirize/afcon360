@@ -71,13 +71,32 @@ case "$1" in
             "app:create_app()"
         ;;
     celery)
-        echo "⚙️  Starting Celery worker (concurrency: ${CELERY_CONCURRENCY:-2})..."
+        echo "⚙️  Starting Celery worker (concurrency: ${CELERY_CONCURRENCY:-1})..."
+        # Compose may pass "celery -A ... worker ..." as the command. Preserve
+        # those explicit arguments instead of silently discarding queue,
+        # prefetch, and process-recycling flags.
+        if [ "$#" -gt 1 ]; then
+            shift
+            exec celery "$@"
+        fi
+
+        queue_args=()
+        if [ -n "${CELERY_QUEUES:-}" ]; then
+            queue_args=(-Q "${CELERY_QUEUES}")
+        fi
         exec celery -A app.celery_app worker \
             --loglevel=info \
-            --concurrency="${CELERY_CONCURRENCY:-2}"
+            --concurrency="${CELERY_CONCURRENCY:-1}" \
+            --prefetch-multiplier="${CELERY_PREFETCH_MULTIPLIER:-1}" \
+            --max-tasks-per-child="${CELERY_MAX_TASKS_PER_CHILD:-50}" \
+            "${queue_args[@]}"
         ;;
     celery-beat)
         echo "🕐 Starting Celery Beat..."
+        if [ "$#" -gt 1 ]; then
+            shift
+            exec celery -A app.celery_app beat --loglevel=info "$@"
+        fi
         exec celery -A app.celery_app beat --loglevel=info
         ;;
     *)
