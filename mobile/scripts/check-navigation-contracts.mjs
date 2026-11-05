@@ -18,7 +18,7 @@ function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const full = path.join(directory, entry.name);
     if (entry.isDirectory()) return walk(full);
-    return /\\.tsx?$/.test(entry.name) ? [full] : [];
+    return /\.tsx?$/.test(entry.name) ? [full] : [];
   });
 }
 
@@ -36,7 +36,7 @@ const violations = [];
 let actualTotal = 0;
 for (const file of walk(path.join(root, "apps"))) {
   const source = fs.readFileSync(file, "utf8");
-  const calls = source.match(/WebBrowser\\.openBrowserAsync\\s*\\(/g) ?? [];
+  const calls = source.match(/WebBrowser\.openBrowserAsync\s*\(/g) ?? [];
   actualTotal += calls.length;
   const allowedCount = expected.get(file) ?? 0;
   if (calls.length !== allowedCount) {
