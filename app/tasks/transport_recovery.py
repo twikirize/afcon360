@@ -3,10 +3,10 @@ app/tasks/transport_recovery.py
 
 Scheduled recovery tasks for the transport dispatch system (TH-3-D2).
 
-- ``transport.dispatch_recovery`` - defensive sweep of transient Redis
-  offers. Offer TTLs are the primary expiry mechanism; this beat is a
-  safety net for orphaned offer keys whose creator crashed before setting
-  a TTL (or after a Redis eviction).
+- ``transport.offer_expiry_sweep`` - incremental SCAN-based cleanup of stale
+  Redis offer-index references; each invocation handles one bounded page.
+- ``transport.dispatch_recovery`` - rediscovery of confirmed/unassigned
+  bookings after transient offer loss or dispatch interruption.
 - ``transport.stall_recovery`` - terminal-timeout recovery: a booking that
   stays ASSIGNED with no driver en-route beyond
   ``TRANSPORT_STALL_TIMEOUT_SECONDS`` (default 600) is cancelled through the
@@ -75,6 +75,41 @@ def _with_app_context(fn):
             return fn(*args, **kwargs)
 
     return wrapper
+
+
+@celery_app.task(name="transport.offer_expiry_sweep", bind=True)
+@_with_app_context
+def offer_expiry_sweep(
+    self,
+    batch_size: int = 50,
+    driver_cursor: int = 0,
+    index_cursor: int = 0,
+) -> dict:
+    """Prune one small Redis SCAN page and yield before continuing."""
+    from app.transport.services.offer_service import OfferService
+
+    result = OfferService.sweep_expired_page(
+        batch_size=batch_size,
+        driver_cursor=driver_cursor,
+        index_cursor=index_cursor,
+    )
+    if result.get("has_more"):
+        try:
+            self.apply_async(
+                kwargs={
+                    "batch_size": result["batch_size"],
+                    "driver_cursor": result["driver_cursor"],
+                    "index_cursor": result["index_cursor"],
+                },
+                countdown=5,
+            )
+            result["continuation_queued"] = True
+        except Exception:
+            logger.exception("Could not schedule next transport offer-expiry page")
+            result["continuation_queued"] = False
+    else:
+        result["continuation_queued"] = False
+    return result
 
 
 @celery_app.task(name="transport.dispatch_recovery", bind=True)
