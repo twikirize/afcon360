@@ -266,3 +266,49 @@ main#main:has(.download-page) {
 @media (prefers-reduced-motion: reduce) {
   .download-page *, .download-page *::before, .download-page *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+
+/* Per-app browser entry points remain available while native store releases are pending. */
+.download-app-web-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 0 18px;
+  border-top: 1px solid #e8ede3;
+}
+.download-app-web-row .download-platform-name {
+  color: #627267;
+  font-size: 12px;
+}
+.download-app-web-row .download-platform-name i {
+  margin-right: 7px;
+  color: #78963c;
+}
+.download-app-web-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #174b32;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: right;
+}
+.download-app-web-link:hover {
+  color: #78963c;
+  text-decoration: underline;
+}
+.download-app-web-link:focus-visible {
+  outline: 3px solid #f4c542;
+  outline-offset: 4px;
+}
+@media (max-width: 420px) {
+  .download-app-web-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .download-app-web-link {
+    text-align: left;
+  }
+}
