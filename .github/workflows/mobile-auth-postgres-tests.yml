@@ -21,6 +21,7 @@ on:
       - "tests/auth/test_pending_registration_expiry.py"
       - "templates/public_download.html"
       - "tests/test_public_app_download.py"
+      - "templates/mobile_apps/**"
       - ".github/workflows/mobile-auth-postgres-tests.yml"
   pull_request:
     branches:
@@ -37,6 +38,7 @@ on:
       - "tests/auth/test_pending_registration_expiry.py"
       - "templates/public_download.html"
       - "tests/test_public_app_download.py"
+      - "templates/mobile_apps/**"
       - ".github/workflows/mobile-auth-postgres-tests.yml"
   workflow_dispatch:
 
@@ -114,6 +116,16 @@ jobs:
             app/auth/registration_policy.py \
             app/auth/validators.py \
             app/auth/services.py
+      - name: Parse server-rendered native app website templates
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from jinja2 import Environment
+          env = Environment()
+          for path in sorted(Path("templates/mobile_apps").glob("*.html")):
+              env.parse(path.read_text(encoding="utf-8"))
+              print("JINJA_PARSE_OK", path)
+          PY
 
       - name: Require one Alembic head
         run: |
