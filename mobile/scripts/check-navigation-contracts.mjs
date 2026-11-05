@@ -4,15 +4,27 @@ import path from "node:path";
 const root = path.resolve(import.meta.dirname, "..");
 
 const approved = [
-  ["apps/user/app/login.tsx", 'WebBrowser.openBrowserAsync(SITE + "/reset/request")'],
   ["apps/user/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")'],
   ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(SITE + "/accommodation")'],
   ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(SITE + "/tourism")'],
   ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(SITE + "/events")'],
   ["apps/driver/app/login.tsx", 'WebBrowser.openBrowserAsync(SITE + "/transport/become-driver")'],
-  ["apps/driver/app/login.tsx", 'WebBrowser.openBrowserAsync(SITE + "/reset/request")'],
   ["apps/driver/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")'],
 ];
+
+const nativeResetRoutes = [
+  ["apps/user/app/login.tsx", 'router.push("/forgot-password")'],
+  ["apps/driver/app/login.tsx", 'router.push("/forgot-password")'],
+  ["apps/user/app/forgot-password.tsx", "authClient.requestPasswordReset(identifier)"],
+  ["apps/driver/app/forgot-password.tsx", "authClient.requestPasswordReset(identifier)"],
+];
+
+for (const [relative, snippet] of nativeResetRoutes) {
+  const source = fs.readFileSync(path.join(root, relative), "utf8");
+  if (!source.includes(snippet)) {
+    throw new Error(`Native password recovery route is missing or changed: ${relative}`);
+  }
+}
 
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {

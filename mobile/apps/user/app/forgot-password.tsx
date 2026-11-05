@@ -120,7 +120,7 @@ export default function ForgotPasswordScreen() {
               <AuthField
                 label="Six-digit email code"
                 value={code}
-                onChangeText={value => setCode(value.replace(/\\D/g, "").slice(0, 6))}
+                onChangeText={value => setCode(value.replace(/\D/g, "").slice(0, 6))}
                 keyboardType="number-pad"
                 autoComplete="one-time-code"
                 maxLength={6}

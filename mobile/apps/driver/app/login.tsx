@@ -116,8 +116,8 @@ export default function LoginScreen() {
                 onPress={() => WebBrowser.openBrowserAsync(SITE + "/transport/become-driver")}
               />
               <AuthLink
-                label="Reset password on website"
-                onPress={() => WebBrowser.openBrowserAsync(SITE + "/reset/request")}
+                label="Forgot your password?"
+                onPress={() => router.push("/forgot-password")}
               />
             </>
           )}
