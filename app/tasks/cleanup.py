@@ -13,8 +13,14 @@ from app.accommodation.services.availability_service import AvailabilityService
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name="accommodation.cleanup_expired_holds")
-def cleanup_expired_holds(hold_minutes: int = 15) -> int:
+@celery_app.task(name="accommodation.cleanup_expired_holds", bind=True)
+def cleanup_expired_holds(
+    self,
+    hold_minutes: int = 15,
+    batch_size: int = 25,
+    after_blocked_id: int = 0,
+    after_room_hold_id: int = 0,
+) -> dict:
     """
     Release temporary holds that have expired.
 
@@ -22,13 +28,42 @@ def cleanup_expired_holds(hold_minutes: int = 15) -> int:
         hold_minutes: Maximum age of holds before they're considered expired
 
     Returns:
-        Number of expired holds released
+        Number of expired holds released in this page and continuation status.
     """
+    batch_size = max(1, min(int(batch_size), 100))
     try:
-        count = AvailabilityService.release_expired_holds(hold_minutes=hold_minutes)
-        if count > 0:
-            logger.info(f"Cleanup task released {count} expired holds")
-        return count
+        result = AvailabilityService.release_expired_holds(
+            hold_minutes=hold_minutes,
+            batch_size=batch_size,
+            after_blocked_id=after_blocked_id,
+            after_room_hold_id=after_room_hold_id,
+        )
+        if result["released"] > 0:
+            logger.info(
+                "Cleanup task released %s expired holds",
+                result["released"],
+            )
+
+        continuation_queued = False
+        if result["has_more"]:
+            try:
+                self.apply_async(
+                    kwargs={
+                        "hold_minutes": hold_minutes,
+                        "batch_size": batch_size,
+                        "after_blocked_id": result["after_blocked_id"],
+                        "after_room_hold_id": result["after_room_hold_id"],
+                    },
+                    countdown=5,
+                )
+                continuation_queued = True
+            except Exception:
+                logger.exception("Could not schedule next accommodation hold-cleanup batch")
+
+        return {
+            **result,
+            "continuation_queued": continuation_queued,
+        }
     except Exception as e:
         logger.error(f"Cleanup task failed: {e}", exc_info=True)
-        return 0
+        return {"released": 0, "error": str(e), "continuation_queued": False}
