@@ -356,6 +356,7 @@ jobs:
             mapfile -t TARGETS < tests/ci/failed_test_targets.txt
             TARGETS+=(
               tests/test_celery_small_batch_contracts.py
+              tests/test_backup_offsite.py
               tests/test_transport_concurrent_claim.py::TestOfferService::test_sweep_expired_cleans_index
               tests/notifications/test_scheduled_notification_delivery.py
               tests/notifications/test_models.py
