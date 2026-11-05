@@ -8,6 +8,7 @@ on:
     paths:
       - "app/__init__.py"
       - "app/auth/mobile_api.py"
+      - "app/auth/account_deletion_service.py"
       - "app/auth/mobile_tokens.py"
       - "app/auth/otp_service.py"
       - "app/notifications/channel_handlers/email.py"
@@ -36,6 +37,7 @@ on:
     paths:
       - "app/__init__.py"
       - "app/auth/mobile_api.py"
+      - "app/auth/account_deletion_service.py"
       - "app/auth/mobile_tokens.py"
       - "app/auth/otp_service.py"
       - "app/notifications/channel_handlers/email.py"
@@ -125,6 +127,7 @@ jobs:
           python -m py_compile \
             app/__init__.py \
             app/auth/mobile_api.py \
+            app/auth/account_deletion_service.py \
             app/auth/mobile_tokens.py \
             app/auth/mobile_password_reset.py \
             app/auth/otp_service.py \
