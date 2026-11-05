@@ -99,6 +99,10 @@
               <span class="download-platform-soon">COMING SOON</span>
             {% endif %}
           </div>
+          <div class="download-platform-row download-preplay-row">
+            <span class="download-platform-name"><i class="bi bi-android2" aria-hidden="true"></i> Pre-Play Android preview</span>
+            <a class="download-platform-link" href="{{ app.preplay_android_url }}" target="_blank" rel="noopener noreferrer">Download APK <i class="bi bi-download" aria-hidden="true"></i></a>
+          </div>
           <div class="download-platform-row">
             <span class="download-platform-name"><i class="bi bi-apple" aria-hidden="true"></i> iPhone / iPad</span>
             {% if app.ios_url %}
@@ -108,6 +112,10 @@
             {% endif %}
           </div>
         </div>
+        <div class="download-app-web-row">
+          <span class="download-platform-name"><i class="bi bi-globe2" aria-hidden="true"></i> Browser experience</span>
+          <a class="download-app-web-link" href="{{ app.web_url }}">{{ app.web_label }} <i class="bi bi-arrow-up-right" aria-hidden="true"></i></a>
+        </div>
         <div class="download-card-footer">
           <span>AFCON360 <strong>{% if loop.first %}FAN{% else %}PARTNER{% endif %}</strong> EXPERIENCE</span>
           <span aria-hidden="true">✦</span>
@@ -115,6 +123,7 @@
       </article>
       {% endfor %}
     </div>
+    <p class="download-preplay-notice"><strong>PRE-PLAY TEST BUILDS:</strong> These Android APKs are GitHub-hosted internal previews, not Google Play releases. They are intended for invited testing. You may need to uninstall a preview build before installing the official Play Store version.</p>
   </section>
 
   <section class="download-web-banner" aria-labelledby="web-title">
