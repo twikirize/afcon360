@@ -479,3 +479,230 @@ def test_native_token_issuance_stores_only_token_digests(monkeypatch):
     assert "raw-refresh-token-secret" not in serialized_operations
     assert mobile_tokens._token_key("access", credentials["access_token"]) in serialized_operations
     assert mobile_tokens._token_key("refresh", credentials["refresh_token"]) in serialized_operations
+
+def test_native_mobile_api_registers_password_reset_routes(app):
+    expected = {
+        "/api/mobile/v1/auth/password-reset/request",
+        "/api/mobile/v1/auth/password-reset/confirm",
+    }
+    registered = {rule.rule for rule in app.url_map.iter_rules()}
+    assert expected <= registered
+
+
+def test_native_password_reset_request_has_same_response_for_existing_and_unknown_accounts(client, monkeypatch):
+    from app.auth import mobile_password_reset
+
+    captured = []
+    result_state = {"deliverable": False}
+
+    def fake_request(identifier):
+        captured.append(identifier)
+        return result_state["deliverable"]
+
+    monkeypatch.setattr(mobile_password_reset, "request_mobile_password_reset", fake_request)
+
+    responses = []
+    for deliverable in (False, True):
+        result_state["deliverable"] = deliverable
+        response = client.post(
+            "/api/mobile/v1/auth/password-reset/request",
+            json={"identifier": "member@example.test"},
+        )
+        responses.append((response.status_code, response.get_json()))
+
+    assert captured == ["member@example.test", "member@example.test"]
+    assert responses[0] == responses[1]
+    assert responses[0][0] == 202
+    assert responses[0][1]["success"] is True
+    assert "code" not in responses[0][1]
+    assert "otp" not in responses[0][1]
+    assert responses[0][1]["data"]["expires_in"] == 600
+
+
+def test_native_password_reset_confirm_route_delegates_and_returns_success(client, monkeypatch):
+    from app.auth import mobile_password_reset
+
+    captured = {}
+
+    def fake_confirm(**kwargs):
+        captured.update(kwargs)
+        return True, "Your password has been reset. Sign in with your new password."
+
+    monkeypatch.setattr(
+        mobile_password_reset,
+        "confirm_mobile_password_reset",
+        fake_confirm,
+    )
+
+    response = client.post(
+        "/api/mobile/v1/auth/password-reset/confirm",
+        json={
+            "identifier": "member@example.test",
+            "code": "123456",
+            "new_password": "Strong#Reset2026",
+            "confirm_password": "Strong#Reset2026",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["success"] is True
+    assert captured == {
+        "identifier": "member@example.test",
+        "code": "123456",
+        "new_password": "Strong#Reset2026",
+    }
+
+
+def test_native_password_reset_confirm_rejects_mismatched_passwords(client, monkeypatch):
+    from app.auth import mobile_password_reset
+
+    monkeypatch.setattr(
+        mobile_password_reset,
+        "confirm_mobile_password_reset",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("service must not run")),
+    )
+
+    response = client.post(
+        "/api/mobile/v1/auth/password-reset/confirm",
+        json={
+            "identifier": "member@example.test",
+            "code": "123456",
+            "new_password": "Strong#Reset2026",
+            "confirm_password": "Different#Reset2026",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["code"] == "password_reset_password_mismatch"
+
+
+def test_mobile_password_reset_stores_otp_by_public_id_and_sends_ten_minute_code(monkeypatch):
+    from app.auth import mobile_password_reset
+    from app.auth.otp_service import OTPService
+
+    user = SimpleNamespace(
+        id=81,
+        public_id="password-reset-public-id",
+        email="reset@example.test",
+        is_active=True,
+        is_deleted=False,
+    )
+    stored = {}
+    sent = {}
+
+    monkeypatch.setattr(mobile_password_reset, "_find_user", lambda identifier: user)
+    monkeypatch.setattr(OTPService, "generate_otp", staticmethod(lambda length=6: "482915"))
+    monkeypatch.setattr(
+        OTPService,
+        "store_otp",
+        staticmethod(lambda **kwargs: stored.update(kwargs) or True),
+    )
+    monkeypatch.setattr(
+        OTPService,
+        "send_email_otp_checked",
+        staticmethod(lambda **kwargs: sent.update(kwargs) or {"success": True}),
+    )
+
+    result = mobile_password_reset.request_mobile_password_reset("reset@example.test")
+
+    assert result is True
+    assert stored == {
+        "identifier": "password-reset-public-id",
+        "otp": "482915",
+        "purpose": "mobile_password_reset",
+        "ttl": 600,
+    }
+    assert sent["email"] == "reset@example.test"
+    assert sent["otp"] == "482915"
+    assert sent["purpose"] == "password_reset"
+    assert sent["user_id"] == 81
+    assert sent["expires_in_minutes"] == 10
+
+
+def test_mobile_password_reset_rejects_after_five_incorrect_code_attempts(monkeypatch):
+    from app.auth import mobile_password_reset
+    from app.auth.otp_service import OTPService
+
+    user = SimpleNamespace(
+        id=82,
+        public_id="password-reset-attempt-user",
+        email="attempts@example.test",
+        is_active=True,
+        is_deleted=False,
+    )
+    invalidated = []
+    deleted = []
+
+    monkeypatch.setattr(mobile_password_reset, "_find_user", lambda identifier: user)
+    monkeypatch.setattr(mobile_password_reset, "store_incr", lambda *args, **kwargs: 6)
+    monkeypatch.setattr(mobile_password_reset, "store_delete", lambda key: deleted.append(key) or True)
+    monkeypatch.setattr(
+        OTPService,
+        "invalidate_otp",
+        staticmethod(lambda identifier, purpose: invalidated.append((identifier, purpose))),
+    )
+    monkeypatch.setattr(
+        OTPService,
+        "verify_otp",
+        staticmethod(lambda **kwargs: (_ for _ in ()).throw(AssertionError("OTP must not be checked after lockout"))),
+    )
+
+    success, message = mobile_password_reset.confirm_mobile_password_reset(
+        "attempts@example.test",
+        "123456",
+        "Strong#Reset2026",
+    )
+
+    assert success is False
+    assert "Too many" in message
+    assert invalidated == [("password-reset-attempt-user", "mobile_password_reset")]
+    assert deleted == ["mobile-password-reset:attempts:password-reset-attempt-user"]
+
+
+def test_mobile_password_reset_success_uses_canonical_reset_and_revokes_device_sessions(monkeypatch):
+    from app.auth import mobile_password_reset, services, sessions, tokens
+    from app.auth.otp_service import OTPService
+
+    user = SimpleNamespace(
+        id=83,
+        public_id="password-reset-success-user",
+        email="success@example.test",
+        is_active=True,
+        is_deleted=False,
+    )
+    captured = {}
+
+    monkeypatch.setattr(mobile_password_reset, "_find_user", lambda identifier: user)
+    monkeypatch.setattr(mobile_password_reset, "store_incr", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(mobile_password_reset, "store_delete", lambda key: True)
+    monkeypatch.setattr(
+        OTPService,
+        "verify_otp",
+        staticmethod(lambda **kwargs: (True, "OTP verified")),
+    )
+    monkeypatch.setattr(tokens, "generate_reset_token", lambda public_id: "signed-reset-token")
+    monkeypatch.setattr(
+        services,
+        "confirm_password_reset",
+        lambda token, password: captured.update(token=token, password=password) or True,
+    )
+    monkeypatch.setattr(
+        sessions,
+        "revoke_all_device_sessions_for_user",
+        lambda user_id, reason: captured.update(user_id=user_id, reason=reason),
+    )
+
+    success, message = mobile_password_reset.confirm_mobile_password_reset(
+        "success@example.test",
+        "193827",
+        "Strong#Reset2026",
+    )
+
+    assert success is True
+    assert "reset" in message.lower()
+    assert captured == {
+        "token": "signed-reset-token",
+        "password": "Strong#Reset2026",
+        "user_id": 83,
+        "reason": "password_reset",
+    }
