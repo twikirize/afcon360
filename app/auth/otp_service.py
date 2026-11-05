@@ -299,13 +299,13 @@ class OTPService:
                     ),
                     body=(
                         (
-                            f"Your AFCON360 password reset code is: {otp}\\n"
+                            f"Your AFCON360 password reset code is: {otp}\n"
                             f"This code expires in {expires_in_minutes} minutes. "
                             "If you didn't request it, ignore this email."
                         )
                         if is_password_reset else (
-                            f"Your AFCON360 verification code is: {otp}\\n"
-                            f"Or verify in one click: {verification_link}\\n"
+                            f"Your AFCON360 verification code is: {otp}\n"
+                            f"Or verify in one click: {verification_link}\n"
                             f"This code expires in {expires_in_minutes} minutes. "
                             "If you didn't request it, ignore this email."
                         )
@@ -413,7 +413,7 @@ class OTPService:
                 logger.warning("[DEV] Password-reset code for %s: %s", email, otp)
             else:
                 logger.warning(
-                    "[DEV] OTP for %s: %s\\n[DEV] Auto-verify: %s/verify-signup?code=%s",
+                    "[DEV] OTP for %s: %s\n[DEV] Auto-verify: %s/verify-signup?code=%s",
                     email, otp, base, otp,
                 )
         except Exception:
