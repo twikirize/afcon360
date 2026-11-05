@@ -312,3 +312,32 @@ main#main:has(.download-page) {
     text-align: left;
   }
 }
+
+
+/* Clearly distinguish internal pre-Play APKs from official store distribution. */
+.download-preplay-row {
+  background: #f7f8f2;
+  margin: 0 -27px;
+  padding: 13px 27px;
+  border-top: 1px solid #e8ede3;
+  border-bottom: 1px solid #e8ede3;
+}
+.download-preplay-row .download-platform-name {
+  color: #526a42;
+}
+.download-preplay-row .download-platform-link {
+  color: #174b32;
+}
+.download-preplay-notice {
+  margin: 18px 0 0;
+  padding: 14px 17px;
+  border-left: 3px solid #d2a82e;
+  background: #fff9e7;
+  color: #665a35;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.download-preplay-notice strong {
+  color: #4c401e;
+  letter-spacing: .06em;
+}
