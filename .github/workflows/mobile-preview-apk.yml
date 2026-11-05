@@ -409,6 +409,19 @@ jobs:
           REPORT="$RUNNER_TEMP/afcon360-manifest-audit"
           "$APKANALYZER" manifest print "$APK" > "$REPORT/AndroidManifest.xml"
           "$AAPT" dump permissions "$APK" > "$REPORT/permissions.txt"
+
+          # Enforce the app-config denylist against the final merged APK manifest.
+          # This catches permissions reintroduced by a transitive Android library.
+          for permission in \
+            android.permission.READ_EXTERNAL_STORAGE \
+            android.permission.WRITE_EXTERNAL_STORAGE \
+            android.permission.SYSTEM_ALERT_WINDOW; do
+            if grep -Fq "$permission" "$REPORT/permissions.txt"; then
+              echo "::error::Packaged User APK unexpectedly declares blocked permission: $permission"
+              exit 1
+            fi
+          done
+          echo "Verified blocked legacy storage and overlay permissions are absent from the packaged APK."
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml > "$REPORT/manifest-tree.txt"
           "$APKSIGNER" verify --verbose --print-certs "$APK" > "$REPORT/signature.txt" 2>&1
           cp "$INFO" "$REPORT/build-info.txt"
