@@ -2,7 +2,9 @@
   "name": "afcon360-mobile-workspace",
   "private": true,
   "packageManager": "pnpm@10.12.4",
-  "engines": { "node": ">=22.13.0" },
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "user:start": "pnpm --filter @afcon360/user-app start",
     "driver:start": "pnpm --filter @afcon360/driver-app start",
@@ -12,6 +14,7 @@
     "driver:ios": "pnpm --filter @afcon360/driver-app ios",
     "user:typecheck": "pnpm --filter @afcon360/user-app typecheck",
     "driver:typecheck": "pnpm --filter @afcon360/driver-app typecheck",
-    "typecheck": "pnpm user:typecheck && pnpm driver:typecheck"
+    "typecheck": "pnpm user:typecheck && pnpm driver:typecheck",
+    "navigation:check": "node scripts/check-navigation-contracts.mjs"
   }
 }
