@@ -112,11 +112,11 @@ export default function LoginScreen() {
                 }
               />
               <AuthLink
-                label="Driver registration and verification"
+                label="Continue driver registration on website"
                 onPress={() => WebBrowser.openBrowserAsync(SITE + "/transport/become-driver")}
               />
               <AuthLink
-                label="Forgot your password?"
+                label="Reset password on website"
                 onPress={() => WebBrowser.openBrowserAsync(SITE + "/reset/request")}
               />
             </>
