@@ -53,3 +53,70 @@ def test_password_reset_otp_can_only_be_consumed_once_under_concurrency(monkeypa
         assert client.get(key) is None
     finally:
         client.delete(key)
+
+def test_mobile_password_reset_service_consumes_real_redis_code_and_revokes_sessions(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.auth import mobile_password_reset, otp_store, services, sessions, tokens
+    from app.auth.otp_service import OTPService
+
+    client = _redis_client()
+    suffix = uuid.uuid4().hex
+    public_id = "redis-reset-user-" + suffix
+    identifier = "reset-" + suffix + "@example.test"
+    code = "193827"
+    otp_key = f"otp:{public_id}:mobile_password_reset"
+    attempt_key = f"mobile-password-reset:attempts:{public_id}"
+    captured = {}
+
+    user = SimpleNamespace(
+        id=83,
+        public_id=public_id,
+        email=identifier,
+        is_active=True,
+        is_deleted=False,
+    )
+
+    monkeypatch.setattr(otp_store, "_redis", lambda: client)
+    monkeypatch.setattr(mobile_password_reset, "_find_user", lambda value: user if value == identifier else None)
+    monkeypatch.setattr(tokens, "generate_reset_token", lambda value: "signed-reset-token")
+
+    def confirm(token, password):
+        captured.update(token=token, password=password)
+        return True
+
+    monkeypatch.setattr(services, "confirm_password_reset", confirm)
+    monkeypatch.setattr(
+        sessions,
+        "revoke_all_device_sessions_for_user",
+        lambda user_id, reason: captured.update(user_id=user_id, reason=reason),
+    )
+
+    try:
+        stored = OTPService.store_otp(
+            identifier=public_id,
+            otp=code,
+            purpose="mobile_password_reset",
+            ttl=600,
+        )
+        assert stored is True
+        assert client.get(otp_key) is not None
+
+        success, message = mobile_password_reset.confirm_mobile_password_reset(
+            identifier,
+            code,
+            "Strong#Reset2026",
+        )
+
+        assert success is True
+        assert "reset" in message.lower()
+        assert client.get(otp_key) is None
+        assert client.get(attempt_key) is None
+        assert captured == {
+            "token": "signed-reset-token",
+            "password": "Strong#Reset2026",
+            "user_id": user.id,
+            "reason": "password_reset",
+        }
+    finally:
+        client.delete(otp_key, attempt_key)
