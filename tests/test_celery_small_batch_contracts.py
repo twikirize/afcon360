@@ -160,6 +160,8 @@ def test_transport_permission_purge_is_registered_as_a_celery_task():
 
 
 def test_celery_task_context_is_created_lazily_and_cached(monkeypatch):
+    from threading import Thread
+
     from flask import Flask, current_app, has_app_context
 
     from app.tasks.context import (
@@ -182,10 +184,28 @@ def test_celery_task_context_is_created_lazily_and_cached(monkeypatch):
         assert has_app_context()
         return current_app.name
 
-    assert _task() == "celery-task-context-test"
-    assert _task() == "celery-task-context-test"
+    outcome = {}
+
+    def _run_without_inherited_context():
+        try:
+            outcome["first"] = _task()
+            outcome["second"] = _task()
+            outcome["context_after"] = has_app_context()
+        except BaseException as exc:
+            outcome["error"] = exc
+
+    # Flask contexts are thread-local. The test runner may keep its own app
+    # context open, so a new thread proves the no-context worker path.
+    thread = Thread(target=_run_without_inherited_context)
+    thread.start()
+    thread.join(timeout=10)
+
+    assert not thread.is_alive(), "task context test thread did not finish"
+    assert "error" not in outcome, repr(outcome.get("error"))
+    assert outcome["first"] == "celery-task-context-test"
+    assert outcome["second"] == "celery-task-context-test"
+    assert outcome["context_after"] is False
     assert len(factory_calls) == 1
-    assert not has_app_context()
 
     _get_task_flask_app.cache_clear()
 
