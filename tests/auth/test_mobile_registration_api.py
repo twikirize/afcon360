@@ -706,3 +706,97 @@ def test_mobile_password_reset_success_uses_canonical_reset_and_revokes_device_s
         "user_id": 83,
         "reason": "password_reset",
     }
+
+def test_native_password_reset_request_delegates_without_disclosing_account_state(client, monkeypatch):
+    from app.auth import mobile_password_reset
+
+    captured = {}
+    monkeypatch.setattr(
+        mobile_password_reset,
+        "request_mobile_password_reset",
+        lambda identifier: captured.update(identifier=identifier) or True,
+    )
+
+    response = client.post(
+        "/api/mobile/v1/auth/password-reset/request",
+        json={"identifier": "member@example.test"},
+    )
+
+    assert response.status_code == 202
+    assert response.get_json()["success"] is True
+    assert "member@example.test" not in response.get_data(as_text=True)
+    assert "If an active AFCON360 account" in response.get_json()["data"]["message"]
+    assert captured["identifier"] == "member@example.test"
+
+
+def test_native_password_reset_request_returns_same_response_when_service_fails(client, monkeypatch):
+    from app.auth import mobile_password_reset
+
+    monkeypatch.setattr(
+        mobile_password_reset,
+        "request_mobile_password_reset",
+        lambda identifier: (_ for _ in ()).throw(RuntimeError("mail service unavailable")),
+    )
+
+    response = client.post(
+        "/api/mobile/v1/auth/password-reset/request",
+        json={"identifier": "unknown@example.test"},
+    )
+
+    assert response.status_code == 202
+    assert response.get_json()["data"]["message"] == (
+        "If an active AFCON360 account has a registered email address, a reset code has been sent."
+    )
+
+
+def test_native_password_reset_confirmation_validates_code_before_service(client, monkeypatch):
+    from app.auth import mobile_password_reset
+
+    monkeypatch.setattr(
+        mobile_password_reset,
+        "confirm_mobile_password_reset",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("service must not run for invalid code")),
+    )
+
+    response = client.post(
+        "/api/mobile/v1/auth/password-reset/confirm",
+        json={
+            "identifier": "member@example.test",
+            "code": "12ab56",
+            "new_password": "StrongPassword#2026",
+            "confirm_password": "StrongPassword#2026",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["code"] == "password_reset_input_invalid"
+
+
+def test_native_password_reset_confirmation_delegates_to_shared_service(client, monkeypatch):
+    from app.auth import mobile_password_reset
+
+    captured = {}
+
+    def fake_confirm(**kwargs):
+        captured.update(kwargs)
+        return True, "Your password has been reset. Sign in with your new password."
+
+    monkeypatch.setattr(mobile_password_reset, "confirm_mobile_password_reset", fake_confirm)
+
+    response = client.post(
+        "/api/mobile/v1/auth/password-reset/confirm",
+        json={
+            "identifier": "member@example.test",
+            "code": "123456",
+            "new_password": "StrongPassword#2026",
+            "confirm_password": "StrongPassword#2026",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["success"] is True
+    assert captured == {
+        "identifier": "member@example.test",
+        "code": "123456",
+        "new_password": "StrongPassword#2026",
+    }
