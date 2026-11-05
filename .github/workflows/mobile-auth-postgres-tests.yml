@@ -9,6 +9,10 @@ on:
       - "app/__init__.py"
       - "app/auth/mobile_api.py"
       - "app/auth/mobile_tokens.py"
+      - "app/auth/otp_service.py"
+      - "app/auth/mobile_password_reset.py"
+      - "templates/notifications/email/password_reset.html"
+      - "app/auth/mobile_tokens.py"
       - "app/auth/pending_registration.py"
       - "app/auth/registration_policy.py"
       - "app/auth/validators.py"
@@ -30,6 +34,10 @@ on:
     paths:
       - "app/__init__.py"
       - "app/auth/mobile_api.py"
+      - "app/auth/mobile_tokens.py"
+      - "app/auth/otp_service.py"
+      - "app/auth/mobile_password_reset.py"
+      - "templates/notifications/email/password_reset.html"
       - "app/auth/mobile_tokens.py"
       - "app/auth/pending_registration.py"
       - "app/auth/registration_policy.py"
@@ -114,6 +122,8 @@ jobs:
             app/__init__.py \
             app/auth/mobile_api.py \
             app/auth/mobile_tokens.py \
+            app/auth/mobile_password_reset.py \
+            app/auth/otp_service.py \
             app/auth/pending_registration.py \
             app/auth/registration_policy.py \
             app/auth/validators.py \
@@ -124,7 +134,11 @@ jobs:
           from pathlib import Path
           from jinja2 import Environment
           env = Environment()
-          for path in sorted(Path("templates/mobile_apps").glob("*.html")):
+          template_paths = [
+              *Path("templates/mobile_apps").glob("*.html"),
+              Path("templates/notifications/email/password_reset.html"),
+          ]
+          for path in sorted(template_paths):
               env.parse(path.read_text(encoding="utf-8"))
               print("JINJA_PARSE_OK", path)
           PY
