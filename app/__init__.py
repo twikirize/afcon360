@@ -2662,6 +2662,8 @@ def create_app(config_object=None) -> Flask:
             {
                 'name': 'AFCON360 User',
                 'description': 'For fans and travellers exploring events, transport, stays and experiences.',
+                'web_url': url_for('index'),
+                'web_label': 'Open Fan Experience',
                 'android_url': _official_store_url(
                     'AFCON360_USER_ANDROID_STORE_URL', 'play.google.com'
                 ),
@@ -2672,6 +2674,8 @@ def create_app(config_object=None) -> Flask:
             {
                 'name': 'AFCON360 Driver',
                 'description': 'For approved transport partners managing driver activity and trip requests.',
+                'web_url': url_for('transport.driver_dashboard'),
+                'web_label': 'Open Driver Workspace',
                 'android_url': _official_store_url(
                     'AFCON360_DRIVER_ANDROID_STORE_URL', 'play.google.com'
                 ),
