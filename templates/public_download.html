@@ -99,6 +99,10 @@
               <span class="download-platform-soon">COMING SOON</span>
             {% endif %}
           </div>
+          <div class="download-platform-row download-preplay-row">
+            <span class="download-platform-name"><i class="bi bi-android2" aria-hidden="true"></i> Pre-Play Android preview</span>
+            <a class="download-platform-link" href="{{ app.preplay_android_url }}" target="_blank" rel="noopener noreferrer">Download APK <i class="bi bi-download" aria-hidden="true"></i></a>
+          </div>
           <div class="download-platform-row">
             <span class="download-platform-name"><i class="bi bi-apple" aria-hidden="true"></i> iPhone / iPad</span>
             {% if app.ios_url %}
@@ -119,6 +123,7 @@
       </article>
       {% endfor %}
     </div>
+    <p class="download-preplay-notice"><strong>PRE-PLAY TEST BUILDS:</strong> These Android APKs are GitHub-hosted internal previews, not Google Play releases. They are intended for invited testing. You may need to uninstall a preview build before installing the official Play Store version.</p>
   </section>
 
   <section class="download-web-banner" aria-labelledby="web-title">
