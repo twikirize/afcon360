@@ -83,3 +83,62 @@ def test_expired_approval_hold_with_missing_legacy_sla_does_not_block_page(
     assert legacy_hold.status == "expired"
     assert result["released"] == 1
     assert result["has_more"] is False
+
+def test_transport_offer_expiry_sweep_uses_bounded_scan_cursors(monkeypatch):
+    """The production sweep must not issue Redis KEYS or drain the keyspace at once."""
+    from app.transport.services.offer_service import OfferService
+
+    class _FakeRedis:
+        def __init__(self):
+            self.scans = []
+            self.removed_members = []
+            self.deleted_keys = []
+
+        def scan(self, cursor, match, count):
+            self.scans.append((cursor, match, count))
+            if "transport:driver:" in match:
+                return (5, [b"transport:driver:17:offers"]) if cursor == 0 else (0, [])
+            return (
+                (9, [b"transport:offer:index:booking:STALE"])
+                if cursor == 0 else (0, [])
+            )
+
+        def smembers(self, key):
+            return [b"STALE", b"ACTIVE"]
+
+        def srem(self, key, *members):
+            self.removed_members.extend(members)
+
+        def delete(self, key):
+            self.deleted_keys.append(key)
+
+    fake = _FakeRedis()
+    monkeypatch.setattr(
+        "app.transport.services.offer_service.redis_client",
+        fake,
+    )
+    monkeypatch.setattr(
+        OfferService,
+        "get_offer",
+        staticmethod(
+            lambda booking_ref, driver_id=None:
+                None if booking_ref == "STALE" else {"status": "offered"}
+        ),
+    )
+
+    first = OfferService.sweep_expired_page(batch_size=50)
+    assert first["cleared"] == 2
+    assert first["driver_cursor"] == 5
+    assert first["index_cursor"] == 9
+    assert first["has_more"] is True
+    assert fake.removed_members == [b"STALE"]
+    assert fake.deleted_keys == [b"transport:offer:index:booking:STALE"]
+    assert all(count == 50 for _, _, count in fake.scans)
+
+    second = OfferService.sweep_expired_page(
+        batch_size=50,
+        driver_cursor=first["driver_cursor"],
+        index_cursor=first["index_cursor"],
+    )
+    assert second["has_more"] is False
+    assert second["cleared"] == 0
