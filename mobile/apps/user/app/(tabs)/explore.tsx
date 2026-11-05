@@ -17,14 +17,14 @@ export default function Explore() {
     <Panel>
       <SectionTitle>Accommodation</SectionTitle>
       <ServiceTile title="Stays" description="Discover properties and manage accommodation reservations." symbol="🏨" />
-      <ActionButton label="Explore stays" onPress={() => WebBrowser.openBrowserAsync(SITE + "/accommodation")} />
+      <ActionButton label="Explore stays on website" onPress={() => WebBrowser.openBrowserAsync(SITE + "/accommodation")} />
     </Panel>
     <Panel>
       <SectionTitle>Tourism and events</SectionTitle>
       <ServiceTile title="Tours and experiences" description="Explore packages and local providers." symbol="🧭" />
-      <ActionButton label="Explore tourism" onPress={() => WebBrowser.openBrowserAsync(SITE + "/tourism")} />
+      <ActionButton label="Explore tourism on website" onPress={() => WebBrowser.openBrowserAsync(SITE + "/tourism")} />
       <ServiceTile title="Events" description="Discover events and registrations." symbol="🎟️" />
-      <ActionButton label="Browse events" onPress={() => WebBrowser.openBrowserAsync(SITE + "/events")} />
+      <ActionButton label="Browse events on website" onPress={() => WebBrowser.openBrowserAsync(SITE + "/events")} />
     </Panel>
   </AppScreen>;
 }
