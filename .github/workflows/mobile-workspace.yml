@@ -5,7 +5,13 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [main, feat/native-mobile-server-support-20261105, feat/native-mobile-apps-20261104]
     paths:
-      - "mobile/**"
+      - "mobile/apps/**"
+      - "mobile/packages/**"
+      - "mobile/scripts/**"
+      - "mobile/package.json"
+      - "mobile/pnpm-lock.yaml"
+      - "mobile/pnpm-workspace.yaml"
+      - "mobile/.npmrc"
       - ".github/workflows/mobile-workspace.yml"
   workflow_dispatch:
 
@@ -21,15 +27,15 @@ jobs:
         working-directory: mobile
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22.13.1"
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.12.4
           run_install: false
