@@ -884,3 +884,41 @@ def test_email_verification_otp_keeps_existing_notification_contract(client, mon
     assert "Or verify in one click:" in notification.body
     assert "\\n" not in notification.body
     assert "\n" in notification.body
+
+def test_password_reset_email_handler_renders_the_dedicated_html_template(client, monkeypatch):
+    from types import SimpleNamespace
+    from app.extensions import mail
+    from app.notifications.channel_handlers.email import EmailHandler
+    from app.notifications.models import NotificationType
+
+    captured = {}
+    monkeypatch.setattr(mail, "send", lambda message: captured.update(message=message))
+
+    notification = SimpleNamespace(
+        id=9102,
+        user_id=82,
+        email="reset@example.test",
+        type=NotificationType.PASSWORD_RESET,
+        subject="AFCON360 Password Reset Code",
+        body="Your AFCON360 password reset code is: 482915\nThis code expires in 10 minutes.",
+        context={
+            "otp": "482915",
+            "purpose": "password_reset",
+            "expires_in_minutes": 10,
+            "user_name": "reset",
+        },
+        link=None,
+    )
+
+    with client.application.app_context():
+        result = EmailHandler().deliver(
+            notification,
+            {"email": "reset@example.test", "user_id": 82},
+        )
+
+    assert result["success"] is True
+    html = captured["message"].html
+    assert "one-time code in your AFCON360 app" in html
+    assert "482915" in html
+    assert "10 minutes" in html
+    assert "reset@example.test" in captured["message"].recipients
