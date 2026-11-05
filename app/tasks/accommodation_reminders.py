@@ -14,6 +14,7 @@ import logging
 from celery import shared_task
 from datetime import datetime, timezone, timedelta
 from app.extensions import db
+from app.tasks.context import with_flask_app_context
 from app.accommodation.models.booking import AccommodationBooking, AccommodationBookingStatus
 from app.accommodation.models.guest_registration import GuestRegistration
 from app.accommodation.models.availability import RoomHold
@@ -28,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(name="accommodation.send_registration_reminders", bind=True)
+@with_flask_app_context
 def send_registration_reminders(
     self,
     batch_size: int = 5,
@@ -197,6 +199,7 @@ def send_registration_reminders(
     }
 
 @shared_task(name="accommodation.send_pre_arrival_request_reminder", bind=True)
+@with_flask_app_context
 def send_pre_arrival_request_reminder(
     self,
     batch_size: int = 25,
@@ -314,6 +317,7 @@ def send_pre_arrival_request_reminder(
 
 
 @shared_task(name="accommodation.enforce_registration_deadlines")
+@with_flask_app_context
 def enforce_registration_deadlines():
     """
     Check if any bookings have passed their registration deadline
@@ -343,6 +347,7 @@ def enforce_registration_deadlines():
 
 
 @shared_task(name="accommodation.expire_unapproved_bookings", bind=True)
+@with_flask_app_context
 def expire_unapproved_bookings(
     self,
     batch_size: int = 25,
@@ -438,6 +443,7 @@ def expire_unapproved_bookings(
 
 
 @shared_task(name="accommodation.detect_no_shows", bind=True)
+@with_flask_app_context
 def detect_no_shows(
     self,
     batch_size: int = 25,
@@ -581,6 +587,7 @@ def _send_notification(
 
 
 @shared_task(name="accommodation.notify_incomplete_properties")
+@with_flask_app_context
 def notify_incomplete_properties():
     """
     Notify hosts about incomplete properties that cannot be published/booked.
