@@ -40,6 +40,7 @@ def test_expired_approval_hold_with_missing_legacy_sla_does_not_block_page(
     """The stored expires_at is authoritative even for legacy NULL-SLA holds."""
     from datetime import datetime, timedelta, timezone
 
+    from app import create_app
     from app.accommodation.models.availability import BlockedDate, RoomHold
     from app.accommodation.services.availability_service import AvailabilityService
     from app.extensions import db
@@ -71,11 +72,13 @@ def test_expired_approval_hold_with_missing_legacy_sla_does_not_block_page(
             self.status = "expired"
 
     legacy_hold = _LegacyApprovalHold()
-    monkeypatch.setattr(BlockedDate, "query", _Query([]))
-    monkeypatch.setattr(RoomHold, "query", _Query([legacy_hold]))
-    monkeypatch.setattr(db.session, "commit", lambda: None)
+    app = create_app()
+    with app.app_context():
+        monkeypatch.setattr(BlockedDate, "query", _Query([]))
+        monkeypatch.setattr(RoomHold, "query", _Query([legacy_hold]))
+        monkeypatch.setattr(db.session, "commit", lambda: None)
 
-    result = AvailabilityService.release_expired_holds(batch_size=25)
+        result = AvailabilityService.release_expired_holds(batch_size=25)
 
     assert legacy_hold.status == "expired"
     assert result["released"] == 1
