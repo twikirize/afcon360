@@ -39,11 +39,16 @@ MAX_ATTEMPTS = 5
 # ---------------------------------------------------------------------------
 
 @shared_task(name="wallet.process_webhook_events", bind=True, max_retries=0)
-def process_webhook_events(self):
+def process_webhook_events(self, batch_size: int = 10):
     """
-    Poll webhook_events table and process anything queued or due for retry.
-    Scheduled every 60 seconds by Celery beat.
+    Process a small page of queued/due webhook events.
+
+    Beat polls every 60 seconds. A full page schedules one short continuation
+    so the worker can return to the broker between pages and service other
+    critical work. Each event is committed independently and protected by
+    the provider-reference idempotency check below.
     """
+    batch_size = max(1, min(int(batch_size), 25))
     from app import create_app
     from app.extensions import db
     from app.wallet.models.webhook_event import WebhookEvent
@@ -67,7 +72,7 @@ def process_webhook_events(self):
                     )
                 )
             )
-        ).with_for_update(skip_locked=True).limit(50).all()
+        ).with_for_update(skip_locked=True).limit(batch_size).all()
 
         if not events:
             return {"processed": 0}
@@ -132,10 +137,26 @@ def process_webhook_events(self):
                                 event.id
                             )
 
+        continuation_queued = False
+        if len(events) >= batch_size:
+            try:
+                self.apply_async(
+                    kwargs={"batch_size": batch_size},
+                    countdown=2,
+                )
+                continuation_queued = True
+            except Exception:
+                logger.exception(
+                    "Could not schedule the next webhook batch; Beat will retry "
+                    "on its next polling interval"
+                )
+
         return {
             "processed": processed,
             "failed": failed,
-            "dead_lettered": dead_lettered
+            "dead_lettered": dead_lettered,
+            "batch_size": batch_size,
+            "continuation_queued": continuation_queued,
         }
 
 
