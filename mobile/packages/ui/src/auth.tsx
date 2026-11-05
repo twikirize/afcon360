@@ -157,7 +157,7 @@ export function PasswordResetFlow({
   };
 
   const confirmReset = async () => {
-    if (!/^\\d{6}$/.test(code.trim())) {
+    if (!/^\d{6}$/.test(code.trim())) {
       setError("Enter the 6-digit code sent to your registered email address.");
       return;
     }
@@ -168,7 +168,7 @@ export function PasswordResetFlow({
     const categories = [
       /[A-Z]/.test(newPassword),
       /[a-z]/.test(newPassword),
-      /\\d/.test(newPassword),
+      /\d/.test(newPassword),
       /[^A-Za-z0-9]/.test(newPassword)
     ].filter(Boolean).length;
     if (categories < 3) {
