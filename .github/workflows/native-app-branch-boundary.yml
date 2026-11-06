@@ -58,7 +58,7 @@ jobs:
             esac
           done <<< "${files}"
 
-          if (("${#blocked[@]}" > 0)); then
+          if ((${#blocked[@]} > 0)); then
             echo "::error title=Native app branch boundary::Native User/Driver source and app-build workflows must not enter website/backend main."
             printf 'Blocked path: %s\n' "${blocked[@]}"
             echo
