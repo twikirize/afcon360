@@ -1,0 +1,70 @@
+name: Native app branch boundary
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - edited
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: native-app-main-boundary-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  prevent-native-apps-on-website-main:
+    name: Prevent native app files entering website main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Inspect all files changed by the pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          # Paginate the complete PR file list. This check runs on every PR to
+          # main, so it can be configured as a required status check without
+          # leaving unrelated PRs stuck in a skipped/pending state.
+          files="$(gh api --paginate --jq '.[].filename' \
+            "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100")"
+
+          blocked=()
+          while IFS= read -r path; do
+            [[ -z "${path}" ]] && continue
+
+            case "${path}" in
+              mobile/*)
+                blocked+=("${path}")
+                ;;
+              .github/workflows/mobile-*.yml)
+                # This workflow is server-owned: it tests Flask/backend
+                # contracts and is allowed to merge independently to main.
+                if [[ "${path}" != ".github/workflows/mobile-auth-postgres-tests.yml" ]]; then
+                  blocked+=("${path}")
+                fi
+                ;;
+            esac
+          done <<< "${files}"
+
+          if ((${#blocked[@]} > 0)); then
+            echo "::error title=Native app branch boundary::Native User/Driver source and app-build workflows must not enter website/backend main."
+            printf 'Blocked path: %s\n' "${blocked[@]}"
+            echo
+            echo "Keep native app changes on feat/native-mobile-apps-20261104 or an app-only follow-up branch."
+            echo "Move backend/API work into a separate backend-only PR targeting main."
+            exit 1
+          fi
+
+          echo "Boundary passed: this PR contains no native app source or app-build workflow changes."
