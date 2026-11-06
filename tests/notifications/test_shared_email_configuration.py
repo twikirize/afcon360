@@ -866,3 +866,99 @@ def test_explicit_enabled_value_still_changes_existing_provider(monkeypatch):
         config=None,
     )
     assert updated.enabled is True
+
+
+
+def test_legacy_smtp_config_encryption_does_not_commit_callers_session(monkeypatch):
+    from app.extensions import db
+    from app.notifications.models import CommunicationSettings
+    from app.notifications.settings import CommunicationSettingsService
+    from app.utils.crypto import decrypt_json, is_encrypted_json
+
+    _fernet(monkeypatch)
+    legacy_config = {
+        "smtp_host": "legacy.smtp.example.test",
+        "smtp_port": 587,
+        "smtp_user": "legacy-user@example.test",
+        "smtp_pass": "legacy-smtp-secret-77aa",
+        "use_tls": True,
+        "use_ssl": False,
+        "default_sender": "mail@example.test",
+    }
+    setting = type(
+        "LegacyEmailSetting",
+        (),
+        {
+            "enabled": True,
+            "provider": "smtp",
+            "config": dict(legacy_config),
+        },
+    )()
+
+    class _Query:
+        def filter_by(self, **kwargs):
+            assert kwargs == {
+                "key": "email_provider",
+                "channel": "email",
+                "is_deleted": False,
+            }
+            return self
+
+        def first(self):
+            return setting
+
+    commits = []
+    monkeypatch.setattr(CommunicationSettings, "query", _Query())
+    monkeypatch.setattr(db.session, "commit", lambda: commits.append("commit"))
+
+    resolved = CommunicationSettingsService.resolve_email_transport_config()
+
+    assert resolved["smtp_pass"] == "legacy-smtp-secret-77aa"
+    assert commits == []
+    assert is_encrypted_json(setting.config)
+    assert decrypt_json(setting.config) == legacy_config
+
+
+def test_legacy_generic_provider_encryption_does_not_commit_callers_session(monkeypatch):
+    from app.extensions import db
+    from app.notifications.models import CommunicationSettings
+    from app.notifications.settings import CommunicationSettingsService
+    from app.utils.crypto import decrypt_json, is_encrypted_json
+
+    _fernet(monkeypatch)
+    legacy_config = {
+        "account_sid": "legacy-account-sid",
+        "auth_token": "legacy-provider-token-88bb",
+    }
+    setting = type(
+        "LegacySmsSetting",
+        (),
+        {
+            "provider": "twilio",
+            "key": "sms_provider",
+            "config": dict(legacy_config),
+        },
+    )()
+
+    class _Query:
+        def filter_by(self, **kwargs):
+            assert kwargs == {
+                "channel": "sms",
+                "enabled": True,
+                "is_deleted": False,
+            }
+            return self
+
+        def first(self):
+            return setting
+
+    commits = []
+    monkeypatch.setattr(CommunicationSettings, "query", _Query())
+    monkeypatch.setattr(db.session, "commit", lambda: commits.append("commit"))
+
+    resolved = CommunicationSettingsService.get_provider_config("sms")
+
+    assert resolved["config"] == legacy_config
+    assert commits == []
+    assert is_encrypted_json(setting.config)
+    assert decrypt_json(setting.config) == legacy_config
