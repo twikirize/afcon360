@@ -92,11 +92,10 @@ def _verify_login_eligibility(user, client: str):
 
 
 def _start_native_sms_mfa(user):
-    """Send a hashed, short-lived sign-in OTP to the user's verified phone.
+    """Send a hashed, short-lived sign-in OTP through an enabled SMS/WhatsApp route.
 
-    Native SMS MFA is enabled only when the account has a verified E.164 phone
-    number and an owner-configured real SMS provider. It never falls back to
-    console logging or an unverified contact address.
+    The recipient must already have a verified E.164 phone number. Delivery
+    configuration is read-only here: sign-in never creates or mutates settings.
     """
     from app.auth.otp_service import OTPService
 
@@ -118,24 +117,70 @@ def _start_native_sms_mfa(user):
             return None, ("sms_mfa_rate_limited", "A sign-in code was requested recently. Wait a minute before trying again.", 429)
 
         from app.auth.config_model import AuthConfiguration
-        from app.notifications.sms_service import SMSService
+        from app.notifications.sms_service import SMSService, send_whatsapp
+        from app.models.system_config import SystemConfig
 
-        auth_config = AuthConfiguration.get_config()
+        # Do not call AuthConfiguration.get_config(): it creates and commits a
+        # default row when none exists, which is inappropriate during login.
+        auth_config = AuthConfiguration.query.first()
         provider = auth_config.get_sms_provider_for_phone(phone) if auth_config else None
+
+        twilio_sms_enabled = bool(SystemConfig.get("TWILIO_SMS_ENABLED", False))
+        whatsapp_enabled = bool(SystemConfig.get("TWILIO_WHATSAPP_ENABLED", False))
+        twilio_ready = bool(
+            SystemConfig.get("TWILIO_ACCOUNT_SID")
+            and SystemConfig.get("TWILIO_AUTH_TOKEN")
+        )
+        twilio_sms_ready = bool(
+            twilio_ready
+            and (
+                SystemConfig.get("TWILIO_FROM_NUMBER")
+                or SystemConfig.get("TWILIO_MESSAGING_SERVICE_SID")
+            )
+        )
+        whatsapp_ready = bool(twilio_ready and SystemConfig.get("TWILIO_WHATSAPP_FROM"))
+
+        # Preserve the existing owner-configured regional provider preference.
+        # The new SystemConfig Twilio settings are an explicit fallback when
+        # the legacy AuthConfiguration has no provider enabled.
         if provider not in {"twilio", "africa_talking", "africas_talking"}:
+            provider = "twilio" if twilio_sms_enabled and twilio_sms_ready else None
+
+        if provider is None and not (whatsapp_enabled and whatsapp_ready):
             return None, ("sms_mfa_unavailable", "SMS sign-in is not configured for your verified phone number. Use your authenticator app or contact AFCON360 support.", 503)
 
         code = OTPService.generate_otp(length=6)
         if not OTPService.store_otp(user_id, code, purpose="2fa_login", ttl=300):
             return None, ("sms_mfa_unavailable", "AFCON360 could not prepare a secure sign-in code. Try again.", 503)
 
-        delivery = SMSService(provider=provider, auth_config=auth_config).send_message(
-            phone_number=phone,
-            message=f"Your AFCON360 sign-in code is {code}. It expires in 5 minutes. Do not share it.",
-        )
-        if not isinstance(delivery, dict) or not bool(delivery.get("success")):
+        message = f"Your AFCON360 sign-in code is {code}. It expires in 5 minutes. Do not share it."
+        delivered = False
+        attempted_channels = []
+
+        if provider in {"twilio", "africa_talking", "africas_talking"}:
+            attempted_channels.append(provider)
+            try:
+                delivery = SMSService(provider=provider, auth_config=auth_config).send_message(
+                    phone_number=phone,
+                    message=message,
+                )
+                delivered = isinstance(delivery, dict) and bool(delivery.get("success"))
+            except Exception:
+                logger.exception("Native SMS MFA provider failed for user %s", user.public_id)
+
+        # Use WhatsApp only when the owner explicitly enabled it and the
+        # required sender/credentials exist. It carries the same one-time code.
+        if not delivered and whatsapp_enabled and whatsapp_ready:
+            attempted_channels.append("twilio_whatsapp")
+            delivered = bool(send_whatsapp(phone, message))
+
+        if not delivered:
             OTPService.invalidate_otp(user_id, "2fa_login")
-            logger.warning("Native SMS MFA delivery failed for user %s", user.public_id)
+            logger.warning(
+                "Native MFA OTP delivery failed for user %s via %s",
+                user.public_id,
+                ",".join(attempted_channels) or "no-enabled-channel",
+            )
             return None, ("sms_mfa_delivery_failed", "AFCON360 could not deliver your sign-in code. Check your phone connection or try again later.", 503)
 
         hint = f"{phone[:4]}••••{phone[-2:]}"
