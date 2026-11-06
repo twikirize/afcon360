@@ -10,6 +10,7 @@ const approved = [
   ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(SITE + "/events")'],
   ["apps/driver/app/login.tsx", 'WebBrowser.openBrowserAsync(SITE + "/transport/become-driver")'],
   ["apps/user/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)"],
+  ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(tabs)/stays" as never)'],
   ["apps/driver/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)"],
   ["apps/driver/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")'],
 ];

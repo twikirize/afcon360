@@ -1,6 +1,5 @@
 import React from "react";
 import { useRouter } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
 import { ActionButton, AppScreen, PageHeader, Panel, SectionTitle, ServiceTile } from "@afcon360/mobile-ui";
 
 const SITE = "https://www.pamoja.space";
@@ -8,7 +7,7 @@ const SITE = "https://www.pamoja.space";
 export default function Explore() {
   const router = useRouter();
   return <AppScreen>
-    <PageHeader eyebrow="Explore" title="Make more of the journey." description="Use the native ride flow or open the existing AFCON360 services for stays, events and tourism." />
+    <PageHeader eyebrow="Explore" title="Make more of the journey." description="Book transport and accommodation natively. Events and tourism discovery still use the AFCON360 website while their native booking flows are built." />
     <Panel>
       <SectionTitle>Transport</SectionTitle>
       <ServiceTile title="Rides" description="On-demand transport with resolved locations, signed fares and server-certified payment options." symbol="🚘" />
@@ -17,7 +16,7 @@ export default function Explore() {
     <Panel>
       <SectionTitle>Accommodation</SectionTitle>
       <ServiceTile title="Stays" description="Discover properties and manage accommodation reservations." symbol="🏨" />
-      <ActionButton label="Explore stays on website" onPress={() => WebBrowser.openBrowserAsync(SITE + "/accommodation")} />
+      <ActionButton label="Find and book a stay" onPress={() => router.push("/(tabs)/stays" as never)} />
     </Panel>
     <Panel>
       <SectionTitle>Tourism and events</SectionTitle>
