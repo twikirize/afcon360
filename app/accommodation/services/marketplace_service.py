@@ -557,6 +557,7 @@ class MarketplaceService:
         """Submit a provider/manual exception for independent platform review."""
         from sqlalchemy import select
         from app.accommodation.services.identity_service import AccommodationIdentityService
+        from app.identity.models.user import User
 
         try:
             booking = db.session.execute(
@@ -710,6 +711,7 @@ class MarketplaceService:
     ) -> Tuple[bool, Optional[str]]:
         """Record a human rejection without changing the original payment."""
         from app.auth.helpers import has_global_role
+        from app.identity.models.user import User
         from sqlalchemy import select
 
         try:
