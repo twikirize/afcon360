@@ -26,7 +26,13 @@ export type MobileIdentity = {
 };
 
 export type MobileLoginResult =
-  | { mfaRequired: true; challengeToken: string; expiresIn: number }
+  | {
+      mfaRequired: true;
+      challengeToken: string;
+      expiresIn: number;
+      mfaType: "totp" | "sms";
+      destinationHint?: string;
+    }
   | { mfaRequired: false; user: MobileIdentity };
 
 export type MobileAuthClientOptions = {
