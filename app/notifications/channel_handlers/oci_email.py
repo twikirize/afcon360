@@ -22,8 +22,10 @@ class OCIEmailHandler(BaseChannelHandler):
         self.compartment_id = self._get_config('OCI_EMAIL_COMPARTMENT_ID')
         self.sender = self._get_config('OCI_EMAIL_SENDER_ADDRESS', 'noreply@pamoja.space')
         self.use_suppression = self._get_config('OCI_EMAIL_SUPPRESSION_LIST', True, 'bool')
+        # Credential resolution can perform network I/O against OCI instance
+        # metadata. Keep it lazy so importing notifications never blocks app
+        # startup on non-OCI hosts or in tests without OCI configuration.
         self._email_client = None
-        self._init_client()
 
     def _get_config(self, key: str, default=None, value_type: str = 'str'):
         """Read from SystemConfig (DB) first, then env, then default."""
@@ -75,19 +77,40 @@ class OCIEmailHandler(BaseChannelHandler):
             self._email_client = None
     
     def _check_oracle_metadata(self) -> bool:
-        """Quick check if running on Oracle Cloud (metadata service reachable)."""
-        import socket
+        """Return True only when OCI's authenticated instance metadata is valid.
+
+        A TCP listener on 169.254.169.254 is not proof of an OCI instance:
+        other cloud runners also expose link-local metadata services. Confirm
+        the OCI v2 endpoint and its authenticated response before asking the
+        OCI SDK to construct an Instance Principals signer.
+        """
+        import json
+        from urllib.error import HTTPError, URLError
+        from urllib.request import Request, urlopen
+
+        request = Request(
+            "http://169.254.169.254/opc/v2/instance/",
+            headers={"Authorization": "Bearer Oracle"},
+            method="GET",
+        )
         try:
-            # Oracle metadata service IP with very short timeout
-            sock = socket.create_connection(('169.254.169.254', 80), timeout=2)
-            sock.close()
-            return True
-        except Exception:
+            with urlopen(request, timeout=1.5) as response:
+                if getattr(response, "status", 200) != 200:
+                    return False
+                payload = json.loads(response.read(65536).decode("utf-8"))
+            return (
+                isinstance(payload, dict)
+                and bool(payload.get("id"))
+                and bool(payload.get("region"))
+            )
+        except (HTTPError, URLError, OSError, ValueError, UnicodeDecodeError):
             return False
 
     @property
     def email_client(self):
-        if self._email_client is None:
+        # No compartment means OCI email is not configured. Do not probe
+        # instance metadata or require a local OCI config file in that case.
+        if self._email_client is None and self.compartment_id:
             self._init_client()
         return self._email_client
 

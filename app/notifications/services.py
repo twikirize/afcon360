@@ -431,7 +431,7 @@ class NotificationService:
                 channels_to_try = [channel_str] + fallback_channels
                 
                 for try_channel in channels_to_try:
-                    try_handler = cls.HANDLERS.get(try_channel)
+                    try_handler = cls.HANDLERS.get(NotificationChannel(try_channel))
                     if not try_handler:
                         continue
                     

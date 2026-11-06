@@ -20,7 +20,11 @@ class _SuccessfulInAppHandler:
         return bool(recipient.get("user_id"))
 
     def deliver(self, notification, recipient):
-        return {"external_id": f"test-{notification.id}", "response_code": 200}
+        return {
+            "success": True,
+            "external_id": f"test-{notification.id}",
+            "response_code": 200,
+        }
 
 
 def test_scheduled_notification_delivery_reuses_original_row(
@@ -154,3 +158,26 @@ def test_scheduled_reminder_batches_advance_without_starving_later_rows(
     third = schedule_reminders_task.run(batch_size=25)
     assert third["dispatched"] == 0
     assert len(dispatched_ids) == 30
+
+
+def test_oci_email_handler_defers_credentials_until_configured_delivery(monkeypatch):
+    from app.notifications.channel_handlers.oci_email import OCIEmailHandler
+
+    monkeypatch.setattr(
+        OCIEmailHandler,
+        "_get_config",
+        lambda self, key, default=None, value_type="str": default,
+    )
+    handler = OCIEmailHandler()
+    initialization_calls = []
+
+    def initialize():
+        initialization_calls.append("attempted")
+
+    monkeypatch.setattr(handler, "_init_client", initialize)
+    assert handler.email_client is None
+    assert initialization_calls == []
+
+    handler.compartment_id = "ocid1.compartment.test"
+    assert handler.email_client is None
+    assert initialization_calls == ["attempted"]
