@@ -269,7 +269,7 @@
                                    value="" autocomplete="new-password"
                                    placeholder="Leave blank to keep the saved token">
                             <small class="text-muted">
-                                {% if config.twilio_auth_token %}A saved token is present; its value is hidden.{% else %}Enter a token to configure or rotate it.{% endif %}
+                                {% if twilio_token_configured %}A saved token is present; its value is hidden.{% else %}Enter a token to configure or rotate it.{% endif %}
                             </small>
                         </div>
                         <div class="col-md-4 mb-3 d-flex align-items-end">
