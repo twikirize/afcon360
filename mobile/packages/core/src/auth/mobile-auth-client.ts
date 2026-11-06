@@ -14,6 +14,8 @@ type Envelope<T> = {
   code?: string;
   mfa_required?: boolean;
   challenge_token?: string;
+  mfa_type?: "totp" | "sms";
+  destination_hint?: string;
   expires_in?: number;
   data?: T;
 };
@@ -223,7 +225,9 @@ export class MobileAuthClient {
         return {
           mfaRequired: true,
           challengeToken: response.challenge_token,
-          expiresIn: response.expires_in ?? 300
+          expiresIn: response.expires_in ?? 300,
+          mfaType: response.mfa_type ?? "totp",
+          destinationHint: response.destination_hint
         };
       }
       if (!response.data) {

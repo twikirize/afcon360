@@ -14,7 +14,7 @@ Audit baseline: `37f5d2c3b6ad606a6fa269693f6416aacce6c8f2` (main, 4 November 202
 | Method | Endpoint | Purpose |
 |---|---|---|
 | POST | `/api/mobile/v1/auth/login` | Uses the canonical `authenticate_user()` password/lockout logic and creates existing server/device session records. |
-| POST | `/api/mobile/v1/auth/mfa/verify` | Completes TOTP or backup-code verification through existing Auth verification logic. |
+| POST | `/api/mobile/v1/auth/mfa/verify` | Completes a one-time TOTP/backup-code or SMS challenge through the canonical Auth verifier. SMS is only issued to a verified E.164 phone when an owner-configured provider is available. |
 | POST | `/api/mobile/v1/auth/refresh` | Rotates one-time opaque refresh tokens; detects replay and revokes the device/server session. |
 | POST | `/api/mobile/v1/auth/logout` | Revokes the current device and server sessions. |
 | GET | `/api/mobile/v1/auth/me` | Returns minimal account identity and eligible contexts. |
@@ -26,7 +26,7 @@ Access tokens are random opaque values, with only SHA-256 digests as Redis keys;
 
 Native password recovery uses a six-digit code delivered to the account's registered email address. The code expires after 10 minutes, is stored as a keyed hash, is rate-limited, and is atomically consumed once; incorrect attempts do not consume the code. The request endpoint deliberately gives the same response when no matching active account exists. A successful password reset revokes previous server and native device sessions. The User and Driver apps keep this flow inside their native screens.
 
-**MFA limitation:** native sign-in and account deletion currently support enrolled TOTP and TOTP backup codes only. Existing SMS MFA is not a completed verifier in the Auth implementation; native sign-in rejects it rather than treating an SMS code as valid. This needs a canonical Auth decision before supporting SMS.
+**MFA contract:** TOTP and TOTP backup codes use the canonical Auth verifier. The server-side SMS MFA follow-up PR #41 adds one-time SMS challenges only for users with a verified E.164 phone number and a configured Twilio or Africa's Talking provider. The native clients show the masked destination and request a six-digit SMS code. SMS must remain unavailable when delivery configuration is missing; it must never silently fall back to console logging. PR #41 is still subject to server CI and provider-delivery validation before SMS MFA can be treated as release-ready.
 
 ## Implemented User / Transport contract
 

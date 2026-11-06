@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Text, View } from "react-native";
+import React, { useCallback, useState } from "react";
+import { ActivityIndicator, Alert, AppState, Text, View } from "react-native";
 import {
   ActionButton,
   AppScreen,
@@ -10,6 +10,7 @@ import {
   StatusPill,
   palette
 } from "@afcon360/mobile-ui";
+import { useFocusEffect } from "expo-router";
 import { authClient } from "../../src/services/api";
 
 type ActiveTrip = {
@@ -59,11 +60,25 @@ export default function Trips() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-    const interval = setInterval(() => { void load(); }, 15000);
-    return () => clearInterval(interval);
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+
+      // The Trips tab and Driver dashboard share the active-trip API.
+      // Poll only while Trips is visible and refresh immediately on resume.
+      const subscription = AppState.addEventListener("change", state => {
+        if (state === "active") void load();
+      });
+      const interval = setInterval(() => {
+        if (AppState.currentState === "active") void load();
+      }, 15000);
+
+      return () => {
+        clearInterval(interval);
+        subscription.remove();
+      };
+    }, [load])
+  );
 
   async function advance(action: string) {
     if (!trip) return;

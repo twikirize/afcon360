@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import React, { useCallback, useState } from "react";
+import { ActivityIndicator, AppState, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { AppScreen, PageHeader, Panel, SectionTitle, StatusPill, palette, EmptyState } from "@afcon360/mobile-ui";
+import { useFocusEffect } from "expo-router";
 import { authClient } from "../../src/services/api";
 
 type ActivityItem = { request_id: string; booking_reference: string; status: string; converted?: boolean; booking_status?: string; created_at?: string; fare_estimate?: { amount?: number; currency?: string } };
@@ -22,7 +23,15 @@ export default function Activity() {
       setLoading(false);
     }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+      const subscription = AppState.addEventListener("change", state => {
+        if (state === "active") void load();
+      });
+      return () => subscription.remove();
+    }, [load])
+  );
 
   return <AppScreen>
     <PageHeader eyebrow="Your activity" title="Your rides and bookings." description="Recent transport requests are loaded from AFCON360. Other services remain managed by their owning booking modules." />

@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import React, { useCallback, useState } from "react";
+import { ActivityIndicator, AppState, Text, View } from "react-native";
 import {
   ActionButton,
   AppScreen,
@@ -10,6 +10,7 @@ import {
   StatusPill,
   palette
 } from "@afcon360/mobile-ui";
+import { useFocusEffect } from "expo-router";
 import { authClient } from "../../src/services/api";
 
 type Earning = {
@@ -39,7 +40,15 @@ export default function Earnings() {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+      const subscription = AppState.addEventListener("change", state => {
+        if (state === "active") void load();
+      });
+      return () => subscription.remove();
+    }, [load])
+  );
 
   return (
     <AppScreen>

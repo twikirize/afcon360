@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import React, { useCallback, useState } from "react";
+import { ActivityIndicator, AppState, Text, View } from "react-native";
 import { AppScreen, PageHeader, Panel, SectionTitle, StatusPill, palette } from "@afcon360/mobile-ui";
+import { useFocusEffect } from "expo-router";
 import { authClient } from "../../src/services/api";
 
 type WalletData = { exists: boolean; balance?: string | number; currency?: string; is_frozen?: boolean };
@@ -19,7 +20,15 @@ export default function Wallet() {
       setLoading(false);
     }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+      const subscription = AppState.addEventListener("change", state => {
+        if (state === "active") void load();
+      });
+      return () => subscription.remove();
+    }, [load])
+  );
 
   return <AppScreen>
     <PageHeader eyebrow="Wallet" title="Your money, clearly managed." description="Balances and payment status are returned by the AFCON360 Wallet ledger. No balance is calculated or stored in this app." />
