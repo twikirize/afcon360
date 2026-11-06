@@ -383,3 +383,190 @@ def test_native_deposit_refresh_is_owner_scoped_and_returns_pending_when_provide
     assert response.status_code == 202
     assert response.get_json()["data"]["status"] == "pending"
     assert response.get_json()["data"]["reference"] == "NATDEP-OWNED-REFERENCE"
+
+
+def test_flutterwave_verification_does_not_consume_intent_while_payment_is_pending(app, monkeypatch):
+    import app.wallet.payments.flutterwave as flutterwave_module
+    from app.wallet.payments.flutterwave import FlutterwaveService
+    from app.wallet.services import deposit_intent
+
+    captured = {"marked": []}
+    intent = {
+        "account_id": "wallet-uuid",
+        "user_id": 748,
+        "amount": "7000.00",
+        "currency": "UGX",
+        "payment_method": "mobilemoney",
+        "status": "pending",
+    }
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"data": {"status": "pending", "amount": "7000", "currency": "UGX"}}
+
+    monkeypatch.setattr(deposit_intent, "get_deposit_intent", lambda reference: dict(intent))
+    monkeypatch.setattr(
+        deposit_intent,
+        "mark_deposit_intent_status",
+        lambda reference, status: captured["marked"].append((reference, status)),
+    )
+    monkeypatch.setattr(
+        flutterwave_module.requests,
+        "get",
+        lambda *args, **kwargs: FakeResponse(),
+    )
+
+    with app.app_context():
+        app.config["FLUTTERWAVE_BASE_URL"] = "https://flutterwave.test"
+        app.config["FLUTTERWAVE_SECRET_KEY"] = "test-secret"
+        service = FlutterwaveService.__new__(FlutterwaveService)
+        service.wallet_service = SimpleNamespace(
+            deposit=lambda **kwargs: pytest.fail("Pending provider payments must never credit the ledger")
+        )
+        result = service.verify_and_credit("NATDEP-PENDING-REFERENCE")
+
+    assert result["success"] is False
+    assert result["status"] == "pending"
+    assert captured["marked"] == []
+
+
+def test_flutterwave_verification_credits_only_matching_provider_amount_and_currency(app, monkeypatch):
+    import app.wallet.payments.flutterwave as flutterwave_module
+    from app.wallet.payments.flutterwave import FlutterwaveService
+    from app.wallet.services import deposit_intent
+
+    intent = {
+        "account_id": "wallet-uuid",
+        "user_id": 749,
+        "amount": "7000.00",
+        "currency": "UGX",
+        "payment_method": "mobilemoney",
+        "audit_transaction_id": "audit-deposit-749",
+        "status": "pending",
+    }
+    captured = {"marked": [], "deposit": None}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "data": {
+                    "status": "successful",
+                    "amount": "7000",
+                    "currency": "UGX",
+                    "id": "provider-payment-749",
+                }
+            }
+
+    class FakeLedgerRepository:
+        def get_balance(self, account_id, currency):
+            assert account_id == "wallet-uuid"
+            assert currency == "UGX"
+            return Decimal("1000.00")
+
+    class FakeWalletService:
+        def deposit(self, **kwargs):
+            captured["deposit"] = kwargs
+            return {
+                "status": "success",
+                "transaction_id": "ledger-transaction-749",
+                "already_processed": False,
+            }
+
+    monkeypatch.setattr(deposit_intent, "get_deposit_intent", lambda reference: dict(intent))
+    monkeypatch.setattr(
+        deposit_intent,
+        "mark_deposit_intent_status",
+        lambda reference, status: captured["marked"].append((reference, status)),
+    )
+    monkeypatch.setattr(
+        flutterwave_module.requests,
+        "get",
+        lambda *args, **kwargs: FakeResponse(),
+    )
+    monkeypatch.setattr(
+        "app.wallet.repositories.ledger_repository.LedgerRepository",
+        FakeLedgerRepository,
+    )
+    monkeypatch.setattr(
+        flutterwave_module.AuditService,
+        "financial",
+        lambda **kwargs: None,
+    )
+
+    with app.app_context():
+        app.config["FLUTTERWAVE_BASE_URL"] = "https://flutterwave.test"
+        app.config["FLUTTERWAVE_SECRET_KEY"] = "test-secret"
+        service = FlutterwaveService.__new__(FlutterwaveService)
+        service.wallet_service = FakeWalletService()
+        result = service.verify_and_credit("NATDEP-COMPLETED-REFERENCE")
+
+    assert result["success"] is True
+    assert result["status"] == "completed"
+    assert captured["deposit"]["account_id"] == "wallet-uuid"
+    assert captured["deposit"]["client_request_id"] == "NATDEP-COMPLETED-REFERENCE"
+    assert captured["deposit"]["system_initiated"] is True
+    assert captured["deposit"]["amount"] == Decimal("7000.00")
+    assert captured["marked"] == [("NATDEP-COMPLETED-REFERENCE", "completed")]
+
+
+def test_flutterwave_amount_or_currency_mismatch_fails_without_wallet_credit(app, monkeypatch):
+    import app.wallet.payments.flutterwave as flutterwave_module
+    from app.wallet.payments.flutterwave import FlutterwaveService
+    from app.wallet.services import deposit_intent
+
+    intent = {
+        "account_id": "wallet-uuid",
+        "user_id": 750,
+        "amount": "7000.00",
+        "currency": "UGX",
+        "payment_method": "mobilemoney",
+        "status": "pending",
+    }
+    marked = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "data": {
+                    "status": "successful",
+                    "amount": "6999",
+                    "currency": "UGX",
+                    "id": "provider-payment-wrong-amount",
+                }
+            }
+
+    monkeypatch.setattr(deposit_intent, "get_deposit_intent", lambda reference: dict(intent))
+    monkeypatch.setattr(
+        deposit_intent,
+        "mark_deposit_intent_status",
+        lambda reference, status: marked.append((reference, status)),
+    )
+    monkeypatch.setattr(
+        flutterwave_module.requests,
+        "get",
+        lambda *args, **kwargs: FakeResponse(),
+    )
+
+    with app.app_context():
+        app.config["FLUTTERWAVE_BASE_URL"] = "https://flutterwave.test"
+        app.config["FLUTTERWAVE_SECRET_KEY"] = "test-secret"
+        service = FlutterwaveService.__new__(FlutterwaveService)
+        service.wallet_service = SimpleNamespace(
+            deposit=lambda **kwargs: pytest.fail("A mismatched provider payment must never credit the ledger")
+        )
+        result = service.verify_and_credit("NATDEP-MISMATCH-REFERENCE")
+
+    assert result["success"] is False
+    assert result["status"] == "failed"
+    assert marked == [("NATDEP-MISMATCH-REFERENCE", "failed")]
