@@ -77,7 +77,9 @@ class MarketplaceService:
         booking: AccommodationBooking,
         total_amount: Decimal,
         currency: str,
-        idempotency_key: str
+        idempotency_key: str,
+        transaction_pin: Optional[str] = None,
+        authorized_user_id: Optional[int] = None,
     ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         Charge guest and hold funds in platform escrow.
@@ -90,6 +92,15 @@ class MarketplaceService:
             (success, transaction_id, error_message)
         """
         try:
+            if authorized_user_id is not None and int(booking.booked_by_user_id or 0) != int(authorized_user_id):
+                return False, None, "Authenticated user is not the booking payer."
+
+            existing_commission = BookingCommission.query.filter_by(booking_id=booking.id).first()
+            if existing_commission is not None:
+                if existing_commission.status == "held" and booking.wallet_txn_id:
+                    return True, str(booking.wallet_txn_id), None
+                return False, None, f"Booking payment is already {existing_commission.status}."
+
             guest_account_id = MarketplaceService._get_account_for_user(
                 booking.booked_by_user_id, currency
             )
@@ -121,6 +132,8 @@ class MarketplaceService:
                 },
                 platform_fee=commission_amount,
                 fee_currency=currency,
+                pin=transaction_pin,
+                authorized_user_id=authorized_user_id,
             )
 
             txn_id = result.get('transaction_id')
@@ -199,6 +212,7 @@ class MarketplaceService:
                     'booking_reference': booking.booking_reference,
                     'commission_id': str(commission.id),
                 },
+                system_initiated=True,
             )
 
             txn_id = result.get('transaction_id')
@@ -257,6 +271,7 @@ class MarketplaceService:
                     'booking_reference': booking.booking_reference,
                     'refund_amount': str(refund_amount),
                 },
+                system_initiated=True,
             )
 
             txn_id = result.get('transaction_id')
