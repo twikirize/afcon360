@@ -157,12 +157,13 @@ class FXService:
 
     def _fetch_from_api_safe(self, base: str, quote: str) -> Decimal:
         """
-        Fetch an executable FX rate from the configured provider extension.
+        Fetch an executable rate from a registered provider adapter.
 
-        All cross pairs are derived through USD. The old random-jitter mock
-        table is deliberately not used for payment execution. Without an
-        installed executable provider this method halts rather than creating
-        a guessed debit or provider settlement amount.
+        Cross-currency pairs are always routed through USD:
+            KES -> NGN = (1 / USD->KES) * (USD->NGN)
+
+        The legacy mock-rate table is not an executable source and is never
+        used to authorize Wallet debits, deposits, transfers or settlement.
         """
         base = str(base or "").strip().upper()
         quote = str(quote or "").strip().upper()
@@ -172,40 +173,46 @@ class FXService:
         provider = current_app.extensions.get("fx_rate_provider")
         if provider is None or not callable(getattr(provider, "get_rate", None)):
             raise RateUnavailableError(
-                "No executable FX provider is configured. Indicative/mock rates "
-                "cannot be used for a Wallet debit or provider settlement."
+                "No executable FX provider is configured. Indicative or mock rates "
+                "cannot authorize a Wallet debit or provider settlement."
             )
 
-        source_name = str(
-            getattr(provider, "source_name", None)
-            or provider.__class__.__name__
-        )[:80]
-
-        def _usd_to(currency: str) -> Decimal:
+        def _provider_usd_pair(currency: str) -> Decimal:
             result = provider.get_rate(
                 base_currency=self.BASE_CURRENCY,
                 quote_currency=currency,
             )
-            raw_rate = getattr(result, "rate", result)
+            if isinstance(result, dict):
+                raw_rate = result.get("rate")
+                source = result.get("source")
+            else:
+                raw_rate = getattr(result, "rate", result)
+                source = getattr(result, "source", None)
             rate = Decimal(str(raw_rate))
             if not rate.is_finite() or rate <= 0:
                 raise RateUnavailableError(
                     f"The configured provider returned an invalid USD/{currency} rate."
                 )
+            self._last_rate_source = str(
+                source
+                or getattr(provider, "source_name", None)
+                or provider.__class__.__name__
+            )[:80]
             return rate
 
         if base == self.BASE_CURRENCY:
-            rate = _usd_to(quote)
+            rate = _provider_usd_pair(quote)
         elif quote == self.BASE_CURRENCY:
-            rate = Decimal("1") / _usd_to(base)
+            rate = Decimal("1") / _provider_usd_pair(base)
         else:
-            # KES -> USD -> NGN, for example. Each cross pair is built from
-            # independently sourced USD legs, never from a hardcoded cross rate.
-            rate = (Decimal("1") / _usd_to(base)) * _usd_to(quote)
+            usd_to_base = _provider_usd_pair(base)
+            usd_to_quote = _provider_usd_pair(quote)
+            rate = (Decimal("1") / usd_to_base) * usd_to_quote
 
-        self._last_rate_source = source_name
         if not rate.is_finite() or rate <= 0:
-            raise RateUnavailableError(f"The configured provider returned an invalid {base}/{quote} rate.")
+            raise RateUnavailableError(
+                f"The configured provider returned an invalid {base}/{quote} rate."
+            )
         return rate
 
     def _get_mock_rates(self) -> Dict:
