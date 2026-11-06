@@ -91,7 +91,7 @@ class FlutterwaveService:
                 "Content-Type": "application/json"
             }
 
-            response = requests.post(url, json=payload, headers=headers)
+            response = requests.post(url, json=payload, headers=headers, timeout=25)
             provider_response = response.json()
             response_time_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
 
@@ -325,6 +325,7 @@ class FlutterwaveService:
                     'reference': reference,
                     'provider_request_id': provider_request_id,
                     'provider_reference': provider_reference,
+                    'authorization_url': authorization_url,
                     'audit_transaction_id': audit_transaction_id,
                     'status': 'pending',
                 })
@@ -364,20 +365,37 @@ class FlutterwaveService:
             }
 
     def verify_and_credit(self, reference: str) -> Dict:
-        """Verify a Flutterwave transaction and credit the wallet ledger.
+        """Verify a provider payment before crediting the owner-scoped wallet.
 
-        Called by the Flutterwave callback/webhook. Resolves the pending deposit
-        intent, verifies the transaction with Flutterwave, and credits the ledger
-        (system-initiated). Idempotent: a consumed intent can only be credited once.
+        The intent is intentionally retained until the ledger confirms the credit.
+        A transient verification or database failure can therefore be retried,
+        while WalletService's unique client_request_id prevents duplicate credits.
         """
         from app.wallet.services.deposit_intent import (
-            consume_deposit_intent, mark_deposit_intent_status
+            get_deposit_intent,
+            mark_deposit_intent_status,
         )
+        from app.wallet.repositories.ledger_repository import LedgerRepository
+
+        if not reference or len(str(reference)) > 128:
+            return {"success": False, "status": "failed", "error": "Invalid deposit reference"}
 
         try:
-            intent = consume_deposit_intent(reference)
+            intent = get_deposit_intent(reference)
             if not intent:
-                return {'success': False, 'error': 'Unknown or expired deposit reference'}
+                return {"success": False, "status": "not_found", "error": "Unknown or expired deposit reference"}
+
+            current_status = str(intent.get("status") or "pending").lower()
+            if current_status == "completed":
+                return {
+                    "success": True,
+                    "status": "completed",
+                    "reference": reference,
+                    "account_id": str(intent.get("account_id")),
+                    "already_processed": True,
+                }
+            if current_status == "failed":
+                return {"success": False, "status": "failed", "error": "This deposit was not completed"}
 
             url = (
                 f"{current_app.config['FLUTTERWAVE_BASE_URL']}"
@@ -386,70 +404,104 @@ class FlutterwaveService:
             headers = {
                 "Authorization": f"Bearer {current_app.config['FLUTTERWAVE_SECRET_KEY']}"
             }
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=20)
+            response.raise_for_status()
             data = response.json()
-            status = (data.get('data') or {}).get('status')
+            provider_data = data.get("data") or {}
+            provider_status = str(provider_data.get("status") or "").lower()
 
-            if status != 'successful':
-                mark_deposit_intent_status(reference, 'failed')
-                return {'success': False, 'error': f'Flutterwave status: {status}'}
+            if provider_status not in {"successful"}:
+                if provider_status in {"failed", "cancelled", "canceled", "reversed"}:
+                    mark_deposit_intent_status(reference, "failed")
+                    return {
+                        "success": False,
+                        "status": "failed",
+                        "error": f"Flutterwave status: {provider_status}",
+                    }
+                return {
+                    "success": False,
+                    "status": "pending",
+                    "error": "Flutterwave has not confirmed this payment yet",
+                }
 
-            user_id = intent['user_id']
-            amount = Decimal(str(intent['amount']))
-            currency = intent['currency']
+            user_id = int(intent["user_id"])
+            account_id = str(intent["account_id"])
+            amount = Decimal(str(intent["amount"]))
+            currency = str(intent["currency"]).upper()
 
-            current_balance = self.wallet_service.get_balance(user_id)
-            balance_before = Decimal(current_balance.get('balance_home', '0'))
+            # Do not trust amount/currency supplied by a browser redirect or webhook.
+            # Verify the provider's settled amount and currency against the intent.
+            provider_amount = Decimal(str(provider_data.get("amount", "0")))
+            provider_currency = str(provider_data.get("currency") or "").upper()
+            if provider_amount != amount or provider_currency != currency:
+                logger.error(
+                    "Flutterwave amount/currency mismatch for deposit reference %s",
+                    reference,
+                )
+                mark_deposit_intent_status(reference, "failed")
+                return {
+                    "success": False,
+                    "status": "failed",
+                    "error": "The provider payment did not match the requested amount and currency",
+                }
 
+            balance_before = LedgerRepository().get_balance(account_id, currency)
             deposit_result = self.wallet_service.deposit(
-                account_id=str(intent['account_id']),
+                account_id=account_id,
                 amount=amount,
                 currency=currency,
                 client_request_id=reference,
                 system_initiated=True,
                 payment_provider="flutterwave",
-                payment_method=intent.get('payment_method', 'card'),
-                external_reference=(data.get('data') or {}).get('id'),
+                payment_method=intent.get("payment_method", "card"),
+                external_reference=str(provider_data.get("id") or intent.get("provider_reference") or reference),
                 metadata={
                     "source": "flutterwave",
-                    "provider_reference": intent.get('provider_reference'),
-                    "flutterwave_status": status,
-                    "audit_transaction_id": intent.get('audit_transaction_id'),
-                }
+                    "provider_reference": intent.get("provider_reference"),
+                    "flutterwave_status": provider_status,
+                    "audit_transaction_id": intent.get("audit_transaction_id"),
+                },
             )
 
-            mark_deposit_intent_status(reference, 'completed')
-
-            if deposit_result.get('status') == 'success':
-                try:
-                    AuditService.financial(
-                        transaction_id=intent.get('audit_transaction_id'),
-                        transaction_type=TransactionType.DEPOSIT,
-                        amount=amount,
-                        currency=currency,
-                        status="completed",
-                        to_user_id=user_id,
-                        to_balance_before=float(balance_before),
-                        payment_method=intent.get('payment_method', 'card'),
-                        payment_provider="flutterwave",
-                        api_call_status=APICallStatus.SUCCESS,
-                        metadata={"stage": "webhook_processed"}
-                    )
-                except Exception as e:
-                    current_app.logger.error(f"Audit update failed: {e}")
-
+            if deposit_result.get("status") != "success":
                 return {
-                    'success': True,
-                    'reference': reference,
-                    'account_id': str(intent['account_id'])
+                    "success": False,
+                    "status": "pending",
+                    "error": "Flutterwave confirmed the payment but the Wallet ledger has not confirmed the credit",
                 }
 
-            return {
-                'success': False,
-                'error': 'Failed to deposit to wallet',
-                'detail': deposit_result
-            }
+            # The same provider reference remains available for duplicate callbacks.
+            # WalletService.deposit is idempotent for this client_request_id.
+            mark_deposit_intent_status(reference, "completed")
 
-        except Exception as e:
-            current_app.logger.error(f"Flutterwave verify error: {e}")
-            return {'success': False, 'error': str(e)}
+            try:
+                AuditService.financial(
+                    transaction_id=intent.get("audit_transaction_id"),
+                    transaction_type=TransactionType.DEPOSIT,
+                    amount=amount,
+                    currency=currency,
+                    status="completed",
+                    to_user_id=user_id,
+                    to_balance_before=float(balance_before),
+                    payment_method=intent.get("payment_method", "card"),
+                    payment_provider="flutterwave",
+                    api_call_status=APICallStatus.SUCCESS,
+                    metadata={"stage": "provider_verified_and_ledger_credited"},
+                )
+            except Exception:
+                current_app.logger.exception("Flutterwave deposit audit completion failed")
+
+            return {
+                "success": True,
+                "status": "completed",
+                "reference": reference,
+                "account_id": account_id,
+                "already_processed": bool(deposit_result.get("already_processed", False)),
+            }
+        except Exception:
+            current_app.logger.exception("Flutterwave verification or Wallet credit failed for reference %s", reference)
+            return {
+                "success": False,
+                "status": "pending",
+                "error": "AFCON360 could not verify or record this deposit yet. Please refresh the payment status.",
+            }
