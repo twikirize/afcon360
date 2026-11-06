@@ -39,6 +39,10 @@ class RateUnavailableError(Exception):
 class FXService:
     """Foreign exchange service with intelligent safety halts."""
 
+    # FX is always referenced through USD. This does not determine a user's
+    # wallet denomination; user accounts remain in their accepted chosen currency.
+    BASE_CURRENCY = "USD"
+
     # Safety thresholds
     MAX_RATE_AGE_SECONDS = 120  # 2 minutes max - forces frequent updates
     MAX_DEVIATION_PERCENT = Decimal('2.0')  # 2% max deviation from API
@@ -153,29 +157,59 @@ class FXService:
 
     def _fetch_from_api_safe(self, base: str, quote: str) -> Decimal:
         """
-        Fetch rate from API with timeout and fallback.
-        Source of truth - if API fails, we HALT.
+        Resolve a currency pair using USD as the platform FX reference.
+
+        USD itself can be resolved from a configured direct/inverse reference
+        rate. Every non-USD cross pair is calculated as:
+            base -> USD -> quote
+
+        The current provider adapter below still uses its documented mock
+        reference table. This method does not claim those mock values are live
+        market rates; a production rate provider remains a separate requirement.
         """
-        # TODO: Replace with actual API integration
-        # For now, use mock data with realistic variability
+        base = str(base or "").strip().upper()
+        quote = str(quote or "").strip().upper()
+        if base == quote:
+            return Decimal("1")
+
         mock_rates = self._get_mock_rates()
 
-        pair = (base, quote)
-        if pair in mock_rates:
-            # Add small random variation to simulate real market
-            import random
-            variation = Decimal(str(random.uniform(0.995, 1.005)))
-            return mock_rates[pair] * variation
+        def _reference_pair(source: str, target: str) -> Decimal:
+            pair = (source, target)
+            if pair in mock_rates:
+                return Decimal(str(mock_rates[pair]))
 
-        # Try inverse
-        inverse_pair = (quote, base)
-        if inverse_pair in mock_rates:
-            inverse_rate = mock_rates[inverse_pair]
-            variation = Decimal(str(random.uniform(0.995, 1.005)))
-            return (Decimal('1') / inverse_rate) * variation
+            inverse_pair = (target, source)
+            if inverse_pair in mock_rates:
+                inverse_rate = Decimal(str(mock_rates[inverse_pair]))
+                if inverse_rate <= 0:
+                    raise RateUnavailableError(
+                        f"Invalid inverse rate for {source}/{target}"
+                    )
+                return Decimal("1") / inverse_rate
 
-        # No rate available - HALT
-        raise RateUnavailableError(f"No rate available for {base}/{quote}")
+            raise RateUnavailableError(
+                f"No USD reference rate available for {source}/{target}"
+            )
+
+        # Route all non-USD crosses through the same base reference. Do not
+        # prefer a legacy direct mock pair such as UGX/NGN over the USD bridge.
+        if base != self.BASE_CURRENCY and quote != self.BASE_CURRENCY:
+            base_to_usd = _reference_pair(base, self.BASE_CURRENCY)
+            usd_to_quote = _reference_pair(self.BASE_CURRENCY, quote)
+            rate = base_to_usd * usd_to_quote
+        else:
+            rate = _reference_pair(base, quote)
+
+        if rate <= 0:
+            raise RateUnavailableError(f"Non-positive FX rate for {base}/{quote}")
+
+        # Retain the existing small simulation variation only for mock
+        # reference data. Replace this adapter with a real provider before
+        # production cross-border conversions are enabled.
+        import random
+        variation = Decimal(str(random.uniform(0.995, 1.005)))
+        return rate * variation
 
     def _get_mock_rates(self) -> Dict:
         """Mock rates - replace with real API."""
@@ -247,8 +281,25 @@ class FXService:
             )
             db.session.add(existing)
 
-        db.session.commit()
-        current_app.logger.info(f"✅ Rate updated: {base}/{quote} = {rate}")
+        # FX lookups can occur inside an explicitly managed wallet ledger
+        # transaction. Never commit that caller's financial transaction while
+        # merely refreshing a cache row; flush it and let the wallet operation
+        # own commit/rollback. Standalone lookup requests retain the convenience
+        # of committing their own rate-cache update.
+        session = db.session()
+        transaction = session.get_transaction()
+        origin = getattr(getattr(transaction, "origin", None), "name", None)
+        explicitly_managed = origin == "BEGIN" or session.in_nested_transaction()
+        if explicitly_managed:
+            session.flush()
+        else:
+            session.commit()
+
+        current_app.logger.info(
+            "FX reference rate refreshed: %s/%s (source=mock_reference)",
+            base,
+            quote,
+        )
         return existing
 
     def _log_rate_anomaly(self, base: str, quote: str, old_rate: Decimal, new_rate: Decimal, deviation: Decimal):
@@ -326,7 +377,7 @@ class FXService:
             'rate_age_seconds': self._get_rate_age_seconds(fx_rate_model)
         }
 
-    def get_all_rates_safe(self, base_currency: str = "USD") -> List[Dict]:
+    def get_all_rates_safe(self, base_currency: str = BASE_CURRENCY) -> List[Dict]:
         """Get all rates with individual error handling."""
         rates = []
         db.session.rollback()  # Clear any stale session state
