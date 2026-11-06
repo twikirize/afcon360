@@ -314,11 +314,11 @@ jobs:
           chmod +x "$tmp_bin/pg_isready" "$tmp_bin/nc" "$tmp_bin/celery"
 
           args_file="$tmp_bin/celery.args"
-          env PATH="$tmp_bin:$PATH" CONTAINER_ROLE=celery DATABASE_URL=postgresql://ci:ci@localhost/ci REDIS_URL=redis://localhost:6379/0 SECRET_KEY=ci-secret SECURITY_SALT=ci-salt CELERY_ARGS_FILE="$args_file" ./docker-entrypoint.sh celery >/dev/null
+          env PATH="$tmp_bin:$PATH" CONTAINER_ROLE=celery DATABASE_URL=postgresql://ci:ci@localhost/ci REDIS_URL=redis://localhost:6379/0 SECRET_KEY=ci-secret SECURITY_SALT=ci-salt CELERY_ARGS_FILE="$args_file" bash ./docker-entrypoint.sh celery >/dev/null
           grep -qx -- '-Q' "$args_file"
           grep -qx -- 'critical,default,bulk' "$args_file"
 
-          env PATH="$tmp_bin:$PATH" CONTAINER_ROLE=celery CELERY_QUEUES=bulk DATABASE_URL=postgresql://ci:ci@localhost/ci REDIS_URL=redis://localhost:6379/0 SECRET_KEY=ci-secret SECURITY_SALT=ci-salt CELERY_ARGS_FILE="$args_file" ./docker-entrypoint.sh celery >/dev/null
+          env PATH="$tmp_bin:$PATH" CONTAINER_ROLE=celery CELERY_QUEUES=bulk DATABASE_URL=postgresql://ci:ci@localhost/ci REDIS_URL=redis://localhost:6379/0 SECRET_KEY=ci-secret SECURITY_SALT=ci-salt CELERY_ARGS_FILE="$args_file" bash ./docker-entrypoint.sh celery >/dev/null
           grep -qx -- 'bulk' "$args_file"
 
       - name: Parse changed Jinja templates without database access
