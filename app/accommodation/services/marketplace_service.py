@@ -18,7 +18,7 @@ from sqlalchemy.exc import OperationalError
 from app.extensions import db
 from app.wallet.services.wallet_service import WalletService
 from app.wallet.services.commission_service import CommissionService
-from app.wallet.models.ledger import AccountModel, AccountOwnerType
+from app.wallet.models.ledger import AccountModel, AccountOwnerType, AccountStatus, AccountType
 from app.wallet.repositories.account_repository import AccountRepository
 from app.wallet.repositories.transaction_repository import TransactionRepository
 from app.accommodation.models.booking import AccommodationBooking
@@ -39,26 +39,71 @@ class MarketplaceService:
     DEFAULT_COMMISSION_PCT = Decimal('10.0')
 
     @staticmethod
-    def _get_platform_account_id(currency: str = 'USD') -> str:
+    def _get_platform_account_id(currency: str = "USD") -> str:
         """
-        Get or create the platform escrow account.
-        Uses a configurable platform org ID from app config.
+        Resolve the pre-provisioned accommodation escrow account.
+
+        Platform accounts share an owner and currency, so a generic
+        get_by_user_id() lookup can return multiple rows or the wrong account
+        (revenue, operations, settlement, or another service's escrow).
+        Checkout must never create an account or silently route funds to a
+        different platform account.
         """
-        platform_org_id = current_app.config.get('PLATFORM_ORG_ID')
-        if not platform_org_id:
+        platform_owner_id = current_app.config.get("PLATFORM_ORG_ID")
+        if not platform_owner_id:
             raise RuntimeError(
-                "PLATFORM_ORG_ID not configured. "
-                "Set it in config to the internal BIGINT ID of the platform organisation."
+                "PLATFORM_ORG_ID is not configured. "
+                "Configure the internal owner user ID for platform accounts."
+            )
+        try:
+            platform_owner_id = int(platform_owner_id)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("PLATFORM_ORG_ID must be a valid internal owner ID.") from exc
+
+        currency = str(currency or "").strip().upper()
+        if not currency:
+            raise RuntimeError("A currency is required to resolve the platform escrow account.")
+
+        accounts = AccountModel.query.filter_by(
+            user_id=platform_owner_id,
+            owner_type=AccountOwnerType.PLATFORM.value,
+            platform_account=True,
+            account_type=AccountType.ESCROW.value,
+            currency=currency,
+            status=AccountStatus.ACTIVE.value,
+            is_frozen=False,
+        ).all()
+
+        accommodation_accounts = [
+            account for account in accounts
+            if isinstance(account.extra_data, dict)
+            and account.extra_data.get("service_type") == "accommodation"
+        ]
+        if len(accommodation_accounts) == 1:
+            return str(accommodation_accounts[0].id)
+        if len(accommodation_accounts) > 1:
+            raise RuntimeError(
+                f"More than one active {currency} accommodation escrow account is configured."
             )
 
-        repo = AccountRepository(db.session)
-        account = repo.get_or_create(int(platform_org_id), currency)
-        if not account:
+        # A single unclassified platform escrow is the legacy shared account.
+        # Never reuse a different service's explicitly classified escrow.
+        shared_accounts = [
+            account for account in accounts
+            if not isinstance(account.extra_data, dict)
+            or not account.extra_data.get("service_type")
+        ]
+        if len(shared_accounts) == 1:
+            return str(shared_accounts[0].id)
+        if len(shared_accounts) > 1:
             raise RuntimeError(
-                f"Platform escrow account not found for org {platform_org_id}. "
-                "Please create it during system setup."
+                f"More than one shared {currency} platform escrow account is configured."
             )
-        return str(account.id)
+
+        raise RuntimeError(
+            f"No active platform accommodation escrow account is configured for {currency}. "
+            "Provision the correct currency-specific account before accepting payment."
+        )
 
     @staticmethod
     def _get_account_for_user(user_id: int, currency: str = 'USD') -> str:
@@ -77,19 +122,30 @@ class MarketplaceService:
         booking: AccommodationBooking,
         total_amount: Decimal,
         currency: str,
-        idempotency_key: str
+        idempotency_key: str,
+        transaction_pin: Optional[str] = None,
+        authorized_user_id: Optional[int] = None,
     ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         Charge guest and hold funds in platform escrow.
-        Uses WalletService.transfer() with platform_fee to atomically:
-        - Debit guest
-        - Credit platform escrow
-        - Record platform commission
+        Moves the quoted gross amount from the guest wallet into platform
+        escrow in one balanced debit/credit transfer. The platform commission
+        is retained as the difference between that gross amount and the host's
+        later net payout; it is not an extra charge on top of the quote.
 
         Returns:
             (success, transaction_id, error_message)
         """
         try:
+            if authorized_user_id is not None and int(booking.booked_by_user_id or 0) != int(authorized_user_id):
+                return False, None, "Authenticated user is not the booking payer."
+
+            existing_commission = BookingCommission.query.filter_by(booking_id=booking.id).first()
+            if existing_commission is not None:
+                if existing_commission.status == "held" and booking.wallet_txn_id:
+                    return True, str(booking.wallet_txn_id), None
+                return False, None, f"Booking payment is already {existing_commission.status}."
+
             guest_account_id = MarketplaceService._get_account_for_user(
                 booking.booked_by_user_id, currency
             )
@@ -119,8 +175,13 @@ class MarketplaceService:
                     'commission_amount': str(commission_amount),
                     'host_payout': str(host_payout),
                 },
-                platform_fee=commission_amount,
-                fee_currency=currency,
+                # total_amount is the complete guest quote. Do not pass
+                # commission_amount as WalletService.platform_fee: that API
+                # debits it in addition to amount, while escrow receives only
+                # amount. Commission is already inside the gross escrow amount
+                # and remains after host_payout is released.
+                pin=transaction_pin,
+                authorized_user_id=authorized_user_id,
             )
 
             txn_id = result.get('transaction_id')
@@ -199,6 +260,7 @@ class MarketplaceService:
                     'booking_reference': booking.booking_reference,
                     'commission_id': str(commission.id),
                 },
+                system_initiated=True,
             )
 
             txn_id = result.get('transaction_id')
@@ -257,6 +319,7 @@ class MarketplaceService:
                     'booking_reference': booking.booking_reference,
                     'refund_amount': str(refund_amount),
                 },
+                system_initiated=True,
             )
 
             txn_id = result.get('transaction_id')
