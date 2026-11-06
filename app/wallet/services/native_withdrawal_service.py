@@ -388,7 +388,10 @@ class NativeWithdrawalService:
                     locked_user = (
                         db.session.query(User)
                         .filter_by(id=user.id)
-                        .with_for_update()
+                        # User has joined-eager optional relationships. Lock
+                        # only the users row; locking the nullable outer-join
+                        # sides is rejected by PostgreSQL.
+                        .with_for_update(of=User)
                         .one_or_none()
                     )
                     if locked_user is None or not locked_user.is_active or locked_user.is_deleted:
