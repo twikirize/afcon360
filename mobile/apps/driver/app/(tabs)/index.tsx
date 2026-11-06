@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, AppState, Pressable, Text, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import {
   ActionButton,
   AppScreen,
@@ -93,24 +93,25 @@ export default function DriverHome() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
+  useFocusEffect(
+    useCallback(() => {
+      void load();
 
-    // Polling is a fallback until a supported live-delivery channel is available.
-    // Do not keep polling while the app is backgrounded; refresh as soon as the
-    // driver returns so offers and trip state are current without wasting data.
-    const subscription = AppState.addEventListener("change", state => {
-      if (state === "active") void load();
-    });
-    const interval = setInterval(() => {
-      if (AppState.currentState === "active") void load();
-    }, 10000);
+      // Poll only while this tab is visible and the app is foregrounded.
+      // Refresh immediately when the driver returns to the dashboard.
+      const subscription = AppState.addEventListener("change", state => {
+        if (state === "active") void load();
+      });
+      const interval = setInterval(() => {
+        if (AppState.currentState === "active") void load();
+      }, 10000);
 
-    return () => {
-      clearInterval(interval);
-      subscription.remove();
-    };
-  }, [load]);
+      return () => {
+        clearInterval(interval);
+        subscription.remove();
+      };
+    }, [load])
+  );
 
   async function toggleOnline() {
     if (!profile) return;
