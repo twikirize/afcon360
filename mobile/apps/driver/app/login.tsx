@@ -121,6 +121,10 @@ export default function LoginScreen() {
               />
             </>
           )}
+          <AuthLink
+            label="Back to AFCON360 website home"
+            onPress={() => WebBrowser.openBrowserAsync(SITE)}
+          />
         </Panel>
         <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18, textAlign: "center" }}>
           Driver go-live, vehicle, compliance and trip permissions are always checked by AFCON360 servers.

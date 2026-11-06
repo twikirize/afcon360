@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { Alert, Text, View } from "react-native";
+import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
 import { AppScreen, PageHeader, Panel, StatusPill, palette } from "@afcon360/mobile-ui";
 import { AuthField, AuthLink, AuthNotice, AuthPasswordField, AuthShell, AuthSubmit } from "@afcon360/mobile-ui/auth";
 import { MobileAuthError } from "@afcon360/mobile-core";
 import { useAuth } from "../src/auth/AuthProvider";
+
+const SITE = "https://www.pamoja.space";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -46,6 +49,7 @@ export default function LoginScreen() {
               <AuthLink label="Forgot your password?" onPress={() => router.push("/forgot-password")} />
             </>
           )}
+          <AuthLink label="Back to AFCON360 website home" onPress={() => WebBrowser.openBrowserAsync(SITE)} />
         </Panel>
         <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18, textAlign: "center" }}>Protected by AFCON360 Identity. Your password and authenticator codes are sent only over HTTPS and are never stored on this device.</Text>
       </AuthShell>
