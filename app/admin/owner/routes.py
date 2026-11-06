@@ -126,7 +126,7 @@ def manage_aggregators():
                 display_name=display_name,
                 api_key=api_key or sandbox_api_key or live_api_key,
                 api_secret=api_secret or sandbox_api_secret or live_api_secret,
-                description=description, commit=False,
+                description=description,
                 tier=tier,
                 mode=mode,
                 sandbox_api_key=sandbox_api_key,
