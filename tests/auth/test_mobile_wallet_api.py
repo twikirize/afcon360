@@ -570,3 +570,245 @@ def test_flutterwave_amount_or_currency_mismatch_fails_without_wallet_credit(app
     assert result["success"] is False
     assert result["status"] == "failed"
     assert marked == [("NATDEP-MISMATCH-REFERENCE", "failed")]
+
+
+def test_native_wallet_currency_options_use_owner_policy_and_verified_country(client, monkeypatch):
+    from app.auth import mobile_api
+    from app.wallet.services import home_currency_service
+
+    user = SimpleNamespace(id=751, public_id="wallet-options-user")
+    expected = {
+        "accepted_currencies": ["EUR", "KES", "NGN", "TZS", "UGX", "USD"],
+        "fx_base_currency": "USD",
+        "country_verified": True,
+        "country": {
+            "country_code": "UG",
+            "country_name": "Uganda",
+            "source": "approved_address_kyc",
+        },
+        "suggested_currency": "UGX",
+        "requires_country_verification": False,
+    }
+    _authenticated_mobile_user(monkeypatch, user)
+    monkeypatch.setattr(
+        home_currency_service,
+        "get_wallet_currency_context",
+        lambda owner: expected if owner.id == user.id else pytest.fail("Wrong user context"),
+    )
+
+    response = client.get(
+        "/api/mobile/v1/wallet/currencies",
+        headers={"Authorization": "Bearer native-test-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["data"] == expected
+
+
+def test_native_wallet_create_requires_terms_before_any_database_work(client, monkeypatch):
+    from app.auth import mobile_api
+
+    user = SimpleNamespace(id=752, public_id="wallet-terms-user")
+    _authenticated_mobile_user(monkeypatch, user)
+
+    class MustNotOpenDatabase:
+        def rollback(self):
+            pytest.fail("Wallet creation must stop before touching the database")
+
+    monkeypatch.setattr(mobile_api.db, "session", MustNotOpenDatabase())
+
+    response = client.post(
+        "/api/mobile/v1/wallet",
+        json={"currency": "EUR", "terms_accepted": False},
+        headers={"Authorization": "Bearer native-test-token"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["code"] == "wallet_terms_required"
+
+
+def test_native_wallet_create_blocks_unverified_country_without_database_write(client, monkeypatch):
+    from app.auth import mobile_api
+    from app.wallet.services import home_currency_service
+
+    user = SimpleNamespace(id=753, public_id="wallet-country-user")
+    _authenticated_mobile_user(monkeypatch, user)
+
+    class MustNotOpenDatabase:
+        def rollback(self):
+            pytest.fail("Unverified country must be rejected before database access")
+
+    monkeypatch.setattr(mobile_api.db, "session", MustNotOpenDatabase())
+
+    def require_country(owner, requested_currency=None):
+        assert owner.id == user.id
+        assert requested_currency == "EUR"
+        raise ValueError(
+            "Verify your country of residence or registration before opening an AFCON360 Wallet."
+        )
+
+    monkeypatch.setattr(home_currency_service, "resolve_home_currency", require_country)
+
+    response = client.post(
+        "/api/mobile/v1/wallet",
+        json={"currency": "EUR", "terms_accepted": True},
+        headers={"Authorization": "Bearer native-test-token"},
+    )
+
+    assert response.status_code == 403
+    assert response.get_json()["code"] == "wallet_country_verification_required"
+
+
+class _NativeWalletCreateQuery:
+    def __init__(self, value):
+        self.value = value
+
+    def filter_by(self, **_kwargs):
+        return self
+
+    def order_by(self, *_args):
+        return self
+
+    def with_for_update(self):
+        return self
+
+    def one_or_none(self):
+        return self.value
+
+    def first(self):
+        return self.value
+
+
+class _NativeWalletCreateTransaction:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+class _NativeWalletCreateSession:
+    def __init__(self, user, existing=None):
+        self.user = user
+        self.existing = existing
+        self.added = []
+        self.rolled_back = False
+        self.flushed = False
+
+    def rollback(self):
+        self.rolled_back = True
+
+    def begin(self):
+        return _NativeWalletCreateTransaction()
+
+    def query(self, model):
+        from app.identity.models.user import User
+        if model is User:
+            return _NativeWalletCreateQuery(self.user)
+        return _NativeWalletCreateQuery(self.existing)
+
+    def add(self, value):
+        self.added.append(value)
+
+    def flush(self):
+        self.flushed = True
+
+
+def test_native_wallet_create_uses_explicit_accepted_currency_not_usd(client, monkeypatch):
+    from app.auth import mobile_api
+    import app.wallet.models.ledger as ledger_models
+    from app.identity.models.user import User
+    from app.wallet.services import home_currency_service
+
+    user = SimpleNamespace(
+        id=754,
+        public_id="wallet-create-user",
+        is_active=True,
+        is_deleted=False,
+    )
+    fake_session = _NativeWalletCreateSession(user)
+
+    class FakeAccountModel:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+            self.id = "new-wallet-account"
+            self.created_at = None
+
+    _authenticated_mobile_user(monkeypatch, user)
+    monkeypatch.setattr(mobile_api.db, "session", fake_session)
+    monkeypatch.setattr(ledger_models, "AccountModel", FakeAccountModel)
+    monkeypatch.setattr(
+        home_currency_service,
+        "resolve_home_currency",
+        lambda owner, requested_currency=None: (
+            "EUR" if owner.id == user.id and requested_currency == "EUR"
+            else pytest.fail("The selected currency was not passed to the server policy")
+        ),
+    )
+
+    response = client.post(
+        "/api/mobile/v1/wallet",
+        json={"currency": "EUR", "terms_accepted": True},
+        headers={"Authorization": "Bearer native-test-token"},
+    )
+
+    assert response.status_code == 201
+    body = response.get_json()["data"]
+    assert body["currency"] == "EUR"
+    assert body["fx_base_currency"] == "USD"
+    assert body["requires_activation"] is True
+    assert len(fake_session.added) == 1
+    assert fake_session.added[0].currency == "EUR"
+    assert fake_session.added[0].owner_type == "user"
+    assert fake_session.added[0].verified is False
+    assert fake_session.flushed is True
+
+
+def test_native_wallet_create_reuses_same_wallet_and_rejects_currency_replacement(client, monkeypatch):
+    from app.auth import mobile_api
+    import app.wallet.models.ledger as ledger_models
+    from app.wallet.services import home_currency_service
+    from datetime import datetime, timezone
+
+    user = SimpleNamespace(
+        id=755,
+        public_id="wallet-existing-user",
+        is_active=True,
+        is_deleted=False,
+    )
+    existing = SimpleNamespace(
+        currency="EUR",
+        created_at=datetime.now(timezone.utc),
+        verified=False,
+    )
+    fake_session = _NativeWalletCreateSession(user, existing=existing)
+
+    class FakeAccountModel:
+        pass
+
+    _authenticated_mobile_user(monkeypatch, user)
+    monkeypatch.setattr(mobile_api.db, "session", fake_session)
+    monkeypatch.setattr(ledger_models, "AccountModel", FakeAccountModel)
+    monkeypatch.setattr(
+        home_currency_service,
+        "resolve_home_currency",
+        lambda owner, requested_currency=None: requested_currency,
+    )
+
+    same = client.post(
+        "/api/mobile/v1/wallet",
+        json={"currency": "EUR", "terms_accepted": True},
+        headers={"Authorization": "Bearer native-test-token"},
+    )
+    assert same.status_code == 200
+    assert same.get_json()["data"]["already_exists"] is True
+    assert fake_session.added == []
+
+    other = client.post(
+        "/api/mobile/v1/wallet",
+        json={"currency": "KES", "terms_accepted": True},
+        headers={"Authorization": "Bearer native-test-token"},
+    )
+    assert other.status_code == 409
+    assert other.get_json()["code"] == "wallet_already_exists"
+    assert fake_session.added == []
