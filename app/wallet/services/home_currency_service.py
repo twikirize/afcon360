@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from flask import current_app
+from flask import current_app, has_app_context
 
 
 FX_BASE_CURRENCY = "USD"
@@ -88,10 +88,11 @@ def _jurisdiction_catalogue() -> dict[str, dict]:
             for code, data in _JURISDICTIONS.items()
         })
     except Exception:
-        current_app.logger.warning(
-            "Canonical AML jurisdiction seed catalogue is unavailable",
-            exc_info=True,
-        )
+        if has_app_context():
+            current_app.logger.warning(
+                "Canonical AML jurisdiction seed catalogue is unavailable",
+                exc_info=True,
+            )
 
     try:
         from app.compliance.aml_regulatory_models import JurisdictionProfile
@@ -110,10 +111,11 @@ def _jurisdiction_catalogue() -> dict[str, dict]:
     except Exception:
         # A missing optional AML table must not trigger a database write or
         # erase the canonical static reference data already loaded.
-        current_app.logger.debug(
-            "AML jurisdiction database rows are unavailable",
-            exc_info=True,
-        )
+        if has_app_context():
+            current_app.logger.debug(
+                "AML jurisdiction database rows are unavailable",
+                exc_info=True,
+            )
 
     return catalogue
 
@@ -173,7 +175,8 @@ def _profile_for(user: Any):
 
         return get_profile_by_user(user)
     except Exception:
-        current_app.logger.debug("Could not load canonical UserProfile", exc_info=True)
+        if has_app_context():
+            current_app.logger.debug("Could not load canonical UserProfile", exc_info=True)
         return None
 
 
@@ -220,10 +223,11 @@ def get_verified_wallet_country(user: Any) -> Optional[Dict[str, str]]:
                     "source": "approved_address_kyc",
                 }
     except Exception:
-        current_app.logger.debug(
-            "Could not resolve approved address KYC country",
-            exc_info=True,
-        )
+        if has_app_context():
+            current_app.logger.debug(
+                "Could not resolve approved address KYC country",
+                exc_info=True,
+            )
 
     profile = _profile_for(user)
     if profile is None or _status_value(
