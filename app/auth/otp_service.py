@@ -556,48 +556,58 @@ class OTPService:
         phone: str = None,
         max_retries: int = 2,
     ) -> Dict[str, Any]:
+        """Deliver one stored OTP through the configured fallback chain.
+
+        The same identifier/purpose pair is used for storage and verification.
+        OTP storage must succeed *before* any external provider is contacted;
+        otherwise a user could receive a code that the application cannot check.
         """
-        Send OTP via multiple channels with fallback chain.
+        if not identifier or not otp or not purpose:
+            return {
+                "success": False,
+                "message": "OTP details are incomplete",
+                "code": "invalid_request",
+                "channel_used": None,
+                "dev_fallback": False,
+            }
 
-        Args:
-            identifier: Unique identifier (user_id, email, or phone)
-            otp: The OTP to send
-            purpose: Purpose of the OTP (e.g., 'phone_verification', 'email_verification')
-            channels: List of channel strings in priority order (e.g., ['twilio_sms', 'twilio_whatsapp', 'email'])
-                      Defaults to ['twilio_sms', 'twilio_whatsapp', 'email'] if Twilio configured, else ['email']
-            user_id: Optional internal user ID
-            email: Email address (required if 'email' in channels)
-            phone: Phone number in E.164 format (required if 'twilio_sms' or 'twilio_whatsapp' in channels)
-            max_retries: Max retries per channel
-
-        Returns:
-            Dict with success, message, code, channel_used, dev_fallback
-        """
-        from flask import current_app
-
-        # Default fallback chain: SMS -> WhatsApp -> Email (only if enabled)
+        # The unified owner page defines the fallback order: WhatsApp, SMS,
+        # then email. Email remains the final fallback even when Twilio is off.
         if channels is None:
-            # Check if Twilio is configured and enabled
             from app.models.system_config import SystemConfig
-            twilio_sid = SystemConfig.get('TWILIO_ACCOUNT_SID')
-            sms_enabled = SystemConfig.get('TWILIO_SMS_ENABLED', False)
-            whatsapp_enabled = SystemConfig.get('TWILIO_WHATSAPP_ENABLED', False)
 
-            channels = ['email']  # Always include email as final fallback
-            
-            if twilio_sid:
-                if sms_enabled:
-                    channels.insert(0, 'twilio_sms')
-                if whatsapp_enabled:
-                    channels.insert(0 if sms_enabled else 0, 'twilio_whatsapp')
+            sms_enabled = bool(SystemConfig.get("TWILIO_SMS_ENABLED", False))
+            whatsapp_enabled = bool(SystemConfig.get("TWILIO_WHATSAPP_ENABLED", False))
+            channels = []
+            if whatsapp_enabled:
+                channels.append("twilio_whatsapp")
+            if sms_enabled:
+                channels.append("twilio_sms")
+            channels.append("email")
 
-        last_error = ""
-        channel_used = None
+        # Store only a keyed hash; never send an OTP unless the same identifier
+        # that the verifier will use has a successful, expiring record.
+        if not OTPService.store_otp(
+            identifier=identifier,
+            otp=otp,
+            purpose=purpose,
+            ttl=300,
+        ):
+            return {
+                "success": False,
+                "message": "Verification code could not be stored securely",
+                "code": "storage_failed",
+                "channel_used": None,
+                "dev_fallback": False,
+            }
+
+        last_error = "No eligible delivery channel succeeded"
+        attempts_per_channel = max(1, min(int(max_retries or 1), 3))
 
         for channel in channels:
-            for attempt in range(1, 3):  # 2 attempts per channel max
+            for attempt in range(1, attempts_per_channel + 1):
                 try:
-                    if channel == 'email':
+                    if channel == "email":
                         if not email:
                             last_error = "Email address required for email channel"
                             break
@@ -608,104 +618,102 @@ class OTPService:
                             user_id=user_id,
                             max_retries=1,
                         )
-                        if result.get('success'):
+                        if result.get("success"):
                             return {
                                 "success": True,
                                 "message": "OTP sent via email",
                                 "code": "sent",
                                 "channel_used": "email",
-                                "dev_fallback": result.get('dev_fallback', False)
+                                "dev_fallback": result.get("dev_fallback", False),
                             }
-                        last_error = result.get('response_body', 'unknown error')
+                        last_error = result.get("response_body") or result.get("message") or "email_delivery_failed"
 
-                    elif channel == 'twilio_sms':
+                    elif channel in {"twilio_sms", "twilio_whatsapp"}:
                         if not phone:
-                            last_error = "Phone number required for SMS channel"
+                            last_error = "Phone number required for SMS/WhatsApp channel"
                             break
-                        from app.notifications.channel_handlers.twilio_sms import TwilioSmsHandler
-                        handler = TwilioSmsHandler()
 
-                        class SMSNotification:
-                            def __init__(self, body):
-                                self.body = body
-                                self.subject = "AFCON360 Verification Code"
+                        if channel == "twilio_sms":
+                            from app.notifications.channel_handlers.twilio_sms import TwilioSmsHandler
+                            handler = TwilioSmsHandler()
+                        else:
+                            from app.notifications.channel_handlers.twilio_sms import TwilioWhatsAppHandler
+                            handler = TwilioWhatsAppHandler()
 
-                        notification = SMSNotification(f"Your AFCON360 verification code is: {otp}. This code expires in 5 minutes.")
-                        result = handler.deliver(notification, {'phone': phone, 'user_id': user_id})
-
-                        if result.get('success'):
-                            # Store OTP for verification
-                            OTPService.store_otp(identifier=phone, otp=otp, purpose=purpose, ttl=300)
+                        notification = type(
+                            "OTPNotification",
+                            (),
+                            {
+                                "subject": "AFCON360 Verification Code",
+                                "body": f"Your AFCON360 verification code is: {otp}. This code expires in 5 minutes.",
+                            },
+                        )()
+                        result = handler.deliver(
+                            notification,
+                            {"phone": phone, "user_id": user_id},
+                        )
+                        if result.get("success"):
                             return {
                                 "success": True,
-                                "message": "OTP sent via SMS",
+                                "message": "OTP sent via SMS" if channel == "twilio_sms" else "OTP sent via WhatsApp",
                                 "code": "sent",
-                                "channel_used": "twilio_sms",
-                                "dev_fallback": False
+                                "channel_used": channel,
+                                "dev_fallback": False,
+                                "external_id": result.get("external_id"),
                             }
-                        last_error = result.get('response_body', 'unknown error')
-
-                    elif channel == 'twilio_whatsapp':
-                        if not phone:
-                            last_error = "Phone number required for WhatsApp channel"
-                            break
-                        from app.notifications.channel_handlers.twilio_sms import TwilioWhatsAppHandler
-                        handler = TwilioWhatsAppHandler()
-
-                        class WhatsAppNotification:
-                            def __init__(self, body):
-                                self.body = body
-                                self.subject = "AFCON360 Verification Code"
-
-                        notification = WhatsAppNotification(f"Your AFCON360 verification code is: {otp}. This code expires in 5 minutes.")
-                        result = handler.deliver(notification, {'phone': phone, 'user_id': user_id})
-
-                        if result.get('success'):
-                            # Store OTP for verification
-                            OTPService.store_otp(identifier=phone, otp=otp, purpose=purpose, ttl=300)
-                            return {
-                                "success": True,
-                                "message": "OTP sent via WhatsApp",
-                                "code": "sent",
-                                "channel_used": "twilio_whatsapp",
-                                "dev_fallback": False
-                            }
-                        last_error = result.get('response_body', 'unknown error')
+                        last_error = result.get("response_body") or "provider_delivery_failed"
 
                     else:
                         last_error = f"Unknown channel: {channel}"
                         break
 
-                except Exception as e:
-                    last_error = str(e)
-                    logger.error(f"[OTP MULTI] Channel {channel} attempt failed: {e}")
+                except Exception as exc:
+                    last_error = f"{channel} delivery failed ({type(exc).__name__})"
+                    logger.warning(
+                        "[OTP MULTI] Channel failed (channel=%s, attempt=%s, exception_type=%s)",
+                        channel,
+                        attempt,
+                        type(exc).__name__,
+                    )
 
-                if attempt < 2:
-                    time.sleep(1)  # Brief pause before retry
+                if attempt < attempts_per_channel:
+                    time.sleep(1)
 
-            logger.warning(f"[OTP MULTI] Channel {channel} failed after retries: {last_error}")
+            logger.warning(
+                "[OTP MULTI] Channel exhausted (channel=%s, attempts=%s)",
+                channel,
+                attempts_per_channel,
+            )
 
-        # All channels exhausted
         if OTPService._dev_fallback_allowed():
-            logger.warning(f"[OTP MULTI][DEV] All channels failed for {identifier} ({last_error}). OTP for local use: {otp}")
+            logger.warning(
+                "[OTP MULTI][DEV] All delivery channels failed for %s; development fallback is enabled",
+                identifier,
+            )
             OTPService._log_dev_magic_link(identifier, otp, purpose)
             return {
                 "success": True,
                 "message": "OTP generated (development mode - see server logs)",
                 "code": "dev_fallback",
                 "channel_used": None,
-                "dev_fallback": True
+                "dev_fallback": True,
             }
 
-        # Alert on failure
-        logger.error(f"[OTP MULTI] All channels exhausted for {identifier}: {last_error}")
+        # No message was accepted, so invalidate the code rather than leaving
+        # a live OTP that the user never received.
+        OTPService.invalidate_otp(identifier, purpose)
+        logger.error(
+            "[OTP MULTI] All channels exhausted for %s (last_error=%s)",
+            identifier,
+            last_error,
+        )
         return {
             "success": False,
             "message": "Failed to send OTP via all channels",
             "code": "delivery_failed",
             "channel_used": None,
             "dev_fallback": False,
-            "error": last_error
+            "error": last_error,
         }
 
     @staticmethod
