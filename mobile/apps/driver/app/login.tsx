@@ -11,7 +11,7 @@ const SITE = "https://www.pamoja.space";
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { user, loading, signingIn, mfaChallenge, signIn, verifyMfa, cancelMfa } = useAuth();
+  const { user, loading, signingIn, mfaChallenge, mfaType, mfaDestinationHint, signIn, verifyMfa, cancelMfa } = useAuth();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -40,7 +40,9 @@ export default function LoginScreen() {
             title={mfaChallenge ? "Verify it’s you." : "Welcome to your driving workspace."}
             description={
               mfaChallenge
-                ? "Enter the current code from your authenticator app to finish signing in."
+                ? (mfaType === "sms"
+                    ? `We sent a sign-in code to ${mfaDestinationHint ?? "your verified phone"}. It expires in five minutes.`
+                    : "Enter the current code from your authenticator app to finish signing in.")
                 : "Use your approved AFCON360 driver account. Driver eligibility is rechecked by the platform."
             }
           />
@@ -49,18 +51,20 @@ export default function LoginScreen() {
           {mfaChallenge ? (
             <>
               <AuthNotice>
-                This sign-in challenge expires shortly and can only be used once. Never share your authenticator code.
+                {mfaType === "sms"
+                  ? "Enter the 6-digit code sent to your verified phone. It can only be used once; never share it."
+                  : "This authenticator challenge expires shortly and can only be used once. Never share your code."}
               </AuthNotice>
               <AuthField
-                label="Authenticator code"
+                label={mfaType === "sms" ? "SMS verification code" : "Authenticator code"}
                 value={code}
                 onChangeText={setCode}
-                keyboardType="default"
+                keyboardType={mfaType === "sms" ? "number-pad" : "default"}
                 autoCapitalize="characters"
                 autoCorrect={false}
                 autoComplete="one-time-code"
-                maxLength={8}
-                placeholder="6-digit code or backup code"
+                maxLength={mfaType === "sms" ? 6 : 8}
+                placeholder={mfaType === "sms" ? "6-digit text message code" : "6-digit code or backup code"}
               />
               <AuthSubmit
                 label="Verify and continue"
