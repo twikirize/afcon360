@@ -1348,10 +1348,15 @@ def save_twilio_config():
 
         flash("✅ Twilio configuration saved successfully", "success")
         return redirect(url_for('admin.owner.settings'))
-    except Exception as e:
-        current_app.logger.error(f"Error saving Twilio config: {e}")
-        flash("❌ Error saving Twilio configuration", "danger")
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.warning(
+            "Twilio configuration save failed (exception_type=%s)",
+            type(exc).__name__,
+        )
+        flash("❌ Twilio configuration could not be saved securely. Please try again.", "danger")
         return redirect(url_for('admin.owner.settings'))
+
 
 
 @owner_bp.route('/settings/twilio-sms/test', methods=['POST'])
@@ -2962,27 +2967,17 @@ def auth_settings():
             else:
                 flash('Authentication settings updated. Phone OTP delivery is set to email.', 'success')
             
-        except Exception as e:
+            except Exception as exc:
             db.session.rollback()
-            logger.error(f"Error updating auth settings: {str(e)}")
-            flash(f'Error updating settings: {str(e)}', 'danger')
-        
-        return redirect(url_for('admin.owner.auth_settings'))
-    
-    # Expose only whether a Twilio token exists, never the credential itself.
-    from app.models.system_config import SystemConfig
-    try:
-        twilio_token_configured = bool(
-            config.twilio_auth_token or SystemConfig.get('TWILIO_AUTH_TOKEN', '')
-        )
-    except RuntimeError:
-        twilio_token_configured = False
-    config.twilio_auth_token = None
-    return render_template(
-        'admin/owner/auth_settings.html',
-        config=config,
-        twilio_token_configured=twilio_token_configured,
-    )
+            logger.error(
+                "Authentication settings update failed (exception_type=%s)",
+                type(exc).__name__,
+            )
+            flash(
+                "Authentication settings could not be saved securely. Check the values and try again.",
+                "danger",
+            )
+
 
 
 @owner_bp.route('/owner/settings/auth/test/<service>', methods=['POST'])
