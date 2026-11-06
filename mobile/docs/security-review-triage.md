@@ -47,7 +47,7 @@ The available saved item is an earlier analysis note, not the original raw MobSF
 5. **Reviewer access and app completeness:** provide working review credentials and MFA instructions, ensure the backend is live for review, and make screenshots/listing copy describe only features that are actually accessible in the submitted app.
 6. **Production artifacts:** build and inspect a production-signed Android App Bundle with Play App Signing configured. The preview APK is not a store binary.
 7. **Device evidence:** emulator install/launch passed, but physical Android testing and live-like sign-in, booking, deletion, Wallet and network-failure journeys are still outstanding.
-8. **Apple:** no iOS result is claimed while the iOS job is disabled. Build and TestFlight validation with the currently required Xcode 26 / iOS 26 SDK must be completed before App Store submission.
+8. **Apple:** both User and Driver iOS simulator build/install/launch checks now pass, including the iOS 16.4 deployment-minimum validation. This is simulator evidence only; physical iPhone testing, a production-signed archive/IPA and TestFlight validation remain outstanding.
 
 ## Account deletion — confirmed cross-module gap (high priority)
 
