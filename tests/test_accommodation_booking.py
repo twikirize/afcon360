@@ -1142,3 +1142,32 @@ def test_payment_event_idempotency(test_property, test_guest_user, test_host_use
         idempotency_key=idempotency_key,
     ).count()
     assert count == 1
+
+
+def test_create_booking_total_amount_accounts_for_all_requested_rooms(
+    test_property, test_guest_user, test_host_user, booking_policy, test_db
+):
+    """Persisted booking total must match server quote for multiple rooms."""
+    booking, error = BookingService.create_booking(
+        property_id=test_property.id,
+        guest_user_id=test_guest_user.id,
+        host_user_id=test_host_user.id,
+        check_in=date.today() + timedelta(days=5),
+        check_out=date.today() + timedelta(days=7),
+        num_guests=4,
+        rooms_requested=2,
+        guest_name="Test Guest",
+        guest_email=test_guest_user.email,
+        idempotency_key=f"test-multi-room-price-{uuid.uuid4().hex}",
+        booked_by_user_id=test_guest_user.id,
+        payment_method="wallet",
+        payment_timing="pay_now",
+        payment_guaranteed=True,
+        guarantee_type="wallet_balance",
+    )
+
+    assert error is None
+    assert booking is not None
+    # Two nights × USD 100 per room × two rooms.
+    assert Decimal(str(booking.total_amount)) == Decimal("400.00")
+    assert booking.rooms_requested == 2
