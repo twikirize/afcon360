@@ -173,7 +173,10 @@ def schedule_reminders_task(self, batch_size: int = 25) -> dict:
     if the worker cannot reach them before the next tick.
     """
     batch_size = max(1, min(int(batch_size), 100))
+    import time
+    t_start = time.perf_counter()
     app = create_app()
+    t_app = time.perf_counter()
     with app.app_context():
         try:
             now = datetime.now(timezone.utc)
@@ -199,8 +202,10 @@ def schedule_reminders_task(self, batch_size: int = 25) -> dict:
                 .limit(batch_size)
                 .all()
             )
+            t_query = time.perf_counter()
 
             dispatched = 0
+            t_dispatch_start = time.perf_counter()
             for notification in pending:
                 try:
                     send_notification_task.apply_async(
@@ -211,9 +216,11 @@ def schedule_reminders_task(self, batch_size: int = 25) -> dict:
                     dispatched += 1
                 except Exception as e:
                     logger.error(f"Failed to dispatch reminder {notification.id}: {e}")
+            t_dispatch = time.perf_counter()
 
             if dispatched:
                 db.session.commit()
+            t_commit = time.perf_counter()
 
             continuation_queued = False
             if len(pending) >= batch_size:
@@ -230,12 +237,25 @@ def schedule_reminders_task(self, batch_size: int = 25) -> dict:
                         "Could not schedule the next scheduled-reminder batch"
                     )
 
-            logger.info(f"Dispatched {dispatched} scheduled reminders out of {len(pending)} eligible")
+            t_end = time.perf_counter()
+            logger.info(
+                f"Dispatched {dispatched} scheduled reminders out of {len(pending)} eligible "
+                f"[timing: total={t_end-t_start:.3f}s app_init={t_app-t_start:.3f}s "
+                f"query={t_query-t_app:.3f}s dispatch={t_dispatch-t_dispatch_start:.3f}s "
+                f"commit={t_commit-t_dispatch:.3f}s]"
+            )
             return {
                 "dispatched": dispatched,
                 "pending": len(pending),
                 "batch_size": batch_size,
                 "continuation_queued": continuation_queued,
+                "timing": {
+                    "total": round(t_end - t_start, 3),
+                    "app_init": round(t_app - t_start, 3),
+                    "query": round(t_query - t_app, 3),
+                    "dispatch": round(t_dispatch - t_dispatch_start, 3),
+                    "commit": round(t_commit - t_dispatch, 3),
+                }
             }
         except SQLAlchemyError as e:
             logger.error(f"DB error in schedule_reminders: {e}")

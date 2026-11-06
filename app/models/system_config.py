@@ -124,6 +124,11 @@ class SystemConfig(BaseModel):
             {'key': 'payment_cash_max_amount', 'value': '500000', 'value_type': 'int', 'category': 'payments', 'description': 'Maximum cash booking amount (UGX)'},
             {'key': 'payment_cash_default_deposit_pct', 'value': '30', 'value_type': 'int', 'category': 'payments', 'description': 'Default deposit percentage for cash bookings'},
             {'key': 'home_feed_layout', 'value': 'mixed', 'value_type': 'str', 'category': 'homepage', 'description': 'Homepage feed layout mode (mixed/sections/tabbed)', 'is_public': True},
+            # OCI Email Delivery (Owner/Super Admin configurable)
+            {'key': 'OCI_EMAIL_REGION', 'value': 'eu-frankfurt-1', 'value_type': 'str', 'category': 'email', 'description': 'OCI Email Delivery region (e.g., eu-frankfurt-1)'},
+            {'key': 'OCI_EMAIL_COMPARTMENT_ID', 'value': '', 'value_type': 'str', 'category': 'email', 'description': 'OCI Compartment OCID for Email Delivery'},
+            {'key': 'OCI_EMAIL_SENDER_ADDRESS', 'value': 'noreply@pamoja.space', 'value_type': 'str', 'category': 'email', 'description': 'Approved sender email address in OCI Email Delivery'},
+            {'key': 'OCI_EMAIL_SUPPRESSION_LIST', 'value': 'true', 'value_type': 'bool', 'category': 'email', 'description': 'Use OCI suppression list for bounces/complaints'},
         ]
 
         # KYC configuration (Owner/Super Admin configurable). Seeded from the

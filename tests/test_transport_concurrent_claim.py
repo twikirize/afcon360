@@ -96,6 +96,15 @@ class _FakeRedis:
             self._set.pop(k, None)
         return 0
 
+    def set(self, key, value, nx=False, ex=None):
+        if nx and key in self._hash:
+            return False
+        self._hash[key] = value
+        return True
+
+    def exists(self, key):
+        return key in self._hash
+
     def keys(self, pattern="*"):
         import fnmatch
         all_keys = set(self._hash) | set(self._set)

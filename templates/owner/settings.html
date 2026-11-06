@@ -280,6 +280,114 @@ document.addEventListener('DOMContentLoaded', function() {
     </a>
   </div>
 
+  <!-- OCI Email Delivery Section -->
+  <h3 class="section-title">Email Delivery (OCI)</h3>
+  <div class="settings-grid">
+    <div class="settings-card" style="border-left:4px solid #0ea5e9; grid-column: 1 / -1;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;flex-wrap:wrap;gap:1rem;">
+        <div>
+          <div class="card-icon">📧</div>
+          <div class="card-title">OCI Email Delivery Configuration</div>
+          <div class="card-description" style="margin-top:0.5rem;">
+            Configure Oracle Cloud Infrastructure Email Delivery for transactional and bulk email.
+            <strong>50,000 emails/month free</strong> on Always Free tier. Uses REST API with Instance Principals (no SMTP credentials needed).
+          </div>
+        </div>
+        <span class="card-badge" style="background:#e0f2fe;color:#0369a1;">Email Infrastructure</span>
+      </div>
+
+      <form method="POST" action="{{ url_for('admin.owner.save_oci_email_config') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem;margin-bottom:1rem;">
+          <div>
+            <label class="form-label" style="font-weight:600;color:#1a1a1a;">OCI Region</label>
+            <input type="text" name="OCI_EMAIL_REGION" class="form-control" 
+                   value="{{ oci_email_region or 'eu-frankfurt-1' }}" placeholder="eu-frankfurt-1">
+            <small class="text-muted">OCI region for Email Delivery (e.g., eu-frankfurt-1, us-ashburn-1)</small>
+          </div>
+          <div>
+            <label class="form-label" style="font-weight:600;color:#1a1a1a;">Compartment OCID <span class="text-danger">*</span></label>
+            <input type="text" name="OCI_EMAIL_COMPARTMENT_ID" class="form-control" 
+                   value="{{ oci_email_compartment_id or '' }}" placeholder="ocid1.compartment.oc1..xxxxx" required>
+            <small class="text-muted">Required. Find in OCI Console → Identity → Compartments</small>
+          </div>
+          <div>
+            <label class="form-label" style="font-weight:600;color:#1a1a1a;">Approved Sender Address</label>
+            <input type="email" name="OCI_EMAIL_SENDER_ADDRESS" class="form-control" 
+                   value="{{ oci_email_sender_address or 'noreply@pamoja.space' }}" placeholder="noreply@pamoja.space">
+            <small class="text-muted">Must match approved sender in OCI Email Delivery</small>
+          </div>
+          <div>
+            <label class="form-label" style="font-weight:600;color:#1a1a1a;">Use Suppression List</label>
+            <select name="OCI_EMAIL_SUPPRESSION_LIST" class="form-control">
+              <option value="true" {{ 'selected' if oci_email_suppression_list else '' }}>Enabled (recommended)</option>
+              <option value="false" {{ 'selected' if not oci_email_suppression_list else '' }}>Disabled</option>
+            </select>
+            <small class="text-muted">Auto-handle bounces/complaints via OCI suppression list</small>
+          </div>
+        </div>
+        <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save"></i> Save OCI Email Configuration
+          </button>
+          <button type="button" class="btn btn-outline-secondary" onclick="testOciEmail()">
+            <i class="bi bi-send"></i> Send Test Email
+          </button>
+        </div>
+        <div id="ociTestResult" style="margin-top:1rem;display:none;padding:0.75rem;border-radius:8px;"></div>
+      </form>
+
+      <script nonce="{{ csp_nonce }}">
+      async function testOciEmail() {
+        const resultDiv = document.getElementById('ociTestResult');
+        const btn = event.target.closest('button');
+        
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> Sending test email...</div>';
+        btn.disabled = true;
+        
+        try {
+          const response = await fetch('{{ url_for("admin.owner.test_oci_email") }}', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+            }
+          });
+          
+          const data = await response.json();
+          
+          if (data.success) {
+            resultDiv.innerHTML = `<div class="alert alert-success"><i class="bi bi-check-circle"></i> ${data.message}</div>`;
+          } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> ${data.error || 'Failed to send test email'}</div>`;
+          }
+        } catch (e) {
+          resultDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Error: ${e.message}</div>`;
+        } finally {
+          btn.disabled = false;
+        }
+      }
+      </script>
+
+      <div style="margin-top:1.5rem;padding:1rem;background:#f8fafc;border-radius:8px;border:1px solid #e5e7eb;">
+        <h5 style="margin-top:0;margin-bottom:0.75rem;color:#374151;">DNS Records Required</h5>
+        <p style="margin-bottom:0.5rem;color:#6b7280;">Add these records at your DNS provider (Namecheap/Cloudflare/GoDaddy) for <code>pamoja.space</code>:</p>
+        <div style="font-family:monospace;font-size:0.8125rem;background:#1e1e1e;color:#d4d4d4;padding:1rem;border-radius:6px;overflow-x:auto;">
+          <div style="margin-bottom:0.5rem;"><span style="color:#569cd6;">CNAME</span> <span style="color:#9cdcfe;">afcon360._domainkey</span> <span style="color:#ce9178;">→</span> <span style="color:#4ec9b0;">afcon360.pamoja.space.dkim.fra1.oracleemaildelivery.com</span></div>
+          <div style="margin-bottom:0.5rem;"><span style="color:#569cd6;">TXT</span> <span style="color:#9cdcfe;">@</span> <span style="color:#ce9178;">→</span> <span style="color:#4ec9b0;">v=spf1 include:eu.rp.oracleemaildelivery.com ~all</span></div>
+          <div><span style="color:#569cd6;">TXT</span> <span style="color:#9cdcfe;">_dmarc</span> <span style="color:#ce9178;">→</span> <span style="color:#4ec9b0;">v=DMARC1; p=quarantine; rua=mailto:dmarc@pamoja.space</span></div>
+        </div>
+        <div style="margin-top:0.75rem;">
+          <a href="https://console.eu-frankfurt-1.oraclecloud.com/email/approved-senders" target="_blank" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-box-arrow-up-right"></i> Verify Domain in OCI Console
+          </a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
   <!-- Real-time Services Section -->
   <h3 class="section-title">Real-time Services</h3>
   <div class="settings-grid">
@@ -938,7 +1046,7 @@ document.addEventListener('DOMContentLoaded', function() {
     </a>
   </div>
 
-    <a href="{{ url_for('admin.owner.dashboard_version') }}" class="settings-card" style="border-left:4px solid #10b981;">
+    <a href="{{ url_for('admin.owner.settings') }}" class="settings-card" style="border-left:4px solid #10b981;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
         <div class="card-icon">🚗</div>
         <span class="card-badge badge-system">Driver App</span>

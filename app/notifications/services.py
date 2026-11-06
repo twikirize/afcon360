@@ -24,6 +24,7 @@ from app.notifications.models import (
 )
 from app.notifications.channel_handlers import (
     EmailHandler, SmsHandler, PushHandler, InAppHandler, WebhookHandler,
+    OCIEmailHandler,
 )
 from app.notifications.template_loader import template_loader
 from app.notifications.utils import generate_idempotency_key, calculate_backoff
@@ -64,7 +65,8 @@ class NotificationService:
     """
 
     HANDLERS = {
-        NotificationChannel.EMAIL: EmailHandler(),
+        NotificationChannel.EMAIL: EmailHandler(),          # Transactional (Gmail SMTP)
+        'oci_email': OCIEmailHandler(),                      # Bulk/Marketing (OCI Email Delivery)
         NotificationChannel.SMS: SmsHandler(),
         NotificationChannel.PUSH: PushHandler(),
         NotificationChannel.IN_APP: InAppHandler(),

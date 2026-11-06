@@ -793,6 +793,8 @@
     var maxVisibleLines = 2000;
     var reconnectAttempts = 0;
     var maxReconnectAttempts = 10;
+    var seenEventIds = new Set();  // Deduplicate events across WS + polling
+    var isVisible = true;  // Track page visibility
     
     // Initialize SocketIO
     function initSocket() {
@@ -805,10 +807,7 @@
         try {
             socket = io('/console', {
                 transports: ['websocket', 'polling'],
-                reconnection: true,
-                reconnectionAttempts: maxReconnectAttempts,
-                reconnectionDelay: 1000,
-                reconnectionDelayMax: 5000,
+                reconnection: false,  // We handle reconnection manually via visibilitychange
                 timeout: 10000,
             });
         } catch (e) {
@@ -825,7 +824,10 @@
         });
         
         socket.on('disconnect', function(reason) {
-            updateStatus('disconnected', 'DISCONNECTED - ' + reason);
+            // Only show disconnected if we didn't intentionally disconnect
+            if (isVisible) {
+                updateStatus('disconnected', 'DISCONNECTED - ' + reason);
+            }
         });
         
         socket.on('connect_error', function(err) {
@@ -841,6 +843,8 @@
         });
         
         socket.on('console_event', function(event) {
+            if (isEventDuplicate(event)) return;
+            markEventSeen(event);
             if (!isPaused) {
                 appendLogLine(event);
             } else {
@@ -857,6 +861,8 @@
                 
                 // Prepend history (oldest first)
                 data.events.slice().reverse().forEach(function(event) {
+                    if (isEventDuplicate(event)) return;
+                    markEventSeen(event);
                     prependLogLine(event);
                 });
             }
@@ -864,6 +870,7 @@
         
         socket.on('history_cleared', function() {
             clearDisplay();
+            seenEventIds.clear();
         });
         
         socket.on('error', function(data) {
@@ -955,6 +962,21 @@
         return line;
     }
     
+    function isEventDuplicate(event) {
+        if (!event || !event.id) return false;
+        return seenEventIds.has(event.id);
+    }
+    
+    function markEventSeen(event) {
+        if (!event || !event.id) return;
+        seenEventIds.add(event.id);
+        // Keep set size manageable
+        if (seenEventIds.size > 10000) {
+            var first = seenEventIds.values().next().value;
+            seenEventIds.delete(first);
+        }
+    }
+    
     function escapeHtml(text) {
         var div = document.createElement('div');
         div.textContent = text;
@@ -1034,6 +1056,7 @@
         var output = document.getElementById('consoleOutput');
         output.innerHTML = '';
         logBuffer = [];
+        seenEventIds.clear();
         
         var emptyState = document.createElement('div');
         emptyState.className = 'empty-state';
@@ -1232,10 +1255,25 @@
         // missed by the live SocketIO stream. Safe under rate limits (6 req/min).
         pollHistory();
         setInterval(pollHistory, 10000);
+
+        // Visibility change: close socket when hidden, reconnect when visible
+        document.addEventListener('visibilitychange', function() {
+            isVisible = !document.hidden;
+            if (document.hidden) {
+                if (socket) {
+                    socket.disconnect();
+                    socket = null;
+                }
+                updateStatus('paused', 'HIDDEN');
+            } else {
+                updateStatus('live', 'RECONNECTING...');
+                initSocket();
+            }
+        });
     });
     
     function pollHistory() {
-        if (isPaused) return;
+        if (isPaused || !isVisible) return;
         fetch('/admin/owner/production-console/history?limit=50')
             .then(function(r) { return r.json(); })
             .then(function(data) {
@@ -1243,6 +1281,8 @@
                 // API returns newest-first; append oldest->newest so newest sits at bottom
                 data.events.slice().reverse().forEach(function(event) {
                     if (!event || !event.id) return;
+                    if (isEventDuplicate(event)) return;
+                    markEventSeen(event);
                     var existing = document.querySelector('#consoleOutput [data-id="' + event.id + '"]');
                     if (!existing) appendLogLine(event);
                 });

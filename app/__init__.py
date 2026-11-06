@@ -3083,5 +3083,12 @@ def create_app(config_object=None) -> Flask:
     def favicon():
         return redirect(url_for('static', filename='favicon.svg'))
 
+    # Bind Celery to Flask app context (with fallback if Celery unavailable)
+    try:
+        from app.celery_app import make_celery
+        make_celery(app)
+    except Exception as e:
+        logger.warning(f"Celery context binding skipped: {e}")
+
     logger.info(f"✅ App factory completed in {time.time() - start_time:.2f} seconds")
     return app

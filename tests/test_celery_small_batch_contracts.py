@@ -93,6 +93,7 @@ def test_transport_offer_expiry_sweep_uses_bounded_scan_cursors(monkeypatch):
             self.scans = []
             self.removed_members = []
             self.deleted_keys = []
+            self._data = {}
 
         def scan(self, cursor, match, count):
             self.scans.append((cursor, match, count))
@@ -111,6 +112,16 @@ def test_transport_offer_expiry_sweep_uses_bounded_scan_cursors(monkeypatch):
 
         def delete(self, key):
             self.deleted_keys.append(key)
+            self._data.pop(key, None)
+
+        def set(self, key, value, nx=False, ex=None):
+            if nx and key in self._data:
+                return False
+            self._data[key] = value
+            return True
+
+        def exists(self, key):
+            return key in self._data
 
     fake = _FakeRedis()
     monkeypatch.setattr(

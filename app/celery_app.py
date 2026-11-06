@@ -62,7 +62,8 @@ def _default_concurrency(pool: str) -> int | None:
     if pool == "solo":
         return 1
     if pool == "threads":
-        return 8  # I/O-bound tasks (webhooks, media) benefit from more threads
+        # Windows dev on 1GiB: 8 threads may OOM. Default to 2, override via env.
+        return 2
     return None  # let Celery/prefork pick os.cpu_count()
 
 

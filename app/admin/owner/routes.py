@@ -1201,6 +1201,12 @@ def settings():
             logger.warning(f"Could not load fare configuration: {e}")
             fare_config = None
 
+        # Load OCI Email Delivery settings
+        oci_email_region = SystemConfig.get('OCI_EMAIL_REGION', 'eu-frankfurt-1')
+        oci_email_compartment_id = SystemConfig.get('OCI_EMAIL_COMPARTMENT_ID', '')
+        oci_email_sender_address = SystemConfig.get('OCI_EMAIL_SENDER_ADDRESS', 'noreply@pamoja.space')
+        oci_email_suppression_list = SystemConfig.get('OCI_EMAIL_SUPPRESSION_LIST', True)
+
         logger.info(f"Rendering settings template with org_registration_mode={org_registration_mode}")
         return render_template('owner/settings.html',
                              settings=owner_settings,
@@ -1212,7 +1218,11 @@ def settings():
                              wallet_adjustment_threshold=wallet_adjustment_threshold,
                              socketio_enabled_stored=socketio_enabled_stored,
                              socketio_enabled_effective=socketio_enabled_effective,
-                             fare_config=fare_config)
+                             fare_config=fare_config,
+                             oci_email_region=oci_email_region,
+                             oci_email_compartment_id=oci_email_compartment_id,
+                             oci_email_sender_address=oci_email_sender_address,
+                             oci_email_suppression_list=oci_email_suppression_list)
     except Exception as e:
         current_app.logger.exception(
             "❌ Owner settings page crashed"
@@ -1225,6 +1235,63 @@ def settings():
         )
         flash("Unable to load settings. Please try again later.", "warning")
         return redirect(url_for('admin.owner.dashboard'))
+
+@owner_bp.route('/settings/oci-email', methods=['POST'])
+@owner_login_required
+@audit_owner_action('updated_oci_email_config', 'settings')
+def save_oci_email_config():
+    """Save OCI Email Delivery configuration"""
+    try:
+        from app.models.system_config import SystemConfig
+         
+        SystemConfig.set('OCI_EMAIL_REGION', request.form.get('OCI_EMAIL_REGION', 'eu-frankfurt-1'),
+                         value_type='str', category='email', description='OCI Email Delivery region')
+        SystemConfig.set('OCI_EMAIL_COMPARTMENT_ID', request.form.get('OCI_EMAIL_COMPARTMENT_ID', ''),
+                         value_type='str', category='email', description='OCI Compartment OCID')
+        SystemConfig.set('OCI_EMAIL_SENDER_ADDRESS', request.form.get('OCI_EMAIL_SENDER_ADDRESS', 'noreply@pamoja.space'),
+                         value_type='str', category='email', description='Approved sender address')
+        SystemConfig.set('OCI_EMAIL_SUPPRESSION_LIST', request.form.get('OCI_EMAIL_SUPPRESSION_LIST', 'true').lower() == 'true',
+                         value_type='bool', category='email', description='Use OCI suppression list')
+         
+        flash("✅ OCI Email configuration saved successfully", "success")
+        return redirect(url_for('admin.owner.settings'))
+    except Exception as e:
+        current_app.logger.error(f"Error saving OCI email config: {e}")
+        flash("❌ Error saving OCI email configuration", "danger")
+        return redirect(url_for('admin.owner.settings'))
+
+@owner_bp.route('/settings/oci-email/test', methods=['POST'])
+@owner_login_required
+@audit_owner_action('tested_oci_email', 'settings')
+def test_oci_email():
+    """Send a test email via OCI Email Delivery"""
+    try:
+        from app.notifications.channel_handlers.oci_email import OCIEmailHandler
+         
+        handler = OCIEmailHandler()
+         
+        if not handler.compartment_id:
+            return jsonify({'success': False, 'error': 'Compartment ID not configured'}), 400
+         
+        class TestNotification:
+            subject = 'AFCON360 OCI Email Test'
+            body = 'This is a test email from AFCON360 OCI Email Delivery configuration.'
+            html_body = '<h2>AFCON360 OCI Email Test</h2><p>This is a test email from AFCON360 OCI Email Delivery configuration.</p>'
+         
+        test_email = current_user.email
+        if not test_email:
+            return jsonify({'success': False, 'error': 'Owner email not set'}), 400
+         
+        result = handler.deliver(TestNotification(), {'email': test_email, 'user_id': current_user.id})
+        
+        if result.get('success'):
+            return jsonify({'success': True, 'message': f'Test email sent to {test_email}'})
+        else:
+            return jsonify({'success': False, 'error': result.get('response_body')}), 500
+            
+    except Exception as e:
+        current_app.logger.error(f"Error sending test OCI email: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @owner_bp.route('/settings/owner-mfa', methods=['POST'])
 @owner_login_required

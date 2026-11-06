@@ -50,6 +50,37 @@
                                 <option value="Africa/Cairo" {{ 'selected' if config.get('TIMEZONE', 'Africa/Kampala') == 'Africa/Cairo' }}>Africa/Cairo</option>
                             </select>
                         </div>
+                        <hr>
+                        <h6 class="text-primary"><i class="fas fa-envelope"></i> OCI Email Delivery</h6>
+                        <div class="mb-3">
+                            <label class="form-label">OCI Email Region</label>
+                            <input type="text" class="form-control" name="OCI_EMAIL_REGION" 
+                                   value="{{ config.get('OCI_EMAIL_REGION', 'eu-frankfurt-1') }}"
+                                   placeholder="eu-frankfurt-1">
+                            <small class="form-text text-muted">OCI region for Email Delivery (e.g., eu-frankfurt-1, us-ashburn-1)</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Compartment OCID <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="OCI_EMAIL_COMPARTMENT_ID" 
+                                   value="{{ config.get('OCI_EMAIL_COMPARTMENT_ID', '') }}"
+                                   placeholder="ocid1.compartment.oc1..xxxxx">
+                            <small class="form-text text-muted">Required. Find in OCI Console → Identity → Compartments</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Approved Sender Address</label>
+                            <input type="email" class="form-control" name="OCI_EMAIL_SENDER_ADDRESS" 
+                                   value="{{ config.get('OCI_EMAIL_SENDER_ADDRESS', 'noreply@pamoja.space') }}"
+                                   placeholder="noreply@pamoja.space">
+                            <small class="form-text text-muted">Must match approved sender in OCI Email Delivery</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Use Suppression List</label>
+                            <select class="form-control" name="OCI_EMAIL_SUPPRESSION_LIST">
+                                <option value="true" {{ 'selected' if config.get('OCI_EMAIL_SUPPRESSION_LIST', 'true') == 'true' }}>Enabled (recommended)</option>
+                                <option value="false" {{ 'selected' if config.get('OCI_EMAIL_SUPPRESSION_LIST', 'true') == 'false' }}>Disabled</option>
+                            </select>
+                            <small class="form-text text-muted">Auto-handle bounces/complaints via OCI suppression list</small>
+                        </div>
                         <button type="button" class="btn btn-primary" onclick="saveSystemConfig()">
                             <i class="fas fa-save"></i> Save System Config
                         </button>
