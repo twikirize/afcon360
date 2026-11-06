@@ -776,7 +776,7 @@ export default function Wallet() {
               value={withdrawalAmount}
               onChangeText={(value) => {
                 setWithdrawalAmount(value);
-                setWithdrawalQuote(null);
+                invalidateWithdrawalQuote();
               }}
               placeholder="Whole UGX amount"
               keyboardType="numeric"
@@ -792,7 +792,7 @@ export default function Wallet() {
                   key={network}
                   onPress={() => {
                     setWithdrawalNetwork(network);
-                    setWithdrawalQuote(null);
+                    invalidateWithdrawalQuote();
                   }}
                   style={{
                     backgroundColor: withdrawalNetwork === network ? palette.green : "#EEF3F0",
@@ -812,7 +812,7 @@ export default function Wallet() {
               value={withdrawalPhone}
               onChangeText={(value) => {
                 setWithdrawalPhone(value);
-                setWithdrawalQuote(null);
+                invalidateWithdrawalQuote();
               }}
               placeholder="07XXXXXXXX or +2567XXXXXXXX"
               keyboardType="phone-pad"
@@ -822,7 +822,7 @@ export default function Wallet() {
               value={withdrawalBeneficiary}
               onChangeText={(value) => {
                 setWithdrawalBeneficiary(value);
-                setWithdrawalQuote(null);
+                invalidateWithdrawalQuote();
               }}
               placeholder="Name registered to the mobile money account"
               autoCapitalize="words"
