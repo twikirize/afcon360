@@ -3993,6 +3993,11 @@ def guest_cancel_booking(reference):
     reason = request.form.get('reason', 'User requested cancellation')
     request_human_review = request.form.get("request_human_review") == "1"
     review_reason = request.form.get("refund_review_reason", "").strip()
+    if request_human_review and len(review_reason) < 5:
+        flash("Please explain why an independent platform review is needed.", "warning")
+        return redirect(
+            url_for("accommodation.guest_confirmation", reference=booking.booking_reference)
+        )
 
     # Cancellation is confirmed first. A verified, routine wallet refund is
     # then automatic; an exception or machine-screening concern is queued for
@@ -5620,9 +5625,16 @@ def host_cancel_booking(property_id, booking_id):
             booking.id,
             refund,
         )
-        if refund_success:
+        booking = db.session.get(AccommodationBooking, booking.id)
+        workflow = (booking.policy_snapshot or {}).get("refund_workflow", {})
+        if workflow.get("state") == "refunded":
             refund_msg = f" Wallet refund of {refund} {booking.currency} processed."
-        else:
+        elif workflow.get("state") == "pending_human_review":
+            refund_msg = (
+                f" Refund of {refund} {booking.currency} is awaiting independent platform review. "
+                "No money has been moved yet."
+            )
+        elif not refund_success:
             refund_msg = f" Refund due: {refund}, but wallet execution failed: {refund_error}."
     fine = outcome.get("fine")
     if fine and Decimal(fine) > 0:
@@ -6008,7 +6020,11 @@ def admin_refund_review_queue():
     reviews = []
     for booking in candidates:
         workflow = (booking.policy_snapshot or {}).get("refund_workflow", {})
-        if workflow.get("state") == "pending_human_review":
+        if workflow.get("state") in {
+            "pending_human_review",
+            "approved_external_execution_pending",
+            "approved_recovery_required",
+        }:
             reviews.append({"booking": booking, "workflow": workflow})
     return render_template(
         "accommodation/admin/refund_review_queue.html",
