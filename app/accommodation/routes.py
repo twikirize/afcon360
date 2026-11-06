@@ -1569,7 +1569,10 @@ def guest_checkout():
         current_app.logger.info("=" * 60)
         current_app.logger.info("CHECKOUT DEBUG - INCOMING POST DATA")
         current_app.logger.info("=" * 60)
-        current_app.logger.info(f"FORM DATA: {dict(request.form)}")
+        safe_form_data = dict(request.form)
+        if "transaction_pin" in safe_form_data:
+            safe_form_data["transaction_pin"] = "[REDACTED]"
+        current_app.logger.info(f"FORM DATA: {safe_form_data}")
         current_app.logger.info(f"SESSION pending_booking: {session.get('pending_booking', 'None')}")
         current_app.logger.info(f"USER ID: {current_user.id}")
         current_app.logger.info("=" * 60)
@@ -2242,6 +2245,9 @@ def guest_checkout():
                     'guest_name': primary_guest_name,
                     'guest_email': primary_guest_email,
                     'payment_timing': payment_timing,
+                    # Pass the PIN transiently to WalletProcessor only. It is
+                    # never copied into transaction metadata or application logs.
+                    'transaction_pin': data.get('transaction_pin') if payment_method == 'wallet' else None,
                 }
             )
 
