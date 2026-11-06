@@ -138,7 +138,7 @@ def _start_native_sms_mfa(user):
             logger.warning("Native SMS MFA delivery failed for user %s", user.public_id)
             return None, ("sms_mfa_delivery_failed", "AFCON360 could not deliver your sign-in code. Check your phone connection or try again later.", 503)
 
-        hint = f"{phone[:3]}••••{phone[-2:]}"
+        hint = f"{phone[:4]}••••{phone[-2:]}"
         return hint, None
     except Exception:
         OTPService.invalidate_otp(user_id, "2fa_login")
