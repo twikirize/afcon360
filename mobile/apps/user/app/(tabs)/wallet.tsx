@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import * as SecureStore from "expo-secure-store";
 import {
   ActivityIndicator,
   Linking,
@@ -137,6 +138,14 @@ export default function Wallet() {
   const [depositReference, setDepositReference] = useState<string | null>(null);
   const [depositCheckoutUrl, setDepositCheckoutUrl] = useState<string | null>(null);
   const [depositStatus, setDepositStatus] = useState<WalletDepositStatus | null>(null);
+  const depositStoreKeys = {
+    request: "afcon360.user.wallet.deposit.request",
+    reference: "afcon360.user.wallet.deposit.reference",
+    checkout: "afcon360.user.wallet.deposit.checkout",
+    amount: "afcon360.user.wallet.deposit.amount",
+    currency: "afcon360.user.wallet.deposit.currency",
+    method: "afcon360.user.wallet.deposit.method",
+  };
 
   const loadWallet = useCallback(async () => {
     setLoading(true);
@@ -167,6 +176,47 @@ export default function Wallet() {
   useEffect(() => {
     void loadWallet();
   }, [loadWallet]);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const [requestKey, reference, checkoutUrl, savedAmount, savedCurrency, savedMethod] =
+          await Promise.all([
+            SecureStore.getItemAsync(depositStoreKeys.request),
+            SecureStore.getItemAsync(depositStoreKeys.reference),
+            SecureStore.getItemAsync(depositStoreKeys.checkout),
+            SecureStore.getItemAsync(depositStoreKeys.amount),
+            SecureStore.getItemAsync(depositStoreKeys.currency),
+            SecureStore.getItemAsync(depositStoreKeys.method),
+          ]);
+        if (!active) return;
+        if (requestKey) setDepositRequestKey(requestKey);
+        if (savedAmount) setDepositAmount(savedAmount);
+        if (savedCurrency) setSelectedCurrency(savedCurrency);
+        if (savedMethod === "card" || savedMethod === "mobilemoney") setDepositPaymentMethod(savedMethod);
+        if (reference) {
+          setDepositReference(reference);
+          if (checkoutUrl) setDepositCheckoutUrl(checkoutUrl);
+          try {
+            const status = await walletClient.getDepositStatus(reference);
+            if (active) setDepositStatus(status);
+          } catch {
+            // Preserve the saved reference and allow an explicit status refresh.
+          }
+        }
+      } catch {
+        // SecureStore may be unavailable on some development runtimes.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const clearSavedDeposit = async () => {
+    await Promise.all(Object.values(depositStoreKeys).map((key) => SecureStore.deleteItemAsync(key)));
+  };
 
   const selectedAccount = accounts.find((item) => item.currency === selectedCurrency);
 
@@ -233,6 +283,17 @@ export default function Wallet() {
       depositRequestKey ??
       "native-deposit-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 18);
     setDepositRequestKey(requestKey);
+    try {
+      await Promise.all([
+        SecureStore.setItemAsync(depositStoreKeys.request, requestKey),
+        SecureStore.setItemAsync(depositStoreKeys.amount, depositAmount),
+        SecureStore.setItemAsync(depositStoreKeys.currency, selectedCurrency),
+        SecureStore.setItemAsync(depositStoreKeys.method, depositPaymentMethod),
+      ]);
+    } catch {
+      setError("AFCON360 could not preserve this deposit request securely. Check your connection and try again.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -253,6 +314,10 @@ export default function Wallet() {
         message: result.message,
       });
       setDepositCheckoutUrl(result.authorization_url);
+      await Promise.all([
+        SecureStore.setItemAsync(depositStoreKeys.reference, result.reference),
+        ...(result.authorization_url ? [SecureStore.setItemAsync(depositStoreKeys.checkout, result.authorization_url)] : []),
+      ]);
       if (result.authorization_url) {
         const checkout = new URL(result.authorization_url);
         if (checkout.protocol !== "https:") {
@@ -286,12 +351,14 @@ export default function Wallet() {
         setDepositReference(null);
         setDepositCheckoutUrl(null);
         setDepositAmount("");
+        await clearSavedDeposit();
         await loadWallet();
       } else if (status.status === "failed") {
         setNotice("Flutterwave did not complete this payment. Start a new deposit with a new request.");
         setDepositRequestKey(null);
         setDepositReference(null);
         setDepositCheckoutUrl(null);
+        await clearSavedDeposit();
       } else {
         setNotice("Flutterwave has not confirmed the payment yet. Your Wallet balance has not been changed.");
       }
