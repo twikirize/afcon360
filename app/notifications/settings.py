@@ -226,7 +226,7 @@ class CommunicationSettingsService:
         key: str,
         channel: str,
         provider: str = None,
-        enabled: bool = True,
+        enabled: Optional[bool] = None,
         config: Dict[str, Any] = None,
         description: str = None,
         updated_by: int = None,
@@ -238,10 +238,12 @@ class CommunicationSettingsService:
         if not setting:
             setting = CommunicationSettings(key=key)
             db.session.add(setting)
+            setting.enabled = True if enabled is None else bool(enabled)
+        elif enabled is not None:
+            setting.enabled = bool(enabled)
         setting.channel = channel
         if provider is not None:
             setting.provider = provider
-        setting.enabled = enabled
         if config is not None:
             if not isinstance(config, dict):
                 raise TypeError("Provider configuration must be an object")
@@ -301,7 +303,7 @@ class CommunicationSettingsService:
         name: str,
         provider_type: str,
         channels: List[str],
-        enabled: bool = True,
+        enabled: Optional[bool] = None,
         credentials: Dict[str, Any] = None,
         webhook_url: str = None,
         priority: int = 10,
@@ -313,9 +315,11 @@ class CommunicationSettingsService:
         if not agg:
             agg = NotificationAggregator(name=name)
             db.session.add(agg)
+            agg.enabled = True if enabled is None else bool(enabled)
+        elif enabled is not None:
+            agg.enabled = bool(enabled)
         agg.provider_type = provider_type
         agg.channels = channels
-        agg.enabled = enabled
 
         existing = cls._decrypt_config(agg.credentials or {})
         merged = dict(existing)
