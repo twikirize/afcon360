@@ -1861,6 +1861,112 @@ def mobile_wallet_deposit_refresh(reference):
     }), 202
 
 
+
+# ---------------------------------------------------------------------------
+# Native wallet withdrawals — quote, explicit confirmation, provider status
+# ---------------------------------------------------------------------------
+
+@mobile_api_bp.post("/wallet/withdrawals/quote")
+@limiter.limit("8 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_wallet_withdrawal_quote():
+    """Create a short-lived UGX mobile-money payout quote without reserving funds."""
+    from app.wallet.services.native_withdrawal_service import (
+        NativeWithdrawalError,
+        NativeWithdrawalService,
+    )
+
+    data = request.get_json(silent=True) or {}
+    try:
+        quote = NativeWithdrawalService.create_quote(
+            _native_wallet_user(),
+            amount=data.get("amount"),
+            currency=data.get("currency"),
+            network=data.get("network"),
+            phone_number=data.get("phone_number"),
+            beneficiary_name=data.get("beneficiary_name"),
+        )
+    except NativeWithdrawalError as exc:
+        return _error(exc.code, exc.message, exc.status_code)
+    except Exception:
+        logger.exception("Native wallet withdrawal quote failed")
+        return _error(
+            "withdrawal_quote_unavailable",
+            "AFCON360 could not prepare the withdrawal quote. No money has been reserved.",
+            503,
+        )
+
+    return jsonify({"success": True, "data": quote}), 200
+
+
+@mobile_api_bp.post("/wallet/withdrawals")
+@limiter.limit("4 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_wallet_withdrawal_confirm():
+    """Confirm one quoted withdrawal with the user's transaction PIN."""
+    from app.wallet.services.native_withdrawal_service import (
+        NativeWithdrawalError,
+        NativeWithdrawalService,
+    )
+
+    data = request.get_json(silent=True) or {}
+    quote_token = str(data.get("quote_token") or "")
+    pin = str(data.get("pin") or "")
+    if not quote_token or not pin:
+        return _error(
+            "withdrawal_confirmation_required",
+            "A valid quote and your transaction PIN are required to confirm a withdrawal.",
+            400,
+        )
+
+    try:
+        result = NativeWithdrawalService.confirm_quote(
+            _native_wallet_user(),
+            quote_token=quote_token,
+            pin=pin,
+        )
+    except NativeWithdrawalError as exc:
+        return _error(exc.code, exc.message, exc.status_code)
+    except Exception:
+        logger.exception("Native wallet withdrawal confirmation failed")
+        return _error(
+            "withdrawal_confirmation_unavailable",
+            "AFCON360 could not confirm the withdrawal. Check your wallet history before trying again.",
+            503,
+        )
+
+    status = str(result.get("status") or "pending").lower()
+    http_status = 200 if status in {"completed", "failed"} else 202
+    return jsonify({"success": True, "data": result}), http_status
+
+
+@mobile_api_bp.get("/wallet/withdrawals/<string:reference>")
+@limiter.limit("12 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_wallet_withdrawal_status(reference):
+    """Return and, when possible, independently refresh one owned payout status."""
+    from app.wallet.services.native_withdrawal_service import (
+        NativeWithdrawalError,
+        NativeWithdrawalService,
+    )
+
+    try:
+        result = NativeWithdrawalService.get_status(_native_wallet_user(), reference)
+    except NativeWithdrawalError as exc:
+        return _error(exc.code, exc.message, exc.status_code)
+    except Exception:
+        logger.exception("Native wallet withdrawal status could not be refreshed")
+        return _error(
+            "withdrawal_status_unavailable",
+            "AFCON360 cannot verify this payout right now. Its pending reservation has been kept safe.",
+            503,
+        )
+
+    status = str(result.get("status") or "pending").lower()
+    http_status = 200 if status in {"completed", "failed"} else 202
+    return jsonify({"success": True, "data": result}), http_status
+
+
 @mobile_api_bp.get("/driver/earnings")
 @_bearer_required("driver")
 def mobile_driver_earnings():
