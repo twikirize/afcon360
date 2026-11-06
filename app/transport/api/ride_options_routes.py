@@ -116,7 +116,9 @@ class RideOptionsResource(Resource):
         if current_user.is_authenticated:
             try:
                 from app.wallet.services.home_currency_service import get_user_home_currency
-                preferred_currency = get_user_home_currency(current_user)
+                resolved_home_currency = get_user_home_currency(current_user)
+                if resolved_home_currency:
+                    preferred_currency = resolved_home_currency
             except Exception:
                 logger.warning("Could not resolve rider home currency; retaining fare currency")
 
