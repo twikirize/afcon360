@@ -67,8 +67,11 @@ class TwilioSmsHandler(BaseChannelHandler):
                 from twilio.rest import Client
                 self._client = Client(self.account_sid, self.auth_token)
                 logger.info("[Twilio SMS] Client initialized")
-            except Exception as e:
-                logger.error(f"[Twilio SMS] Failed to initialize client: {e}")
+            except Exception as exc:
+                logger.warning(
+                    "[Twilio SMS] Client initialization failed (exception_type=%s)",
+                    type(exc).__name__,
+                )
                 return None
         return self._client
 
@@ -166,8 +169,11 @@ class TwilioWhatsAppHandler(BaseChannelHandler):
                 from twilio.rest import Client
                 self._client = Client(self.account_sid, self.auth_token)
                 logger.info("[Twilio WhatsApp] Client initialized")
-            except Exception as e:
-                logger.error(f"[Twilio WhatsApp] Failed to initialize client: {e}")
+            except Exception as exc:
+                logger.warning(
+                    "[Twilio WhatsApp] Client initialization failed (exception_type=%s)",
+                    type(exc).__name__,
+                )
                 return None
         return self._client
 
@@ -212,10 +218,13 @@ class TwilioWhatsAppHandler(BaseChannelHandler):
                 'response_body': f'Twilio WhatsApp sent: {message.status}',
             }
 
-        except Exception as e:
-            logger.error(f"[Twilio WhatsApp] Failed to send to {to_whatsapp}: {e}")
+        except Exception as exc:
+            logger.warning(
+                "[Twilio WhatsApp] Delivery failed (exception_type=%s)",
+                type(exc).__name__,
+            )
             return {
                 'success': False,
-                'response_code': 500,
-                'response_body': str(e),
+                'response_code': 502,
+                'response_body': 'Twilio WhatsApp delivery failed',
             }
