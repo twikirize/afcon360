@@ -652,3 +652,50 @@ def test_provider_and_aggregator_saves_reject_system_secrets_before_database_loo
             channels=["webhook"],
             credentials={"nested": {"DB_PASSWORD": "database-password"}},
         )
+
+
+
+def test_first_owner_email_save_requires_environment_credentials_to_be_reentered():
+    from app.notifications.routes import _missing_initial_smtp_credentials
+
+    environment = {
+        "MAIL_USERNAME": "legacy-user@example.test",
+        "MAIL_PASSWORD": "legacy-env-secret",
+    }
+
+    # An untouched first-save form must not create an authoritative row that
+    # silently drops either environment credential.
+    assert _missing_initial_smtp_credentials(
+        {"smtp_user": "", "smtp_pass": ""},
+        environment,
+        existing_setting=None,
+    ) == ["SMTP username", "SMTP password"]
+
+    # Entering both secrets explicitly allows the first save.
+    assert _missing_initial_smtp_credentials(
+        {"smtp_user": "legacy-user@example.test", "smtp_pass": "re-entered-secret"},
+        environment,
+        existing_setting=None,
+    ) == []
+
+    # Existing Owner-managed credentials continue to use blank-means-preserve.
+    assert _missing_initial_smtp_credentials(
+        {"smtp_user": "", "smtp_pass": ""},
+        environment,
+        existing_setting=object(),
+    ) == []
+
+    # Clearing authentication is an explicit Owner action, not an accidental
+    # consequence of leaving write-only fields blank.
+    assert _missing_initial_smtp_credentials(
+        {"smtp_user": "", "smtp_pass": "", "clear_auth": True},
+        environment,
+        existing_setting=None,
+    ) == []
+
+    # A first save with no environment authentication configured remains valid.
+    assert _missing_initial_smtp_credentials(
+        {"smtp_user": "", "smtp_pass": ""},
+        {},
+        existing_setting=None,
+    ) == []
