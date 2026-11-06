@@ -332,52 +332,50 @@ def send_sms(phone_number: str, message: str) -> Dict[str, Any]:
         }
 
     return provider_instance.send_sms(phone_number, message)
-def send_whatsapp(to_number: str, message: str) -> bool:
+def send_whatsapp(to_number: str, message_body: str) -> bool:
     """
-    Send a WhatsApp message via Twilio.
+    Send a WhatsApp message through Twilio only when the owner enables it.
 
-    Args:
-        to_number: Destination phone number in E.164 format (e.g., +15551234567)
-        message: Message body (max 1600 characters)
-
-    Returns:
-        True if sent successfully, False otherwise
+    The recipient is kept out of logs; callers must validate and authorize the
+    destination before invoking this helper.
     """
+    import hashlib
+
+    recipient_hash = hashlib.sha256(str(to_number or "").encode("utf-8")).hexdigest()[:12]
     try:
-        # Get Twilio credentials from SystemConfig
         from app.models.system_config import SystemConfig
 
-        account_sid = SystemConfig.get('TWILIO_ACCOUNT_SID')
-        auth_token = SystemConfig.get('TWILIO_AUTH_TOKEN')
-        whatsapp_from = SystemConfig.get('TWILIO_WHATSAPP_FROM')
-
-        if not account_sid or not auth_token:
-            logger.warning("[WhatsApp] Twilio credentials not configured")
+        if not SystemConfig.get("TWILIO_WHATSAPP_ENABLED", False):
+            logger.info("[WhatsApp] Delivery is disabled by configuration")
             return False
 
-        if not whatsapp_from:
-            logger.warning("[WhatsApp] No WhatsApp from number configured")
+        account_sid = SystemConfig.get("TWILIO_ACCOUNT_SID")
+        auth_token = SystemConfig.get("TWILIO_AUTH_TOKEN")
+        whatsapp_from = SystemConfig.get("TWILIO_WHATSAPP_FROM")
+
+        if not account_sid or not auth_token or not whatsapp_from:
+            logger.warning("[WhatsApp] Sender configuration is incomplete")
             return False
 
         from twilio.rest import Client
 
-        client = Client(account_sid, auth_token)
+        destination = str(to_number or "").strip()
+        if not destination.startswith("+"):
+            logger.warning("[WhatsApp] Rejected destination without E.164 prefix")
+            return False
 
-        # Ensure WhatsApp format: whatsapp:+1234567890
-        if not to_number.startswith('whatsapp:'):
-            to_whatsapp = f'whatsapp:{to_number}'
-        else:
-            to_whatsapp = to_number
-
-        message = client.messages.create(
+        to_whatsapp = destination if destination.startswith("whatsapp:") else f"whatsapp:{destination}"
+        response = Client(account_sid, auth_token).messages.create(
             from_=whatsapp_from,
             to=to_whatsapp,
-            body=message,
+            body=message_body,
         )
-
-        logger.info(f"[WhatsApp] Sent to {to_whatsapp}: SID={message.sid}, Status={message.status}")
-        return True
-
-    except Exception as e:
-        logger.error(f"[WhatsApp] Failed to send to {to_number}: {e}")
+        logger.info(
+            "[WhatsApp] Delivery submitted for recipient %s: status=%s",
+            recipient_hash,
+            response.status,
+        )
+        return bool(response.sid)
+    except Exception:
+        logger.exception("[WhatsApp] Delivery failed for recipient %s", recipient_hash)
         return False
