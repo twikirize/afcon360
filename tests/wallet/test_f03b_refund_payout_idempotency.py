@@ -18,9 +18,9 @@ Design rules honoured here (F-03b prompt):
 - Every transfer is a REAL wallet transfer against the PostgreSQL ledger
   (no mocked WalletService). KYC/fraud checks are mocked only because they are
   orthogonal to idempotency (deterministic pass-through).
-- current_user is the PLATFORM account owner, so the real ownership gate in
-  WalletService.transfer (from_account.user_id == current_user.id) passes
-  without touching authorization semantics.
+- Payout/refund tests act as the property's authenticated host. MarketplaceService
+  verifies human approval before WalletService executes system-owned escrow
+  transfers; the guest/platform wallet owner does not need to enter a PIN.
 - Concurrency tests use REAL threads, each with its own Flask app context,
   test request context and DB session (the pattern the existing skipped tests
   lacked).
@@ -30,7 +30,7 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import Mock, patch
 
@@ -275,7 +275,10 @@ def held_booking(app, test_db, platform, guest, host):
             guest_email="guest@test.com",
             guest_phone="+256700000000",
             payment_status=AccommodationPaymentStatus.PAID.value,
-            status=AccommodationBookingStatus.CONFIRMED.value,
+            status=AccommodationBookingStatus.CHECKED_IN.value,
+            checked_in_by=host["user_id"],
+            is_checked_in=True,
+            checked_in_at=datetime.now(timezone.utc),
             booked_by_user_id=guest["user_id"],
             booking_type="self",
             payment_timing="pay_now",
@@ -388,6 +391,32 @@ def _commission(app, booking_id):
 # ---------------- Payout idempotency ----------------
 
 
+class TestEscrowHumanAuthorization:
+    def test_payout_requires_authorized_checkin_actor(
+        self, app, platform, held_booking
+    ):
+        with _login_as(app, platform["user_id"]):
+            ok, error = MarketplaceService.release_host_payout(held_booking)
+
+        assert ok is False
+        assert "authorised" in error.lower()
+        assert _count_transfers_for(held_booking, "payout") == 0
+
+    def test_refund_requires_human_approval(
+        self, app, platform, held_booking
+    ):
+        with _login_as(app, platform["user_id"]):
+            ok, error = MarketplaceService.refund_guest(
+                held_booking,
+                Decimal("100.00"),
+                approval_reason="Attempted without property authority",
+            )
+
+        assert ok is False
+        assert "authorised" in error.lower()
+        assert _count_transfers_for(held_booking, "refund") == 0
+
+
 class TestPayoutIdempotency:
     def test_sequential_duplicate_payout_single_transfer(
         self, app, platform, host, held_booking
@@ -397,7 +426,7 @@ class TestPayoutIdempotency:
         host_before = _balance(host["account_id"])
         platform_before = _balance(platform["account_id"])
 
-        with _login_as(app, platform["user_id"]):
+        with _login_as(app, host["user_id"]):
             ok1, err1 = _guarded_call(
                 lambda: MarketplaceService.release_host_payout(held_booking)
             )
@@ -414,7 +443,16 @@ class TestPayoutIdempotency:
         assert _balance(platform["account_id"]) == platform_before - Decimal(
             "207.00"
         )
-        assert _commission(app, held_booking).status == "released"
+        released_commission = _commission(app, held_booking)
+        assert released_commission.status == "released"
+        assert released_commission.released_by == host["user_id"]
+        payout_tx = (
+            db.session.query(TransactionModel)
+            .filter_by(client_request_id=PAYOUT_KEY_TEMPLATE.format(booking_id=held_booking))
+            .first()
+        )
+        assert payout_tx.tx_metadata["approved_by_user_id"] == host["user_id"]
+        assert payout_tx.tx_metadata["approval_source"] == "host_check_in"
 
     def test_concurrent_payout_single_transfer(
         self, app, platform, host, held_booking
@@ -425,7 +463,7 @@ class TestPayoutIdempotency:
 
         outcomes = _run_two_threads(
             app,
-            platform["user_id"],
+            host["user_id"],
             lambda: MarketplaceService.release_host_payout(held_booking),
         )
 
@@ -469,15 +507,15 @@ class TestRefundIdempotency:
         guest_before = _balance(guest["account_id"])
         platform_before = _balance(platform["account_id"])
 
-        with _login_as(app, platform["user_id"]):
+        with _login_as(app, host["user_id"]):
             ok1, err1 = _guarded_call(
                 lambda: MarketplaceService.refund_guest(
-                    held_booking, Decimal("100.00")
+                    held_booking, Decimal("100.00"), approval_reason="Host approved test refund"
                 )
             )
             ok2, err2 = _guarded_call(
                 lambda: MarketplaceService.refund_guest(
-                    held_booking, Decimal("100.00")
+                    held_booking, Decimal("100.00"), approval_reason="Host approved test refund"
                 )
             )
 
@@ -495,6 +533,13 @@ class TestRefundIdempotency:
         commission = _commission(app, held_booking)
         assert commission.status == "refunded"
         assert commission.refund_amount == Decimal("100.00")
+        refund_tx = (
+            db.session.query(TransactionModel)
+            .filter_by(client_request_id=REFUND_KEY_TEMPLATE.format(booking_id=held_booking))
+            .first()
+        )
+        assert refund_tx.tx_metadata["approved_by_user_id"] == host["user_id"]
+        assert refund_tx.tx_metadata["approval_source"] == "host_manual_refund"
 
     def test_concurrent_refund_single_transfer(
         self, app, platform, guest, held_booking
@@ -505,9 +550,9 @@ class TestRefundIdempotency:
 
         outcomes = _run_two_threads(
             app,
-            platform["user_id"],
+            host["user_id"],
             lambda: MarketplaceService.refund_guest(
-                held_booking, Decimal("100.00")
+                held_booking, Decimal("100.00"), approval_reason="Host approved test refund"
             ),
         )
 
@@ -552,7 +597,7 @@ class TestRefundIdempotency:
         platform_before = _balance(platform["account_id"])
         key = REFUND_KEY_TEMPLATE.format(booking_id=held_booking)
 
-        with _login_as(app, platform["user_id"]):
+        with _login_as(app, host["user_id"]):
             # Simulate the ORIGINAL attempt: wallet leg committed...
             _guarded_call(
                 lambda: WalletService().transfer(
@@ -562,16 +607,22 @@ class TestRefundIdempotency:
                     currency="USD",
                     client_request_id=key,
                     note="Refund: simulated wallet leg",
+                    metadata={
+                        "approved_by_user_id": host["user_id"],
+                        "approval_source": "host_manual_refund",
+                        "approval_reason": "Host approved retry-recovery test",
+                    },
+                    system_initiated=True,
                 )
             )
         # ...but the business leg never ran (commission still 'held').
         assert _commission(app, held_booking).status == "held"
 
         # Retry via the canonical service — must converge, not double-pay.
-        with _login_as(app, platform["user_id"]):
+        with _login_as(app, host["user_id"]):
             ok, err = _guarded_call(
                 lambda: MarketplaceService.refund_guest(
-                    held_booking, Decimal("100.00")
+                    held_booking, Decimal("100.00"), approval_reason="Host approved test refund"
                 )
             )
         assert ok, err
@@ -610,7 +661,7 @@ class TestMockIsolation:
 
         outcomes = _run_two_threads(
             app,
-            platform["user_id"],
+            host["user_id"],
             lambda: MarketplaceService.release_host_payout(held_booking),
         )
 
