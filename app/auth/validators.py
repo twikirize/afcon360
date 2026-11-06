@@ -5,6 +5,16 @@ from app.auth.email_validation import validate_email_address
 
 RESERVED_USERNAMES = {"admin", "root", "system"}
 
+def validate_password_strength(password):
+    """Apply the account password rules without revalidating username or email."""
+    if not isinstance(password, str) or len(password) < 10:
+        return False, "Password must be at least 10 characters long"
+    categories = [r"[A-Z]", r"[a-z]", r"\d", r"[^A-Za-z0-9]"]
+    if sum(bool(re.search(pattern, password)) for pattern in categories) < 3:
+        return False, "Password must include at least 3 of: uppercase, lowercase, number, symbol"
+    return True, ""
+
+
 def validate_registration(username, password, email=None, *, check_email_mx=None):
     """
     Validate registration input.
@@ -24,11 +34,9 @@ def validate_registration(username, password, email=None, *, check_email_mx=None
         return False, "Username may only contain letters, numbers, underscores, dots, or hyphens"
 
     # Password rules
-    if len(password) < 10:
-        return False, "Password must be at least 10 characters long"
-    categories = [r"[A-Z]", r"[a-z]", r"\d", r"[^A-Za-z0-9]"]
-    if sum(bool(re.search(p, password)) for p in categories) < 3:
-        return False, "Password must include at least 3 of: uppercase, lowercase, number, symbol"
+    valid_password, password_message = validate_password_strength(password)
+    if not valid_password:
+        return False, password_message
 
     # Email rules - full validation pipeline
     if email:

@@ -117,13 +117,13 @@ def _device_fingerprint(user_agent: str | None) -> str:
     return hashlib.sha256(user_agent.encode()).hexdigest()[:32]
 
 
-def start_device_session(user, ip: str | None, ua: str | None, ttl_days: int = 30) -> str | None:
+def start_device_session(user, ip: str | None, ua: str | None, ttl_days: int = 30, device_id: str | None = None, device_name: str | None = None) -> str | None:
     """Create a device session (Session model) for long-lived login tracking.
     Returns the session_id on success, None on failure (non-fatal)."""
     from app.identity.models.user import Session as DeviceSession
     
     sid = str(uuid.uuid4())
-    fingerprint = _device_fingerprint(ua)
+    fingerprint = _device_fingerprint(device_id or ua)
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(days=ttl_days)
     # Absolute cap: 90 days from creation
@@ -167,6 +167,7 @@ def start_device_session(user, ip: str | None, ua: str | None, ttl_days: int = 3
                     "ttl_days": ttl_days,
                     "expires_at": ds.expires_at.isoformat(),
                     "is_new_device": is_new_device,
+                    "device_name": (device_name or "device")[:80],
                 }
             )
             # If new device, also fire a "new_signin" event for email notification
