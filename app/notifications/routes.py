@@ -543,7 +543,6 @@ def save_email_provider_settings():
         return jsonify({'error': 'SMTP port must be an integer'}), 400
     use_tls = bool(data.get('use_tls', True))
     use_ssl = bool(data.get('use_ssl', False))
-    enabled = bool(data.get('enabled', True))
     if provider != 'smtp':
         return jsonify({'error': 'Only SMTP is enabled for the shared mail transport'}), 400
     if enabled and (not host or not sender or '@' not in sender):
@@ -554,6 +553,15 @@ def save_email_provider_settings():
         return jsonify({'error': 'Choose STARTTLS or SSL, not both'}), 400
 
     existing_setting = CommunicationSettingsService.get_email_setting()
+    if 'enabled' in data:
+        enabled = bool(data.get('enabled'))
+    elif existing_setting is not None:
+        enabled = bool(existing_setting.enabled)
+    else:
+        enabled = True
+    if enabled and (not host or not sender or '@' not in sender):
+        return jsonify({'error': 'SMTP host and a valid default sender are required'}), 400
+
     missing_environment_credentials = _missing_initial_smtp_credentials(
         data,
         current_app.config,
