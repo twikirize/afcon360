@@ -110,6 +110,10 @@ class SystemConfig(BaseModel):
                 # rotates it by entering a new value; a missing form value never
                 # erases working production credentials.
                 setting.value = cls._encrypt_secret(str(value).strip())
+            elif setting.value and not setting.value.startswith(cls._SECRET_PREFIX):
+                # A save from the owner settings page also upgrades a legacy
+                # plaintext value without requiring the owner to retype it.
+                setting.value = cls._encrypt_secret(setting.value)
             elif not setting.value:
                 setting.value = ''
         elif value is None:
