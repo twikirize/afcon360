@@ -7,6 +7,8 @@ type AuthContextValue = {
   loading: boolean;
   signingIn: boolean;
   mfaChallenge: string | null;
+  mfaType: "totp" | "sms" | null;
+  mfaDestinationHint: string | null;
   signIn(identifier: string, password: string): Promise<boolean>;
   verifyMfa(code: string): Promise<void>;
   cancelMfa(): void;
@@ -21,6 +23,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
   const [mfaChallenge, setMfaChallenge] = useState<string | null>(null);
+  const [mfaType, setMfaType] = useState<"totp" | "sms" | null>(null);
+  const [mfaDestinationHint, setMfaDestinationHint] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -36,16 +40,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     signingIn,
     mfaChallenge,
+    mfaType,
+    mfaDestinationHint,
     async signIn(identifier, password) {
       setSigningIn(true);
       try {
         const result = await authClient.signIn(identifier, password);
         if (result.mfaRequired) {
           setMfaChallenge(result.challengeToken);
+          setMfaType(result.mfaType);
+          setMfaDestinationHint(result.destinationHint ?? null);
           return true;
         }
         setUser(result.user);
         setMfaChallenge(null);
+        setMfaType(null);
+        setMfaDestinationHint(null);
         return false;
       } finally {
         setSigningIn(false);
@@ -58,20 +68,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const identity = await authClient.verifyMfa(mfaChallenge, code);
         setUser(identity);
         setMfaChallenge(null);
+        setMfaType(null);
+        setMfaDestinationHint(null);
       } finally {
         setSigningIn(false);
       }
     },
-    cancelMfa() { setMfaChallenge(null); },
+    cancelMfa() {
+      setMfaChallenge(null);
+      setMfaType(null);
+      setMfaDestinationHint(null);
+    },
     async logout() {
-      try { await authClient.logout(); } finally { setUser(null); setMfaChallenge(null); }
+      try { await authClient.logout(); } finally {
+        setUser(null);
+        setMfaChallenge(null);
+        setMfaType(null);
+        setMfaDestinationHint(null);
+      }
     },
     async deleteAccount(password, confirmation, mfaCode) {
       await authClient.deleteAccount(password, confirmation, mfaCode);
       setUser(null);
       setMfaChallenge(null);
+      setMfaType(null);
+      setMfaDestinationHint(null);
     }
-  }), [user, loading, signingIn, mfaChallenge]);
+  }), [user, loading, signingIn, mfaChallenge, mfaType, mfaDestinationHint]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
