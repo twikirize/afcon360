@@ -382,8 +382,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div>
                   <label class="form-label" style="font-weight:600;color:#1a1a1a;">Twilio Auth Token</label>
                   <input type="password" name="TWILIO_AUTH_TOKEN" class="form-control"
-                         value="{{ twilio_auth_token or '' }}" placeholder="your_auth_token">
-                  <small class="text-muted">Found in Twilio Console → Account Info (hidden by default)</small>
+                         value="" autocomplete="new-password" placeholder="Leave blank to keep the saved token">
+                  <small class="text-muted">
+                    {% if twilio_auth_token_configured %}
+                      An Auth Token is saved securely. Leave this field blank to keep it; enter a new token to rotate it.
+                    {% else %}
+                      No Auth Token is currently saved.
+                    {% endif %}
+                  </small>
                 </div>
                 <div>
                   <label class="form-label" style="font-weight:600;color:#1a1a1a;">Twilio From Number</label>
