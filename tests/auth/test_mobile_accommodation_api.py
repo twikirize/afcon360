@@ -64,7 +64,7 @@ def test_native_accommodation_quote_is_bound_to_authenticated_user(client, monke
             "check_out": "2026-12-12",
             "num_guests": 2,
             "rooms_requested": 1,
-            "room_type_token": "signed-room-choice-123",
+            "room_type_id": 1202,
         },
         headers={"Authorization": "Bearer native-test-token"},
     )
@@ -73,7 +73,7 @@ def test_native_accommodation_quote_is_bound_to_authenticated_user(client, monke
     assert response.get_json()["data"]["quote_token"] == "signed-quote-802"
     assert captured["owner"] is user
     assert captured["property_public_id"] == "property-public-1"
-    assert captured["room_type_token"] == "signed-room-choice-123"
+    assert captured["room_type_id"] == 1202
 
 
 def test_native_accommodation_booking_requires_pin_and_uses_server_quote(client, monkeypatch):
@@ -199,3 +199,39 @@ def test_native_accommodation_errors_use_safe_api_contract(client, monkeypatch):
     assert response.status_code == 404
     assert response.get_json()["code"] == "property_unavailable"
     assert "id" not in response.get_json()
+
+
+def test_native_accommodation_quote_keeps_legacy_signed_room_selection(client, monkeypatch):
+    from app.accommodation.services.native_booking_service import NativeAccommodationService
+
+    user = SimpleNamespace(id=806, public_id="native-accom-user-806")
+    _authenticated_mobile_user(monkeypatch, user)
+    captured = {}
+
+    def fake_quote(owner, **kwargs):
+        captured.update(owner=owner, **kwargs)
+        return {
+            "quote_id": "quote-806",
+            "quote_token": "signed-quote-806",
+            "total": "250000.00",
+            "currency": "UGX",
+            "wallet_payment_available": True,
+        }
+
+    monkeypatch.setattr(NativeAccommodationService, "quote_booking", fake_quote)
+    response = client.post(
+        "/api/mobile/v1/accommodation/quotes",
+        json={
+            "property_public_id": "property-public-1",
+            "check_in": "2026-12-10",
+            "check_out": "2026-12-12",
+            "num_guests": 2,
+            "rooms_requested": 1,
+            "room_type_token": "signed-room-choice-806",
+        },
+        headers={"Authorization": "Bearer native-test-token"},
+    )
+
+    assert response.status_code == 200
+    assert captured["room_type_token"] == "signed-room-choice-806"
+    assert captured["room_type_id"] is None
