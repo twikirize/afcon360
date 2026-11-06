@@ -33,7 +33,8 @@ from app.wallet.exceptions import (
     LimitExceededError,
     DuplicateTransactionError,
     WalletFrozenError,
-    ComplianceBlockError
+    ComplianceBlockError,
+    ConversionError
 )
 from app.utils.db_retry import retry_on_deadlock
 from app.utils.id_validator import assert_internal_id
@@ -618,26 +619,17 @@ class WalletService:
                     reason=account.frozen_reason
                 )
 
-            # Auto-FX: If deposit currency differs from account's home currency, convert it dynamically.
-            original_amount = amount
-            original_currency = currency
-            if account.currency != currency:
-                from app.wallet.services.fx_service import FXService
-                fx_service = FXService()
-                fx_rate = fx_service.get_rate_safe(base_currency=currency, quote_currency=account.currency)
-                
-                # Convert the amount to the home currency
-                amount = (original_amount * fx_rate.rate).quantize(Decimal('0.01'))
-                currency = account.currency
-                
-                if metadata is None:
-                    metadata = {}
-                metadata.update({
-                    "cross_border_fx": True,
-                    "original_deposit_amount": str(original_amount),
-                    "original_deposit_currency": original_currency,
-                    "fx_rate_applied": str(fx_rate.rate)
-                })
+            # A provider deposit must arrive in the wallet's own currency.
+            # Do not credit a different denomination using the legacy mock FX
+            # table. Executable FX requires an approved provider quote, linked
+            # per-currency settlement legs and reconciliation; that path is not
+            # enabled yet.
+            if str(account.currency or "").upper() != str(currency or "").upper():
+                raise ConversionError(
+                    str(currency or "").upper(),
+                    str(account.currency or "").upper(),
+                    "cross-currency wallet deposits are not enabled until executable FX settlement is configured",
+                )
 
             # 3. KYC limit check
             self._check_kyc_limits(account.user_id, amount, 'deposit', currency, account_id=str(account.id))
@@ -838,6 +830,13 @@ class WalletService:
                 raise WalletFrozenError(
                     wallet_ref=str(account.id),
                     reason=account.frozen_reason
+                )
+
+            if str(account.currency or "").upper() != str(currency or "").upper():
+                raise ConversionError(
+                    str(account.currency or "").upper(),
+                    str(currency or "").upper(),
+                    "withdrawal currency must match the wallet denomination",
                 )
 
             # 3. KYC limit check
@@ -1214,31 +1213,31 @@ class WalletService:
                 ip_address=self._get_ip_address()
             )
 
-            # Cross-currency support
+            # Wallet-to-wallet transfer ledger postings currently support
+            # one denomination only. A different-currency transfer needs a
+            # locked executable USD-referenced quote plus linked, balanced
+            # FX-clearing legs in BOTH currencies. The legacy mock FX table
+            # cannot safely authorize that movement, so fail closed.
+            sender_currency = str(from_account.currency or "").upper()
+            recipient_currency = str(to_account.currency or "").upper()
+            requested_currency = str(currency or "").upper()
+            if sender_currency != recipient_currency:
+                raise ConversionError(
+                    sender_currency,
+                    recipient_currency,
+                    "cross-currency transfers are unavailable until approved FX liquidity, clearing accounts and reconciliation are configured",
+                )
+            if requested_currency != sender_currency:
+                raise ConversionError(
+                    requested_currency,
+                    sender_currency,
+                    "transfer amount currency must match both wallet denominations",
+                )
+
             debit_amount = amount
-            debit_currency = currency
+            debit_currency = sender_currency
             credit_amount = amount
-            credit_currency = currency
-            
-            if from_account.currency != to_account.currency:
-                from app.wallet.services.fx_service import FXService
-                fx_service = FXService()
-                
-                if currency == from_account.currency:
-                    fx_rate = fx_service.get_rate_safe(base_currency=from_account.currency, quote_currency=to_account.currency)
-                    debit_amount = amount
-                    debit_currency = from_account.currency
-                    credit_amount = (amount * fx_rate.rate).quantize(Decimal('0.01'))
-                    credit_currency = to_account.currency
-                else:
-                    fx_rate = fx_service.get_rate_safe(base_currency=currency, quote_currency=from_account.currency)
-                    debit_amount = (amount * fx_rate.rate).quantize(Decimal('0.01'))
-                    debit_currency = from_account.currency
-                    credit_amount = amount
-                    credit_currency = to_account.currency
-            elif from_account.currency != currency:
-                debit_currency = from_account.currency
-                credit_currency = to_account.currency
+            credit_currency = recipient_currency
 
             # 5. Balance check (derived from ledger)
             from_balance = self.ledger_repo.get_balance(from_account.id, debit_currency)
