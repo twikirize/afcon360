@@ -53,36 +53,20 @@ The change affects new registrations after it is enabled. It does not automatica
 
 Then test with a fresh address and complete the six-digit OTP or verification-link flow.
 
-## 3. Correct Server 2 worker mail configuration
+## 4. Verify the Celery worker queue
 
-The worker currently reports `MAIL_USERNAME` and `MAIL_PASSWORD` missing.
+The asynchronous email test is routed to Celery's `bulk` queue because it is a `notifications.*` task. The standard repository Docker entrypoint subscribes to `critical,default,bulk` by default so the constrained single-worker deployment can receive it.
 
-1. On Server 2, inspect the `env_file` entries in the server-local `docker-compose.worker.yml`. Preserve that untracked file; do not replace it with a repository Compose file.
-2. Add the same required SMTP runtime settings (host, port, TLS/SSL mode, username, password and default sender) to the protected host-side environment file actually referenced by that Compose file.
-3. Do not add credentials to Git, chat, shell output, or screenshots.
-4. Recreate only the worker and Beat containers so they receive the new environment. Do not restart PostgreSQL or Redis.
-5. Confirm presence without revealing values:
+- Do not copy SMTP credentials into Server 2's Compose file or worker environment. The web process and Celery worker read the same encrypted `email_provider` row from PostgreSQL.
+- If an operator uses a custom Celery command that explicitly overrides queue subscriptions, that command must include `bulk` (normally `-Q critical,default,bulk`) for notification email tasks to run.
+- After a deployment that includes this code, queue the email test from the Owner page and confirm that a Celery worker receives it, reports a terminal task state, and the message reaches the mailbox.
+- A task that remains queued is a worker/broker/queue-routing problem, not proof that the SMTP credentials need to be copied to Server 2.
+- This repository change does not require a database or Redis restart, and it does not authorize changing the live worker Compose file as part of the code review.
 
-```bash
-for C in afcon360_worker afcon360_beat; do
-  echo "===== $C ====="
-  docker inspect "$C" --format '{{range .Config.Env}}{{println .}}{{end}}' |
-  awk -F= '
-    $1 ~ /^(MAIL_SERVER|MAIL_PORT|MAIL_USE_TLS|MAIL_USE_SSL|MAIL_USERNAME|MAIL_PASSWORD|MAIL_DEFAULT_SENDER)$/ {
-      value=substr($0, index($0, "=")+1)
-      print $1 "=" (length(value) ? "SET" : "EMPTY")
-      seen[$1]=1
-    }
-    END {
-      split("MAIL_SERVER MAIL_PORT MAIL_USE_TLS MAIL_USE_SSL MAIL_USERNAME MAIL_PASSWORD MAIL_DEFAULT_SENDER", keys, " ")
-      for (i in keys) if (!(keys[i] in seen)) print keys[i] "=MISSING"
-    }'
-done
-```
+For queue diagnostics, inspect the worker's subscribed queues and the Celery task state using the deployment's existing protected operational procedure. Do not print full process environments or expose task result payloads containing secrets.
 
-6. Run a real asynchronous notification email test after the worker has the settings. A successful signup OTP from Server 1 alone does not prove Server 2 mail delivery.
+## 5. Root/system secret configuration
 
-## 4. Root/system secret configuration
 
 These values are infrastructure bootstrap secrets, not ordinary communication-provider credentials, and must not be saved in the Owner settings database:
 
@@ -96,7 +80,7 @@ Provision or rotate these only through the protected host-side environment/secre
 
 The application log redaction layer removes registered runtime secret values, common credential assignments, authorization headers, URL passwords and nested secret-named structured fields before Python log handlers format records. This is defense in depth, not permission to log credentials. Code must never deliberately log secret values, request bodies containing secrets, or raw provider exceptions. Prefer exception classes and short diagnostic codes.
 
-## 5. Delivery evidence to record
+## 6. Delivery evidence to record
 
 For each test, record only:
 
