@@ -3,6 +3,7 @@
 from celery import shared_task
 from celery.exceptions import MaxRetriesExceededError
 from app.extensions import db
+from app.tasks.context import with_flask_app_context
 from PIL import Image as PILImage
 import logging
 import io
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
     retry_backoff=True,
     retry_backoff_max=600,
 )
+@with_flask_app_context
 def process_media_task(self, media_id: int) -> Optional[Dict[str, Any]]:
     """
     Process a media item with comprehensive retry and error handling.
@@ -258,6 +260,7 @@ def _audit_completion(media, result):
 
 
 @shared_task
+@with_flask_app_context
 def process_pending_media():
     """
     Scheduled self-healing task to find and reprocess stuck media.
@@ -348,6 +351,7 @@ def process_pending_media():
 
 
 @shared_task
+@with_flask_app_context
 def cleanup_failed_media():
     """
     Cleanup permanently failed media (mark for deletion, notify admins).
