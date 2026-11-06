@@ -323,82 +323,77 @@ def list_marketplace_invoices():
 @login_required
 @validate_csrf_token
 def create_wallet():
-    """
-    Create a new wallet for the current user.
+    """Create the current user's first Wallet after explicit terms and country checks."""
+    from app.wallet.services.wallet_onboarding_service import (
+        WalletOnboardingError,
+        create_user_wallet_account,
+    )
+    from app.wallet.services.home_currency_service import FX_BASE_CURRENCY
 
-    POST /api/wallet/create
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({
+            "status": "error",
+            "code": "INVALID_REQUEST",
+            "message": "A JSON object is required.",
+        }), 400
+    if data.get("terms_accepted") is not True:
+        return jsonify({
+            "status": "error",
+            "code": "WALLET_TERMS_REQUIRED",
+            "message": "Accept the AFCON360 Wallet terms before opening your Wallet.",
+        }), 400
+    if not data.get("currency"):
+        return jsonify({
+            "status": "error",
+            "code": "WALLET_CURRENCY_REQUIRED",
+            "message": "Choose your preferred Wallet currency before continuing.",
+        }), 400
 
-    Response:
-    {
-        "status": "success",
-        "data": {
-            "account_id": "uuid",
-            "currency": "resolved home currency",
-            "created_at": "2025-01-01T00:00:00+00:00"
-        }
-    }
-    """
     try:
-        from app.wallet.models.ledger import AccountModel, AccountOwnerType
-        from app.extensions import db
-
-        # Check if wallet already exists (filter by owner_type for users)
-        existing = AccountModel.query.filter_by(
-            user_id=current_user.id,
-            owner_type=AccountOwnerType.USER
-        ).first()
-        if existing:
-            return jsonify({
-                "status": "error",
-                "code": "WALLET_ALREADY_EXISTS",
-                "message": "You already have a wallet account."
-            }), 409
-
-        # Use the same home-currency resolver as browser onboarding. The caller
-        # may request a supported currency explicitly; otherwise Wallet derives
-        # the first account currency from the user's profile country.
-        from app.wallet.services.home_currency_service import resolve_home_currency
-        data = request.get_json(silent=True) or {}
-        if not isinstance(data, dict):
-            return jsonify({
-                'status': 'error',
-                'code': 'INVALID_REQUEST',
-                'message': 'A JSON object is required.'
-            }), 400
-        currency = resolve_home_currency(
+        account, already_exists = create_user_wallet_account(
             current_user,
-            requested_currency=data.get('currency'),
+            currency=data.get("currency"),
+            terms_accepted=True,
         )
-        account = AccountModel(
-            user_id=current_user.id,
-            currency=currency
-        )
-        db.session.add(account)
         db.session.commit()
-
         return jsonify({
             "status": "success",
             "data": {
-                "account_id": str(account.id),
-                "currency": account.currency,
-                "created_at": account.created_at.isoformat() if account.created_at else None
+                "currency": str(account.currency).upper(),
+                "created_at": account.created_at.isoformat() if account.created_at else None,
+                "already_exists": bool(already_exists),
+                "requires_activation": not bool(account.verified),
+                "fx_base_currency": FX_BASE_CURRENCY,
             }
-        }), 201
+        }), 200 if already_exists else 201
 
-    except ValueError as e:
+    except WalletOnboardingError as exc:
         db.session.rollback()
+        message = str(exc)
+        if "Verify your country" in message:
+            code, status = "COUNTRY_VERIFICATION_REQUIRED", 403
+        elif "Verify your email" in message:
+            code, status = "EMAIL_VERIFICATION_REQUIRED", 403
+        elif "already denominated" in message:
+            code, status = "WALLET_ALREADY_EXISTS", 409
+        else:
+            code, status = "UNSUPPORTED_HOME_CURRENCY", 400
         return jsonify({
             "status": "error",
-            "code": "UNSUPPORTED_HOME_CURRENCY",
-            "message": str(e)
-        }), 400
-    except Exception as e:
+            "code": code,
+            "message": message,
+        }), status
+    except Exception:
         db.session.rollback()
-        current_app.logger.error(f"Wallet creation error for user {current_user.public_id}: {e}")
+        current_app.logger.exception(
+            "Wallet creation failed for user %s",
+            getattr(current_user, "public_id", "unknown"),
+        )
         return jsonify({
             "status": "error",
             "code": "INTERNAL_ERROR",
-            "message": "Unable to create wallet. Please try again."
+            "message": "Unable to create Wallet. No account was opened.",
         }), 500
 
 
