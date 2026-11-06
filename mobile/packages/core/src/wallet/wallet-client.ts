@@ -71,6 +71,42 @@ export type WalletTransferResult = {
   already_processed: boolean;
 };
 
+export type WalletWithdrawalNetwork = "MTN" | "AIRTEL" | "MPS";
+
+export type WalletWithdrawalQuote = {
+  quote_id: string;
+  quote_token: string;
+  amount: string;
+  currency: string;
+  network: string;
+  beneficiary_name: string;
+  masked_phone: string;
+  platform_fee: string;
+  fee_percent: string;
+  total_wallet_debit: string;
+  available_balance: string;
+  expires_at: string;
+  provider_fee: string;
+};
+
+export type WalletWithdrawalStatus = {
+  reference: string;
+  status: "pending" | "completed" | "failed";
+  amount: string;
+  currency: string;
+  platform_fee: string;
+  total_wallet_debit: string;
+  network: string | null;
+  beneficiary_name: string | null;
+  masked_phone: string | null;
+  provider: string | null;
+  provider_status: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+  failure_reason: string | null;
+  manual_review_required: boolean;
+};
+
 type Envelope<T> = {
   success: boolean;
   code?: string;
@@ -157,6 +193,41 @@ export class MobileWalletClient {
       method: "POST",
       body: { identifier: identifier.trim(), currency: currency.toUpperCase() },
     });
+  }
+
+  quoteWithdrawal(input: {
+    amount: string;
+    currency: string;
+    network: WalletWithdrawalNetwork;
+    phoneNumber: string;
+    beneficiaryName: string;
+  }): Promise<WalletWithdrawalQuote> {
+    return this.unwrap<WalletWithdrawalQuote>("/api/mobile/v1/wallet/withdrawals/quote", {
+      method: "POST",
+      body: {
+        amount: input.amount,
+        currency: input.currency.toUpperCase(),
+        network: input.network,
+        phone_number: input.phoneNumber.trim(),
+        beneficiary_name: input.beneficiaryName.trim(),
+      },
+    });
+  }
+
+  confirmWithdrawal(input: {
+    quoteToken: string;
+    pin: string;
+  }): Promise<WalletWithdrawalStatus> {
+    return this.unwrap<WalletWithdrawalStatus>("/api/mobile/v1/wallet/withdrawals", {
+      method: "POST",
+      body: { quote_token: input.quoteToken, pin: input.pin },
+    });
+  }
+
+  getWithdrawalStatus(reference: string): Promise<WalletWithdrawalStatus> {
+    return this.unwrap<WalletWithdrawalStatus>(
+      `/api/mobile/v1/wallet/withdrawals/${encodeURIComponent(reference)}`
+    );
   }
 
   transfer(input: {

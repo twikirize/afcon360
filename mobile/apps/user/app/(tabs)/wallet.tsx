@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import * as SecureStore from "expo-secure-store";
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   Pressable,
   ScrollView,
@@ -24,9 +25,12 @@ import type {
   WalletDepositStatus,
   WalletPinStatus,
   WalletTransaction,
+  WalletWithdrawalNetwork,
+  WalletWithdrawalQuote,
+  WalletWithdrawalStatus,
 } from "@afcon360/mobile-core";
 
-type WalletTab = "balance" | "deposit" | "send" | "history" | "pin";
+type WalletTab = "balance" | "deposit" | "send" | "withdraw" | "history" | "pin";
 
 function Button({
   label,
@@ -74,7 +78,7 @@ function Field({
   onChangeText: (value: string) => void;
   placeholder: string;
   secureTextEntry?: boolean;
-  keyboardType?: "default" | "numeric" | "decimal-pad" | "email-address";
+  keyboardType?: "default" | "numeric" | "decimal-pad" | "email-address" | "phone-pad";
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
 }) {
   return (
@@ -138,6 +142,18 @@ export default function Wallet() {
   const [depositReference, setDepositReference] = useState<string | null>(null);
   const [depositCheckoutUrl, setDepositCheckoutUrl] = useState<string | null>(null);
   const [depositStatus, setDepositStatus] = useState<WalletDepositStatus | null>(null);
+  const [withdrawalAmount, setWithdrawalAmount] = useState("");
+  const [withdrawalNetwork, setWithdrawalNetwork] = useState<WalletWithdrawalNetwork>("MTN");
+  const [withdrawalPhone, setWithdrawalPhone] = useState("");
+  const [withdrawalBeneficiary, setWithdrawalBeneficiary] = useState("");
+  const [withdrawalPin, setWithdrawalPin] = useState("");
+  const [withdrawalQuote, setWithdrawalQuote] = useState<WalletWithdrawalQuote | null>(null);
+  const [withdrawalReference, setWithdrawalReference] = useState<string | null>(null);
+  const [withdrawalStatus, setWithdrawalStatus] = useState<WalletWithdrawalStatus | null>(null);
+  const withdrawalStoreKeys = {
+    quote: "afcon360.user.wallet.withdrawal.quote",
+    reference: "afcon360.user.wallet.withdrawal.reference",
+  };
   const depositStoreKeys = {
     request: "afcon360.user.wallet.deposit.request",
     reference: "afcon360.user.wallet.deposit.reference",
@@ -216,6 +232,44 @@ export default function Wallet() {
 
   const clearSavedDeposit = async () => {
     await Promise.all(Object.values(depositStoreKeys).map((key) => SecureStore.deleteItemAsync(key)));
+  };
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const [savedQuote, savedReference] = await Promise.all([
+          SecureStore.getItemAsync(withdrawalStoreKeys.quote),
+          SecureStore.getItemAsync(withdrawalStoreKeys.reference),
+        ]);
+        if (!active) return;
+        if (savedQuote) {
+          const parsed = JSON.parse(savedQuote) as WalletWithdrawalQuote;
+          if (parsed.quote_token && parsed.expires_at) setWithdrawalQuote(parsed);
+        }
+        if (savedReference) {
+          setWithdrawalReference(savedReference);
+          try {
+            const status = await walletClient.getWithdrawalStatus(savedReference);
+            if (active) setWithdrawalStatus(status);
+          } catch {
+            // Keep the reference so the user can retry status verification.
+          }
+        }
+      } catch {
+        // SecureStore may be unavailable in some development runtimes.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const clearSavedWithdrawal = async () => {
+    await Promise.all([
+      SecureStore.deleteItemAsync(withdrawalStoreKeys.quote),
+      SecureStore.deleteItemAsync(withdrawalStoreKeys.reference),
+    ]);
   };
 
   const selectedAccount = accounts.find((item) => item.currency === selectedCurrency);
@@ -380,6 +434,118 @@ export default function Wallet() {
     }
   };
 
+  const requestWithdrawalQuote = async () => {
+    if (selectedCurrency !== "UGX") {
+      setError("The first native payout route supports UGX wallets in Uganda only. Other payout corridors are not enabled yet.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    setWithdrawalStatus(null);
+    setWithdrawalReference(null);
+    try {
+      const quote = await walletClient.quoteWithdrawal({
+        amount: withdrawalAmount,
+        currency: selectedCurrency,
+        network: withdrawalNetwork,
+        phoneNumber: withdrawalPhone,
+        beneficiaryName: withdrawalBeneficiary,
+      });
+      setWithdrawalQuote(quote);
+      await SecureStore.setItemAsync(withdrawalStoreKeys.quote, JSON.stringify(quote));
+      setNotice("Review the beneficiary, network, fee and total Wallet debit before confirming.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "AFCON360 could not prepare the withdrawal quote.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitWithdrawal = async () => {
+    if (!withdrawalQuote) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await walletClient.confirmWithdrawal({
+        quoteToken: withdrawalQuote.quote_token,
+        pin: withdrawalPin,
+      });
+      setWithdrawalStatus(result);
+      setWithdrawalReference(result.reference);
+      setWithdrawalQuote(null);
+      setWithdrawalPin("");
+      await Promise.all([
+        SecureStore.setItemAsync(withdrawalStoreKeys.reference, result.reference),
+        SecureStore.deleteItemAsync(withdrawalStoreKeys.quote),
+      ]);
+      if (result.status === "completed") {
+        setNotice("Flutterwave has confirmed the payout. Your withdrawal is complete.");
+        await clearSavedWithdrawal();
+        await loadWallet();
+      } else if (result.status === "failed") {
+        setNotice("The provider confirmed the payout failed. AFCON360 has reversed the reserved Wallet amount.");
+        await clearSavedWithdrawal();
+        await loadWallet();
+      } else {
+        setNotice("Withdrawal submitted. Your Wallet amount is reserved while Flutterwave processes the payout. It is not marked as paid yet.");
+        await loadWallet();
+      }
+    } catch (e) {
+      // Keep the same signed quote after an uncertain response. The server
+      // makes one quote idempotent, so retrying it cannot send twice.
+      setError(e instanceof Error ? e.message : "AFCON360 could not confirm the withdrawal.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmWithdrawal = () => {
+    if (!withdrawalQuote || !withdrawalPin.trim()) {
+      setError("Enter your transaction PIN to confirm this quoted withdrawal.");
+      return;
+    }
+    Alert.alert(
+      "Confirm withdrawal",
+      `Send ${withdrawalQuote.amount} ${withdrawalQuote.currency} to ${withdrawalQuote.beneficiary_name} (${withdrawalQuote.masked_phone}, ${withdrawalQuote.network})?\n\nAFCON360 fee: ${withdrawalQuote.platform_fee} ${withdrawalQuote.currency}\nTotal Wallet debit: ${withdrawalQuote.total_wallet_debit} ${withdrawalQuote.currency}\n\nThe payout remains pending until the provider confirms delivery.`,
+      [
+        { text: "Review again", style: "cancel" },
+        { text: "Confirm withdrawal", onPress: () => void submitWithdrawal() },
+      ],
+    );
+  };
+
+  const refreshWithdrawal = async () => {
+    if (!withdrawalReference) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await walletClient.getWithdrawalStatus(withdrawalReference);
+      setWithdrawalStatus(result);
+      if (result.status === "completed") {
+        setNotice("Flutterwave has confirmed the payout. Your withdrawal is complete.");
+        await clearSavedWithdrawal();
+        await loadWallet();
+      } else if (result.status === "failed") {
+        setNotice("The provider confirmed the payout failed. AFCON360 has reversed the reserved Wallet amount.");
+        await clearSavedWithdrawal();
+        await loadWallet();
+      } else {
+        setNotice(
+          result.manual_review_required
+            ? "The provider response needs reconciliation. Your funds remain reserved; do not start another withdrawal."
+            : "The payout is still processing. Your funds remain reserved until the provider confirms success or failure."
+        );
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "AFCON360 could not verify the withdrawal status.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const updatePin = async () => {
     setBusy(true);
     setError(null);
@@ -439,6 +605,7 @@ export default function Wallet() {
           {tabButton("balance", "Balance")}
           {tabButton("deposit", "Deposit")}
           {tabButton("send", "Send")}
+          {tabButton("withdraw", "Withdraw")}
           {tabButton("history", "History")}
           {tabButton("pin", "Transaction PIN")}
         </View>
@@ -495,9 +662,10 @@ export default function Wallet() {
             <Panel>
               <SectionTitle>Deposits and withdrawals</SectionTitle>
               <Text style={{ color: palette.muted, lineHeight: 20 }}>
-                Deposits use a Flutterwave hosted checkout. AFCON360 credits your Wallet only after provider verification. Withdrawals remain disabled until a bank or mobile-money payout provider can confirm the actual disbursement.
+                Deposits use a Flutterwave hosted checkout and credit your Wallet only after provider verification. Withdrawals require a confirmed quote, your transaction PIN and provider settlement confirmation.
               </Text>
               <Button label="Start a deposit" onPress={() => setTab("deposit")} disabled={!selectedAccount || selectedAccount.is_frozen} />
+              <Button label="Request a withdrawal quote" onPress={() => setTab("withdraw")} disabled={!selectedAccount || selectedAccount.is_frozen} secondary />
             </Panel>
           </>
         ) : null}
@@ -556,7 +724,7 @@ export default function Wallet() {
                 </Text>
                 {resolvedRecipient.recipient_currency !== selectedCurrency ? (
                   <Text style={{ color: "#9A3A2F", fontWeight: "700" }}>
-                    Currency differs. A confirmed FX quote is required before transfer.
+                    Currency differs. Cross-currency wallet transfers remain unavailable until AFCON360 has an approved executable FX provider and balanced clearing ledger. No debit will be made.
                   </Text>
                 ) : (
                   <Button
@@ -576,6 +744,156 @@ export default function Wallet() {
             <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 17 }}>
               Transfers require your transaction PIN and a unique request key. If a connection fails after you submit, retrying the same request uses the same key so the ledger cannot create a second transfer.
             </Text>
+          </Panel>
+        ) : null}
+
+        {tab === "withdraw" ? (
+          <Panel>
+            <SectionTitle>Withdraw from your AFCON360 Wallet</SectionTitle>
+            <Text style={{ color: palette.muted, lineHeight: 19 }}>
+              The first native payout corridor supports Uganda UGX mobile money. AFCON360 checks your wallet and configured withdrawal fee before showing a quote. No money is reserved until you confirm with your transaction PIN.
+            </Text>
+            {selectedCurrency !== "UGX" ? (
+              <Text style={{ color: "#9A3A2F", fontWeight: "700" }}>
+                This wallet is {selectedCurrency}. The Uganda UGX payout route is not available for this currency.
+              </Text>
+            ) : null}
+            <Text style={{ color: palette.ink, fontWeight: "800" }}>Wallet currency: {selectedCurrency}</Text>
+            <Field
+              label="Withdrawal amount"
+              value={withdrawalAmount}
+              onChangeText={(value) => {
+                setWithdrawalAmount(value);
+                setWithdrawalQuote(null);
+              }}
+              placeholder="Whole UGX amount"
+              keyboardType="numeric"
+            />
+            <Text style={{ color: palette.ink, fontWeight: "700", fontSize: 13 }}>Mobile money network</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {([
+                ["MTN", "MTN"],
+                ["AIRTEL", "Airtel"],
+                ["MPS", "MPS"],
+              ] as const).map(([network, label]) => (
+                <Pressable
+                  key={network}
+                  onPress={() => {
+                    setWithdrawalNetwork(network);
+                    setWithdrawalQuote(null);
+                  }}
+                  style={{
+                    backgroundColor: withdrawalNetwork === network ? palette.green : "#EEF3F0",
+                    borderRadius: 10,
+                    paddingVertical: 10,
+                    paddingHorizontal: 14,
+                  }}
+                >
+                  <Text style={{ color: withdrawalNetwork === network ? "#FFFFFF" : palette.ink, fontWeight: "800" }}>
+                    {label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <Field
+              label="Beneficiary's Ugandan mobile number"
+              value={withdrawalPhone}
+              onChangeText={(value) => {
+                setWithdrawalPhone(value);
+                setWithdrawalQuote(null);
+              }}
+              placeholder="07XXXXXXXX or +2567XXXXXXXX"
+              keyboardType="phone-pad"
+            />
+            <Field
+              label="Beneficiary full name"
+              value={withdrawalBeneficiary}
+              onChangeText={(value) => {
+                setWithdrawalBeneficiary(value);
+                setWithdrawalQuote(null);
+              }}
+              placeholder="Name registered to the mobile money account"
+              autoCapitalize="words"
+            />
+            <Button
+              label={busy ? "Preparing quote…" : withdrawalQuote ? "Request a fresh quote" : "Get withdrawal quote"}
+              onPress={() => void requestWithdrawalQuote()}
+              disabled={
+                busy ||
+                selectedCurrency !== "UGX" ||
+                !selectedAccount ||
+                selectedAccount.is_frozen ||
+                !withdrawalAmount.trim() ||
+                !withdrawalPhone.trim() ||
+                !withdrawalBeneficiary.trim()
+              }
+              secondary
+            />
+            {withdrawalQuote ? (
+              <View style={{ backgroundColor: "#F1F6F2", borderRadius: 12, padding: 14, gap: 8 }}>
+                <Text style={{ color: palette.muted, fontSize: 11, fontWeight: "800" }}>REVIEW THIS WITHDRAWAL</Text>
+                <Text style={{ color: palette.ink, fontSize: 20, fontWeight: "900" }}>
+                  {withdrawalQuote.amount} {withdrawalQuote.currency}
+                </Text>
+                <Text style={{ color: palette.ink, fontWeight: "700" }}>
+                  {withdrawalQuote.beneficiary_name} · {withdrawalQuote.masked_phone} · {withdrawalQuote.network}
+                </Text>
+                <View style={{ gap: 4 }}>
+                  <Text style={{ color: palette.muted }}>AFCON360 withdrawal fee ({withdrawalQuote.fee_percent}%): {withdrawalQuote.platform_fee} {withdrawalQuote.currency}</Text>
+                  <Text style={{ color: palette.ink, fontWeight: "900" }}>Total Wallet debit: {withdrawalQuote.total_wallet_debit} {withdrawalQuote.currency}</Text>
+                  <Text style={{ color: palette.muted }}>Available before confirmation: {withdrawalQuote.available_balance} {withdrawalQuote.currency}</Text>
+                  <Text style={{ color: palette.muted, fontSize: 11 }}>{withdrawalQuote.provider_fee}</Text>
+                  <Text style={{ color: palette.muted, fontSize: 11 }}>Quote expires: {formatDate(withdrawalQuote.expires_at)}</Text>
+                </View>
+                <Field
+                  label="Transaction PIN"
+                  value={withdrawalPin}
+                  onChangeText={setWithdrawalPin}
+                  placeholder="Enter your 4–6 digit PIN"
+                  secureTextEntry
+                  keyboardType="numeric"
+                />
+                <Button
+                  label={busy ? "Confirming withdrawal…" : "Review and confirm withdrawal"}
+                  onPress={confirmWithdrawal}
+                  disabled={busy || !withdrawalPin.trim()}
+                />
+                <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 17 }}>
+                  Confirming reserves the total amount in your Wallet. The payout will remain pending until Flutterwave confirms delivery.
+                </Text>
+              </View>
+            ) : null}
+            {withdrawalStatus ? (
+              <View style={{ backgroundColor: "#F1F6F2", borderRadius: 12, padding: 14, gap: 8 }}>
+                <StatusPill tone={withdrawalStatus.status === "completed" ? "green" : withdrawalStatus.status === "failed" ? "gold" : "gold"}>
+                  Withdrawal {withdrawalStatus.status}
+                </StatusPill>
+                <Text style={{ color: palette.ink, fontWeight: "900" }}>
+                  {withdrawalStatus.amount} {withdrawalStatus.currency}
+                </Text>
+                <Text style={{ color: palette.muted, fontSize: 11 }}>Reference: {withdrawalStatus.reference}</Text>
+                {withdrawalStatus.status === "pending" ? (
+                  <Button
+                    label={busy ? "Verifying provider…" : "Refresh withdrawal status"}
+                    onPress={() => void refreshWithdrawal()}
+                    disabled={busy}
+                    secondary
+                  />
+                ) : null}
+                {withdrawalStatus.failure_reason ? (
+                  <Text style={{ color: "#9A3A2F", fontSize: 12 }}>{withdrawalStatus.failure_reason}</Text>
+                ) : null}
+                <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 17 }}>
+                  {withdrawalStatus.status === "completed"
+                    ? "Provider confirmation received. The payout is complete."
+                    : withdrawalStatus.status === "failed"
+                    ? "Provider confirmed the failure. The reserved Wallet amount has been reversed."
+                    : withdrawalStatus.manual_review_required
+                    ? "The provider response needs reconciliation. Your Wallet funds remain reserved; do not submit another withdrawal."
+                    : "The payout is still being processed. Your Wallet funds remain reserved until the provider confirms success or failure."}
+                </Text>
+              </View>
+            ) : null}
           </Panel>
         ) : null}
 
