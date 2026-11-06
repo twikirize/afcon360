@@ -199,6 +199,9 @@ class MarketplaceService:
                     'booking_reference': booking.booking_reference,
                     'commission_id': str(commission.id),
                 },
+                # This internal escrow settlement follows the successful check-in
+                # authorization in the accommodation route; no guest PIN applies.
+                system_initiated=True,
             )
 
             txn_id = result.get('transaction_id')
@@ -257,6 +260,9 @@ class MarketplaceService:
                     'booking_reference': booking.booking_reference,
                     'refund_amount': str(refund_amount),
                 },
+                # This internal escrow refund is initiated by the authorized
+                # accommodation cancellation/refund workflow, not by a wallet user.
+                system_initiated=True,
             )
 
             txn_id = result.get('transaction_id')
