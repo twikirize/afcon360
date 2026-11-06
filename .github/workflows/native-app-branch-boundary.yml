@@ -1,0 +1,69 @@
+name: Native app branch boundary
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - edited
+
+permissions:
+  pull-requests: write
+
+concurrency:
+  group: native-app-main-boundary-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  prevent-native-apps-on-website-main:
+    name: Prevent native app files entering website main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Inspect all files changed by the pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          # This trusted base-branch workflow does not check out or execute PR code.
+          # It inspects only the PR file list using a pull-requests-scoped token.
+          files="$(gh api --paginate --jq '.[].filename' \
+            "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100")"
+
+          blocked=()
+          while IFS= read -r path; do
+            [[ -z "${path}" ]] && continue
+            case "${path}" in
+              mobile/*)
+                blocked+=("${path}")
+                ;;
+              .github/workflows/native-app-branch-boundary.yml)
+                blocked+=("${path}")
+                ;;
+              .github/workflows/mobile-*.yml)
+                # The backend contract-test workflow is server-owned and allowed.
+                if [[ "${path}" != ".github/workflows/mobile-auth-postgres-tests.yml" ]]; then
+                  blocked+=("${path}")
+                fi
+                ;;
+            esac
+          done <<< "${files}"
+
+          if ((${#blocked[@]} > 0)); then
+            printf 'Blocked path: %s\n' "${blocked[@]}"
+            message="This PR has been automatically closed by the native app branch-boundary guard. Native User/Driver app code, app-build workflows, and this branch-boundary guard must not be changed through a PR to website/backend main. Keep native app work on feat/native-mobile-apps-20261104 (or an app-only follow-up branch). Move backend/API-only changes into a separate PR targeting main."
+            gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" -f body="${message}"
+            gh api --method PATCH "repos/${REPOSITORY}/pulls/${PR_NUMBER}" -f state=closed
+            echo "::error title=Native app branch boundary::Native app files detected. The pull request was commented on and closed to protect website/backend main."
+            exit 1
+          fi
+
+          echo "Boundary passed: this PR contains no native app source or app-build workflow changes."
