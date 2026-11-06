@@ -34,7 +34,7 @@ _ASSIGNMENT = re.compile(
 )
 _BEARER = re.compile(r"(?i)(\bBearer\s+)[A-Za-z0-9._~+/=-]+")
 _BASIC = re.compile(r"(?i)(\bBasic\s+)[A-Za-z0-9+/=]+")
-_URL_PASSWORD = re.compile(r"(://[^:/\s@]+:)[^@/\s]+(@)")
+_URL_PASSWORD = re.compile(r"(://[^:/\s@]*:)[^@/\s]+(@)")
 _SECRET_VALUES: set[str] = set()
 _LOCK = threading.RLock()
 _INSTALLED = False
