@@ -2864,9 +2864,45 @@ def auth_settings():
             config.sendgrid_api_key = request.form.get('sendgrid_api_key', '').strip()
             config.sendgrid_from_email = request.form.get('sendgrid_from_email', '').strip()
             config.sendgrid_from_name = request.form.get('sendgrid_from_name', 'AFCON360').strip()
-            config.twilio_account_sid = request.form.get('twilio_account_sid', '').strip()
-            config.twilio_auth_token = request.form.get('twilio_auth_token', '').strip()
-            config.twilio_phone_number = request.form.get('twilio_phone_number', '').strip()
+            # Keep Twilio credentials in the encrypted SystemConfig store.
+            # The legacy AuthConfiguration token column is cleared after migration.
+            from app.models.system_config import SystemConfig
+            twilio_sid = (
+                request.form.get('twilio_account_sid', '').strip()
+                or SystemConfig.get('TWILIO_ACCOUNT_SID', '')
+            )
+            twilio_phone = (
+                request.form.get('twilio_phone_number', '').strip()
+                or SystemConfig.get('TWILIO_FROM_NUMBER', '')
+            )
+            token_input = request.form.get('twilio_auth_token', '').strip()
+            legacy_token = config.twilio_auth_token
+            if token_input:
+                SystemConfig.set(
+                    'TWILIO_AUTH_TOKEN', token_input, value_type='str',
+                    category='sms', description='Twilio Auth Token',
+                )
+            elif legacy_token and not SystemConfig.get('TWILIO_AUTH_TOKEN', ''):
+                # One-time compatibility migration from the old plaintext column.
+                SystemConfig.set(
+                    'TWILIO_AUTH_TOKEN', legacy_token, value_type='str',
+                    category='sms', description='Twilio Auth Token',
+                )
+            SystemConfig.set(
+                'TWILIO_ACCOUNT_SID', twilio_sid, value_type='str',
+                category='sms', description='Twilio Account SID',
+            )
+            SystemConfig.set(
+                'TWILIO_FROM_NUMBER', twilio_phone, value_type='str',
+                category='sms', description='Twilio verified sender phone number',
+            )
+            SystemConfig.set(
+                'TWILIO_SMS_ENABLED', config.twilio_enabled, value_type='bool',
+                category='sms', description='Enable SMS via Twilio',
+            )
+            config.twilio_account_sid = twilio_sid
+            config.twilio_auth_token = None
+            config.twilio_phone_number = twilio_phone
             config.africa_talking_username = request.form.get('africa_talking_username', '').strip()
             config.africa_talking_api_key = request.form.get('africa_talking_api_key', '').strip()
             
