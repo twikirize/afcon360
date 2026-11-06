@@ -630,7 +630,7 @@ def mobile_mfa_verify():
     except Exception:
         logger.exception("Native MFA challenge store unavailable")
         return _error("auth_service_unavailable", "Sign-in is temporarily unavailable. Try again.", 503)
-    if not challenge_data or challenge_data.get("mfa_type") != "totp":
+    if not challenge_data or challenge_data.get("mfa_type") not in {"totp", "sms"}:
         return _error("invalid_mfa_challenge", "This sign-in challenge has expired or was already used.", 401)
 
     from app.identity.models.user import User
