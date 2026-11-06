@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import { ActivityIndicator, AppState, Pressable, Text, View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { AppScreen, PageHeader, Panel, SectionTitle, StatusPill, palette } from "@afcon360/mobile-ui";
 import { authClient } from "../../src/services/api";
 
@@ -44,23 +44,25 @@ export default function RideStatusScreen() {
     }
   }, [reference]);
 
-  useEffect(() => {
-    void refresh();
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
 
-    // Request tracking is polling-based until live trip updates are available.
-    // Pause network traffic in the background and refresh immediately on resume.
-    const subscription = AppState.addEventListener("change", state => {
-      if (state === "active") void refresh();
-    });
-    const timer = setInterval(() => {
-      if (AppState.currentState === "active") void refresh();
-    }, 12000);
+      // Poll only while this request screen is visible and the app is active.
+      // Resume with a fresh server state after backgrounding the app.
+      const subscription = AppState.addEventListener("change", state => {
+        if (state === "active") void refresh();
+      });
+      const timer = setInterval(() => {
+        if (AppState.currentState === "active") void refresh();
+      }, 12000);
 
-    return () => {
-      clearInterval(timer);
-      subscription.remove();
-    };
-  }, [refresh]);
+      return () => {
+        clearInterval(timer);
+        subscription.remove();
+      };
+    }, [refresh])
+  );
 
   const requestState = data?.cycle?.status ?? data?.status ?? "Waiting for status";
   const quotedFare = data?.fare_estimate;
