@@ -1322,6 +1322,8 @@ def save_twilio_config():
     """Save Twilio SMS/WhatsApp configuration"""
     try:
         from app.models.system_config import SystemConfig
+        from app.auth.config_model import AuthConfiguration
+        auth_config = AuthConfiguration.get_config()
 
         SystemConfig.set('TWILIO_ACCOUNT_SID', request.form.get('TWILIO_ACCOUNT_SID', ''),
                          value_type='str', category='sms', description='Twilio Account SID', commit=False)
@@ -1341,8 +1343,6 @@ def save_twilio_config():
 
         # Keep the authentication provider selector aligned with the unified
         # OTP delivery control so phone verification and native MFA see it.
-        from app.auth.config_model import AuthConfiguration
-        auth_config = AuthConfiguration.get_config()
         auth_config.twilio_enabled = sms_enabled
         db.session.commit()
 
@@ -1453,6 +1453,7 @@ def save_otp_delivery_config():
     try:
         from app.models.system_config import SystemConfig
         from app.auth.config_model import AuthConfiguration
+        auth_config = AuthConfiguration.get_config()
 
         # OCI Email Delivery settings.
         SystemConfig.set(
@@ -1506,7 +1507,6 @@ def save_otp_delivery_config():
 
         # AuthConfiguration is still read by phone-verification routing. Mirror
         # the SMS toggle in the same owner operation to prevent split-brain.
-        auth_config = AuthConfiguration.get_config()
         auth_config.twilio_enabled = sms_enabled
         db.session.commit()
 
