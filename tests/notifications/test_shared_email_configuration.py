@@ -699,3 +699,44 @@ def test_first_owner_email_save_requires_environment_credentials_to_be_reentered
         {},
         existing_setting=None,
     ) == []
+
+
+
+def test_smtp_authentication_requires_a_complete_pair():
+    from app.notifications.routes import _smtp_auth_pair_error
+
+    assert _smtp_auth_pair_error(
+        {"smtp_user": "", "smtp_pass": ""}, {}
+    ) is None
+    assert _smtp_auth_pair_error(
+        {"smtp_user": "only-user", "smtp_pass": ""}, {}
+    ) == "Provide both SMTP username and password, or leave both blank."
+    assert _smtp_auth_pair_error(
+        {"smtp_user": "", "smtp_pass": "only-password"}, {}
+    ) == "Provide both SMTP username and password, or leave both blank."
+    assert _smtp_auth_pair_error(
+        {"smtp_user": "user", "smtp_pass": "password"}, {}
+    ) is None
+
+    # Blank fields preserve an existing complete pair. Updating only the
+    # username still leaves the stored password as the effective pair.
+    existing = {"smtp_user": "old-user", "smtp_pass": "old-password"}
+    assert _smtp_auth_pair_error(
+        {"smtp_user": "", "smtp_pass": ""}, existing
+    ) is None
+    assert _smtp_auth_pair_error(
+        {"smtp_user": "new-user", "smtp_pass": ""}, existing
+    ) is None
+
+    # Historical or otherwise incomplete stored authentication fails closed.
+    assert _smtp_auth_pair_error(
+        {"smtp_user": "", "smtp_pass": ""}, {"smtp_user": "old-user"}
+    ) == "Provide both SMTP username and password, or leave both blank."
+
+    # Clearing is an explicit paired operation and cannot be mixed with entry.
+    assert _smtp_auth_pair_error(
+        {"smtp_user": "", "smtp_pass": "", "clear_auth": True}, existing
+    ) is None
+    assert _smtp_auth_pair_error(
+        {"smtp_user": "new-user", "smtp_pass": "", "clear_auth": True}, existing
+    ) == "Uncheck Clear auth before entering new SMTP credentials."
