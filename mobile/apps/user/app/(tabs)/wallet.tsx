@@ -32,6 +32,12 @@ import type {
 
 type WalletTab = "balance" | "deposit" | "send" | "withdraw" | "history" | "pin";
 
+// The withdrawal API remains a draft backend feature until its clearing ledger
+// counter-entry and provider-float reconciliation are approved and tested.
+// Keep the screen code for the reviewed feature path, but do not expose or call
+// it from the released User app yet.
+const NATIVE_WITHDRAWALS_ENABLED = false;
+
 function Button({
   label,
   onPress,
@@ -243,24 +249,26 @@ export default function Wallet() {
           SecureStore.getItemAsync(withdrawalStoreKeys.reference),
         ]);
         if (!active) return;
-        if (savedQuote) {
-          const parsed = JSON.parse(savedQuote) as WalletWithdrawalQuote;
-          const expiry = Date.parse(parsed.expires_at);
-          if (parsed.quote_token && Number.isFinite(expiry) && expiry > Date.now()) {
-            setWithdrawalQuote(parsed);
-            setTab("withdraw");
-          } else {
-            await SecureStore.deleteItemAsync(withdrawalStoreKeys.quote);
+        if (NATIVE_WITHDRAWALS_ENABLED) {
+          if (savedQuote) {
+            const parsed = JSON.parse(savedQuote) as WalletWithdrawalQuote;
+            const expiry = Date.parse(parsed.expires_at);
+            if (parsed.quote_token && Number.isFinite(expiry) && expiry > Date.now()) {
+              setWithdrawalQuote(parsed);
+              setTab("withdraw");
+            } else {
+              await SecureStore.deleteItemAsync(withdrawalStoreKeys.quote);
+            }
           }
-        }
-        if (savedReference) {
-          setTab("withdraw");
-          setWithdrawalReference(savedReference);
-          try {
-            const status = await walletClient.getWithdrawalStatus(savedReference);
-            if (active) setWithdrawalStatus(status);
-          } catch {
-            // Keep the reference so the user can retry status verification.
+          if (savedReference) {
+            setTab("withdraw");
+            setWithdrawalReference(savedReference);
+            try {
+              const status = await walletClient.getWithdrawalStatus(savedReference);
+              if (active) setWithdrawalStatus(status);
+            } catch {
+              // Keep the reference so the user can retry status verification.
+            }
           }
         }
       } catch {
@@ -617,7 +625,6 @@ export default function Wallet() {
           {tabButton("balance", "Balance")}
           {tabButton("deposit", "Deposit")}
           {tabButton("send", "Send")}
-          {tabButton("withdraw", "Withdraw")}
           {tabButton("history", "History")}
           {tabButton("pin", "Transaction PIN")}
         </View>
@@ -672,12 +679,16 @@ export default function Wallet() {
               ))}
             </Panel>
             <Panel>
-              <SectionTitle>Deposits and withdrawals</SectionTitle>
+              <SectionTitle>Deposits</SectionTitle>
               <Text style={{ color: palette.muted, lineHeight: 20 }}>
-                Deposits use a Flutterwave hosted checkout and credit your Wallet only after provider verification. Withdrawals require a confirmed quote, your transaction PIN and provider settlement confirmation.
+                Deposits use a Flutterwave hosted checkout. Your Wallet is credited only after the payment provider confirms the deposit.
               </Text>
               <Button label="Start a deposit" onPress={() => setTab("deposit")} disabled={!selectedAccount || selectedAccount.is_frozen} />
-              <Button label="Request a withdrawal quote" onPress={() => setTab("withdraw")} disabled={!selectedAccount || selectedAccount.is_frozen} secondary />
+              {!NATIVE_WITHDRAWALS_ENABLED ? (
+                <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>
+                  Wallet withdrawals are temporarily unavailable while AFCON360 completes balanced settlement accounting and provider reconciliation checks. Your balance, deposits, transfers and transaction history remain available.
+                </Text>
+              ) : null}
             </Panel>
           </>
         ) : null}
@@ -759,7 +770,7 @@ export default function Wallet() {
           </Panel>
         ) : null}
 
-        {tab === "withdraw" ? (
+        {tab === "withdraw" && NATIVE_WITHDRAWALS_ENABLED ? (
           <Panel>
             <SectionTitle>Withdraw from your AFCON360 Wallet</SectionTitle>
             <Text style={{ color: palette.muted, lineHeight: 19 }}>
