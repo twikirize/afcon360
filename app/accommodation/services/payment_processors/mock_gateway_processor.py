@@ -52,12 +52,20 @@ class MockGatewayProcessor(PaymentProcessor):
         if not booking:
             return False, None, "Booking not found for idempotency key"
 
-        from app.wallet.routes import get_or_create_account
-        account = get_or_create_account(user_id, currency)
+        from app.wallet.services.wallet_onboarding_service import get_user_wallet_account
+        account = get_user_wallet_account(user_id, currency=currency)
+        if account is None:
+            return (
+                False,
+                None,
+                "Open an AFCON360 Wallet in this currency before completing checkout. "
+                "Checkout will not create a Wallet for you.",
+            )
+
+        from app.wallet.repositories.ledger_repository import LedgerRepository
+        current_balance = LedgerRepository().get_balance(account.id, currency)
 
         wallet = WalletService()
-        balance_data = wallet.get_balance(account.user_id)
-        current_balance = balance_data.get('balance', Decimal('0'))
         if current_balance < amount:
             deposit_amount = amount - current_balance + Decimal("10.00")
             wallet.deposit(
