@@ -40,8 +40,13 @@ class EmailHandler(BaseChannelHandler):
                 user_id=getattr(notification, "user_id", None),
             )
             try:
+                notification_type = getattr(
+                    getattr(notification, "type", "system_alert"),
+                    "value",
+                    getattr(notification, "type", "system_alert"),
+                )
                 html = template_loader.env.get_template(
-                    f"email/{getattr(notification, 'type', 'system_alert')}.html"
+                    f"email/{notification_type}.html"
                 ).render(**context)
             except Exception:
                 html = template_loader.env.get_template(
