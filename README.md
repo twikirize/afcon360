@@ -323,7 +323,7 @@ BACKUP="$BACKUP_DIR/mfa_reset_$(date +%Y%m%d_%H%M%S).dump"
 docker exec afcon360_db pg_dump -U afcon_prod -d afcon360_prod -Fc > "$BACKUP"
 test -s "$BACKUP"
 docker exec -i afcon360_db pg_restore -l < "$BACKUP" >/dev/null
-printf "Readable MFA recovery archive: %s\\n" "$BACKUP"
+printf "Readable MFA recovery archive: %s\n" "$BACKUP"
 '
 ```
 
