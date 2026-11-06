@@ -273,6 +273,16 @@ class MarketplaceService:
 
         if rules.get("snapshot_version") != 1:
             flags.append("booking_time_policy_snapshot_incomplete")
+        else:
+            recorded_hash = rules.get("sha256")
+            hash_payload = {key: value for key, value in rules.items() if key != "sha256"}
+            import hashlib
+            import json
+            actual_hash = hashlib.sha256(
+                json.dumps(hash_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
+            if not recorded_hash or recorded_hash != actual_hash:
+                flags.append("booking_time_policy_snapshot_integrity_failed")
         if payment_method not in {"wallet", "mock_gateway"}:
             flags.append("payment_not_held_in_platform_wallet")
         if not booking.wallet_txn_id:
@@ -299,11 +309,15 @@ class MarketplaceService:
                 original = TransactionModel.query.filter_by(id=booking.wallet_txn_id).first()
             except Exception:
                 original = None
+            original_status = getattr(getattr(original, "status", None), "value", getattr(original, "status", None))
+            original_metadata = dict(getattr(original, "tx_metadata", None) or {}) if original else {}
             if (
                 original is None
-                or str(original.status).lower() != "completed"
+                or str(original_status).lower() != "completed"
                 or original.user_id != booking.booked_by_user_id
                 or Decimal(str(original.amount or 0)) < amount
+                or str(original.currency or "").upper() != str(booking.currency or "").upper()
+                or str(original_metadata.get("booking_id")) != str(booking.id)
             ):
                 flags.append("original_payment_cannot_be_reconciled")
 
@@ -534,9 +548,12 @@ class MarketplaceService:
                 if booking:
                     snapshot, workflow = MarketplaceService._refund_workflow(booking)
                     workflow.update({
-                        "state": "refund_failed",
+                        "state": "pending_human_review",
                         "last_error": str(exc)[:500],
                         "failed_at": datetime.now(timezone.utc).isoformat(),
+                        "risk_flags": list(dict.fromkeys(
+                            list(workflow.get("risk_flags") or []) + ["automatic_refund_execution_failed"]
+                        )),
                     })
                     snapshot["refund_workflow"] = workflow
                     booking.policy_snapshot = snapshot
@@ -659,6 +676,23 @@ class MarketplaceService:
                 .with_for_update()
                 .first()
             )
+            if amount > Decimal(str(booking.amount_paid or 0)):
+                return False, "Approved refund cannot exceed the amount actually collected"
+            if payment_method in {"wallet", "mock_gateway"}:
+                hard_flags = {
+                    "original_platform_transaction_missing",
+                    "original_payment_cannot_be_reconciled",
+                    "booking_payment_not_confirmed",
+                    "refund_exceeds_confirmed_payment",
+                    "escrow_commission_record_missing",
+                    "refund_exceeds_escrow_amount",
+                    "previous_refund_recorded",
+                }
+                flags = set(MarketplaceService._refund_screening_flags(
+                    booking, amount, commission
+                ))
+                if flags.intersection(hard_flags):
+                    return False, "The original payment or escrow cannot be reconciled; keep this request in review"
             if payment_method not in {"wallet", "mock_gateway"}:
                 workflow.update({
                     "state": "approved_external_execution_pending",
@@ -766,6 +800,7 @@ class MarketplaceService:
     ) -> Tuple[bool, Optional[str]]:
         """Record verified completion by the original payment channel."""
         from app.auth.helpers import has_global_role
+        from app.identity.models.user import User
         from app.accommodation.models.booking import AccommodationBookingStatus, AccommodationPaymentStatus
         from app.accommodation.state_machine.booking_states import BookingStateMachine
 
@@ -784,6 +819,15 @@ class MarketplaceService:
             snapshot, workflow = MarketplaceService._refund_workflow(booking)
             if workflow.get("state") != "approved_external_execution_pending":
                 return False, "This refund is not awaiting external payment execution"
+            if reviewer_user_id in {
+                workflow.get("approved_by_user_id"),
+                workflow.get("requested_by_user_id"),
+                booking.cancelled_by_user_id,
+                booking.booked_by_user_id,
+                booking.guest_user_id,
+                booking.host_user_id,
+            }:
+                return False, "A different platform administrator must verify external execution"
             amount = Decimal(str(amount)).quantize(Decimal("0.01"))
             if amount != Decimal(str(workflow.get("approved_amount") or "0")):
                 return False, "Recorded provider execution amount does not match the approved amount"
