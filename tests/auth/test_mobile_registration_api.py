@@ -1278,3 +1278,13 @@ def test_otp_successful_verification_consumes_the_exact_hash_atomically(monkeypa
 
     assert first[0] is True
     assert second[0] is False
+
+def test_required_otp_store_fails_closed_instead_of_using_process_memory(app, monkeypatch):
+    from app.auth import otp_store
+
+    monkeypatch.setattr(otp_store, "_redis", lambda: None)
+    with app.app_context():
+        app.config["REDIS_REQUIRED"] = True
+        assert otp_store.store_set("otp:501:2fa_login", "hashed-value", ttl=300) is False
+        assert otp_store.store_get("otp:501:2fa_login") is None
+        assert otp_store.store_delete("otp:501:2fa_login") is False
