@@ -1031,3 +1031,250 @@ def test_account_deletion_service_rejects_an_incorrect_current_password():
         assert exc.status_code == 401
     else:
         raise AssertionError("Account deletion must reject an incorrect current password")
+
+
+def test_native_sms_mfa_requires_verified_e164_phone(app, monkeypatch):
+    from types import SimpleNamespace
+    from app.auth import mobile_api
+    from app.auth.otp_service import OTPService
+
+    invalidated = []
+    monkeypatch.setattr(
+        OTPService,
+        "invalidate_otp",
+        staticmethod(lambda identifier, purpose: invalidated.append((identifier, purpose)) or True),
+    )
+    user = SimpleNamespace(
+        id=501,
+        public_id="sms-user-unverified",
+        phone="+256700000001",
+        phone_verified=False,
+    )
+
+    with app.app_context():
+        hint, error = mobile_api._start_native_sms_mfa(user)
+
+    assert hint is None
+    assert error[0] == "sms_mfa_phone_unverified"
+    assert invalidated == [("501", "2fa_login")]
+
+
+def test_native_sms_mfa_uses_configured_provider_and_does_not_log_otp(app, monkeypatch):
+    from types import SimpleNamespace
+    from app.auth import mobile_api
+    from app.auth.otp_service import OTPService
+    from app.auth.config_model import AuthConfiguration
+    from app.notifications import sms_service
+
+    captured = {"stored": None, "sent": None, "invalidated": []}
+
+    class FakeRedis:
+        def set(self, key, value, ex=None, nx=None):
+            captured["throttle"] = (key, value, ex, nx)
+            return True
+
+    class FakeSmsClient:
+        def __init__(self, provider, auth_config):
+            captured["provider"] = provider
+            captured["config"] = auth_config
+
+        def send_message(self, phone_number, message):
+            captured["sent"] = (phone_number, message)
+            return {"success": True, "provider": "twilio"}
+
+    config = SimpleNamespace(
+        get_sms_provider_for_phone=lambda phone: "twilio"
+    )
+    monkeypatch.setattr(mobile_api, "_redis", lambda: FakeRedis())
+    monkeypatch.setattr(AuthConfiguration, "get_config", classmethod(lambda cls: config))
+    monkeypatch.setattr(sms_service, "SMSService", FakeSmsClient)
+    monkeypatch.setattr(OTPService, "generate_otp", staticmethod(lambda length=6: "483921"))
+    monkeypatch.setattr(
+        OTPService,
+        "store_otp",
+        staticmethod(lambda identifier, otp, purpose, ttl: captured.update(
+            stored=(identifier, otp, purpose, ttl)
+        ) or True),
+    )
+    monkeypatch.setattr(
+        OTPService,
+        "invalidate_otp",
+        staticmethod(lambda identifier, purpose: captured["invalidated"].append((identifier, purpose)) or True),
+    )
+    user = SimpleNamespace(
+        id=502,
+        public_id="sms-user-verified",
+        phone="+256700000002",
+        phone_verified=True,
+    )
+
+    with app.app_context():
+        hint, error = mobile_api._start_native_sms_mfa(user)
+
+    assert error is None
+    assert hint == "+256••••02"
+    assert captured["provider"] == "twilio"
+    assert captured["stored"] == ("502", "483921", "2fa_login", 300)
+    assert captured["sent"][0] == "+256700000002"
+    assert "483921" in captured["sent"][1]
+    assert captured["throttle"][2:] == (60, True)
+    assert captured["invalidated"] == []
+
+
+def test_native_sms_mfa_fails_closed_when_provider_is_not_configured(app, monkeypatch):
+    from types import SimpleNamespace
+    from app.auth import mobile_api
+    from app.auth.otp_service import OTPService
+    from app.auth.config_model import AuthConfiguration
+
+    class FakeRedis:
+        def set(self, key, value, ex=None, nx=None):
+            return True
+
+    config = SimpleNamespace(get_sms_provider_for_phone=lambda phone: None)
+    monkeypatch.setattr(mobile_api, "_redis", lambda: FakeRedis())
+    monkeypatch.setattr(AuthConfiguration, "get_config", classmethod(lambda cls: config))
+    monkeypatch.setattr(
+        OTPService,
+        "invalidate_otp",
+        staticmethod(lambda identifier, purpose: True),
+    )
+    user = SimpleNamespace(
+        id=503,
+        public_id="sms-user-no-provider",
+        phone="+256700000003",
+        phone_verified=True,
+    )
+
+    with app.app_context():
+        hint, error = mobile_api._start_native_sms_mfa(user)
+
+    assert hint is None
+    assert error[0] == "sms_mfa_unavailable"
+    assert error[2] == 503
+
+
+def test_native_sms_mfa_login_returns_a_one_time_sms_challenge(client, monkeypatch):
+    from types import SimpleNamespace
+    from app.auth import mobile_api, services
+
+    user = SimpleNamespace(
+        id=504,
+        public_id="sms-native-login-user",
+        username="sms_member",
+        email="sms-member@example.test",
+    )
+    stored = {}
+
+    class FakeRedis:
+        def setex(self, key, ttl, value):
+            stored.update(key=key, ttl=ttl, value=value)
+            return True
+
+    monkeypatch.setattr(
+        services,
+        "authenticate_user",
+        lambda **kwargs: (
+            services.AuthResult.MFA_REQUIRED,
+            {"user": user, "mfa_type": "sms"},
+        ),
+    )
+    monkeypatch.setattr(mobile_api, "_verify_login_eligibility", lambda user, client: None)
+    monkeypatch.setattr(mobile_api, "_start_native_sms_mfa", lambda user: ("+256••••04", None))
+    monkeypatch.setattr(mobile_api, "_redis", lambda: FakeRedis())
+
+    response = client.post(
+        "/api/mobile/v1/auth/login",
+        json={
+            "identifier": user.email,
+            "password": "CorrectPassword#2026",
+            "client": "user",
+            "device_id": "sms-device-install-504",
+            "device_name": "AFCON360 User",
+        },
+    )
+
+    body = response.get_json()
+    assert response.status_code == 202
+    assert body["success"] is True
+    assert body["mfa_required"] is True
+    assert body["mfa_type"] == "sms"
+    assert body["destination_hint"] == "+256••••04"
+    assert body["challenge_token"]
+    assert stored["ttl"] == 300
+    assert '"mfa_type":"sms"' in stored["value"]
+
+
+def test_native_sms_mfa_verification_uses_hashed_one_time_otp(client, monkeypatch):
+    from types import SimpleNamespace
+    from flask import jsonify
+    from app.auth import mobile_api, sessions
+    from app.auth.otp_service import otp_service
+    from app.identity.models.user import User
+
+    user = SimpleNamespace(id=505, public_id="sms-native-verify-user")
+    monkeypatch.setattr(
+        User,
+        "query",
+        SimpleNamespace(
+            filter_by=lambda **kwargs: SimpleNamespace(first=lambda: user)
+        ),
+    )
+    monkeypatch.setattr(
+        mobile_api,
+        "pop_mobile_mfa_challenge",
+        lambda token: {
+            "user_public_id": user.public_id,
+            "client": "user",
+            "device_id": "sms-device-install-505",
+            "device_name": "AFCON360 User",
+            "mfa_type": "sms",
+        },
+    )
+    monkeypatch.setattr(mobile_api, "_verify_login_eligibility", lambda user, client: None)
+    verified = []
+    monkeypatch.setattr(
+        otp_service,
+        "verify_otp",
+        lambda identifier, code, purpose: verified.append((identifier, code, purpose)) or (True, "verified"),
+    )
+    monkeypatch.setattr(sessions, "start_server_session", lambda *args, **kwargs: "sms-server-session")
+    monkeypatch.setattr(mobile_api, "_active_server_session", lambda session_id: True)
+    monkeypatch.setattr(
+        mobile_api,
+        "_complete_native_login",
+        lambda *args, **kwargs: (jsonify({"success": True, "data": {"token_type": "Bearer"}}), 200),
+    )
+
+    response = client.post(
+        "/api/mobile/v1/auth/mfa/verify",
+        json={"challenge_token": "opaque-sms-challenge-token", "code": "483921"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["success"] is True
+    assert verified == [("505", "483921", "2fa_login")]
+
+
+def test_otp_successful_verification_consumes_the_exact_hash_atomically(monkeypatch):
+    from app.auth import otp_service as otp_module
+    from app.auth.otp_service import OTPService
+
+    expected_hash = OTPService._hash_otp("483921")
+    state = {"hash": expected_hash}
+
+    monkeypatch.setattr(otp_module, "store_get", lambda key: state["hash"])
+
+    def compare_and_delete(key, expected):
+        if state["hash"] != expected:
+            return False
+        state["hash"] = None
+        return True
+
+    monkeypatch.setattr(otp_module, "store_compare_and_delete", compare_and_delete)
+
+    first = OTPService.verify_otp("505", "483921", "2fa_login")
+    second = OTPService.verify_otp("505", "483921", "2fa_login")
+
+    assert first[0] is True
+    assert second[0] is False
