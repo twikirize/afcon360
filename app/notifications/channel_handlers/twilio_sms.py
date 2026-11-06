@@ -17,23 +17,36 @@ class TwilioSmsHandler(BaseChannelHandler):
     """SMS handler using Twilio REST API."""
     channel_name = 'twilio_sms'
 
-    def __init__(self):
+    def __init__(self, auth_config=None):
+        self.auth_config = auth_config
         self.account_sid = self._get_config('TWILIO_ACCOUNT_SID')
         self.auth_token = self._get_config('TWILIO_AUTH_TOKEN')
         self.from_number = self._get_config('TWILIO_FROM_NUMBER')
         self.messaging_service_sid = self._get_config('TWILIO_MESSAGING_SERVICE_SID')
-        self._enabled = self._get_config('TWILIO_SMS_ENABLED', False)
+        self._enabled = bool(self._get_config('TWILIO_SMS_ENABLED', False)) or bool(
+            getattr(auth_config, 'twilio_enabled', False)
+        )
         self._client = None
 
     def _get_config(self, key: str, default=None):
         """Read from SystemConfig (DB) first, then env, then default."""
-        try:
-            from app.models.system_config import SystemConfig
-            val = SystemConfig.get(key)
-            if val is not None:
-                return val
-        except Exception:
-            pass
+        from app.models.system_config import SystemConfig
+        # SystemConfig is the owner-managed source used by the unified OTP UI.
+        # Its Auth Token getter transparently decrypts the stored value.
+        val = SystemConfig.get(key)
+        if val is not None and val != '':
+            return val
+
+        auth_fields = {
+            'TWILIO_ACCOUNT_SID': 'twilio_account_sid',
+            'TWILIO_AUTH_TOKEN': 'twilio_auth_token',
+            'TWILIO_FROM_NUMBER': 'twilio_phone_number',
+        }
+        field = auth_fields.get(key)
+        if field and self.auth_config is not None:
+            value = getattr(self.auth_config, field, None)
+            if value:
+                return value
 
         import os
         env_val = os.getenv(key)
@@ -101,12 +114,15 @@ class TwilioSmsHandler(BaseChannelHandler):
                 'response_body': f'Twilio SMS sent: {message.status}',
             }
 
-        except Exception as e:
-            logger.error(f"[Twilio SMS] Failed to send to {to_phone}: {e}")
+        except Exception as exc:
+            logger.warning(
+                "[Twilio SMS] Delivery failed (exception_type=%s)",
+                type(exc).__name__,
+            )
             return {
                 'success': False,
-                'response_code': 500,
-                'response_body': str(e),
+                'response_code': 502,
+                'response_body': 'Twilio SMS delivery failed',
             }
 
 
