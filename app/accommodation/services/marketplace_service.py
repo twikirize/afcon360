@@ -249,45 +249,358 @@ class MarketplaceService:
             return False, str(e)
 
     @staticmethod
+    def _refund_workflow(booking):
+        snapshot = dict(booking.policy_snapshot or {})
+        workflow = dict(snapshot.get("refund_workflow") or {})
+        return snapshot, workflow
+
+    @staticmethod
+    def _save_refund_workflow(booking, workflow):
+        snapshot = dict(booking.policy_snapshot or {})
+        snapshot["refund_workflow"] = dict(workflow)
+        booking.policy_snapshot = snapshot
+
+    @staticmethod
+    def _refund_screening_flags(booking, refund_amount, commission):
+        """Return machine-detected risks that prevent automatic settlement."""
+        from app.wallet.models.transaction import TransactionModel
+
+        flags = []
+        amount = Decimal(str(refund_amount)).quantize(Decimal("0.01"))
+        payment_method = str(booking.payment_method or "").lower()
+        snapshot = booking.policy_snapshot if isinstance(booking.policy_snapshot, dict) else {}
+        rules = snapshot.get("cancellation_policy_rules") or {}
+
+        if rules.get("snapshot_version") != 1:
+            flags.append("booking_time_policy_snapshot_incomplete")
+        if payment_method not in {"wallet", "mock_gateway"}:
+            flags.append("payment_not_held_in_platform_wallet")
+        if not booking.wallet_txn_id:
+            flags.append("original_platform_transaction_missing")
+        if str(booking.payment_status or "").lower() not in {"paid", "partially_paid"}:
+            flags.append("booking_payment_not_confirmed")
+        paid_amount = Decimal(str(booking.amount_paid or 0))
+        if amount > paid_amount:
+            flags.append("refund_exceeds_confirmed_payment")
+        if commission is None:
+            flags.append("escrow_commission_record_missing")
+        else:
+            if commission.status != "held":
+                flags.append("escrow_not_held_for_automatic_refund")
+            if amount > Decimal(str(commission.total_amount or 0)):
+                flags.append("refund_exceeds_escrow_amount")
+        if booking.refunded_at or Decimal(str(booking.refund_amount or 0)) > 0:
+            flags.append("previous_refund_recorded")
+
+        # Verify that the referenced original transaction is a completed
+        # platform ledger payment by the booking's payer for this booking.
+        if booking.wallet_txn_id:
+            try:
+                original = TransactionModel.query.filter_by(id=booking.wallet_txn_id).first()
+            except Exception:
+                original = None
+            if (
+                original is None
+                or str(original.status).lower() != "completed"
+                or original.user_id != booking.booked_by_user_id
+                or Decimal(str(original.amount or 0)) < amount
+            ):
+                flags.append("original_payment_cannot_be_reconciled")
+
+        return list(dict.fromkeys(flags))
+
+    @staticmethod
+    def _execute_escrow_refund(
+        booking,
+        commission,
+        refund_amount: Decimal,
+        *,
+        authorization_source: str,
+        authorized_by_user_id: int,
+        approval_reason: str,
+        approved_by_user_id: Optional[int] = None,
+    ) -> Tuple[bool, Optional[str]]:
+        """Move an approved refund through the real wallet ledger exactly once."""
+        from app.wallet.models.transaction import TransactionModel
+        from app.wallet.repositories.transaction_repository import TransactionRepository
+        from app.accommodation.state_machine.booking_states import BookingStateMachine
+        from app.accommodation.models.booking import AccommodationBookingStatus, AccommodationPaymentStatus
+
+        amount = Decimal(str(refund_amount)).quantize(Decimal("0.01"))
+        if amount <= 0:
+            return False, "Refund amount must be greater than zero"
+        if commission is None or commission.status != "held":
+            return False, "Platform escrow is not held; human recovery review is required"
+        if amount > Decimal(str(booking.amount_paid or 0)):
+            return False, "Refund exceeds the amount actually paid"
+        if amount > Decimal(str(commission.total_amount or 0)):
+            return False, "Refund exceeds the amount held in escrow"
+
+        if commission.status == "refunded":
+            return False, "Already refunded"
+
+        refund_key = "booking_" + str(booking.id) + "_refund"
+        wallet = WalletService()
+        result = wallet.transfer(
+            from_account_id=MarketplaceService._get_platform_account_id(booking.currency),
+            to_account_id=MarketplaceService._get_account_for_user(
+                booking.booked_by_user_id, booking.currency
+            ),
+            amount=amount,
+            currency=booking.currency,
+            client_request_id=refund_key,
+            note="Accommodation refund: " + str(booking.booking_reference),
+            metadata={
+                "booking_id": str(booking.id),
+                "booking_reference": booking.booking_reference,
+                "refund_amount": str(amount),
+                "authorization_source": authorization_source,
+                "authorized_by_user_id": authorized_by_user_id,
+                "approved_by_user_id": approved_by_user_id,
+                "approval_reason": approval_reason,
+                "approved_at": datetime.now(timezone.utc).isoformat(),
+            },
+            # The accommodation policy engine or platform reviewer has
+            # authorized this specific escrow movement. It is not a guest
+            # wallet transfer and never requests the guest's PIN.
+            system_initiated=True,
+        )
+
+        existing = TransactionRepository(db.session).get_by_client_request_id(refund_key)
+        if existing is None:
+            existing = TransactionModel.query.filter_by(client_request_id=refund_key).first()
+        if existing is None:
+            return False, "Wallet did not return a durable refund transaction"
+        if Decimal(str(existing.amount)) != amount:
+            return False, "An earlier refund exists for a different amount; human reconciliation is required"
+
+        transaction_metadata = dict(existing.tx_metadata or {})
+        if result.get("already_processed"):
+            # A retry may finish the business record only when the durable
+            # wallet transaction carries an approval record.
+            if not transaction_metadata.get("authorization_source"):
+                return False, "Existing refund transaction has no authorization evidence"
+            refund_authorization = {
+                "authorization_source": transaction_metadata.get("authorization_source"),
+                "authorized_by_user_id": transaction_metadata.get("authorized_by_user_id"),
+                "approved_by_user_id": transaction_metadata.get("approved_by_user_id"),
+                "approval_reason": transaction_metadata.get("approval_reason"),
+                "approved_at": transaction_metadata.get("approved_at"),
+            }
+        else:
+            refund_authorization = {
+                "authorization_source": authorization_source,
+                "authorized_by_user_id": authorized_by_user_id,
+                "approved_by_user_id": approved_by_user_id,
+                "approval_reason": approval_reason,
+                "approved_at": transaction_metadata.get("approved_at")
+                or datetime.now(timezone.utc).isoformat(),
+            }
+
+        now = datetime.now(timezone.utc)
+        commission.status = "refunded"
+        commission.refund_amount = amount
+        commission.refunded_at = now
+        extra_data = dict(commission.extra_data or {})
+        extra_data["refund_authorization"] = refund_authorization
+        commission.extra_data = extra_data
+
+        booking.refund_amount = amount
+        booking.refunded_at = now
+        booking.payment_status = (
+            AccommodationPaymentStatus.REFUNDED.value
+            if amount >= Decimal(str(booking.amount_paid or 0))
+            else AccommodationPaymentStatus.PARTIAL_REFUND.value
+        )
+        if booking.status == AccommodationBookingStatus.CANCELLED.value:
+            BookingStateMachine.transition(
+                booking,
+                AccommodationBookingStatus.REFUNDED,
+                changed_by_user_id=approved_by_user_id or authorized_by_user_id,
+                reason="Refund executed under recorded authorization",
+                trigger="refund_processed",
+            )
+
+        snapshot, workflow = MarketplaceService._refund_workflow(booking)
+        workflow.update({
+            "state": "refunded",
+            "actual_amount": str(amount),
+            "transaction_id": str(existing.id),
+            "completed_at": now.isoformat(),
+            "authorization": refund_authorization,
+        })
+        snapshot["refund_workflow"] = workflow
+        booking.policy_snapshot = snapshot
+        db.session.commit()
+        return True, None
+
+    @staticmethod
     def refund_guest(
         booking_id: int,
         refund_amount: Decimal,
     ) -> Tuple[bool, Optional[str]]:
         """
-        Compatibility entry point retained for the established two-argument API.
-
-        Route-driven human approval is taken from the authenticated request and
-        the persisted cancellation actor. The wallet transfer itself remains
-        system-executed only after the approval checks below.
+        Process a guest-authorized, booking-policy refund automatically when
+        the booking-time policy and platform escrow reconcile. Any ambiguity
+        or explicit exception request is placed in the platform human-review
+        queue; a host is never asked to approve an ordinary guest cancellation.
         """
-        from flask import request
+        from flask import current_app
+        from sqlalchemy import select
+        from app.accommodation.models.booking import AccommodationBookingStatus
 
         try:
-            approval_reason = str(request.form.get("reason") or "").strip()
-        except RuntimeError:
-            approval_reason = ""
+            booking = db.session.execute(
+                select(AccommodationBooking)
+                .where(AccommodationBooking.id == booking_id)
+                .with_for_update()
+            ).scalar_one_or_none()
+            if booking is None:
+                return False, "Booking not found"
 
-        if not approval_reason:
+            actor = current_user
+            if not actor or not actor.is_authenticated:
+                return False, "An authenticated booking cancellation is required"
+            if (
+                booking.cancelled_by_user_id != actor.id
+                or booking.status not in {
+                    AccommodationBookingStatus.CANCELLED.value,
+                    AccommodationBookingStatus.REFUNDED.value,
+                }
+            ):
+                return False, "Only the authenticated cancellation actor can start this policy refund"
+
+            amount = Decimal(str(refund_amount)).quantize(Decimal("0.01"))
+            outcome = (booking.policy_snapshot or {}).get("cancellation_outcome", {})
+            policy_amount = Decimal(str(outcome.get("refund") or "0")).quantize(Decimal("0.01"))
+            if amount <= 0 or amount != policy_amount:
+                return False, "Refund amount does not match the recorded booking-time cancellation calculation"
+
+            snapshot, workflow = MarketplaceService._refund_workflow(booking)
+            if workflow.get("state") == "refunded":
+                return False, "Already refunded"
+            if workflow.get("state") in {
+                "pending_human_review",
+                "approved_external_execution_pending",
+                "approved_recovery_required",
+                "rejected",
+            }:
+                return True, "Refund is awaiting platform human review or external settlement"
+
+            commission = (
+                BookingCommission.query.filter_by(booking_id=booking_id)
+                .with_for_update()
+                .first()
+            )
+            flags = MarketplaceService._refund_screening_flags(
+                booking, amount, commission
+            )
+            if workflow.get("risk_flags"):
+                flags.extend(workflow["risk_flags"])
+            flags = list(dict.fromkeys(flags))
+            if flags:
+                workflow.update({
+                    "state": "pending_human_review",
+                    "proposed_amount": str(amount),
+                    "currency": booking.currency or "USD",
+                    "risk_flags": flags,
+                    "review_submitted_at": datetime.now(timezone.utc).isoformat(),
+                    "review_reason": "Machine screening could not safely authorize automatic refund",
+                })
+                snapshot["refund_workflow"] = workflow
+                booking.policy_snapshot = snapshot
+                db.session.commit()
+                return True, "Refund submitted to the platform human-approval queue"
+
+            reason = (
+                booking.cancellation_reason
+                or "Authenticated guest cancellation under frozen booking policy"
+            )
+            return MarketplaceService._execute_escrow_refund(
+                booking,
+                commission,
+                amount,
+                authorization_source="booking_time_policy",
+                authorized_by_user_id=actor.id,
+                approval_reason=reason,
+            )
+        except Exception as exc:
+            db.session.rollback()
+            current_app.logger.exception(
+                "Automatic accommodation refund failed for booking %s", booking_id
+            )
             try:
                 booking = db.session.get(AccommodationBooking, booking_id)
-                actor = current_user
-                if (
-                    booking
-                    and actor.is_authenticated
-                    and booking.cancelled_by_user_id == actor.id
-                ):
-                    approval_reason = (
-                        booking.cancellation_reason
-                        or "Booking cancellation approved by the booking actor"
-                    )
-                else:
-                    approval_reason = "Host issued refund"
+                if booking:
+                    snapshot, workflow = MarketplaceService._refund_workflow(booking)
+                    workflow.update({
+                        "state": "refund_failed",
+                        "last_error": str(exc)[:500],
+                        "failed_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                    snapshot["refund_workflow"] = workflow
+                    booking.policy_snapshot = snapshot
+                    db.session.commit()
             except Exception:
-                approval_reason = ""
+                db.session.rollback()
+            return False, "Refund execution failed; the payment remains unrefunded"
 
-        return MarketplaceService.refund_guest_approved(
-            booking_id, refund_amount, approval_reason=approval_reason
-        )
+    @staticmethod
+    def submit_refund_review(
+        booking_id: int,
+        refund_amount: Decimal,
+        reason: str,
+        *,
+        requested_by_user_id: int,
+        request_source: str = "host_manual_refund",
+    ) -> Tuple[bool, Optional[str]]:
+        """Submit a provider/manual exception for independent platform review."""
+        from sqlalchemy import select
+        from app.accommodation.services.identity_service import AccommodationIdentityService
+
+        try:
+            booking = db.session.execute(
+                select(AccommodationBooking)
+                .where(AccommodationBooking.id == booking_id)
+                .with_for_update()
+            ).scalar_one_or_none()
+            if not booking:
+                return False, "Booking not found"
+            actor = db.session.get(User, requested_by_user_id)
+            prop = booking.accommodation_property
+            if not actor or not AccommodationIdentityService.can_manage_property(
+                actor,
+                property_owner_user_id=prop.owner_user_id if prop else None,
+                property_owner_org_id=prop.owner_org_id if prop else None,
+            ):
+                return False, "Only an authorised property manager can submit this request"
+            reason = str(reason or "").strip()
+            if not reason:
+                return False, "A review reason is required"
+            amount = Decimal(str(refund_amount)).quantize(Decimal("0.01"))
+            if amount < 0 or amount > Decimal(str(booking.amount_paid or 0)):
+                return False, "Requested refund must not exceed the confirmed amount paid"
+            snapshot, workflow = MarketplaceService._refund_workflow(booking)
+            workflow.update({
+                "state": "pending_human_review",
+                "proposed_amount": str(amount),
+                "currency": booking.currency or "USD",
+                "request_source": request_source,
+                "requested_by_user_id": requested_by_user_id,
+                "request_reason": reason,
+                "submitted_at": datetime.now(timezone.utc).isoformat(),
+                "risk_flags": list(dict.fromkeys(
+                    list(workflow.get("risk_flags") or []) + ["provider_or_manual_exception"]
+                )),
+            })
+            snapshot["refund_workflow"] = workflow
+            booking.policy_snapshot = snapshot
+            db.session.commit()
+            return True, None
+        except Exception as exc:
+            db.session.rollback()
+            logger.exception("Could not submit accommodation refund review for %s", booking_id)
+            return False, str(exc)
 
     @staticmethod
     def refund_guest_approved(
@@ -295,155 +608,209 @@ class MarketplaceService:
         refund_amount: Decimal,
         approval_reason: Optional[str] = None,
     ) -> Tuple[bool, Optional[str]]:
-        """
-        Execute a wallet refund only after an authenticated human approval.
+        """Execute a queued refund only after an independent platform admin approves it."""
+        from flask_login import current_user
+        from app.auth.helpers import has_global_role
+        from sqlalchemy import select
 
-        A property manager can explicitly approve a manual refund. A human who
-        cancelled the booking can approve only the exact refund amount persisted
-        by the cancellation-policy calculation. The guest never supplies a
-        platform escrow PIN; the approved system workflow performs the transfer.
-        """
         try:
-            booking = db.session.get(AccommodationBooking, booking_id)
+            actor = current_user
+            if not actor or not actor.is_authenticated or not has_global_role(
+                actor, "admin", "super_admin", "owner", "accommodation_admin"
+            ):
+                return False, "Platform administrator approval is required"
+            reason = str(approval_reason or "").strip()
+            if not reason:
+                return False, "An approval reason is required"
+
+            booking = db.session.execute(
+                select(AccommodationBooking)
+                .where(AccommodationBooking.id == booking_id)
+                .with_for_update()
+            ).scalar_one_or_none()
             if not booking:
                 return False, "Booking not found"
 
-            actor = current_user
-            if not actor or not actor.is_authenticated:
-                return False, "An authenticated human refund approval is required"
+            snapshot, workflow = MarketplaceService._refund_workflow(booking)
+            if workflow.get("state") != "pending_human_review":
+                return False, "This refund is not awaiting human review"
+            prohibited_actors = {
+                booking.cancelled_by_user_id,
+                booking.booked_by_user_id,
+                booking.guest_user_id,
+                booking.host_user_id,
+                workflow.get("requested_by_user_id"),
+            }
+            if actor.id in prohibited_actors:
+                return False, "The cancellation actor, guest, requester or host cannot approve this refund"
 
-            reason = str(approval_reason or "").strip()
-            if not reason:
-                return False, "A human approval reason is required"
+            amount = Decimal(str(refund_amount)).quantize(Decimal("0.01"))
+            if amount <= 0:
+                return False, "Approved refund amount must be greater than zero"
+            if amount > Decimal(str(booking.amount_paid or 0)):
+                return False, "Approved refund cannot exceed the amount actually collected"
+            if amount > Decimal(str(booking.total_amount or 0)):
+                return False, "Approved refund cannot exceed the booking total"
 
-            try:
-                refund_amount = Decimal(str(refund_amount)).quantize(Decimal("0.01"))
-            except Exception:
-                return False, "Invalid refund amount"
-            if refund_amount <= 0:
-                return False, "Refund amount must be greater than zero"
-            if refund_amount > Decimal(str(booking.total_amount or 0)):
-                return False, "Refund amount cannot exceed the booking total"
-            if str(booking.payment_method or "").lower() != "wallet":
-                return False, "This payment was not made by wallet; use its original payment-provider refund flow"
-
-            from app.accommodation.services.identity_service import AccommodationIdentityService
-            prop = booking.accommodation_property
-            is_property_manager = AccommodationIdentityService.can_manage_property(
-                actor,
-                property_owner_user_id=prop.owner_user_id if prop else None,
-                property_owner_org_id=prop.owner_org_id if prop else None,
+            payment_method = str(booking.payment_method or "").lower()
+            commission = (
+                BookingCommission.query.filter_by(booking_id=booking_id)
+                .with_for_update()
+                .first()
             )
-            outcome = (booking.policy_snapshot or {}).get("cancellation_outcome", {})
-            # BookingService.cancel_booking has already enforced who may
-            # cancel and persisted that human actor; re-use that canonical
-            # authorization fact instead of duplicating its ownership rules here.
-            cancellation_approved_by_actor = (
-                booking.cancelled_by_user_id == actor.id
-                and booking.status in {
-                    AccommodationBookingStatus.CANCELLED.value,
-                    AccommodationBookingStatus.REFUNDED.value,
-                }
-            )
-
-            if not (is_property_manager or cancellation_approved_by_actor):
-                return False, "You are not authorised to approve this booking refund"
-
-            if cancellation_approved_by_actor:
-                policy_refund = outcome.get("refund")
-                if policy_refund is None or Decimal(str(policy_refund)) != refund_amount:
-                    return False, "Refund amount does not match the human-approved cancellation policy"
-
-            commission = BookingCommission.query.filter_by(booking_id=booking_id).first()
-            if not commission:
-                return False, "Commission record not found"
-
-            if commission.status == 'refunded':
-                return False, "Already refunded"
-            if commission.status != 'held':
-                return False, f"Refund cannot be issued from escrow while commission is {commission.status}"
-            if refund_amount > Decimal(str(commission.total_amount or 0)):
-                return False, "Refund amount exceeds the amount held for this booking"
-
-            approval_at = datetime.now(timezone.utc)
-            approval_source = (
-                "booking_cancellation"
-                if cancellation_approved_by_actor
-                else "host_manual_refund"
-            )
-            guest_account_id = MarketplaceService._get_account_for_user(booking.booked_by_user_id, booking.currency)
-            platform_account_id = MarketplaceService._get_platform_account_id(booking.currency)
-
-            wallet = WalletService()
-            result = wallet.transfer(
-                from_account_id=platform_account_id,
-                to_account_id=guest_account_id,
-                amount=refund_amount,
-                currency=booking.currency,
-                client_request_id=f"booking_{booking_id}_refund",
-                note=f"Refund: {booking.booking_reference}",
-                metadata={
-                    'booking_id': str(booking_id),
-                    'booking_reference': booking.booking_reference,
-                    'refund_amount': str(refund_amount),
-                    'approved_by_user_id': actor.id,
-                    'approval_source': approval_source,
-                    'approval_reason': reason,
-                    'approved_at': approval_at.isoformat(),
-                },
-                # The authenticated human approval above authorizes execution;
-                # the system moves escrow funds without a wallet-owner PIN.
-                system_initiated=True,
-            )
-
-            if result.get('already_processed'):
-                # Converge to the previously committed transfer and preserve its
-                # original human approver in the commission audit metadata.
-                existing = TransactionRepository(db.session).get_by_client_request_id(
-                    f"booking_{booking_id}_refund"
-                )
-                recorded_amount = existing.amount if existing else refund_amount
-                transaction_metadata = (
-                    getattr(existing, "tx_metadata", None) if existing else None
-                ) or {}
-                refund_approval = {
-                    "approved_by_user_id": transaction_metadata.get("approved_by_user_id"),
-                    "approval_source": transaction_metadata.get("approval_source"),
-                    "approval_reason": transaction_metadata.get("approval_reason"),
-                    "approved_at": transaction_metadata.get("approved_at"),
-                }
-            else:
-                recorded_amount = refund_amount
-                refund_approval = {
+            if payment_method not in {"wallet", "mock_gateway"}:
+                workflow.update({
+                    "state": "approved_external_execution_pending",
+                    "approved_amount": str(amount),
                     "approved_by_user_id": actor.id,
-                    "approval_source": approval_source,
                     "approval_reason": reason,
-                    "approved_at": approval_at.isoformat(),
-                }
+                    "approved_at": datetime.now(timezone.utc).isoformat(),
+                    "execution_owner": "original_payment_provider_or_property",
+                    "execution_note": "Do not mark refunded until the original payment channel supplies an execution reference.",
+                })
+                snapshot["refund_workflow"] = workflow
+                booking.policy_snapshot = snapshot
+                db.session.commit()
+                return True, "Approved. Refund remains pending execution by the original payment provider or property"
 
-            commission.status = 'refunded'
-            commission.refund_amount = recorded_amount
-            commission.refunded_at = datetime.now(timezone.utc)
-            extra_data = dict(commission.extra_data or {})
-            extra_data["refund_approval"] = refund_approval
-            commission.extra_data = extra_data
-            booking.refund_amount = recorded_amount
-            booking.refunded_at = datetime.now(timezone.utc)
-            booking.payment_status = 'refunded'
-            db.session.commit()
+            if commission is None or commission.status != "held":
+                workflow.update({
+                    "state": "approved_recovery_required",
+                    "approved_amount": str(amount),
+                    "approved_by_user_id": actor.id,
+                    "approval_reason": reason,
+                    "approved_at": datetime.now(timezone.utc).isoformat(),
+                    "execution_note": "Escrow has already been released or cannot be reconciled. Financial recovery is required before payment.",
+                })
+                snapshot["refund_workflow"] = workflow
+                booking.policy_snapshot = snapshot
+                db.session.commit()
+                return True, "Approved, but escrow recovery is required before the refund can be executed"
 
-            logger.info(
-                f"Refund processed: {booking.booking_reference} | "
-                f"Amount: {recorded_amount} {booking.currency} | "
-                f"Approver: {refund_approval.get('approved_by_user_id')}"
+            return MarketplaceService._execute_escrow_refund(
+                booking,
+                commission,
+                amount,
+                authorization_source="platform_human_review",
+                authorized_by_user_id=actor.id,
+                approved_by_user_id=actor.id,
+                approval_reason=reason,
             )
-
-            return True, None
-
-        except Exception as e:
+        except Exception as exc:
             db.session.rollback()
-            logger.error(f"Refund failed for booking {booking_id}: {e}", exc_info=True)
-            return False, str(e)
+            logger.exception("Human-approved accommodation refund failed for %s", booking_id)
+            return False, "Could not execute approved refund: " + str(exc)
+
+    @staticmethod
+    def reject_refund_review(
+        booking_id: int,
+        reason: str,
+        *,
+        reviewer_user_id: int,
+    ) -> Tuple[bool, Optional[str]]:
+        """Record a human rejection without changing the original payment."""
+        from app.auth.helpers import has_global_role
+        from sqlalchemy import select
+
+        try:
+            actor = db.session.get(User, reviewer_user_id)
+            if not actor or not has_global_role(
+                actor, "admin", "super_admin", "owner", "accommodation_admin"
+            ):
+                return False, "Platform administrator review is required"
+            reason = str(reason or "").strip()
+            if not reason:
+                return False, "A rejection reason is required"
+            booking = db.session.execute(
+                select(AccommodationBooking)
+                .where(AccommodationBooking.id == booking_id)
+                .with_for_update()
+            ).scalar_one_or_none()
+            if not booking:
+                return False, "Booking not found"
+            snapshot, workflow = MarketplaceService._refund_workflow(booking)
+            if workflow.get("state") != "pending_human_review":
+                return False, "This refund is not awaiting human review"
+            if reviewer_user_id in {
+                booking.cancelled_by_user_id,
+                booking.booked_by_user_id,
+                booking.guest_user_id,
+                booking.host_user_id,
+                workflow.get("requested_by_user_id"),
+            }:
+                return False, "The cancellation actor, guest, requester or host cannot reject this review as the platform reviewer"
+            workflow.update({
+                "state": "rejected",
+                "rejected_by_user_id": reviewer_user_id,
+                "rejection_reason": reason,
+                "rejected_at": datetime.now(timezone.utc).isoformat(),
+            })
+            snapshot["refund_workflow"] = workflow
+            booking.policy_snapshot = snapshot
+            db.session.commit()
+            return True, None
+        except Exception as exc:
+            db.session.rollback()
+            logger.exception("Could not reject accommodation refund for %s", booking_id)
+            return False, str(exc)
+
+    @staticmethod
+    def record_external_refund_execution(
+        booking_id: int,
+        amount: Decimal,
+        provider_reference: str,
+        *,
+        reviewer_user_id: int,
+    ) -> Tuple[bool, Optional[str]]:
+        """Record verified completion by the original payment channel."""
+        from app.auth.helpers import has_global_role
+        from app.accommodation.models.booking import AccommodationBookingStatus, AccommodationPaymentStatus
+        from app.accommodation.state_machine.booking_states import BookingStateMachine
+
+        try:
+            actor = db.session.get(User, reviewer_user_id)
+            if not actor or not has_global_role(
+                actor, "admin", "super_admin", "owner", "accommodation_admin"
+            ):
+                return False, "Platform administrator authorization is required"
+            reference = str(provider_reference or "").strip()
+            if not reference:
+                return False, "Original provider refund reference is required"
+            booking = db.session.get(AccommodationBooking, booking_id)
+            if not booking:
+                return False, "Booking not found"
+            snapshot, workflow = MarketplaceService._refund_workflow(booking)
+            if workflow.get("state") != "approved_external_execution_pending":
+                return False, "This refund is not awaiting external payment execution"
+            amount = Decimal(str(amount)).quantize(Decimal("0.01"))
+            if amount != Decimal(str(workflow.get("approved_amount") or "0")):
+                return False, "Recorded provider execution amount does not match the approved amount"
+            if booking.status == AccommodationBookingStatus.CANCELLED.value:
+                booking.refund_amount = amount
+                booking.refunded_at = datetime.now(timezone.utc)
+                booking.payment_status = AccommodationPaymentStatus.REFUNDED.value
+                BookingStateMachine.transition(
+                    booking,
+                    AccommodationBookingStatus.REFUNDED,
+                    changed_by_user_id=reviewer_user_id,
+                    reason="Original payment provider refund verified",
+                    trigger="external_refund_verified",
+                )
+            workflow.update({
+                "state": "refunded",
+                "actual_amount": str(amount),
+                "external_provider_reference": reference,
+                "execution_verified_by_user_id": reviewer_user_id,
+                "execution_verified_at": datetime.now(timezone.utc).isoformat(),
+            })
+            snapshot["refund_workflow"] = workflow
+            booking.policy_snapshot = snapshot
+            db.session.commit()
+            return True, None
+        except Exception as exc:
+            db.session.rollback()
+            logger.exception("Could not record external refund execution for %s", booking_id)
+            return False, str(exc)
 
     @staticmethod
     def get_host_earnings(host_user_id: int) -> Dict[str, Any]:
