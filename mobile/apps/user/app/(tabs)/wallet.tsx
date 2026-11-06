@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   ScrollView,
   Text,
@@ -19,11 +20,12 @@ import { walletClient } from "../../src/services/api";
 import type {
   ResolvedWalletRecipient,
   WalletAccount,
+  WalletDepositStatus,
   WalletPinStatus,
   WalletTransaction,
 } from "@afcon360/mobile-core";
 
-type WalletTab = "balance" | "send" | "history" | "pin";
+type WalletTab = "balance" | "deposit" | "send" | "history" | "pin";
 
 function Button({
   label,
@@ -129,6 +131,12 @@ export default function Wallet() {
   const [confirmPin, setConfirmPin] = useState("");
   const [currentPin, setCurrentPin] = useState("");
   const [accountPassword, setAccountPassword] = useState("");
+  const [depositAmount, setDepositAmount] = useState("");
+  const [depositPaymentMethod, setDepositPaymentMethod] = useState<"mobilemoney" | "card">("mobilemoney");
+  const [depositRequestKey, setDepositRequestKey] = useState<string | null>(null);
+  const [depositReference, setDepositReference] = useState<string | null>(null);
+  const [depositCheckoutUrl, setDepositCheckoutUrl] = useState<string | null>(null);
+  const [depositStatus, setDepositStatus] = useState<WalletDepositStatus | null>(null);
 
   const loadWallet = useCallback(async () => {
     setLoading(true);
@@ -220,6 +228,91 @@ export default function Wallet() {
     }
   };
 
+  const startDeposit = async () => {
+    const requestKey =
+      depositRequestKey ??
+      "native-deposit-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 18);
+    setDepositRequestKey(requestKey);
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await walletClient.startDeposit({
+        amount: depositAmount,
+        currency: selectedCurrency,
+        paymentMethod: depositPaymentMethod,
+        idempotencyKey: requestKey,
+      });
+      setDepositReference(result.reference);
+      setDepositStatus({
+        reference: result.reference,
+        status: result.status,
+        amount: result.amount,
+        currency: result.currency,
+        payment_provider: result.payment_provider,
+        message: result.message,
+      });
+      setDepositCheckoutUrl(result.authorization_url);
+      if (result.authorization_url) {
+        const checkout = new URL(result.authorization_url);
+        if (checkout.protocol !== "https:") {
+          throw new Error("The payment provider returned an insecure checkout link. Do not continue.");
+        }
+        await Linking.openURL(checkout.toString());
+        setNotice("Flutterwave checkout opened. Complete payment there, then return to AFCON360 and refresh the deposit status.");
+      } else {
+        setNotice("The payment request is pending provider confirmation. Refresh its status before starting another deposit.");
+      }
+    } catch (e) {
+      // Keep the same request key when provider/network outcome is uncertain.
+      // Retrying must reuse the server's idempotency reference.
+      setError(e instanceof Error ? e.message : "AFCON360 could not start this deposit.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const refreshDeposit = async () => {
+    if (!depositReference) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const status = await walletClient.refreshDepositStatus(depositReference);
+      setDepositStatus(status);
+      if (status.status === "completed") {
+        setNotice("Deposit confirmed by Flutterwave and credited to your AFCON360 Wallet.");
+        setDepositRequestKey(null);
+        setDepositReference(null);
+        setDepositCheckoutUrl(null);
+        setDepositAmount("");
+        await loadWallet();
+      } else if (status.status === "failed") {
+        setNotice("Flutterwave did not complete this payment. Start a new deposit with a new request.");
+        setDepositRequestKey(null);
+        setDepositReference(null);
+        setDepositCheckoutUrl(null);
+      } else {
+        setNotice("Flutterwave has not confirmed the payment yet. Your Wallet balance has not been changed.");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "AFCON360 could not refresh the deposit status.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openDepositCheckout = async () => {
+    if (!depositCheckoutUrl) return;
+    try {
+      const checkout = new URL(depositCheckoutUrl);
+      if (checkout.protocol !== "https:") throw new Error("Only secure payment-provider links can be opened.");
+      await Linking.openURL(checkout.toString());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "AFCON360 could not open the payment checkout.");
+    }
+  };
+
   const updatePin = async () => {
     setBusy(true);
     setError(null);
@@ -277,6 +370,7 @@ export default function Wallet() {
 
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
           {tabButton("balance", "Balance")}
+          {tabButton("deposit", "Deposit")}
           {tabButton("send", "Send")}
           {tabButton("history", "History")}
           {tabButton("pin", "Transaction PIN")}
@@ -334,8 +428,9 @@ export default function Wallet() {
             <Panel>
               <SectionTitle>Deposits and withdrawals</SectionTitle>
               <Text style={{ color: palette.muted, lineHeight: 20 }}>
-                Native deposits are not enabled until provider-confirmed deposit initiation and webhook reconciliation are available. Native withdrawals are not enabled until the server can confirm the actual bank or mobile-money payout. The app will not report either operation as successful before the provider confirms it.
+                Deposits use a Flutterwave hosted checkout. AFCON360 credits your Wallet only after provider verification. Withdrawals remain disabled until a bank or mobile-money payout provider can confirm the actual disbursement.
               </Text>
+              <Button label="Start a deposit" onPress={() => setTab("deposit")} disabled={!selectedAccount || selectedAccount.is_frozen} />
             </Panel>
           </>
         ) : null}
@@ -413,6 +508,70 @@ export default function Wallet() {
             ) : null}
             <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 17 }}>
               Transfers require your transaction PIN and a unique request key. If a connection fails after you submit, retrying the same request uses the same key so the ledger cannot create a second transfer.
+            </Text>
+          </Panel>
+        ) : null}
+
+        {tab === "deposit" ? (
+          <Panel>
+            <SectionTitle>Deposit to your AFCON360 Wallet</SectionTitle>
+            <Text style={{ color: palette.muted, lineHeight: 19 }}>
+              The amount and currency are sent to the AFCON360 server and Flutterwave. The app does not credit your balance. Provider verification is required first.
+            </Text>
+            <Text style={{ color: palette.ink, fontWeight: "800" }}>Wallet currency: {selectedCurrency}</Text>
+            <Field
+              label="Amount"
+              value={depositAmount}
+              onChangeText={setDepositAmount}
+              placeholder="0.00"
+              keyboardType="decimal-pad"
+            />
+            <Text style={{ color: palette.ink, fontWeight: "700", fontSize: 13 }}>Payment method</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {(["mobilemoney", "card"] as const).map((method) => (
+                <Pressable
+                  key={method}
+                  onPress={() => setDepositPaymentMethod(method)}
+                  style={{
+                    backgroundColor: depositPaymentMethod === method ? palette.green : "#EEF3F0",
+                    borderRadius: 10,
+                    paddingVertical: 10,
+                    paddingHorizontal: 14,
+                  }}
+                >
+                  <Text style={{ color: depositPaymentMethod === method ? "#FFFFFF" : palette.ink, fontWeight: "800" }}>
+                    {method === "mobilemoney" ? "Mobile money" : "Bank card"}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <Button
+              label={busy ? "Starting secure checkout…" : "Continue to Flutterwave"}
+              onPress={() => void startDeposit()}
+              disabled={busy || !depositAmount.trim() || !selectedAccount || selectedAccount.is_frozen || !!depositReference}
+            />
+            {depositStatus ? (
+              <View style={{ backgroundColor: "#F1F6F2", borderRadius: 12, padding: 14, gap: 8 }}>
+                <StatusPill tone={depositStatus.status === "completed" ? "green" : depositStatus.status === "failed" ? "gold" : "gold"}>
+                  Deposit {depositStatus.status}
+                </StatusPill>
+                <Text style={{ color: palette.ink, fontWeight: "900" }}>
+                  {depositStatus.amount} {depositStatus.currency}
+                </Text>
+                <Text style={{ color: palette.muted, fontSize: 11 }}>Reference: {depositStatus.reference}</Text>
+                {depositStatus.status === "pending" && depositCheckoutUrl ? (
+                  <Button label="Open Flutterwave checkout" onPress={() => void openDepositCheckout()} secondary />
+                ) : null}
+                {depositStatus.status === "pending" ? (
+                  <Button label={busy ? "Checking provider…" : "Refresh payment status"} onPress={() => void refreshDeposit()} disabled={busy} />
+                ) : null}
+                <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 17 }}>
+                  {depositStatus.message ?? "AFCON360 updates your balance only after Flutterwave confirms settlement."}
+                </Text>
+              </View>
+            ) : null}
+            <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 17 }}>
+              If the payment page or your network closes unexpectedly, keep this request and refresh its status before starting another deposit. The same request key is reused to prevent duplicate payment initiation.
             </Text>
           </Panel>
         ) : null}
