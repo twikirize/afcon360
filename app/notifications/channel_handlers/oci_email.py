@@ -77,14 +77,33 @@ class OCIEmailHandler(BaseChannelHandler):
             self._email_client = None
     
     def _check_oracle_metadata(self) -> bool:
-        """Quick check if running on Oracle Cloud (metadata service reachable)."""
-        import socket
+        """Return True only when OCI's authenticated instance metadata is valid.
+
+        A TCP listener on 169.254.169.254 is not proof of an OCI instance:
+        other cloud runners also expose link-local metadata services. Confirm
+        the OCI v2 endpoint and its authenticated response before asking the
+        OCI SDK to construct an Instance Principals signer.
+        """
+        import json
+        from urllib.error import HTTPError, URLError
+        from urllib.request import Request, urlopen
+
+        request = Request(
+            "http://169.254.169.254/opc/v2/instance/",
+            headers={"Authorization": "Bearer Oracle"},
+            method="GET",
+        )
         try:
-            # Oracle metadata service IP with very short timeout
-            sock = socket.create_connection(('169.254.169.254', 80), timeout=2)
-            sock.close()
-            return True
-        except Exception:
+            with urlopen(request, timeout=1.5) as response:
+                if getattr(response, "status", 200) != 200:
+                    return False
+                payload = json.loads(response.read(65536).decode("utf-8"))
+            return (
+                isinstance(payload, dict)
+                and bool(payload.get("id"))
+                and bool(payload.get("region"))
+            )
+        except (HTTPError, URLError, OSError, ValueError, UnicodeDecodeError):
             return False
 
     @property
