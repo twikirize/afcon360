@@ -406,7 +406,7 @@ class TestEscrowHumanAuthorization:
         self, app, platform, held_booking
     ):
         with _login_as(app, platform["user_id"]):
-            ok, error = MarketplaceService.refund_guest(
+            ok, error = MarketplaceService.refund_guest_approved(
                 held_booking,
                 Decimal("100.00"),
                 approval_reason="Attempted without property authority",
@@ -429,7 +429,7 @@ class TestEscrowHumanAuthorization:
             db.session.commit()
 
         with _login_as(app, guest["user_id"]):
-            ok, error = MarketplaceService.refund_guest(
+            ok, error = MarketplaceService.refund_guest_approved(
                 held_booking,
                 Decimal("100.00"),
                 approval_reason="Booking owner requested cancellation",
@@ -531,7 +531,7 @@ class TestPayoutIdempotency:
 
 class TestRefundIdempotency:
     def test_sequential_duplicate_refund_single_transfer(
-        self, app, platform, guest, held_booking
+        self, app, platform, guest, host, held_booking
     ):
         """GREEN contract: a second refund attempt is refused and the wallet
         transfer happened exactly once."""
@@ -540,12 +540,12 @@ class TestRefundIdempotency:
 
         with _login_as(app, host["user_id"]):
             ok1, err1 = _guarded_call(
-                lambda: MarketplaceService.refund_guest(
+                lambda: MarketplaceService.refund_guest_approved(
                     held_booking, Decimal("100.00"), approval_reason="Host approved test refund"
                 )
             )
             ok2, err2 = _guarded_call(
-                lambda: MarketplaceService.refund_guest(
+                lambda: MarketplaceService.refund_guest_approved(
                     held_booking, Decimal("100.00"), approval_reason="Host approved test refund"
                 )
             )
@@ -573,7 +573,7 @@ class TestRefundIdempotency:
         assert refund_tx.tx_metadata["approval_source"] == "host_manual_refund"
 
     def test_concurrent_refund_single_transfer(
-        self, app, platform, guest, held_booking
+        self, app, platform, guest, host, held_booking
     ):
         """RED→GREEN: two concurrent refunds must move money exactly once."""
         guest_before = _balance(guest["account_id"])
@@ -582,7 +582,7 @@ class TestRefundIdempotency:
         outcomes = _run_two_threads(
             app,
             host["user_id"],
-            lambda: MarketplaceService.refund_guest(
+            lambda: MarketplaceService.refund_guest_approved(
                 held_booking, Decimal("100.00"), approval_reason="Host approved test refund"
             ),
         )
@@ -617,7 +617,7 @@ class TestRefundIdempotency:
         assert ledger_count == 2
 
     def test_refund_retry_after_wallet_commit_converges(
-        self, app, platform, guest, held_booking
+        self, app, platform, guest, host, held_booking
     ):
         """RED→GREEN: if the wallet leg committed but the business leg failed
         (crash between the two commits), the retry must NOT move money again —
@@ -652,7 +652,7 @@ class TestRefundIdempotency:
         # Retry via the canonical service — must converge, not double-pay.
         with _login_as(app, host["user_id"]):
             ok, err = _guarded_call(
-                lambda: MarketplaceService.refund_guest(
+                lambda: MarketplaceService.refund_guest_approved(
                     held_booking, Decimal("100.00"), approval_reason="Host approved test refund"
                 )
             )
