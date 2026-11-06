@@ -83,10 +83,10 @@ class MarketplaceService:
     ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         Charge guest and hold funds in platform escrow.
-        Uses WalletService.transfer() with platform_fee to atomically:
-        - Debit guest
-        - Credit platform escrow
-        - Record platform commission
+        Moves the quoted gross amount from the guest wallet into platform
+        escrow in one balanced debit/credit transfer. The platform commission
+        is retained as the difference between that gross amount and the host's
+        later net payout; it is not an extra charge on top of the quote.
 
         Returns:
             (success, transaction_id, error_message)
@@ -130,8 +130,11 @@ class MarketplaceService:
                     'commission_amount': str(commission_amount),
                     'host_payout': str(host_payout),
                 },
-                platform_fee=commission_amount,
-                fee_currency=currency,
+                # total_amount is the complete guest quote. Do not pass
+                # commission_amount as WalletService.platform_fee: that API
+                # debits it in addition to amount, while escrow receives only
+                # amount. Commission is already inside the gross escrow amount
+                # and remains after host_payout is released.
                 pin=transaction_pin,
                 authorized_user_id=authorized_user_id,
             )
