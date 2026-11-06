@@ -566,17 +566,32 @@ def wallet_create_page():
         flash('You already have a wallet.', 'info')
         return redirect(url_for('wallet.wallet_dashboard'))
     
-    # Get user profile for pre-filling
-    from app.profile.models import get_profile_by_user
-    profile = get_profile_by_user(current_user.public_id)
-    home_country = (getattr(profile, "country", None) or "").strip() if profile else ""
-    from app.wallet.services.home_currency_service import resolve_home_currency
-    default_currency = resolve_home_currency(current_user)
+    # Currency choices and local suggestions come from the same backend
+    # policy as native Wallet onboarding. An unverified country is a normal
+    # gate state, not a server error and never defaults to USD.
+    from app.wallet.services.home_currency_service import get_wallet_currency_context
 
+    try:
+        currency_context = get_wallet_currency_context(current_user)
+    except ValueError as exc:
+        currency_context = {
+            "accepted_currencies": [],
+            "fx_base_currency": "USD",
+            "country_verified": False,
+            "country": None,
+            "suggested_currency": None,
+            "requires_country_verification": True,
+            "configuration_error": str(exc),
+        }
+
+    country = currency_context.get("country") or {}
     return render_template(
         'wallet/wallet_create.html',
-        home_country=home_country,
-        default_currency=default_currency,
+        home_country=country.get("country_name") or "",
+        default_currency=currency_context.get("suggested_currency") or "",
+        accepted_currencies=currency_context.get("accepted_currencies") or [],
+        wallet_currency_context=currency_context,
+        country_verification_required=currency_context.get("requires_country_verification", True),
     )
 
 
