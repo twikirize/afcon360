@@ -126,7 +126,7 @@ def manage_aggregators():
                 display_name=display_name,
                 api_key=api_key or sandbox_api_key or live_api_key,
                 api_secret=api_secret or sandbox_api_secret or live_api_secret,
-                description=description,
+                description=description, commit=False,
                 tier=tier,
                 mode=mode,
                 sandbox_api_key=sandbox_api_key,
@@ -1324,20 +1324,20 @@ def save_twilio_config():
         from app.models.system_config import SystemConfig
 
         SystemConfig.set('TWILIO_ACCOUNT_SID', request.form.get('TWILIO_ACCOUNT_SID', ''),
-                         value_type='str', category='sms', description='Twilio Account SID')
+                         value_type='str', category='sms', description='Twilio Account SID', commit=False)
         SystemConfig.set('TWILIO_AUTH_TOKEN', request.form.get('TWILIO_AUTH_TOKEN', ''),
-                         value_type='str', category='sms', description='Twilio Auth Token')
+                         value_type='str', category='sms', description='Twilio Auth Token', commit=False)
         SystemConfig.set('TWILIO_FROM_NUMBER', request.form.get('TWILIO_FROM_NUMBER', ''),
-                         value_type='str', category='sms', description='Twilio verified sender phone number')
+                         value_type='str', category='sms', description='Twilio verified sender phone number', commit=False)
         SystemConfig.set('TWILIO_MESSAGING_SERVICE_SID', request.form.get('TWILIO_MESSAGING_SERVICE_SID', ''),
-                         value_type='str', category='sms', description='Twilio Messaging Service SID')
+                         value_type='str', category='sms', description='Twilio Messaging Service SID', commit=False)
         SystemConfig.set('TWILIO_WHATSAPP_FROM', request.form.get('TWILIO_WHATSAPP_FROM', ''),
-                         value_type='str', category='sms', description='Twilio WhatsApp sender')
+                         value_type='str', category='sms', description='Twilio WhatsApp sender', commit=False)
         SystemConfig.set('TWILIO_WHATSAPP_ENABLED', request.form.get('TWILIO_WHATSAPP_ENABLED', 'false').lower() == 'true',
-                         value_type='bool', category='sms', description='Enable WhatsApp via Twilio')
+                         value_type='bool', category='sms', description='Enable WhatsApp via Twilio', commit=False)
         sms_enabled = request.form.get('TWILIO_SMS_ENABLED', 'false').lower() == 'true'
         SystemConfig.set('TWILIO_SMS_ENABLED', sms_enabled,
-                         value_type='bool', category='sms', description='Enable SMS via Twilio')
+                         value_type='bool', category='sms', description='Enable SMS via Twilio', commit=False)
 
         # Keep the authentication provider selector aligned with the unified
         # OTP delivery control so phone verification and native MFA see it.
@@ -1459,31 +1459,31 @@ def save_otp_delivery_config():
             'OCI_EMAIL_ENABLED',
             request.form.get('OCI_EMAIL_ENABLED', 'false').lower() == 'true',
             value_type='bool', category='email',
-            description='Enable OCI Email Delivery',
+            description='Enable OCI Email Delivery', commit=False,
         )
         SystemConfig.set(
             'OCI_EMAIL_REGION',
             request.form.get('OCI_EMAIL_REGION', 'eu-frankfurt-1'),
             value_type='str', category='email',
-            description='OCI Email Delivery region',
+            description='OCI Email Delivery region', commit=False,
         )
         SystemConfig.set(
             'OCI_EMAIL_COMPARTMENT_ID',
             request.form.get('OCI_EMAIL_COMPARTMENT_ID', ''),
             value_type='str', category='email',
-            description='OCI Compartment OCID',
+            description='OCI Compartment OCID', commit=False,
         )
         SystemConfig.set(
             'OCI_EMAIL_SENDER_ADDRESS',
             request.form.get('OCI_EMAIL_SENDER_ADDRESS', 'noreply@pamoja.space'),
             value_type='str', category='email',
-            description='Approved sender address',
+            description='Approved sender address', commit=False,
         )
         SystemConfig.set(
             'OCI_EMAIL_SUPPRESSION_LIST',
             request.form.get('OCI_EMAIL_SUPPRESSION_LIST', 'true').lower() == 'true',
             value_type='bool', category='email',
-            description='Use OCI suppression list',
+            description='Use OCI suppression list', commit=False,
         )
 
         # Twilio settings. SystemConfig encrypts the Auth Token at rest; a blank
@@ -1501,7 +1501,7 @@ def save_otp_delivery_config():
         ):
             SystemConfig.set(
                 key, value, value_type=value_type, category='sms',
-                description=description,
+                description=description, commit=False,
             )
 
         # AuthConfiguration is still read by phone-verification routing. Mirror
