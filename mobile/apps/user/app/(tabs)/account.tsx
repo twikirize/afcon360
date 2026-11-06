@@ -21,9 +21,8 @@ export default function Account() {
       <ServiceTile title="Identity and verification" description="Profile and KYC status are returned by AFCON360 Identity." symbol="✓" />
       <ServiceTile title="Secure device session" description="Access credentials are kept in the device secure store and can be revoked by signing out." symbol="🔐" />
       <ActionButton label="Share AFCON360 app page" onPress={() => share("https://www.pamoja.space/apps", "AFCON360 — official app information and downloads.")} />
-      <ActionButton label="Privacy notice" onPress={() => WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")} />
+      <ActionButton label="Privacy notice (website)" onPress={() => WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")} />
       <ActionButton label="Delete AFCON360 account" onPress={() => router.push("/delete-account")} />
-      <ActionButton label="Account deletion website" onPress={() => WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/delete-account")} />
       <ActionButton label="Sign out" onPress={() => Alert.alert("Sign out", "Sign out of AFCON360 on this device?", [{ text: "Cancel", style: "cancel" }, { text: "Sign out", onPress: () => logout().then(() => router.replace("/login")).catch(() => router.replace("/login")) }])} />
     </Panel>
     <Text style={{ color: palette.muted, fontSize: 12 }}>Privacy and support: pamoja.space/support</Text>

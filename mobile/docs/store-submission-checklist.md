@@ -17,9 +17,9 @@ Status is evidence-based. A green code/build check is not store approval.
 - [x] Wallet amounts and payment state are server-provided; no client ledger or fare authority.
 - [x] In-app sign-out and account deletion controls exist; the deletion handler revokes sessions/API keys, clears MFA/recovery/PIN credentials, anonymizes direct profile identifiers and retains only separately controlled KYC/financial/audit records as required.
 - [x] Public web account-deletion initiation route exists at `/apps/delete-account`, alongside the in-app deletion control. End-to-end user testing and final retention-policy approval remain outstanding.
-- [x] Parallel APK workflow, SHA-256 verification, download/share UI and stable preview-release URLs are configured.
-- [ ] Four stable preview-keystore GitHub Actions secrets configured, latest APK builds passed, combined assets/checksum published, and download URLs tested on physical Android devices.
-- [ ] Stable internal preview keystore is stored in GitHub Actions secrets; actual APK assets and checksum are not published until this is configured and the build passes.
+- [ ] Latest-head Android and iOS compatibility workflow passes for both User and Driver apps.
+- [ ] Physical Android and iPhone/iPad acceptance completed on the supported device matrix.
+- [ ] A separate trusted stable tester-distribution workflow is designed, reviewed and protected; the current PR workflow uses disposable CI-only signing.
 - [ ] Live-like end-to-end tests for native login/MFA/refresh replay/revocation, rider booking commitment, driver offer assignment, trip lifecycle, Wallet settlement and deletion.
 - [ ] Verify external deletion requests through web login, including incorrect password, missing/invalid TOTP, protected account rejection, and retained-record disclosure.
 - [ ] Real-device testing on low-memory Android phones and supported iPhones, including permission denial, network loss and app upgrade.
@@ -65,22 +65,15 @@ Status is evidence-based. A green code/build check is not store approval.
 
 ## GitHub Actions preview signing setup
 
-The parallel APK workflow requires a stable test signing certificate so testers can install later preview builds as updates rather than uninstalling the app each time. Do not commit the keystore or its passwords.
+The current PR-capable workflow generates a temporary signing key inside each APK build, masks its password, uses read-only token permissions and does not publish a GitHub Release. Downloaded APKs are run-scoped Actions artifacts, not a stable update channel.
 
-Create a dedicated internal preview keystore on a trusted workstation (see `docs/android-preview-signing-setup.md` for Windows PowerShell steps), then add these encrypted secrets under **GitHub repository → Settings → Secrets and variables → Actions**:
+Do **not** add the former `AFCON360_PREVIEW_KEYSTORE_*` values as repository-level Actions secrets for this workflow. If they were configured earlier, a repository owner should review and remove any that are no longer needed under **Settings → Secrets and variables → Actions**. This PR has not changed repository secret settings.
 
-- `AFCON360_PREVIEW_KEYSTORE_BASE64` — base64 output of the keystore file.
-- `AFCON360_PREVIEW_KEYSTORE_PASSWORD` — keystore password.
-- `AFCON360_PREVIEW_KEY_ALIAS` — key alias inside the keystore.
-- `AFCON360_PREVIEW_KEY_PASSWORD` — private-key password.
-
-Keep a secure offline backup of the keystore and passwords. Loss of this key prevents in-place updates to already distributed preview APKs. This preview key is not the Play App Signing production key.
-
-For Windows PowerShell commands and the exact encrypted GitHub secrets required before APK publishing, follow the [internal Android preview signing setup](preview-signing-setup.md).
+A future stable internal distribution channel must use a separate trusted workflow that pull requests cannot modify and a protected GitHub Environment with required approval and a trusted-branch allowlist. The preview key must never be the Google Play production signing key.
 
 ## Distribution labels
 
-- **Internal preview APK:** directly installable Android test binary from the GitHub `mobile-preview` prerelease. Signed with a private preview keystore, separate from production Play App Signing, and not eligible for Play Console submission.
+- **Internal preview APK:** run-scoped GitHub Actions artifact for direct Android testing. The current PR workflow uses an ephemeral CI signing key, does not publish a GitHub Release and is not eligible for Play Console submission.
 - **Google Play:** production-signed AAB distributed and updated by Play.
 - **Apple App Store:** separately signed IPA reviewed and distributed by Apple.
 - **Share URL:** canonical `https://www.pamoja.space/apps` page; official store listing URLs are added only after approval.

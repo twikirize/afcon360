@@ -10,10 +10,27 @@ const config: ExpoConfig = {
   version: "1.0.0",
   orientation: "default",
   userInterfaceStyle: "automatic",
-  ios: { bundleIdentifier: appId, supportsTablet: true },
-  android: { package: appId, adaptiveIcon: { backgroundColor: "#087A4B" } },
+  ios: {
+    bundleIdentifier: appId,
+    deploymentTarget: "16.4",
+    supportsTablet: true
+  },
+  android: {
+    package: appId,
+    allowBackup: false,
+    // Use the Android system photo/document picker instead of broad legacy storage.
+    // The User app does not require full-screen overlay access.
+    blockedPermissions: [
+      "android.permission.READ_EXTERNAL_STORAGE",
+      "android.permission.WRITE_EXTERNAL_STORAGE",
+      "android.permission.SYSTEM_ALERT_WINDOW"
+    ],
+    adaptiveIcon: { backgroundColor: "#087A4B" }
+  },
   plugins: ["expo-router", "expo-secure-store", "expo-dev-client"],
-  extra: { apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://www.pamoja.space" }
+  extra: {
+    apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://www.pamoja.space"
+  }
 };
 
 export default config;
