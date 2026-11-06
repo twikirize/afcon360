@@ -195,3 +195,33 @@ def test_multi_channel_stops_when_shared_otp_storage_fails(app, monkeypatch):
     assert result["success"] is False
     assert result["code"] == "storage_failed"
     assert delivered == []
+
+
+def test_sms_otp_storage_uses_same_identity_as_verification(app, monkeypatch):
+    from app.auth.otp_service import OTPService
+    from app.notifications import sms_service
+
+    stored = {}
+    monkeypatch.setattr(
+        OTPService,
+        "store_otp",
+        staticmethod(lambda identifier, otp, purpose, ttl: stored.update(
+            identifier=identifier, purpose=purpose, ttl=ttl
+        ) or True),
+    )
+    monkeypatch.setattr(sms_service, "send_sms", lambda phone, message: True)
+
+    with app.app_context():
+        sent, returned_code = OTPService.send_sms_otp(
+            phone="+256700000003",
+            otp="482061",
+            internal_user_id=987,
+        )
+
+    assert sent is True
+    assert returned_code == "482061"
+    assert stored == {
+        "identifier": "987",
+        "purpose": "sms_verification",
+        "ttl": 300,
+    }
