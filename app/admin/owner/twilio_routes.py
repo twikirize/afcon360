@@ -1,6 +1,6 @@
 """
 Twilio Configuration Routes for Owner Settings
-Add these to app/admin/owner/routes.py after test_oci_email function
+These should be integrated into app/admin/owner/routes.py after test_oci_email function
 """
 
 from flask import jsonify, redirect, url_for, flash, request, current_user
@@ -28,6 +28,8 @@ def save_twilio_config():
                          value_type='str', category='sms', description='Twilio WhatsApp sender')
         SystemConfig.set('TWILIO_WHATSAPP_ENABLED', request.form.get('TWILIO_WHATSAPP_ENABLED', 'false').lower() == 'true',
                          value_type='bool', category='sms', description='Enable WhatsApp via Twilio')
+        SystemConfig.set('TWILIO_SMS_ENABLED', request.form.get('TWILIO_SMS_ENABLED', 'false').lower() == 'true',
+                         value_type='bool', category='sms', description='Enable SMS via Twilio')
 
         flash("✅ Twilio configuration saved successfully", "success")
         return redirect(url_for('admin.owner.settings'))
