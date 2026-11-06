@@ -88,4 +88,6 @@ class MockGatewayProcessor(PaymentProcessor):
         ).first()
         if not commission:
             return False, "Commission record not found for transaction"
-        return MarketplaceService.refund_guest(commission.booking_id, amount)
+        return MarketplaceService.refund_guest(
+            commission.booking_id, amount, approval_reason=reason
+        )
