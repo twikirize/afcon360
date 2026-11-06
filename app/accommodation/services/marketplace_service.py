@@ -13,6 +13,7 @@ from typing import Optional, Tuple, Dict, Any
 from datetime import datetime, timezone
 
 from flask import current_app
+from flask_login import current_user
 from sqlalchemy.exc import OperationalError
 
 from app.extensions import db
@@ -21,7 +22,7 @@ from app.wallet.services.commission_service import CommissionService
 from app.wallet.models.ledger import AccountModel, AccountOwnerType
 from app.wallet.repositories.account_repository import AccountRepository
 from app.wallet.repositories.transaction_repository import TransactionRepository
-from app.accommodation.models.booking import AccommodationBooking
+from app.accommodation.models.booking import AccommodationBooking, AccommodationBookingStatus
 from app.accommodation.models.commission import BookingCommission
 import logging
 
@@ -165,16 +166,34 @@ class MarketplaceService:
     @staticmethod
     def release_host_payout(booking_id: int) -> Tuple[bool, Optional[str]]:
         """
-        Release payout to host after check-in.
-        Transfers host_payout from platform escrow to host's wallet.
-
-        Returns:
-            (success, error_message)
+        Release escrow only after the authenticated property manager who
+        confirmed check-in is verified again at the financial boundary.
+        Wallet executes the transfer; the human check-in actor authorizes it.
         """
         try:
             booking = db.session.get(AccommodationBooking, booking_id)
             if not booking:
                 return False, "Booking not found"
+
+            actor = current_user
+            if not actor or not actor.is_authenticated:
+                return False, "An authenticated host approval is required"
+
+            from app.accommodation.services.identity_service import AccommodationIdentityService
+            prop = booking.accommodation_property
+            if not AccommodationIdentityService.can_manage_property(
+                actor,
+                property_owner_user_id=prop.owner_user_id if prop else None,
+                property_owner_org_id=prop.owner_org_id if prop else None,
+            ):
+                return False, "You are not authorised to approve this host payout"
+
+            if not (
+                booking.is_checked_in
+                and booking.status == AccommodationBookingStatus.CHECKED_IN.value
+                and booking.checked_in_by == actor.id
+            ):
+                return False, "A host must confirm this booking's check-in before payout"
 
             commission = BookingCommission.query.filter_by(booking_id=booking_id).first()
             if not commission:
@@ -183,6 +202,7 @@ class MarketplaceService:
             if commission.status != 'held':
                 return False, f"Commission already {commission.status}"
 
+            approval_at = datetime.now(timezone.utc)
             host_account_id = MarketplaceService._get_account_for_user(booking.host_user_id, booking.currency)
             platform_account_id = MarketplaceService._get_platform_account_id(booking.currency)
 
@@ -198,22 +218,27 @@ class MarketplaceService:
                     'booking_id': str(booking_id),
                     'booking_reference': booking.booking_reference,
                     'commission_id': str(commission.id),
+                    'approved_by_user_id': actor.id,
+                    'approval_source': 'host_check_in',
+                    'approval_reason': 'Host confirmed guest check-in',
+                    'approved_at': approval_at.isoformat(),
                 },
-                # This internal escrow settlement follows the successful check-in
-                # authorization in the accommodation route; no guest PIN applies.
+                # System executes the escrow movement after the human approval
+                # above; the platform escrow account does not enter a user PIN.
                 system_initiated=True,
             )
 
             txn_id = result.get('transaction_id')
             commission.status = 'released'
-            commission.released_at = datetime.now(timezone.utc)
+            commission.released_at = approval_at
+            commission.released_by = actor.id
             commission.host_payout_transaction_id = txn_id
             db.session.commit()
 
             logger.info(
                 f"Host payout released: {booking.booking_reference} | "
                 f"Amount: {commission.host_payout} {booking.currency} | "
-                f"Host: {booking.host_user_id}"
+                f"Approver: {actor.id}"
             )
 
             return True, None
@@ -224,18 +249,69 @@ class MarketplaceService:
             return False, str(e)
 
     @staticmethod
-    def refund_guest(booking_id: int, refund_amount: Decimal) -> Tuple[bool, Optional[str]]:
+    def refund_guest(
+        booking_id: int,
+        refund_amount: Decimal,
+        approval_reason: Optional[str] = None,
+    ) -> Tuple[bool, Optional[str]]:
         """
-        Refund guest from platform escrow.
-        Used when booking is cancelled and guest is eligible for refund.
+        Execute a wallet refund only after an authenticated human approval.
 
-        Returns:
-            (success, error_message)
+        A property manager can explicitly approve a manual refund. A human who
+        cancelled the booking can approve only the exact refund amount persisted
+        by the cancellation-policy calculation. The guest never supplies a
+        platform escrow PIN; the approved system workflow performs the transfer.
         """
         try:
             booking = db.session.get(AccommodationBooking, booking_id)
             if not booking:
                 return False, "Booking not found"
+
+            actor = current_user
+            if not actor or not actor.is_authenticated:
+                return False, "An authenticated human refund approval is required"
+
+            reason = str(approval_reason or "").strip()
+            if not reason:
+                return False, "A human approval reason is required"
+
+            try:
+                refund_amount = Decimal(str(refund_amount)).quantize(Decimal("0.01"))
+            except Exception:
+                return False, "Invalid refund amount"
+            if refund_amount <= 0:
+                return False, "Refund amount must be greater than zero"
+            if refund_amount > Decimal(str(booking.total_amount or 0)):
+                return False, "Refund amount cannot exceed the booking total"
+
+            from app.accommodation.services.identity_service import AccommodationIdentityService
+            prop = booking.accommodation_property
+            is_property_manager = AccommodationIdentityService.can_manage_property(
+                actor,
+                property_owner_user_id=prop.owner_user_id if prop else None,
+                property_owner_org_id=prop.owner_org_id if prop else None,
+            )
+            outcome = (booking.policy_snapshot or {}).get("cancellation_outcome", {})
+            cancellation_approved_by_actor = (
+                booking.cancelled_by_user_id == actor.id
+                and actor.id in {
+                    booking.booking_owner_id or booking.booked_by_user_id,
+                    booking.booked_by_user_id,
+                    booking.host_user_id,
+                }
+                and booking.status in {
+                    AccommodationBookingStatus.CANCELLED.value,
+                    AccommodationBookingStatus.REFUNDED.value,
+                }
+            )
+
+            if not (is_property_manager or cancellation_approved_by_actor):
+                return False, "You are not authorised to approve this booking refund"
+
+            if cancellation_approved_by_actor:
+                policy_refund = outcome.get("refund")
+                if policy_refund is None or Decimal(str(policy_refund)) != refund_amount:
+                    return False, "Refund amount does not match the human-approved cancellation policy"
 
             commission = BookingCommission.query.filter_by(booking_id=booking_id).first()
             if not commission:
@@ -243,7 +319,15 @@ class MarketplaceService:
 
             if commission.status == 'refunded':
                 return False, "Already refunded"
+            if refund_amount > Decimal(str(commission.total_amount or 0)):
+                return False, "Refund amount exceeds the amount held for this booking"
 
+            approval_at = datetime.now(timezone.utc)
+            approval_source = (
+                "booking_cancellation"
+                if cancellation_approved_by_actor
+                else "host_manual_refund"
+            )
             guest_account_id = MarketplaceService._get_account_for_user(booking.booked_by_user_id, booking.currency)
             platform_account_id = MarketplaceService._get_platform_account_id(booking.currency)
 
@@ -259,28 +343,47 @@ class MarketplaceService:
                     'booking_id': str(booking_id),
                     'booking_reference': booking.booking_reference,
                     'refund_amount': str(refund_amount),
+                    'approved_by_user_id': actor.id,
+                    'approval_source': approval_source,
+                    'approval_reason': reason,
+                    'approved_at': approval_at.isoformat(),
                 },
-                # This internal escrow refund is initiated by the authorized
-                # accommodation cancellation/refund workflow, not by a wallet user.
+                # The authenticated human approval above authorizes execution;
+                # the system moves escrow funds without a wallet-owner PIN.
                 system_initiated=True,
             )
 
-            txn_id = result.get('transaction_id')
             if result.get('already_processed'):
-                # The wallet leg already moved money for this booking (e.g. a
-                # retry after the business commit failed). Converge business
-                # state to the ACTUAL recorded amount of the existing
-                # transaction — never to fields of the duplicate request.
+                # Converge to the previously committed transfer and preserve its
+                # original human approver in the commission audit metadata.
                 existing = TransactionRepository(db.session).get_by_client_request_id(
                     f"booking_{booking_id}_refund"
                 )
                 recorded_amount = existing.amount if existing else refund_amount
+                transaction_metadata = (
+                    getattr(existing, "tx_metadata", None) if existing else None
+                ) or {}
+                refund_approval = {
+                    "approved_by_user_id": transaction_metadata.get("approved_by_user_id"),
+                    "approval_source": transaction_metadata.get("approval_source"),
+                    "approval_reason": transaction_metadata.get("approval_reason"),
+                    "approved_at": transaction_metadata.get("approved_at"),
+                }
             else:
                 recorded_amount = refund_amount
+                refund_approval = {
+                    "approved_by_user_id": actor.id,
+                    "approval_source": approval_source,
+                    "approval_reason": reason,
+                    "approved_at": approval_at.isoformat(),
+                }
 
             commission.status = 'refunded'
             commission.refund_amount = recorded_amount
             commission.refunded_at = datetime.now(timezone.utc)
+            extra_data = dict(commission.extra_data or {})
+            extra_data["refund_approval"] = refund_approval
+            commission.extra_data = extra_data
             booking.refund_amount = recorded_amount
             booking.refunded_at = datetime.now(timezone.utc)
             booking.payment_status = 'refunded'
@@ -288,7 +391,8 @@ class MarketplaceService:
 
             logger.info(
                 f"Refund processed: {booking.booking_reference} | "
-                f"Amount: {refund_amount} {booking.currency}"
+                f"Amount: {recorded_amount} {booking.currency} | "
+                f"Approver: {refund_approval.get('approved_by_user_id')}"
             )
 
             return True, None
