@@ -545,8 +545,6 @@ def save_email_provider_settings():
     use_ssl = bool(data.get('use_ssl', False))
     if provider != 'smtp':
         return jsonify({'error': 'Only SMTP is enabled for the shared mail transport'}), 400
-    if enabled and (not host or not sender or '@' not in sender):
-        return jsonify({'error': 'SMTP host and a valid default sender are required'}), 400
     if not 1 <= port <= 65535:
         return jsonify({'error': 'SMTP port must be between 1 and 65535'}), 400
     if use_tls and use_ssl:
