@@ -255,7 +255,10 @@ class AuthConfiguration(BaseModel):
                 'sendgrid_from_email': self.sendgrid_from_email,
                 'sendgrid_from_name': self.sendgrid_from_name,
                 'twilio_account_sid': self.twilio_account_sid,
-                'twilio_auth_token': self.twilio_auth_token,
+                # Never serialize the credential itself, even for a legacy
+                # include_secrets caller. The runtime adapter reads it from
+                # the encrypted SystemConfig store.
+                'twilio_auth_token_configured': bool(self.twilio_auth_token),
                 'twilio_phone_number': self.twilio_phone_number,
                 'africa_talking_username': self.africa_talking_username,
                 'africa_talking_api_key': self.africa_talking_api_key,
