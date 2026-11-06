@@ -740,3 +740,129 @@ def test_smtp_authentication_requires_a_complete_pair():
     assert _smtp_auth_pair_error(
         {"smtp_user": "new-user", "smtp_pass": "", "clear_auth": True}, existing
     ) == "Uncheck Clear auth before entering new SMTP credentials."
+
+
+
+def test_partial_provider_updates_preserve_disabled_state(monkeypatch):
+    from app.extensions import db
+    from app.notifications.models import CommunicationSettings, NotificationAggregator
+    from app.notifications.settings import CommunicationSettingsService
+
+    provider = type(
+        "ProviderSetting",
+        (),
+        {
+            "key": "email_provider",
+            "enabled": False,
+            "config": {},
+            "provider": "smtp",
+            "channel": "email",
+        },
+    )()
+    aggregator = type(
+        "AggregatorSetting",
+        (),
+        {
+            "name": "sms-gateway",
+            "enabled": False,
+            "credentials": None,
+            "webhook_url": None,
+        },
+    )()
+
+    class _Query:
+        def __init__(self, row):
+            self.row = row
+
+        def filter_by(self, **kwargs):
+            return self
+
+        def first(self):
+            return self.row
+
+    monkeypatch.setattr(CommunicationSettings, "query", _Query(provider))
+    monkeypatch.setattr(NotificationAggregator, "query", _Query(aggregator))
+    monkeypatch.setattr(db.session, "commit", lambda: None)
+
+    # A partial update without an enabled field must not reactivate a disabled
+    # provider or aggregator.
+    updated_provider = CommunicationSettingsService.upsert_setting(
+        key="email_provider",
+        channel="email",
+        provider="smtp",
+        config=None,
+    )
+    updated_aggregator = CommunicationSettingsService.upsert_aggregator(
+        name="sms-gateway",
+        provider_type="generic",
+        channels=["sms"],
+        credentials=None,
+    )
+    assert updated_provider.enabled is False
+    assert updated_aggregator.enabled is False
+
+
+def test_new_provider_and_aggregator_default_to_enabled_only_on_create(monkeypatch):
+    from app.extensions import db
+    from app.notifications.models import CommunicationSettings, NotificationAggregator
+    from app.notifications.settings import CommunicationSettingsService
+
+    class _Query:
+        def filter_by(self, **kwargs):
+            return self
+
+        def first(self):
+            return None
+
+    added = []
+    monkeypatch.setattr(CommunicationSettings, "query", _Query())
+    monkeypatch.setattr(NotificationAggregator, "query", _Query())
+    monkeypatch.setattr(db.session, "add", lambda row: added.append(row))
+    monkeypatch.setattr(db.session, "commit", lambda: None)
+
+    provider = CommunicationSettingsService.upsert_setting(
+        key="new-provider",
+        channel="email",
+        config=None,
+    )
+    aggregator = CommunicationSettingsService.upsert_aggregator(
+        name="new-aggregator",
+        provider_type="generic",
+        channels=["webhook"],
+        credentials=None,
+    )
+
+    assert provider.enabled is True
+    assert aggregator.enabled is True
+    assert provider in added
+    assert aggregator in added
+
+
+def test_explicit_enabled_value_still_changes_existing_provider(monkeypatch):
+    from app.extensions import db
+    from app.notifications.models import CommunicationSettings
+    from app.notifications.settings import CommunicationSettingsService
+
+    provider = type(
+        "ProviderSetting",
+        (),
+        {"key": "existing", "enabled": False, "config": {}, "provider": "smtp"},
+    )()
+
+    class _Query:
+        def filter_by(self, **kwargs):
+            return self
+
+        def first(self):
+            return provider
+
+    monkeypatch.setattr(CommunicationSettings, "query", _Query())
+    monkeypatch.setattr(db.session, "commit", lambda: None)
+
+    updated = CommunicationSettingsService.upsert_setting(
+        key="existing",
+        channel="email",
+        enabled=True,
+        config=None,
+    )
+    assert updated.enabled is True
