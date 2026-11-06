@@ -3991,15 +3991,20 @@ def guest_cancel_booking(reference):
         return redirect(url_for('accommodation.guest_my_bookings'))
 
     reason = request.form.get('reason', 'User requested cancellation')
+    request_human_review = request.form.get("request_human_review") == "1"
+    review_reason = request.form.get("refund_review_reason", "").strip()
 
-    # Cancel the booking – this updates the booking status, releases dates,
-    # and returns the refund amount (if any)
+    # Cancellation is confirmed first. A verified, routine wallet refund is
+    # then automatic; an exception or machine-screening concern is queued for
+    # independent platform approval.
     success, message, refund = BookingService.cancel_booking(
         booking.id,
         cancelled_by_user_id=current_user.id,
         reason=reason,
         ip_address=request.remote_addr,
-        user_agent=request.headers.get('User-Agent')
+        user_agent=request.headers.get('User-Agent'),
+        request_human_review=request_human_review,
+        review_reason=review_reason,
     )
 
     return_to_confirmation = request.form.get("return_to_confirmation") == "1"
@@ -4010,17 +4015,34 @@ def guest_cancel_booking(reference):
 
     if success:
         if refund and refund > 0:
-            # Use the canonical MarketplaceService to process the refund
             refund_success, refund_error = MarketplaceService.refund_guest(
                 booking.id,
                 refund,
             )
-            if refund_success:
-                flash(f'{message} Refund of ${refund} processed.', 'success')
+            booking = db.session.get(AccommodationBooking, booking.id)
+            workflow = (booking.policy_snapshot or {}).get("refund_workflow", {})
+            if workflow.get("state") == "refunded":
+                flash(f'{message} Refund of ${refund} {booking.currency} processed.', 'success')
+            elif workflow.get("state") == "pending_human_review":
+                flash(
+                    f'{message} Your refund request has been submitted for independent platform review. '
+                    'The host does not need to approve a policy-entitled guest cancellation.',
+                    'info',
+                )
+            elif refund_success:
+                flash(f'{message} {refund_error or "Refund processing has been recorded."}', 'info')
             else:
-                flash(f'Refund failed: {refund_error}', 'warning')
+                flash(f'Refund was not sent: {refund_error}', 'warning')
         else:
-            flash(message, 'info')
+            booking = db.session.get(AccommodationBooking, booking.id)
+            workflow = (booking.policy_snapshot or {}).get("refund_workflow", {})
+            if workflow.get("state") == "pending_human_review":
+                flash(
+                    "Your cancellation is recorded. The requested exception has been sent to the platform review queue.",
+                    "info",
+                )
+            else:
+                flash(message, 'info')
     else:
         flash(message, 'danger')
 
@@ -5579,6 +5601,8 @@ def host_cancel_booking(property_id, booking_id):
         reason=reason,
         ip_address=request.remote_addr,
         user_agent=request.headers.get('User-Agent'),
+        request_human_review=True,
+        review_reason=reason,
     )
 
     next_url = request.form.get("next") or url_for(
@@ -5940,14 +5964,21 @@ def host_refund_booking(booking_id):
         flash("Refund amount cannot exceed booking total.", "warning")
         return redirect(url_for("accommodation.host_booking_detail", booking_id=booking_id))
 
-    success, error = MarketplaceService.refund_guest(
+    success, error = MarketplaceService.submit_refund_review(
         booking_id,
         refund_amount,
+        reason,
+        requested_by_user_id=current_user.id,
+        request_source="host_manual_refund",
     )
     if success:
-        flash(f"Refund of ${refund_amount} processed successfully.", "success")
+        flash(
+            "Refund request submitted to the platform admin approval queue. "
+            "No money was moved yet.",
+            "info",
+        )
     else:
-        flash(f"Refund failed: {error}", "danger")
+        flash(f"Refund request could not be submitted: {error}", "danger")
 
     return redirect(url_for("accommodation.host_booking_detail", booking_id=booking_id))
 
