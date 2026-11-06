@@ -9,7 +9,7 @@ A release advances only when evidence for its gate is recorded. CI and source in
 - [ ] User and Driver Metro bundles export for Android and iOS.
 - [ ] Flask mobile API modules compile and native-app website templates parse in CI.
 - [ ] Expo Doctor and full native project diagnostics reviewed.
-- [ ] Android development builds install and launch on physical Android devices.
+- [ ] Android development builds install, launch and render the expected native sign-in screen on physical Android devices.
 - [ ] iOS development builds install and launch on a real iPhone.
 - [ ] Final icons, splash screens, privacy strings and brand artwork approved.
 
@@ -45,11 +45,13 @@ A release advances only when evidence for its gate is recorded. CI and source in
 
 - [ ] Both User and Driver APKs build from the same native branch head.
 - [ ] Each APK passes package identity, signature, target API, minimum SDK, backup-policy and payload checks.
-- [ ] Both APKs install and launch on Android API 24, 29, 33 and 36 emulators.
+- [ ] Both APKs install, stay running and render the expected app identity and sign-in action on Android API 24, 29, 33 and 36 emulators.
 - [ ] Both APK manifest audits confirm no legacy broad-storage or overlay permissions and no debuggable/cleartext configuration.
 - [ ] Latest-run APK and manifest audit artifacts are available with build provenance and SHA-256 checksums.
 - [ ] Physical Android installation and driver-location permission tests pass.
 - [ ] Preview APKs remain labelled as internal test builds, not Play Store releases.
+
+The emulator smoke test checks the Android UI hierarchy for the correct User/Driver identity and primary sign-in action after launch. It does not submit credentials, create accounts or write to the production backend. The navigation contract also requires all approved external website handoffs to be explicitly labelled; password recovery and account deletion stay in native screens.
 
 The PR-capable validation workflow uses disposable CI signing keys and read-only GitHub permissions. It does not publish a GitHub Release or use permanent signing secrets. Every run uses a different temporary signature; a new test APK may require uninstalling the previous preview before installation. A stable tester-distribution release needs a separate trusted workflow and protected signing environment.
 
