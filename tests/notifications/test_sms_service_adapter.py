@@ -52,14 +52,18 @@ def test_system_config_encrypts_and_decrypts_twilio_auth_token(monkeypatch):
     from app.models.system_config import SystemConfig
     from app.utils import security
 
+    import base64
+
     class FakeFernet:
         def encrypt(self, value):
-            return b"encrypted:" + value
+            return base64.urlsafe_b64encode(b"test-envelope:" + value)
 
         def decrypt(self, value):
-            if not value.startswith(b"encrypted:"):
+            decoded = base64.urlsafe_b64decode(value)
+            prefix = b"test-envelope:"
+            if not decoded.startswith(prefix):
                 raise ValueError("bad ciphertext")
-            return value[len(b"encrypted:"):]
+            return decoded[len(prefix):]
 
     monkeypatch.setattr(security, "_get_fernet", lambda: FakeFernet())
 
