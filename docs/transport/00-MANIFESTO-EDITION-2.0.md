@@ -34,7 +34,7 @@ model, geospatial architecture, and platform-wide ecosystem direction.
 > We establish the architecture, prove the behavior, then extend it
 > deliberately.**
 
-> **The execution protocol is defined in `docs/transport/02-OPERATING-SYSTEM.md`.
+> **The execution protocol is defined in `docs/engineering/02-OPERATING-SYSTEM.md`.
 > Every agent reads `AGENTS.md` before every session. Every work item runs EGGE.
 > Every node has a contract, evidence, a record, and a gate. Closed nodes stay closed.**
 
