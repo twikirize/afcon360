@@ -41,6 +41,25 @@ export type ResolvedWalletRecipient = {
   recipient_currency: string;
 };
 
+export type WalletDepositStartResult = {
+  reference: string;
+  status: "pending" | "completed" | "failed";
+  amount: string;
+  currency: string;
+  payment_provider?: string;
+  authorization_url: string | null;
+  message?: string;
+};
+
+export type WalletDepositStatus = {
+  reference: string;
+  status: "pending" | "completed" | "failed";
+  amount: string;
+  currency: string;
+  payment_provider?: string;
+  message?: string;
+};
+
 export type WalletTransferResult = {
   reference: string;
   amount: string;
@@ -96,10 +115,41 @@ export class MobileWalletClient {
     current_pin?: string;
     password?: string;
   }): Promise<{ pin_set: boolean }> {
-    return this.unwrap<WalletPinStatus>("/api/mobile/v1/wallet/pin", {
+    return this.unwrap<{ pin_set: boolean }>("/api/mobile/v1/wallet/pin", {
       method: "POST",
       body: input,
     });
+  }
+
+
+  startDeposit(input: {
+    amount: string;
+    currency: string;
+    paymentMethod: "mobilemoney" | "card" | "banktransfer" | "ussd";
+    idempotencyKey: string;
+  }): Promise<WalletDepositStartResult> {
+    return this.unwrap<WalletDepositStartResult>("/api/mobile/v1/wallet/deposits", {
+      method: "POST",
+      headers: { "X-Idempotency-Key": input.idempotencyKey },
+      body: {
+        amount: input.amount,
+        currency: input.currency.toUpperCase(),
+        payment_method: input.paymentMethod,
+      },
+    });
+  }
+
+  getDepositStatus(reference: string): Promise<WalletDepositStatus> {
+    return this.unwrap<WalletDepositStatus>(
+      `/api/mobile/v1/wallet/deposits/${encodeURIComponent(reference)}`
+    );
+  }
+
+  refreshDepositStatus(reference: string): Promise<WalletDepositStatus> {
+    return this.unwrap<WalletDepositStatus>(
+      `/api/mobile/v1/wallet/deposits/${encodeURIComponent(reference)}/refresh`,
+      { method: "POST" }
+    );
   }
 
   resolveRecipient(identifier: string, currency: string): Promise<ResolvedWalletRecipient> {
