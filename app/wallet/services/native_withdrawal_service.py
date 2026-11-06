@@ -358,6 +358,7 @@ class NativeWithdrawalService:
         total_debit = Decimal(quote["total_debit"])
         pin_error = None
         reserved_tx = None
+        created_reservation = False
 
         db.session.rollback()
         try:
@@ -485,7 +486,7 @@ class NativeWithdrawalService:
 
                         metadata = {
                             "native_withdrawal_version": cls.FLOW_VERSION,
-                            "payout_state": "reserved",
+                            "payout_state": "submission_started",
                             "quote_id": quote["quote_id"],
                             "payout_amount": str(payout_amount),
                             "fee_amount": str(fee_amount),
@@ -515,6 +516,7 @@ class NativeWithdrawalService:
                         )
                         db.session.add(reserved_tx)
                         db.session.flush()
+                        created_reservation = True
 
                         db.session.add(
                             LedgerEntryModel(
@@ -564,8 +566,9 @@ class NativeWithdrawalService:
             raise pin_error
 
         # A duplicate confirmation can arrive while the first request is
-        # contacting Flutterwave. Never submit the same quote twice.
-        if (reserved_tx.tx_metadata or {}).get("payout_state") != "reserved":
+        # contacting Flutterwave. Only the request that created the reservation
+        # may submit the provider transfer.
+        if not created_reservation:
             return cls._public_transaction_data(reserved_tx)
 
         phone, name = cls._decrypt_destination(quote["destination_ciphertext"])
