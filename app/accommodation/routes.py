@@ -3947,7 +3947,8 @@ def guest_cancel_booking(reference):
             # Use the canonical MarketplaceService to process the refund
             refund_success, refund_error = MarketplaceService.refund_guest(
                 booking.id,
-                refund
+                refund,
+                approval_reason=reason,
             )
             if refund_success:
                 flash(f'{message} Refund of ${refund} processed.', 'success')
@@ -5524,7 +5525,17 @@ def host_cancel_booking(property_id, booking_id):
         return redirect(next_url)
 
     outcome = (booking.policy_snapshot or {}).get("cancellation_outcome", {})
-    refund_msg = f" Refund due: {refund}." if refund else " No refund due."
+    refund_msg = " No refund due."
+    if refund and refund > 0:
+        refund_success, refund_error = MarketplaceService.refund_guest(
+            booking.id,
+            refund,
+            approval_reason=reason,
+        )
+        if refund_success:
+            refund_msg = f" Wallet refund of {refund} {booking.currency} processed."
+        else:
+            refund_msg = f" Refund due: {refund}, but wallet execution failed: {refund_error}."
     fine = outcome.get("fine")
     if fine and Decimal(fine) > 0:
         refund_msg += f" Cancellation fine withheld: {fine}."
@@ -5865,7 +5876,11 @@ def host_refund_booking(booking_id):
         flash("Refund amount cannot exceed booking total.", "warning")
         return redirect(url_for("accommodation.host_booking_detail", booking_id=booking_id))
 
-    success, error = MarketplaceService.refund_guest(booking_id, refund_amount)
+    success, error = MarketplaceService.refund_guest(
+        booking_id,
+        refund_amount,
+        approval_reason=reason,
+    )
     if success:
         flash(f"Refund of ${refund_amount} processed successfully.", "success")
     else:
