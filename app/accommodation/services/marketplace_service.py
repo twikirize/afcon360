@@ -283,6 +283,8 @@ class MarketplaceService:
                 return False, "Refund amount must be greater than zero"
             if refund_amount > Decimal(str(booking.total_amount or 0)):
                 return False, "Refund amount cannot exceed the booking total"
+            if str(booking.payment_method or "").lower() != "wallet":
+                return False, "This payment was not made by wallet; use its original payment-provider refund flow"
 
             from app.accommodation.services.identity_service import AccommodationIdentityService
             prop = booking.accommodation_property
