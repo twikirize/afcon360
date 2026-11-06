@@ -1,5 +1,5 @@
 import * as SecureStore from "expo-secure-store";
-import { MobileAuthClient, SecureTokenStore } from "@afcon360/mobile-core";
+import { MobileAuthClient, MobileWalletClient, SecureTokenStore } from "@afcon360/mobile-core";
 
 const ACCESS_TOKEN_KEY = "afcon360.user.access-token";
 const REFRESH_TOKEN_KEY = "afcon360.user.refresh-token";
@@ -29,3 +29,5 @@ export const authClient = new MobileAuthClient({
   store,
   deviceName: "AFCON360 User"
 });
+
+export const walletClient = new MobileWalletClient(authClient);
