@@ -1,4 +1,7 @@
+from decimal import Decimal
 from types import SimpleNamespace
+
+import pytest
 
 
 def _authenticated_mobile_user(monkeypatch, user):
@@ -171,3 +174,38 @@ def test_native_event_ticket_detail_hides_other_users_registrations(client, monk
     )
     assert response.status_code == 404
     assert response.get_json()["code"] == "registration_not_found"
+
+
+def test_native_event_service_rejects_paid_tickets_before_payment_processing(monkeypatch):
+    from app.events.native_event_service import NativeEventError, NativeEventService
+    from app.events.services import EventService
+
+    event = SimpleNamespace(id=904, public_id="event-public-904", status="published")
+    ticket = SimpleNamespace(id=905, price=Decimal("25000.00"))
+    user = SimpleNamespace(id=906, public_id="native-event-user-906")
+
+    monkeypatch.setattr(
+        NativeEventService,
+        "_get_public_event",
+        staticmethod(lambda public_id: event),
+    )
+    monkeypatch.setattr(
+        NativeEventService,
+        "_load_ticket_token",
+        staticmethod(lambda event, token: ticket),
+    )
+    monkeypatch.setattr(
+        EventService,
+        "_registration_gate_error",
+        staticmethod(lambda event, ticket_type_id: None),
+    )
+
+    with pytest.raises(NativeEventError) as exc_info:
+        NativeEventService.register_free_ticket(
+            user,
+            event_public_id=event.public_id,
+            ticket_token="signed-paid-ticket-choice",
+        )
+
+    assert exc_info.value.code == "paid_ticket_checkout_unavailable"
+    assert exc_info.value.status_code == 409
