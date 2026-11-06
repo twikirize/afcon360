@@ -735,20 +735,33 @@ class OTPService:
         """
         if not phone:
             return False, None
-        stored = OTPService.store_otp(identifier=phone, otp=otp, purpose="sms_verification", ttl=300)
+        otp_identifier = str(internal_user_id) if internal_user_id is not None else phone
+        stored = OTPService.store_otp(
+            identifier=otp_identifier,
+            otp=otp,
+            purpose="sms_verification",
+            ttl=300,
+        )
         if not stored:
             return False, None
         try:
             from app.notifications.sms_service import send_sms
-            success = send_sms(phone, f"Your AFCON360 code: {otp}")
+            delivery = send_sms(phone, f"Your AFCON360 code: {otp}")
+            success = (
+                bool(delivery.get("success"))
+                if isinstance(delivery, dict)
+                else bool(delivery)
+            )
             if success:
                 return True, otp
-            else:
-                OTPService.invalidate_otp(phone, "sms_verification")
-                return False, None
-        except Exception as e:
-            logger.error(f"[SMS OTP] Failed to send SMS to {phone}: {e}")
-            OTPService.invalidate_otp(phone, "sms_verification")
+            OTPService.invalidate_otp(otp_identifier, "sms_verification")
+            return False, None
+        except Exception:
+            logger.exception(
+                "SMS OTP delivery failed for recipient hash %s",
+                hashlib.sha256(phone.encode("utf-8")).hexdigest()[:12],
+            )
+            OTPService.invalidate_otp(otp_identifier, "sms_verification")
             return False, None
 
     @staticmethod
@@ -759,7 +772,13 @@ class OTPService:
         identifier = str(internal_user_id) if internal_user_id is not None else phone
         if not identifier or not otp:
             return False
-        return OTPService.verify_otp(identifier=identifier, otp=otp, purpose="sms_verification")
+        result = OTPService.verify_otp(
+            identifier=identifier,
+            otp=otp,
+            purpose="sms_verification",
+        )
+        # verify_otp returns (valid, message); callers need the actual boolean.
+        return bool(result[0]) if isinstance(result, tuple) else bool(result)
 
     def get_user_mfa_method(self, user_id) -> Optional[str]:
         """
