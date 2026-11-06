@@ -37,7 +37,7 @@ class NativeWithdrawalService:
     PROVIDER = "flutterwave"
     CURRENCY = "UGX"
     QUOTE_MAX_AGE_SECONDS = 300
-    SUPPORTED_UG_NETWORKS = {"MTN", "AIRTEL"}
+    SUPPORTED_UG_NETWORKS = {"MTN", "AIRTEL", "MPS"}
     FLOW_VERSION = 1
 
     @staticmethod
@@ -138,9 +138,13 @@ class NativeWithdrawalService:
         if network not in cls.SUPPORTED_UG_NETWORKS:
             raise NativeWithdrawalError(
                 "withdrawal_network_unsupported",
-                "Choose MTN or Airtel Mobile Money for a Ugandan UGX withdrawal.",
+                "Choose MTN, Airtel or MPS Mobile Money for a Ugandan UGX withdrawal.",
                 400,
             )
+        # Flutterwave's Uganda guide expects the provider's documented network
+        # identifiers. Keep the app input case-insensitive, but send Airtel with
+        # the exact provider spelling.
+        network = {"AIRTEL": "Airtel", "MTN": "MTN", "MPS": "MPS"}[network]
 
         phone = cls._normalise_uganda_phone(phone_number)
         name = " ".join(str(beneficiary_name or "").split())
