@@ -235,3 +235,69 @@ def test_native_accommodation_quote_keeps_legacy_signed_room_selection(client, m
     assert response.status_code == 200
     assert captured["room_type_token"] == "signed-room-choice-806"
     assert captured["room_type_id"] is None
+
+
+def test_marketplace_booking_charge_debits_only_the_quoted_gross_amount(
+    app, db_session, monkeypatch
+):
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    from app.accommodation.services import marketplace_service as marketplace_module
+    from app.accommodation.services.marketplace_service import MarketplaceService
+    from app.extensions import db
+
+    captured = {}
+    added = []
+
+    class FakeWallet:
+        def transfer(self, **kwargs):
+            captured.update(kwargs)
+            return {"status": "success", "transaction_id": "wallet-txn-native-910"}
+
+    monkeypatch.setattr(marketplace_module, "WalletService", FakeWallet)
+    monkeypatch.setattr(
+        MarketplaceService,
+        "_get_account_for_user",
+        staticmethod(lambda user_id, currency: "guest-wallet-account"),
+    )
+    monkeypatch.setattr(
+        MarketplaceService,
+        "_get_platform_account_id",
+        staticmethod(lambda currency: "platform-escrow-account"),
+    )
+    monkeypatch.setattr(db.session, "add", lambda item: added.append(item))
+    monkeypatch.setattr(db.session, "commit", lambda: None)
+
+    booking = SimpleNamespace(
+        id=910001,
+        booked_by_user_id=910,
+        host_user_id=911,
+        property_id=912,
+        booking_reference="ACCOM-NATIVE-910",
+        wallet_txn_id=None,
+    )
+    total = Decimal("250000.00")
+
+    result = MarketplaceService.charge_guest(
+        booking=booking,
+        total_amount=total,
+        currency="UGX",
+        idempotency_key="NATACCOM-QUOTE-910",
+        transaction_pin="1234",
+        authorized_user_id=910,
+    )
+
+    assert result == (True, "wallet-txn-native-910", None)
+    assert captured["amount"] == total
+    assert captured["from_account_id"] == "guest-wallet-account"
+    assert captured["to_account_id"] == "platform-escrow-account"
+    assert captured["pin"] == "1234"
+    assert captured["authorized_user_id"] == 910
+    assert "platform_fee" not in captured
+    assert "fee_currency" not in captured
+
+    commission = added[-1]
+    assert commission.total_amount == total
+    assert commission.commission_amount == Decimal("25000.00")
+    assert commission.host_payout == Decimal("225000.00")
