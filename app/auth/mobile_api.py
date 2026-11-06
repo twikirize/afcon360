@@ -1145,10 +1145,7 @@ def _native_wallet_mask_identity(identity_type, normalized):
 
 def _resolve_native_wallet_recipient(identifier, sender_currency=None):
     from app.identity.models.user import User
-    from app.wallet.models.payment_identity import (
-        PaymentIdentityModel,
-        PaymentIdentityType,
-    )
+    from app.wallet.models.payment_identity import PaymentIdentityModel
     from app.wallet.models.ledger import AccountModel
 
     raw = str(identifier or "").strip()
@@ -1304,14 +1301,14 @@ def mobile_wallet_transactions():
 @_bearer_required("user")
 def mobile_wallet_pin_status():
     user = _native_wallet_user()
+    locked_until = user.transaction_pin_locked_until
+    if locked_until and locked_until.tzinfo is None:
+        locked_until = locked_until.replace(tzinfo=timezone.utc)
     return jsonify({
         "success": True,
         "data": {
             "pin_set": bool(user.transaction_pin_hash),
-            "locked": bool(
-                user.transaction_pin_locked_until
-                and user.transaction_pin_locked_until > datetime.now(timezone.utc)
-            ),
+            "locked": bool(locked_until and locked_until > datetime.now(timezone.utc)),
         },
     }), 200
 
@@ -1341,6 +1338,7 @@ def mobile_wallet_pin_set():
         if locked_until and locked_until.tzinfo is None:
             locked_until = locked_until.replace(tzinfo=timezone.utc)
         if locked_until and locked_until > now:
+            db.session.rollback()
             return _error("pin_locked", "Your current PIN is locked. Try again after the lockout expires.", 423)
 
         if user.transaction_pin_hash:
@@ -1351,6 +1349,7 @@ def mobile_wallet_pin_set():
         else:
             password = str(data.get("password") or "")
             if not password or not user.verify_password(password):
+                db.session.rollback()
                 return _error("password_reauthentication_required", "Enter your account password to set your first transaction PIN.", 403)
 
         user.set_transaction_pin(pin, session=db.session)
@@ -1395,7 +1394,7 @@ def mobile_wallet_recipient_resolve():
 @_bearer_required("user")
 def mobile_wallet_transfer():
     from decimal import InvalidOperation
-    from app.wallet.models.ledger import LedgerEntryModel, AccountModel
+    from app.wallet.models.ledger import AccountModel
     from app.wallet.exceptions import (
         DuplicateTransactionError,
         InsufficientBalanceError,
@@ -1406,7 +1405,6 @@ def mobile_wallet_transfer():
         WalletNotFoundError,
         ComplianceBlockError,
     )
-    from app.wallet.repositories.account_repository import AccountRepository
     from app.wallet.services.wallet_service import WalletService
 
     data = request.get_json(silent=True) or {}
@@ -1438,8 +1436,12 @@ def mobile_wallet_transfer():
     except (InvalidOperation, TypeError, ValueError):
         return _error("amount_invalid", "Enter a valid positive amount with no more than two decimal places.", 400)
 
-    sender_account = AccountRepository().get_by_user_id(user.id, currency)
-    if sender_account is None or sender_account.owner_type != "user" or sender_account.status != "active":
+    sender_account = AccountModel.query.filter_by(
+        user_id=user.id,
+        owner_type="user",
+        currency=currency,
+    ).first()
+    if sender_account is None or sender_account.status != "active":
         return _error("wallet_not_found", "You do not have an active wallet in that currency.", 404)
     if sender_account.is_frozen:
         return _error("wallet_frozen", "Your wallet is restricted. Contact AFCON360 support.", 403)
