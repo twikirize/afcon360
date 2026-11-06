@@ -245,9 +245,16 @@ export default function Wallet() {
         if (!active) return;
         if (savedQuote) {
           const parsed = JSON.parse(savedQuote) as WalletWithdrawalQuote;
-          if (parsed.quote_token && parsed.expires_at) setWithdrawalQuote(parsed);
+          const expiry = Date.parse(parsed.expires_at);
+          if (parsed.quote_token && Number.isFinite(expiry) && expiry > Date.now()) {
+            setWithdrawalQuote(parsed);
+            setTab("withdraw");
+          } else {
+            await SecureStore.deleteItemAsync(withdrawalStoreKeys.quote);
+          }
         }
         if (savedReference) {
+          setTab("withdraw");
           setWithdrawalReference(savedReference);
           try {
             const status = await walletClient.getWithdrawalStatus(savedReference);
@@ -270,6 +277,11 @@ export default function Wallet() {
       SecureStore.deleteItemAsync(withdrawalStoreKeys.quote),
       SecureStore.deleteItemAsync(withdrawalStoreKeys.reference),
     ]);
+  };
+
+  const invalidateWithdrawalQuote = () => {
+    setWithdrawalQuote(null);
+    void SecureStore.deleteItemAsync(withdrawalStoreKeys.quote);
   };
 
   const selectedAccount = accounts.find((item) => item.currency === selectedCurrency);
