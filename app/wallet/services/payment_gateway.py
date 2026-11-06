@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import json
 import requests
+from decimal import Decimal
 from flask import current_app
 
 from app.extensions import db, redis_client
@@ -93,6 +94,9 @@ class PayoutResponse:
     status: str
     message: str
     error_code: Optional[str] = None
+    amount: Optional[str] = None
+    currency: Optional[str] = None
+    reference: Optional[str] = None
 
 
 class BasePaymentGateway(ABC):
@@ -154,14 +158,33 @@ class FlutterwaveGateway(BasePaymentGateway):
     
     def __init__(self):
         super().__init__(PaymentProvider.FLUTTERWAVE)
-        self.secret_key = self.config.get('SECRET_KEY') or current_app.config.get('FLUTTERWAVE_SECRET_KEY')
-        self.public_key = self.config.get('PUBLIC_KEY') or current_app.config.get('FLUTTERWAVE_PUBLIC_KEY')
-        self.encryption_key = self.config.get('ENCRYPTION_KEY') or current_app.config.get('FLUTTERWAVE_ENCRYPTION_KEY')
-        self.base_url = "https://api.flutterwave.com/v3" if not self.is_sandbox else "https://api.flutterwave.com/v3"
-        
+        db_config = None
+        try:
+            from app.wallet.models.config import PaymentProviderConfig
+            db_config = PaymentProviderConfig.get_active_config("flutterwave")
+        except Exception:
+            current_app.logger.exception("Could not load active Flutterwave provider configuration")
+
+        self.secret_key = (
+            self.config.get("SECRET_KEY")
+            or current_app.config.get("FLUTTERWAVE_SECRET_KEY")
+            or (db_config.secret_key if db_config else None)
+        )
+        self.public_key = (
+            self.config.get("PUBLIC_KEY")
+            or current_app.config.get("FLUTTERWAVE_PUBLIC_KEY")
+            or (db_config.public_key if db_config else None)
+        )
+        self.encryption_key = (
+            self.config.get("ENCRYPTION_KEY")
+            or current_app.config.get("FLUTTERWAVE_ENCRYPTION_KEY")
+            or (db_config.encryption_key if db_config else None)
+        )
+        configured_base = (db_config.config_json or {}).get("base_url") if db_config else None
+        self.base_url = configured_base if configured_base == "https://api.flutterwave.com/v3" else "https://api.flutterwave.com/v3"
         if not self.secret_key:
             raise PaymentError("Flutterwave secret key not configured")
-    
+
     def initiate_payment(self, request: PaymentRequest) -> PaymentResponse:
         """Initiate Flutterwave payment"""
         reference = self._generate_reference("FW")
@@ -316,124 +339,127 @@ class FlutterwaveGateway(BasePaymentGateway):
             )
     
     def initiate_payout(self, request: PayoutRequest) -> PayoutResponse:
-        """Initiate Flutterwave transfer/payout"""
+        """Initiate a Flutterwave v3 bank/mobile-money transfer.
+
+        A successful response normally means NEW/queued, not paid. The caller
+        must await a signed webhook or verify_payout() before completing a
+        wallet withdrawal.
+        """
         reference = request.reference or self._generate_reference("FW-PAYOUT")
-        
+        try:
+            amount = int(request.amount)
+            if amount <= 0 or Decimal(str(request.amount)) != Decimal(amount):
+                raise ValueError("Flutterwave v3 transfer amount must be a positive whole number")
+        except (TypeError, ValueError, ArithmeticError):
+            return PayoutResponse(
+                success=False, payout_id=reference, provider_reference=None,
+                status="failed", message="Invalid payout amount.", error_code="amount_invalid"
+            )
+
+        if not request.recipient_bank_code or not request.recipient_account or not request.recipient_name:
+            return PayoutResponse(
+                success=False, payout_id=reference, provider_reference=None,
+                status="failed", message="Payout network, account number and beneficiary name are required.",
+                error_code="beneficiary_details_required"
+            )
+
         payload = {
             "account_bank": request.recipient_bank_code,
             "account_number": request.recipient_account,
-            "amount": request.amount,
-            "narration": request.reason or "Wallet withdrawal",
+            "beneficiary_name": request.recipient_name,
+            "amount": amount,
             "currency": request.currency,
             "reference": reference,
-            "callback_url": current_app.config.get('FLUTTERWAVE_TRANSFER_CALLBACK'),
-            "meta": {
-                "user_id": request.user_id,
-                "sender": "AFCON360"
-            }
+            "narration": request.reason or "AFCON360 wallet withdrawal",
+            "callback_url": current_app.config.get("FLUTTERWAVE_TRANSFER_CALLBACK") or current_app.config.get("FLUTTERWAVE_WEBHOOK_URL"),
+            "meta": {"source": "afcon360_native_wallet_withdrawal", "user_id": int(request.user_id)},
         }
-        
-        if request.recipient_phone and not request.recipient_bank_code:
-            payload = {
-                "amount": request.amount,
-                "currency": request.currency,
-                "reference": reference,
-                "beneficiary_name": request.recipient_name,
-                "meta": {
-                    "user_id": request.user_id,
-                    "sender": "AFCON360",
-                    "mobile_number": request.recipient_phone
-                }
-            }
-        
+
         try:
-            headers = {
-                "Authorization": f"Bearer {self.secret_key}",
-                "Content-Type": "application/json"
-            }
-            
             response = requests.post(
                 f"{self.base_url}/transfers",
                 json=payload,
-                headers=headers,
-                timeout=30
+                headers={"Authorization": f"Bearer {self.secret_key}", "Content-Type": "application/json"},
+                timeout=30,
             )
             response.raise_for_status()
-            data = response.json()
-            
-            if data.get("status") == "success":
-                result = data.get("data", {})
+            body = response.json()
+            result = body.get("data") or {}
+            status = str(result.get("status") or "").strip().lower()
+            if body.get("status") == "success" and result.get("id") is not None:
+                normalized_status = {"new": "pending", "pending": "pending", "successful": "successful", "failed": "failed"}.get(status, "pending")
                 return PayoutResponse(
-                    success=True,
+                    success=normalized_status != "failed",
                     payout_id=reference,
                     provider_reference=str(result.get("id")),
-                    status="pending",
-                    message="Transfer initiated"
+                    status=normalized_status,
+                    message=str(body.get("message") or "Transfer queued for provider processing."),
+                    amount=str(result.get("amount") or amount),
+                    currency=str(result.get("currency") or request.currency).upper(),
+                    reference=str(result.get("reference") or reference),
                 )
-            else:
-                return PayoutResponse(
-                    success=False,
-                    payout_id=reference,
-                    provider_reference=None,
-                    status="failed",
-                    message=data.get("message", "Transfer failed"),
-                    error_code=data.get("code")
-                )
-                
-        except requests.RequestException as e:
-            current_app.logger.error(f"Flutterwave payout error: {str(e)}")
             return PayoutResponse(
                 success=False,
                 payout_id=reference,
-                provider_reference=None,
-                status="error",
-                message=f"Transfer service error: {str(e)}"
+                provider_reference=str(result.get("id")) if result.get("id") is not None else None,
+                status="failed",
+                message=str(body.get("message") or "Flutterwave rejected the transfer."),
+                error_code=str(body.get("code") or "payout_rejected"),
+                amount=str(result.get("amount") or amount),
+                currency=str(result.get("currency") or request.currency).upper(),
+                reference=str(result.get("reference") or reference),
             )
-    
+        except requests.RequestException:
+            current_app.logger.exception("Flutterwave payout request failed; provider acceptance may be unknown")
+            return PayoutResponse(
+                success=False, payout_id=reference, provider_reference=None, status="error",
+                message="The provider response could not be confirmed. Reconcile this reference before retrying.",
+                error_code="provider_outcome_unknown", amount=str(amount), currency=request.currency, reference=reference,
+            )
+        except Exception:
+            current_app.logger.exception("Unexpected Flutterwave payout initiation error")
+            return PayoutResponse(
+                success=False, payout_id=reference, provider_reference=None, status="error",
+                message="The provider response could not be confirmed. Reconcile this reference before retrying.",
+                error_code="provider_outcome_unknown", amount=str(amount), currency=request.currency, reference=reference,
+            )
+
     def verify_payout(self, payout_ref: str) -> PayoutResponse:
-        """Verify Flutterwave transfer status"""
+        """Retrieve a Flutterwave transfer by its provider transfer ID."""
         try:
-            headers = {
-                "Authorization": f"Bearer {self.secret_key}"
-            }
-            
             response = requests.get(
                 f"{self.base_url}/transfers/{payout_ref}",
-                headers=headers,
-                timeout=30
+                headers={"Authorization": f"Bearer {self.secret_key}"},
+                timeout=30,
             )
             response.raise_for_status()
-            data = response.json()
-            
-            if data.get("status") == "success":
-                result = data.get("data", {})
-                status = result.get("status", "").lower()
-                
+            body = response.json()
+            result = body.get("data") or {}
+            if body.get("status") == "success":
+                status = str(result.get("status") or "").strip().lower()
+                normalized_status = {"new": "pending", "pending": "pending", "successful": "successful", "failed": "failed"}.get(status, "unknown")
                 return PayoutResponse(
-                    success=status == "successful",
-                    payout_id=payout_ref,
-                    provider_reference=str(result.get("id")),
-                    status=status,
-                    message=result.get("complete_message", "")
+                    success=normalized_status == "successful",
+                    payout_id=str(result.get("reference") or payout_ref),
+                    provider_reference=str(result.get("id") or payout_ref),
+                    status=normalized_status,
+                    message=str(result.get("complete_message") or body.get("message") or ""),
+                    amount=str(result.get("amount") or ""),
+                    currency=str(result.get("currency") or "").upper(),
+                    reference=str(result.get("reference") or ""),
                 )
-            else:
-                return PayoutResponse(
-                    success=False,
-                    payout_id=payout_ref,
-                    provider_reference=None,
-                    status="failed",
-                    message=data.get("message", "Verification failed")
-                )
-                
-        except requests.RequestException as e:
             return PayoutResponse(
-                success=False,
-                payout_id=payout_ref,
-                provider_reference=None,
-                status="error",
-                message=f"Verification error: {str(e)}"
+                success=False, payout_id=payout_ref, provider_reference=None, status="error",
+                message=str(body.get("message") or "Payout verification could not be completed."),
+                error_code="verification_unavailable",
             )
-    
+        except requests.RequestException:
+            current_app.logger.exception("Flutterwave payout verification failed")
+            return PayoutResponse(
+                success=False, payout_id=payout_ref, provider_reference=None, status="error",
+                message="Payout verification is temporarily unavailable.", error_code="verification_unavailable",
+            )
+
     def handle_webhook(self, payload: Dict[str, Any], signature: str) -> bool:
         """Handle Flutterwave webhook"""
         expected_hash = hmac.new(
