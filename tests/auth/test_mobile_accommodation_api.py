@@ -64,7 +64,7 @@ def test_native_accommodation_quote_is_bound_to_authenticated_user(client, monke
             "check_out": "2026-12-12",
             "num_guests": 2,
             "rooms_requested": 1,
-            "room_type_id": 123,
+            "room_type_token": "signed-room-choice-123",
         },
         headers={"Authorization": "Bearer native-test-token"},
     )
@@ -73,7 +73,7 @@ def test_native_accommodation_quote_is_bound_to_authenticated_user(client, monke
     assert response.get_json()["data"]["quote_token"] == "signed-quote-802"
     assert captured["owner"] is user
     assert captured["property_public_id"] == "property-public-1"
-    assert captured["room_type_id"] == 123
+    assert captured["room_type_token"] == "signed-room-choice-123"
 
 
 def test_native_accommodation_booking_requires_pin_and_uses_server_quote(client, monkeypatch):

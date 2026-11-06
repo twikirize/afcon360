@@ -42,11 +42,70 @@ class NativeAccommodationService:
             salt="afcon360-native-accommodation-quote-v1",
         )
 
-    @staticmethod
-    def _public_property(prop, include_description=False):
+    @classmethod
+    def _room_type_serializer(cls):
+        if not current_app.secret_key:
+            raise NativeAccommodationError(
+                "accommodation_unavailable",
+                "AFCON360 cannot securely prepare room selections right now.",
+                503,
+            )
+        return URLSafeTimedSerializer(
+            current_app.secret_key,
+            salt="afcon360-native-accommodation-room-type-v1",
+        )
+
+    @classmethod
+    def _room_type_token(cls, prop, room):
+        return cls._room_type_serializer().dumps({
+            "property_public_id": str(prop.public_id),
+            "room_type_id": int(room.id),
+        })
+
+    @classmethod
+    def _load_room_type_token(cls, prop, token):
+        try:
+            payload = cls._room_type_serializer().loads(
+                str(token or ""),
+                max_age=24 * 60 * 60,
+            )
+        except SignatureExpired as exc:
+            raise NativeAccommodationError(
+                "room_selection_expired",
+                "This room selection has expired. Reload the property and choose a room again.",
+                409,
+            ) from exc
+        except BadSignature as exc:
+            raise NativeAccommodationError(
+                "room_selection_invalid",
+                "This room selection is invalid. Reload the property and choose a room again.",
+                400,
+            ) from exc
+        if payload.get("property_public_id") != str(prop.public_id):
+            raise NativeAccommodationError(
+                "room_selection_property_mismatch",
+                "This room selection does not belong to the selected property.",
+                403,
+            )
+        from app.accommodation.models.room import RoomType
+        room = RoomType.query.filter_by(
+            id=payload.get("room_type_id"),
+            property_id=prop.id,
+            is_active=True,
+        ).first()
+        if room is None:
+            raise NativeAccommodationError(
+                "room_type_unavailable",
+                "This room type is no longer available at the selected property.",
+                409,
+            )
+        return room
+
+    @classmethod
+    def _public_property(cls, prop, include_description=False):
         room_types = [
             {
-                "id": int(room.id),
+                "room_token": cls._room_type_token(prop, room),
                 "name": room.name,
                 "description": room.description,
                 "max_guests": int(room.max_guests or 1),
@@ -228,7 +287,7 @@ class NativeAccommodationService:
         check_out_value,
         num_guests,
         rooms_requested=1,
-        room_type_id=None,
+        room_type_token=None,
     ):
         from app.accommodation.services.pricing_service import PricingService
 
@@ -242,7 +301,19 @@ class NativeAccommodationService:
         if not 1 <= guests <= 32 or not 1 <= rooms <= 10:
             raise NativeAccommodationError("booking_guests_invalid", "Choose 1–32 guests and 1–10 rooms.", 400)
 
-        selected = cls._validate_stay(prop, check_in, check_out, guests, rooms, room_type_id)
+        selected_from_token = (
+            cls._load_room_type_token(prop, room_type_token)
+            if room_type_token
+            else None
+        )
+        selected = cls._validate_stay(
+            prop,
+            check_in,
+            check_out,
+            guests,
+            rooms,
+            int(selected_from_token.id) if selected_from_token else None,
+        )
         try:
             pricing = PricingService.calculate_total(
                 prop,
@@ -292,7 +363,6 @@ class NativeAccommodationService:
             "quote_id": quote_id,
             "quote_token": token,
             "property": cls._public_property(prop),
-            "room_type_id": payload["room_type_id"],
             "check_in": payload["check_in"],
             "check_out": payload["check_out"],
             "num_guests": guests,

@@ -1280,7 +1280,7 @@ def mobile_accommodation_quote():
             check_out_value=data.get("check_out"),
             num_guests=data.get("num_guests"),
             rooms_requested=data.get("rooms_requested", 1),
-            room_type_id=data.get("room_type_id"),
+            room_type_token=data.get("room_type_token"),
         )
         return jsonify({"success": True, "data": result}), 200
     except NativeAccommodationError as exc:
