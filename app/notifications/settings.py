@@ -154,8 +154,10 @@ class CommunicationSettingsService:
         # One-time migration for older rows saved by the former plaintext fallback.
         from app.utils.crypto import is_encrypted_json
         if config and not is_encrypted_json(setting.config):
+            # Read-time migration updates the ORM object only. The caller owns
+            # the surrounding unit of work and decides when it is committed;
+            # resolving credentials must never commit unrelated pending writes.
             setting.config = cls._encrypt_config(config)
-            db.session.commit()
         return {
             'provider': setting.provider,
             'config': config,
@@ -189,8 +191,10 @@ class CommunicationSettingsService:
             config = cls._decrypt_config(setting.config or {})
             from app.utils.crypto import is_encrypted_json
             if config and not is_encrypted_json(setting.config):
+                # Do not commit here: notification state and other caller
+                # writes must remain in the caller's transaction until it
+                # explicitly commits after delivery state has been recorded.
                 setting.config = cls._encrypt_config(config)
-                db.session.commit()
             resolved = {
                 "provider": provider,
                 "smtp_host": config.get("smtp_host") or config.get("MAIL_SERVER"),
