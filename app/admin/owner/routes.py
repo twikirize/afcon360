@@ -1386,9 +1386,15 @@ def test_twilio_sms():
         else:
             return jsonify({'success': False, 'error': result.get('response_body')}), 500
 
-    except Exception as e:
-        current_app.logger.error(f"Error sending test Twilio SMS: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception as exc:
+        current_app.logger.warning(
+            "Twilio SMS test failed (exception_type=%s)",
+            type(exc).__name__,
+        )
+        return jsonify({
+            'success': False,
+            'error': 'Twilio SMS test failed. Check protected server diagnostics.',
+        }), 502
 
 
 @owner_bp.route('/settings/twilio-whatsapp/test', methods=['POST'])
@@ -1423,9 +1429,15 @@ def test_twilio_whatsapp():
         else:
             return jsonify({'success': False, 'error': result.get('response_body')}), 500
 
-    except Exception as e:
-        current_app.logger.error(f"Error sending test Twilio WhatsApp: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception as exc:
+        current_app.logger.warning(
+            "Twilio WhatsApp test failed (exception_type=%s)",
+            type(exc).__name__,
+        )
+        return jsonify({
+            'success': False,
+            'error': 'Twilio WhatsApp test failed. Check protected server diagnostics.',
+        }), 502
 
 
 @owner_bp.route('/settings/otp-delivery-config', methods=['POST'])
@@ -2998,13 +3010,19 @@ def test_auth_service(service):
                     result['message'] = f'SendGrid API error: {response.status_code}'
         
         elif service == 'twilio':
-            if not config.twilio_enabled or not config.twilio_account_sid:
+            from app.models.system_config import SystemConfig
+            account_sid = (
+                SystemConfig.get('TWILIO_ACCOUNT_SID', '')
+                or config.twilio_account_sid
+            )
+            auth_token = SystemConfig.get('TWILIO_AUTH_TOKEN', '')
+            if not config.twilio_enabled or not account_sid or not auth_token:
                 result['message'] = 'Twilio is disabled or credentials not configured'
             else:
-                # Test Twilio API
+                # Test the same encrypted owner-managed credentials used by delivery.
                 from twilio.rest import Client
-                client = Client(config.twilio_account_sid, config.twilio_auth_token)
-                account = client.api.accounts(config.twilio_account_sid).fetch()
+                client = Client(account_sid, auth_token)
+                account = client.api.accounts(account_sid).fetch()
                 if account:
                     result['success'] = True
                     result['message'] = 'Twilio API connection successful'
@@ -3024,9 +3042,13 @@ def test_auth_service(service):
         else:
             result['message'] = f'Unknown service: {service}'
     
-    except Exception as e:
-        logger.error(f"Error testing {service}: {str(e)}")
-        result['message'] = f'Error: {str(e)}'
+    except Exception as exc:
+        logger.warning(
+            "Authentication provider test failed (service=%s, exception_type=%s)",
+            service,
+            type(exc).__name__,
+        )
+        result['message'] = 'Provider test failed. Check protected server diagnostics.'
     
     return jsonify(result)
 
