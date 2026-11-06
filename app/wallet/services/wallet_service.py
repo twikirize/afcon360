@@ -1046,6 +1046,12 @@ class WalletService:
                     if not from_account:
                         raise WalletNotFoundError(wallet_ref=from_account_id)
 
+                    # Reject a non-owner before revealing whether the account has
+                    # a configured PIN. Ownership is an authorization boundary;
+                    # PIN verification only applies after that boundary passes.
+                    if from_account.user_id != current_user.id and not self._is_admin():
+                        raise PermissionError("You do not have permission to operate on this account")
+
                     sender_user = self.db.query(User).filter_by(
                         id=from_account.user_id
                     ).with_for_update(of=User).one_or_none()
